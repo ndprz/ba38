@@ -1,0 +1,9 @@
+[2025-04-02 15:36:12.613341] [APP] [/update_partner/87] [IP: 10.0.4.170] [USER: anon] 👤 Utilisateur connecté : <app.User object at 0x7d19a4070280>
+[2025-04-02 15:36:12.617923] [APP] [/update_partner/87] [IP: 10.0.4.170] [USER: anon] 📁 Environnement détecté : dev
+[2025-04-02 15:36:12.622236] [APP] [/update_partner/87] [IP: 10.0.4.170] [USER: anon] 📂 Répertoire base : /home/ndprz/dev
+[2025-04-02 15:36:12.626573] [APP] [/update_partner/87] [IP: 10.0.4.170] [USER: anon] 📄 Fichier DB : ba380dev.sqlite
+[2025-04-02 15:36:12.632510] [APP] [/update_partner/87] [IP: 10.0.4.170] [USER: anon] 🧪 Mode test : INACTIF
+[2025-04-02 15:36:12.637576] [APP] [/update_partner/87] [IP: 10.0.4.170] [USER: anon] 📤 Upload vers dossier : 1_RiRtqyjwxcgCo9csqL8ckjePmaFwviy
+[2025-04-02 15:36:12.958673] [UPLOAD] [/update_partner/87] [IP: 10.0.4.170] [USER: anon] 📁 Listing des fichiers dans le dossier 1_RiRtqyjwxcgCo9csqL8ckjePmaFwviy :
+[2025-04-02 15:36:12.964077] [APP] [/update_partner/87] [IP: 10.0.4.170] [USER: anon] 🆕 Création d’un nouveau fichier : ba380dev.sqlite
+[2025-04-02 15:36:14.150968] [APP] [/update_partner/87] [IP: 10.0.4.170] [USER: anon] ✅ Upload terminé avec succès.

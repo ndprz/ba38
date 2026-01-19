@@ -1,0 +1,51 @@
+{% extends "base_assos.html" %}
+
+{% block title %}Fiches de visite{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>📄 Fiches de visite – {{ partenaire['nom_association'] or "—" }}</h2>
+
+  <div class="mb-3">
+    <a href="{{ url_for('partenaires.update_partner', partner_id=partner_id) }}"
+       class="btn btn-secondary">⬅️ Retour partenaire</a>
+    <a href="{{ url_for('fiches_visite.nouvelle', partner_id=partner_id) }}"
+       class="btn btn-primary">➕ Nouvelle fiche de visite</a>
+  </div>
+
+  {% if fiches %}
+    <table class="table table-bordered">
+      <thead>
+        <tr>
+          <th>Date de visite</th>
+          <th>CAR</th>
+          <th>Reçu par</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fiche in fiches %}
+        <tr>
+          <td>{{ fiche.get('date_visite') | datetimeformat }}</td>
+          <td>{{ fiche['car'] or "—" }}</td>
+          <td>{{ fiche['recu_par'] or "—" }}</td>
+          <td>
+            <a href="{{ url_for('fiches_visite.view', fiche_id=fiche['id']) }}" 
+               class="btn btn-sm btn-outline-info">👁️ Voir</a>
+            <a href="{{ url_for('fiches_visite.modifier', fiche_id=fiche['id']) }}" 
+               class="btn btn-sm btn-warning">✏️ Modifier</a>
+            <a href="{{ url_for('fiches_visite.pdf', fiche_id=fiche['id']) }}"
+              class="btn btn-outline-danger btn-sm"
+              target="_blank">
+              📄 PDF
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="text-muted">Aucune fiche de visite enregistrée pour ce partenaire.</p>
+  {% endif %}
+</div>
+{% endblock %}

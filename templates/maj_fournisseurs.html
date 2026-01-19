@@ -1,0 +1,351 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Mise à jour des Fournisseurs{% endblock %}
+
+{% block content %}
+<h2>🔧 Mise à jour des Fournisseurs</h2>
+
+<!-- 🔍 Barre de recherche + export CSV -->
+<div class="d-flex justify-content-between align-items-center mb-2">
+
+    <button type="button" class="btn btn-success" onclick="soumettreToutesLesLignes()">💾 Enregistrer toutes les modifications</button>
+
+    <input type="text" id="filtre-fournisseur" class="form-control form-control-sm w-50" placeholder="🔍 Rechercher...">
+    <button class="btn btn-sm btn-outline-secondary" onclick="exporterXLSX()">📊 Export Excel</button>
+
+</div>
+
+<table class="table table-bordered table-sm align-middle" id="table-fournisseurs">
+    <thead class="table-light">
+        <tr>
+            <th id="th-nom" style="cursor: pointer;">Nom ⇅</th>
+            <th>Adresse</th>
+            <th>CP</th>
+            <th>Ville</th>
+            <th>Tél</th>
+            <th>Email</th>
+            <th id="th-lundi" style="cursor: pointer;">Lundi ⇅</th>
+            <th>Horaire</th>
+            <th id="th-mardi" style="cursor: pointer;">Mardi ⇅</th>
+            <th>Horaire</th>
+            <th id="th-mercredi" style="cursor: pointer;">Mercredi ⇅</th>
+            <th>Horaire</th>
+            <th id="th-jeudi" style="cursor: pointer;">Jeudi ⇅</th>
+            <th>Horaire</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for f in fournisseurs %}
+        <tr>
+            <td title="{{ f.nom or '' }}"><input name="nom" value="{{ f.nom or '' }}" class="form-control form-control-sm" style="min-width: 250px;"></td>
+            <td title="{{ f.adresse or '' }}"><input name="adresse" value="{{ f.adresse or '' }}" class="form-control form-control-sm"></td>
+            <td title="{{ f.cp or '' }}"><input name="cp" value="{{ f.cp or '' }}" class="form-control form-control-sm"></td>
+            <td title="{{ f.ville or '' }}"><input name="ville" value="{{ f.ville or '' }}" class="form-control form-control-sm"></td>
+            <td title="{{ f.tel or '' }}"><input name="tel" value="{{ f.tel or '' }}" class="form-control form-control-sm"></td>
+            <td title="{{ f.mail or '' }}"><input name="mail" value="{{ f.mail or '' }}" class="form-control form-control-sm"></td>
+            <td><select name="lundi" class="form-select form-select-sm">
+                <option value="oui" {% if f.lundi == "oui" %}selected{% endif %}>oui</option>
+                <option value="non" {% if f.lundi == "non" %}selected{% endif %}>non</option>
+            </select></td>
+            <td><input name="horaire_lundi" value="{{ f.horaire_lundi or '' }}" class="form-control form-control-sm"></td>
+            <td><select name="mardi" class="form-select form-select-sm">
+                <option value="oui" {% if f.mardi == "oui" %}selected{% endif %}>oui</option>
+                <option value="non" {% if f.mardi == "non" %}selected{% endif %}>non</option>
+            </select></td>
+            <td><input name="horaire_mardi" value="{{ f.horaire_mardi or '' }}" class="form-control form-control-sm"></td>
+            <td><select name="mercredi" class="form-select form-select-sm">
+                <option value="oui" {% if f.mercredi == "oui" %}selected{% endif %}>oui</option>
+                <option value="non" {% if f.mercredi == "non" %}selected{% endif %}>non</option>
+            </select></td>
+            <td><input name="horaire_mercredi" value="{{ f.horaire_mercredi or '' }}" class="form-control form-control-sm"></td>
+            <td><select name="jeudi" class="form-select form-select-sm">
+                <option value="oui" {% if f.jeudi == "oui" %}selected{% endif %}>oui</option>
+                <option value="non" {% if f.jeudi == "non" %}selected{% endif %}>non</option>
+            </select></td>
+            <td><input name="horaire_jeudi" value="{{ f.horaire_jeudi or '' }}" class="form-control form-control-sm"></td>
+            <td class="d-flex gap-1">
+                <button type="button" class="btn btn-sm btn-danger" onclick="soumettreLigne(this, '{{ f.id }}', 'supprimer')">🗑️</button>
+            </td>
+        </tr>
+        {% endfor %}
+
+        <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+    </tbody>
+</table>
+
+<h5 class="mt-4">➕ Ajouter un fournisseur</h5>
+<form method="POST" class="row g-2">
+  <input type="hidden" name="action" value="ajouter">
+  
+  <!-- Ligne 1 : Nom, Adresse, CP, Ville -->
+  <div class="col-md-3">
+    <input name="nom" class="form-control form-control-sm" placeholder="Nom" required>
+  </div>
+  <div class="col-md-3">
+    <input name="adresse" class="form-control form-control-sm" placeholder="Adresse">
+  </div>
+  <div class="col-md-2">
+    <input name="cp" class="form-control form-control-sm" placeholder="CP">
+  </div>
+  <div class="col-md-3">
+    <input name="ville" class="form-control form-control-sm" placeholder="Ville">
+  </div>
+
+  <div class="w-100"></div> <!-- ✅ saut de ligne -->
+
+  <!-- Ligne 2 : Téléphone, Email -->
+  <div class="col-md-3">
+    <input name="tel" class="form-control form-control-sm" placeholder="Téléphone">
+  </div>
+  <div class="col-md-3">
+    <input name="mail" class="form-control form-control-sm" placeholder="Email">
+  </div>
+
+  <div class="w-100"></div> <!-- ✅ saut de ligne -->
+
+  <!-- Ligne 3 : Lundi, Mardi, Mercredi, Jeudi -->
+  <div class="col-md-1">
+    <select name="lundi" class="form-select form-select-sm">
+      <option value="non" selected>Lun : non</option>
+      <option value="oui">Lun : oui</option>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <input name="horaire_lundi" class="form-control form-control-sm" placeholder="HH:MM">
+  </div>
+
+  <div class="col-md-1">
+    <select name="mardi" class="form-select form-select-sm">
+      <option value="non" selected>Mar : non</option>
+      <option value="oui">Mar : oui</option>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <input name="horaire_mardi" class="form-control form-control-sm" placeholder="HH:MM">
+  </div>
+
+  <div class="col-md-1">
+    <select name="mercredi" class="form-select form-select-sm">
+      <option value="non" selected>Mer : non</option>
+      <option value="oui">Mer : oui</option>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <input name="horaire_mercredi" class="form-control form-control-sm" placeholder="HH:MM">
+  </div>
+
+  <div class="col-md-1">
+    <select name="jeudi" class="form-select form-select-sm">
+      <option value="non" selected>Jeu : non</option>
+      <option value="oui">Jeu : oui</option>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <input name="horaire_jeudi" class="form-control form-control-sm" placeholder="HH:MM">
+  </div>
+
+  <div class="w-100"></div> <!-- ✅ saut de ligne -->
+
+  <div class="col-md-12 mt-2">
+    <button type="submit" class="btn btn-sm btn-primary">➕ Ajouter</button>
+  </div>
+</form>
+
+<form method="POST" id="form-ligne-cache" style="display:none;"></form>
+
+
+
+
+<script>
+let sortState = {};
+
+function soumettreLigne(bouton, id, action) {
+    const ligne = bouton.closest("tr");
+    const inputs = ligne.querySelectorAll("input, select");
+
+    const form = document.getElementById("form-ligne-cache");
+    form.innerHTML = "";
+
+    inputs.forEach(input => {
+        const champ = document.createElement("input");
+        champ.type = "hidden";
+        champ.name = input.name;
+        champ.value = input.value;
+        form.appendChild(champ);
+    });
+
+    const inputId = document.createElement("input");
+    inputId.type = "hidden";
+    inputId.name = "id";
+    inputId.value = id;
+    form.appendChild(inputId);
+
+    const inputAction = document.createElement("input");
+    inputAction.type = "hidden";
+    inputAction.name = "action";
+    inputAction.value = action;
+    form.appendChild(inputAction);
+
+    form.method = "POST";
+    form.action = "/maj_fournisseurs";
+    form.submit();
+}
+
+
+function soumettreToutesLesLignes() {
+    const lignes = document.querySelectorAll("#table-fournisseurs tbody tr");
+    const donnees = [];
+
+    lignes.forEach(ligne => {
+        const inputs = ligne.querySelectorAll("input, select");
+        const fournisseur = {};
+        inputs.forEach(input => fournisseur[input.name] = input.value);
+
+        const id = ligne.querySelector("button[onclick*='supprimer']").getAttribute("onclick").match(/'(\d+)'/)[1];
+        fournisseur["id"] = id;
+
+        donnees.push(fournisseur);
+    });
+
+    // Créer un formulaire caché pour envoyer toutes les données
+    const formGlobal = document.createElement("form");
+    formGlobal.method = "POST";
+    formGlobal.action = "/maj_fournisseurs";  // ✅ Correction : spécifier l'action explicitement
+    formGlobal.style.display = "none";
+
+    donnees.forEach((fournisseur, index) => {
+        Object.entries(fournisseur).forEach(([key, value]) => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = `fournisseurs[${index}][${key}]`;
+            input.value = value;
+            formGlobal.appendChild(input);
+        });
+    });
+
+    const actionGlobal = document.createElement("input");
+    actionGlobal.type = "hidden";
+    actionGlobal.name = "action";
+    actionGlobal.value = "modifier_global";
+    formGlobal.appendChild(actionGlobal);
+
+    document.body.appendChild(formGlobal);
+    formGlobal.submit();
+}
+
+
+function exporterXLSX() {
+    const rows = Array.from(document.querySelectorAll("#table-fournisseurs tbody tr"));
+    const headers = [
+        "Nom", "Adresse", "CP", "Ville", "Tel", "Email",
+        "Lundi", "Horaire Lundi", "Mardi", "Horaire Mardi",
+        "Mercredi", "Horaire Mercredi", "Jeudi", "Horaire Jeudi"
+    ];
+
+    const data = rows.map(row => {
+        const cells = row.querySelectorAll("td");
+        return [
+            cells[0].querySelector("input").value,   // Nom
+            cells[1].querySelector("input").value,   // Adresse
+            cells[2].querySelector("input").value,   // CP
+            cells[3].querySelector("input").value,   // Ville
+            cells[4].querySelector("input").value,   // Tel
+            cells[5].querySelector("input").value,   // Email
+            cells[6].querySelector("select").value,  // Lundi
+            cells[7].querySelector("input").value,   // Horaire Lundi
+            cells[8].querySelector("select").value,  // Mardi
+            cells[9].querySelector("input").value,   // Horaire Mardi
+            cells[10].querySelector("select").value, // Mercredi
+            cells[11].querySelector("input").value,  // Horaire Mercredi
+            cells[12].querySelector("select").value, // Jeudi
+            cells[13].querySelector("input").value   // Horaire Jeudi
+        ];
+    });
+
+    // Création du workbook Excel
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...data]);
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Fournisseurs");
+
+    // Export du fichier Excel (.xlsx)
+    XLSX.writeFile(workbook, "fournisseurs.xlsx");
+}
+
+
+document.getElementById("filtre-fournisseur").addEventListener("input", function () {
+    const filtre = this.value.toLowerCase();
+    document.querySelectorAll("#table-fournisseurs tbody tr").forEach(row => {
+        const inputs = row.querySelectorAll("input, select");
+        let texte = "";
+        inputs.forEach(input => {
+            texte += input.value.toLowerCase() + " ";
+        });
+        row.style.display = texte.includes(filtre) ? "" : "none";
+    });
+});
+
+function majTriHeader(id, direction) {
+    const header = document.getElementById(id);
+    if (!header) return;
+    const base = header.innerText.replace(/[\u25B2\u25BC\u21c5]/g, "").trim();
+    const symbole = direction === 'asc' ? ' \u25B2' : direction === 'desc' ? ' \u25BC' : ' \u21c5';
+    header.innerText = base + symbole;
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const tbody = document.querySelector("#table-fournisseurs tbody");
+    const originalRows = Array.from(tbody.querySelectorAll("tr")).map(tr => tr.cloneNode(true));
+
+    let currentSort = { column: null, asc: true };
+
+    function resetTable() {
+        tbody.innerHTML = "";
+        originalRows.forEach(row => tbody.appendChild(row.cloneNode(true)));
+    }
+
+    function sortTable(colIndex, isBoolean) {
+        const rows = Array.from(tbody.querySelectorAll("tr"));
+
+        rows.sort((a, b) => {
+            let valA = a.cells[colIndex].querySelector("input, select").value.toLowerCase();
+            let valB = b.cells[colIndex].querySelector("input, select").value.toLowerCase();
+
+            if (isBoolean) {
+                valA = valA === "oui" ? 0 : 1;
+                valB = valB === "oui" ? 0 : 1;
+                return currentSort.asc ? valA - valB : valB - valA;
+            } else {
+                return currentSort.asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+            }
+        });
+
+        tbody.innerHTML = "";
+        rows.forEach(row => tbody.appendChild(row));
+    }
+
+    function toggleSort(columnId, colIndex, isBoolean = false) {
+        if (currentSort.column === columnId) {
+            currentSort.asc = !currentSort.asc;
+        } else {
+            currentSort.column = columnId;
+            currentSort.asc = true;
+        }
+        sortTable(colIndex, isBoolean);
+    }
+
+    document.getElementById("th-nom").addEventListener("click", () => toggleSort("th-nom", 0));
+    document.getElementById("th-lundi").addEventListener("click", () => toggleSort("th-lundi", 6, true));
+    document.getElementById("th-mardi").addEventListener("click", () => toggleSort("th-mardi", 8, true));
+    document.getElementById("th-mercredi").addEventListener("click", () => toggleSort("th-mercredi", 10, true));
+    document.getElementById("th-jeudi").addEventListener("click", () => toggleSort("th-jeudi", 12, true));
+
+    // Réinitialiser après enregistrement/modification côté serveur
+    if (window.performance.getEntriesByType("navigation")[0].type === 'reload') {
+        resetTable();
+    }
+});
+
+</script>
+{% endblock %}

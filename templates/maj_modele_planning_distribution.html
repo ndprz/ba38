@@ -1,0 +1,129 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Modèle Planning Distribution{% endblock %}
+
+{% block content %}
+<h2>🛠️ Mise à jour du modèle de planning distribution</h2>
+
+<form method="post">
+<div class="table-responsive">
+<table class="table table-bordered table-striped">
+<thead>
+<tr>
+  <th>Jour</th>
+  <th>Froid 1</th>
+  <th>Froid 2</th>
+  <th>Froid 3</th>
+  <th>Froid 4</th>
+  <th>Frais/Sec 1</th>
+  <th>Frais/Sec 2</th>
+  <th>Frais/Sec 3</th>
+  <th>Frais/Sec 4</th>
+  <th>Durée</th>  <!-- ✅ Durée déplacée à droite -->
+</tr>
+</thead>
+
+<tbody>
+{% for row in planning %}
+<tr class="jour-{{ row.jour|lower }}">
+  <td>{{ row.jour|capitalize }}</td>
+
+  <!-- Colonnes Froid -->
+  {% for col in ["froid1_id", "froid2_id", "froid3_id", "froid4_id"] %}
+  <td>
+    <select class="form-select form-select-sm" name="{{ col }}_{{ row.id }}" style="max-width:150px;">
+      <option value="">-- Aucun --</option>
+
+      {% for bene in froid if bene.distrib_froid == 'oui' %}
+      <option value="{{ bene.id }}"
+              {% if bene.id == row[col] %}selected{% endif %}
+              style="color:green;font-weight:bold;">
+        ✅ {{ bene.nom }} {{ bene.prenom }}
+      </option>
+      {% endfor %}
+
+      <option disabled>──────────</option>
+
+      {% for bene in froid if bene.distrib_froid != 'oui' %}
+      <option value="{{ bene.id }}" {% if bene.id == row[col] %}selected{% endif %}>
+        {{ bene.nom }} {{ bene.prenom }}
+      </option>
+      {% endfor %}
+    </select>
+  </td>
+  {% endfor %}
+
+  <!-- Colonnes Frais/Sec -->
+  {% for col in ["frais_sec1_id", "frais_sec2_id", "frais_sec3_id", "frais_sec4_id"] %}
+  <td>
+    <select class="form-select form-select-sm" name="{{ col }}_{{ row.id }}" style="max-width:150px;">
+      <option value="">-- Aucun --</option>
+
+      {% for bene in frais_sec if bene.distrib_frais_sec == 'oui' %}
+      <option value="{{ bene.id }}"
+              {% if bene.id == row[col] %}selected{% endif %}
+              style="color:green;font-weight:bold;">
+        ✅ {{ bene.nom }} {{ bene.prenom }}
+      </option>
+      {% endfor %}
+
+      <option disabled>──────────</option>
+
+      {% for bene in frais_sec if bene.distrib_frais_sec != 'oui' %}
+      <option value="{{ bene.id }}" {% if bene.id == row[col] %}selected{% endif %}>
+        {{ bene.nom }} {{ bene.prenom }}
+      </option>
+      {% endfor %}
+    </select>
+  </td>
+  {% endfor %}
+
+  <!-- ✅ Durée à droite -->
+  <td>
+    <input type="number" min="0" class="form-control form-control-sm"
+           name="duree_{{ row.id }}"
+           value="{{ row.duree or '' }}"
+           style="width: 90px;">
+  </td>
+
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+<div class="mt-3 d-flex justify-content-between">
+  <a class="btn btn-secondary" href="{{ url_for('planning.planning_main') }}">↩️ Retour</a>
+  <button class="btn btn-primary" type="submit" name="action" value="enregistrer">💾 Enregistrer</button>
+</div>
+</form>
+
+{% endblock %}
+
+{% block styles %}
+<style>
+.table-responsive {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+th, td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+select.form-select {
+  width: 100%;
+  max-width: 150px;
+  font-size: 0.85rem;
+  padding: 0.2rem;
+}
+</style>
+{% endblock %}

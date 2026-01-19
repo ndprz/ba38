@@ -1,0 +1,97 @@
+{% extends base_template %}
+
+{% block title %}Console de Debug{% endblock %}
+
+{% block content %}
+<h2>🪵 Console de Debug</h2>
+
+<!-- 🔀 Formulaire de sélection du fichier log à afficher -->
+<form method="POST" class="form-inline mb-3">
+  <label for="log_file" class="mr-2">Fichier à afficher :</label>
+  <select name="log_file" id="log_file" class="form-control mr-2">
+    {% for name, path in log_files.items() %}
+      <option value="{{ name }}" {% if name == selected_log %}selected{% endif %}>{{ name }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn-primary btn-sm mr-2">Afficher</button>
+</form>
+
+<!-- 🧰 Boutons contextuels selon le fichier sélectionné -->
+<div class="mb-3">
+  {% if selected_log == 'app.log' and session.get("user_role") == "admin" %}
+    <a href="{{ url_for('debug_bp.export_logs') }}" class="btn btn-success btn-sm mr-2">📥 Exporter</a>
+    <form method="POST" action="{{ url_for('debug_bp.clear_logs') }}" class="d-inline">
+      <button type="submit" class="btn btn-danger btn-sm"
+              onclick="return confirm('Effacer le fichier app.log ?');">
+        🧹 Effacer app.log
+      </button>
+    </form>
+  {% elif selected_log == 'error.log (PA)' and session.get("user_role") == "admin" %}
+    <form method="POST" action="{{ url_for('debug_bp.clear_error_log') }}" class="d-inline mr-2">
+      <button type="submit" class="btn btn-danger btn-sm"
+              onclick="return confirm('Effacer le fichier error.log ?');">
+        🧹 Effacer error.log (PA)
+      </button>
+    </form>
+  {% endif %}
+
+  {% if selected_log == 'error.log (PA)' and session.get("user_role") == "admin" %}
+    <form method="POST" action="{{ url_for('debug_bp.trigger_error_log') }}" class="d-inline">
+      <button type="submit" class="btn btn-warning btn-sm">🔊 Echo vers error.log</button>
+    </form>
+  {% endif %}
+</div>
+
+<!-- 📄 Affichage du contenu du log sélectionné (app.log ou autre) -->
+{% if output %}
+<div id="log-content" class="alert alert-{{ 'danger' if error else 'light' }}"
+     style="max-height: 300px; overflow-y: auto;">
+  <pre style="white-space: pre-wrap; font-size: 0.9rem;">{{ output }}</pre>
+</div>
+{% endif %}
+
+<!-- 📡 Section dédiée à error.log (PA), toujours visible -->
+<h4>📡 Logs PythonAnywhere (error.log)</h4>
+<button id="refresh-error-log" class="btn btn-outline-primary btn-sm">🔁 Rafraîchir</button>
+<pre id="pa-log" style="max-height: 400px; overflow-y: auto; background: #000; color: #0f0; padding: 10px;">Chargement...</pre>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    console.log("✅ DOM prêt");
+  
+    // Fonction appelée au clic ou initialement
+    function refreshErrorLog() {
+      console.log("→ Appel refreshErrorLog()");
+      fetch('/get_error_log_tail')
+        .then(response => {
+          console.log("→ Reçu : " + response.status);
+          return response.text();
+        })
+        .then(data => {
+          console.log("→ Contenu log (aperçu) :", data.slice(0, 100));
+          document.getElementById('pa-log').textContent = data;
+        })
+        .catch(err => {
+          console.log("❌ Erreur JS :", err);
+          document.getElementById('pa-log').textContent = "❌ Erreur : " + err;
+        });
+    }
+  
+    const btn = document.getElementById("refresh-error-log");
+    if (btn) {
+      console.log("✅ Bouton trouvé, liaison click...");
+      btn.addEventListener("click", refreshErrorLog);
+    } else {
+      console.log("❌ Bouton introuvable !");
+    }
+  
+    refreshErrorLog();  // Appel initial dès le chargement
+  });
+
+  
+</script>
+
+{% endblock %}

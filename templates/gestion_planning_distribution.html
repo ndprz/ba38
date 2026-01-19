@@ -1,0 +1,269 @@
+{% extends "base_bene.html" %}
+{% block title %}Gestion Planning Distribution{% endblock %}
+
+{% block content %}
+
+<form method="post">
+
+{# ============================== #
+# 🔝 Bandeau supérieur : titre + boutons de navigation
+# ============================== #}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>Gestion du planning distribution</h2>
+
+    <div class="d-flex gap-2">
+    <button type="submit"
+            name="action"
+            value="enregistrer"
+            class="btn btn-primary save-btn"
+            disabled>
+      💾 Enregistrer le planning
+    </button>
+
+    {# Bouton retour vers la page de création du planning Distribution #}
+    <a href="{{ url_for('planning_dist.creation_planning_distribution', semaine=semaine) }}" class="btn btn-outline-primary">
+      ⬅️ Retour à la création
+    </a>
+
+    {# Bouton retour vers le menu principal des plannings #}
+    <a href="{{ url_for('planning.planning_main') }}" class="btn btn-outline-secondary">
+      🏠 Menu Planning
+    </a>
+
+    {# Bouton aperçu imprimable (déjà existant) #}
+    <a id="apercu-link"
+       href="{{ url_for('planning_dist.apercu_planning_distribution', semaine=semaine) }}"
+       target="_blank"
+       class="btn btn-outline-secondary">
+      🔈️ Aperçu imprimable (A3)
+    </a>
+  </div>
+</div>
+
+{# ⚠️ Indicateur modifications non enregistrées #}
+<div id="unsaved-warning"
+     class="alert alert-warning py-2 px-3 mb-3"
+     style="display:none;">
+  ⚠️ Modifications non enregistrées
+</div>
+
+{# ============================== #
+# 🧾 Formulaire principal de gestion
+# ============================== #}
+  <div class="gestion-planning-container">
+    <table class="table table-bordered table-striped">
+      <thead>
+        <tr>
+          <th>Jour</th>
+          <th>Semaine</th>
+          <th>Froid 1</th>
+          <th>Froid 2</th>
+          <th>Froid 3</th>
+          <th>Froid 4</th>
+          <th>Frais/Sec 1</th>
+          <th>Frais/Sec 2</th>
+          <th>Frais/Sec 3</th>
+          <th>Frais/Sec 4</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+
+        {# ============================ #
+          Boucle sur les lignes du planning
+        # ============================ #}
+        {% for ligne in lignes %}
+        <tr class="jour-{{ ligne.jour|lower }}">
+          <td>{{ ligne.jour|capitalize }}</td>
+          <td>{{ ligne.semaine }}</td>
+          <input type="hidden" name="ligne_ids[]" value="{{ ligne.id }}">
+
+          {# ============================ #
+            Colonnes froid + frais/sec
+          # ============================ #}
+          {% for field in ['froid1', 'froid2', 'froid3', 'froid4', 'frais_sec1', 'frais_sec2', 'frais_sec3', 'frais_sec4'] %}
+            {% set champ_id   = field ~ '_id' %}
+            {% set champ_remp = field ~ '_remplacant' %}
+            {% set is_absent = ligne[field ~ '_absent'] == 'oui' %}
+            {% set titulaire_id   = ligne[champ_id] %}
+            {% set remplacant_id  = ligne[champ_remp] %}
+            {% set selected_id    = remplacant_id if is_absent and remplacant_id else titulaire_id %}
+
+            {# Selon le type de poste, on choisit la bonne liste #}
+            {% if field.startswith('frais_sec') %}
+              {% set role_list = frais_sec %}
+              {% set tag       = 'distrib_frais_sec' %}
+              {% set role_data = 'frais_sec' %}
+            {% else %}
+              {% set role_list = froid %}
+              {% set tag       = 'distrib_froid' %}
+              {% set role_data = 'froid' %}
+            {% endif %}
+
+            {# Liste des bénévoles déjà affectés dans la ligne (pour info visuelle) #}
+            {% set deja_affectes = [] %}
+            {% for f in ['froid1','froid2','froid3','froid4','frais_sec1','frais_sec2','frais_sec3','frais_sec4'] %}
+              {% if ligne[f ~ '_id'] %}{% set _ = deja_affectes.append(ligne[f ~ '_id']) %}{% endif %}
+              {% if ligne[f ~ '_remplacant'] %}{% set _ = deja_affectes.append(ligne[f ~ '_remplacant']) %}{% endif %}
+            {% endfor %}
+
+            {# Séparation entre bénévoles prioritaires et autres #}
+            {% set favoris = role_list|selectattr(tag, 'equalto', 'oui')|list %}
+            {% set autres  = role_list|rejectattr(tag, 'equalto', 'oui')|list %}
+
+            <td class="{% if is_absent and not remplacant_id %}absent-cell{% endif %}">
+              <select name="{{ field }}_ids[]" class="form-control bene-select" data-role="{{ role_data }}">
+                {# Ajout d’un bénévole rapide #}
+                <option value="__add__">➕ Ajouter un bénévole…</option>
+                <option disabled>──────────</option>
+
+                {# Option vide #}
+                <option value="" {% if selected_id is none %}selected{% endif %}>-- Aucun --</option>
+
+                {# Favoris (bénévoles avec distrib_froid/distrib_frais_sec = oui) #}
+                {% for bene in favoris %}
+                  {% set is_selected          = bene.id == selected_id %}
+                  {% set is_remplacant        = is_selected and is_absent and remplacant_id %}
+                  {% set is_absent_titulaire  = is_selected and is_absent and not remplacant_id %}
+                  {% set is_already_assigned  = bene.id in deja_affectes and not is_selected %}
+                  <option value="{{ bene.id }}"
+                          {% if is_selected %}selected{% endif %}
+                          {% if is_remplacant %}style="color: green;"{% elif is_absent_titulaire %}style="color: red;"{% elif is_already_assigned %}style="color: orange;"{% endif %}>
+                    ✅ {{ bene.nom }} {{ bene.prenom }}
+                    {% if is_remplacant %}(remplaçant){% elif is_absent_titulaire %}(absent){% elif is_already_assigned %}(déjà affecté){% endif %}
+                  </option>
+                {% endfor %}
+
+                {% if favoris and autres %}<option disabled>──────────</option>{% endif %}
+
+                {# Non prioritaires #}
+                {% for bene in autres %}
+                  {% set is_selected          = bene.id == selected_id %}
+                  {% set is_remplacant        = is_selected and is_absent and remplacant_id %}
+                  {% set is_absent_titulaire  = is_selected and is_absent and not remplacant_id %}
+                  {% set is_already_assigned  = bene.id in deja_affectes and not is_selected %}
+                  <option value="{{ bene.id }}"
+                          {% if is_selected %}selected{% endif %}
+                          {% if is_remplacant %}style="color: green;"{% elif is_absent_titulaire %}style="color: red;"{% elif is_already_assigned %}style="color: orange;"{% endif %}>
+                    {{ bene.nom }} {{ bene.prenom }}
+                    {% if is_remplacant %}(remplaçant){% elif is_absent_titulaire %}(absent){% elif is_already_assigned %}(déjà affecté){% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+
+              {# Champ caché conservé pour compatibilité avec la route Flask #}
+              <input type="hidden" name="{{ field }}_remplacants[]" value="{{ remplacant_id or '' }}">
+            </td>
+          {% endfor %}
+
+          {# Bouton suppression de ligne #}
+          <td class="text-center">
+            <button type="submit" name="action" value="supprimer_{{ ligne.id }}" class="btn btn-danger btn-sm">🗑️</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+
+</form>
+
+
+{# ============================== #
+🔧 Modale + JavaScript commun
+# ============================== #}
+{% include "partials/quick_benevole_modal.html" %}
+<script src="{{ url_for('static', filename='js/quick_benevole.js', v=7) }}"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+  // =====================================================
+  // État global : planning modifié ou non
+  // =====================================================
+  let planningDirty = false;
+
+  const saveButtons = document.querySelectorAll(".save-btn");
+  const warning = document.getElementById("unsaved-warning");
+  const form = document.querySelector("form");
+  const apercuLink = document.getElementById("apercu-link");
+
+  function setDirty() {
+    if (planningDirty) return;
+    planningDirty = true;
+
+    saveButtons.forEach(btn => btn.disabled = false);
+    if (warning) warning.style.display = "block";
+  }
+
+  // =====================================================
+  // Détection des modifications utilisateur
+  // =====================================================
+  if (form) {
+    form.addEventListener("change", function (e) {
+      const t = e.target;
+      if (!t) return;
+
+      if (t.matches("select, input[type='text'], input[type='number']")) {
+        setDirty();
+      }
+    });
+  }
+
+  // =====================================================
+  // Cas : le backend a modifié le planning (nouvelles absences)
+  // =====================================================
+  {% if planning_auto_modified %}
+    setDirty();
+  {% endif %}
+
+  // =====================================================
+  // Avertissement avant quitter la page
+  // =====================================================
+  function beforeUnloadHandler(e) {
+    if (!planningDirty) return;
+    e.preventDefault();
+    e.returnValue = "";
+  }
+  window.addEventListener("beforeunload", beforeUnloadHandler);
+
+  // =====================================================
+  // Désactiver l’avertissement lors de l’enregistrement
+  // =====================================================
+  if (form) {
+    form.addEventListener("submit", function () {
+      planningDirty = false;
+      window.removeEventListener("beforeunload", beforeUnloadHandler);
+    });
+  }
+
+  // =====================================================
+  // Bloquer l’aperçu si non enregistré
+  // =====================================================
+  if (apercuLink) {
+    apercuLink.addEventListener("click", function (e) {
+      if (planningDirty) {
+        e.preventDefault();
+        alert(
+          "ℹ️ L’aperçu reflète uniquement les données enregistrées.\n" +
+          "Veuillez d’abord cliquer sur « 💾 Enregistrer le planning », puis relancer l’aperçu."
+        );
+      }
+    });
+  }
+
+});
+</script>
+
+
+{# ============================== #
+🎨 Styles complémentaires
+# ============================== #}
+<style>
+  .absent-cell {
+    background-color: #ffe0e0 !important;
+  }
+</style>
+
+{% endblock %}

@@ -1,0 +1,160 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Création Planning Distribution{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Création du Planning de Distribution</h2>
+    <a href="{{ url_for('planning.planning_main') }}" class="btn btn-outline-secondary">
+        ⬅️ Retour au menu Planning
+    </a>
+</div>
+
+<!-- 🗓️ Choix de la semaine -->
+<form method="POST" action="{{ url_for('planning_dist.creation_planning_distribution') }}">
+    <div class="form-group mb-3" onclick="document.getElementById('semaine').showPicker();">
+        <label for="semaine">Choisir une semaine :</label>
+        <input type="week" id="semaine" name="semaine" class="form-control"
+               required value="{{ semaine }}">
+    </div>
+    <button type="submit" class="btn btn-success mb-4">
+        ➕ Générer le planning pour cette semaine
+    </button>
+</form>
+
+<!-- ⚠️ Alerte si planning déjà existant -->
+{% if planning_existe %}
+<div class="alert alert-warning">
+  <div class="fw-bold mb-2">
+    ⚠️ Un planning existe déjà pour la semaine {{ semaine }}.<br>
+    Que souhaitez-vous faire ?
+  </div>
+
+  <form method="POST"
+        action="{{ url_for('planning_dist.creation_planning_distribution') }}"
+        class="d-inline">
+    <input type="hidden" name="semaine" value="{{ semaine }}">
+    <input type="hidden" name="action" value="forcer_generation">
+    <button type="submit" class="btn btn-danger me-2">
+      🔁 Régénérer le planning (attention : écrasera les données)
+    </button>
+  </form>
+
+  <a href="{{ url_for('planning_dist.gestion_planning_distribution', semaine=semaine) }}"
+     class="btn btn-success">
+    ✏️ Modifier le planning existant
+  </a>
+</div>
+{% endif %}
+
+<!-- 📋 Affichage du planning généré -->
+{% if planning %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="m-0">Planning généré pour la semaine {{ semaine }}</h3>
+  <a href="{{ url_for('planning_dist.apercu_planning_distribution', semaine=semaine) }}"
+     target="_blank" class="btn btn-outline-secondary">
+    🔈️ Aperçu imprimable Pré-planning (A3)
+  </a>
+</div>
+
+<table class="table table-bordered table-sm">
+    <thead class="table-light">
+        <tr>
+            <th>Jour</th>
+            {% for i in range(1, 5) %}<th>Froid {{ i }}</th>{% endfor %}
+            {% for i in range(1, 5) %}<th>Frais sec {{ i }}</th>{% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in planning %}
+        <tr class="jour-{{ row.jour|lower }}">
+            <td>{{ row.jour|capitalize }}</td>
+
+            {# ----------- FROID ----------- #}
+            {% for i in range(1, 5) %}
+                {% set nom = row['froid' ~ i ~ '_nom'] %}
+                {% set remp = row['froid' ~ i ~ '_remplacant_nom'] %}
+                {% set absent = row['froid' ~ i ~ '_absent'] == 'oui' %}
+                <td class="{% if absent and not remp %}absent-cell{% elif remp %}text-success{% endif %}">
+                    {{ nom }}
+                    {% if remp %}<small>(remplaçant)</small>
+                    {% elif absent %}<small>(absent)</small>
+                    {% endif %}
+                </td>
+            {% endfor %}
+
+            {# ----------- FRAIS SEC ----------- #}
+            {% for i in range(1, 5) %}
+                {% set nom = row['frais_sec' ~ i ~ '_nom'] %}
+                {% set remp = row['frais_sec' ~ i ~ '_remplacant_nom'] %}
+                {% set absent = row['frais_sec' ~ i ~ '_absent'] == 'oui' %}
+                <td class="{% if absent and not remp %}absent-cell{% elif remp %}text-success{% endif %}">
+                    {{ nom }}
+                    {% if remp %}<small>(remplaçant)</small>
+                    {% elif absent %}<small>(absent)</small>
+                    {% endif %}
+                </td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- 💾 Enregistrement silencieux du planning -->
+<form method="POST"
+      action="{{ url_for('planning_dist.gestion_planning_distribution') }}">
+
+    <input type="hidden" name="semaine" value="{{ semaine }}">
+
+    {% for row in planning %}
+        <input type="hidden" name="jours[]" value="{{ row.jour }}">
+
+        {% for i in range(1, 5) %}
+            <input type="hidden"
+                   name="froid{{ i }}_ids[]"
+                   value="{{ row['froid' ~ i ~ '_id'] or '' }}">
+            <input type="hidden"
+                   name="froid{{ i }}_remplacant[]"
+                   value="{{ row['froid' ~ i ~ '_remplacant'] or '' }}">
+        {% endfor %}
+
+        {% for i in range(1, 5) %}
+            <input type="hidden"
+                   name="frais_sec{{ i }}_ids[]"
+                   value="{{ row['frais_sec' ~ i ~ '_id'] or '' }}">
+            <input type="hidden"
+                   name="frais_sec{{ i }}_remplacant[]"
+                   value="{{ row['frais_sec' ~ i ~ '_remplacant'] or '' }}">
+        {% endfor %}
+    {% endfor %}
+
+    <div class="d-flex align-items-center mt-3">
+        <button type="submit" class="btn btn-primary">
+            💾 Enregistrer ce planning
+        </button>
+
+        <a href="{{ url_for('planning_dist.gestion_planning_distribution', semaine=semaine) }}"
+           class="btn btn-warning ms-2">
+            🛠️ Modifier ce planning
+        </a>
+
+        <a href="{{ url_for('planning.planning_main') }}"
+           class="btn btn-outline-secondary ms-2">
+            ⬅️ Retour au menu Planning
+        </a>
+    </div>
+</form>
+{% endif %}
+
+<!-- 🎨 Styles -->
+<style>
+    .absent-cell {
+        background-color: #ffe0e0 !important;
+    }
+    .jour-lundi     { background-color: #f8f9fa; }
+    .jour-mardi     { background-color: #e0f7fa; }
+    .jour-mercredi  { background-color: #f1f8e9; }
+    .jour-jeudi     { background-color: #fff3e0; }
+    .jour-vendredi  { background-color: #fce4ec; }
+</style>
+{% endblock %}

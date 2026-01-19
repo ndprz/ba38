@@ -1,0 +1,625 @@
+/* @import url('https://fonts.googleapis.com/css?family=Open+Sans+Condensed:300,700&display=swap'); */
+/* h1, h2, h3, h4, h5, h6 { font-family: 'Open Sans Condensed', sans-serif; } */
+
+@import url('https://fonts.googleapis.com/css?family=Open+Sans:400,700&display=swap');
+body { font-family: 'Open Sans', sans-serif; }
+
+header p {
+    font-family: 'Roboto', sans-serif; /* Utilise la police Google */
+    font-size: 20px;
+    font-weight: bold;
+}
+
+/* ✅ Fixer le bandeau en haut */
+header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background-color: #fff;
+    z-index: 1000;
+    padding: 15px 20px;
+    border-bottom: 2px solid #ddd;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    height: 70px; /* ✅ Hauteur fixe du bandeau */
+    display: flex;
+    align-items: center; /* Centrer verticalement */
+    justify-content: space-between; /* Espacer les éléments */
+}
+
+/* ✅ Ajouter un espace sous le bandeau pour éviter de cacher le contenu */
+body {
+    padding-top: 70px; /* Exactement la hauteur du bandeau */
+}
+
+/* ✅ Empêcher le contenu d'être caché sous le bandeau */
+body {
+    padding-top: 80px; /* ✅ Ajoute un espace sous le bandeau */
+}
+
+main.container {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding-left: 20px;
+  padding-right: 20px;
+}
+table {
+  table-layout: auto;
+  width: 100%;
+}
+
+th, td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* ✅ Ajuster l'espace du contenu pour éviter qu'il passe sous le bandeau */
+main {
+    margin-top: 80px; /* Par défaut pour desktop */
+}
+
+/* ✅ Ajustements spécifiques pour les mobiles */
+@media (max-width: 768px) {
+    header {
+        padding: 10px;
+        height: 90px; /* Augmente la hauteur pour mobile */
+        flex-direction: column; /* Texte centré */
+        text-align: center;
+    }
+
+    body {
+        padding-top: 100px; /* Ajuste l'espace sous le bandeau pour mobile */
+    }
+}
+
+/* body, p { font-family: Arial, sans-serif } */
+
+.control-label { font-weight: bold }
+.invalid-feedback { display: block !important; }
+[data-href] { cursor: pointer }
+a.disabled, btn.disabled { cursor: not-allowed; }
+
+.fields-container {
+    display: none; /* Cache les groupes par défaut */
+    margin-left: 20px;
+    margin-top: 10px;
+}
+
+.fields-container.expanded {
+    display: block !important;
+}
+
+.fields-container table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.fields-container table th,
+.fields-container table td {
+    border: 1px solid #ccc;
+    padding: 5px;
+    display: table-cell; /* Empêche les colonnes d'être masquées */
+}
+
+<style>
+summary {
+    cursor: pointer;
+    font-weight: bold;
+}
+details summary::marker {
+    color: #007bff;
+}
+pre {
+  white-space: pre-wrap;
+}
+</style>
+
+
+<style>
+    .fields-container {
+        display: block !important; /* Force l'affichage */
+        visibility: visible !important; /* Force la visibilité */
+        opacity: 1 !important; /* Assure que l'élément est opaque */
+    }
+
+    .fields-container table {
+        width: 100%;
+        border: 1px solid #ccc;
+    }
+</style>
+
+
+.is-required label.control-label:after { content: ' *'; color: darkred; text-align: super; }
+
+.table-responsive { margin-bottom: 1rem; }
+.table-responsive .table { margin-bottom: 0; }
+
+.deleted { text-decoration: line-through; font-style: italic; }
+
+.table-fw { margin-left: -1rem; margin-right: -1rem; width: calc( 100% + 2rem ) }
+.table-fw th:first-child { padding-left: 1rem; }
+.table-fw td:first-child { padding-left: 1rem; }
+.table-fw th:last-child { padding-right: 1rem; }
+.table-fw td:last-child { padding-right: 1rem; }
+
+.table-sticky { position: relative; }
+.table-sticky thead tr th { position: sticky; top: 0; background-color:white; }
+
+.table-invalid { border-color: #E04620 !important; }
+
+th.rotate {
+  /* Something you can count on */
+  height: 140px;
+  white-space: nowrap;
+}
+
+th.rotate > div {
+	display: inline-block;
+	transform: rotate(180deg);
+	writing-mode: vertical-lr;
+}
+
+
+.corner { position: relative; }
+.corner:after {
+	content: "";
+	position: absolute;
+	top: 0;
+	right: 0;
+	width: 0;
+	height: 0;
+	display: block;
+	border-left: 10px solid transparent;
+	border-bottom: 10px solid transparent;
+}
+.corner-1st:after, .corner-primary:after, .corner-orange:after { border-top: 10px solid var(--primary); }
+.corner-2nd:after, .corner-secondary:after { border-top: 10px solid var(--secondary); }
+.corner-info:after { border-top: 10px solid var(--info); }
+.corner-success:after { border-top: 10px solid var(--success); }
+.corner-warning:after { border-top: 10px solid var(--warning); }
+.corner-danger:after { border-top: 10px solid var(--danger); }
+.corner-dark:after { border-top: 10px solid var(--dark); }
+.corner-light:after { border-top: 10px solid var(--light); }
+
+
+.text-italic { font-style: italic }
+.text-bold, .text-strong { font-weight: bold }
+.text-small { font-size: 0.6rem; } .text-smaller { font-size: smaller }
+.text-large { font-size: 1rem; } .text-larger { font-size: larger }
+
+
+.text-hv-primary, .text-hv-success, .text-hv-warning, .text-hv-danger, .text-hv-info { color: var(--secondary) !important }
+
+.text-hv-primary:hover { color: var(--primary) !important }
+.text-hv-success:hover { color: var(--success) !important }
+.text-hv-warning:hover { color: var(--warning) !important }
+.text-hv-danger:hover { color: var(--danger) !important }
+.text-hv-info:hover { color: var(--info) !important }
+
+.min-vh-75 { min-height: 75vh !important; }
+.min-vh-50 { min-height: 50vh !important; }
+.min-vh-25 { min-height: 25vh !important; }
+.min-vw-75 { min-width: 75vh !important; }
+.min-vw-50 { min-width: 50vh !important; }
+.min-vw-25 { min-width: 25vh !important; }
+.max-vh-75 { max-height: 75vh !important; }
+.max-vh-50 { max-height: 50vh !important; }
+.max-vh-25 { max-height: 25vh !important; }
+.max-vw-75 { max-width: 75vh !important; }
+.max-vw-50 { max-width: 50vh !important; }
+.max-vw-25 { max-width: 25vh !important; }
+
+
+th>a.filter { display: flex; justify-content: space-between; color: var(--dark) }
+th>a.filter-asc>strong { color: var(--success); }
+th>a.filter-desc>strong { color: var(--danger); }
+
+.modal-body>.form-group:last-child { margin-bottom: 0 }
+
+.custom-file-label { font-weight: normal !important; overflow: hidden; white-space: nowrap }
+.custom-file-label::after { display: none; }
+
+/* Largeur fixe du menu */
+#nav-menu { width: 12rem;  }
+#nav-menu .list-group.border-top { border-color: rgba(0,0,0,0.125) !important; }
+#nav-menu .list-group-item { text-decoration: none; background-color: #f27830; color: white; }
+#nav-menu .list-group-item:hover { background-color: #c9520d; }
+#nav-menu .list-group-item.active { background-color: white; color: #495057; border-color: rgba(0,0,0,0.125) }
+/* #nav-menu .list-group-item.active:hover { background-color: #f8f9fa; } */
+
+
+
+#head h1 { /*font-variant: small-caps; */font-weight: bold; }
+/* #head>*:last-child { padding-bottom: 0; margin-bottom: 0 } */
+@media ( max-width: 768px ) { #head h1 { display: none; } }
+
+/* default = text-light */
+/* #nav-menu a { color: #f8f9fa; } */
+/* #nav-menu a:focus, #nav-menu a:hover { color: #cbd3da; } */
+
+/* active = text-warning */
+/* #nav-menu li.active, #nav-menu li.active a { color: #ffc107 } */
+/* #nav-menu li.active a:focus, #nav-menu li.active a:hover { color: #ba8b00 } */
+
+@keyframes pulse-animation {
+	0% {
+		box-shadow: 0 0 0 0px rgba(0, 0, 0, 0.2);
+	}
+	100% {
+		box-shadow: 0 0 0 20px rgba(0, 0, 0, 0);
+	}
+}
+.pulse {
+	animation: pulse-animation 2s infinite;
+}
+
+
+@keyframes blink-animation {
+	0% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.5;
+	}
+	100% {
+		opacity: 1;
+	}
+}
+.blink {
+	animation: blink-animation 1s infinite;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+th, td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    position: relative;
+}
+
+th {
+    cursor: col-resize; /* Affiche un curseur de redimensionnement */
+    user-select: none;  /* Empêche la sélection de texte */
+}
+
+th.resizable {
+    position: relative;
+    overflow: hidden;
+}
+
+th.resizable div {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 5px;
+    cursor: col-resize;
+    background-color: transparent;
+    user-select: none;
+}
+
+th.resizable span {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 5px;
+    cursor: col-resize;
+    background-color: transparent;
+    user-select: none; /* Empêche la sélection de texte lors du redimensionnement */
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 8px;
+    border: 1px solid #ddd;
+    text-align: left;
+    white-space: nowrap; /* Empêche le texte de passer à la ligne */
+}
+
+th.resizable {
+    position: relative;
+    overflow: hidden;
+}
+
+th.resizable span {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 5px;
+    cursor: col-resize;
+    background-color: transparent;
+    user-select: none;
+}
+
+/* ✅ Style pour agrandir les liens importants */
+.big-link {
+    font-size: 24px;  /* Taille du texte */
+    font-weight: bold;  /* Texte en gras */
+    color: #007bff;  /* Bleu Bootstrap */
+    text-decoration: none; /* Enlève le soulignement */
+}
+
+.big-link:hover {
+    text-decoration: underline;  /* Ajoute un soulignement au survol */
+}
+
+
+
+
+/* ✅ Colonnes figées à gauche (Action, ID, Nom) */
+th.sticky-col,
+td.sticky-col {
+    position: sticky;
+    background-color: white;
+    z-index: 1;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    white-space: nowrap;
+}
+
+th.sticky-col-1, td.sticky-col-1 {
+    left: 0;
+    min-width: 100px;
+    z-index: 3;
+}
+
+th.sticky-col-2, td.sticky-col-2 {
+    left: 100px;
+    min-width: 80px;
+    z-index: 2;
+}
+
+th.sticky-col-3, td.sticky-col-3 {
+    left: 180px;
+    min-width: 250px;
+    z-index: 2;
+}
+
+
+table td form {
+  display: inline;
+}
+
+/* Harmonisation hauteur/alignement entre selects et inputs */
+.form-select-sm, .form-control-sm {
+    height: 31px; /* force hauteur identique */
+    padding-top: 2px !important; /* ajustement vertical */
+    padding-bottom: 2px !important; /* ajustement vertical */
+}
+
+input[type="checkbox"]:indeterminate {
+  background-color: #ccc !important;
+  border-color: #999 !important;
+}
+
+input[type="checkbox"]:checked {
+    background-color: #198754 !important; /* ✅ vert Bootstrap */
+    border-color: #198754 !important;
+}
+
+.toggle-master-checkbox:checked {
+    background-color: #198754 !important; /* vert Bootstrap */
+    border-color: #198754 !important;
+    box-shadow: none !important;
+}
+
+/* Style général pour les cases master */
+.toggle-master-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 1.2em;
+    height: 1.2em;
+    border: 2px solid #198754;
+    border-radius: 0.25em;
+    cursor: pointer;
+    position: relative;
+  }
+
+  /* Style au clic (coché) */
+  .toggle-master-checkbox:checked {
+    background-color: #198754;
+    border-color: #198754;
+  }
+
+  /* Optionnel : ajouter un "✔" au centre */
+  .toggle-master-checkbox:checked::after {
+    content: "✔";
+    color: white;
+    font-size: 0.8em;
+    position: absolute;
+    top: 0;
+    left: 0.15em;
+  }
+
+  .green-checkbox {
+    accent-color: #198754;
+  }
+
+  input.form-control.tournee-ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* ✅ Centrer la table principal de gestion_planning_ramasse */
+.gestion-planning-container {
+    width: 100%;               /* 💡 utilise toute la largeur disponible */
+    overflow-x: auto;          /* 🔁 scroll seulement si nécessaire */
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.gestion-planning-container table {
+    width: 100%;               /* 📏 le tableau remplit le conteneur */
+    table-layout: fixed;       /* 📐 répartit les colonnes équitablement */
+}
+
+.gestion-planning-container th,
+.gestion-planning-container td {
+    white-space: nowrap;       /* 🧱 pas de retour à la ligne */
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.col-actions,
+.col-jour,
+.col-semaine {
+    width: 1%; /* 📏 se réduit au max */
+}
+
+table td, table th {
+    white-space: nowrap;
+    vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ✅ Mise en forme spéciale des cellules */
+
+/* Bénévole absent */
+.absent-cell {
+    background-color: #ffe0e0 !important; /* Fond rouge très clair */
+    border: 2px solid #dc3545 !important; /* Rouge Bootstrap */
+    box-shadow: 0 0 5px rgba(220, 53, 69, 0.3);
+}
+
+/* Bénévole remplaçant */
+.remplacant-cell {
+    background-color: #d4edda !important; /* Fond vert très clair */
+    border: 2px solid #198754 !important; /* Vert Bootstrap */
+    box-shadow: 0 0 5px rgba(25, 135, 84, 0.3);
+}
+
+/* ✅ Amélioration des selecteurs */
+
+select.form-control {
+    border-radius: 6px;
+    padding: 4px 8px;
+}
+
+/* Sélecteur en focus */
+select.form-control:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 6px rgba(13, 110, 253, 0.5);
+}
+
+/* Option sélectionnée */
+select.form-control option[selected] {
+    font-weight: bold;
+}
+
+/* ✅ Boutons */
+
+
+
+/* ✅ Général : adoucir les bordures du tableau */
+
+.table-bordered td, .table-bordered th {
+    border: 1px solid #dee2e6;
+}
+
+/* ✅ Responsive planning ramasse */
+
+.gestion-planning-container {
+    overflow-x: auto;
+    margin-left: auto;
+    margin-right: auto;
+    width: fit-content;
+    max-width: 100%;
+}
+
+.gestion-planning-container table {
+    width: 100%;
+    table-layout: auto;
+}
+
+.gestion-planning-container th,
+.gestion-planning-container td {
+    padding: 8px;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.gestion-planning-container th {
+    background-color: #f8f9fa;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+/* ✅ Hover sur lignes planning */
+.gestion-planning-container tr:hover {
+    background-color: #e9ecef;
+}
+
+/* ✅ Ajustement des colonnes du planning ramasse */
+
+.col-jour {
+    width: 70px; /* Plus étroit qu'avant */
+}
+
+.col-semaine {
+    width: 50px; /* Plus étroit */
+}
+
+.col-tournee {
+    min-width: 350px; /* Plus large pour la tournée */
+}
+
+.col-camion {
+    width: 120px; /* Plus petit pour le camion */
+}
+
+.titre-depliable {
+    background-color: #f8f9fa; /* gris clair */
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 5px;
+    transition: background-color 0.3s;
+}
+
+.titre-depliable:hover {
+    background-color: #e2e6ea;
+}
+
+.chevron {
+    font-size: 1.2em;
+    transition: transform 0.3s;
+    color:#198754;
+}
+
+
+.chevron.ouvert {
+    transform: rotate(90deg);
+}
+
+.contenu-depliable {
+    padding: 10px 15px;
+    background-color: #ffffff;
+    border: 1px solid #dee2e6;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    margin-bottom: 10px;
+}
+
+
+/* Labels des fiches visite (formulaire) */
+.card-body label {
+  display: block;
+  margin-top: .5rem;
+  font-weight: 600;
+}

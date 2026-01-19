@@ -1,0 +1,63 @@
+{% extends "base_bene.html" %}
+{% block title %}Messages pré-enregistrés (bénévoles){% endblock %}
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>📑 Messages pré-enregistrés (bénévoles)</h2>
+    <a href="{{ url_for('mail_bene.envoi_mail_benevoles') }}" class="btn btn-secondary">
+      ⬅️ Retour à l’envoi de mail
+    </a>
+  </div>
+
+  <!-- Formulaire ajout / édition -->
+  <form method="post" class="mb-4">
+    <div class="mb-2">
+      <label for="titre" class="form-label">Titre</label>
+      <input type="text" name="titre" id="titre" class="form-control" required
+             value="{{ edit_titre if edit_mode else '' }}">
+    </div>
+    <div class="mb-2">
+      <label for="contenu" class="form-label">Contenu</label>
+      <textarea name="contenu" id="contenu" class="form-control" rows="4" required>{{ edit_contenu if edit_mode else '' }}</textarea>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-3">
+      <a href="{{ url_for('mail_bene.envoi_mail_benevoles') }}" class="btn btn-secondary">⬅️ Retour</a>
+
+      {% if edit_mode %}
+        <button formaction="{{ url_for('mail_bene.edit_message_bene', mid=edit_id) }}" class="btn btn-primary">💾 Enregistrer</button>
+        <a href="{{ url_for('mail_bene.messages_predefinis_benevoles') }}" class="btn btn-outline-secondary ms-2">Annuler</a>
+      {% else %}
+        <button type="submit" class="btn btn-success">➕ Ajouter</button>
+      {% endif %}
+    </div>
+  </form>
+
+  <!-- Liste des modèles -->
+  <table class="table table-striped">
+    <thead>
+      <tr><th style="width: 220px;">Titre</th><th>Contenu</th><th style="width: 170px;">Actions</th></tr>
+    </thead>
+    <tbody>
+    {% for m in messages %}
+      <tr>
+        <td>{{ m.titre }}</td>
+        <td style="white-space: pre-wrap;">{{ m.contenu }}</td>
+        <td>
+          <a href="{{ url_for('mail_bene.edit_message_bene', mid=m.id) }}" class="btn btn-sm btn-primary">✏️ Modifier</a>
+          <form method="post" action="{{ url_for('mail_bene.delete_message_bene', mid=m.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Supprimer ce message ?');">🗑️ Supprimer</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="mt-3">
+    <a href="{{ url_for('mail_bene.envoi_mail_benevoles') }}" class="btn btn-secondary">⬅️ Retour</a>
+  </div>
+
+</div>
+{% endblock %}

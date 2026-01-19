@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Gestion des utilisateurs{% endblock %}
+
+{% block content %}
+<h2>👥 Gestion des utilisateurs</h2>
+
+<table class="table table-bordered align-middle">
+    <thead class="table-light">
+        <tr>
+            <th>Email</th>
+            <th>Nom</th>
+            <th>Rôle</th>
+            <th>Actif</th>
+            <th>Assos</th>
+            <th>Bénévoles</th>
+            <th>Nouveau mot de passe</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for user in users %}
+        <tr>
+            <form method="post" action="{{ url_for('admin.update_user') }}">
+                <td>
+                    <input type="email" name="email" value="{{ user.email }}" class="form-control" readonly>
+                </td>
+                <td>
+                    <input type="text" name="username" value="{{ user.username }}" class="form-control">
+                </td>
+                <td>
+                    <input type="text" name="role" value="{{ user.role }}" class="form-control">
+                </td>
+                <td>
+                    <select name="actif" class="form-select">
+                        <option value="1" {% if user.actif %}selected{% endif %}>Oui</option>
+                        <option value="0" {% if not user.actif %}selected{% endif %}>Non</option>
+                    </select>
+                </td>
+                <td>
+                    <select name="app_assos" class="form-select">
+                        <option value="1" {% if user.app_assos %}selected{% endif %}>Oui</option>
+                        <option value="0" {% if not user.app_assos %}selected{% endif %}>Non</option>
+                    </select>
+                </td>
+                <td>
+                    <select name="app_bene" class="form-select">
+                        <option value="1" {% if user.app_bene %}selected{% endif %}>Oui</option>
+                        <option value="0" {% if not user.app_bene %}selected{% endif %}>Non</option>
+                    </select>
+                </td>
+                <td>
+                    <input type="password" name="new_password" placeholder="Laisser vide si inchangé" class="form-control">
+                </td>
+                <td>
+                    <div class="d-flex gap-1">
+                        <button type="submit" class="btn btn-primary btn-sm">💾</button>
+                        <a href="{{ url_for('admin.gestion_roles', filtre=user.email) }}" class="btn btn-secondary btn-sm">⚙️ Rôles</a>
+                    </div>
+                </td>
+            </form>
+            <td>
+                <form method="POST" action="{{ url_for('admin.supprimer_utilisateur', user_id=user.id) }}" 
+                      onsubmit="return confirm('⚠️ Supprimer cet utilisateur ?');" style="display:inline;">
+                    <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<hr>
+
+<h4>➕ Ajouter un nouvel utilisateur</h4>
+<form method="POST" action="{{ url_for('admin.ajouter_utilisateur') }}">
+    {{ form.hidden_tag() }}
+
+    <div class="row mb-2">
+        <div class="col-md-4">
+            {{ form.email.label(class="form-label") }}
+            {{ form.email(class="form-control", pattern="^[a-zA-Z0-9._%+-]+@banquealimentaire\.org$", title="L'email doit se terminer par @banquealimentaire.org") }}
+        </div>
+        <div class="col-md-4">
+            {{ form.username.label(class="form-label") }}
+            {{ form.username(class="form-control") }}
+        </div>
+        <div class="col-md-4">
+            {{ form.role.label(class="form-label") }}
+            {{ form.role(class="form-control") }}
+        </div>
+    </div>
+
+    <div class="row mb-2">
+        <div class="col-md-4">
+            {{ form.password.label(class="form-label") }}
+            {{ form.password(class="form-control") }}
+        </div>
+        <div class="col-md-4">
+            {{ form.confirm_password.label(class="form-label") }}
+            {{ form.confirm_password(class="form-control") }}
+        </div>
+        <div class="col-md-4">
+            {{ form.actif.label(class="form-label") }}
+            {{ form.actif(class="form-control") }}
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-success">➕ Ajouter</button>
+</form>
+
+<a href="{{ url_for('index') }}" class="btn btn-secondary mt-4">⬅️ Retour</a>
+{% endblock %}

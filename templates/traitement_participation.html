@@ -1,0 +1,65 @@
+{% extends "base_assos.html" %}
+{% block title %}Traitement fichier de participation{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>📂 Traitement fichier de participation</h2>
+    <button class="btn btn-outline-info btn-sm" id="btnAide">❓ Aide</button>
+  </div>
+
+  <p class="mb-3">
+    Dans VIF lancer PARSOL2L, et enregistrez le fichier <code>parsol2l.txt</code> dans le dossier \\tsclient\G:\Drive partagés\BA380 - TRESORERIE\PARTICIPATION\parsol2l.txt,
+    puis sélectionnez-le ci-dessous.
+  </p>
+
+  <form method="POST">
+    <div class="mb-3">
+      <label for="file_id" class="form-label">Choisir un fichier :</label>
+        <select name="file_id" id="file_id" class="form-select">
+          <option value="">— Sélectionner un fichier —</option>
+          {% for f in fichiers %}
+            <option value="{{ f.id }}">{{ f.name }}</option>
+          {% endfor %}
+        </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Lancer le traitement</button>
+  </form>
+</div>
+
+<!-- Modal aide (⚠️ dans le block content) -->
+<div class="modal fade" id="aideModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📘 Aide — Traitement participation</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="aide-content">Chargement...</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+  document.getElementById("btnAide").addEventListener("click", function () {
+    fetch("{{ url_for('traitements.aide_traitements') }}")
+      .then(r => r.text())
+      .then(md => {
+        document.getElementById("aide-content").innerHTML = marked.parse(md);
+        const modal = new bootstrap.Modal(document.getElementById("aideModal"));
+        modal.show();
+      })
+      .catch(err => {
+        document.getElementById("aide-content").innerHTML =
+          "<div class='text-danger'>Impossible de charger l'aide.</div>";
+        const modal = new bootstrap.Modal(document.getElementById("aideModal"));
+        modal.show();
+      });
+  });
+  </script>
+{% endblock %}

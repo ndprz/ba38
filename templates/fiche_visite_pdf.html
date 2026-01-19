@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Fiche de visite – {{ fiche.get("nom_association","") }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/fiche_visite_pdf.css') }}">
+</head>
+
+
+<body>
+
+  <!-- ===================== -->
+  <!-- En-tête -->
+  <!-- ===================== -->
+  <header>
+    <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo">
+    <div class="version">Version ISÈRE 2025</div>
+  </header>
+
+  <!-- ===================== -->
+  <!-- Titre principal -->
+  <!-- ===================== -->
+  <h1>
+    Fiche de visite
+    <br>
+    <small class="subtitle">(une fiche par point de distribution)</small>
+  </h1>
+
+  <!-- ===================== -->
+  <!-- Introduction -->
+  <!-- ===================== -->
+  <div class="intro">{{ partenaire.get("nom_association","") }}</div>
+  <p>
+    <strong>Adresse de distribution :</strong><br>
+    {{ partenaire.get("adresse_distribution_1") or "" }} {{ partenaire.get("adresse_distribution_2") or "" }}<br>
+    {{ partenaire.get("CP") or "" }} {{ partenaire.get("COMMUNE") or "" }}<br>
+    <strong>SIRET :</strong> {{ partenaire.get("code_SIRET") or "" }}
+  </p>
+
+  <p>
+    <strong>Date de la visite :</strong> {{ fiche.get("date_visite")|datetimeformat }}<br>
+    <strong>CAR :</strong> {{ fiche.get("car") or "" }}<br>
+    <strong>Visiteur :</strong> {{ fiche.get("visiteur") or "" }}<br>
+    <strong>Reçu par :</strong> {{ fiche.get("recu_par") or "" }}<br>
+    <strong>Fonction :</strong> {{ fiche.get("fonction") or "" }}<br>
+    <strong>Date précédente visite :</strong> {{ fiche.get("date_precedente_visite")|datetimeformat }}
+  </p>
+
+  <!-- ===================== -->
+  <!-- Chapitre 1 -->
+  <!-- ===================== -->
+  <h2>1) Mise à jour de l’annexe 1bis de la convention de partenariat</h2>
+  <div class="text-muted">Vérifier que l’annexe 1bis est bien remplie, à jour, et disponible dans le Drive.</div>
+  <div class="question">Lien vers le document Drive :</div>
+  <div class="answer">{{ fiche.get("drive_link") or "" }}</div>
+
+  <!-- ===================== -->
+  <!-- Chapitre 2 -->
+  <!-- ===================== -->
+  <h2>2) La connaissance de la structure</h2>
+  <div class="question">●	Quel est votre projet associatif ? Quelle est la place de l’aide alimentaire dans ce projet ?</div>
+  <div class="answer">{{ fiche.get("projet") or "" }}</div>
+  <div class="question">●	Quelles sont les actualités de l’association / CCAS ?</div>
+  <div class="answer">{{ fiche.get("actualites") or "" }}</div>
+  <div class="question">●	Rencontrez-vous des difficultés particulières ?</div>
+  <div class="answer">{{ fiche.get("difficultes") or "" }}</div>
+
+  <!-- ===================== -->
+  <!-- Chapitre 3 -->
+  <!-- ===================== -->
+  <h2>3) Les personnes accueillies</h2>
+  <div class="text-muted">Objectif : Conformément à l’objectif n°4 de la charte des BA, s’adapter aux besoins des personnes en situation de précarité, nous vous proposons un échange sur les profils et les besoins des personnes accueillies.</div>
+  <div class="question">●	Quels sont les profils des personnes accueillies ? Remarquez-vous une évolution du public et de leurs besoins ?</div>
+  <div class="answer">{{ fiche.get("type_de_personnes_aidees") or "" }}</div>
+  <div class="question">●	Quelle est la durée moyenne d’accès à l’aide alimentaire ?</div>
+  <div class="answer">{{ fiche.get("duree_de_l_accompagnement") or "" }}</div>
+
+  <!-- ===================== -->
+  <!-- Chapitre 4 -->
+  <!-- ===================== -->
+  <h2>4) Suivi et accompagnement des personnes accueillies</h2>
+  <div class="text-muted">Objectif : proposer des possibilités d’accompagnement social fait partie des obligations de votre association dans le cadre de l’habilitation à l’aide alimentaire. Cette partie a pour objectif de faire le bilan ou de proposer des actions à mettre en œuvre. (orientation vers une autre structure, atelier collectif, accueil, café convivial, etc)</div>
+  <div class="question">●	Proposez-vous des entretiens pour l’accueil, le renouvellement ou la clôture des droits ?</div>
+  <div class="answer">{{ fiche.get("entretiens_accueil") or "" }}</div>
+  <div class="question">●	Existe-t-il un entretien explicatif après l’ouverture des droits d’une personne accueillie ? (explication du cadre, du fonctionnement, le règlement intérieur et les possibilités d’accompagnement social…). Quels supports utilisez-vous ?</div>
+  <div class="answer">{{ fiche.get("entretiens_explicatifs") or "" }}</div>
+  <div class="question">●	Quelles sont les mesures d’accompagnement que vous avez mises en place ou que vous souhaiteriez mettre en place ?</div>
+  <div class="answer">{{ fiche.get("mesures_d_accompagnement") or "" }}</div>
+
+  <!-- ===================== -->
+  <!-- Chapitre 5 -->
+  <!-- ===================== -->
+  <h2>5) Conditions d’accueil et de participation symbolique des personnes lors des distributions</h2>
+  <div class="text-muted">Objectif : échange sur les conditions d’accueil “qui doivent s'inscrire  dans le respect du principe de dignité des personnes” conformément aux modalités de l’habilitation.</div>
+  <div class="question">●	Comment est organisé l’accueil des personnes ? RDV avec un bénévole, tickets, échelonnement, existence d’un espace accueil ?</div>
+  <div class="answer">{{ fiche.get("organisation_accueil") or "" }}</div>
+  <div class="question">●	Qu’est-ce qui pourrait faciliter la distribution ? Pour éviter la file d’attente dehors, les conflits, l'absentéisme, la barrière de la langue…</div>
+  <div class="answer">{{ fiche.get("facilitation_distribution") or "" }}</div>
+  <div class="question">●	Les personnes accueillies doivent-elles se munir d’un sac isotherme ?</div>
+  <div class="answer">{{ fiche.get("sac_isotherme") or "" }}</div>
+  <div class="question">●	Une participation financière est-elle demandée aux personnes accueillies ?</div>
+  <div class="answer">{{ fiche.get("participation_financiere_o_n") or "" }}</div>
+  <div class="question">●	Si oui, les modalités et le montant sont-ils formalisés ?</div>
+  <div class="answer">{{ fiche.get("participation_modalites_o_n") or "" }}</div>
+  <div class="question">●	Modalités (détails):</div>
+  <div class="answer">{{ fiche.get("participation_modalites_detail") or "" }}</div>
+  <div class="question">●	Montant :</div>
+  <div class="answer">{{ fiche.get("montant_de_la_participation_financiere_par_personne") or "" }}</div>
+
+  <p class="highlight-ess">Pour les Épiceries Sociales et Solidaires</p>
+  <div class="question">●	Quel est le montant du plafond d’achat mensuel, s’il existe ? </div>
+  <div class="answer">{{ fiche.get("montant_plafond_achat_mensuel") or "" }}</div>
+  <div class="question">●	Le double affichage recommandé des prix de vente et de la valeur marchande est-il en place ? </div>
+  <div class="answer">{{ fiche.get("double_affichage") or "" }}</div>
+  <div class="question">●	La charte nationale des épiceries sociales et solidaires est-elle signée et affichée :</div>
+  <div class="answer">{{ fiche.get("charte_nat_epiceries") or "" }}</div>
+  
+
+
+
+  <!-- ===================== -->
+  <!-- Chapitre 6 -->
+  <!-- ===================== -->
+  <h2>6) Réglementation</h2>
+
+  <div class="text-muted">Vérification de la conformité réglementaire (DREETS, hygiène, sécurité alimentaire, FSE+).</div>
+
+  <p class="highlight-ess">Pour tous les partenaires</p>
+
+  <div class="question">Date du dernier contrôle DREETS :</div>
+  <div class="answer">{{ fiche.get("date_controle_dreets") or "" }}</div>
+  <div class="question">●	Existence d’une procédure d’éligibilité des personnes accueillies ?</div>
+  <div class="answer">{{ fiche.get("criteres_d_eligibilite_de_l_aide_par_ecrit") or "" }}</div>
+  <div class="question">●	Le GBPH est-il porté à la connaissance des collaborateurs concernés ?</div>
+  <div class="answer">{{ fiche.get("gbph") or "" }}</div>
+  <div class="question">●	Des thermomètres sont-ils présents dans les frigos et congélateurs ?</div>
+  <div class="answer">{{ fiche.get("thermometres_frigos_congels") or "" }}</div>
+  <div class="question">●	Les relevés de températures sont-ils faits, disponibles et archivés ?</div>
+  <div class="answer">{{ fiche.get("releves_temperatures") or "" }}</div>
+  <div class="question">●	La procédure de vérification DLC/DDM est-elle appliquée ?</div>
+  <div class="answer">{{ fiche.get("procedure_verif_dlc_ddm") or "" }}</div>
+  <div class="question">●	La rotation des produits (PPPS = 1er périmé, 1er sorti) est-elle appliquée ?</div>
+  <div class="answer">{{ fiche.get("rotation_produits_appliquee") or "" }}</div>
+  <div class="question">●	Les dates de nettoyage des frigos et congélateurs sont-elles relevées ?</div>
+  <div class="answer">{{ fiche.get("date_nettoyage_frigo_congels") or "" }}</div>
+
+  <p class="highlight-ess">Pour les partenaires recevant des denrées FSE+</p>
+
+  <div class="question">Date du dernier contrôle FranceAgriMer :</div>
+  <div class="answer">{{ fiche.get("date_controle_franceagrimer") or "" }}</div>
+
+  <div class="question">●	Le livret des procédures FSE+ est rempli et signé ?</div>
+  <div class="answer">{{ fiche.get("livret_procedures_fse") or ""}}</div>
+
+  <div class="question">●	Présence de l’affiche FSE+ ?</div>
+  <div class="answer">{{ fiche.get("affiche_fse") or ""}}</div>
+
+  <div class="question">●	Gratuité des denrées FSE+ ?</div>
+  <div class="answer">{{ fiche.get("gratuite_fse") or ""}}</div>
+
+  <div class="question">●	Procédures écrites sur les règles d'hygiène et de sécurité alimentaire ?</div>
+  <div class="answer">{{ fiche.get("procedure_ecrite_hygiene_securite") or ""}}</div>
+
+  <div class="question">●	Comptabilité matière (entrées, sorties et inventaires) ?</div>
+  <div class="answer">{{ fiche.get("comptabilite_matiere") or ""}}</div>
+
+  <div class="question">●	Transmission des indicateurs Etat ?</div>
+  <div class="answer">{{ fiche.get("transmission_indicateurs_etat") or ""}}</div>
+
+  <div class="question">●	Procédure de conservation de tous les documents liés à la gestion du FSE+ (conserver 7 ans : BL, comptabilité matière, relevés des températures…) ?</div>
+  <div class="answer">{{ fiche.get("procedure_conservation_gestion_fse_7ans") or ""}}</div>
+
+  <div class="question">●	Les tests gustatifs pour les produits DDM dépassés sont-ils effectués ? Si oui, à quelle fréquence</div>
+  <div class="answer">{{ fiche.get("test_gustatifs") or ""}}</div>
+
+
+  <!-- ===================== -->
+  <!-- Chapitre 7 -->
+  <!-- ===================== -->
+  <h2>7) TICADI</h2>
+  <div class="question">●	Utilisez-vous TICADI pour remonter les indicateurs Etat ? (obligatoire pour les catégories 1)</div>
+  <div class="answer">{{ fiche.get("ticadi_utilise_indicateurs_etat") or "" }}</div>
+  <div class="question">●	Utilisez-vous TICADI pour votre comptabilité matière ? (obligatoire pour les catégories 1)</div>
+  <div class="answer">{{ fiche.get("ticadi_utilise_compta_matiere") or "" }}</div>
+  <div class="question">●	Avez-vous bénéficié d’une formation à l’utilisation de TICADI ?</div>
+  <div class="answer">{{ fiche.get("formation_ticadi_a_jour") or "" }}</div>
+
+  <!-- ===================== -->
+  <!-- Chapitre 8 -->
+  <!-- ===================== -->
+  <h2>8) La relation partenariale</h2>
+
+  <div class="text-muted">L'objectif ici est d’avoir un retour d’expérience sur votre satisfaction sur les sujets suivants :</div>
+
+  <p class="highlight-ess">Accompagnement de la Banque Alimentaire</p>
+
+  <div class="question">●	Que pensez-vous de l’accompagnement de la Banque Alimentaire et quels sont vos besoins ? Visite, réunion, contact avec les Chargés d’Animation Réseau…</div>
+  <div class="answer">{{ fiche.get("avis_accompagnement_ba") or "" }}</div>
+  <div class="question">●	Etes-vous satisfaits de la fréquence des contacts et rencontres proposées par votre Banque Alimentaire ?</div>
+  <div class="answer">{{ fiche.get("avis_frequence_contacts_ba") or "" }}</div>
+
+  <p class="highlight-ess">Entrepôt / prise de commande / livraison</p>
+
+  <div class="question">●	Avez-vous des remarques concernant les échanges et l'accueil qui vous est réservé au sein de la Banque Alimentaire ?</div>
+  <div class="answer">{{ fiche.get("avis_relations_commandes_livraison") or "" }}</div>
+  <div class="question">●	Que pensez-vous du fonctionnement du passage de commande auprès de la BA ?</div>
+  <div class="answer">{{ fiche.get("avis_passge_de_commandes") or "" }}</div>
+  <div class="question">●	Avez-vous des besoins spécifiques en termes de retrait/livraison des commandes&nbsp;?</div>
+  <div class="answer">{{ fiche.get("besoins_specifiques_retraits_livraisons") or "" }}</div>
+
+  <!-- Tableau de satisfaction denrées -->
+  <h3>Denrées alimentaires</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Catégorie</th>
+        <th>Qualité</th>
+        <th>Quantité</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Produits secs</td>
+        <td>{{ fiche.get("satisfaction_qualite_sec") or "" }}</td>
+        <td>{{ fiche.get("satisfaction_quantite_sec") or "" }}</td>
+      </tr>
+      <tr>
+        <td>Produits frais</td>
+        <td>{{ fiche.get("satisfaction_qualite_frais") or "" }}</td>
+        <td>{{ fiche.get("satisfaction_quantite_frais") or "" }}</td>
+      </tr>
+      <tr>
+        <td>Produits surgelés</td>
+        <td>{{ fiche.get("satisfaction_qualite_surgeles") or "" }}</td>
+        <td>{{ fiche.get("satisfaction_quantite_surgeles") or "" }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="highlight-ess">Autres approvisionnements :</p>
+
+  <div class="question">●	Ramasse :</div>
+  <div class="answer">{{ fiche.get("autres_appros_ramasse") or ""}}</div>
+
+  <div class="question">●	Convention de délégation de retrait :</div>
+  <div class="answer">{{ fiche.get("convention_delegation_retrait") or ""}}</div>
+
+  <div class="question">●	Proxidon </div>
+  <div class="answer">{{ fiche.get("proxidon") or ""}}</div>
+
+  <div class="question">●	Achats </div>
+  <div class="answer">{{ fiche.get("achats") or ""}}</div>
+
+  <p class="highlight-ess">Souhaitez vous bénéficier des produits non-alimentaires ? Si oui, lesquels ?</p>
+  <div class="answer">{{ fiche.get("souhaits_produits_non_alimentaires") or ""}}</div>
+
+  <p class="highlight-ess">Collecte nationale</p>
+
+  <div class="question">●	Participez-vous à la Collecte nationale ? Si non, pourquoi ?</div>
+  <div class="answer">{{ fiche.get("collecte_participation_commentaires") or ""}}</div>
+
+  <div class="question">●	De quel type de produit avez-vous besoin lors de la Collecte ?</div>
+  <div class="answer">{{ fiche.get("collecte_besoins_produits") or ""}}</div>
+
+  <p class="highlight-ess">Formation</p>
+
+  <div class="question">●	Votre équipe a-t-elle participé à des formations depuis notre dernière rencontre ? Souhaitez-vous en organiser ?</div>
+  <div class="answer">{{ fiche.get("formations") or ""}}</div>
+
+  <div class="question">●	Quand a eu lieu la dernière formation TASA / CASA ? Souhaitez-vous en organiser une ?</div>
+  <div class="answer">{{ fiche.get("formation_tasa_casa") or ""}}</div>
+
+  <div class="question">●	Avez-vous d’autres besoins en formation ?</div>
+  <div class="answer">{{ fiche.get("formations_autres") or ""}}</div>
+
+  <p class="highlight-ess">Accompagnement social</p>
+
+  <div class="question">●	Etes-vous intéressé par la formation “à l’écoute et à l’accompagnement” ?</div>
+  <div class="answer">{{ fiche.get("formation_ecoute") or ""}}</div>
+
+  <div class="question">●	Etes-vous intéressé par des ateliers autour de l’alimentation dans le cadre du programme “Bons Gestes & bonne assiette” ?</div>
+  <div class="answer">{{ fiche.get("formation_ateliers_bon_gestes_bonne_assiette") or ""}}</div>
+
+  <p class="highlight-ess">Autres services</p>
+
+  <div class="question">●	Avez-vous mis en place Proxidon ?</div>
+  <div class="answer">{{ fiche.get("proxidon_mis_en_place") or ""}}</div>
+
+  <div class="question">●	Etes-vous satisfait des produits issus de l’atelier de transformation ?</div>
+  <div class="answer">{{ fiche.get("satisfaction_produits_atelier_transformation") or ""}}</div>
+
+  <div class="question">●	De manière générale, avez-vous des remarques à faire partager à la Banque Alimentaire ?</div>
+  <div class="answer">{{ fiche.get("remarques_diverses") or ""}}</div>
+
+
+  <!-- ===================== -->
+  <!-- Chapitre 9 -->
+  <!-- ===================== -->
+  <h2>9) Plan d’action</h2>
+  <div class="question">Points forts :</div>
+  <div class="answer">{{ fiche.get("plan_action_points_forts") or "" }}</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Action</th>
+        <th>Acteur</th>
+        <th>Échéance</th>
+        <th>Réalisé</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for i in range(1,11) %}
+      <tr>
+        <td>{{ fiche.get("plan_action_" ~ i) or "" }}</td>
+        <td>{{ fiche.get("plan_action_" ~ i ~ "_acteur") or "" }}</td>
+        <td>{{ fiche.get("plan_action_" ~ i ~ "_echeance") or "" }}</td>
+        <td>{{ fiche.get("plan_action_" ~ i ~ "_realise") or "" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="question">Remarques / Observations diverses :</div>
+  <div class="answer">{{ fiche.get("remarques_observations_diverses") or "" }}</div>
+  <div class="question">La visite a eu lieu pendant ou en dehors de la distribution ?</div>
+  <div class="answer">{{ fiche.get("visite_pendant_ou_hors_distribution") or "" }}</div>
+
+</body>
+</html>
+

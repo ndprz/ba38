@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+
+# Environnements
+.env
+.env.*
+venv/
+.venv/
+
+# Bases de données
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+*.log.*
+logs/
+
+# Backups
+backup/
+
+# Sessions Flask
+flask_sessions/
+
+# IDE / OS
+.vscode/
+.DS_Store
+
+# Secrets
+service_account.json
+
+# Parasites
+C:*

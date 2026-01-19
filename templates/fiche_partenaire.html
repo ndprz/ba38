@@ -1,0 +1,48 @@
+{% extends "base_assos.html" %}
+
+{% block title %}Fiche du Partenaire (fiche_partenaire.html){% endblock %}
+
+{% block content %}
+<div class="fiche-container">
+    <h2 class="fiche-title">Fiche du Partenaire</h2>
+    <div class="fiche-content">
+        <p><strong>Nom :</strong> {{ partenaire['nom association'] or 'Non renseigné' }}</p>
+        <p><strong>Adresse :</strong> {{ partenaire['adresse'] or 'Non renseignée' }}</p>
+        <p><strong>Téléphone :</strong> {{ partenaire['téléphone'] or 'Non renseigné' }}</p>
+        <p><strong>Email :</strong>
+            {% if partenaire['email'] %}
+                <a href="mailto:{{ partenaire['email'] }}">{{ partenaire['email'] }}</a>
+            {% else %}
+                Non renseigné
+            {% endif %}
+        </p>
+        <p><strong>Date d'inscription :</strong> {{ partenaire['date d\'inscription'] or 'Non renseignée' }}</p>
+    </div>
+    <div class="fiche-actions">
+        <a href="{{ url_for('export_pdf', partner_id=partenaire['ID']) }}" class="btn btn-primary">Télécharger le PDF</a>
+    </div>
+</div>
+
+<!-- CSS spécifique -->
+<style>
+    .fiche-container {
+        max-width: 800px;
+        margin: auto;
+        padding: 20px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        background: #f9f9f9;
+    }
+    .fiche-title {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .fiche-content p {
+        margin: 10px 0;
+    }
+    .fiche-actions {
+        text-align: center;
+        margin-top: 20px;
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>Bienvenue, {{ username }} !</h2>
+    <p>Votre rôle : <strong>{{ role }}</strong></p>
+
+    <ul>
+        <li><a href="{{ url_for('partenaires') }}">Gérer les partenaires</a></li>
+        <li><a href="{{ url_for('gestion_utilisateurs') }}">Gérer les utilisateurs</a></li>
+        <li><a href="{{ url_for('logout') }}">Se déconnecter</a></li>
+    </ul>
+{% endblock %}

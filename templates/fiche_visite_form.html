@@ -1,0 +1,89 @@
+{% extends "base_assos.html" %}
+{% block title %}Fiche de visite{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  {# ⚠️ Message rouge si la fiche est préremplie depuis la précédente #}
+  {% if last_date %}
+  <div class="alert alert-danger text-center fw-bold fs-4">
+    ⚠️ Nouvelle fiche visite chargée avec les renseignements de la dernière visite du 
+    {{ last_date }}.<br>
+    Veuillez modifier ou supprimer les valeurs des champs nécessaires.<br>
+    Les champs non modifiés seront enregistrés avec la valeur de la fiche précédente.
+  </div>
+  {% endif %}
+
+  <!-- 🔹 Titre -->
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+    <h2 class="mb-0">
+      {% if lecture_seule %}
+        👁️ Consultation de la fiche de visite – {{ partenaire.get("nom_association","") }}
+      {% else %}
+        📝 Édition de la fiche de visite – {{ partenaire.get("nom_association","") }}
+      {% endif %}
+    </h2>
+    <div>
+      {% if fiche.get('id') %}
+        <a href="{{ url_for('fiches_visite.pdf', fiche_id=fiche['id']) }}" 
+          class="btn btn-danger ms-2" target="_blank">
+          📄 Export PDF
+        </a>
+      {% else %}
+        <button class="btn btn-secondary ms-2" disabled>
+          📄 Export PDF
+        </button>
+      {% endif %}
+
+      {% if not lecture_seule %}
+        <button type="submit" form="ficheForm" class="btn btn-primary">💾 Enregistrer</button>
+      {% endif %}
+      <a href="{{ url_for('fiches_visite.liste', partner_id=partner_id) }}" 
+        class="btn btn-secondary">⬅️ Annuler</a>
+    </div>
+  </div>
+
+  <!-- 🔹 Formulaire uniquement si édition -->
+  {% if not lecture_seule %}<form id="ficheForm" method="POST">{% endif %}
+
+    {% include "fiche_visite_chapitre_intro.html" %}
+    {% include "fiche_visite_chapitre1.html" %}
+    {% include "fiche_visite_chapitre2.html" %}
+    {% include "fiche_visite_chapitre3.html" %}
+    {% include "fiche_visite_chapitre4.html" %}
+    {% include "fiche_visite_chapitre5.html" %}
+    {% include "fiche_visite_chapitre6.html" %}
+    {% include "fiche_visite_chapitre7.html" %}
+    {% include "fiche_visite_chapitre8.html" %}
+    {% include "fiche_visite_chapitre9.html" %}
+
+    {% if not lecture_seule %}
+    <!-- ===================== -->
+    <!-- Boutons fin de formulaire -->
+    <!-- ===================== -->
+    <div class="text-center mt-4">
+      <button type="submit" class="btn btn-success">💾 Enregistrer</button>
+      <a href="{{ url_for('fiches_visite.liste', partner_id=partner_id) }}" 
+        class="btn btn-secondary">⬅️ Annuler</a>
+    </div>
+    {% endif %}
+
+  {% if not lecture_seule %}</form>{% endif %}
+</div>
+{% endblock %}
+
+{# 🔧 Script JS pour CAR (intro) #}
+{% if not lecture_seule %}
+<script>
+function copyCarToInput() {
+  const select = document.getElementById("car-select");
+  const input  = document.getElementById("car-input");
+  if (select.value && select.value !== "__autre__") {
+    input.value = select.value;
+  } else if (select.value === "__autre__") {
+    input.value = "";
+    input.focus();
+  }
+}
+</script>
+{% endif %}

@@ -1,0 +1,216 @@
+
+{% extends "base_bene.html" %}
+
+{% block title %}Mise à jour en tableau des bénévoles{% endblock %}
+
+{% block content %}
+<style>
+  .scroll-sync {
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: 20px;
+  }
+  .scroll-sync div {
+    height: 1px;
+  }
+  .scroll-zone {
+    position: relative;
+    max-height: 60vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border: 1px solid #ddd;
+  }
+  .scroll-sync-top {
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 20;
+    border-bottom: 1px solid #ddd;
+  }
+  .scroll-sync-bottom {
+    position: sticky;
+    bottom: 0;
+    background: white;
+    z-index: 20;
+    border-top: 1px solid #ddd;
+  }
+  .sticky-col {
+    position: sticky;
+    left: 0;
+    background: white;
+    z-index: 5;
+  }
+  .sticky-header {
+    z-index: 10 !important;
+  }
+  .photo-hover-container {
+    position: relative;
+    cursor: pointer;
+  }
+</style>
+
+<form method="post" action="{{ url_for('benevoles.update_benevoles_table') }}">
+  <div class="position-sticky top-0 bg-white py-2 z-3 border-bottom shadow-sm mb-2">
+    <div class="d-flex justify-content-between align-items-center flex-wrap">
+      <h2 class="mb-0">Mise à jour en tableau des bénévoles</h2>
+      <div class="d-flex gap-2 mt-2 mt-md-0">
+        <a href="{{ url_for('benevoles.benevoles') }}" class="btn btn-secondary">↩️ Retour à la liste</a>
+        <button type="submit" class="btn btn-success">💾 Enregistrer les modifications</button>
+      </div>
+    </div>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="alert-container">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div id="scroll-top" class="scroll-sync scroll-sync-top"><div></div></div>
+
+  <div id="scroll-body" class="scroll-zone">
+    <table class="table table-bordered table-striped table-sm m-0">
+      <thead class="table-light">
+        <tr>
+          <th>ID</th>
+          <th class="sticky-col sticky-header">Nom</th>
+          <th>Prénom</th>
+          {% for column in selected_columns %}
+            <th>{{ column }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for benevole in benevoles %}
+          {% set row_index = loop.index0 %}
+          {% if benevole.valeurs is defined %}
+            {% set valeurs = benevole.valeurs %}
+            {% set champs_invalides = benevole.champs_invalides %}
+            {% set nom = benevole.nom %}
+            {% set prenom = benevole.prenom %}
+            {% set id_bene = benevole.id %}
+          {% else %}
+            {% set valeurs = benevole %}
+            {% set champs_invalides = [] %}
+            {% set nom = benevole['nom'] %}
+            {% set prenom = benevole['prenom'] %}
+            {% set id_bene = benevole['id'] %}
+          {% endif %}
+
+          <tr>
+            <td><input type="hidden" name="id_{{ row_index }}" value="{{ id_bene }}">{{ id_bene }}</td>
+            <td class="sticky-col">
+              <span class="photo-hover-container" data-img="{{ url_for('static', filename='photos_benevoles/' ~ id_bene ~ '.jpg') }}">{{ nom }}</span>
+            </td>
+            <td>{{ prenom }}</td>
+
+            {% for column in selected_columns %}
+              {% set valeur = valeurs[column] %}
+              {% set v = valeur if valeur is not none and valeur != 'None' else '' %}
+              <td>
+                {% if column|lower == 'type_benevole' %}
+                  {# 🔽 Select dynamique alimenté par la table parametres #}
+                  <select name="{{ column }}_{{ row_index }}" class="form-select form-select-sm {% if column in champs_invalides %}is-invalid{% endif %}">
+                    <option value=""></option>
+                    {% for val in type_benevole_options %}
+                      <option value="{{ val }}" {% if v and (v|lower) == (val|lower) %}selected{% endif %}>
+                        {{ val|capitalize }}
+                      </option>
+                    {% endfor %}
+                  </select>
+
+                {% elif column in oui_non_fields %}
+                  <select name="{{ column }}_{{ row_index }}" class="form-select form-select-sm {% if column in champs_invalides %}is-invalid{% endif %}">
+                    <option value=""></option>
+                    <option value="oui" {% if v == 'oui' %}selected{% endif %}>Oui</option>
+                    <option value="non" {% if v == 'non' %}selected{% endif %}>Non</option>
+                  </select>
+
+                {% else %}
+                  <input type="text" name="{{ column }}_{{ row_index }}"
+                        class="form-control form-control-sm {% if column in champs_invalides %}is-invalid{% endif %}"
+                        value="{% if column.lower().startswith('tel') or 'téléphone' in column.lower() %}{{ v | format_tel }}{% else %}{{ v }}{% endif %}"
+                        size="{{ v|length + 2 }}"
+                        style="width: auto; min-width: 60px; max-width: 100%;">
+                {% endif %}
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div id="scroll-bottom" class="scroll-sync scroll-sync-bottom mt-1"><div></div></div>
+
+  <input type="hidden" name="total_rows" value="{{ benevoles|length }}">
+  {% for col in selected_columns %}
+    <input type="hidden" name="columns" value="{{ col }}">
+  {% endfor %}
+
+  <div class="d-flex justify-content-end gap-2 mt-3">
+    <a href="{{ url_for('benevoles.benevoles') }}" class="btn btn-secondary">↩️ Retour à la liste</a>
+    <button type="submit" class="btn btn-success">💾 Enregistrer les modifications</button>
+  </div>
+</form>
+
+<script>
+  const topScroll = document.getElementById('scroll-top');
+  const bodyScroll = document.getElementById('scroll-body');
+  const bottomScroll = document.getElementById('scroll-bottom');
+
+  function syncScroll(from, targets) {
+    from.addEventListener('scroll', () => {
+      targets.forEach(t => t.scrollLeft = from.scrollLeft);
+    });
+  }
+
+  syncScroll(topScroll, [bodyScroll, bottomScroll]);
+  syncScroll(bodyScroll, [topScroll, bottomScroll]);
+  syncScroll(bottomScroll, [bodyScroll, topScroll]);
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const table = bodyScroll.querySelector('table');
+    if (table) {
+      const fullWidth = table.scrollWidth;
+      topScroll.firstElementChild.style.width = fullWidth + 'px';
+      bottomScroll.firstElementChild.style.width = fullWidth + 'px';
+    }
+  });
+
+  document.querySelectorAll(".photo-hover-container").forEach(container => {
+    const imgPath = container.dataset.img;
+    let floating = null;
+    container.addEventListener("mouseenter", () => {
+      floating = document.createElement("img");
+      floating.src = imgPath;
+      floating.style.position = "fixed";
+      floating.style.zIndex = "9999";
+      floating.style.maxWidth = "180px";
+      floating.style.maxHeight = "180px";
+      floating.style.border = "1px solid #ccc";
+      floating.style.background = "white";
+      floating.style.boxShadow = "2px 2px 8px rgba(0,0,0,0.2)";
+      floating.style.pointerEvents = "none";
+      const rect = container.getBoundingClientRect();
+      floating.style.left = `${rect.right + 10}px`;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      floating.style.top = spaceBelow < 200 && spaceAbove > 200
+        ? `${rect.top - 200}px`
+        : `${rect.bottom + 5}px`;
+      document.body.appendChild(floating);
+    });
+    container.addEventListener("mouseleave", () => {
+      if (floating) {
+        document.body.removeChild(floating);
+        floating = null;
+      }
+    });
+  });
+</script>
+{% endblock %}

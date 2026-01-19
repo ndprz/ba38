@@ -1,0 +1,50 @@
+    <!-- 🔁 Bloc de boutons de navigation (haut et bas de page) -->
+    <div class="mb-4 d-flex flex-wrap justify-content-end" style="gap: 1rem;">
+
+
+
+        <a href="{{ url_for('mail.envoi_mail', assoc_id=partenaire['Id']) }}"
+        class="btn btn-sm btn-outline-primary me-2">
+        📧 Envoyer un mail
+        </a>
+
+        
+        {% if partner_id %}
+        <a href="{{ url_for('fiches_visite.liste', partner_id=partner_id) }}"
+        class="btn btn-outline-primary">
+        📄 Fiches de visite
+        </a>
+        {% endif %}
+
+        
+        <!-- 🔙 Bouton Précédent -->
+        {% if previous_id %}
+        <button type="button"
+                class="btn btn-outline-secondary"
+                onclick="handleNav('{{ url_for('partenaires.update_partner', partner_id=previous_id) }}?{{ next_url|replace('&', '&amp;') }}')">
+            ⬅️ Précédent
+        </button>
+        {% endif %}
+
+        <!-- 🔜 Bouton Suivant -->
+        {% if next_id %}
+        <button type="button"
+                class="btn btn-outline-secondary"
+                onclick="handleNav('{{ url_for('partenaires.update_partner', partner_id=next_id) }}?{{ next_url|replace('&', '&amp;') }}')">
+            ➡️ Suivant
+        </button>
+        {% endif %}
+
+        <!-- 🗂️ Retour -->
+        <button type="button"
+                class="btn btn-outline-secondary"
+                onclick="handleReturn('{{ url_for('partenaires.partenaires') }}?{{ next_url|replace('&', '&amp;') }}')">
+            🗂️ Retour
+        </button>
+
+
+        <!-- ✅ Enregistrer -->
+        <button type="submit" class="btn btn-warning">
+            ✅ Enregistrer les modifications
+        </button>
+    </div>

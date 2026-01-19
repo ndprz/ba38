@@ -1,0 +1,135 @@
+{% extends "base_frs.html" %}
+
+{% block title %}Liste des Fournisseurs{% endblock %}
+
+{% block content %}
+<h2>Liste des Fournisseurs</h2>
+
+<!-- 🔎 Barre de recherche + boutons -->
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+
+  <!-- Recherche -->
+  <div class="flex-grow-1 me-3">
+    <input type="text" id="searchInput" class="form-control" placeholder="🔍 Rechercher un fournisseur...">
+  </div>
+
+  <!-- Boutons -->
+  <div class="d-flex" style="gap: 10px;">
+    {% if rows %}
+    <a href="{{ url_for('fournisseurs.export_fournisseurs_excel') }}" class="btn btn-outline-primary">
+      📊 Exporter
+    </a>
+    {% endif %}
+
+    {% if not lecture_seule %}
+    <a href="{{ url_for('fournisseurs.create_fournisseur') }}" class="btn btn-success">
+      ➕ Créer
+    </a>
+    {% else %}
+    <button class="btn btn-success" disabled title="Vous n'avez pas les droits pour créer un fournisseur.">
+      ➕ Créer
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<hr>
+
+{% if rows %}
+<!-- 🎯 Scroll haut synchronisé -->
+<div id="scroll-top" style="overflow-x: auto; height: 20px; margin-bottom: 5px;">
+    <div id="sync-scroll" style="height: 1px;"></div>
+</div>
+
+<!-- 📊 Tableau principal avec colonnes figées -->
+<div id="scroll-bottom" style="overflow-x: auto; white-space: nowrap;">
+<table class="table table-bordered table-sticky" id="fournisseurs-table">
+    <thead>
+        <tr>
+            <th class="sticky-col sticky-col-1">Action</th>
+            <th class="sticky-col sticky-col-2">ID</th>
+            <th class="sticky-col sticky-col-3">Nom</th>
+            <th>Drive</th>
+            <th>Code VIF</th>
+            <th>Enseigne</th>
+            <th>Société</th>
+            <th>Type</th>  {# <-- type_frs ajouté #}
+            <th>Mobile</th>
+            <th>Téléphone</th>
+            <th>Email</th>
+            <th>Adresse</th>
+            <th>Adresse 2</th>
+            <th>CP</th>
+            <th>Ville</th>
+            <th>Notes</th>
+            <th>Actif</th>
+            <th>Date création</th>
+            <th>Date modif</th>
+            <th>Utilisateur</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in rows %}
+        <tr>
+            <td class="sticky-col sticky-col-1">
+                <form method="GET" action="{{ url_for('fournisseurs.update_fournisseur', fournisseur_id=row['id']) }}" style="display:inline;">
+                    <button type="submit" class="btn btn-primary btn-sm">Modifier</button>
+                </form>
+            </td>
+
+            <td class="sticky-col sticky-col-2">{{ row['id'] }}</td>
+            <td class="sticky-col sticky-col-3">{{ row['nom'] }}</td>
+            <td>
+              {% if row['drive_link'] %}
+                <a href="{{ row['drive_link'] }}" target="_blank">📂 Dossier</a>
+              {% endif %}
+            </td>
+            <td>{{ row['code_vif'] }}</td>
+            <td>{{ row['enseigne'] }}</td>
+            <td>{{ row['societe'] }}</td>
+            <td>{{ row['type_frs'] }}</td>  {# <-- affichage type_frs #}
+            <td>{{ row['tel_mobile'] }}</td>
+            <td>{{ row['tel'] }}</td>
+            <td>{{ row['mail'] }}</td>
+            <td>{{ row['adresse'] }}</td>
+            <td>{{ row['adresse2'] }}</td>
+            <td>{{ row['cp'] }}</td>
+            <td>{{ row['ville'] }}</td>
+            <td>{{ row['notes'] }}</td>
+            <td>{{ row['actif'] }}</td>
+            <td>{{ row['date_creation'] }}</td>
+            <td>{{ row['date_modif'] }}</td>
+            <td>{{ row['user_modif'] }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p>Aucun fournisseur trouvé.</p>
+{% endif %}
+
+<!-- 🔁 JS : dynamique et synchronisation -->
+<script>
+const topScroll = document.getElementById("scroll-top");
+const bottomScroll = document.getElementById("scroll-bottom");
+const syncDiv = document.getElementById("sync-scroll");
+const table = document.getElementById("fournisseurs-table");
+if (syncDiv && table) syncDiv.style.width = table.scrollWidth + "px";
+topScroll.addEventListener("scroll", () => bottomScroll.scrollLeft = topScroll.scrollLeft);
+bottomScroll.addEventListener("scroll", () => topScroll.scrollLeft = bottomScroll.scrollLeft);
+
+
+// 🔎 Recherche dynamique dans tous les champs
+document.getElementById("searchInput").addEventListener("keyup", function() {
+    const filter = this.value.toLowerCase();
+    const rows = document.querySelectorAll("#fournisseurs-table tbody tr");
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(filter) ? "" : "none";
+    });
+});
+
+
+</script>
+{% endblock %}

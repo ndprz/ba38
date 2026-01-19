@@ -1,0 +1,132 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Création Planning Ramasse{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Création du Planning de Ramasse</h2>
+    <a href="{{ url_for('planning.planning_main') }}" class="btn btn-outline-secondary">
+        ⬅️ Retour au menu Planning
+    </a>
+</div>
+
+<!-- 🗓️ Choix de la semaine -->
+<form method="POST" action="{{ url_for('planning.creation_planning_ramasse') }}">
+    <div class="form-group mb-3" onclick="document.getElementById('semaine').showPicker();">
+        <label for="semaine">Choisir une semaine :</label>
+        <input type="week" id="semaine" name="semaine" class="form-control" required value="{{ semaine }}">
+    </div>
+    <button type="submit" class="btn btn-success mb-4">
+        ➕ Générer le planning pour cette semaine
+    </button>
+</form>
+
+<!-- ⚠️ Alerte si planning déjà existant -->
+{% if planning_existe and not planning%}
+<div class="alert alert-warning">
+    <div class="fw-bold mb-2">
+        ⚠️ Un planning existe déjà pour la semaine {{ semaine }}.<br>
+        Que souhaitez-vous faire ?
+    </div>
+    <form method="POST" action="{{ url_for('planning.creation_planning_ramasse') }}" class="d-inline">
+        <input type="hidden" name="semaine" value="{{ semaine }}">
+        <input type="hidden" name="action" value="forcer_generation">
+        <button type="submit" class="btn btn-danger me-2">
+            🔁 Régénérer le planning (attention : écrasera les données)
+        </button>
+    </form>
+    <a href="{{ url_for('planning.gestion_planning_ramasse', semaine=semaine) }}" class="btn btn-success">
+        ✏️ Modifier le planning existant
+    </a>
+</div>
+{% endif %}
+
+<!-- 📋 Affichage du planning généré -->
+{% if planning %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="m-0">Planning généré pour la semaine {{ semaine }}</h3>
+  <a href="{{ url_for('planning.apercu_planning_ramasse', semaine=semaine) }}" target="_blank" class="btn btn-outline-secondary">
+    🔈️ Aperçu imprimable Pré_planning (A3)
+  </a>
+</div>
+
+<table class="table table-bordered table-sm mt-3">
+    <thead class="table-light">
+        <tr>
+            <th>Jour</th>
+            <th>Tournée</th>
+            <th>Chauffeur</th>
+            <th>Équipier</th>
+            <th>Responsable</th>
+            <th>Membre Tri 1</th>
+            <th>Membre Tri 2</th>
+            <th>Membre Tri 3</th>
+            <th>Camion</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for jour in jours %}
+            {% for row in planning if row.jour == jour %}
+                <tr class="jour-{{ row.jour|lower }} {% if row.absent %}absent{% endif %}">
+                    <td>
+                        {{ row.jour.capitalize() }}
+                        {% if row.absent %}<span style="color: orange;" title="Absence détectée">🟠</span>{% endif %}
+                    </td>
+                    <td>{{ row.tournee }}</td>
+                    <td>{{ row.chauffeur }} {% if row.chauffeur_absent %}<span style="color: red;">(absent)</span>{% endif %}</td>
+                    <td>{{ row.equipier }} {% if row.equipier_absent %}<span style="color: red;">(absent)</span>{% endif %}</td>
+                    <td>{{ row.responsable }} {% if row.responsable_absent %}<span style="color: red;">(absent)</span>{% endif %}</td>
+                    <td>{{ row.ramasse_tri1 }} {% if row.ramasse_tri1_absent %}<span style="color: red;">(absent)</span>{% endif %}</td>
+                    <td>{{ row.ramasse_tri2 }} {% if row.ramasse_tri2_absent %}<span style="color: red;">(absent)</span>{% endif %}</td>
+                    <td>{{ row.ramasse_tri3 }} {% if row.ramasse_tri3_absent %}<span style="color: red;">(absent)</span>{% endif %}</td>
+                    <td>{{ row.camion }}</td>
+                </tr>
+            {% endfor %}
+        {% endfor %}
+    </tbody>
+</table>
+
+<form method="POST" action="{{ url_for('planning.enregistrer_planning_ramasse') }}">
+    <input type="hidden" name="semaine" value="{{ semaine }}">
+    {% for row in planning %}
+        <input type="hidden" name="jours[]" value="{{ row.jour }}">
+        <input type="hidden" name="tournees[]" value="{{ row.tournee }}">
+        <input type="hidden" name="tournee_ids[]" value="{{ row.tournee_id }}">
+        <input type="hidden" name="chauffeurs[]" value="{{ row.chauffeur_id }}">
+        <input type="hidden" name="equipiers[]" value="{{ row.equipier_id }}">
+        <input type="hidden" name="responsables[]" value="{{ row.responsable_id }}">
+        <input type="hidden" name="ramasse_tri1_id[]" value="{{ row.ramasse_tri1_id }}">
+        <input type="hidden" name="ramasse_tri2_id[]" value="{{ row.ramasse_tri2_id }}">
+        <input type="hidden" name="ramasse_tri3_id[]" value="{{ row.ramasse_tri3_id }}">
+        <input type="hidden" name="camions[]" value="{{ row.camion_id }}">
+    {% endfor %}
+
+    <div class="d-flex align-items-center mt-3">
+        <button type="submit" class="btn btn-primary">
+            💾 Enregistrer ce planning
+        </button>
+
+        <a href="{{ url_for('planning.gestion_planning_ramasse', semaine=semaine) }}" class="btn btn-warning ms-2">
+            🛠️ Modifier ce planning
+        </a>
+
+        <a href="{{ url_for('planning.planning_main') }}" class="btn btn-outline-secondary ms-2">
+            ⬅️ Retour au menu Planning
+        </a>
+    </div>
+
+
+</form>
+{% endif %}
+
+<style>
+    .jour-lundi     { background-color: #f8f9fa; }
+    .jour-mardi     { background-color: #e0f7fa; }
+    .jour-mercredi  { background-color: #f1f8e9; }
+    .jour-jeudi     { background-color: #fff3e0; }
+    .jour-vendredi  { background-color: #fce4ec; }
+    .absent {
+        background-color: #ffe0e0 !important;
+    }
+</style>
+{% endblock %}

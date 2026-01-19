@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Modèle Planning Ramasse</title>
+  <style>
+    @page { size: A3 landscape; margin: 1cm; }
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 11px;
+      color: black;
+      background: white;
+      margin: 0;
+      padding: 1cm;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 25px;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 4px 8px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    th {
+      background-color: #f2f2f2;
+      font-weight: bold;
+    }
+    .jour {
+      background-color: #ddd;
+      font-weight: bold;
+      text-align: left;
+      padding: 8px;
+      font-size: 1.1em;
+    }
+  </style>
+</head>
+<body>
+
+<h2>🛠️ Modèle du Planning Ramasse</h2>
+
+{% for jour in ["lundi", "mardi", "mercredi", "jeudi", "vendredi"] %}
+  {% set lignes_jour = model | selectattr("jour", "equalto", jour) | list %}
+  {% if lignes_jour and (jour != "vendredi" or travail_vendredi) %}
+    <div class="jour">{{ jour|capitalize }}</div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Tournée</th>
+          <th>Chauffeur</th>
+          <th>Équipier</th>
+          <th>Responsable Tri</th>
+          <th>Tri 1</th>
+          <th>Tri 2</th>
+          <th>Tri 3</th>
+          <th>Camion</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in lignes_jour %}
+        <tr>
+          <td>{{ l.numero }}</td>
+          <td>{{ tournees_dict.get(l.tournee_id, "") }}</td>
+          <td>{{ bene_dict.get(l.chauffeur_id, "") }}</td>
+          <td>{{ bene_dict.get(l.equipier_id, "") }}</td>
+          <td>{{ bene_dict.get(l.responsable_id, "") }}</td>
+          <td>{{ bene_dict.get(l.ramasse_tri1_id, "") }}</td>
+          <td>{{ bene_dict.get(l.ramasse_tri2_id, "") }}</td>
+          <td>{{ bene_dict.get(l.ramasse_tri3_id, "") }}</td>
+          <td>{{ camions_dict.get(l.camion_id, "") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endfor %}
+
+</body>
+</html>

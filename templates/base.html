@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Gestion BA38{% endblock %}</title>
+    <!-- Liens CSS -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo-circle-orange.svg') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-custom.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* Styles globaux */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 20px;
+            background-color: #fff;
+            border-bottom: 2px solid #ddd;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        header img {
+            height: 50px; /* Taille du logo */
+        }
+        nav a {
+            margin-right: 15px;
+            text-decoration: none;
+            color: #333;
+            font-weight: bold;
+        }
+        nav a:hover {
+            color: #007bff;
+        }
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background-color: #f9f9f9;
+            min-width: 160px;
+            box-shadow: 0px 8px 16px rgba(0,0,0,0.2);
+            z-index: 1;
+        }
+        .dropdown-content a {
+            color: black;
+            padding: 12px 16px;
+            text-decoration: none;
+            display: block;
+        }
+        .dropdown-content a:hover {
+            background-color: #f1f1f1;
+        }
+        .dropdown:hover .dropdown-content {
+            display: block;
+        }
+        footer {
+            text-align: center;
+            padding: 10px;
+            background-color: #fff;
+            border-top: 2px solid #ddd;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <script>
+                window.onload = function() {
+                    setTimeout(function() {
+                        var alerts = document.querySelectorAll('.flash-message');
+                        alerts.forEach(alert => alert.remove());
+                    }, 5000);  // Supprime les messages après 5 secondes
+                };
+            </script>
+            <div class="flash-container">
+                {% for category, message in messages %}
+                    <div class="flash-message alert alert-{{ category }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <!-- En-tête -->
+    <header>
+
+        {% if request.endpoint == "index" %}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                {% for category, msg in messages %}
+                  <div class="alert alert-{{ category }}">{{ msg }}</div>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+        {% endif %}
+
+        {% if session.get('test_user') %}
+            <div style="background-color: red; color: white; text-align: center; padding: 10px; font-weight: bold;">
+                ⚠️ MODE TEST ⚠️
+            </div>
+        {% endif %}
+        <div>
+            <img src="{{ url_for('static', filename='images/logo-circle-orange.svg') }}" alt="Logo">
+        </div>
+        <p style="text-align: center; color: #555;">Bienvenue sur la plateforme des programmes spécifiques de la BA38</p>
+
+        <a href="/">Accueil</a>
+
+        {% if user_role in ['admin'] %}
+            <a href="{{ url_for('admin.gestion_utilisateurs') }}">👤 Gestion des utilisateurs</a>
+            <a href="{{ url_for('admin.gestion_roles') }}">🔐 Gestion des rôles</a>
+        {% endif %}
+
+        {% if user_role in ['admin'] %}
+            <a href="{{ url_for('debug_bp.debug_console') }}" class="btn btn-outline-dark btn-sm">
+                🐞 Console de debug
+            </a>
+        {% endif %}
+
+        {% if current_user.is_authenticated %}
+        <div class="user-info">
+            <span>Connecté : {{ current_user.email }}</span>
+            <a href="{{ url_for('logout') }}" class="btn btn-danger">Déconnexion</a>
+        </div>
+        {% endif %}
+    </header>
+
+    <main>
+        {% if not current_user.is_authenticated %}
+            <p style="text-align: center; color: red;">Vous n'êtes pas connecté.</p>
+        {% endif %}
+    </main>
+
+    <!-- Contenu principal -->
+    <main class="container mt-4" style="padding-top: 70px;">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Pied de page -->
+    <footer style="text-align: center; padding: 10px; background-color: #fff; border-top: 2px solid #ddd;">
+        <p style="margin: 0; font-size: 0.9em; color: #555;">
+            &copy; 2025 Gestion BA38. Tous droits réservés. — Version : {{ version or "Non définie" }}
+        </p>
+    </footer>
+
+
+    <!-- Scripts JS -->
+    <!-- <script src="{{ url_for('static', filename='js/jquery-3.5.1.min.js') }}"></script> -->
+    <script>
+        // Fonction pour replier/déplier un groupe
+        function toggleGroup(groupName) {
+            console.log(`🔄 Toggle groupe : container-${groupName}`);  // ✅ Vérifier que la fonction est bien appelée
+
+            const container = document.getElementById(`container-${groupName}`);
+            if (container) {
+                container.classList.toggle('expanded');
+                console.log(`✅ Groupe ${groupName} : ${container.classList.contains('expanded') ? 'Ouvert' : 'Fermé'}`);
+            } else {
+                console.error(`❌ Élément introuvable : container-${groupName}`);
+            }
+        }
+    </script>
+</body>
+{% if db_info %}
+<div class="alert alert-warning text-center m-0 py-1 small" style="font-weight: bold;">
+  ⚙️ Base en cours : {{ db_info }}
+</div>
+{% endif %}
+
+</html>

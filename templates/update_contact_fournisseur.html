@@ -1,0 +1,103 @@
+{% extends "base_frs.html" %}
+
+{% block title %}Modifier un contact{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <!-- 🔹 En-tête -->
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+    <h2 class="mb-0">✏️ Modifier le contact de {{ fournisseur["nom"] }}</h2>
+    <div>
+      <a href="{{ url_for('fournisseurs.liste_contacts_fournisseur', fournisseur_id=fournisseur['id']) }}" 
+         class="btn btn-outline-secondary">
+        ⬅️ Retour aux contacts
+      </a>
+    </div>
+  </div>
+
+  <!-- 🔹 Messages flash -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="alert-container">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- 🔹 Formulaire de modification -->
+  <form method="POST">
+    <div class="row mb-3">
+      <div class="col-md-6">
+        <label for="prenom" class="form-label">Prénom</label>
+        <input type="text" name="prenom" id="prenom" value="{{ contact['prenom'] or '' }}" class="form-control">
+      </div>
+      <div class="col-md-6">
+        <label for="nom" class="form-label">Nom</label>
+        <input type="text" name="nom" id="nom" value="{{ contact['nom'] or '' }}" class="form-control">
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label for="fonction" class="form-label">Fonction</label>
+      <input type="text" name="fonction" id="fonction" value="{{ contact['fonction'] or '' }}" class="form-control">
+    </div>
+
+    <div class="row mb-3">
+      <div class="col-md-6">
+        <label for="tel_mobile" class="form-label">Téléphone mobile</label>
+        <input type="text" name="tel_mobile" id="tel_mobile" value="{{ contact['tel_mobile'] or '' }}" class="form-control">
+      </div>
+      <div class="col-md-6">
+        <label for="tel_fixe" class="form-label">Téléphone fixe</label>
+        <input type="text" name="tel_fixe" id="tel_fixe" value="{{ contact['tel_fixe'] or '' }}" class="form-control">
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label for="email" class="form-label">Email</label>
+      <input type="email" name="email" id="email" value="{{ contact['email'] or '' }}" class="form-control">
+    </div>
+
+    <div class="mb-3">
+      <label for="adresse1" class="form-label">Adresse</label>
+      <input type="text" name="adresse1" id="adresse1" value="{{ contact['adresse1'] or '' }}" class="form-control">
+    </div>
+
+    <div class="row mb-3">
+      <div class="col-md-4">
+        <label for="cp" class="form-label">CP</label>
+        <input type="text" name="cp" id="cp" value="{{ contact['cp'] or '' }}" class="form-control">
+      </div>
+      <div class="col-md-8">
+        <label for="ville" class="form-label">Ville</label>
+        <input type="text" name="ville" id="ville" value="{{ contact['ville'] or '' }}" class="form-control">
+      </div>
+    </div>
+
+    <div class="form-check mb-3">
+      <input class="form-check-input" type="checkbox" name="est_referent" id="est_referent" value="oui" 
+             {% if contact['est_referent'] == 'oui' %}checked{% endif %}>
+      <label class="form-check-label" for="est_referent">Référent</label>
+    </div>
+
+    <div class="form-check mb-3">
+      <input class="form-check-input" type="checkbox" name="actif" id="actif" value="oui" 
+             {% if contact['actif'] == 'oui' %}checked{% endif %}>
+      <label class="form-check-label" for="actif">Actif</label>
+    </div>
+
+    <div class="mb-3">
+      <label for="notes" class="form-label">Notes</label>
+      <textarea name="notes" id="notes" class="form-control" rows="3">{{ contact['notes'] or '' }}</textarea>
+    </div>
+
+    <div class="text-end">
+      <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

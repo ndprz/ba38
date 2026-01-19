@@ -1,0 +1,46 @@
+{% extends "base_bene.html" %}
+{% block title %}Bénévoles archivés{% endblock %}
+
+{% block content %}
+<h2>🗂 Bénévoles archivés</h2>
+
+<a href="{{ url_for('benevoles.benevoles') }}" class="btn btn-outline-primary mb-3">← Retour à la liste</a>
+
+{% if benevoles %}
+<table class="table table-bordered table-striped">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Nom</th>
+      <th>Prénom</th>
+      <th>Motif d'inactivité</th>
+      <th>Date de désactivation</th>
+      <th>Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for b in benevoles %}
+    <tr>
+      <td>{{ b.id }}</td>
+      <td>{{ b.nom }}</td>
+      <td>{{ b.prenom }}</td>
+      <td>{{ b.motif_inactivite or '—' }}</td>
+      <td>{{ b.date_desactivation or '—' }}</td>
+      <td>
+        <form method="post" action="{{ url_for('benevoles.restaurer_benevole', benevole_id=b.id) }}" style="display:inline;">
+          <button type="submit" class="btn btn-success btn-sm">♻️ Restaurer</button>
+        </form>
+        <form method="post" action="{{ url_for('benevoles.supprimer_definitivement_benevole', benevole_id=b.id) }}" style="display:inline;" onsubmit="return confirm('Confirmer la suppression définitive ?');">
+          <button type="submit" class="btn btn-danger btn-sm">🗑️ Supprimer</button>
+        </form>
+      </td>
+
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="text-muted">Aucun bénévole archivé.</p>
+{% endif %}
+
+{% endblock %}

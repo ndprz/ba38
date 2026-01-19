@@ -1,0 +1,287 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Gestion Planning Ramasse{% endblock %}
+
+{% block content %}
+
+<form method="post" action="{{ url_for('planning.gestion_planning_ramasse', semaine=semaine) }}">
+    <input type="hidden" name="action" value="ajouter">
+</form>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Gestion du planning ramasse</h2>
+    <a href="{{ url_for('planning.apercu_planning_ramasse', semaine=semaine) }}" target="_blank" class="btn btn-outline-secondary">
+        🖨️ Aperçu imprimable (A3)
+    </a>
+   
+</div>
+
+<form method="post">
+    <div class="gestion-planning-container">
+        <table class="table table-bordered table-striped">
+            <thead>
+                <tr>
+                    <th class="col-jour">Jour</th>
+                    <th class="col-semaine">Semaine</th>
+                    <th class="col-tournee">Tournée</th>
+                    <th class="col-personne">Chauffeur</th>
+                    <th class="col-personne">Équipier</th>
+                    <th class="col-personne">Responsable Tri</th>
+                    <th class="col-personne">Membre Tri 1</th>
+                    <th class="col-personne">Membre Tri 2</th>
+                    <th class="col-personne">Membre Tri 3</th>
+                    <th class="col-camion">Camion</th>
+                    <th class="col-actions">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ligne in lignes %}
+                <tr class="jour-{{ ligne.jour|lower }}
+                    {% if ligne.chauffeur_absent or ligne.responsable_absent or ligne.equipier_absent or
+                        ligne.ramasse_tri1_absent or ligne.ramasse_tri2_absent or ligne.ramasse_tri3_absent %}absent{% endif %}">
+                
+                    <!-- Colonne jour -->
+                    <td>
+                        {{ ligne.jour|capitalize }}
+                        {% if ligne.chauffeur_absent or ligne.responsable_absent or ligne.equipier_absent or
+                            ligne.ramasse_tri1_absent or ligne.ramasse_tri2_absent or ligne.ramasse_tri3_absent %}
+                            <span style="color: red;" title="Absence détectée">🔴</span>
+                        {% endif %}
+                    </td>
+                
+                    <!-- Tournée -->
+                    <td>{{ ligne.tournee_display }}</td>
+                
+                    <!-- Chauffeur -->
+                    <td class="{% if ligne.chauffeur_absent %}absent-cell{% endif %}">
+                        <select name="chauffeurs[]" class="form-control form-select">
+                            <option value="">—</option>
+                            {% for b in chauffeurs %}
+                                {% set selected = ligne.chauffeur_id == b.id %}
+                                {% set is_absent = ligne.chauffeur_absent and ligne.chauffeur_id == b.id %}
+                                <option value="{{ b.id }}" {% if selected %}selected{% endif %}>
+                                    {{ b.nom }}{% if is_absent %} (absent){% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                
+                    <!-- Responsable -->
+                    <td class="{% if ligne.responsable_absent %}absent-cell{% endif %}">
+                        <select name="responsables[]" class="form-control form-select">
+                            <option value="">—</option>
+                            {% for b in responsables %}
+                                {% set selected = ligne.responsable_id == b.id %}
+                                {% set is_absent = ligne.responsable_absent and ligne.responsable_id == b.id %}
+                                <option value="{{ b.id }}" {% if selected %}selected{% endif %}>
+                                    {{ b.nom }}{% if is_absent %} (absent){% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                
+                    <!-- Équipier -->
+                    <td class="{% if ligne.equipier_absent %}absent-cell{% endif %}">
+                        <select name="equipiers[]" class="form-control form-select">
+                            <option value="">—</option>
+                            {% for b in equipiers %}
+                                {% set selected = ligne.equipier_id == b.id %}
+                                {% set is_absent = ligne.equipier_absent and ligne.equipier_id == b.id %}
+                                <option value="{{ b.id }}" {% if selected %}selected{% endif %}>
+                                    {{ b.nom }}{% if is_absent %} (absent){% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                
+                    <!-- Tri 1 -->
+                    <td class="{% if ligne.ramasse_tri1_absent %}absent-cell{% endif %}">
+                        <select name="ramasse_tri1_id[]" class="form-control form-select">
+                            <option value="">—</option>
+                            {% for b in responsables %}
+                                {% set selected = ligne.ramasse_tri1_id == b.id %}
+                                {% set is_absent = ligne.ramasse_tri1_absent and ligne.ramasse_tri1_id == b.id %}
+                                <option value="{{ b.id }}" {% if selected %}selected{% endif %}>
+                                    {{ b.nom }}{% if is_absent %} (absent){% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                
+                    <!-- Tri 2 -->
+                    <td class="{% if ligne.ramasse_tri2_absent %}absent-cell{% endif %}">
+                        <select name="ramasse_tri2_id[]" class="form-control form-select">
+                            <option value="">—</option>
+                            {% for b in responsables %}
+                                {% set selected = ligne.ramasse_tri2_id == b.id %}
+                                {% set is_absent = ligne.ramasse_tri2_absent and ligne.ramasse_tri2_id == b.id %}
+                                <option value="{{ b.id }}" {% if selected %}selected{% endif %}>
+                                    {{ b.nom }}{% if is_absent %} (absent){% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                
+                    <!-- Tri 3 -->
+                    <td class="{% if ligne.ramasse_tri3_absent %}absent-cell{% endif %}">
+                        <select name="ramasse_tri3_id[]" class="form-control form-select">
+                            <option value="">—</option>
+                            {% for b in responsables %}
+                                {% set selected = ligne.ramasse_tri3_id == b.id %}
+                                {% set is_absent = ligne.ramasse_tri3_absent and ligne.ramasse_tri3_id == b.id %}
+                                <option value="{{ b.id }}" {% if selected %}selected{% endif %}>
+                                    {{ b.nom }}{% if is_absent %} (absent){% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                
+                    <!-- Camion -->
+                    <td>
+                        <select name="camions[]" class="form-control form-select">
+                            <option value="">—</option>
+                            {% for c in camions %}
+                                <option value="{{ c.id }}" {% if ligne.camion_id == c.id %}selected{% endif %}>
+                                    {{ c.nom }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                {% endfor %}
+                
+
+                
+            
+<!-- Ligne d'ajout -->
+<tr>
+  <td colspan="11">
+    <form method="post" action="{{ url_for('planning.gestion_planning_ramasse', semaine=semaine)}}" class="d-flex flex-wrap gap-1 align-items-center">
+        <input type="text" name="new_jour" class="form-control" placeholder="Jour" style="width: 90px;">
+        <input type="number" name="new_semaine" class="form-control" placeholder="Semaine" style="width: 90px;" value="{{ semaine.split('-W')[1] }}">
+        <input type="text" name="new_tournee" class="form-control" placeholder="Nouvelle tournée" style="width: 180px;">
+        <select name="new_chauffeur" class="form-control" style="width: 160px;">
+            <option value="">-- Chauffeur --</option>
+            {% for bene in chauffeurs %}<option value="{{ bene.id }}">{{ bene.nom }} {{ bene.prenom }}</option>{% endfor %}
+        </select>
+        <select name="new_equipier" class="form-control" style="width: 160px;">
+            <option value="">-- Équipier --</option>
+            {% for bene in equipiers %}<option value="{{ bene.id }}">{{ bene.nom }} {{ bene.prenom }}</option>{% endfor %}
+        </select>
+        <select name="new_responsable" class="form-control" style="width: 160px;">
+            <option value="">-- Responsable --</option>
+            {% for bene in responsables %}<option value="{{ bene.id }}">{{ bene.nom }} {{ bene.prenom }}</option>{% endfor %}
+        </select>
+        {% for i in range(1, 4) %}
+        <select name="new_ramasse_tri{{ i }}" class="form-control" style="width: 160px;">
+            <option value="">-- Tri {{ i }} --</option>
+            {% for bene in equipiers if bene.ramasse_tri_externe|lower == 'oui' %}<option value="{{ bene.id }}">✅ {{ bene.nom }} {{ bene.prenom }}</option>{% endfor %}
+            <option disabled>──────────</option>
+            {% for bene in equipiers if bene.ramasse_tri_externe|lower != 'oui' %}<option value="{{ bene.id }}">{{ bene.nom }} {{ bene.prenom }}</option>{% endfor %}
+        </select>
+        {% endfor %}
+        <select name="new_camion" class="form-control" style="width: 160px;">
+            <option value="">-- Camion --</option>
+            {% for camion in camions %}<option value="{{ camion.id }}">{{ camion.nom }} ({{ camion.immat }})</option>{% endfor %}
+        </select>
+        <button type="submit" name="action" value="ajouter" class="btn btn-success btn-sm">➕</button>
+    </form>
+  </td>
+</tr>
+
+</tbody>
+        </table>
+    </div>
+    <button type="submit" name="action" value="enregistrer" class="btn btn-primary">
+        💾 Enregistrer les modifications
+    </button></form>
+
+<!-- Styles CSS pour colonnes -->
+<style>
+    table td, table th {
+        white-space: nowrap;
+        vertical-align: middle;
+    }
+    .absent {
+    background-color: #ffe0e0 !important;
+    }
+    .remplacant {
+        background-color: #e6f9e6 !important; /* vert très clair */
+    }
+    .badge-remplacant {
+        background-color: #d4edda;
+        color: #155724;
+        border-radius: 0.25rem;
+        padding: 2px 6px;
+        font-size: 0.8em;
+        margin-left: 5px;
+    }
+    .absent-cell {
+        background-color: #ffb3b3 !important; /* rouge plus foncé pour cellule absente */
+    }
+    .gestion-planning-container {
+        overflow-x: auto;
+        margin-left: auto;
+        margin-right: auto;
+        width: fit-content;
+        max-width: 100%;
+    }
+    .gestion-planning-container table {
+        width: 100%;
+        table-layout: auto;
+    }
+    .gestion-planning-container th, .gestion-planning-container td {
+        padding: 8px;
+        text-align: center;
+    }
+    .gestion-planning-container th {
+        background-color: #f2f2f2;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+    .gestion-planning-container tr:hover {
+        background-color: #f5f5f5;
+    }
+    .gestion-planning-container tr.absent:hover {
+        background-color: #ffe0e0 !important;
+    }
+    .gestion-planning-container tr.remplacant:hover {
+        background-color: #e6f9e6 !important;
+    }
+    .gestion-planning-container tr.absent-cell:hover {
+        background-color: #ffb3b3 !important;
+    }
+    .gestion-planning-container .tournee-ellipsis {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .gestion-planning-container .tournee-ellipsis:hover {
+        overflow: visible;
+        white-space: normal;
+        background-color: #f5f5f5;
+    }
+    .gestion-planning-container .form-control {
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .gestion-planning-container .form-control:focus {
+        border-color: #007bff;
+        box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+    }
+    .gestion-planning-container .form-control:disabled {
+        background-color: #e9ecef;
+        opacity: 1;
+    }
+    tr.absent {
+    background-color: #f8d7da;  /* Rouge très clair */
+    }
+
+    .absent-cell select {
+        border: 2px solid red !important;
+    }
+
+
+</style>
+{% endblock %}

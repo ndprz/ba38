@@ -1,0 +1,218 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Modifier les informations du bénévole{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Modifier les informations du bénévole</h2>
+
+    <div class="d-flex justify-content-between align-items-center flex-wrap mb-3">
+    <div class="photo-hover-container" style="font-size: 1.4em; font-weight: bold; color: #333;">
+        🧍 {{ benevole_prenom }} {{ benevole_nom }}
+        {% if photo_filename %}
+        <div class="photo-popup">
+            <img src="{{ url_for('static', filename='photos_benevoles/' ~ photo_filename) }}?v={{ photo_version }}"
+                alt="Photo">
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="d-flex gap-2 flex-wrap justify-content-end">
+        {% include "boutons_nav_benevole.html" %}
+    </div>
+</div>
+
+
+    <style>
+    .photo-hover-container {
+        position: relative;
+        display: inline-block;
+        cursor: pointer;
+    }
+    .photo-popup {
+        display: none;
+        position: absolute;
+        top: -10px;
+        left: 100%;
+        z-index: 100;
+        background: white;
+        border: 1px solid #ccc;
+        padding: 4px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+    .photo-popup img {
+        max-width: 240px;
+        max-height: 240px;
+        border-radius: 8px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    
+    .photo-hover-container:hover .photo-popup {
+        display: block;
+    }
+    </style>
+
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="alert-container">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form id="updateForm" method="POST" enctype="multipart/form-data"
+          action="{{ url_for('benevoles.update_benevole', benevole_id=benevole_id) }}?{{ next_url }}"
+          class="partner-form">
+        <input type="hidden" name="form_hash" value="{{ form_hash }}">
+        <input type="hidden" name="next_url" value="{{ next_url }}">
+        <input type="hidden" name="go_to" id="go_to">
+        <input type="hidden" name="do_upload" id="do_upload" value="1">
+
+        {% set ordre_groupes = ['informations', 'fonction', 'vie association'] %}
+
+        {% for group_name in ordre_groupes %}
+            {% if grouped_fields[group_name] is defined %}
+            {% set fields = grouped_fields[group_name] %}
+            <fieldset class="mb-3">
+                <legend class="group-title d-flex justify-content-between align-items-center bg-light p-2 rounded" data-group-index="{{ loop.index0 }}">
+                    {{ group_name }} <span class="toggle-icon">▶</span>
+                </legend>
+                <div class="group-content p-3 border rounded bg-white" style="display: none;">
+                    {% for field in fields %}
+                    {% if field['field_name'] != 'id' %}
+                    <div class="form-group">
+                        <label for="{{ field['field_name'] }}">{{ field['field_name'] }}{% if field['required'] %}<span class="text-danger">*</span>{% endif %}</label>
+
+                        {% if field['field_name'] == 'CAR' %}
+                        <select name="CAR" id="CAR" class="form-control" {% if lecture_seule %}disabled{% endif %}>
+                            <option value="">-- Sélectionnez un CAR --</option>
+                            {% for opt in car_options %}
+                            <option value="{{ opt.param_value }}" {% if opt.param_value == field['value'] %}selected{% endif %}>{{ opt.param_value }}</option>
+                            {% endfor %}
+                        </select>
+
+                        {% elif field['type_champ'] == 'oui_non' %}
+                        <select name="{{ field['field_name'] }}" id="{{ field['field_name'] }}" class="form-control" {% if lecture_seule %}disabled{% endif %}>
+                            <option value="">-- Choisir --</option>
+                            <option value="oui" {% if field['value'] == 'oui' %}selected{% endif %}>Oui</option>
+                            <option value="non" {% if field['value'] == 'non' %}selected{% endif %}>Non</option>
+                        </select>
+
+                        {% else %}
+                        <input type="text" id="{{ field['field_name'] }}" name="{{ field['field_name'] }}"
+                            value="{{ field['value'] or '' }}" class="form-control" {% if lecture_seule %}readonly{% endif %}>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </fieldset>
+            {% endif %}
+        {% endfor %}
+
+        <div class="mb-3 mt-4">
+            <label for="photo">📸 Ajouter ou remplacer la photo du bénévole :</label>
+            <input type="file" name="photo" accept="image/*" capture="environment" class="form-control">
+            {% if photo_filename %}
+                <div class="mt-2 text-muted">📁 Fichier actuel : {{ photo_filename }}</div>
+            {% endif %}
+
+        </div>
+
+        {% if not lecture_seule %}
+        <div class="text-end mt-4">
+            <button type="submit" class="btn btn-primary">💾 Enregistrer les modifications</button>
+        </div>
+        {% endif %}
+    </form>
+
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-4">
+        {% if not lecture_seule %}
+        <form method="POST" action="{{ url_for('benevoles.delete_benevole', benevole_id=benevole_id) }}"
+              onsubmit="return confirmDelete()">
+            <input type="hidden" name="confirm_final" id="confirm_final">
+            <button type="submit" class="btn btn-danger">🗑️ Supprimer le Bénévole</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const localStorageKey = "update_benevole_open_index";
+    const groupTitles = document.querySelectorAll(".group-title");
+
+    groupTitles.forEach((title, index) => {
+        const content = title.nextElementSibling;
+        const icon = title.querySelector(".toggle-icon");
+
+        if (localStorage.getItem(localStorageKey) == index) {
+            content.style.display = "block";
+            icon.textContent = "▼";
+        }
+
+        title.addEventListener("click", function () {
+            const isVisible = content.style.display === "block";
+
+            groupTitles.forEach((otherTitle) => {
+                const otherContent = otherTitle.nextElementSibling;
+                const otherIcon = otherTitle.querySelector(".toggle-icon");
+                otherContent.style.display = "none";
+                if (otherIcon) otherIcon.textContent = "▶";
+            });
+
+            if (!isVisible) {
+                content.style.display = "block";
+                icon.textContent = "▼";
+                localStorage.setItem(localStorageKey, index);
+            } else {
+                localStorage.removeItem(localStorageKey);
+            }
+        });
+    });
+
+    let formModified = false;
+    document.querySelectorAll("#updateForm input, #updateForm select, #updateForm textarea")
+        .forEach(input => input.addEventListener("change", () => formModified = true));
+
+    // Intercepter les boutons "nav" si présents dans boutons_nav_benevole.html
+    window.handleNav = function(targetUrl) {
+        if (!formModified) return window.location = targetUrl;
+        if (confirm("⚠️ Vous avez modifié le formulaire.\nSouhaitez-vous enregistrer avant de quitter ?")) {
+            document.getElementById("go_to").value = targetUrl;
+            document.getElementById("do_upload").value = "0";
+            document.getElementById("updateForm").submit();
+        } else if (confirm("❗ Les modifications seront perdues. Continuer sans enregistrer ?")) {
+            window.location = targetUrl;
+        }
+    };
+
+    window.handleReturn = function(targetUrl) {
+        if (!formModified) return window.location = targetUrl;
+        if (confirm("⚠️ Vous avez modifié le formulaire.\nSouhaitez-vous enregistrer avant de revenir ?")) {
+            document.getElementById("go_to").value = targetUrl;
+            document.getElementById("do_upload").value = "0";
+            document.getElementById("updateForm").submit();
+        } else if (confirm("❗ Les modifications seront perdues. Continuer sans revenir ?")) {
+            window.location = targetUrl;
+        }
+    };
+});
+
+function confirmDelete() {
+    if (confirm("⚠️ Êtes-vous sûr de vouloir supprimer ce bénévole ?")) {
+        const confirmation = prompt("Tapez 'supprimer' pour confirmer :");
+        if (confirmation === 'supprimer') {
+            return true;
+        } else {
+            alert("❌ Confirmation incorrecte. Suppression annulée.");
+            return false;
+        }
+    }
+    return false;
+}
+</script>
+{% endblock %}

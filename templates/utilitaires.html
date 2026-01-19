@@ -1,0 +1,36 @@
+{% extends "base_assos.html" %}
+{% block title %}Utilitaires{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>🛠️ Utilitaires</h2>
+  <hr>
+
+  <div class="list-group">
+    <a href="{{ url_for('traitements.traitement_participation') }}"
+       class="list-group-item list-group-item-action">
+      📂 Traitement fichier de participation
+    </a>
+
+    <a href="{{ url_for('traitements.cotisations_start') }}"
+       class="list-group-item list-group-item-action">
+      💰 Facturation des cotisations
+    </a>
+
+  </div>
+
+  <a href="{{ url_for('factures.decouper_factures') }}"
+     class="list-group-item list-group-item-action">
+    🧾 Découpe de factures PDF
+  </a>
+
+  <form action="{{ url_for('factures.nettoyer_factures') }}" method="post"
+        onsubmit="return confirm('⚠️ Cette action supprimera tous les fichiers et ZIP de factures. Continuer ?');">
+    <button type="submit"
+            class="list-group-item list-group-item-action text-danger">
+      🧹 Supprimer anciens fichiers de factures
+    </button>
+  </form>
+
+</div>
+{% endblock %}

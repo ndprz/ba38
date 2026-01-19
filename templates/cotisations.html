@@ -1,0 +1,257 @@
+{% extends "base_assos.html" %}
+{% block title %}Facturation des cotisations{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>💰 Facturation des cotisations</h2>
+
+  {% if job_done %}
+  <div class="alert alert-success d-flex align-items-center gap-2" role="alert">
+    <span class="fw-bold">✅ Traitement terminé.</span>
+    <span>
+      Les factures PDF ont été générées.
+      Vous pouvez maintenant envoyer les emails ou exporter les données.
+    </span>
+  </div>
+  {% endif %}
+
+  {% if mail_mode == "TEST" %}
+  <div class="alert alert-warning d-flex align-items-center">
+    <strong class="me-2">🧪 MODE TEST ACTIF</strong>
+    <span>
+      Tous les mails seront envoyés vers
+      <strong>{{ mail_test_to }}</strong>
+    </span>
+  </div>
+  {% endif %}
+
+  <form method="post"
+        action="{{ url_for('traitements.cotisations_toggle_test_mode') }}">
+    {% if mail_mode == "TEST" %}
+      <button class="btn btn-warning w-100 mb-3">
+        🧪 Mode TEST actif – Désactiver
+      </button>
+    {% else %}
+      <button class="btn btn-outline-warning w-100 mb-3">
+        🧪 Activer le mode TEST
+      </button>
+    {% endif %}
+  </form>
+
+  <!-- ========================= -->
+  <!-- FORMULAIRE DE CALCUL -->
+  <!-- ========================= -->
+  <form method="post" enctype="multipart/form-data" class="mb-4">
+    <div class="row g-3 align-items-end">
+
+      <div class="col-md-2">
+        <label class="form-label">Année de cotisation</label>
+        <input type="number"
+              name="annee"
+              class="form-control"
+              required
+              value="{{ annee or '' }}">
+      </div>
+
+      <div class="col-md-5">
+        <label class="form-label">Fichier PARSOL2 annuel</label>
+        <input type="file"
+              name="parsol_file"
+              class="form-control"
+              required>
+      </div>
+
+      <div class="col-md-2">
+        <label class="form-label">1er numéro de facture</label>
+        <input type="number"
+              name="facture_start"
+              class="form-control"
+              required
+              value="{{ facture_start or '' }}">
+      </div>
+
+      <div class="col-md-3">
+        <button class="btn btn-primary w-100">
+          Lancer le calcul
+        </button>
+      </div>
+
+    </div>
+  </form>
+  {% if resultats %}
+  <!-- ========================= -->
+  <!-- TABLEAU RÉSULTATS -->
+  <!-- ========================= -->
+  <h4>Récapitulatif des cotisations</h4>
+
+  <table class="table table-sm table-striped">
+    <thead>
+      <tr>
+        <th>Code VIF</th>
+        <th>Compte comptable</th>
+        <th>Association</th>
+        <th class="text-end">Bénéficiaires</th>
+        <th class="text-end">Cotisation (€)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in resultats %}
+      <tr>
+        <td>{{ r.code_vif_facture }}</td>
+        <td>{{ r.compte_comptable or "" }}</td>
+        <td>{{ r.nom_association_affichage }}</td>
+        <td class="text-end">{{ r.beneficiaires }}</td>
+        <td class="text-end">{{ r.cotisation }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- ========================= -->
+  <!-- ORPHELINES -->
+  <!-- ========================= -->
+  {% if orphelines %}
+  <div class="alert alert-danger mt-4">
+    <h5>⚠️ Associations absentes de la base</h5>
+    <table class="table table-sm table-bordered">
+      <thead>
+        <tr>
+          <th>Code VIF</th>
+          <th class="text-end">Bénéficiaires</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for code, nb in orphelines.items() %}
+        <tr>
+          <td>{{ code }}</td>
+          <td class="text-end">{{ nb }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- ========================= -->
+  <!-- ACTIONS -->
+  <!-- ========================= -->
+  <div class="row mt-4 g-4 align-items-end">
+
+    <!-- Export Excel -->
+    <div class="col">
+      <form method="post"
+            action="{{ url_for('traitements.cotisations_export_excel') }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+        <input type="hidden" name="data" value='{{ resultats | tojson | safe }}'>
+        <button class="btn btn-success w-100">
+          📊 Export Excel
+        </button>
+      </form>
+    </div>
+
+    <!-- Génération PDF -->
+    <div class="col">
+      <form method="post"
+            action="{{ url_for('traitements.cotisations_generer_pdfs') }}"
+            onsubmit="return lancerGenerationPDF();">
+        <input type="hidden" name="annee" value="{{ annee }}">
+        <input type="hidden" name="data" value='{{ resultats | tojson | safe }}'>
+        <button class="btn btn-secondary w-100">
+          📄 Générer les PDF
+        </button>
+      </form>
+    </div>
+
+    <!-- Envoi mails -->
+    <div class="col">
+      <form method="post"
+            action="{{ url_for('traitements.cotisations_envoyer_mails') }}"
+            onsubmit="if (!confirmerEnvoiProd()) return false;
+                      showOverlay('📧 Envoi des factures par mail en cours…');
+                      return true;">
+
+        <select name="mail_sender"
+                class="form-select mb-2"
+                required>
+          <option value="ba380@banquealimentaire.org">ba380@banquealimentaire.org</option>
+          <option value="ba380.tresorier@banquealimentaire.org">ba380.tresorier@banquealimentaire.org</option>
+          <option value="ba380.comptable@banquealimentaire.org">ba380.comptable@banquealimentaire.org</option>
+        </select>
+
+        <input type="hidden" name="annee" value="{{ annee }}">
+        <input type="hidden" name="data" value='{{ resultats | tojson | safe }}'>
+        <input type="hidden" name="confirmation_prod" id="confirmation_prod" value="0">
+
+        <button class="btn btn-danger w-100">
+          📧 Envoyer les factures
+        </button>
+      </form>
+    </div>
+
+    <!-- Retour -->
+    <a href="{{ url_for('traitements.cotisations_quit') }}"
+      class="btn btn-outline-secondary w-100">
+      ⬅️ Retour aux utilitaires
+    </a>
+
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- ========================= -->
+<!-- JS CONFIRMATION PROD -->
+<!-- ========================= -->
+<script>
+function confirmerEnvoiProd() {
+  const mailMode = "{{ mail_mode }}";
+  const champ = document.getElementById("confirmation_prod");
+
+  if (mailMode !== "PROD") return true;
+
+  if (champ.value === "0") {
+    if (!confirm(
+      "⚠️ MODE PROD\n\nLes factures vont être envoyées AUX ASSOCIATIONS.\n\nConfirmer ?"
+    )) return false;
+
+    champ.value = "1";
+    alert("Confirmation enregistrée.\nCliquez à nouveau pour envoyer.");
+    return false;
+  }
+  return true;
+}
+</script>
+
+<!-- ========================= -->
+<!-- OVERLAY TRAITEMENTS -->
+<!-- ========================= -->
+<div id="pdfOverlay"
+     style="display:none;
+            position:fixed;
+            top:0; left:0;
+            width:100%; height:100%;
+            background:rgba(0,0,0,0.6);
+            z-index:2000;
+            color:white;">
+  <div class="d-flex flex-column justify-content-center align-items-center h-100">
+    <div class="spinner-border text-light mb-4"></div>
+    <h4 id="pdfOverlayText">📄 Traitement en cours…</h4>
+  </div>
+</div>
+
+<script>
+function lancerGenerationPDF() {
+  showOverlay("📄 Création et dépôt des nouveaux PDF…");
+  return true;
+}
+
+function showOverlay(message) {
+  document.getElementById("pdfOverlayText").innerText = message;
+  document.getElementById("pdfOverlay").style.display = "block";
+  document.querySelectorAll("button").forEach(b => b.disabled = true);
+}
+</script>
+
+{% endblock %}
+
+

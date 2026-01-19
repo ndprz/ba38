@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Modifier Utilisateur{% endblock %}
+
+{% block content %}
+<h2>Modifier l'utilisateur</h2>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+{% if form.errors %}
+    <div class="alert alert-danger">
+        <ul>
+        {% for field, errors in form.errors.items() %}
+            {% for error in errors %}
+                <li><strong>{{ field }}</strong> : {{ error }}</li>
+            {% endfor %}
+        {% endfor %}
+        </ul>
+    </div>
+{% endif %}
+
+<form method="POST">
+    {{ form.hidden_tag() }}
+
+    <div class="form-group">
+        <label>Nom d'utilisateur</label>
+        {{ form.username(class="form-control") }}
+    </div>
+
+    <div class="form-group">
+        <label>Email</label>
+        {{ form.email(class="form-control") }}
+    </div>
+
+    <div class="form-group">
+        <label>Nouveau Mot de Passe (laisser vide pour ne pas changer)</label>
+        {{ form.password(class="form-control") }}
+    </div>
+
+    <div class="mb-3">
+        {{ form.actif.label(class="form-label") }}
+        {{ form.actif(class="form-select") }}
+    </div>
+
+    <div class="form-group">
+        <label>Rôle</label>
+        {{ form.role(class="form-control") }}
+    </div>
+
+    <button type="submit" class="btn btn-success">Enregistrer</button>
+    <a href="{{ url_for('gestion_utilisateurs') }}" class="btn btn-secondary">Annuler</a>
+</form>
+{% endblock %}

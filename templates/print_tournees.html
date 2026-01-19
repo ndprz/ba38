@@ -1,0 +1,53 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Liste des Tournées{% endblock %}
+
+{% block content %}
+<style>
+@media print {
+  header, footer, nav, .btn, .text-end, .d-flex.justify-content-between.align-items-center.mb-3 {
+    display: none !important;
+  }
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    margin: 0;
+    padding: 0;
+  }
+  @page {
+    size: A4 landscape;
+    margin: 1cm;
+  }
+}
+</style>
+
+<h2>📄 Liste des tournées</h2>
+<p><em>Version imprimable</em></p>
+
+<table class="table table-bordered table-sm">
+    <thead class="table-light">
+        <tr>
+            <th style="width: 15%;">Nom</th>
+            <th style="width: 85%;">Fournisseurs (ordre)</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for t in tournees.values() if t.fournisseurs | length > 0 %}
+        <tr>
+            <td>{{ t.nom }}</td>
+            <td>
+              {{ t.fournisseurs
+                | sort(attribute='ordre')
+                | map(attribute='nom')
+                | join(', ') 
+              }}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="text-end mt-4">
+    <button onclick="window.print();" class="btn btn-outline-secondary">🖨 Imprimer</button>
+</div>
+{% endblock %}

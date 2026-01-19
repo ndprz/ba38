@@ -1,0 +1,200 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Gestion des Absences{% endblock %}
+
+{% block content %}
+
+{# ============================== #
+# 🔝 Bandeau supérieur avec bouton de retour
+# ============================== #}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>🔝 Gestion des Absences</h2>
+
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('planning.planning_main') }}" class="btn btn-outline-secondary">
+            🏠 Retour au menu Planning
+        </a>
+    </div>
+</div>
+
+
+{# ============================== #
+# 📅 Formulaire d’ajout d’une absence
+# ============================== #}
+<form method="POST" id="form-absence" class="mb-4">
+    <div class="row">
+        <!-- Sélection du bénévole -->
+        <div class="col-md-4">
+            <label for="benevole_id">Choisir un bénévole</label>
+            <select name="benevole_id" id="benevole_id" class="form-control" required>
+                <option value="">-- Sélectionner --</option>
+                {% for b in benevoles %}
+                <option value="{{ b.id }}">{{ b.nom }} {{ b.prenom }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Saisie date de début -->
+        <div class="col-md-3">
+            <label for="date_debut">Date début (jj/mm/aaaa)</label>
+            <input type="text" name="date_debut" id="date_debut" class="form-control" required placeholder="jj/mm/aaaa">
+            <small class="text-danger"></small>
+        </div>
+
+        <!-- Saisie date de fin -->
+        <div class="col-md-3">
+            <label for="date_fin">Date fin (jj/mm/aaaa)</label>
+            <input type="text" name="date_fin" id="date_fin" class="form-control" required placeholder="jj/mm/aaaa">
+            <small class="text-danger"></small>
+        </div>
+
+        <!-- Bouton ajouter -->
+        <div class="col-md-2 d-flex align-items-end">
+            <button type="submit" name="action" value="ajouter_absence" class="btn btn-success w-100">
+                ➕ Ajouter
+            </button>
+        </div>
+    </div>
+</form>
+
+<hr>
+
+{# ============================== #
+# 📋 Tableau des absences enregistrées
+# ============================== #}
+<h5>📄 Absences enregistrées</h5>
+<table class="table table-bordered table-sm align-middle">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Bénévole</th>
+            <th>Date début</th>
+            <th>Date fin</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for a in absences %}
+        <tr>
+            <form method="POST" action="{{ url_for('planning_utils.modifier_absence', absence_id=a['id']) }}">
+                <td class="text-muted">{{ a['benevole_id'] }}</td>
+                <td>{{ a['nom'] }} {{ a['prenom'] }}</td>
+                <td><input type="text" name="date_debut" class="form-control" value="{{ a['date_debut'] }}"></td>
+                <td><input type="text" name="date_fin" class="form-control" value="{{ a['date_fin'] }}"></td>
+                <td>
+                    <button type="submit" class="btn btn-warning btn-sm">💾 Enregistrer</button>
+            </form>
+
+            <form method="POST"
+                  action="{{ url_for('planning_utils.supprimer_absence', absence_id=a['id']) }}"
+                  style="display:inline;"
+                  onsubmit="return confirm('Confirmer la suppression ?');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑 Supprimer</button>
+            </form>
+                </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{# ============================== #
+# 🔙 Bouton de retour au menu principal (bas de page)
+# ============================== #}
+<a href="{{ url_for('planning.planning_main') }}" class="btn btn-outline-secondary mb-3">
+    ⬅️ Retour au menu Planning
+</a>
+
+<hr>
+
+{# ============================== #
+# ⚙️ Outils de filtrage et de purge
+# ============================== #}
+<div class="d-flex" style="gap: 20px; margin-top: 20px;">
+    <form method="GET">
+        {% if voir_toutes %}
+            <button type="submit" class="btn btn-outline-primary">🔙 Revenir au filtrage</button>
+        {% else %}
+            <input type="hidden" name="voir_toutes" value="1">
+            <button type="submit" class="btn btn-outline-primary">👁️ Voir toutes les absences</button>
+        {% endif %}
+    </form>
+
+    <form method="POST">
+        <input type="hidden" name="action" value="purger_absences">
+        <button type="submit" class="btn btn-outline-danger"
+                onclick="return confirm('Êtes-vous sûr de vouloir purger les anciennes absences ? Cette action est irréversible.')">
+            🧹 Purger les absences closes
+        </button>
+    </form>
+</div>
+
+
+{# ============================== #
+# 🧠 Scripts de validation et formatage des dates
+# ============================== #}
+<script>
+// Fonction de formatage automatique
+function autoFormatDate(input) {
+    input.addEventListener('input', () => {
+        let val = input.value.replace(/\D/g, '');
+        if (val.length > 8) val = val.slice(0, 8);
+        if (val.length >= 4) {
+            let jj = val.slice(0, 2);
+            let mm = val.slice(2, 4);
+            let aaaa = (new Date()).getFullYear();
+            if (val.length >= 6) aaaa = val.slice(4, 8);
+            input.value = `${jj}/${mm}/${aaaa}`;
+        }
+    });
+}
+
+// Validation du format jj/mm/aaaa
+function validateDateInput(input) {
+    const val = input.value;
+    const parts = val.split('/');
+    const msg = input.nextElementSibling;
+    msg.textContent = "";
+
+    if (parts.length !== 3) {
+        msg.textContent = "❌ Format attendu jj/mm/aaaa";
+        return false;
+    }
+
+    const [jj, mm, aaaa] = parts.map(x => parseInt(x));
+    const d = new Date(aaaa, mm - 1, jj);
+    if (isNaN(d) || d.getFullYear() !== aaaa || d.getMonth() !== mm -1 || d.getDate() !== jj) {
+        msg.textContent = "❌ Date invalide";
+        return false;
+    }
+    return true;
+}
+
+// Initialisation après chargement de la page
+window.addEventListener('DOMContentLoaded', () => {
+    const debut = document.getElementById('date_debut');
+    const fin = document.getElementById('date_fin');
+
+    autoFormatDate(debut);
+    autoFormatDate(fin);
+
+    // Application du formatage dans le tableau des absences
+    document.querySelectorAll("table input[name='date_debut'], table input[name='date_fin']").forEach(input => {
+        autoFormatDate(input);
+    });
+
+    document.getElementById('form-absence').addEventListener('submit', (e) => {
+        const validDebut = validateDateInput(debut);
+        const validFin = validateDateInput(fin);
+
+        if (!validDebut || !validFin) {
+            e.preventDefault();
+            alert("❌ Merci de corriger les dates avant de valider.");
+        }
+    });
+
+    const inputBenevole = document.querySelector("input[name='benevole']");
+    if (inputBenevole) inputBenevole.focus();
+});
+</script>
+
+{% endblock %}

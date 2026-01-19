@@ -1,0 +1,48 @@
+<div class="card mb-3">
+  <div class="card-header bg-warning">
+    1) Mise à jour de l’annexe 1bis de la convention de partenariat
+  </div>
+  <div class="card-body">
+    <p class="text-muted">
+      Vérifier que l’annexe 1bis est bien remplie, à jour, et disponible dans le Drive.
+    </p>
+
+    {% if lecture_seule %}
+      <p><strong>Lien vers le Drive :</strong>
+        {% if fiche.get("drive_link") %}
+          <a href="{{ fiche.get('drive_link') }}" target="_blank" class="btn btn-sm btn-outline-primary ms-2">
+            🔗 Ouvrir le document
+          </a>
+        {% else %}
+          <em>Aucun lien renseigné</em>
+        {% endif %}
+      </p>
+    {% else %}
+      <label class="form-label">
+        Le document annexe 1bis est-il bien actualisé et disponible dans le Drive ?
+      </label>
+      <div class="input-group">
+        <input type="url" class="form-control" name="drive_link"
+               id="drive_link" value="{{ fiche.get('drive_link','') }}"
+               placeholder="https://drive.google.com/...">
+        <button class="btn btn-outline-primary" type="button"
+                onclick="verifierDriveLink()">🔗 Vérifier</button>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+function verifierDriveLink() {
+  const url = document.getElementById("drive_link").value.trim();
+  if (!url) {
+    alert("⚠️ Aucun lien renseigné.");
+    return;
+  }
+  if (!url.startsWith("https://drive.google.com/")) {
+    alert("❌ Ce lien ne semble pas être un lien Google Drive valide.");
+    return;
+  }
+  window.open(url, "_blank");
+}
+</script>

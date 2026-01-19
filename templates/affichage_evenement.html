@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Affichage Événements</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      color: #fff;
+      font-family: system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    #zone {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      transition: opacity 0.8s ease-in-out;
+    }
+
+    .hidden { opacity: 0; }
+
+    .fullscreen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain;
+      object-position: center;
+      background: #000;
+      border: none;
+      display: block;
+    }
+
+    .docSlide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      transition: opacity 0.8s ease-in-out;
+    }
+    .docSlide.active {
+      display: flex;
+      opacity: 1;
+    }
+
+    .docSlide img {
+      max-width: 100vw;
+      max-height: 100vh;
+      object-fit: contain;
+      display: block;
+    }
+
+    .msg {
+      text-align: center;
+      max-width: 90vw;
+    }
+
+    .msg h1 {
+      font-size: 3rem;
+      color: #ff7f00;
+      margin-bottom: 0.5rem;
+    }
+
+    .msg p {
+      font-size: 2rem;
+      line-height: 1.4;
+      margin-top: 0.5rem;
+      color: #fff;
+    }
+
+    video::-webkit-media-controls {
+      display: none !important;
+    }
+
+    .badge {
+      position: fixed;
+      right: 8px;
+      bottom: 8px;
+      opacity: .25;
+      font-size: .8rem;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="zone">
+    <div class="msg">
+      <h1>Chargement…</h1>
+      <p>Merci de patienter.</p>
+    </div>
+  </div>
+
+  <div class="badge">BA380 • Écran événements</div>
+
+  <script>
+    let playlist = [];
+    let index = 0;
+    let timer = null;
+
+    function sortImagesByPage(images) {
+    // Ex: "..._page_12.jpg" → 12
+    const pageNum = (p) => {
+      const m = String(p).match(/_page_(\d+)\.(?:jpe?g|png|webp)$/i);
+      return m ? parseInt(m[1], 10) : Number.MAX_SAFE_INTEGER; // sans numéro → à la fin
+    };
+    // Tri numérique stable
+    return [...images].sort((a, b) => pageNum(a) - pageNum(b));
+  }
+
+
+    // =========================================================
+    // 🧩 Génération du contenu HTML
+    // =========================================================
+    function htmlPour(e) {
+
+      // === 🎥 Vidéo ===
+      if (e.type === "video") {
+        let src = (e.fichier_path && e.fichier_path.trim()) || e.contenu || "";
+        if (!src.startsWith("/static/")) src = "/static/evenements/" + src.split("/").pop();
+        const base = src.replace(/\.[^/.]+$/, "");
+        const trackPath = base + ".vtt";
+        return `
+          <video class="fullscreen" autoplay playsinline loop muted>
+            <source src="${src}" type="video/mp4">
+            <track src="${trackPath}" kind="subtitles" srclang="fr" label="Français" default>
+          </video>`;
+      }
+
+      // === 📄 Document (PDF ou images converties) ===
+      if (e.type === "document") {
+        const src = (e.fichier_path && e.fichier_path.trim()) || e.contenu || "";
+        const srcStr = String(src || "").toLowerCase();
+
+      // 🖼️ PRIORITÉ : si des images sont fournies, diaporama
+      if (e.images && e.images.length > 0) {
+        const ordered = sortImagesByPage(e.images);
+        const slides = ordered.map((img, i) => `
+          <div class="docSlide${i === 0 ? ' active' : ''}">
+            <img src="${img}" class="fullscreen">
+          </div>`).join("");
+        return `<div id="diaporama" style="position:relative; width:100vw; height:100vh;">${slides}</div>`;
+      }
+
+
+        // 🧾 PDF brut
+        if (srcStr.endsWith(".pdf")) {
+          return `<iframe class="fullscreen" src="${src}#view=FitH" allow="fullscreen"></iframe>`;
+        }
+
+        // 🖼️ Image directe
+        if (srcStr.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
+          return `<img src="${src}" class="fullscreen">`;
+        }
+
+        // Fallback
+        return `<iframe class="fullscreen" src="${src}"></iframe>`;
+      }
+
+      // === 💬 Message texte ===
+      const titre = e.titre || "";
+      const contenu = e.contenu || "";
+      const img = e.image_path
+        ? `<div style="margin-top:2rem;">
+             <img src="${e.image_path}" class="fullscreen" style="max-height:50vh; max-width:90vw; object-fit:contain; border-radius:10px;">
+           </div>`
+        : "";
+
+      return `<div class="msg"><h1>${titre}</h1><p>${contenu}</p>${img}</div>`;
+    }
+
+    // =========================================================
+    // 🔁 Affichage de l'événement suivant
+    // =========================================================
+    function playNext() {
+      const zone = document.getElementById("zone");
+
+      if (playlist.length === 0) {
+        zone.innerHTML = `<div class="msg"><h1>Aucun événement en cours</h1></div>`;
+        return;
+      }
+
+      const ev = playlist[index];
+      zone.classList.add("hidden");
+
+      setTimeout(() => {
+        zone.innerHTML = htmlPour(ev);
+        zone.classList.remove("hidden");
+
+        // 🖼️ Diaporama (si plusieurs images)
+        const slides = zone.querySelectorAll(".docSlide");
+        if (slides.length > 1) {
+          let i = 0;
+          const interval = (ev.duree_affichage || 8) * 1000;
+
+          // durée totale = nb_pages × duree_affichage
+          const totalDuration = slides.length * interval;
+
+          slides.forEach((s, idx) => s.classList.toggle("active", idx === 0));
+
+          const loop = setInterval(() => {
+            slides.forEach((s, idx) => s.classList.toggle("active", idx === i));
+            i = (i + 1) % slides.length;
+          }, interval);
+
+          // ⏱ après la dernière page, on passe à l'événement suivant
+          setTimeout(() => {
+            clearInterval(loop);
+            nextEvent();
+          }, totalDuration + 500);
+        } else {
+          // 📄 Pas de diaporama : affichage normal
+          setTimeout(nextEvent, (ev.duree_affichage || 10) * 1000);
+        }
+      }, 400);
+
+      function nextEvent() {
+        index = (index + 1) % playlist.length;
+        playNext();
+      }
+    }
+
+    // =========================================================
+    // 🔄 Récupération de la playlist
+    // =========================================================
+    async function refresh() {
+      try {
+        const r = await fetch("/api/evenements_actifs", { cache: "no-store" });
+        const data = await r.json();
+        const changed = JSON.stringify(data.map(d => d.id)) !== JSON.stringify(playlist.map(d => d.id));
+        playlist = data;
+        if (changed) {
+          index = 0;
+          playNext();
+        }
+      } catch (e) {
+        console.error("Erreur lors du refresh:", e);
+      }
+    }
+
+    (async () => {
+      await refresh();
+      setInterval(refresh, 30000);
+      if (playlist.length === 0) playNext();
+    })();
+  </script>
+</body>
+</html>

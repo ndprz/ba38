@@ -1,0 +1,392 @@
+{% extends "base_assos.html" %}
+
+{% block title %}Modifier les informations du partenaire{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <!-- 🔹 En-tête -->
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+    <h2 class="mb-0">Modifier les informations du partenaire</h2>
+    {% if date_modif or heure_modif or user_modif %}
+    <div class="text-muted small ms-3">
+      🕒 Modifié le {{ date_modif or "?" }} à {{ heure_modif or "?" }} UTC
+      {% if user_modif %}par {{ user_modif }}{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  
+  <!-- 🔹 Messages flash -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="alert-container">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- 🔹 Formulaire principal -->
+  <form id="updateForm" method="POST" class="partner-form" action="{{ url_for('partenaires.update_partner', partner_id=partner_id) }}">
+    <input type="hidden" name="id" value="{{ partner_id }}">
+    <input type="hidden" name="go_to" id="go_to">
+    <input type="hidden" name="do_upload" id="do_upload" value="1">
+    <input type="hidden" name="form_hash" id="form_hash" value="{{ form_hash }}">
+
+    {% if nom_association %}
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+      <div style="font-size: 1.4em; font-weight: bold; color: #333;">
+        🏷️ {{ nom_association }}
+        {% if lecture_seule %}
+          <span class="badge bg-secondary ms-2">Lecture seule</span>
+        {% endif %}
+      </div>
+      <div>{% include "boutons_nav.html" %}</div>
+    </div>
+    {% endif %}
+
+    <!-- 🔹 Groupes dynamiques -->
+    {% for group_name, fields in grouped_fields.items() %}
+    <fieldset class="mb-3">
+      <legend class="group-title d-flex justify-content-between align-items-center bg-light p-2 rounded"
+              data-group-index="{{ loop.index0 }}">
+        {{ group_name }} <span class="toggle-icon">▶</span>
+      </legend>
+      <div class="group-content p-3 border rounded bg-white" style="display: none;">
+        {% for field in fields %}
+          {% if field['field_name'] == 'id' %}
+            {# Ignorer le champ technique ID #}
+
+          {% elif field['field_name'] == 'produits_souhaites' %}
+            {# Exemple spécial : cases à cocher #}
+            {% set selected = (field['value'] or '').split(',') %}
+            <div class="row mb-2">
+              <div class="col-md-4 fw-bold text-end">Produits souhaités</div>
+              <div class="col-md-8">
+                {% for opt in ['Sec', 'Frais', 'Surgelés'] %}
+                <div class="form-check">
+                  <input type="checkbox" class="form-check-input" name="produits_souhaites" value="{{ opt }}" {% if opt in selected %}checked{% endif %}>
+                  <label class="form-check-label">{{ opt }}</label>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+
+          {% elif field['field_name'] == 'autres_approvisionnements' %}
+            {# Exemple spécial : cases à cocher multiples #}
+            {% set selected = (field['value'] or '').split(',') %}
+            <div class="row mb-2">
+              <div class="col-md-4 fw-bold text-end">Autres approvisionnements</div>
+              <div class="col-md-8">
+                {% for opt in ['Ramasse', 'Dons', 'Achats', 'Jardin Partagé'] %}
+                <div class="form-check">
+                  <input type="checkbox" class="form-check-input" name="autres_approvisionnements" value="{{ opt }}" {% if opt in selected %}checked{% endif %}>
+                  <label class="form-check-label">{{ opt }}</label>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+
+          {% else %}
+            <!-- 🔹 Champs génériques avec gestion type -->
+            <div class="row mb-2" id="row_{{ field['field_name'] }}">
+              <div class="col-md-4 fw-bold text-end">
+                {{ field['field_name'] | format_label }}
+                {% if field['required'] %}
+                  <span class="text-danger">*</span>
+                {% endif %}
+              </div>
+              <div class="col-md-8">
+                {% set invalide = champs_invalides is defined and field['field_name'] in champs_invalides %}
+                {% set css = 'form-control' %}
+                {% if invalide %}{% set css = css + ' is-invalid' %}{% endif %}
+
+                {# 🔽 Sélection du rendu en fonction du type de champ #}
+                {% if field['field_name'] == 'CAR' %}
+                  <select name="CAR" id="CAR" class="{{ css }}" {% if lecture_seule %}disabled{% endif %}>
+                    <option value="">-- Sélectionnez un CAR --</option>
+                    {% for opt in car_options %}
+                    <option value="{{ opt.param_value }}" {% if opt.param_value == field['value'] %}selected{% endif %}>{{ opt.param_value }}</option>
+                    {% endfor %}
+                  </select>
+
+                {% elif field['type_champ'] == 'oui_non' %}
+                  <select name="{{ field['field_name'] }}" id="{{ field['field_name'] }}" class="{{ css }}" 
+                          {% if lecture_seule %}disabled{% endif %}
+                          onchange="toggleReseauNational(); toggleStatutAutre();">
+                    <option value="">-- Choisir --</option>
+                    <option value="oui" {% if field['value'] == 'oui' %}selected{% endif %}>Oui</option>
+                    <option value="non" {% if field['value'] == 'non' %}selected{% endif %}>Non</option>
+                  </select>
+
+                {% elif field['type_champ'] == 'statut_liste' %}
+                  <select name="{{ field['field_name'] }}" id="statut" class="{{ css }}" 
+                          {% if lecture_seule %}disabled{% endif %} onchange="toggleStatutAutre()">
+                    <option value="">-- Choisir --</option>
+                    <option value="Association" {% if field['value'] == 'Association' %}selected{% endif %}>Association</option>
+                    <option value="CCAS/CIAS" {% if field['value'] == 'CCAS/CIAS' %}selected{% endif %}>CCAS/CIAS</option>
+                    <option value="Autres" {% if field['value'] == 'Autres' %}selected{% endif %}>Autres</option>
+                  </select>
+
+                {% elif field['field_name'] == 'statut_autre' %}
+                  <input type="text" id="statut_autre" name="statut_autre"
+                         value="{{ field['value'] or '' }}"
+                         class="{{ css }}"
+                         {% if lecture_seule %}readonly{% endif %}
+                         style="{% if data.statut != 'Autres' %}display:none;{% endif %}">
+
+                {% elif field['type_champ'] == 'statut' %}
+                  <select name="{{ field['field_name'] }}" id="{{ field['field_name'] }}" class="{{ css }}" 
+                          {% if lecture_seule %}disabled{% endif %}>
+                    <option value="">-- Choisir --</option>
+                    <option value="salarié" {% if field['value'] == 'salarié' %}selected{% endif %}>Salarié</option>
+                    <option value="bénévole" {% if field['value'] == 'bénévole' %}selected{% endif %}>Bénévole</option>
+                  </select>
+
+                {% elif field['field_name'] == 'reseau_national' %}
+                  <select name="reseau_national" id="reseau_national" class="{{ css }}" 
+                          {% if lecture_seule %}disabled{% endif %}
+                          style="{% if data.appartient_grand_reseau_habilitation_nationale != 'oui' %}display:none;{% endif %}">
+                    <option value="">-- Sélectionnez un réseau national --</option>
+                    {% for reseau in liste_reseaux %}
+                    <option value="{{ reseau }}" {% if reseau == field['value'] %}selected{% endif %}>{{ reseau }}</option>
+                    {% endfor %}
+                  </select>
+
+                {% elif field['type_champ'] == 'date' %}
+                  <input type="text" id="{{ field['field_name'] }}" name="{{ field['field_name'] }}"
+                        value="{{ field['value'] or '' }}"
+                        class="{{ css }}"
+                        onblur="formatDateInput(this)"
+                        placeholder="JJMMAAAA ou JJMM ou JJMMAA"
+                        {% if lecture_seule %}readonly{% endif %}>
+
+                {% elif field['field_name'] == 'categorie' %}
+                  <select name="categorie" id="categorie" class="{{ css }}" {% if lecture_seule %}disabled{% endif %}>
+                    <option value="">-- Choisir --</option>
+                    <option value="Catégorie 1" {% if field['value'] == 'Catégorie 1' %}selected{% endif %}>Catégorie 1</option>
+                    <option value="Catégorie 2" {% if field['value'] == 'Catégorie 2' %}selected{% endif %}>Catégorie 2</option>
+                  </select>
+
+                {% else %}
+                  <input type="text" id="{{ field['field_name'] }}" name="{{ field['field_name'] }}"
+                          value="{{ field['value'] or '' }}"
+                          class="{{ css }}"
+                          {% if lecture_seule %}readonly{% endif %}>
+                {% endif %}
+
+                {% if invalide %}
+                <div class="invalid-feedback">❌ Ce champ contient une valeur invalide.</div>
+                {% endif %}
+              </div>
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </fieldset>
+    {% endfor %}
+
+    {% if not lecture_seule %}
+    <div class="text-end mt-4">
+      <div class="d-flex justify-content-end mt-4">
+        {% include "boutons_nav.html" %}
+      </div>
+    </div>
+    {% endif %}
+  </form>
+
+  <!-- 🔹 Boutons bas de page -->
+  <div class="d-flex justify-content-between align-items-center mt-4 flex-wrap gap-2">
+    {% if not lecture_seule %}
+    <form method="POST" action="{{ url_for('partenaires.delete_partner', partner_id=partner_id) }}" onsubmit="return confirmDelete()">
+      <button type="submit" class="btn btn-danger">🗑️ Supprimer le Partenaire</button>
+      <input type="hidden" name="confirm" id="confirm">
+      <input type="hidden" name="confirm_final" id="confirm_final">
+    </form>
+
+    <button type="button" id="btnDuplicate" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#modalDuplicate">
+      ➕ Dupliquer
+    </button>
+    {% endif %}
+
+
+    <form method="post" action="{{ url_for('partenaires.generate_annexe1', partner_id=partner_id) }}" style="display:inline;">
+      <button type="submit" class="btn btn-secondary">📄 Annexe 1 bis</button>
+    </form>
+  </div>
+</div>
+
+
+<!-- 🔹 Modal Duplication -->
+<div class="modal fade" id="modalDuplicate" tabindex="-1" aria-labelledby="modalDuplicateLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('partenaires.duplicate_partner', partner_id=partner_id) }}">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalDuplicateLabel">Dupliquer le partenaire</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="new_nom_association" class="form-label">Nouveau nom de l’association</label>
+            <input type="text" class="form-control" id="new_nom_association" name="new_nom_association" required>
+          </div>
+          <p class="text-muted small">⚠️ Le nouveau nom doit être différent et unique.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-warning">➕ Créer la copie</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+
+
+<!-- 🔹 Scripts -->
+<script>
+/* ------------------------------
+   GESTION DEPLIAGE GROUPES
+   ------------------------------ */
+document.addEventListener("DOMContentLoaded", function () {
+    const localStorageKey = "update_partner_open_index";
+    const groupTitles = document.querySelectorAll(".group-title");
+
+    groupTitles.forEach((title, index) => {
+        const content = title.nextElementSibling;
+        const icon = title.querySelector(".toggle-icon");
+        const key = title.dataset.groupIndex || index;
+
+        // Restaurer état
+        if (localStorage.getItem(localStorageKey) == key) {
+            content.style.display = "block";
+            if (icon) icon.textContent = "▼";
+        }
+
+        // Gestion clic
+        title.addEventListener("click", function () {
+            const isVisible = content.style.display === "block";
+            groupTitles.forEach((otherTitle) => {
+                const otherContent = otherTitle.nextElementSibling;
+                const otherIcon = otherTitle.querySelector(".toggle-icon");
+                if (otherContent) otherContent.style.display = "none";
+                if (otherIcon) otherIcon.textContent = "▶";
+            });
+            if (!isVisible) {
+                content.style.display = "block";
+                if (icon) icon.textContent = "▼";
+                localStorage.setItem(localStorageKey, key);
+            } else {
+                if (icon) icon.textContent = "▶";
+                localStorage.removeItem(localStorageKey);
+            }
+        });
+    });
+
+    // 👉 Détection modifications formulaire
+    document.querySelectorAll("#updateForm input, #updateForm select, #updateForm textarea").forEach(input => {
+        input.addEventListener("change", () => { formModified = true; });
+    });
+});
+
+let formModified = false;
+
+/* ------------------------------
+   FONCTIONS ANNEXES
+   ------------------------------ */
+function confirmDelete() {
+    const step1 = confirm("⚠️ Voulez-vous vraiment supprimer ce partenaire ?");
+    if (!step1) return false;
+
+    const step2 = prompt("Pour confirmer, tapez supprimer en minuscules :");
+    if (step2 !== "supprimer") {
+        alert("Suppression annulée ou confirmation incorrecte.");
+        return false;
+    }
+
+    document.getElementById("confirm").value = "oui";
+    document.getElementById("confirm_final").value = "supprimer";
+    return true;
+}
+
+function toggleStatutAutre() {
+  var statut = document.getElementById("statut");
+  var champAutre = document.getElementById("statut_autre");
+  if (champAutre && statut) {
+    champAutre.style.display = (statut.value === "Autres") ? "block" : "none";
+  }
+}
+
+function toggleReseauNational() {
+  var selectAppartient = document.getElementById('appartient_grand_reseau_habilitation_nationale');
+  var selectReseau = document.getElementById('reseau_national');
+  if (selectAppartient && selectReseau) {
+    selectReseau.style.display = (selectAppartient.value === 'oui') ? 'block' : 'none';
+  }
+}
+
+function formatDateInput(input) {
+  let val = input.value.replace(/\D/g, "");
+  if (val.length === 4) {
+    let jour = val.slice(0, 2);
+    let mois = val.slice(2, 4);
+    let annee = new Date().getFullYear();
+    input.value = `${jour}/${mois}/${annee}`;
+  } else if (val.length === 6) {
+    let jour = val.slice(0, 2);
+    let mois = val.slice(2, 4);
+    let annee = "20" + val.slice(4, 6);
+    input.value = `${jour}/${mois}/${annee}`;
+  } else if (val.length === 8) {
+    let jour = val.slice(0, 2);
+    let mois = val.slice(2, 4);
+    let annee = val.slice(4, 8);
+    input.value = `${jour}/${mois}/${annee}`;
+  }
+}
+
+function handleSave() {
+    if (!formModified) {
+        alert("Aucune modification détectée.");
+        return;
+    }
+    if (confirm("Souhaitez-vous enregistrer les modifications ?")) {
+        document.getElementById("go_to").value = "";
+        document.getElementById("do_upload").value = "1";
+        document.getElementById("updateForm").submit();
+    }
+}
+
+function handleNav(targetUrl) {
+    if (!formModified) {
+        window.location.href = targetUrl;
+        return;
+    }
+    if (confirm("⚠️ Vous avez modifié ce partenaire.\nSouhaitez-vous enregistrer vos modifications avant de continuer ?")) {
+        document.getElementById("go_to").value = targetUrl;
+        document.getElementById("do_upload").value = "1";
+        document.getElementById("updateForm").submit();
+    } else if (confirm("❗ Les modifications non enregistrées seront perdues.\nVoulez-vous vraiment continuer sans enregistrer ?")) {
+        window.location.href = targetUrl;
+    }
+}
+
+function handleReturn(targetUrl) {
+    if (formModified) {
+        if (confirm("⚠️ Vous avez modifié ce partenaire.\nSouhaitez-vous enregistrer les modifications avant de revenir à la liste ?")) {
+            document.getElementById("go_to").value = targetUrl;
+            document.getElementById("do_upload").value = "1";
+            document.getElementById("updateForm").submit();
+        } else {
+            window.location.href = targetUrl;
+        }
+    } else {
+        window.location.href = targetUrl;
+    }
+}
+</script>
+
+{% endblock %}
+

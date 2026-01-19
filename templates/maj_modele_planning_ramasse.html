@@ -1,0 +1,141 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Mise à jour du modèle de planning ramasse{% endblock %}
+
+{% block content %}
+<h2>🛠️ Mise à jour du modèle de planning ramasse</h2>
+
+<a href="{{ url_for('planning.planning_main') }}" class="btn btn-outline-secondary mb-3">
+    ← Retour au planning
+</a>
+<a href="{{ url_for('planning.apercu_modele_planning_ramasse') }}" target="_blank" class="btn btn-outline-dark mb-3 ms-2">
+    🖨️ Aperçu du modèle (A3)
+</a>
+
+
+<form method="POST" action="{{ url_for('planning.maj_modele_planning_ramasse') }}">
+    {% for index in range(model | length) %}
+        {% set ligne = model[index] %}
+        {% if ligne.jour != 'vendredi' or travail_vendredi %}
+            {% if loop.index0 % 5 == 0 %}
+                {% if not loop.first %}</tbody></table>{% endif %}
+                <h4 class="mt-4 text-capitalize">{{ ligne.jour }}</h4>
+                <table class="table table-bordered table-sm">
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>Tournée</th>
+                            <th>Chauffeur</th>
+                            <th>Équipier</th>
+                            <th>Responsable Tri</th>
+                            <th>Tri 1</th>
+                            <th>Tri 2</th>
+                            <th>Tri 3</th>
+                            <th>Camion</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            {% endif %}
+            <tr>
+                <td>{{ ligne.numero }}</td>
+                <td>
+                    <select name="tournee_{{ ligne.jour }}_{{ ligne.numero }}" class="form-select form-select-sm" style="max-width: 160px;" title="Fournisseurs : {{ ligne.fournisseurs }}">
+                        <option value="">—</option>
+                        {% for t in tournees %}
+                            <option value="{{ t.tournee_id }}" {% if t.tournee_id == ligne.tournee_id %}selected{% endif %} title="Fournisseurs : {{ t.fournisseurs }}">
+                                {{ t.nom }}{% if t.fournisseurs %} — {{ t.fournisseurs }}{% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select name="chauffeur_{{ ligne.jour }}_{{ ligne.numero }}" class="form-select form-select-sm" style="max-width: 150px;">
+                        <option value="">—</option>
+                        {% for b in benevoles if b.ramasse_chauffeur|lower == 'oui' %}
+                            <option value="{{ b.id }}" {% if b.id == ligne.chauffeur_id %}selected{% endif %}>✅ {{ b.nom_complet }}</option>
+                        {% endfor %}
+                        <option disabled>──────────</option>
+                        {% for b in benevoles if b.ramasse_chauffeur|lower != 'oui' %}
+                            <option value="{{ b.id }}" {% if b.id == ligne.chauffeur_id %}selected{% endif %}>{{ b.nom_complet }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select name="equipier_{{ ligne.jour }}_{{ ligne.numero }}" class="form-select form-select-sm" style="max-width: 150px;">
+                        <option value="">—</option>
+                        {% for b in benevoles if b.ramasse_equipier|lower == 'oui' %}
+                            <option value="{{ b.id }}" {% if b.id == ligne.equipier_id %}selected{% endif %}>✅ {{ b.nom_complet }}</option>
+                        {% endfor %}
+                        <option disabled>──────────</option>
+                        {% for b in benevoles if b.ramasse_equipier|lower != 'oui' %}
+                            <option value="{{ b.id }}" {% if b.id == ligne.equipier_id %}selected{% endif %}>{{ b.nom_complet }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select name="responsable_{{ ligne.jour }}_{{ ligne.numero }}" class="form-select form-select-sm" style="max-width: 150px;">
+                        <option value="">—</option>
+                        {% for b in benevoles if b.ramasse_responsable_tri|lower == 'oui' %}
+                            <option value="{{ b.id }}" {% if b.id == ligne.responsable_id %}selected{% endif %}>✅ {{ b.nom_complet }}</option>
+                        {% endfor %}
+                        <option disabled>──────────</option>
+                        {% for b in benevoles if b.ramasse_responsable_tri|lower != 'oui' %}
+                            <option value="{{ b.id }}" {% if b.id == ligne.responsable_id %}selected{% endif %}>{{ b.nom_complet }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select name="ramasse_tri1_id_{{ ligne.jour }}_{{ ligne.numero }}" class="form-select form-select-sm" style="max-width: 150px;">
+                        <option value="">—</option>
+                        {% for b in benevoles if b.ramasse_tri_externe|lower == 'oui' %}
+                        <option value="{{ b.id }}" {% if b.id == ligne.ramasse_tri1_id %}selected{% endif %}>✅ {{ b.nom_complet }}</option>
+                        {% endfor %}
+                        <option disabled>──────────</option>
+                        {% for b in benevoles if b.ramasse_tri_externe|lower != 'oui' %}
+                        <option value="{{ b.id }}" {% if b.id == ligne.ramasse_tri1_id %}selected{% endif %}>{{ b.nom_complet }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select name="ramasse_tri2_id_{{ ligne.jour }}_{{ ligne.numero }}" class="form-select form-select-sm" style="max-width: 150px;">
+                        <option value="">—</option>
+                        {% for b in benevoles if b.ramasse_tri_externe|lower == 'oui' %}
+                        <option value="{{ b.id }}" {% if b.id == ligne.ramasse_tri2_id %}selected{% endif %}>✅ {{ b.nom_complet }}</option>
+                        {% endfor %}
+                        <option disabled>──────────</option>
+                        {% for b in benevoles if b.ramasse_tri_externe|lower != 'oui' %}
+                        <option value="{{ b.id }}" {% if b.id == ligne.ramasse_tri2_id %}selected{% endif %}>{{ b.nom_complet }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select name="ramasse_tri3_id_{{ ligne.jour }}_{{ ligne.numero }}" class="form-select form-select-sm" style="max-width: 150px;">
+                        <option value="">—</option>
+                        {% for b in benevoles if b.ramasse_tri_externe|lower == 'oui' %}
+                        <option value="{{ b.id }}" {% if b.id == ligne.ramasse_tri3_id %}selected{% endif %}>✅ {{ b.nom_complet }}</option>
+                        {% endfor %}
+                        <option disabled>──────────</option>
+                        {% for b in benevoles if b.ramasse_tri_externe|lower != 'oui' %}
+                        <option value="{{ b.id }}" {% if b.id == ligne.ramasse_tri3_id %}selected{% endif %}>{{ b.nom_complet }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select name="camion_{{ ligne.jour }}_{{ ligne.numero }}" class="form-select form-select-sm" style="max-width: 150px;">
+                        <option value="">—</option>
+                        {% for c in camions %}
+                            <option value="{{ c.id }}" {% if c.id == ligne.camion_id %}selected{% endif %}>{{ c.nom_complet }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+            </tr>
+        {% endif %}
+    {% endfor %}
+    </tbody></table>
+
+    <div class="text-end mt-4">
+        <button type="submit" class="btn btn-primary">💾 Enregistrer le modèle</button>
+    </div>
+</form>
+
+{% endblock %}

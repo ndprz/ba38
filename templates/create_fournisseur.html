@@ -1,0 +1,109 @@
+{% extends "base_frs.html" %}
+
+{% block title %}Créer un fournisseur{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <!-- 🔹 En-tête -->
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+    <h2 class="mb-0">Créer un nouveau fournisseur</h2>
+  </div>
+
+  <!-- 🔹 Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="alert-container">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- 🔹 Formulaire -->
+  <form method="POST" action="{{ url_for('fournisseurs.create_fournisseur') }}">
+    <div class="row mb-3">
+      <label for="nom" class="col-md-3 col-form-label text-end">Nom du fournisseur *</label>
+      <div class="col-md-6">
+        <input type="text" class="form-control" id="nom" name="nom" required>
+      </div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-4 fw-bold text-end">Type fournisseur</div>
+      <div class="col-md-8">
+        <select name="type_frs" id="type_frs" class="form-select">
+          <option value="">-- Choisir --</option>
+          {% for val in parametres.get('type_frs', []) %}
+            <option value="{{ val }}">{{ val }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="row mb-3">
+      <label for="enseigne" class="col-md-3 col-form-label text-end">Enseigne</label>
+      <div class="col-md-6">
+        <select name="enseigne" id="enseigne" class="form-select">
+          <option value="">-- Choisir une enseigne --</option>
+          {% for val in parametres.get('enseigne', []) %}
+          <option value="{{ val }}">{{ val }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="row mb-3">
+      <label for="type_frs" class="col-md-3 col-form-label text-end">Type</label>
+      <div class="col-md-6">
+        <select name="type_frs" id="type_frs" class="form-select">
+          <option value="">-- Choisir un type --</option>
+          {% for val in parametres.get('type_frs', []) %}
+          <option value="{{ val }}">{{ val }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="row mb-3">
+      <label for="tel" class="col-md-3 col-form-label text-end">Téléphone</label>
+      <div class="col-md-6">
+        <input type="text" class="form-control" id="tel" name="tel">
+      </div>
+    </div>
+
+    <div class="row mb-3">
+      <label for="mail" class="col-md-3 col-form-label text-end">Email</label>
+      <div class="col-md-6">
+        <input type="email" class="form-control" id="mail" name="mail">
+      </div>
+    </div>
+
+    <div class="row mb-3">
+      <label for="adresse" class="col-md-3 col-form-label text-end">Adresse</label>
+      <div class="col-md-6">
+        <input type="text" class="form-control" id="adresse" name="adresse">
+      </div>
+    </div>
+
+    <div class="row mb-3">
+      <label for="ville" class="col-md-3 col-form-label text-end">Ville</label>
+      <div class="col-md-6">
+        <input type="text" class="form-control" id="ville" name="ville">
+      </div>
+    </div>
+
+    <div class="row mb-3">
+      <label for="notes" class="col-md-3 col-form-label text-end">Notes</label>
+      <div class="col-md-6">
+        <textarea class="form-control" id="notes" name="notes"></textarea>
+      </div>
+    </div>
+
+    <!-- ✅ Boutons -->
+    <div class="d-flex justify-content-end mt-4">
+      <a href="{{ url_for('fournisseurs.liste_fournisseurs') }}" class="btn btn-secondary me-2">⬅️ Retour</a>
+      <button type="submit" class="btn btn-success">✅ Créer</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

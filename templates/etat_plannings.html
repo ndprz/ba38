@@ -1,0 +1,152 @@
+{% extends "base_bene.html" %}
+
+{% block title %}État des plannings{% endblock %}
+
+{% block content %}
+
+<h2 class="mb-4">📋 État des plannings existants</h2>
+
+<!-- ============================= -->
+<!--   BARRE D’ACTIONS SUPÉRIEURE   -->
+<!-- ============================= -->
+<div class="card shadow-sm mb-3">
+    <div class="card-body py-2">
+
+        <div class="d-flex flex-wrap align-items-center gap-4">
+
+            <!-- 🗑️ Suppression -->
+            <button id="btnDelete"
+                    class="btn btn-danger btn-sm px-3"
+                    disabled
+                    onclick="submitDelete()">
+                🗑️ Supprimer la sélection
+            </button>
+
+            <!-- 🔽 Bloc tri -->
+            <div class="d-flex align-items-center ms-auto gap-3">
+
+                <span class="fw-semibold me-1">
+                    Trier par
+                </span>
+
+                <select id="sortField"
+                        class="form-select form-select-sm w-auto px-2">
+                    <option value="semaine">Semaine</option>
+                    <option value="type">Type</option>
+                </select>
+
+                <select id="sortOrder"
+                        class="form-select form-select-sm w-auto px-2">
+                    <option value="asc">⬆️ Croissant</option>
+                    <option value="desc">⬇️ Décroissant</option>
+                </select>
+
+                <!-- 🔄 Bouton Trier bien lisible -->
+                <button class="btn btn-outline-primary btn-sm px-3"
+                        onclick="sortTable()">
+                    🔄 Trier
+                </button>
+
+                <div class="vr"></div>
+
+                <!-- ⬅️ Navigation -->
+                <a href="{{ url_for('planning.planning_main') }}"
+                   class="btn btn-outline-secondary btn-sm px-3">
+                    ⬅️ Menu Planning
+                </a>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- ============================= -->
+<!--          TABLEAU              -->
+<!-- ============================= -->
+<form id="deleteForm" method="POST" action="{{ url_for('planning_utils.etat_plannings_delete') }}">
+<table class="table table-bordered table-striped" id="planningsTable">
+
+    <thead class="table-light">
+        <tr>
+            <th style="width:40px;">
+                <input type="checkbox" id="selectAll" onclick="toggleSelectAll(this)">
+            </th>
+            <th data-field="semaine">Semaine</th>
+            <th data-field="type">Type</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for p in plannings %}
+        <tr>
+            <td class="text-center">
+                <input type="checkbox"
+                    name="selections[]"
+                    value="{{ p.table }}|{{ p.semaine }}"
+                    class="row-check"
+                    onclick="updateDeleteButton()">
+            </td>
+            <td data-value="{{ p.semaine }}"><strong>{{ p.semaine }}</strong></td>
+            <td data-value="{{ p.type }}">{{ p.type }}</td>
+            <td>
+                <a href="{{ p.url }}"
+                   target="_blank"
+                   class="btn btn-sm btn-primary">
+                    🔍 Visualiser
+                </a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+
+</table>
+</form>
+
+<!-- ============================= -->
+<!--        JAVASCRIPT              -->
+<!-- ============================= -->
+<script>
+function updateDeleteButton() {
+    const checks = document.querySelectorAll(".row-check:checked");
+    document.getElementById("btnDelete").disabled = checks.length === 0;
+}
+
+function toggleSelectAll(source) {
+    document.querySelectorAll(".row-check").forEach(cb => {
+        cb.checked = source.checked;
+    });
+    updateDeleteButton();
+}
+
+function submitDelete() {
+    if (!confirm("Confirmer la suppression des plannings sélectionnés ?")) {
+        return;
+    }
+    document.getElementById("deleteForm").submit();
+}
+
+function sortTable() {
+    const table = document.getElementById("planningsTable");
+    const tbody = table.querySelector("tbody");
+    const rows = Array.from(tbody.querySelectorAll("tr"));
+
+    const field = document.getElementById("sortField").value;
+    const order = document.getElementById("sortOrder").value;
+
+    const colIndex = field === "semaine" ? 1 : 2;
+
+    rows.sort((a, b) => {
+        const va = a.children[colIndex].dataset.value.toLowerCase();
+        const vb = b.children[colIndex].dataset.value.toLowerCase();
+
+        if (va < vb) return order === "asc" ? -1 : 1;
+        if (va > vb) return order === "asc" ? 1 : -1;
+        return 0;
+    });
+
+    rows.forEach(r => tbody.appendChild(r));
+}
+</script>
+
+{% endblock %}

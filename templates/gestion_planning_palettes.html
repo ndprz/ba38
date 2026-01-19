@@ -1,0 +1,232 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Gestion Planning Palettes{% endblock %}
+
+{% block content %}
+
+<form method="post">
+
+{# ============================== #
+# 🔝 Bandeau supérieur : titre + boutons
+# ============================== #}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>Gestion du planning palettes</h2>
+
+  <div class="d-flex gap-2">
+    <button type="submit"
+            name="action"
+            value="enregistrer"
+            class="btn btn-primary save-btn"
+            disabled>
+      💾 Enregistrer le planning
+    </button>
+
+    <a href="{{ url_for('planning_palettes.creation_planning_palettes', semaine=semaine) }}"
+       class="btn btn-outline-primary">
+      ⬅️ Retour à la création
+    </a>
+
+    <a href="{{ url_for('planning.planning_main') }}"
+       class="btn btn-outline-secondary">
+      🏠 Menu Planning
+    </a>
+
+    <a href="{{ url_for('planning_palettes.apercu_planning_palettes', semaine=semaine) }}"
+       target="_blank"
+       class="btn btn-outline-secondary">
+      🖨️ Aperçu imprimable (A3)
+    </a>
+  </div>
+</div>
+
+{# ⚠️ Indicateur modifications non enregistrées #}
+<div id="unsaved-warning"
+     class="alert alert-warning py-2 px-3 mb-3"
+     style="display:none;">
+  ⚠️ Modifications non enregistrées
+</div>
+
+
+{# ============================== #
+# 🧾 Formulaire principal de gestion
+# ============================== #}
+  <div class="gestion-planning-container">
+    <table class="table table-bordered table-striped table-sm">
+      <thead>
+        <tr>
+          <th>Jour</th>
+          <th>Semaine</th>
+          {% for i in range(1, 11) %}
+            <th>Pal {{ i }}</th>
+          {% endfor %}
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+
+        {# ============================ #
+          Boucle sur toutes les lignes du planning
+        # ============================ #}
+        {% for ligne in lignes %}
+        <tr class="jour-{{ ligne.jour|lower }}">
+          <td>{{ ligne.jour|capitalize }}</td>
+          <td>{{ ligne.semaine }}</td>
+
+          {# Liste temporaire des bénévoles déjà affectés sur la même ligne #}
+          {% set deja_affectes = [] %}
+          {% for j in range(1, 11) %}
+            {% set titulaire = ligne['pal%02d_id' % j] %}
+            {% set remplacant = ligne['pal%02d_remplacant' % j] %}
+            {% if titulaire %}{% set _ = deja_affectes.append(titulaire) %}{% endif %}
+            {% if remplacant %}{% set _ = deja_affectes.append(remplacant) %}{% endif %}
+          {% endfor %}
+
+          {# ============================ #
+            Colonnes Pal 01 → Pal 10
+          # ============================ #}
+          {% for i in range(1, 11) %}
+            {% set champ_id   = 'pal%02d_id' % i %}
+            {% set champ_remp = 'pal%02d_remplacant' % i %}
+            {% set champ_abs  = 'pal%02d_absent' % i %}
+            {% set is_absent      = (ligne[champ_abs] or '')|lower == 'oui' %}
+            {% set titulaire_id   = ligne[champ_id] %}
+            {% set remplacant_id  = ligne[champ_remp] %}
+            {% set selected_id    = remplacant_id if is_absent and remplacant_id else titulaire_id %}
+
+            {# Séparation entre favoris et autres selon le champ prep_palette #}
+            {% set favoris = benevoles|selectattr('prep_palette','equalto','oui')|list %}
+            {% set autres  = benevoles|rejectattr('prep_palette','equalto','oui')|list %}
+
+            <td class="{% if is_absent and not remplacant_id %}absent-cell{% endif %}">
+              <select name="pal{{ "%02d"|format(i) }}_id_{{ ligne.id }}"
+                      class="form-control form-select-sm bene-select"
+                      data-role="palettes">
+                {# Ajout d’un bénévole rapide #}
+                <option value="__add__">➕ Ajouter un bénévole…</option>
+                <option disabled>──────────</option>
+
+                {# Option vide #}
+                <option value="" {% if selected_id is none %}selected{% endif %}>-- Aucun --</option>
+
+                {# Favoris (prep_palette = oui) #}
+                {% for bene in favoris %}
+                  {% set is_selected         = bene.id == selected_id %}
+                  {% set is_remplacant       = is_selected and is_absent and remplacant_id %}
+                  {% set is_absent_titulaire = is_selected and is_absent and not remplacant_id %}
+                  {% set is_already_assigned = (bene.id in deja_affectes) and not is_selected %}
+                  <option value="{{ bene.id }}"
+                          {% if is_selected %}selected{% endif %}
+                          {% if is_remplacant %}style="color: green;"{% elif is_absent_titulaire %}style="color: red;"{% elif is_already_assigned %}style="color: orange;"{% endif %}>
+                    ✅ {{ bene.nom }} {{ bene.prenom }}
+                    {% if is_remplacant %}(remplaçant){% elif is_absent_titulaire %}(absent){% elif is_already_assigned %}(déjà affecté){% endif %}
+                  </option>
+                {% endfor %}
+
+                {% if favoris and autres %}<option disabled>──────────</option>{% endif %}
+
+                {# Autres bénévoles (non prioritaires) #}
+                {% for bene in autres %}
+                  {% set is_selected         = bene.id == selected_id %}
+                  {% set is_remplacant       = is_selected and is_absent and remplacant_id %}
+                  {% set is_absent_titulaire = is_selected and is_absent and not remplacant_id %}
+                  {% set is_already_assigned = (bene.id in deja_affectes) and not is_selected %}
+                  <option value="{{ bene.id }}"
+                          {% if is_selected %}selected{% endif %}
+                          {% if is_remplacant %}style="color: green;"{% elif is_absent_titulaire %}style="color: red;"{% elif is_already_assigned %}style="color: orange;"{% endif %}>
+                    {{ bene.nom }} {{ bene.prenom }}
+                    {% if is_remplacant %}(remplaçant){% elif is_absent_titulaire %}(absent){% elif is_already_assigned %}(déjà affecté){% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+
+              {# Champ caché pour compatibilité avec la route Flask #}
+              <input type="hidden"
+                     name="pal{{ "%02d"|format(i) }}_remplacant_{{ ligne.id }}"
+                     value="{{ remplacant_id or '' }}">
+            </td>
+          {% endfor %}
+
+          {# Bouton suppression ligne #}
+          <td class="text-center">
+            <button type="submit" name="action" value="supprimer_{{ ligne.id }}" class="btn btn-danger btn-sm">🗑️</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+
+</form>
+
+
+{# ============================== #
+🔧 Modale + JavaScript commun
+# ============================== #}
+{% include "partials/quick_benevole_modal.html" %}
+<script src="{{ url_for('static', filename='js/quick_benevole.js', v=8) }}"></script>
+
+<script>
+/* Alerte si l'utilisateur clique sur "Aperçu" alors que le planning n'est pas enregistré */
+(function () {
+  window.planningDirty = false;
+  const formEl = document.querySelector('form');
+  if (formEl) {
+    formEl.addEventListener('change', (e) => {
+      const t = e.target;
+      if (!t) return;
+
+      if (t.matches('select, input[type="text"], input[type="number"]')) {
+        window.planningDirty = true;
+
+        // 🔔 Afficher le message "modifications non enregistrées"
+        const warning = document.getElementById("unsaved-warning");
+        if (warning) warning.style.display = "block";
+
+        // 🔓 Activer les boutons Enregistrer
+        document.querySelectorAll(".save-btn").forEach(btn => {
+          btn.disabled = false;
+        });
+      }
+    });
+  }
+  const link = document.getElementById('apercu-link');
+  if (link) {
+    link.addEventListener('click', (e) => {
+      if (window.planningDirty) {
+        e.preventDefault();
+        alert("ℹ️ L’aperçu reflète uniquement les données enregistrées.\n" +
+              "Veuillez d’abord cliquer sur « 📂 Enregistrer le planning », puis relancer l’aperçu.");
+      }
+    });
+  }
+})();
+
+document.addEventListener("DOMContentLoaded", function () {
+
+  {% if planning_auto_modified %}
+    // ⚠️ Le backend a modifié le planning (nouvelles absences)
+    const warning = document.getElementById("unsaved-warning");
+    const saveButtons = document.querySelectorAll(".save-btn");
+
+    if (warning) warning.style.display = "block";
+    saveButtons.forEach(btn => btn.disabled = false);
+
+    // Marque le planning comme modifié côté JS
+    window.planningDirty = true;
+  {% endif %}
+
+});
+
+</script>
+
+{# ============================== #
+🎨 Styles complémentaires
+# ============================== #}
+<style>
+  .absent-cell {
+    background-color: #ffe0e0 !important;
+  }
+</style>
+
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends "base_assos.html" %}
+
+{% block title %}Mise à jour des Paramètres{% endblock %}
+
+{% block content %}
+<h2>Gestion des Paramètres</h2>
+
+<!-- Messages Flash -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+<!-- Formulaire d'ajout -->
+<h4>Ajouter un paramètre</h4>
+<form method="POST" action="{{ url_for('ajouter_parametre') }}">
+    <div class="form-row">
+        <div class="form-group col-md-3">
+            <label for="param_name">Nom</label>
+            <input type="text" name="param_name" class="form-control" required>
+        </div>
+        <div class="form-group col-md-3">
+            <label for="param_value">Valeur</label>
+            <input type="text" name="param_value" class="form-control">
+        </div>
+        <div class="form-group col-md-2">
+            <label for="phone">Téléphone</label>
+            <input type="text" name="phone" class="form-control">
+        </div>
+        <div class="form-group col-md-3">
+            <label for="mail">Email</label>
+            <input type="email" name="mail" class="form-control">
+        </div>
+        <div class="form-group col-md-1 align-self-end">
+            <button type="submit" class="btn btn-primary btn-block">Ajouter</button>
+        </div>
+    </div>
+</form>
+
+<hr>
+
+<!-- Liste des paramètres -->
+<h4>Liste des paramètres</h4>
+<table class="table table-bordered table-sm">
+    <thead class="thead-light">
+        <tr>
+            <th>ID</th>
+            <th>Nom</th>
+            <th>Valeur</th>
+            <th>Téléphone</th>
+            <th>Email</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for param in parametres %}
+        <tr>
+            <form method="POST" action="{{ url_for('maj_parametres') }}">
+                <input type="hidden" name="id" value="{{ param['id'] }}">
+                <td>{{ param['id'] }}</td>
+                <td><input type="text" name="param_name" value="{{ param['param_name'] }}" class="form-control"></td>
+                <td><input type="text" name="param_value" value="{{ param['param_value'] }}" class="form-control"></td>
+                <td><input type="text" name="phone" value="{{ param['phone'] }}" class="form-control"></td>
+                <td><input type="email" name="mail" value="{{ param['mail'] }}" class="form-control"></td>
+                <td class="text-nowrap">
+                    <button type="submit" name="action" value="modifier" class="btn btn-warning btn-sm">Modifier</button>
+                    <button type="submit" name="action" value="supprimer" class="btn btn-danger btn-sm" onclick="return confirm('Supprimer ce paramètre ?')">Supprimer</button>
+                </td>
+            </form>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="d-flex justify-content-end mt-3">
+    <a href="{{ url_for('index') }}" class="btn btn-secondary">Retour</a>
+</div>
+
+{% endblock %}

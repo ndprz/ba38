@@ -1,0 +1,66 @@
+{# templates/partials/quick_benevole_modal.html #}
+<div class="modal fade" id="quickBenevoleModal"
+     tabindex="-1" aria-labelledby="quickBenevoleLabel" aria-hidden="true"
+     data-api-url="{{ url_for('benevoles.api_quick_create_benevole') }}">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="quickBenevoleForm" autocomplete="off">
+        <div class="modal-header">
+          <h5 class="modal-title" id="quickBenevoleLabel">Nouveau bénévole (rapide)</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+        </div>
+
+        <div class="modal-body">
+          <input type="hidden" id="qb_role" name="role">
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="qb_type" class="form-label">Type de bénévole <span class="text-danger">*</span></label>
+              <select id="qb_type" class="form-select" required>
+                <option value="">-- Choisir --</option>
+                {# valeurs depuis la table parametres, passées par la route #}
+                {% for val in type_benevole_options %}
+                  <option value="{{ val }}">{{ val|capitalize }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-6">
+              <label for="qb_civilite" class="form-label">Civilité <span class="text-danger">*</span></label>
+              <select id="qb_civilite" class="form-select" required>
+                <option value="">-- Choisir --</option>
+                {% for val in civilite_options or ['M','Mme','Mlle'] %}
+                  <option value="{{ val }}">{{ val }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-6">
+              <label for="qb_tel" class="form-label">Téléphone portable</label>
+              <input type="tel" inputmode="tel" id="qb_tel" class="form-control" placeholder="06…">
+            </div>
+
+            <div class="col-md-6 d-none d-md-block"></div>
+
+            <div class="col-md-6">
+              <label for="qb_nom" class="form-label">Nom <span class="text-danger">*</span></label>
+              <input type="text" id="qb_nom" class="form-control" required>
+            </div>
+
+            <div class="col-md-6">
+              <label for="qb_prenom" class="form-label">Prénom <span class="text-danger">*</span></label>
+              <input type="text" id="qb_prenom" class="form-control" required>
+            </div>
+          </div>
+
+          <div class="form-text mt-2">Champs requis marqués *.</div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-primary">Créer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

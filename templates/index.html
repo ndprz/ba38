@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Accueil{% endblock %}
+
+
+
+{% block content %}
+
+
+<div class="alert alert-secondary">
+  <strong>Rôle global :</strong> {{ session.get("user_role") }}<br>
+  <strong>Droits :</strong> {{ session.get("roles_utilisateurs") }}
+</div>
+
+
+
+
+{% if session.get('test_user') %}
+    <form action="{{ url_for('unset_test_user') }}" method="post" style="display: inline;">
+        <button type="submit" class="btn btn-danger" style="margin-bottom: 20px;">🔴 Désactiver le Mode Test</button>
+    </form>
+{% else %}
+    <form action="{{ url_for('set_test_user') }}" method="post" style="display: inline;">
+        <button type="submit" class="btn btn-success" style="margin-bottom: 20px;">🟢 Activer le Mode Test</button>
+    </form>
+{% endif %}
+
+<div style="margin-bottom: 12px;">
+  <p style="margin: 0;"><strong>Explorez et gérez vos données d'associations.</strong></p>
+  {% if has_access('associations', 'lecture') %}
+    <a href="{{ url_for('partenaires.partenaires') }}" class="big-link">Voir les associations</a>
+  {% else %}
+    <span class="text-muted">Accès aux associations désactivé pour votre compte</span>
+  {% endif %}
+</div>
+
+<div style="margin-bottom: 12px;">
+  <p style="margin: 0;"><strong>Explorez et gérez vos données Bénévoles.</strong></p>
+  {% if has_access('benevoles', 'lecture') %}
+    <a href="{{ url_for('benevoles.benevoles') }}" class="big-link">Voir les bénévoles</a>
+  {% else %}
+    <span class="text-muted">Accès aux bénévoles désactivé pour votre compte</span>
+  {% endif %}
+</div>
+
+<div style="margin-bottom: 12px;">
+  <p style="margin: 0;"><strong>Explorez et gérez vos données Fournisseurs.</strong></p>
+  {% if has_access('fournisseurs', 'lecture') %}
+    <a href="{{ url_for('fournisseurs.liste_fournisseurs') }}" class="big-link">Voir les fournisseurs</a>
+  {% else %}
+    <span class="text-muted">Accès aux fournisseurs désactivé pour votre compte</span>
+  {% endif %}
+</div>
+
+{% if session.get('user_role') == 'admin' %}
+<div style="margin-bottom: 12px;">
+  <p style="margin: 0;"><strong>Explorez et gérez vos données Distribution.</strong></p>
+  {% if has_access('distribution', 'lecture') %}
+    <a href="{{ url_for('distribution.distribution_main') }}" class="big-link">Voir la distribution</a>
+  {% else %}
+    <span class="text-muted">Accès à la distribution désactivé pour votre compte</span>
+  {% endif %}
+</div>
+{% endif %}
+
+
+
+{% if has_access('evenements', 'lecture') %}
+<div style="margin-bottom: 12px;">
+  <p style="margin: 0;"><strong>Gérez l'affichage des événements.</strong></p>
+  <a href="{{ url_for('evenements.gestion_evenements') }}" class="btn btn-outline-warning">
+    🎬 Événements écran
+  </a></div>
+{% endif %}
+
+
+{% if 'admin' in session.get('roles', []) or session.get('user_role') == 'admin' %}
+<div class="mt-4">
+    <h5>⚙️ Administration</h5>
+    <ul class="list-group">
+        <li class="list-group-item">
+            <a href="{{ url_for('debug_bp.admin_scripts') }}" class="btn btn-info btn-sm">📊 Admin_Scripts</a>
+        </li>
+    </ul>
+</div>
+{% endif %}
+
+
+
+<p></p><p></p><p></p>
+
+{% if current_user.is_authenticated %}
+    <p>Email : {{ current_user.email }}</p>
+    <p>Nom d'utilisateur : {{ current_user.username }}</p>
+{% else %}
+    <p>Vous n'êtes pas connecté.</p>
+{% endif %}
+
+{% endblock %}

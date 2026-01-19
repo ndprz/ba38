@@ -1,0 +1,31 @@
+<div class="card mb-3">
+  <div class="card-header bg-warning">4) Suivi et accompagnement des personnes accueillies</div>
+  <div class="card-body">
+    <p class="text-muted">
+      Objectif : proposer des possibilités d’accompagnement social fait partie des obligations de votre association dans le cadre de l’habilitation à l’aide alimentaire. Cette partie a pour objectif de faire le bilan ou de proposer des actions à mettre en œuvre. (orientation vers une autre structure, atelier collectif, accueil, café convivial, etc)
+    </p>
+    
+    <label>●	Proposez-vous des entretiens pour l’accueil,  le renouvellement ou la clôture des droits ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("entretiens_accueil","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="entretiens_accueil">{{ fiche.get('entretiens_accueil','') }}</textarea>
+    {% endif %}
+
+    <label>●	Existe-t-il un entretien explicatif après l’ouverture des droits d’une personne accueillie ? (explication du cadre, du fonctionnement, le règlement intérieur et les possibilités d’accompagnement social…). Quels supports utilisez-vous ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("entretiens_explicatifs","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="entretiens_explicatifs">{{ fiche.get('entretiens_explicatifs','') }}</textarea>
+    {% endif %}
+
+    <label>●	Quelles sont les mesures d’accompagnement que vous avez mises en place ou que vous souhaiteriez mettre en place ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("mesures_d_accompagnement","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="mesures_d_accompagnement">{{ fiche.get('mesures_d_accompagnement','') }}</textarea>
+    {% endif %}
+
+  </div>
+</div>
+

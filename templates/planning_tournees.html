@@ -1,0 +1,358 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Gestion des Tournées{% endblock %}
+
+{% block content %}
+
+<!-- ============================= -->
+<!--   BARRE DE BOUTONS DU HAUT    -->
+<!-- ============================= -->
+<div class="container mt-2">
+  <div class="row g-2">
+
+    <div class="col-6 col-md-3">
+      <a href="{{ url_for('planning_tournees.maj_camions') }}"
+         class="btn btn-outline-secondary w-100">
+        🚚 Camions
+      </a>
+    </div>
+
+    <div class="col-6 col-md-3">
+      <a href="{{ url_for('planning_tournees.maj_fournisseurs') }}"
+         class="btn btn-outline-primary w-100">
+        🧾 Fournisseurs
+      </a>
+    </div>
+
+    <div class="col-6 col-md-3">
+      <a href="{{ url_for('planning_tournees.print_tournees') }}"
+         class="btn btn-outline-dark w-100" target="_blank">
+        🖨️ Imprimer
+      </a>
+    </div>
+
+    <div class="col-6 col-md-3">
+      <a href="{{ url_for('planning.planning_main') }}"
+         class="btn btn-outline-secondary w-100">
+        ⬅️ Planning principal
+      </a>
+    </div>
+
+  </div>
+</div>
+
+
+
+<!-- ============================= -->
+<!--   AJOUT D'UNE NOUVELLE TOURNEE -->
+<!-- ============================= -->
+<h4 class="mb-2">🆕 Ajouter une tournée</h4>
+
+<div class="accordion mb-4" id="accordionNouvelleTournee">
+  <div class="accordion-item shadow-sm">
+
+    <h2 class="accordion-header" id="heading_new">
+      <button class="accordion-button collapsed fw-bold"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#collapse_new">
+        ➕ Ajouter une nouvelle tournée
+      </button>
+    </h2>
+
+    <div id="collapse_new"
+         class="accordion-collapse collapse"
+         data-bs-parent="#accordionNouvelleTournee">
+
+      <div class="accordion-body bg-light">
+
+        <form method="POST"
+              action="{{ url_for('planning_tournees.planning_tournees') }}"
+              class="p-2">
+
+          <div class="mb-2">
+            <label>Nom :</label>
+            <input type="text" name="nom" class="form-control form-control-sm" required>
+          </div>
+
+          <div class="mb-2">
+            <label>Durée (minutes) :</label>
+            <input type="number" name="duree" class="form-control form-control-sm" min="1" required>
+          </div>
+
+          <div class="mb-2">
+              <label>Fournisseurs :</label>
+              <div class="row">
+                {% for f in fournisseurs %}
+                <div class="col-md-6 mb-1">
+                  <div class="input-group input-group-sm">
+
+                    <div class="input-group-text bg-white">
+                      <input type="checkbox"
+                            class="form-check-input"
+                            name="fournisseurs[]"
+                            value="{{ f.id }}">
+                    </div>
+
+                    <span class="input-group-text bg-white flex-grow-1">
+                      {{ f.nom }}
+                    </span>
+
+                    <input type="number"
+                          class="form-control"
+                          min="1"
+                          name="ordre_{{ f.id }}"
+                          disabled
+                          style="background:#f6f6f6;">
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+          </div>
+
+          <button type="submit" class="btn btn-success btn-sm mt-2">➕ Ajouter</button>
+        </form>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+
+<!-- ============================= -->
+<!--       TOURNEES EXISTANTES     -->
+<!-- ============================= -->
+<h4 class="mb-3">📋 Tournées existantes</h4>
+
+<form method="POST" action="{{ url_for('planning_tournees.save_all') }}" id="formTournees">
+
+    <!-- BOUTON GLOBAL EN HAUT -->
+    <div class="text-end mb-3">
+        <button type="submit" class="btn btn-success btn-sm">
+            💾 Enregistrer toutes les tournées
+        </button>
+    </div>
+
+    {% for tournee in tournees %}
+      <input type="hidden" name="tournees_ids" value="{{ tournee.tournee_id }}">
+    {% endfor %}
+
+    <div class="accordion" id="accordionTournees">
+
+    {% for tournee in tournees %}
+      {% set tid = 'tournee_' ~ tournee.tournee_id %}
+      {% set nomcourt = mapping.get(tournee.tournee_id ~ '_nom', '') %}
+      {% set detail = details.get(tournee.tournee_id, '') %}
+      {% set selectionnes = mapping.get(tournee.tournee_id, []) | list %}
+      {% set ordres = mapping_ordre.get(tournee.tournee_id, {}) %}
+
+      <div class="accordion-item border-0">
+
+        <h2 class="accordion-header" id="heading_{{ tid }}">
+          <button class="accordion-button collapsed py-2 bg-white border-0"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#collapse_{{ tid }}">
+
+                  <span class="fw-bold w-100 text-dark" style="white-space: nowrap;">
+                      {{ nomcourt }} ({{ detail|replace("—", "-") }})
+                  </span>
+
+          </button>
+        </h2>
+
+        <div id="collapse_{{ tid }}"
+             class="accordion-collapse collapse"
+             data-bs-parent="#accordionTournees">
+
+          <div class="accordion-body pt-2 pb-1 px-2 bg-white">
+
+              <!-- ID -->
+              <input type="hidden"
+                     name="tournees[{{ tournee.tournee_id }}][id]"
+                     value="{{ tournee.tournee_id }}">
+
+              <!-- NOM -->
+              <div class="mb-2">
+                <label class="form-label">Nom :</label>
+                <input type="text"
+                       name="tournees[{{ tournee.tournee_id }}][nom]"
+                       class="form-control form-control-sm"
+                       value="{{ nomcourt }}"
+                       required>
+              </div>
+
+              <!-- DUREE -->
+              <div class="mb-2">
+                <label class="form-label">Durée (minutes) :</label>
+                <input type="number"
+                       name="tournees[{{ tournee.tournee_id }}][duree]"
+                       class="form-control form-control-sm"
+                       value="{{ mapping_duree.get(tournee.tournee_id, '') }}"
+                       min="1"
+                       required>
+              </div>
+
+              <!-- FOURNISSEURS -->
+              <div class="mb-2">
+                <label class="form-label">Fournisseurs :</label>
+
+                <div class="row">
+
+                  {% for f in fournisseurs %}
+                    <div class="col-md-6 mb-1">
+
+                      <div class="input-group input-group-sm">
+                        <div class="input-group-text bg-white">
+                          <input type="checkbox"
+                                 class="form-check-input"
+                                 name="tournees[{{ tournee.tournee_id }}][fournisseurs][]"
+                                 value="{{ f.id }}"
+                                 {% if f.id in selectionnes %}checked{% endif %}>
+                        </div>
+
+                        <span class="input-group-text bg-white flex-grow-1">
+                          {{ f.nom }}
+                        </span>
+
+                        <input type="number"
+                              class="form-control"
+                              min="1"
+                              name="tournees[{{ tournee.tournee_id }}][ordre][{{ f.id }}]"
+                              value="{{ ordres.get(f.id, '') }}"
+                              {% if f.id not in selectionnes %}readonly style="background:#f6f6f6;"{% endif %}>
+
+                      </div>
+
+                    </div>
+                  {% endfor %}
+
+                </div>
+              </div>
+
+              <!-- SUPPRESSION DE TOURNEE -->
+              <div class="text-end mt-2">
+                <a href="{{ url_for('planning_tournees.supprimer_tournee', tournee_id=tournee.tournee_id) }}"
+                   onclick="return confirm('Supprimer cette tournée ?')"
+                   class="btn btn-danger btn-sm">
+                  🗑 Supprimer cette tournée
+                </a>
+              </div>
+
+          </div>
+        </div>
+
+      </div>
+    {% endfor %}
+
+    </div>
+
+    <!-- BOUTON GLOBAL EN BAS -->
+    <div class="text-end mt-4">
+        <button type="submit" class="btn btn-success btn-sm">
+            💾 Enregistrer toutes les tournées
+        </button>
+    </div>
+
+</form>
+
+<!-- RETOUR PLANNING -->
+<div class="text-start mt-3">
+    <a href="{{ url_for('planning.planning_main') }}"
+       class="btn btn-outline-secondary"
+       id="btnRetourPlanning">
+      ⬅️ Retour menu planning
+    </a>
+</div>
+
+
+
+{% endblock %}
+
+<style>
+  .accordion-item {
+    border: 0 !important;
+  }
+  .accordion-button {
+    background: white !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+  .accordion-button:not(.collapsed) {
+    background: #fafafa !important;
+  }
+  .input-group-text {
+    border-radius: 0.25rem !important;
+    background: white !important;
+  }
+  .form-control {
+    border-radius: 0.25rem !important;
+  }
+</style>
+
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  /* ---------------------------------------------------------
+      1) Activer/désactiver les champs ordre SANS disabled
+     --------------------------------------------------------- */
+
+  document.querySelectorAll("input[type=checkbox][name*='fournisseurs']").forEach(cb => {
+
+    const parent = cb.closest(".input-group");
+    const ordreInput = parent.querySelector("input[type=number]");
+    if (!ordreInput) return;
+
+    const maj = () => {
+      if (cb.checked) {
+        ordreInput.readOnly = false;
+        ordreInput.style.background = "white";
+      } else {
+        ordreInput.readOnly = true;
+        ordreInput.value = "";
+        ordreInput.style.background = "#f0f0f0";
+      }
+    };
+
+    maj();              // état initial
+    cb.addEventListener("change", maj);
+  });
+
+
+  /* ---------------------------------------------------------
+      2) Détection modifications
+     --------------------------------------------------------- */
+  let modifications = false;
+
+  document.querySelectorAll("#formTournees input").forEach(el => {
+    el.addEventListener("input", () => modifications = true);
+  });
+
+  document.querySelectorAll("#formTournees button[type='submit']").forEach(btn => {
+    btn.addEventListener("click", () => modifications = false);
+  });
+
+  window.addEventListener("beforeunload", e => {
+    if (!modifications) return;
+    e.preventDefault();
+    e.returnValue = "";
+  });
+
+  const btnRetour = document.getElementById("btnRetourPlanning");
+  if (btnRetour) {
+    btnRetour.addEventListener("click", e => {
+      if (modifications &&
+          !confirm("⚠️ Modifications non enregistrées. Quitter quand même ?")) {
+        e.preventDefault();
+      }
+    });
+  }
+
+});
+</script>
+{% endblock %}
+

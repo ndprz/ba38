@@ -1,0 +1,32 @@
+<div class="mb-4 d-flex flex-wrap justify-content-end" style="gap: 1rem;">
+
+    <!-- 🔙 Bouton Précédent -->
+    {% if previous_id %}
+    <button type="button"
+            class="btn btn-outline-secondary"
+            onclick="handleNav('{{ url_for('fournisseurs.update_fournisseur', fournisseur_id=previous_id) }}?{{ next_url|replace('&', '&amp;') }}')">
+        ⬅️ Précédent
+    </button>
+    {% endif %}
+
+    <!-- 🔜 Bouton Suivant -->
+    {% if next_id %}
+    <button type="button"
+            class="btn btn-outline-secondary"
+            onclick="handleNav('{{ url_for('fournisseurs.update_fournisseur', fournisseur_id=next_id) }}?{{ next_url|replace('&', '&amp;') }}')">
+        ➡️ Suivant
+    </button>
+    {% endif %}
+
+    <!-- 🗂️ Retour -->
+    <button type="button"
+            class="btn btn-outline-secondary"
+            onclick="handleReturn('{{ url_for('fournisseurs.liste_fournisseurs') }}?{{ next_url|replace('&', '&amp;') }}')">
+        🗂️ Retour
+    </button>
+
+    <!-- ✅ Enregistrer -->
+    <button type="submit" class="btn btn-warning">
+        ✅ Enregistrer les modifications
+    </button>
+</div>

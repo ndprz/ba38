@@ -1,0 +1,253 @@
+{% extends "base_frs.html" %}
+
+{% block title %}Modifier Fournisseur{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <!-- 🔹 En-tête -->
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+    <h2 class="mb-0">Modifier les informations du fournisseur</h2>
+    {% if date_modif %}
+    <div class="text-muted small ms-3">
+      🕒 Modifié le {{ date_modif }}
+      {% if user_modif %} par {{ user_modif }}{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- 🔹 Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="alert-container">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- 🔹 Formulaire -->
+  <form id="updateForm" method="POST" action="{{ url_for('fournisseurs.update_fournisseur', fournisseur_id=fournisseur_id) }}">
+    <input type="hidden" name="form_hash" id="form_hash" value="{{ form_hash }}">
+    <input type="hidden" name="go_to" id="go_to">
+    <input type="hidden" name="do_upload" id="do_upload" value="1">
+
+    <!-- rappel du nom fournisseur -->
+    {% if nom_fournisseur %}
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+      <div style="font-size: 1.4em; font-weight: bold; color: #333;">
+        🏷️ {{ nom_fournisseur }}
+        {% if lecture_seule %}
+          <span class="badge bg-secondary ms-2">Lecture seule</span>
+        {% endif %}
+      </div>
+      <div>
+        {% include "boutons_nav_fournisseur.html" %}
+      </div>
+    </div>
+    {% endif %}
+    
+
+
+    <a href="{{ url_for('fournisseurs.liste_contacts_fournisseur', fournisseur_id=fournisseur_id) }}"
+      class="btn btn-outline-secondary">👥 Gérer les contacts</a>
+
+
+
+    <!-- champs regroupés -->
+    {% for group_name, fields in grouped_fields.items() %}
+    <fieldset class="mb-3">
+      <legend class="group-title d-flex justify-content-between align-items-center bg-light p-2 rounded"
+              data-group-index="{{ loop.index0 }}">
+        {{ group_name }} <span class="toggle-icon">▶</span>
+      </legend>
+      <div class="group-content p-3 border rounded bg-white" style="display: none;">
+        {% for field in fields %}
+          {% if field['field_name'] == 'id' %}
+            {# Ne pas afficher ID #}
+          {% else %}
+          <div class="row mb-2" id="row_{{ field['field_name'] }}">
+            <div class="col-md-4 fw-bold text-end">
+              {{ field['field_name'] | format_label }}
+              {% if field['required'] %}
+                <span class="text-danger">*</span>
+              {% endif %}
+            </div>
+            <div class="col-md-8">
+              {% if field['type_champ'] == 'oui_non' %}
+                <select name="{{ field['field_name'] }}" id="{{ field['field_name'] }}" class="form-select" {% if lecture_seule %}disabled{% endif %}>
+                  <option value="">-- Choisir --</option>
+                  <option value="oui" {% if field['value'] == 'oui' %}selected{% endif %}>Oui</option>
+                  <option value="non" {% if field['value'] == 'non' %}selected{% endif %}>Non</option>
+                </select>
+                {% elif field['field_name'] == 'type_frs' %}
+                <select name="type_frs" id="type_frs" class="form-select" {% if lecture_seule %}disabled{% endif %}>
+                  <option value="">-- Choisir --</option>
+                  {% for val in parametres.get('type_frs', []) %}
+                    <option value="{{ val }}" {% if field['value'] == val %}selected{% endif %}>{{ val }}</option>
+                  {% endfor %}
+                </select>
+                {% elif field['type_champ'] == 'liste' %}
+                <select name="{{ field['field_name'] }}" id="{{ field['field_name'] }}" class="form-select" {% if lecture_seule %}disabled{% endif %}>
+                    <option value="">-- Choisir --</option>
+                    {% for val in parametres.get(field['field_name'], []) %}
+                    <option value="{{ val }}" {% if field['value'] == val %}selected{% endif %}>{{ val }}</option>
+                    {% endfor %}
+                </select>
+                {% elif field['field_name'] == 'enseigne' %}
+                <select name="enseigne" id="enseigne" class="form-select" {% if lecture_seule %}disabled{% endif %}>
+                    <option value="">-- Choisir une enseigne --</option>
+                    {% for val in parametres.get('enseigne', []) %}
+                    <option value="{{ val }}" {% if field['value'] == val %}selected{% endif %}>{{ val }}</option>
+                    {% endfor %}
+                </select>
+
+              {% else %}
+                <input type="text" id="{{ field['field_name'] }}" name="{{ field['field_name'] }}"
+                       value="{{ field['value'] or '' }}" class="form-control"
+                       {% if lecture_seule %}readonly{% endif %}>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </fieldset>
+    {% endfor %}
+
+    <!-- boutons fin de formulaire -->
+    {% if not lecture_seule %}
+    <div class="text-end mt-4">
+      <div class="d-flex justify-content-end mt-4">
+        {% include "boutons_nav_fournisseur.html" %}
+      </div>
+    </div>
+    {% endif %}
+  </form>
+
+    <div class="d-flex justify-content-between align-items-center mt-4 flex-wrap gap-2">
+    {% if not lecture_seule %}
+    <form method="POST" action="{{ url_for('fournisseurs.delete_fournisseur', fournisseur_id=fournisseur_id) }}" onsubmit="return confirmDelete()">
+        <a href="{{ url_for('fournisseurs.export_fiche_fournisseur', fournisseur_id=fournisseur_id) }}"
+          class="btn btn-secondary">
+          📄 Exporter fiche PDF
+        </a>
+        <button type="submit" class="btn btn-danger">🗑️ Supprimer le Fournisseur</button>
+        <input type="hidden" name="confirm" id="confirm">
+        <input type="hidden" name="confirm_final" id="confirm_final">
+    </form>
+    {% endif %}
+    </div>
+
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const groupTitles = document.querySelectorAll(".group-title");
+  const localStorageKey = "update_fournisseur_open_index";
+  groupTitles.forEach((title, index) => {
+    const content = title.nextElementSibling;
+    const icon = title.querySelector(".toggle-icon");
+    const key = title.dataset.groupIndex || index;
+    if (localStorage.getItem(localStorageKey) == key) {
+      content.style.display = "block";
+      icon.textContent = "▼";
+    }
+    title.addEventListener("click", function () {
+      const isVisible = content.style.display === "block";
+      groupTitles.forEach((otherTitle) => {
+        const otherContent = otherTitle.nextElementSibling;
+        const otherIcon = otherTitle.querySelector(".toggle-icon");
+        otherContent.style.display = "none";
+        if (otherIcon) otherIcon.textContent = "▶";
+      });
+      if (!isVisible) {
+        content.style.display = "block";
+        icon.textContent = "▼";
+        localStorage.setItem(localStorageKey, key);
+      } else {
+        localStorage.removeItem(localStorageKey);
+      }
+    });
+  });
+});
+</script>
+
+<script>
+let formModified = false;
+
+// détecter les changements
+document.addEventListener("DOMContentLoaded", function () {
+    const form = document.getElementById("updateForm");
+    if (form) {
+        form.addEventListener("input", () => {
+            formModified = true;
+        });
+    }
+});
+
+function handleSave() {
+    if (!formModified) {
+        alert("Aucune modification détectée.");
+        return;
+    }
+    if (confirm("Souhaitez-vous enregistrer les modifications ?")) {
+        document.getElementById("go_to").value = "";
+        document.getElementById("do_upload").value = "1";
+        document.getElementById("updateForm").submit();
+    }
+}
+
+function handleNav(targetUrl) {
+    if (!formModified) {
+        // ✅ Pas de modif → aller directement
+        window.location.href = targetUrl;
+        return;
+    }
+    if (confirm("⚠️ Vous avez modifié le formulaire.\nSouhaitez-vous enregistrer vos modifications avant de continuer ?")) {
+        document.getElementById("go_to").value = targetUrl;
+        document.getElementById("do_upload").value = "1";   // ✅ sauvegarder avant de rediriger
+        document.getElementById("updateForm").submit();
+    } else if (confirm("❗ Les modifications non enregistrées seront perdues.\nVoulez-vous vraiment continuer sans enregistrer ?")) {
+        window.location.href = targetUrl;
+    }
+}
+
+
+function handleReturn(targetUrl) {
+    if (formModified) {
+        if (confirm("⚠️ Vous avez modifié ce fournisseur.\nSouhaitez-vous enregistrer les modifications avant de revenir à la liste ?")) {
+            document.getElementById("go_to").value = targetUrl;
+            document.getElementById("do_upload").value = "1";
+            document.getElementById("updateForm").submit();
+        } else {
+            window.location.href = targetUrl;
+        }
+    } else {
+        window.location.href = targetUrl;
+    }
+}
+
+function confirmDelete() {
+    const step1 = confirm("⚠️ Voulez-vous vraiment supprimer ce fournisseur ?");
+    if (!step1) return false;
+
+    const step2 = prompt("Pour confirmer, tapez supprimer en minuscules :");
+    if (step2 !== "supprimer") {
+        alert("Suppression annulée ou confirmation incorrecte.");
+        return false;
+    }
+
+    // ✅ Remplir les champs cachés pour Flask
+    document.getElementById("confirm").value = "oui";
+    document.getElementById("confirm_final").value = "supprimer";
+
+    return true;
+}
+</script>
+
+
+{% endblock %}
+
+

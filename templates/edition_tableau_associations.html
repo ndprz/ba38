@@ -1,0 +1,181 @@
+{% extends "base_assos.html" %}
+
+{% block title %}Mise à jour en tableau des associations{% endblock %}
+
+{% block content %}
+<style>
+  .scroll-sync {
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: 20px;
+  }
+  .scroll-sync div {
+    height: 1px;
+  }
+  .scroll-zone {
+    position: relative;
+    max-height: 60vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border: 1px solid #ddd;
+  }
+  .scroll-sync-top {
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 20;
+    border-bottom: 1px solid #ddd;
+  }
+  .scroll-sync-bottom {
+    position: sticky;
+    bottom: 0;
+    background: white;
+    z-index: 20;
+    border-top: 1px solid #ddd;
+  }
+  .sticky-col {
+    position: sticky;
+    left: 0;
+    background: white;
+    z-index: 5;
+  }
+  .sticky-header {
+    z-index: 10 !important;
+  }
+</style>
+
+<form method="post" action="{{ url_for('partenaires.update_associations_table') }}">
+
+  {# 🔒 Titre + boutons fixes #}
+  <div class="position-sticky top-0 bg-white py-2 z-3 border-bottom shadow-sm mb-2">
+    <div class="d-flex justify-content-between align-items-center flex-wrap">
+      <h2 class="mb-0">Mise à jour en tableau des associations</h2>
+      <div class="d-flex gap-2 mt-2 mt-md-0">
+        <a href="{{ url_for('partenaires.partenaires') }}" class="btn btn-secondary">↩️ Retour à la liste</a>
+        <button type="submit" class="btn btn-success">💾 Enregistrer les modifications</button>
+      </div>
+    </div>
+  </div>
+
+  {# ✅ Messages flash #}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="alert-container">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {# ⬆️ Barre de scroll horizontale en haut (fixe) #}
+  <div id="scroll-top" class="scroll-sync scroll-sync-top">
+    <div></div>
+  </div>
+
+  {# 🧾 Conteneur principal scrollable (vertical) #}
+  <div id="scroll-body" class="scroll-zone">
+    <table class="table table-bordered table-striped table-sm m-0">
+      <thead class="table-light">
+        <tr>
+          <th>ID</th>
+          <th class="sticky-col sticky-header">Nom</th>
+          {% for column in selected_columns %}
+            {% if column != 'nom_association' %}
+              <th>{{ column }}</th>
+            {% endif %}
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for association in rows %}
+          {% set row_index = loop.index0 %}
+
+          {% if association.valeurs is defined %}
+            {% set valeurs = association.valeurs %}
+            {% set champs_invalides = association.champs_invalides %}
+            {% set nom = association.nom %}
+            {% set id_asso = association.id %}
+          {% else %}
+            {% set valeurs = association %}
+            {% set champs_invalides = [] %}
+            {% set nom = association['nom_association'] %}
+            {% set id_asso = association['ID'] %}
+          {% endif %}
+
+          <tr>
+            <td>
+              <input type="hidden" name="id_{{ row_index }}" value="{{ id_asso }}">
+              {{ id_asso }}
+            </td>
+            <td class="sticky-col">{{ nom }}</td>
+
+            {% for column in selected_columns %}
+              {% if column != 'nom_association' %}
+                {% set valeur = valeurs[column] %}
+                {% set v = valeur if valeur is not none and valeur != 'None' else '' %}
+                <td>
+                  {% if column in oui_non_fields %}
+                    <select name="{{ column }}_{{ row_index }}"
+                            class="form-select form-select-sm {% if column in champs_invalides %}is-invalid{% endif %}">
+                      <option value=""></option>
+                      <option value="oui" {% if v == 'oui' %}selected{% endif %}>Oui</option>
+                      <option value="non" {% if v == 'non' %}selected{% endif %}>Non</option>
+                    </select>
+                  {% else %}
+                    <input type="text" name="{{ column }}_{{ row_index }}"
+                           class="form-control form-control-sm {% if column in champs_invalides %}is-invalid{% endif %}"
+                           value="{% if column.lower().startswith('tel') or 'téléphone' in column.lower() %}{{ v | format_tel }}{% else %}{{ v }}{% endif %}"
+                           size="{{ v|length + 2 }}"
+                           style="width: auto; min-width: 60px; max-width: 100%;">
+                  {% endif %}
+                </td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# ⬇️ Barre de scroll horizontale en bas (fixe) #}
+  <div id="scroll-bottom" class="scroll-sync scroll-sync-bottom mt-1">
+    <div></div>
+  </div>
+
+  <input type="hidden" name="total_rows" value="{{ rows|length }}">
+  {% for col in selected_columns %}
+    <input type="hidden" name="columns" value="{{ col }}">
+  {% endfor %}
+
+  <div class="d-flex justify-content-end gap-2 mt-3">
+    <a href="{{ url_for('partenaires.partenaires') }}" class="btn btn-secondary">↩️ Retour à la liste</a>
+    <button type="submit" class="btn btn-success">💾 Enregistrer les modifications</button>
+  </div>
+</form>
+
+<script>
+  const topScroll = document.getElementById('scroll-top');
+  const bodyScroll = document.getElementById('scroll-body');
+  const bottomScroll = document.getElementById('scroll-bottom');
+
+  function syncScroll(from, targets) {
+    from.addEventListener('scroll', () => {
+      targets.forEach(t => t.scrollLeft = from.scrollLeft);
+    });
+  }
+
+  syncScroll(topScroll, [bodyScroll, bottomScroll]);
+  syncScroll(bodyScroll, [topScroll, bottomScroll]);
+  syncScroll(bottomScroll, [bodyScroll, topScroll]);
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const table = bodyScroll.querySelector('table');
+    if (table) {
+      const fullWidth = table.scrollWidth;
+      topScroll.firstElementChild.style.width = fullWidth + 'px';
+      bottomScroll.firstElementChild.style.width = fullWidth + 'px';
+    }
+  });
+</script>
+{% endblock %}

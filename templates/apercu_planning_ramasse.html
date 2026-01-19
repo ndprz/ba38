@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Planning Ramasse – Semaine {{ semaine }}</title>
+    <style>
+        @page { size: A3 landscape; margin: 1cm; }
+        body { font-family: Arial, sans-serif; font-size: 12px; }
+        h2 { text-align: center; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        th, td { border: 1px solid #444; padding: 5px; text-align: center; }
+        th { background-color: #f2f2f2; }
+        .nowrap { white-space: nowrap; }
+    </style>
+</head>
+<body>
+
+<h2>Planning de Ramasse – Semaine {{ semaine }} ({{ date_debut }} au {{ date_fin }})</h2>
+
+<div style="text-align: center; margin-bottom: 20px;" class="no-print">
+    <button onclick="window.print()" style="padding: 8px 16px; font-size: 14px; cursor: pointer;">
+        🖨️ Imprimer cette page
+    </button>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Jour</th>
+            <th class="tournee">Tournée</th>
+            <th>Chauffeur</th>
+            <th>Équipier</th>
+            <th>Responsable Tri</th>
+            <th>Tri 1</th>
+            <th>Tri 2</th>
+            <th>Tri 3</th>
+            <th>Camion</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for l in lignes %}
+        <tr class="{{ l.jour|lower }}">
+            <td>{{ l.jour|capitalize }} {{ l.date_jour[0:2] }}</td>
+            <td class="tournee">{{ l.tournee }}</td>
+
+            <td>
+                {{ l.chauffeur|safe }}
+            </td>
+
+            <td>
+                {{ l.equipier|safe }}
+            </td>
+
+            <td>
+                {{ l.responsable|safe }}
+            </td>
+
+            <td>
+                {{ l.ramasse_tri1|safe }}
+            </td>
+
+            <td>
+                {{ l.ramasse_tri2|safe }}
+            </td>
+
+            <td>
+                {{ l.ramasse_tri3|safe }}
+            </td>
+
+            <td>{{ l.camion }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+</body>
+</html>
+
+<style>
+    @page { size: A3 landscape; margin: 1cm; }
+
+   
+    .absent {
+        color: red;
+        font-weight: bold;
+    }
+
+    .remplacant {
+        color: #007bff;
+        font-style: italic;
+    }
+
+
+    body {
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+    }
+
+    h2 {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        table-layout: auto;
+    }
+
+    th, td {
+        border: 1px solid #444;
+        padding: 4px 8px;
+        text-align: left;
+        vertical-align: middle;
+        white-space: normal;
+    }
+
+    th {
+        background-color: #f2f2f2;
+        font-weight: bold;
+    }
+
+    td.tournee, th.tournee {
+        min-width: 120px;
+        max-width: 400px;
+    }
+
+    @media print {
+        * {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+    }
+
+    @media print {
+        .no-print {
+            display: none !important;
+        }
+    }
+
+    tr.lundi { background-color: #eaf6ff; }
+    tr.mardi { background-color: #e8f5e9; }
+    tr.mercredi { background-color: #fffde7; }
+    tr.jeudi { background-color: #fce4ec; }
+    tr.vendredi { background-color: #f3e5f5; }
+</style>

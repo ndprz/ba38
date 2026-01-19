@@ -1,0 +1,97 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Rapport activité bénévoles{% endblock %}
+
+{% block content %}
+
+<h2 class="mb-4">📊 Rapport d’activité des bénévoles</h2>
+
+<form method="POST" action="{{ url_for('planning_report.planning_report_run') }}" class="border p-4 rounded">
+
+  <div class="mb-3">
+    <label class="form-label"><strong>Période :</strong></label>
+
+    <select name="periode" id="periode" class="form-select" onchange="toggleDates()">
+      <option value="mois_precedent">Mois précédent</option>
+      <option value="annee_en_cours">Année en cours (du 1er janvier à aujourd’hui)</option>
+      <option value="annee_precedente">Année précédente</option>
+      <option value="personnalisee">Période personnalisée</option>
+    </select>
+  </div>
+
+  <!-- Dates personnalisées -->
+  <div id="zone_dates" class="border p-3 rounded bg-light mt-3" style="display:none;">
+    <div class="row">
+      <div class="col-md-6">
+        <label class="form-label">Du :</label>
+        <input type="date" name="debut" class="form-control">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Au :</label>
+        <input type="date" name="fin" class="form-control">
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-4 d-flex gap-3 justify-content-between">
+    <button type="submit" class="btn btn-primary">
+      📄 Générer le rapport
+    </button>
+
+    <a href="{{ url_for('planning.planning_main') }}" class="btn btn-secondary">
+      ⬅️ Retour au planning
+    </a>
+  </div>
+
+
+</form>
+
+<script>
+function toggleDates() {
+  const periode = document.getElementById("periode").value;
+  const zone = document.getElementById("zone_dates");
+  if (periode === "personnalisee") {
+    zone.style.display = "";
+  } else {
+    zone.style.display = "none";
+  }
+}
+
+function autodate(input) {
+    let val = input.value;
+
+    // Rien saisi → on ne fait rien
+    if (!val) return;
+
+    // Si le champ contient déjà une année → OK
+    if (val.match(/^\d{4}-\d{2}-\d{2}$/)) return;
+
+    // Si format "MM-DD" ou "DD-MM" ou "DD/MM"
+    const regex = /^(\d{2})[\/-](\d{2})$/;
+    const m = val.match(regex);
+    if (!m) return;
+
+    const jour = m[1];
+    const mois = m[2];
+
+    // Année automatique : année courante
+    const annee = new Date().getFullYear();
+
+    // On formate YYYY-MM-DD
+    const iso = `${annee}-${mois}-${jour}`;
+
+    input.value = iso;
+}
+
+// On attache l’événement
+document.addEventListener("DOMContentLoaded", function () {
+    const d1 = document.querySelector('input[name="debut"]');
+    const d2 = document.querySelector('input[name="fin"]');
+
+    if (d1) d1.addEventListener("blur", () => autodate(d1));
+    if (d2) d2.addEventListener("blur", () => autodate(d2));
+});
+
+</script>
+
+{% endblock %}

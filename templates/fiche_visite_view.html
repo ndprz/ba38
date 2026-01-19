@@ -1,0 +1,187 @@
+{% extends "base_assos.html" %}
+{% block title %}Fiche de visite{% endblock %}
+
+{% block content %}
+
+<div class="container mt-4">
+
+  <!-- 🔹 En-tête avec bouton retour -->
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+    <h2 class="mb-0">Fiche de visite – {{ fiche.get("nom_association","") }}</h2>
+    <div>
+    <a href="{{ url_for('fiches_visite.liste', partner_id=partner_id) }}" 
+      class="btn btn-outline-secondary">
+      ⬅️ Retour aux fiches
+    </a>
+    </div>
+  </div>
+
+  <p><strong>Date :</strong> {{ fiche.get("date_visite","") }} | 
+     <strong>CAR :</strong> {{ fiche.get("car","") }} | 
+     <strong>Visiteur :</strong> {{ fiche.get("visiteur","") }} | 
+     <strong>Personnes reçues :</strong> {{ fiche.get("recu_par","") }} | 
+     <strong>Fonction :</strong> {{ fiche.get("fonction","") }} | 
+     <strong>Date précédente visite :</strong> {{ fiche.get("date_precedente_visite","") }}
+  </p>
+
+  <!-- Chapitre 1 -->
+  <div class="card mb-3">
+    <div class="card-header bg-warning">1) Mise à jour de l’annexe 1bis de la convention de partenariat</div>
+    <div class="card-body">
+      <p><strong>Lien vers le Drive :</strong> {{ fiche.get("drive_link","") }}</p>
+    </div>
+  </div>
+
+  <!-- Chapitre 2 -->
+  <div class="card mb-3">
+    <div class="card-header bg-warning">2) La connaissance de la structure</div>
+    <div class="card-body">
+      <p><strong>Quel est votre projet associatif ? Quelle est la place de l’aide alimentaire dans ce projet ?</strong><br>{{ fiche.get("projet","") }}</p>
+      <p><strong>Quelles sont les actualités de l’association/CCAS ?</strong><br>{{ fiche.get("actualites","") }}</p>
+      <p><strong>Rencontrez-vous des difficultés particulières ?</strong><br>{{ fiche.get("difficultes","") }}</p>
+    </div>
+  </div>
+
+  <!-- Chapitre 3 -->
+  <div class="card mb-3">
+    <div class="card-header bg-warning">3) Les personnes accueillies</div>
+    <div class="card-body">
+      <p><em>Objectif : Conformément à l’objectif n°4 de la charte des BA, s’adapter aux besoins des personnes en situation de précarité.</em></p>
+      <p><strong>Quels sont les profils des personnes accueillies ? Remarquez-vous une évolution ?</strong><br>{{ fiche.get("type_de_personnes_aidees","") }}</p>
+      <p><strong>Quelle est la durée moyenne d’accès à l’aide alimentaire ?</strong><br>{{ fiche.get("duree_de_l_accompagnement","") }}</p>
+    </div>
+  </div>
+
+  <!-- Chapitre 4 -->
+  <div class="card mb-3">
+    <div class="card-header bg-warning">4) Suivi et accompagnement des personnes accueillies</div>
+    <div class="card-body">
+      <p><em>Objectif : bilan ou actions à mettre en œuvre (orientation, ateliers, accueil…)</em></p>
+      <p><strong>Proposez-vous des entretiens pour l’accueil, le renouvellement ou la clôture ?</strong><br>{{ fiche.get("entretiens_accueil","") }}</p>
+      <p><strong>Existe-t-il un entretien explicatif après ouverture des droits ? Quels supports utilisez-vous ?</strong><br>{{ fiche.get("entretiens_explicatifs","") }}</p>
+      <p><strong>Quelles mesures d’accompagnement avez-vous mises en place ?</strong><br>{{ fiche.get("mesures_d_accompagnement","") }}</p>
+    </div>
+  </div>
+
+  <!-- Chapitre 5 -->
+  <div class="card mb-3">
+    <div class="card-header bg-warning">5) Conditions d’accueil et de participation symbolique</div>
+    <div class="card-body">
+      <p><strong>Organisation de l’accueil :</strong><br>{{ fiche.get("organisation_accueil","") }}</p>
+      <p><strong>Facilitation de la distribution :</strong><br>{{ fiche.get("facilitation_distribution","") }}</p>
+      <p><strong>Sac isotherme :</strong>
+        {% if fiche.get("sac_isotherme") == "oui" %}✅ Oui{% elif fiche.get("sac_isotherme") == "non" %}❌ Non{% else %}-{% endif %}
+      </p>
+      <p><strong>Participation financière demandée :</strong>
+        {% if fiche.get("participation_financiere_o_n") == "oui" %}✅ Oui{% elif fiche.get("participation_financiere_o_n") == "non" %}❌ Non{% else %}-{% endif %}
+      </p>
+      <p><strong>Modalités :</strong> {{ fiche.get("participation_modalites_detail","") }} | 
+         <strong>Montant :</strong> {{ fiche.get("montant_de_la_participation_financiere_par_personne","") }}</p>
+      <p><strong>Plafond d’achat mensuel :</strong> {{ fiche.get("montant_plafond_achat_mensuel","") }}</p>
+      <p><strong>Double affichage :</strong>
+        {% if fiche.get("double_affichage") == "oui" %}✅ Oui{% elif fiche.get("double_affichage") == "non" %}❌ Non{% else %}-{% endif %}
+      </p>
+      <p><strong>Charte nationale affichée :</strong>
+        {% if fiche.get("charte_nat_epiceries") == "oui" %}✅ Oui{% elif fiche.get("charte_nat_epiceries") == "non" %}❌ Non{% else %}-{% endif %}
+      </p>
+    </div>
+  </div>
+
+  <!-- Chapitre 6 -->
+  <div class="card mb-3">
+    <div class="card-header bg-warning">6) Réglementation</div>
+    <div class="card-body">
+      <p><strong>Date dernier contrôle DREETS :</strong> {{ fiche.get("date_controle_dreets","") }}</p>
+      <p><strong>Procédure d’éligibilité :</strong>
+        {% if fiche.get("criteres_d_eligibilite_de_l_aide_par_ecrit") == "oui" %}✅ Oui{% elif fiche.get("criteres_d_eligibilite_de_l_aide_par_ecrit") == "non" %}❌ Non{% else %}-{% endif %}
+      </p>
+      <p><strong>Thermomètres frigos/congels :</strong>
+        {% if fiche.get("thermometres_frigos_congels") == "oui" %}✅ Oui{% elif fiche.get("thermometres_frigos_congels") == "non" %}❌ Non{% else %}-{% endif %}
+      </p>
+      <p><strong>Relevés de températures archivés :</strong>
+        {% if fiche.get("releves_temperatures") == "oui" %}✅ Oui{% elif fiche.get("releves_temperatures") == "non" %}❌ Non{% else %}-{% endif %}
+      </p>
+      <p><strong>Date dernier contrôle FranceAgriMer :</strong> {{ fiche.get("date_controle_franceagrimer","") }}</p>
+      <p><strong>Livret procédures FSE+ rempli :</strong>
+        {% if fiche.get("livret_procedures_fse") == "oui" %}✅ Oui{% elif fiche.get("livret_procedures_fse") == "non" %}❌ Non{% else %}-{% endif %}
+      </p>
+      <p><strong>Affiche FSE+ présente :</strong>
+        {% if fiche.get("affiche_fse") == "oui" %}✅ Oui{% elif fiche.get("affiche_fse") == "non" %}❌ Non{% else %}-{% endif %}
+      </p>
+    </div>
+  </div>
+
+  <!-- Chapitre 7 -->
+  <div class="card mb-3">
+    <div class="card-header bg-warning">7) TICADI</div>
+    <div class="card-body">
+      <p><strong>Utilisation TICADI indicateurs :</strong>
+        {% if fiche.get("Ticadi_utilise_indicateurs_etat") == "oui" %}✅ Oui{% elif fiche.get("Ticadi_utilise_indicateurs_etat") == "non" %}❌ Non{% else %}-{% endif %}
+      </p>
+      <p><strong>Utilisation TICADI compta matière :</strong>
+        {% if fiche.get("ticadi_utilise_compta_matiere") == "oui" %}✅ Oui{% elif fiche.get("ticadi_utilise_compta_matiere") == "non" %}❌ Non{% else %}-{% endif %}
+      </p>
+      <p><strong>Formation TICADI :</strong>
+        {% if fiche.get("formation_ticadi_a_jour") == "oui" %}✅ Oui{% elif fiche.get("formation_ticadi_a_jour") == "non" %}❌ Non{% else %}-{% endif %}
+      </p>
+    </div>
+  </div>
+
+  <!-- Chapitre 8 -->
+  <div class="card mb-3">
+    <div class="card-header bg-warning">8) La relation partenariale</div>
+    <div class="card-body">
+      <p><strong>Accompagnement BA :</strong> {{ fiche.get("avis_accompagnement_ba","") }}</p>
+      <p><strong>Fréquence contacts :</strong> {{ fiche.get("avis_frequence_contacts_ba","") }}</p>
+      <p><strong>Relations commandes/livraison :</strong> {{ fiche.get("avis_relations_commandes_livraison","") }}</p>
+      <p><strong>Passage commandes :</strong> {{ fiche.get("avis_passge_de_commandes","") }}</p>
+      <p><strong>Besoins spécifiques retraits/livraisons :</strong> {{ fiche.get("besoins_specifiques_retraits_livraisons","") }}</p>
+      <p><strong>Satisfaction produits secs :</strong> {{ fiche.get("Satisfaction_qualité_sec","") }} / {{ fiche.get("Satisfaction_quantité_sec","") }}</p>
+      <p><strong>Satisfaction produits frais :</strong> {{ fiche.get("Satisfaction_qualité_frais","") }} / {{ fiche.get("Satisfaction_quantité_frais","") }}</p>
+      <p><strong>Satisfaction surgelés :</strong> {{ fiche.get("Satisfaction_qualité_surgeles","") }} / {{ fiche.get("Satisfaction_quantité_surgeles","") }}</p>
+    </div>
+  </div>
+
+  <!-- Chapitre 9 -->
+  <div class="card mb-3">
+    <div class="card-header bg-warning">9) Le plan d’action</div>
+    <div class="card-body">
+      <p><strong>Points forts :</strong> {{ fiche.get("plan_action_points_forts","") }}</p>
+      <table class="table table-bordered table-sm">
+        <thead class="table-light">
+          <tr>
+            <th>Action</th><th>Acteur</th><th>Échéance</th><th>Réalisé ?</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in range(1,11) %}
+          {% set action = fiche.get("plan_action_" ~ i, "") %}
+          {% set acteur = fiche.get("plan_action_" ~ i ~ "_acteur", "") %}
+          {% set echeance = fiche.get("plan_action_" ~ i ~ "_echeance", "") %}
+          {% set realise = fiche.get("plan_action_" ~ i ~ "_realise", "") %}
+          {% if action or acteur or echeance or realise %}
+          <tr>
+            <td>{{ action }}</td>
+            <td>{{ acteur }}</td>
+            <td>{{ echeance }}</td>
+            <td>{% if realise=="oui" %}✅ Oui{% elif realise=="non" %}❌ Non{% else %}-{% endif %}</td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+      <p><strong>Remarques/Observations :</strong> {{ fiche.get("remarques_observations_diverses","") }}</p>
+      <p><strong>Visite :</strong>
+        {% if fiche.get("visite_pendant_ou_hors_distribution") == "pendant" %}✅ Pendant distribution
+        {% elif fiche.get("visite_pendant_ou_hors_distribution") == "hors" %}✅ Hors distribution
+        {% else %}-{% endif %}
+      </p>
+    </div>
+  </div>
+
+  <a href="{{ url_for('fiches_visite.liste', partner_id=partner_id) }}" 
+    class="btn btn-outline-secondary">
+    ⬅️ Retour aux fiches
+  </a>
+</div>
+{% endblock %}

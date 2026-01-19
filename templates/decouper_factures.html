@@ -1,0 +1,15 @@
+{% extends "base_assos.html" %}
+{% block title %}Découpe des factures{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <h2>📑 Découper un fichier de factures</h2>
+  <p class="text-muted">Téléversez un PDF contenant plusieurs factures (plusieurs pages par client possible).</p>
+  <form method="post" enctype="multipart/form-data">
+    <div class="mb-3">
+      <label class="form-label">Choisir un fichier PDF :</label>
+      <input type="file" name="pdf_file" accept=".pdf" class="form-control" required>
+    </div>
+    <button type="submit" class="btn btn-primary">🚀 Lancer la découpe</button>
+  </form>
+</div>
+{% endblock %}

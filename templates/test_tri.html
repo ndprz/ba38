@@ -1,0 +1,45 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Test Tri Simple{% endblock %}
+
+{% block content %}
+<h2>🧪 Test de Tri dynamique</h2>
+
+<table class="table table-bordered table-sm align-middle" id="table-test">
+    <thead class="table-light">
+        <tr>
+            <th onclick="sortTableByInput(0)" style="cursor: pointer;">Nom 🔼</th>
+            <th>Ville</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><input value="Zebra" class="form-control form-control-sm" /></td>
+            <td><input value="Lyon" class="form-control form-control-sm" /></td>
+        </tr>
+        <tr>
+            <td><input value="Alpha" class="form-control form-control-sm" /></td>
+            <td><input value="Grenoble" class="form-control form-control-sm" /></td>
+        </tr>
+        <tr>
+            <td><input value="Mango" class="form-control form-control-sm" /></td>
+            <td><input value="Chambéry" class="form-control form-control-sm" /></td>
+        </tr>
+    </tbody>
+</table>
+
+<script>
+function sortTableByInput(colIndex) {
+    const tbody = document.querySelector("#table-test tbody");
+    const rows = Array.from(tbody.querySelectorAll("tr"));
+
+    rows.sort((a, b) => {
+        const aVal = a.cells[colIndex].querySelector("input")?.value.toLowerCase() || "";
+        const bVal = b.cells[colIndex].querySelector("input")?.value.toLowerCase() || "";
+        return aVal.localeCompare(bVal);
+    });
+
+    rows.forEach(row => tbody.appendChild(row));
+}
+</script>
+{% endblock %}

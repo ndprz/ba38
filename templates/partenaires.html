@@ -1,0 +1,309 @@
+{% extends "base_assos.html" %}
+
+{% block title %}Liste des Associations{% endblock %}
+
+{% block content %}
+<h2>Liste des Associations</h2>
+
+<!-- 🔘 Boutons principaux -->
+<div class="d-flex align-items-center flex-wrap" style="gap: 10px; margin-bottom: 15px;">
+
+    <!-- ➕ Créer un nouveau partenaire -->
+    {% if not lecture_seule %}
+    <a href="{{ url_for('partenaires.create_partner') }}" class="btn btn-success">
+        ➕ Créer un nouveau partenaire
+    </a>
+    {% else %}
+    <button class="btn btn-success" disabled title="Vous n'avez pas les droits pour créer une association.">
+        ➕ Créer un nouveau partenaire
+    </button>
+    {% endif %}
+
+    <!-- 📄 Publipostage -->
+    {% if user_role in ['admin', 'gestionnaire'] %}
+    <button type="button" class="btn btn-success" onclick="updatePublipostageFile()">
+        📄 Fichiers Publipostage
+    </button>
+    {% endif %}
+
+    <!-- 📝 Mise à jour en tableau -->
+    {% if not lecture_seule %}
+    <form method="GET" action="{{ url_for('partenaires.edition_tableau_associations') }}" style="display: inline;">
+        {% for col in selected_columns %}
+            <input type="hidden" name="columns" value="{{ col }}">
+        {% endfor %}
+        <input type="hidden" name="has_interacted" value="1">
+        {% if voir_toutes %}
+            <input type="hidden" name="voir_toutes" value="1">
+        {% endif %}
+        <button type="submit" class="btn btn-warning">📝 Mise à jour en tableau</button>
+    </form>
+    {% else %}
+    <button class="btn btn-warning" disabled title="Vous n'avez pas les droits pour modifier les données.">
+        📝 Mise à jour en tableau
+    </button>
+    {% endif %}
+
+    <!-- ❌ Bouton associations non valides -->
+    <button
+        type="button"
+        class="btn btn-danger"
+        onclick="toggleNonValides()">
+        {% if request.args.get("voir_non_valides") == "1" %}
+            ✔ Toutes les associations
+        {% else %}
+            ❌ Non valides
+        {% endif %}
+    </button>
+
+    <button class="btn btn-secondary" onclick="document.getElementById('form-options').submit();">
+        🔄 Actualiser
+    </button>
+
+</div>
+
+
+<!-- 🔧 Formulaire de configuration -->
+<form method="GET" id="form-options">
+    <fieldset>
+        <legend>Options d'affichage</legend>
+        <input type="hidden" name="has_interacted" value="1">
+        <input type="hidden" id="selected_groups" name="selected_groups" value="{{ selected_groups|join(',') }}">
+
+        <!-- 📦 Liste des groupes de champs, "Coordonnées principales" en tête -->
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start;">
+            {% set group_order = ['coordonnées principales'] + (grouped_fields.keys() | list | reject('equalto', 'coordonnées principales') | list) %}
+            {% for group_name in group_order %}
+                {% set fields = grouped_fields[group_name] %}
+                {% set safe_group_name = group_name|replace(' ', '_')|lower %}
+                <div class="fields-group" style="flex: 1; min-width: 220px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="titre-depliable" onclick="toggleGroup('{{ safe_group_name }}', this)">
+                            <span class="chevron">➤</span> {{ group_name }}
+                          </div>
+                          
+                        <label style="margin: 0;">
+                            <input type="checkbox" class="toggle-master-checkbox" id="toggle-{{ safe_group_name }}"
+                                name="selected_groups"
+                                value="{{ group_name }}"
+                                onclick="toggleAll('{{ safe_group_name }}', this.checked)"
+                                {% if group_name in selected_groups %}checked{% endif %}>
+
+                            Tout sélectionner
+                        </label>
+                    </div>
+                    <div class="fields-container" id="container-{{ safe_group_name }}">
+                        {% for field in fields %}
+                        <label>
+                            <input type="checkbox" class="field-{{ safe_group_name }} green-checkbox"
+                                name="columns"
+                                value="{{ field.field_name }}"
+                                {% if field.field_name in selected_columns %}checked{% endif %}
+                                onchange="updateGroupCheckboxState('{{ safe_group_name }}')">
+
+                            {{ field.field_name | format_label }}
+                        </label><br>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <!-- 🔍 Barre de recherche + option "voir toutes" -->
+        <div style="display: flex; gap: 15px; align-items: center; margin-top: 10px;">
+            <input type="text" id="filtre-association" class="form-control" placeholder="🔍 Rechercher une association...">
+            {% if user_role == 'car' %}
+                <div class="form-check" style="margin-left: 15px;">
+                    <input class="form-check-input" type="checkbox" id="voir_toutes" name="voir_toutes" value="1"
+                        {% if voir_toutes %}checked{% endif %}>
+                    <label class="form-check-label" for="voir_toutes">👁️ Voir toutes les associations</label>
+                </div>
+            {% endif %}
+        </div>
+    </fieldset>
+</form>
+
+<hr>
+
+{% if request.args.get("voir_non_valides") == "1" %}
+<div class="alert alert-danger" style="
+    font-size: 1.1rem;
+    font-weight: bold;
+    margin-bottom: 15px;
+    padding: 12px 18px;
+    border-radius: 8px;
+    background-color: #ffe0e0;
+    border-left: 6px solid #ff4d4d;
+">
+    ⚠️ <strong>Mode "Associations non valides" activé</strong><br>
+    <span style="font-weight: normal;">
+        Seules les associations <u>non validées</u> sont présentées ci-dessous.
+    </span>
+</div>
+{% endif %}
+
+{% if rows %}
+<!-- 🎯 Scroll haut synchronisé -->
+<div id="scroll-top" style="overflow-x: auto; height: 20px; margin-bottom: 5px;">
+    <div id="sync-scroll" style="height: 1px;"></div>
+</div>
+
+<!-- 📊 Tableau principal avec colonnes figées -->
+<div id="scroll-bottom" style="overflow-x: auto; white-space: nowrap;">
+<table class="table table-bordered table-sticky" id="partenaire-table">
+    <thead>
+        <tr class="{% if request.args.get('voir_non_valides') == '1' %}ligne-non-valide{% endif %}">
+            <th class="sticky-col sticky-col-1">Action</th>
+            <th class="sticky-col sticky-col-2">ID</th>
+            <th class="sticky-col sticky-col-3">Nom</th>
+            {% for column in selected_columns %}
+                {% if column != 'nom_association' %}
+                <th>{{ column | format_label }}</th>
+                {% endif %}
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% set date_columns = ["date de la visite", "date agrement regional", "date FIN habilitation", "date précédente visite"] %}
+        {% set email_columns = ["courriel président", "Code comptable", "courriel association", "courriel resp opérationnel", "courriel resp IE1", "courriel resp IE2", "courriel distribution", "courriel resp Hysa", "courriel resp trésorerie"] %}
+        {% set drive_columns = ["drive_link"] %}
+
+        {% for row in rows %}
+        <tr>
+            <td class="sticky-col sticky-col-1">
+                <form method="GET" action="{{ url_for('partenaires.update_partner', partner_id=row['id']) }}" style="display:inline;">
+                    <input type="hidden" name="has_interacted" value="1">
+                    {% for col in selected_columns %}
+                    <input type="hidden" name="columns" value="{{ col }}">
+                    {% endfor %}
+                    {% for grp in selected_groups %}
+                    <input type="hidden" name="selected_groups" value="{{ grp }}">
+                    {% endfor %}
+                    <button type="submit" class="btn btn-primary btn-sm">Modifier</button>
+                </form>
+            </td>
+            <td class="sticky-col sticky-col-2">{{ row['id'] }}</td>
+            <td class="sticky-col sticky-col-3">{{ row['nom_association'] }}</td>
+            {% for column in selected_columns %}
+                {% if column != 'nom_association' %}
+                <td>
+                    {% if row[column] %}
+                        {% if column in date_columns %}
+                            {{ row[column][:10].split('-')[2] }}/{{ row[column][:10].split('-')[1] }}/{{ row[column][:10].split('-')[0] }}
+                        {% elif column in email_columns %}
+                            <a href="mailto:{{ row[column] }}">{{ row[column] }}</a>
+                        {% elif column in drive_columns %}
+                            <a href="{{ row[column] }}" target="_blank" class="btn btn-outline-primary">📂 Dossier</a>
+                        {% elif column.lower().startswith("tel") or "téléphone" in column.lower() %}
+                            {{ row[column] | format_tel }}
+                        {% else %}
+                            {{ row[column] }}
+                        {% endif %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                {% endif %}
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p>Aucune association trouvée.</p>
+{% endif %}
+
+<style>
+.ligne-non-valide {
+    background-color: #ffe5e5 !important;   /* rose très léger */
+    border-left: 4px solid #ff6666 !important;
+}
+</style>
+
+
+<!-- 🔁 JS : dynamique et synchronisation -->
+<script>
+
+function toggleNonValides() {
+    const f = document.getElementById('form-options');
+    if (!f) return;
+
+    // Supprimer tous les anciens champs voir_non_valides
+    const olds = f.querySelectorAll('input[name="voir_non_valides"]');
+    olds.forEach(el => el.remove());
+
+    // Créer un nouveau champ avec la valeur inversée
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'voir_non_valides';
+    input.value = {{ '0' if request.args.get('voir_non_valides') == '1' else '1' }};
+    f.appendChild(input);
+
+    // Soumettre le formulaire complet (cases cochées incluses)
+    f.submit();
+}
+
+function toggleGroup(groupName, titreElement) {
+    const container = document.getElementById(`container-${groupName}`);
+    if (container) container.classList.toggle('expanded');
+
+    const chevron = titreElement.querySelector('.chevron');
+    if (chevron) {
+        chevron.textContent = container.classList.contains('expanded') ? '▼' : '➤';
+    }
+}
+
+
+function toggleAll(group, checked) {
+    document.querySelectorAll('.field-' + group).forEach(cb => cb.checked = checked);
+    updateGroupCheckboxState(group);
+}
+
+function updateGroupCheckboxState(group) {
+    const boxes = document.querySelectorAll('.field-' + group);
+    const relevantBoxes = Array.from(checkboxes).filter(cb => cb.offsetParent !== null);
+    const allChecked = relevantBoxes.length > 0 && relevantBoxes.every(cb => cb.checked);
+    document.getElementById('toggle-' + group).checked = allChecked;
+}
+
+function updatePublipostageFile() {
+    if (confirm("Voulez-vous vraiment mettre à jour les fichiers de publipostage ?")) {
+        fetch("{{ url_for('export.export_all_publipostage') }}", { method: "POST" })
+            .then(response => response.json())
+            .then(data => alert(data.message))
+            .catch(error => alert("❌ Erreur lors de la mise à jour : " + error));
+    }
+}
+
+
+
+// 📌 Scroll horizontal synchronisé
+const topScroll = document.getElementById("scroll-top");
+const bottomScroll = document.getElementById("scroll-bottom");
+const syncDiv = document.getElementById("sync-scroll");
+const table = document.getElementById("partenaire-table");
+if (syncDiv && table) syncDiv.style.width = table.scrollWidth + "px";
+topScroll.addEventListener("scroll", () => bottomScroll.scrollLeft = topScroll.scrollLeft);
+bottomScroll.addEventListener("scroll", () => topScroll.scrollLeft = bottomScroll.scrollLeft);
+
+// 🔎 Filtrage dynamique client
+document.getElementById("filtre-association").addEventListener("input", function () {
+    const filtre = this.value.toLowerCase();
+    document.querySelectorAll("table tbody tr").forEach(row => {
+        row.style.display = row.innerText.toLowerCase().includes(filtre) ? "" : "none";
+    });
+});
+// 🧠 Vérifie l’état initial des groupes au chargement
+function initGroupCheckboxStates() {
+    document.querySelectorAll('[id^="toggle-"]').forEach(groupCheckbox => {
+        const groupName = groupCheckbox.id.replace("toggle-", "");
+        updateGroupCheckboxState(groupName);
+    });
+}
+
+// Appelé au chargement de la page
+document.addEventListener("DOMContentLoaded", initGroupCheckboxStates);
+
+</script>
+{% endblock %}

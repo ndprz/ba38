@@ -1,0 +1,13 @@
+{% extends "base_assos.html" %}
+
+{% block content %}
+<h2>🗃️ Fichiers restaurés depuis {{ backup_file }}</h2>
+
+<ul class="list-group">
+  {% for f in restored_files %}
+    <li class="list-group-item">{{ f }}</li>
+  {% endfor %}
+</ul>
+
+<a href="{{ url_for('debug_bp.admin_scripts') }}" class="btn btn-primary mt-4">⬅️ Retour</a>
+{% endblock %}

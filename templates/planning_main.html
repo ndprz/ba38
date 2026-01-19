@@ -1,0 +1,115 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Planning Bénévoles{% endblock %}
+
+{% block content %}
+<h2>Planning des Bénévoles</h2>
+
+{% if user_role in ['admin', 'gestionnaire'] %}
+<div class="mb-4 d-flex gap-3 flex-wrap justify-content-between">
+    <a href="{{ url_for('planning_utils.planning_absences') }}" class="btn btn-outline-secondary">
+        📅 Gérer les absences des bénévoles
+    </a>
+    <a href="{{ url_for('planning_tournees.planning_tournees') }}" class="btn btn-outline-secondary">
+        🛠️ Gestion des tournées
+    </a>
+    <div class="col-6 col-md-4">
+    <a href="{{ url_for('planning_utils.etat_plannings') }}"
+        class="btn btn-outline-dark w-100">
+            📋 État des plannings
+        </a>
+    </div>
+    <a href="{{ url_for('planning_report.planning_report_run') }}" 
+        class="btn btn-outline-secondary">
+        📊 Rapport activité bénévoles
+    </a>
+
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white fs-4 fw-bold text-center">
+                RAMASSE
+            </div>
+            <div class="card-body">
+                <a href="{{ url_for('planning.maj_modele_planning_ramasse') }}" class="btn btn-outline-primary mb-2 w-100">
+                    🔧 Mise à jour modèle planning ramasse
+                </a>
+                <a href="{{ url_for('planning.creation_planning_ramasse') }}" class="btn btn-primary w-100">
+                    ➕ Création planning ramasse
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white fs-4 fw-bold text-center">
+                DISTRIBUTION
+            </div>
+            <div class="card-body">
+                <a href="{{ url_for('planning_dist.maj_modele_planning_distribution') }}" class="btn btn-outline-success mb-2 w-100">
+                    🔧 Mise à jour modèle planning distribution
+                </a>
+                <a href="{{ url_for('planning_dist.creation_planning_distribution') }}" class="btn btn-success w-100">
+                    ➕ Création planning distribution
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-warning text-dark fs-4 fw-bold text-center">
+                PALETTES
+            </div>
+            <div class="card-body">
+                <a href="{{ url_for('planning_palettes.maj_modele_planning_palettes') }}" class="btn btn-outline-warning mb-2 w-100">
+                    🔧 Mise à jour modèle planning palettes
+                </a>
+                <a href="{{ url_for('planning_palettes.creation_planning_palettes') }}" class="btn btn-warning w-100">
+                    ➕ Création planning palettes
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-info text-white fs-4 fw-bold text-center">
+                PESEE
+            </div>
+            <div class="card-body">
+                <a href="{{ url_for('planning_pesee.maj_modele_planning_pesee') }}" class="btn btn-outline-info mb-2 w-100">
+                    🔧 Mise à jour modèle planning pesée
+                </a>
+                <a href="{{ url_for('planning_pesee.creation_planning_pesee') }}" class="btn btn-info w-100">
+                    ➕ Création planning pesée
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-secondary text-white fs-4 fw-bold text-center">
+                VIF
+            </div>
+            <div class="card-body">
+                <a href="{{ url_for('planning_vif.maj_modele_planning_vif') }}" class="btn btn-outline-secondary mb-2 w-100">
+                    🔧 Mise à jour modèle planning VIF
+                </a>
+                <a href="{{ url_for('planning_vif.creation_planning_vif') }}" class="btn btn-secondary w-100">
+                    ➕ Création planning VIF
+                </a>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% else %}
+<p class="text-muted">⛔ Vous n'avez pas les droits pour accéder à la gestion des plannings.</p>
+{% endif %}
+{% endblock %}

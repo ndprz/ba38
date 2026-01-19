@@ -1,0 +1,99 @@
+{% extends "base_frs.html" %}
+
+{% block title %}Contacts du Fournisseur{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <!-- 🔹 En-tête -->
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+    <h2 class="mb-0">👥 Contacts du fournisseur : {{ fournisseur["nom"] }}</h2>
+    <div>
+      <a href="{{ url_for('fournisseurs.liste_fournisseurs') }}" class="btn btn-outline-secondary">
+        ⬅️ Retour aux fournisseurs
+      </a>
+      {% if not lecture_seule %}
+      <a href="{{ url_for('fournisseurs.create_contact_fournisseur', fournisseur_id=fournisseur['id']) }}" class="btn btn-success">
+        ➕ Ajouter un contact
+      </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 🔹 Messages flash -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="alert-container">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- 🔹 Tableau des contacts -->
+  {% if contacts %}
+  <div style="overflow-x:auto;">
+    <table class="table table-bordered table-striped table-hover">
+      <thead class="table-light">
+        <tr>
+          <th>Action</th>
+          <th>Prénom</th>
+          <th>Nom</th>
+          <th>Fonction</th>
+          <th>Mobile</th>
+          <th>Téléphone</th>
+          <th>Email</th>
+          <th>Adresse</th>
+          <th>CP</th>
+          <th>Ville</th>
+          <th>Référent</th>
+          <th>Actif</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for contact in contacts %}
+        <tr>
+          <td>
+            {% if not lecture_seule %}
+              <a href="{{ url_for('fournisseurs.update_contact_fournisseur',
+                                   fournisseur_id=fournisseur['id'],
+                                   contact_id=contact['id']) }}"
+                 class="btn btn-primary btn-sm">Modifier</a>
+
+              <form method="POST"
+                    action="{{ url_for('fournisseurs.delete_contact_fournisseur',
+                                       fournisseur_id=fournisseur['id'],
+                                       contact_id=contact['id']) }}"
+                    style="display:inline;"
+                    onsubmit="return confirm('⚠️ Voulez-vous vraiment supprimer ce contact ?');">
+                <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+              </form>
+            {% else %}
+              <span class="text-muted">Lecture seule</span>
+            {% endif %}
+          </td>
+          <td>{{ contact['prenom'] or "" }}</td>
+          <td>{{ contact['nom'] or "" }}</td>
+          <td>{{ contact['fonction'] or "" }}</td>
+          <td>{{ contact['tel_mobile'] or "" }}</td>
+          <td>{{ contact['tel_fixe'] or "" }}</td>
+          <td>{{ contact['email'] or "" }}</td>
+          <td>{{ contact['adresse1'] or "" }}</td>
+          <td>{{ contact['cp'] or "" }}</td>
+          <td>{{ contact['ville'] or "" }}</td>
+          <td>{% if contact['est_referent'] == 'oui' %}✅{% else %}❌{% endif %}</td>
+          <td>{% if contact['actif'] == 'oui' %}✅{% else %}❌{% endif %}</td>
+          <td>{{ contact['notes'] or "" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">Aucun contact enregistré pour ce fournisseur.</p>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "base_frs.html" %}
+
+{% block title %}Ajouter un Contact{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <h2>➕ Ajouter un contact pour {{ fournisseur["nom"] }}</h2>
+
+  <form method="POST">
+    <div class="row mb-2">
+      <div class="col-md-4 text-end fw-bold">Prénom</div>
+      <div class="col-md-8">
+        <input type="text" name="prenom" class="form-control" required>
+      </div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-4 text-end fw-bold">Nom</div>
+      <div class="col-md-8">
+        <input type="text" name="nom" class="form-control" required>
+      </div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-4 text-end fw-bold">Fonction</div>
+      <div class="col-md-8">
+        <input type="text" name="fonction" class="form-control">
+      </div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-4 text-end fw-bold">Mobile</div>
+      <div class="col-md-8">
+        <input type="text" name="tel_mobile" class="form-control">
+      </div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-4 text-end fw-bold">Téléphone</div>
+      <div class="col-md-8">
+        <input type="text" name="tel_fixe" class="form-control">
+      </div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-4 text-end fw-bold">Email</div>
+      <div class="col-md-8">
+        <input type="email" name="email" class="form-control">
+      </div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-4 text-end fw-bold">Adresse</div>
+      <div class="col-md-8">
+        <input type="text" name="adresse1" class="form-control">
+      </div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-4 text-end fw-bold">CP</div>
+      <div class="col-md-8">
+        <input type="text" name="cp" class="form-control">
+      </div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-4 text-end fw-bold">Ville</div>
+      <div class="col-md-8">
+        <input type="text" name="ville" class="form-control">
+      </div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-4 text-end fw-bold">Référent</div>
+      <div class="col-md-8">
+        <select name="est_referent" class="form-select">
+          <option value="">-- Choisir --</option>
+          <option value="oui">Oui</option>
+          <option value="non">Non</option>
+        </select>
+      </div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-4 text-end fw-bold">Actif</div>
+      <div class="col-md-8">
+        <select name="actif" class="form-select">
+          <option value="">-- Choisir --</option>
+          <option value="oui" selected>Oui</option>
+          <option value="non">Non</option>
+        </select>
+      </div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-4 text-end fw-bold">Notes</div>
+      <div class="col-md-8">
+        <textarea name="notes" class="form-control"></textarea>
+      </div>
+    </div>
+
+    <div class="text-end mt-4">
+      <button type="submit" class="btn btn-success">✅ Créer</button>
+        <a href="{{ url_for('fournisseurs.liste_contacts_fournisseur', fournisseur_id=fournisseur['id']) }}"
+        class="btn btn-secondary">⬅️ Annuler</a>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

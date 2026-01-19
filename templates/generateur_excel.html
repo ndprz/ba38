@@ -1,0 +1,335 @@
+{% extends base_template %}
+{% block title %}Générateur Excel personnalisé{% endblock %}
+{% block content %}
+{% set filters = filters or {} %}
+
+<h2>📊 Générateur Excel personnalisé</h2>
+
+<form method="POST" id="form-gen-excel" onsubmit="return validateForm()">
+  <input type="hidden" name="columns" value="id">
+
+<!-- 🔄 Gestion des profils enregistrés -->
+<div class="row mb-3">
+  <div class="col-md-7">
+    <label><strong>Charger / Supprimer un profil enregistré :</strong></label>
+    <div class="input-group">
+      <select name="preset_id" class="form-select" style="min-width: 350px;">
+        <option value="">-- Aucun --</option>
+        {% for p in presets %}
+          <option value="{{ p.id }}">{{ p.preset_name }} ({{ p.appli }}) – {{ p.date_created }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" name="action" value="load_preset" formnovalidate class="btn btn-outline-primary">📂 Charger</button>
+      <button type="submit" name="action" value="delete_preset" class="btn btn-outline-danger"
+              onclick="return confirm('Supprimer définitivement ce profil ?')">🗑️ Supprimer</button>
+    </div>
+  </div>
+
+  <div class="col-md-5">
+    <label><strong>Enregistrer la sélection actuelle :</strong></label>
+    <div class="input-group">
+      <input type="text" name="preset_name" class="form-control" placeholder="Nom du profil...">
+      <button 
+          type="submit" 
+          name="action" value="save_preset" 
+          class="btn btn-warning"
+          title="Enregistre vos colonnes et filtres comme un profil réutilisable">
+          ⭐ Enregistrer comme profil
+      </button>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- =============================== -->
+<!-- 🧭 Boutons principaux en haut -->
+<!-- =============================== -->
+<div class="mb-3 d-flex flex-wrap gap-2">
+  <button type="submit" name="action" value="export" class="btn btn-primary">📥 Générer le fichier Excel</button>
+  <button type="submit" name="action" value="preview" class="btn btn-outline-success">👀 Aperçu du résultat</button>
+</div>
+
+<!-- Type de données -->
+<div class="form-group mb-3">
+  <label for="data_type"><strong>Type de données :</strong></label>
+  <select id="data_type" name="data_type" class="form-select" onchange="submitWithoutExport()">
+    <option value="associations" {% if data_type == 'associations' %}selected{% endif %}>Associations</option>
+    <option value="benevoles" {% if data_type == 'benevoles' %}selected{% endif %}>Bénévoles</option>
+  </select>
+</div>
+
+
+<hr>
+
+<h5>🧩 Colonnes à inclure :</h5>
+<div class="mb-2">
+  <button type="button" class="btn btn-secondary btn-sm" onclick="deselectAll()">Tout désélectionner</button>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px;">
+  {% for group_name, fields in grouped_fields.items() %}
+  {% set safe_group_name = group_name|replace(' ', '_')|lower %}
+  <div class="field-group">
+    <div class="group-title" onclick="toggleGroup('{{ safe_group_name }}')">
+      {{ group_name }}
+      <span id="icon-{{ safe_group_name }}">➕</span>
+    </div>
+    <div class="group-content" id="container-{{ safe_group_name }}">
+      <label>
+        <input type="checkbox" class="toggle-master-checkbox mb-1"
+               id="toggle-{{ safe_group_name }}"
+               onclick="toggleAll('{{ safe_group_name }}', this.checked)">
+        Tout sélectionner
+      </label>
+
+      <input type="text" class="form-control form-control-sm my-1"
+             placeholder="🔍 Rechercher un champ..."
+             onkeyup="filterFields('{{ safe_group_name }}', this.value)">
+
+      {% for field in fields %}
+      <div class="mb-2 field-entry">
+        <label>
+          <input type="checkbox" class="field-checkbox green-checkbox"
+                 data-group="{{ safe_group_name }}"
+                 data-type="{{ field.type_champ or '' }}"
+                 name="columns" value="{{ field.field_name }}"
+                 {% if field.field_name in selected_columns %}checked{% endif %}
+                 onchange="toggleFilter(this)">
+          {{ field.field_name }}
+        </label>
+
+        <div id="filter-block-{{ field.field_name }}">
+          {% if field.field_name in selected_columns %}
+            {% if field.type_champ == "oui_non" %}
+              {% set fkey = 'filter_' ~ field.field_name %}
+              {% set current_value = filters[fkey] if fkey in filters else request.form.get(fkey) %}
+              <div class="mt-1">
+                <select name="filter_{{ field.field_name }}" class="form-select form-select-sm">
+                  <option value="">-- Tous --</option>
+                  <option value="oui" {% if current_value == 'oui' %}selected{% endif %}>Oui</option>
+                  <option value="non" {% if current_value == 'non' %}selected{% endif %}>Non</option>
+                </select>
+              </div>
+            {% elif field.field_name == "type_benevole" %}
+              <div class="mb-1">
+                <select name="filter_type_benevole" class="form-select form-select-sm">
+                  <option value="">-- Tous --</option>
+                  {% for val in type_benevole_values %}
+                    <option value="{{ val }}"
+                      {% if filters.get('filter_type_benevole') == val
+                         or request.form.get('filter_type_benevole') == val %}
+                         selected{% endif %}>{{ val }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            {% else %}
+              <div class="mt-1">
+                <input type="text" name="filter_{{ field.field_name }}" class="form-control form-control-sm"
+                       placeholder="Filtre pour {{ field.field_name }}"
+                       value="{{ request.form.get('filter_' ~ field.field_name, filters.get('filter_' ~ field.field_name, '')) }}">
+              </div>
+              <div class="mt-1">
+                <select name="operator_{{ field.field_name }}" class="form-select form-select-sm">
+                  <option value="contains" {% if request.form.get('operator_' ~ field.field_name, 'contains') != 'startswith' %}selected{% endif %}>contient</option>
+                  <option value="startswith" {% if request.form.get('operator_' ~ field.field_name) == 'startswith' %}selected{% endif %}>commence par</option>
+                </select>
+              </div>
+            {% endif %}
+            <label class="text-small">
+              <input type="checkbox" name="nonnull_{{ field.field_name }}"
+                     {% if request.form.get('nonnull_' ~ field.field_name) or filters.get('nonnull_' ~ field.field_name) %}checked{% endif %}>
+              Exclure les vides
+            </label>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<hr>
+
+<!-- 🔀 Mode OU -->
+<div class="form-check mt-3">
+  <input class="form-check-input" type="checkbox" name="mode_or" id="mode_or"
+         {% if request.form.get('mode_or') or mode_or == 'on' %}checked{% endif %}>
+  <label class="form-check-label" for="mode_or">
+    🔀 Combiner les filtres <strong>Oui/Non</strong> avec <strong>OU</strong> au lieu de <strong>ET</strong>
+  </label>
+  <small class="text-muted d-block">
+    Exemple : si coché → “ramasse_chauffeur = oui” OU “cotisation_2025 = oui”.
+  </small>
+</div>
+
+<div class="form-group mt-3">
+  <label for="search"><strong>Filtrer par nom :</strong></label>
+  <input type="text" name="search" id="search" class="form-control"
+         placeholder="Contient..." value="{{ search }}">
+</div>
+
+<!-- =============================== -->
+<!-- 🧭 Boutons principaux en bas -->
+<!-- =============================== -->
+<div class="mt-3 d-flex flex-wrap gap-2">
+  <button type="submit" name="action" value="export" class="btn btn-primary">📥 Générer le fichier Excel</button>
+  <button type="submit" name="action" value="preview" class="btn btn-outline-success">👀 Aperçu du résultat</button>
+</div>
+</form>
+
+<!-- =============================== -->
+<!-- 👀 Aperçu du résultat -->
+<!-- =============================== -->
+{% if preview_data is defined and not preview_data.empty %}
+<hr>
+<div class="alert alert-info d-flex justify-content-between align-items-center">
+  <div>
+    <strong>👀 Aperçu du résultat</strong><br>
+    Affichage des <strong>{{ preview_data|length }}</strong> premières lignes
+    {% if total_count is defined %}
+      sur <strong>{{ total_count }}</strong> résultats trouvés.
+      {% if request.form.get('mode_or') %}
+        <span class="badge bg-warning text-dark ms-2">Mode OU</span>
+      {% else %}
+        <span class="badge bg-success ms-2">Mode ET</span>
+      {% endif %}
+    {% endif %}
+  </div>
+  <div>
+    <button type="button" class="btn btn-sm btn-primary" onclick="submitExport()">
+      📥 Exporter tout ({{ total_count if total_count is defined else '...' }} lignes)
+    </button>
+  </div>
+</div>
+
+<div class="table-responsive mt-2">
+  <table class="table table-bordered table-sm table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        {% for col in preview_data.columns %}
+        <th>{{ col }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in preview_data.itertuples(index=False) %}
+      <tr>
+        {% for value in row %}
+        <td>{{ value }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% elif total_count is defined and total_count == 0 %}
+<hr><div class="alert alert-warning">Aucun enregistrement ne correspond aux critères.</div>
+{% endif %}
+
+<style>
+.field-group{border:1px solid #ddd;border-radius:6px;padding:8px;background:#fafafa;width:260px;}
+.group-title{display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-weight:600;color:#333;background:#f0f0f0;padding:4px 6px;border-radius:4px;}
+.group-title:hover{background:#e3f5e3;}
+.group-content{display:none;margin-top:6px;}
+.group-content.expanded{display:block;}
+.field-entry{background:#f9f9f9;border-radius:5px;padding:4px 6px;}
+.field-entry:hover{background:#eef7ee;}
+.text-small{font-size:0.85em;color:#666;}
+</style>
+
+<script>
+function toggleGroup(g){const c=document.getElementById(`container-${g}`),i=document.getElementById(`icon-${g}`);if(!c)return;c.classList.toggle("expanded");if(i)i.textContent=c.classList.contains("expanded")?"➖":"➕";}
+
+
+function toggleFilter(cb) {
+  const b = document.getElementById(`filter-block-${cb.value}`);
+  if (!b) return;
+
+  // 🔹 Sauvegarde de la valeur précédente (si un select existait déjà)
+  let previous = "";
+    const sel = b.querySelector("input[type=text], select");
+
+    if (sel) {
+        const v = sel.value;
+        if (v && v.toLowerCase() !== "contains") {
+            previous = v;
+        }
+    }
+
+  b.innerHTML = "";
+
+  if (cb.checked) {
+    const t = cb.dataset.type;
+    let html = "";
+
+    if (t === "oui_non") {
+      html = `
+        <div class="mt-1">
+          <select name="filter_${cb.value}" class="form-select form-select-sm">
+            <option value="">-- Tous --</option>
+            <option value="oui" ${previous === "oui" ? "selected" : ""}>Oui</option>
+            <option value="non" ${previous === "non" ? "selected" : ""}>Non</option>
+          </select>
+        </div>`;
+    } else if (cb.value === "type_benevole") {
+      const options = {{ type_benevole_values | tojson }};
+      html = `
+        <div class="mt-1">
+          <select name="filter_type_benevole" class="form-select form-select-sm">
+            <option value="">-- Tous --</option>
+            ${options.map(v => `<option value="${v}" ${previous === v ? "selected" : ""}>${v}</option>`).join("")}
+          </select>
+        </div>`;
+    } else {
+      html = `
+        <div class="mt-1">
+          <input type="text" 
+                name="filter_${cb.value}" 
+                class="form-control form-control-sm"
+                placeholder="Filtre pour ${cb.value}"
+                value="${previous || ''}">
+        </div>
+        <div class="mt-1">
+          <select name="operator_${cb.value}" class="form-select form-select-sm">
+            <option value="contains" selected>contient</option>
+            <option value="startswith">commence par</option>
+          </select>
+        </div>`;
+    }
+
+    b.innerHTML = html;
+  }
+}
+
+// ✅ Auto-activation au chargement pour les cases déjà cochées
+window.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll(".field-checkbox").forEach(cb => {
+    if (cb.checked) toggleFilter(cb);
+  });
+});
+
+
+function toggleAll(g,ch){document.querySelectorAll(`.field-checkbox[data-group="${g}"]`).forEach(cb=>{cb.checked=ch;toggleFilter(cb);});}
+function deselectAll(){document.querySelectorAll('.field-checkbox').forEach(cb=>{cb.checked=false;toggleFilter(cb);});}
+function filterFields(g,s){s=s.toLowerCase();document.querySelectorAll(`[data-group="${g}"]`).forEach(el=>{const l=el.closest('label').textContent.toLowerCase();el.closest('.field-entry').style.display=l.includes(s)?'':'none';});}
+
+// ✅ éviter message inutile
+document.querySelectorAll("#form-gen-excel button[type=submit]").forEach(b=>b.addEventListener("click",function(){document.querySelectorAll("#form-gen-excel button[type=submit]").forEach(bb=>bb.removeAttribute("clicked"));this.setAttribute("clicked","true");}));
+function validateForm(){const f=document.getElementById("form-gen-excel");const c=f.querySelector('button[clicked="true"]');const a=c?c.value:"";if(a==="load_preset"||a==="delete_preset")return true;const checked=document.querySelectorAll('.field-checkbox:checked');if(checked.length===0)return confirm("Aucune colonne sélectionnée. Seule la colonne ID sera exportée. Continuer ?");return true;}
+function submitWithoutExport(){const f=document.getElementById("form-gen-excel"),h=document.createElement("input");h.type="hidden";h.name="just_switching_type";h.value="1";f.appendChild(h);f.submit();}
+function submitExport(){const f=document.getElementById("form-gen-excel"),h=document.createElement("input");h.type="hidden";h.name="action";h.value="export";f.appendChild(h);f.submit();}
+
+// 🧩 ouvrir automatiquement les groupes contenant au moins 1 case cochée
+window.addEventListener("DOMContentLoaded",()=>{document.querySelectorAll(".group-content").forEach(c=>{const boxes=c.querySelectorAll(".field-checkbox");if(Array.from(boxes).some(cb=>cb.checked)){c.classList.add("expanded");const i=c.previousElementSibling.querySelector("span[id^='icon-']");if(i)i.textContent="➖";}});});
+</script>
+
+{% if sql_debug %}
+<hr>
+<div class="alert alert-secondary mt-4">
+  <h6>🧩 SQL généré (mode debug)</h6>
+  <pre style="white-space: pre-wrap; font-size:0.9em;">{{ sql_debug }}</pre>
+</div>
+{% endif %}
+{% endblock %}

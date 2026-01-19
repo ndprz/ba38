@@ -1,0 +1,87 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Modèle Planning Pesée{% endblock %}
+
+{% block content %}
+<h2>🛠️ Mise à jour du modèle de planning pesée</h2>
+
+<form method="post">
+<div class="table-responsive">
+<table class="table table-bordered table-striped">
+<thead>
+<tr>
+  <th>Jour</th>
+  <th>Pesée 1</th><th>Pesée 2</th><th>Pesée 3</th><th>Pesée 4</th>
+  <th>Pesée 5</th><th>Pesée 6</th><th>Fruit 1</th><th>Fruit 2</th>
+  <th>Durée</th>  <!-- ✅ Durée ajoutée -->
+</tr>
+</thead>
+<tbody>
+
+{% for jour in jours %}
+{% if jour != 'vendredi' or travail_vendredi != 'non' %}
+<tr>
+  <td class="text-capitalize">{{ jour }}</td>
+
+  {% for champ in ['pesee01_id','pesee02_id','pesee03_id','pesee04_id',
+                    'pesee05_id','pesee06_id','pesee07_id','pesee08_id'] %}
+  <td>
+    <select class="form-select form-select-sm" name="{{ champ }}_{{ jour }}" style="max-width:150px;">
+      <option value="">-- Aucun --</option>
+
+      {% set favoris = benevoles | selectattr('prep_pesee','equalto','oui') | list %}
+      {% set autres  = benevoles | rejectattr('prep_pesee','equalto','oui') | list %}
+
+      {% for bene in favoris %}
+      <option value="{{ bene.id }}"
+              {% for ligne in model if ligne.jour == jour and ligne[champ] == bene.id %}selected{% endfor %}
+              style="color:green;font-weight:bold;">
+        ✅ {{ bene.nom }} {{ bene.prenom }}
+      </option>
+      {% endfor %}
+
+      {% if favoris and autres %}<option disabled>──────────</option>{% endif %}
+
+      {% for bene in autres %}
+      <option value="{{ bene.id }}"
+              {% for ligne in model if ligne.jour == jour and ligne[champ] == bene.id %}selected{% endfor %}>
+        {{ bene.nom }} {{ bene.prenom }}
+      </option>
+      {% endfor %}
+    </select>
+  </td>
+  {% endfor %}
+
+  <!-- ✅ Champ Durée -->
+  <td>
+    <input type="number" min="0" name="duree_{{ jour }}"
+           class="form-control form-control-sm"
+           style="width:90px"
+           value="{% for ligne in model if ligne.jour == jour %}{{ ligne.duree }}{% endfor %}">
+  </td>
+</tr>
+{% endif %}
+{% endfor %}
+
+</tbody>
+</table>
+</div>
+
+<div class="mt-3 d-flex justify-content-between">
+  <a class="btn btn-secondary" href="{{ url_for('planning.planning_main') }}">↩️ Retour</a>
+  <button class="btn btn-primary" name="action" type="submit" value="enregistrer">💾 Enregistrer</button>
+</div>
+
+</form>
+{% endblock %}
+
+{% block styles %}
+<style>
+.table-responsive { overflow-x: auto; max-width: 100%; }
+th, td {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width:150px; text-align:center; vertical-align:middle;
+}
+select.form-select { font-size:0.85rem; padding:0.2rem; }
+</style>
+{% endblock %}

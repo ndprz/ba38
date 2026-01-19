@@ -1,0 +1,204 @@
+{% extends base_template %}
+
+{% block title %}Mise à jour des Champs{% endblock %}
+
+{% block content %}
+<h2>Mise à jour des Champs</h2>
+<p>Modifiez, ajoutez ou supprimez les champs affichés dans les formulaires.</p>
+
+{% if provenance == 'assos' %}
+  {% set retour_url = url_for('partenaires.partenaires') %}
+{% elif provenance == 'benevoles' %}
+  {% set retour_url = url_for('benevoles.benevoles') %}
+{% else %}
+  {% set retour_url = url_for('index') %}
+{% endif %}
+
+<form method="POST" action="{{ url_for('maj_champs', source=provenance) }}">
+  {% if form %}{{ form.hidden_tag() }}{% endif %}
+  <input type="hidden" id="delete_id" name="delete_id">  {# 🛡️ Champ utilisé uniquement lors des suppressions #}
+
+  {% for group_name, fields in grouped_fields.items() %}
+  <fieldset class="mb-3">
+    <legend class="group-title d-flex justify-content-between align-items-center bg-light p-2 rounded" data-group-index="{{ loop.index0 }}">
+      {{ group_name }} <span class="toggle-icon">▶</span>
+    </legend>
+    <div class="group-content p-3 border rounded bg-white" style="display: none;">
+      <table class="table table-bordered table-sm">
+        <thead class="table-light">
+          <tr>
+            <th>ID</th>
+            <th>Appli</th>
+            <th>Nom du Champ</th>
+            <th>Groupe</th>
+            <th>Type</th>
+            <th>Ordre</th>
+            <th>🗑️</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for field in fields %}
+          <tr>
+            <td style="text-align: center;">{{ field['id'] }}</td>
+            <td>{{ field['appli'] }}</td>
+            <td>
+              <select name="field_name_{{ field['id'] }}" class="form-select">
+                <option value="{{ field['field_name'] }}">{{ field['field_name'] }}</option>
+                {% for champ in champs_disponibles if champ != "id" and champ != field['field_name'] %}
+                  <option value="{{ champ }}">{{ champ }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>
+              <select name="group_name_{{ field['id'] }}" class="form-select" required>
+                {% for group in available_groups %}
+                <option value="{{ group }}" {% if group == field['group_name'] %}selected{% endif %}>{{ group }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>
+              <select name="type_champ_{{ field['id'] }}" class="form-select">
+                <option value="">Aucun</option>
+                {% for type in available_types %}
+                <option value="{{ type }}" {% if field['type_champ'] == type %}selected{% endif %}>{{ type }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>
+              <input type="hidden" name="id_{{ field['id'] }}" value="{{ field['id'] }}">
+              <input type="number" name="display_order_{{ field['id'] }}" value="{{ field['display_order'] or '' }}" min="1" class="form-control">
+            </td>
+            <td class="text-center">
+              <button type="button" class="btn btn-sm btn-danger" onclick="confirmerSuppression({{ field['id'] }})">
+                ✖
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </fieldset>
+  {% endfor %}
+
+  <div class="d-flex justify-content-end gap-2 mt-3">
+    <button type="submit" class="btn btn-success">✅ Enregistrer</button>
+    <button type="button" class="btn btn-secondary" onclick="retourAvecConfirmation('{{ retour_url }}')">⬅️ Retour</button>
+  </div>
+</form>
+
+<hr>
+<h5 class="text-primary"><i class="bi bi-plus-circle"></i> Ajouter un nouveau champ</h5>
+
+<form method="POST" action="{{ url_for('maj_champs', source=provenance) }}">
+  {% if form %}{{ form.hidden_tag() }}{% endif %}
+  <div class="d-flex flex-wrap align-items-end gap-3 p-3 border rounded bg-light mt-2">
+
+    <div>
+      <label class="form-label mb-1">Champ</label>
+      <select name="new_field_name" class="form-select form-select-sm" style="min-width: 180px;" required>
+        <option value="">-- Sélectionner --</option>
+        {% for champ in champs_disponibles if champ != "id" %}
+        <option value="{{ champ }}">{{ champ }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="form-label mb-1">Groupe</label>
+      <input type="text" name="new_group_name" class="form-control form-control-sm" style="min-width: 180px;" placeholder="Ex: Coordonnées">
+    </div>
+
+    <div>
+      <label class="form-label mb-1">Type</label>
+      <select name="new_type_champ" class="form-select form-select-sm" style="min-width: 140px;">
+        <option value="">Aucun</option>
+        {% for type in available_types %}
+        <option value="{{ type }}">{{ type }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="form-label mb-1">Ordre</label>
+      <input type="number" name="new_display_order" class="form-control form-control-sm" min="1" style="width: 80px;">
+    </div>
+
+    <div>
+      <label class="form-label mb-1 d-block" style="visibility: hidden;">Ajouter</label>
+      <button type="submit" class="btn btn-success btn-sm">
+        <i class="bi bi-plus-circle"></i> Ajouter
+      </button>
+    </div>
+
+  </div>
+</form>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const localStorageKey = "maj_champs_open_index";
+  const groupTitles = document.querySelectorAll(".group-title");
+
+  groupTitles.forEach((title, index) => {
+    const content = title.nextElementSibling;
+    const icon = title.querySelector(".toggle-icon");
+
+    if (localStorage.getItem(localStorageKey) == index) {
+      content.style.display = "block";
+      icon.textContent = "▼";
+    }
+
+    title.addEventListener("click", function () {
+      const isVisible = content.style.display === "block";
+      groupTitles.forEach((otherTitle) => {
+        const otherContent = otherTitle.nextElementSibling;
+        const otherIcon = otherTitle.querySelector(".toggle-icon");
+        otherContent.style.display = "none";
+        if (otherIcon) otherIcon.textContent = "▶";
+      });
+
+      if (!isVisible) {
+        content.style.display = "block";
+        icon.textContent = "▼";
+        localStorage.setItem(localStorageKey, index);
+      } else {
+        localStorage.removeItem(localStorageKey);
+      }
+    });
+  });
+
+  let formulaireModifie = false;
+  const form = document.querySelector("form");
+  if (form) {
+    form.addEventListener("input", () => {
+      formulaireModifie = true;
+    });
+  }
+
+  // 🔐 Bloquer la touche "Entrée" sur les champs nombre
+  document.querySelectorAll('input[type="number"]').forEach(input => {
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') e.preventDefault();
+    });
+  });
+});
+
+function retourAvecConfirmation(retourUrl) {
+  if (formulaireModifie) {
+    if (confirm("⚠️ Des modifications non enregistrées seront perdues. Quitter ?")) {
+      window.location.href = retourUrl;
+    }
+  } else {
+    window.location.href = retourUrl;
+  }
+}
+
+// 🔁 Déclenche la suppression sécurisée via champ caché
+function confirmerSuppression(id) {
+  if (confirm("⚠️ Confirmer la suppression de ce champ ?")) {
+    document.getElementById("delete_id").value = id;
+    document.querySelector("form").submit();
+  }
+}
+</script>
+{% endblock %}

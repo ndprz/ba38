@@ -1,0 +1,119 @@
+{% extends "base_assos.html" %}
+
+{% block title %}Création d'un Partenaire{% endblock %}
+
+{% block content %}
+<h2>Création d'un nouveau Partenaire</h2>
+
+{# ✅ Affichage des messages flash #}
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="alert-container">
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<form method="POST" action="{{ url_for('partenaires.create_partner') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+
+  {# ✅ Affichage des champs regroupés par famille #}
+  {% for group_name, fields in grouped_fields.items() %}
+  <fieldset class="mb-3">
+    <legend class="group-title d-flex justify-content-between align-items-center bg-light p-2 rounded" data-group-index="{{ loop.index0 }}">
+      {{ group_name }} <span class="toggle-icon">▶</span>
+    </legend>
+    <div class="group-content p-3 border rounded bg-white" style="display: none;">
+      <div class="row">
+        {% for field in fields if field.field_name not in ['date_modif', 'heure_modif', 'user_modif'] %}
+        <div class="col-md-6 mb-3">
+          <label for="{{ field.field_name }}">{{ field.field_name }}{% if field.is_required %} <span class="text-danger">*</span>{% endif %}</label>
+          {% set invalide = champs_invalides and field.field_name in champs_invalides %}
+          {% set css = 'form-control' %}
+          {% if invalide %}{% set css = css + ' is-invalid' %}{% endif %}
+
+          {% if field.field_name == "CAR" %}
+          <select name="CAR" id="CAR" class="{{ css }}">
+            <option value="">-- Sélectionnez un CAR --</option>
+            {% for opt in car_options %}
+              <option value="{{ opt }}" {% if field.value == opt %}selected{% endif %}>{{ opt }}</option>
+            {% endfor %}
+          </select>
+
+          {% elif field.type_champ == 'oui_non' %}
+          <select name="{{ field.field_name }}" id="{{ field.field_name }}" class="{{ css }}">
+            <option value="">--</option>
+            <option value="oui" {% if field.value == 'oui' %}selected{% endif %}>Oui</option>
+            <option value="non" {% if field.value == 'non' %}selected{% endif %}>Non</option>
+          </select>
+
+          {% else %}
+          <input
+            type="{% if field.type_champ == 'email' %}email{% elif field.type_champ == 'tel' %}tel{% elif field.type_champ == 'number' %}number{% else %}text{% endif %}"
+            name="{{ field.field_name }}"
+            id="{{ field.field_name }}"
+            value="{{ field.value or '' }}"
+            class="{{ css }}"
+            placeholder="Saisir {{ field.field_name }}"
+            {% if field.is_required %}required{% endif %}
+          >
+          {% endif %}
+
+          {% if invalide %}
+          <div class="invalid-feedback">
+            ❌ Ce champ contient une valeur invalide.
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </fieldset>
+  {% endfor %}
+
+  {# ✅ Boutons d’action #}
+  <div class="form-actions text-end mt-4">
+    <a href="{{ url_for('partenaires.partenaires') }}" class="btn btn-secondary">↩️ Retour</a>
+    <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+  </div>
+</form>
+
+{# ✅ Script de dépliage des groupes #}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const localStorageKey = "create_partner_open_index";
+  const groupTitles = document.querySelectorAll(".group-title");
+
+  groupTitles.forEach((title, index) => {
+    const content = title.nextElementSibling;
+    const icon = title.querySelector(".toggle-icon");
+
+    if (localStorage.getItem(localStorageKey) == index) {
+      content.style.display = "block";
+      icon.textContent = "▼";
+    }
+
+    title.addEventListener("click", function () {
+      const isVisible = content.style.display === "block";
+
+      groupTitles.forEach((otherTitle) => {
+        const otherContent = otherTitle.nextElementSibling;
+        const otherIcon = otherTitle.querySelector(".toggle-icon");
+        otherContent.style.display = "none";
+        if (otherIcon) otherIcon.textContent = "▶";
+      });
+
+      if (!isVisible) {
+        content.style.display = "block";
+        icon.textContent = "▼";
+        localStorage.setItem(localStorageKey, index);
+      } else {
+        localStorage.removeItem(localStorageKey);
+      }
+    });
+  });
+});
+</script>
+{% endblock %}

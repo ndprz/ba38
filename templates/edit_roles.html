@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Éditer les rôles{% endblock %}
+
+{% block content %}
+<h2>⚙️ Gestion des rôles de : {{ user.username }} ({{ user.email }})</h2>
+
+<form method="POST">
+    {% for appli in ['benevoles', 'associations'] %}
+    <div class="mb-3">
+        <label class="form-label">Application : {{ appli }}</label>
+        <select name="niveau_{{ appli }}" class="form-select">
+            <option value="">-- Aucun --</option>
+            <option value="lecture" {% if roles.get(appli) == 'lecture' %}selected{% endif %}>Lecture</option>
+            <option value="ecriture" {% if roles.get(appli) == 'ecriture' %}selected{% endif %}>Écriture</option>
+        </select>
+    </div>
+    {% endfor %}
+
+    <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+    <a href="{{ url_for('gestion_utilisateurs') }}" class="btn btn-secondary">⬅️ Retour</a>
+</form>
+{% endblock %}

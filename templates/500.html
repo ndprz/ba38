@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Erreur 500{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="alert alert-danger shadow">
+        <h1>💥 Erreur interne du serveur</h1>
+        <p>Un problème est survenu lors du traitement de votre demande.</p>
+        {% if message %}
+            <hr>
+            <pre>{{ message }}</pre>
+        {% endif %}
+        <a href="{{ url_for('index') }}" class="btn btn-secondary mt-3">Retour à l’accueil</a>
+    </div>
+</div>
+{% endblock %}

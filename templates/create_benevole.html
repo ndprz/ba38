@@ -1,0 +1,108 @@
+{% extends "base_bene.html" %}
+
+{% block title %}Créer un nouveau bénévole{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Créer un nouveau bénévole</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="alert-container">
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <form method="POST" id="createForm" class="partner-form">
+        {% for group_name, fields in grouped_fields.items() %}
+        <fieldset class="mb-3">
+            <legend class="group-title d-flex justify-content-between align-items-center bg-light p-2 rounded" data-group-index="{{ loop.index0 }}">
+                {{ group_name }} <span class="toggle-icon">▶</span>
+            </legend>
+            <div class="group-content p-3 border rounded bg-white" style="display: none;">
+                {% for field in fields %}
+                    {% if field['field_name'] != 'id' %}
+                    <div class="form-group">
+                        <label for="{{ field['field_name'] }}">{{ field['field_name'] }}{% if field['required'] %}<span class="text-danger">*</span>{% endif %}</label>
+                        
+                        {% if field.field_name == 'type_benevole' or field.type_champ == 'liste_type_benevole' %}
+                            {# 🔽 Select dynamique depuis parametres #}
+                            {% set current = (field.value or '')|lower %}
+                            <select class="form-control" name="{{ field.field_name }}" id="{{ field.field_name }}">
+                                <option value="">-- Choisir --</option>
+                                {% for val in type_benevole_options %}
+                                    <option value="{{ val }}" {{ 'selected' if current == (val|lower) else '' }}>
+                                        {{ val|capitalize }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+
+                        {% elif field.type_champ == "oui_non" %}
+                            <select class="form-control" name="{{ field.field_name }}" id="{{ field.field_name }}">
+                                <option value="">--</option>
+                                <option value="oui" {% if field.value == 'oui' %}selected{% endif %}>Oui</option>
+                                <option value="non" {% if field.value == 'non' %}selected{% endif %}>Non</option>
+                            </select>
+
+                        {% else %}
+                            <input type="text"
+                                class="form-control {% if champs_invalides and field.field_name in champs_invalides %}is-invalid{% endif %}"
+                                id="{{ field.field_name }}"
+                                name="{{ field.field_name }}"
+                                value="{{ field.value or '' }}">
+                            {% if champs_invalides and field.field_name in champs_invalides %}
+                            <div class="invalid-feedback">Ce champ contient une valeur invalide.</div>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </fieldset>
+        {% endfor %}
+        <div class="d-flex justify-content-between align-items-center mt-4">
+            <a href="{{ url_for('benevoles.benevoles') }}" class="btn btn-outline-secondary">↩️ Retour</a>
+            <button type="submit" class="btn btn-success">✅ Créer le bénévole</button>
+        </div>
+    </form>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const localStorageKey = "create_benevole_open_index";
+    const groupTitles = document.querySelectorAll(".group-title");
+
+    groupTitles.forEach((title, index) => {
+        const content = title.nextElementSibling;
+        const icon = title.querySelector(".toggle-icon");
+
+        if (localStorage.getItem(localStorageKey) == index) {
+            content.style.display = "block";
+            icon.textContent = "▼";
+        }
+
+        title.addEventListener("click", function () {
+            const isVisible = content.style.display === "block";
+
+            groupTitles.forEach((otherTitle) => {
+                const otherContent = otherTitle.nextElementSibling;
+                const otherIcon = otherTitle.querySelector(".toggle-icon");
+                otherContent.style.display = "none";
+                if (otherIcon) otherIcon.textContent = "▶";
+            });
+
+            if (!isVisible) {
+                content.style.display = "block";
+                icon.textContent = "▼";
+                localStorage.setItem(localStorageKey, index);
+            } else {
+                localStorage.removeItem(localStorageKey);
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,105 @@
+<!-- ===================== -->
+<!-- Chapitre : Introduction -->
+<!-- ===================== -->
+<div class="card mb-3">
+  <div class="card-header bg-primary text-white">Introduction</div>
+  <div class="card-body">
+
+    <!-- 🔹 Bloc infos partenaire (lecture seule, informatif) -->
+    <div class="mb-3">
+      <h5 class="fw-bold mb-1">{{ partenaire.get('nom_association','') }}</h5>
+      {% set ad1 = partenaire.get('adresse_distribution_1') %}
+      {% set ad2 = partenaire.get('adresse_distribution_2') %}
+      {% set cp2 = partenaire.get('CP2') %}
+      {% set com2 = partenaire.get('COMMUNE2') %}
+      {% set siret = partenaire.get('code_siret') %}
+      {% if ad1 or ad2 or cp2 or com2 or siret %}
+        <div class="small text-muted">
+          {% if ad1 %}{{ ad1 }}<br>{% endif %}
+          {% if ad2 %}{{ ad2 }}<br>{% endif %}
+          {% if cp2 or com2 %}{{ cp2 or '' }} {{ com2 or '' }}<br>{% endif %}
+          {% if siret %}SIRET : {{ siret }}{% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    {% if lecture_seule %}
+      <!-- 👁️ Mode lecture : valeurs en texte -->
+      <div class="row g-3">
+        <div class="col-md-4">
+          <div><strong>Date de la visite</strong></div>
+          <p class="mb-0">{{ fiche.get('date_visite') or '' }}</p>
+        </div>
+        <div class="col-md-4">
+          <div><strong>CAR</strong></div>
+          <p class="mb-0">{{ fiche.get('car') or '' }}</p>
+        </div>
+        <div class="col-md-4">
+          <div><strong>Visiteur</strong></div>
+          <p class="mb-0">{{ fiche.get('visiteur') or '' }}</p>
+        </div>
+
+        <div class="col-md-6">
+          <div><strong>Reçu par</strong></div>
+          <p class="mb-0">{{ fiche.get('recu_par') or '' }}</p>
+        </div>
+        <div class="col-md-3">
+          <div><strong>Fonction</strong></div>
+          <p class="mb-0">{{ fiche.get('fonction') or '' }}</p>
+        </div>
+        <div class="col-md-3">
+          <div><strong>Date précédente visite</strong></div>
+          <p class="mb-0">{{ fiche.get('date_precedente_visite') or '' }}</p>
+        </div>
+      </div>
+
+    {% else %}
+      <!-- ✏️ Mode édition : champs éditables -->
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Date de la visite</label>
+          <input type="date" class="form-control" name="date_visite"
+                 value="{{ fiche.get('date_visite') or annee ~ '-01-01' }}">
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">CAR</label>
+          <!-- Liste déroulante des CAR connus -->
+          <select class="form-select mb-2" id="car-select" onchange="copyCarToInput()">
+            <option value="">-- Sélectionner --</option>
+            {% for c in cars %}
+              <option value="{{ c }}" {% if fiche.get('car')==c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+            <option value="__autre__">Autre…</option>
+          </select>
+          <!-- Champ texte toujours visible (permet de saisir un CAR non listé) -->
+          <input type="text" id="car-input" name="car" class="form-control"
+                 value="{{ fiche.get('car') or '' }}"
+                 placeholder="Saisir ou sélectionner un CAR">
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Visiteur</label>
+          <input type="text" class="form-control" name="visiteur"
+                 value="{{ fiche.get('visiteur') or '' }}">
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Reçu par</label>
+          <input type="text" class="form-control" name="recu_par"
+                 value="{{ fiche.get('recu_par') or '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Fonction</label>
+          <input type="text" class="form-control" name="fonction"
+                 value="{{ fiche.get('fonction') or '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Date précédente visite</label>
+          <input type="date" class="form-control" name="date_precedente_visite"
+                 value="{{ fiche.get('date_precedente_visite') or '' }}">
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>

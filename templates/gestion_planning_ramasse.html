@@ -1,0 +1,358 @@
+{% extends "base_bene.html" %}
+{% block title %}Gestion Planning Ramasse{% endblock %}
+
+{% block content %}
+
+<form method="post">
+
+{# ============================== #
+#  🔝 Bandeau supérieur : titre + boutons
+# ============================== #}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>Gestion du planning ramasse</h2>
+
+  <div class="d-flex gap-2">
+    {# 💾 Enregistrer #}
+    <button type="submit"
+            name="action"
+            value="enregistrer"
+            class="btn btn-primary save-btn"
+            disabled>
+      💾 Enregistrer le planning
+    </button>
+
+    {# ⬅️ Retour à la création #}
+    <a href="{{ url_for('planning.creation_planning_ramasse', semaine=semaine) }}"
+       class="btn btn-outline-primary">
+      ⬅️ Retour à la création
+    </a>
+
+    {# 🏠 Menu planning #}
+    <a href="{{ url_for('planning.planning_main') }}"
+       class="btn btn-outline-secondary">
+      🏠 Menu Planning
+    </a>
+
+    {# 🖨️ Aperçu #}
+    <a id="apercu-link"
+       href="{{ url_for('planning.apercu_planning_ramasse', semaine=semaine) }}"
+       target="_blank"
+       class="btn btn-outline-secondary">
+      🖨️ Aperçu imprimable (A3)
+    </a>
+  </div>
+</div>
+
+{# ⚠️ Indicateur modifications non enregistrées #}
+<div id="unsaved-warning"
+     class="alert alert-warning py-2 px-3 mb-3"
+     style="display:none;">
+  ⚠️ Modifications non enregistrées
+</div>
+
+
+{# ============================== #
+#  🧾 Formulaire principal de gestion du planning
+# ============================== #}
+  <div class="gestion-planning-container">
+    <table class="table table-bordered table-striped">
+      <thead>
+        <tr>
+          <th class="col-jour">Jour</th>
+          <th class="col-semaine">Semaine</th>
+          <th class="col-tournee">Tournée</th>
+          <th>Chauffeur</th>
+          <th>Équipier</th>
+          <th>Responsable Tri</th>
+          <th>Membre Tri 1</th>
+          <th>Membre Tri 2</th>
+          <th>Membre Tri 3</th>
+          <th class="col-camion">Camion</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {# ===================================== #
+          Boucle sur toutes les lignes existantes du planning
+          Chaque ligne correspond à un jour et une tournée
+        # ===================================== #}
+        {% for ligne in lignes %}
+        <tr class="jour-{{ ligne.jour|lower }}">
+          <td>{{ ligne.jour|capitalize }}</td>
+          <td>{{ ligne.semaine }}</td>
+          <td><input type="text" value="{{ ligne.tournee_display }}" class="form-control" readonly></td>
+
+          {# Chauffeur / Équipier / Responsable Tri — même logique répétée #}
+          {% for role, collection, field, remp_field in [
+              ('chauffeur', chauffeurs, 'chauffeur_id', 'remplacant_chauffeur_id'),
+              ('equipier', equipiers, 'equipier_id', 'remplacant_equipier_id'),
+              ('responsable', responsables, 'responsable_id', 'remplacant_responsable_id')
+          ] %}
+          <td class="{% if ligne[remp_field] %}remplacant-cell{% elif ligne[role+'_absent'] and ligne[field] %}absent-cell{% endif %}">
+            {% set actif_id = ligne[remp_field] if ligne[remp_field] else ligne[field] %}
+            <select name="{{ role }}_ids[]" class="form-control bene-select" data-role="{{ role }}">
+              <option value="" {% if actif_id is none %}selected{% endif %}>-- Aucun --</option>
+              <option value="__add__">➕ Ajouter un bénévole…</option>
+              <option disabled>──────────</option>
+
+              {# Bénévoles priorisés (ramasse = oui) #}
+              {% set ramasse_field = 'ramasse_' + role if role != 'responsable' else 'ramasse_responsable_tri' %}
+              {% for bene in collection if bene[ramasse_field]|lower == 'oui' %}
+                <option value="{{ bene.id }}"
+                        title="📞 {{ bene.telephone_portable or 'N/A' }} | ✉️ {{ bene.email or 'N/A' }}"
+                        {% if bene.id == actif_id %}selected{% endif %}
+                        {% if ligne[remp_field] and bene.id == ligne[remp_field] %}
+                          style="background-color:#d4edda;color:#155724;"
+                        {% elif ligne[role+'_absent'] and bene.id == ligne[field] %}
+                          style="color:gray;"
+                        {% elif bene.id in collections_du_jour[role][ligne.jour|lower]|default([]) and bene.id != actif_id %}
+                          style="color:orange;"
+                        {% endif %}>
+                  ✅ {{ bene.nom }} {{ bene.prenom }}
+                  {% if ligne[remp_field] and bene.id == ligne[remp_field] %}
+                    (remplaçant)
+                  {% elif ligne[role+'_absent'] and bene.id == ligne[field] %}
+                    (absent)
+                  {% elif bene.id in collections_du_jour[role][ligne.jour|lower]|default([]) and bene.id != actif_id %}
+                    (déjà affecté)
+                  {% endif %}
+                </option>
+              {% endfor %}
+
+              <option disabled>──────────</option>
+
+              {# Autres bénévoles (ramasse = non) #}
+              {% for bene in collection if bene[ramasse_field]|lower != 'oui' %}
+                <option value="{{ bene.id }}"
+                        title="📞 {{ bene.telephone_portable or 'N/A' }} | ✉️ {{ bene.email or 'N/A' }}"
+                        {% if bene.id == actif_id %}selected{% endif %}
+                        {% if ligne[remp_field] and bene.id == ligne[remp_field] %}
+                          style="background-color:#d4edda;color:#155724;"
+                        {% elif ligne[role+'_absent'] and bene.id == ligne[field] %}
+                          style="color:gray;"
+                        {% elif bene.id in collections_du_jour[role][ligne.jour|lower]|default([]) and bene.id != actif_id %}
+                          style="color:orange;"
+                        {% endif %}>
+                  {{ bene.nom }} {{ bene.prenom }}
+                  {% if ligne[remp_field] and bene.id == ligne[remp_field] %}
+                    (remplaçant)
+                  {% elif ligne[role+'_absent'] and bene.id == ligne[field] %}
+                    (absent)
+                  {% elif bene.id in collections_du_jour[role][ligne.jour|lower]|default([]) and bene.id != actif_id %}
+                    (déjà affecté)
+                  {% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+          {% endfor %}
+
+          {# ======================== #
+            Membres Tri (1, 2, 3)
+          # ======================== #}
+          {% for i in range(1, 4) %}
+          <td class="{% if ligne['remplacant_ramasse_tri' ~ i ~ '_id'] %}remplacant-cell{% elif ligne['ramasse_tri' ~ i ~ '_absent'] and ligne['ramasse_tri' ~ i ~ '_id'] %}absent-cell{% endif %}">
+            {% set actif_tri_id = ligne['remplacant_ramasse_tri' ~ i ~ '_id'] if ligne['remplacant_ramasse_tri' ~ i ~ '_id'] else ligne['ramasse_tri' ~ i ~ '_id'] %}
+            <select name="tri{{ i }}_ids[]" class="form-control bene-select" data-role="tri_externe">
+              <option value="" {% if actif_tri_id is none %}selected{% endif %}>-- Aucun --</option>
+              <option value="__add__">➕ Ajouter un bénévole…</option>
+              <option disabled>──────────</option>
+
+              {# Bénévoles "tri externe" (ramasse_tri_externe = oui) #}
+              {% for bene in equipiers if bene.ramasse_tri_externe|lower == 'oui' %}
+                <option value="{{ bene.id }}"
+                        title="📞 {{ bene.telephone_portable or 'N/A' }} | ✉️ {{ bene.email or 'N/A' }}"
+                        {% if bene.id == actif_tri_id %}selected{% endif %}
+                        {% if ligne['remplacant_ramasse_tri' ~ i ~ '_id'] and bene.id == ligne['remplacant_ramasse_tri' ~ i ~ '_id'] %}
+                          style="background-color:#d4edda;color:#155724;"
+                        {% elif ligne['ramasse_tri' ~ i ~ '_absent'] and bene.id == ligne['ramasse_tri' ~ i ~ '_id'] %}
+                          style="color:gray;"
+                        {% endif %}>
+                  ✅ {{ bene.nom }} {{ bene.prenom }}
+                  {% if ligne['remplacant_ramasse_tri' ~ i ~ '_id'] and bene.id == ligne['remplacant_ramasse_tri' ~ i ~ '_id'] %}
+                    (remplaçant)
+                  {% elif ligne['ramasse_tri' ~ i ~ '_absent'] and bene.id == ligne['ramasse_tri' ~ i ~ '_id'] %}
+                    (absent)
+                  {% endif %}
+                </option>
+              {% endfor %}
+
+              <option disabled>──────────</option>
+
+              {# Autres bénévoles #}
+              {% for bene in equipiers if bene.ramasse_tri_externe|lower != 'oui' %}
+                <option value="{{ bene.id }}"
+                        title="📞 {{ bene.telephone_portable or 'N/A' }} | ✉️ {{ bene.email or 'N/A' }}"
+                        {% if bene.id == actif_tri_id %}selected{% endif %}
+                        {% if ligne['remplacant_ramasse_tri' ~ i ~ '_id'] and bene.id == ligne['remplacant_ramasse_tri' ~ i ~ '_id'] %}
+                          style="background-color:#d4edda;color:#155724;"
+                        {% elif ligne['ramasse_tri' ~ i ~ '_absent'] and bene.id == ligne['ramasse_tri' ~ i ~ '_id'] %}
+                          style="color:gray;"
+                        {% endif %}>
+                  {{ bene.nom }} {{ bene.prenom }}
+                  {% if ligne['remplacant_ramasse_tri' ~ i ~ '_id'] and bene.id == ligne['remplacant_ramasse_tri' ~ i ~ '_id'] %}
+                    (remplaçant)
+                  {% elif ligne['ramasse_tri' ~ i ~ '_absent'] and bene.id == ligne['ramasse_tri' ~ i ~ '_id'] %}
+                    (absent)
+                  {% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+          {% endfor %}
+
+          {# Sélecteur de camion #}
+          <td>
+            <select name="camion_ids[]" class="form-control">
+              <option value="" {% if ligne.camion_id is none %}selected{% endif %}>-- Aucun --</option>
+              {% for camion in camions %}
+                <option value="{{ camion.id }}" {% if camion.id == ligne.camion_id %}selected{% endif %}>
+                  {{ camion.nom }} ({{ camion.immat }})
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+
+          {# Bouton suppression ligne #}
+          <td>
+            <button type="submit" name="action" value="supprimer_{{ ligne.id }}" class="btn btn-danger btn-sm">🗑️</button>
+          </td>
+
+          <input type="hidden" name="ligne_ids[]" value="{{ ligne.id }}">
+        </tr>
+        {% endfor %}
+
+        {# ============================ #
+          Ligne d’ajout d’un nouvel enregistrement
+        # ============================ #}
+        <tr>
+          <td>
+            <select name="new_jour" class="form-control">
+              <option value="">-- Jour --</option>
+              <option value="lundi">Lundi</option>
+              <option value="mardi">Mardi</option>
+              <option value="mercredi">Mercredi</option>
+              <option value="jeudi">Jeudi</option>
+              <option value="vendredi">Vendredi</option>
+            </select>
+          </td>
+          <td><input type="number" name="new_semaine" class="form-control" min="1" max="53"></td>
+          <td><input type="text" name="new_tournee" class="form-control" placeholder="Nom Tournée"></td>
+
+          {# Sélecteurs pour chauffeur / équipier / responsable / tri1-3 / camion #}
+          {% for champ, liste, role in [
+              ('new_chauffeur', chauffeurs, 'chauffeur'),
+              ('new_equipier', equipiers, 'equipier'),
+              ('new_responsable', responsables, 'responsable'),
+              ('new_ramasse_tri1', equipiers, 'tri_externe'),
+              ('new_ramasse_tri2', equipiers, 'tri_externe'),
+              ('new_ramasse_tri3', equipiers, 'tri_externe')
+          ] %}
+          <td>
+            <select name="{{ champ }}" class="form-control bene-select" data-role="{{ role }}">
+              <option value="">-- Aucun --</option>
+              <option value="__add__">➕ Ajouter un bénévole…</option>
+              <option disabled>──────────</option>
+              {% for bene in liste %}
+                <option value="{{ bene.id }}">{{ bene.nom }} {{ bene.prenom }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          {% endfor %}
+
+          <td>
+            <select name="new_camion" class="form-control">
+              <option value="">-- Aucun --</option>
+              {% for camion in camions %}
+                <option value="{{ camion.id }}">{{ camion.nom }} ({{ camion.immat }})</option>
+              {% endfor %}
+            </select>
+          </td>
+
+          <td>
+            <button type="submit" name="action" value="ajouter" class="btn btn-success btn-sm">➕</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+{# ============================== #
+#  🔚 Bandeau inférieur : boutons identiques au haut
+# ============================== #}
+<div class="d-flex justify-content-end gap-2 mt-4">
+  <button type="submit"
+          name="action"
+          value="enregistrer"
+          class="btn btn-primary save-btn"
+          disabled>
+    💾 Enregistrer le planning
+  </button>
+
+  <a href="{{ url_for('planning.creation_planning_ramasse', semaine=semaine) }}"
+     class="btn btn-outline-primary">
+    ⬅️ Retour à la création
+  </a>
+
+  <a href="{{ url_for('planning.planning_main') }}"
+     class="btn btn-outline-secondary">
+    🏠 Menu Planning
+  </a>
+
+  <a href="{{ url_for('planning.apercu_planning_ramasse', semaine=semaine) }}"
+     target="_blank"
+     class="btn btn-outline-secondary">
+    🖨️ Aperçu imprimable (A3)
+  </a>
+</div>
+</form>
+
+
+{# ============================== #
+  🔧 Modale + JavaScript commun
+# ============================== #}
+{% include "partials/quick_benevole_modal.html" %}
+<script src="{{ url_for('static', filename='js/quick_benevole.js', v=2) }}"></script>
+
+<script>
+
+  document.addEventListener("DOMContentLoaded", function () {
+    let isDirty = false;
+
+    const saveButtons = document.querySelectorAll(".save-btn");
+    const warning = document.getElementById("unsaved-warning");
+    const form = document.querySelector("form");
+
+    function markDirty() {
+      if (isDirty) return;
+      isDirty = true;
+
+      saveButtons.forEach(btn => btn.disabled = false);
+      if (warning) warning.style.display = "block";
+    }
+
+    document.querySelectorAll("form select, form input").forEach(el => {
+      el.addEventListener("change", markDirty);
+    });
+
+    // 🔑 IMPORTANT : désactiver l’alerte lors de l’enregistrement
+    if (form) {
+      form.addEventListener("submit", function () {
+        isDirty = false;
+        window.removeEventListener("beforeunload", beforeUnloadHandler);
+      });
+    }
+
+    function beforeUnloadHandler(e) {
+      if (!isDirty) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+
+    window.addEventListener("beforeunload", beforeUnloadHandler);
+  });
+
+</script>
+
+{% endblock %}

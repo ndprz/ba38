@@ -1,0 +1,454 @@
+
+{% extends "base_assos.html" %}
+{% block title %}Gestion des événements écran{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4 px-5">
+  <h2>🎬 Gestion des événements écran</h2>
+
+  <!-- ============================================= -->
+  <!-- 🧾 FORMULAIRE D'AJOUT D'UN NOUVEL ÉVÉNEMENT -->
+  <!-- ============================================= -->
+  <form method="post" enctype="multipart/form-data" class="card p-3 mt-3">
+    <input type="hidden" name="action" value="ajouter">
+
+    <div class="row g-3">
+      <div class="col-md-3">
+        <label class="form-label">Type</label>
+        <select name="type" class="form-select" required>
+          <option value="message">Message</option>
+          <option value="video">Vidéo</option>
+          <option value="document">Document (PDF ou PPTX)</option>
+        </select>
+      </div>
+
+      <div class="col-md-5">
+        <label class="form-label">Titre</label>
+        <input type="text" name="titre" class="form-control" required>
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Bénévole (pour photo auto)</label>
+        <select name="benevole_id" class="form-select">
+          <option value="">— Aucun —</option>
+          {% for b in benevoles %}
+            <option value="{{ b.id }}">{{ b.nom }} {{ b.prenom }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Contenu (texte ou URL)</label>
+        <textarea name="contenu" class="form-control" rows="2" placeholder="Texte du message… (facultatif pour vidéo/document)"></textarea>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Fichier (vidéo .mp4/.webm ou PDF)</label>
+        <input type="file" name="fichier" class="form-control">
+        <small class="text-muted">Déposé dans /static/evenements/</small>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Image (URL absolue ou /static/...)</label>
+        <input type="text" name="image_path" class="form-control" placeholder="/static/photos_benevoles/jean.jpg">
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">Début</label>
+        <input type="datetime-local" name="date_debut" class="form-control" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Fin</label>
+        <input type="datetime-local" name="date_fin" class="form-control" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Durée affichage (s)</label>
+        <input type="number" name="duree_affichage" class="form-control" value="15" min="1">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Récurrence</label>
+        <select name="recurrence" class="form-select">
+          <option value="aucune">Aucune</option>
+          <option value="quotidienne">Quotidienne</option>
+          <option value="hebdo">Hebdomadaire</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="mt-3 d-flex justify-content-end" style="gap: .5rem;">
+      <button class="btn btn-primary" type="submit">➕ Ajouter</button>
+      <a href="{{ url_for('evenements.affichage_evenement') }}" class="btn btn-outline-dark" target="_blank">🖥️ Ouvrir l’affichage (nouvelle fenêtre)</a>
+    </div>
+  </form>
+
+  <hr class="my-4">
+
+  <!-- ============================= -->
+  <!-- 📋 TABLEAU DES ÉVÉNEMENTS -->
+  <!-- ============================= -->
+  <h5 class="mb-3">Événements planifiés</h5>
+  <div class="table-responsive">
+      <table class="table table-evenements table-striped align-middle">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Actif</th>
+          <th>Type</th>
+          <th>Titre</th>
+          <th>Début</th>
+          <th>Fin</th>
+          <th>Durée</th>
+          <th>Fichier</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for e in evenements %}
+        <tr class="{% if e.actif == 0 %}table-secondary{% endif %}">
+          <td>{{ e.id }}</td>
+
+          <!-- ✅ bouton ON/OFF -->
+          <td>
+            <form method="post" class="d-inline">
+              <input type="hidden" name="id" value="{{ e.id }}">
+              <input type="hidden" name="action" value="basculer_actif">
+              <button class="btn btn-sm {% if e.actif %}btn-success{% else %}btn-outline-secondary{% endif %}">
+                {% if e.actif %}ON{% else %}OFF{% endif %}
+              </button>
+            </form>
+          </td>
+
+          <td>{{ e.type }}</td>
+
+          <td>
+            <details>
+              <summary class="fw-semibold">{{ e.titre }}</summary>
+              {% if e.contenu %}<div class="small text-muted mt-2">{{ e.contenu }}</div>{% endif %}
+              {% if e.image_path %}
+                <div class="mt-2"><img src="{{ e.image_path }}" style="max-height:80px;"></div>
+              {% endif %}
+            </details>
+          </td>
+
+          <td><span class="small">{{ e.date_debut }}</span></td>
+          <td><span class="small">{{ e.date_fin }}</span></td>
+          <td class="text-center">{{ e.duree_affichage or 15 }}</td>
+          <td class="small">
+            {% if e.fichier_path %}
+              {% if e.fichier_path.startswith('http') %}
+                <a href="{{ e.fichier_path }}" target="_blank">lien</a>
+              {% else %}
+                <code>{{ e.fichier_path }}</code>
+              {% endif %}
+            {% endif %}
+          </td>
+
+          <td class="text-nowrap">
+            <!-- 🗑️ Suppression -->
+            <form method="post" class="d-inline" onsubmit="return confirm('Supprimer cet événement ?');">
+              <input type="hidden" name="id" value="{{ e.id }}">
+              <input type="hidden" name="action" value="supprimer">
+              <button class="btn btn-sm btn-outline-danger">🗑️</button>
+            </form>
+
+            <!-- ✏️ Modification -->
+            <button type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    data-evenement='{{ e|tojson }}'
+                    onclick="ouvrirModale(JSON.parse(this.dataset.evenement))">
+              ✏️
+            </button>
+
+            <!-- 🎙 Whisper -->
+
+            {% if e.type == "video" %}
+              <div class="d-flex flex-wrap gap-2 mt-2">
+                <button id="btnSousTitres_{{ e.id }}" class="btn btn-outline-secondary btn-sm"
+                        onclick="genererSousTitres({{ e.id }})">
+                  🎙 Générer les sous-titres automatiques
+                </button>
+                <button class="btn btn-outline-warning btn-sm"
+                        onclick="ouvrirModaleSousTitres({{ e.id }})">
+                  ✏️ Corriger les sous-titres
+                </button>
+              </div>
+            {% endif %}
+
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="9" class="text-center text-muted">Aucun événement</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================== -->
+<!-- 🪟 MODALE D'ÉDITION D'UN ÉVÉNEMENT EXISTANT -->
+<!-- ============================================== -->
+<div class="modal fade" id="modalEdit" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <form class="modal-content" method="post" enctype="multipart/form-data">
+      <!-- Champs cachés -->
+      <input type="hidden" name="action" value="modifier">
+      <input type="hidden" name="id" id="edit_id">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Modifier l’événement</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="row g-3">
+          <!-- Type -->
+          <div class="col-md-3">
+            <label class="form-label">Type</label>
+            <select name="type" id="edit_type" class="form-select" required>
+              <option value="message">Message</option>
+              <option value="video">Vidéo</option>
+              <option value="document">Document (PDF)</option>
+            </select>
+          </div>
+
+          <!-- Titre -->
+          <div class="col-md-5">
+            <label class="form-label">Titre</label>
+            <input type="text" name="titre" id="edit_titre" class="form-control" required>
+          </div>
+
+          <!-- Bénévole -->
+          <div class="col-md-4">
+            <label class="form-label">Bénévole</label>
+            <select name="benevole_id" id="edit_benevole_id" class="form-select">
+              <option value="">— Aucun —</option>
+              {% for b in benevoles %}
+                <option value="{{ b.id }}">{{ b.nom }} {{ b.prenom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Contenu -->
+          <div class="col-12">
+            <label class="form-label">Contenu (texte ou URL)</label>
+            <textarea name="contenu" id="edit_contenu" class="form-control" rows="2"></textarea>
+          </div>
+
+          <!-- Fichier -->
+          <div class="col-md-6">
+            <label class="form-label">Nouveau fichier (optionnel)</label>
+            <input type="file" name="fichier" class="form-control">
+          </div>
+
+          <!-- Image -->
+          <div class="col-md-6">
+            <label class="form-label">Image (URL absolue ou /static/...)</label>
+            <input type="text" name="image_path" id="edit_image_path" class="form-control">
+          </div>
+
+          <!-- Dates -->
+          <div class="col-md-3">
+            <label class="form-label">Début</label>
+            <input type="datetime-local" name="date_debut" id="edit_date_debut" class="form-control" required>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Fin</label>
+            <input type="datetime-local" name="date_fin" id="edit_date_fin" class="form-control" required>
+          </div>
+
+          <!-- Durée + récurrence -->
+          <div class="col-md-3">
+            <label class="form-label">Durée (s)</label>
+            <input type="number" name="duree_affichage" id="edit_duree" class="form-control" min="1">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Récurrence</label>
+            <select name="recurrence" id="edit_recurrence" class="form-select">
+              <option value="aucune">Aucune</option>
+              <option value="quotidienne">Quotidienne</option>
+              <option value="hebdo">Hebdomadaire</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+
+
+      <div class="modal-footer">
+        <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<style>
+  table.table-evenements {
+    width: 100%;
+    table-layout: auto;
+    font-size: 0.95rem;
+  }
+  td, th {
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+</style>
+
+
+<!-- ======================= -->
+<!-- 📜 JAVASCRIPT UTILITAIRE -->
+<!-- ======================= -->
+<script>
+// Normalise une date ISO (T majuscule + format YYYY-MM-DDTHH:MM)
+function toLocalDT(iso){
+  if(!iso) return "";
+  if(iso.length >= 16) {
+    if(iso[10] === 't') iso = iso.slice(0,10) + 'T' + iso.slice(11);
+    return iso.slice(0,16);
+  }
+  return iso;
+}
+
+// Ouvre la modale avec les données de l'événement sélectionné
+function ouvrirModale(e){
+  document.getElementById('edit_id').value = e.id;
+  document.getElementById('edit_type').value = e.type;
+  document.getElementById('edit_titre').value = e.titre;
+  document.getElementById('edit_contenu').value = e.contenu || '';
+  document.getElementById('edit_image_path').value = e.image_path || '';
+  document.getElementById('edit_benevole_id').value = e.benevole_id || '';
+  document.getElementById('edit_date_debut').value = toLocalDT(e.date_debut);
+  document.getElementById('edit_date_fin').value = toLocalDT(e.date_fin);
+  document.getElementById('edit_duree').value = e.duree_affichage || 15;
+  document.getElementById('edit_recurrence').value = e.recurrence || 'aucune';
+  const modal = new bootstrap.Modal(document.getElementById('modalEdit'));
+  modal.show();
+}
+
+
+// Remplir automatiquement la date du jour (07:00 → 17:00)
+window.addEventListener("DOMContentLoaded", () => {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+
+  // Construction ISO locale pour datetime-local
+  const start = `${yyyy}-${mm}-${dd}T07:00`;
+  const end   = `${yyyy}-${mm}-${dd}T17:00`;
+
+  const champDebut = document.querySelector('input[name="date_debut"]');
+  const champFin   = document.querySelector('input[name="date_fin"]');
+
+  if (champDebut && !champDebut.value) champDebut.value = start;
+  if (champFin && !champFin.value) champFin.value = end;
+});
+
+
+async function genererSousTitres(eventId) {
+  const btn = document.getElementById(`btnSousTitres_${eventId}`);
+  const loader = document.getElementById(`loader_${eventId}`);
+
+  // UI: désactive + spinner
+  btn.disabled = true;
+  btn.innerText = "⏳ Génération en cours…";
+  if (loader) loader.classList.remove("d-none");
+
+  // Timeout via AbortController (3 min)
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 180000);
+
+  try {
+    const resp = await fetch(`/evenements/generer_sous_titres/${eventId}`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: { "Accept": "application/json" }
+    });
+
+    // Essaie JSON, sinon lis le texte brut (utile si erreur 500 HTML)
+    let data;
+    const text = await resp.text();
+    try { data = JSON.parse(text); } catch { data = { error: text || "Réponse non JSON" }; }
+
+    if (resp.ok && data.status === "ok") {
+      alert("✅ Sous-titres générés !");
+    } else {
+      alert("❌ Erreur: " + (data.error || `HTTP ${resp.status}`));
+    }
+  } catch (e) {
+    if (e.name === "AbortError") {
+      alert("⏰ Délai dépassé (3 min). Réessaie plus tard.");
+    } else {
+      alert("❌ Erreur réseau : " + (e.message || e));
+    }
+  } finally {
+    clearTimeout(t);
+    if (loader) loader.classList.add("d-none");
+    btn.disabled = false;
+    btn.innerText = "🎙 Générer les sous-titres automatiques";
+  }
+}
+
+
+
+
+</script>
+
+<!-- 🪶 Modale de correction des sous-titres -->
+<div class="modal fade" id="modalSousTitres" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content bg-light">
+      <div class="modal-header bg-warning text-dark">
+        <h5 class="modal-title">✏️ Édition des sous-titres</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <textarea id="contenu_srt" class="form-control" rows="20"
+                  style="font-family: monospace; font-size: 0.9rem;"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-success" onclick="sauverSousTitres()">💾 Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentSrtId = null;
+
+// 🟢 Ouvre la modale et charge le contenu du fichier .srt
+function ouvrirModaleSousTitres(id) {
+  currentSrtId = id;
+  fetch(`/evenements/get_srt/${id}`)
+    .then(r => r.ok ? r.text() : Promise.reject("Fichier introuvable"))
+    .then(data => {
+      document.getElementById("contenu_srt").value = data;
+      new bootstrap.Modal(document.getElementById("modalSousTitres")).show();
+    })
+    .catch(err => {
+      alert("❌ Erreur de chargement : " + err);
+    });
+}
+
+// 💾 Enregistre les corrections dans le fichier .srt
+function sauverSousTitres() {
+  const contenu = document.getElementById("contenu_srt").value;
+  fetch(`/evenements/save_srt/${currentSrtId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contenu })
+  })
+  .then(r => r.ok ? r.text() : Promise.reject("Erreur serveur"))
+  .then(msg => {
+    alert("✅ Sous-titres enregistrés !");
+    bootstrap.Modal.getInstance(document.getElementById("modalSousTitres")).hide();
+  })
+  .catch(err => alert("❌ Erreur : " + err));
+}
+</script>
+
+
+
+{% endblock %}

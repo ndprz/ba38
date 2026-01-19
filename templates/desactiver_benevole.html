@@ -1,0 +1,14 @@
+{% extends "base_bene.html" %}
+{% block title %}Désactivation d'un bénévole{% endblock %}
+
+{% block content %}
+<h2>Désactivation de {{ benevole.prenom }} {{ benevole.nom }}</h2>
+<form method="post">
+    <div class="mb-3">
+        <label for="motif" class="form-label">Motif d'inactivité</label>
+        <textarea class="form-control" name="motif" id="motif" rows="3" required></textarea>
+    </div>
+    <button type="submit" class="btn btn-warning">📦 Désactiver ce bénévole</button>
+        <a href="{{ url_for('benevoles.benevoles') }}" class="btn btn-secondary">Annuler</a>
+</form>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Renommer un champ{% endblock %}
+{% block content %}
+<h2>🔧 Renommer un champ dans toutes les bases</h2>
+
+<form method="POST">
+  <div class="form-group">
+    <label>Table concernée :</label>
+    <select name="table" class="form-control" required>
+      {% for t in tables %}
+      <option value="{{ t }}">{{ t }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label>Ancien nom du champ :</label>
+    <input type="text" name="old_col" class="form-control" required>
+  </div>
+
+  <div class="form-group">
+    <label>Nouveau nom du champ :</label>
+    <input type="text" name="new_col" class="form-control">
+    <small class="form-text text-muted">Si vide : un nom libre comme <code>libre1</code>, <code>libre2</code>, etc. sera proposé automatiquement.</small>
+  </div>
+
+  <button type="submit" class="btn btn-primary mt-3">🔄 Lancer le renommage</button>
+</form>
+
+{% if resultats %}
+<hr>
+<h4>Résultats :</h4>
+<ul>
+  {% for r in resultats %}
+  <li>{{ r }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base_assos.html" %}
+{% block title %}Où sont mes logs ?{% endblock %}
+
+{% block content %}
+<h2>🧭 Emplacement et état des fichiers de log</h2>
+
+<table class="table table-bordered">
+  <tr>
+    <th>Fichier log principal</th>
+    <td>{{ infos.log_path }}</td>
+  </tr>
+  <tr>
+    <th>Existe ?</th>
+    <td>{{ '✅ Oui' if infos.exists else '❌ Non' }}</td>
+  </tr>
+  <tr>
+    <th>Écriture possible ?</th>
+    <td>{{ '✅ Oui' if infos.writable else '❌ Non' }}</td>
+  </tr>
+  <tr>
+    <th>Fichier fallback détecté</th>
+    <td>{{ '✅ Oui' if infos.fallback_used else '❌ Non' }}</td>
+  </tr>
+  <tr>
+    <th>Fichier .env</th>
+    <td>{{ infos.env_path }}</td>
+  </tr>
+  <tr>
+    <th>.env lisible ?</th>
+    <td>{{ '✅ Oui' if infos.env_readable else '❌ Non' }}</td>
+  </tr>
+  <tr>
+    <th>Base SQLite utilisée</th>
+    <td>{{ infos.db_path }}</td>
+  </tr>
+</table>
+
+{% if fallback_tail %}
+<h4>🪵 Dernières lignes du fallback log :</h4>
+<div class="alert alert-secondary" style="white-space: pre-wrap; font-family: monospace;">
+  {{ fallback_tail | join('') }}
+</div>
+{% endif %}
+{% endblock %}

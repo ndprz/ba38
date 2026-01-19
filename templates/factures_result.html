@@ -1,0 +1,26 @@
+{% extends "base_assos.html" %}
+{% block title %}Factures extraites{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <h2>✅ Factures générées</h2>
+
+  <div class="alert alert-success">
+    📦 <strong>Fichier ZIP prêt :</strong>
+    <a href="{{ url_for('factures.telecharger_zip', nom_fichier=zipfile) }}"
+       class="btn btn-outline-primary btn-sm ms-2">
+       ⬇️ Télécharger toutes les factures (ZIP)
+    </a>
+  </div>
+
+  <p>{{ fichiers|length }} fichiers créés :</p>
+  <ul class="list-group">
+    {% for f in fichiers %}
+      <li class="list-group-item">{{ f }}</li>
+    {% endfor %}
+  </ul>
+
+  <a href="{{ url_for('factures.decouper_factures') }}" class="btn btn-secondary mt-3">
+    ↩️ Nouvelle découpe
+  </a>
+</div>
+{% endblock %}

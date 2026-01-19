@@ -1,0 +1,36 @@
+<!-- 🔁 Bloc de boutons de navigation (haut et bas de page) pour les bénévoles -->
+<div class="mb-4 d-flex flex-wrap justify-content-end" style="gap: 1rem;">
+
+    <a href="{{ url_for('mail_bene.envoi_mail_benevoles', bene_id=benevole['id'], retour_url=request.url) }}"
+        class="btn btn-sm btn-outline-primary">
+        📧 Envoyer un mail
+    </a>
+
+
+
+    {% if previous_id is defined and previous_id %}
+    <button type="button"
+            class="btn btn-outline-secondary"
+            onclick="handleNav('{{ url_for('benevoles.update_benevole', benevole_id=previous_id) }}{% if next_url is defined %}?{{ next_url|replace('&', '&amp;') }}{% endif %}')">
+        ⬅️ Précédent
+    </button>
+    {% endif %}
+
+    {% if next_id is defined and next_id %}
+    <button type="button"
+            class="btn btn-outline-secondary"
+            onclick="handleNav('{{ url_for('benevoles.update_benevole', benevole_id=next_id) }}{% if next_url is defined %}?{{ next_url|replace('&', '&amp;') }}{% endif %}')">
+        ➡️ Suivant
+    </button>
+    {% endif %}
+
+    <button type="button"
+            class="btn btn-outline-secondary"
+            onclick="handleReturn('{{ url_for('benevoles.benevoles') }}{% if next_url is defined %}?{{ next_url|replace('&', '&amp;') }}{% endif %}')">
+        ↩️ Retour
+    </button>
+
+    <button type="button" class="btn btn-primary" onclick="handleSave()">
+        ✅ Enregistrer les modifications
+    </button>
+</div>
