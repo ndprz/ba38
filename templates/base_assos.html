@@ -91,23 +91,23 @@
         <nav style="display: flex; align-items: center; gap: 15px;">
             <a href="/">Accueil</a>
 
-            {% if user_role in ['admin', 'user', 'gestionnaire', 'car'] %}
+            {% if has_access("associations", "lecture") %}
                 <a href="/partenaires">Associations</a>
             {% endif %}
 
-            {% if user_role in ['admin', 'gestionnaire'] %}
+            {% if has_access("associations", "ecriture") %}
                 <a href="{{ url_for('maj_champs', source='assos') }}">Ordre d'édition</a>
             {% endif %}
 
-            {% if user_role in ['admin', 'user', 'gestionnaire', 'car'] %}
+            {% if has_access("associations", "lecture") %}
                 <a href="{{ url_for('export_data.generation_fichiers') }}?source=assos">Export de données</a>
             {% endif %}
 
-            {% if user_role in ['admin', 'user', 'gestionnaire'] %}
+            {% if has_access("associations", "ecriture") %}
                 <a href="{{ url_for('traitements.utilitaires') }}">🛠️ Utilitaires</a>
             {% endif %}
 
-            {% if user_role in ['admin'] %}
+            {% if is_admin_global() %}
                 <div class="dropdown d-inline-block">
                     <a href="#" class="dropbtn">Paramètres</a>
                     <div class="dropdown-content">
@@ -117,7 +117,7 @@
                 </div>
             {% endif %}
 
-            {% if user_role in ['admin'] %}
+            {% if is_admin_global() %}
                 <a href="{{ url_for('debug_bp.debug_console') }}" class="btn btn-outline-dark btn-sm">
                     🐞 Console de debug
                 </a>
@@ -142,22 +142,9 @@
                 {% endif %}
             {% endwith %}
             </div>
-            {% if session.get('roles') and 'admin' in session.roles %}
-            <li class="nav-item dropdown">
-
-                <ul class="dropdown-menu" aria-labelledby="adminMenu">
-                    <li><a class="dropdown-item" href="{{ url_for('debug_bp.debug_console') }}">🪵 Console de logs</a></li>
-                    <li><a class="dropdown-item" href="{{ url_for('debug_bp.export_logs') }}">📥 Exporter les logs</a></li>
-                    <li><a class="dropdown-item" href="{{ url_for('debug_bp.where_are_my_logs') }}">📂 Diagnostic logs</a></li>
-                    <li><a class="dropdown-item" href="{{ url_for('debug_bp.debug_env') }}">🔍 Variables d'environnement</a></li>
-                </ul>
-            </li>
-            {% endif %}
-
 
         </nav>
 
-        <!--<p>Rôle détecté : {{ user_role }}</p>-->
 
         {% if current_user.is_authenticated %}
         <div class="user-info">

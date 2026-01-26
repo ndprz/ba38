@@ -3,47 +3,26 @@
 echo "🟢 État de l'app www.ba380.org"
 echo "-----------------------------------"
 
-# Tester la réponse HTTP
+# === Test HTTP ===
 echo -e "\n🌍 Test HTTP (www.ba380.org) :"
-curl -s -o /dev/null -w "%{http_code}\n" https://www.ba380.org
+curl -I -s https://www.ba380.org | head -n 1
 
+# === Services systemd ===
+echo -e "\n⚙️ Services systemd :"
+systemctl is-active ba38-prod.service && echo "✅ ba38-prod.service actif" || echo "❌ ba38-prod.service INACTIF"
+systemctl is-active ba38-dev.service && echo "✅ ba38-dev.service actif" || echo "❌ ba38-dev.service INACTIF"
 
-# --- DEV ---
-echo -e "\n📌 DEV : ndprz.pythonanywhere.com"
-if [ -f /var/log/ndprz.pythonanywhere.com.error.log ]; then
-  echo -e "🔍 5 dernières lignes du error.log (DEV) :"
-  tail -n 5 /var/log/ndprz.pythonanywhere.com.error.log
-else
-  echo "❌ error.log (DEV) introuvable"
-fi
+# === Logs PROD ===
+echo -e "\n📜 Logs PROD (systemd) :"
+systemctl status ba38-prod.service --no-pager -n 20
 
-if [ -f /var/log/ndprz.pythonanywhere.com.server.log ]; then
-  echo -e "\n🔍 5 dernières lignes du server.log (DEV) :"
-  tail -n 5 /var/log/ndprz.pythonanywhere.com.server.log
-else
-  echo "❌ server.log (DEV) introuvable"
-fi
+# === Logs DEV ===
+echo -e "\n📜 Logs DEV (systemd) :"
+systemctl status ba38-dev.service --no-pager -n 20
 
-# --- PROD ---
-echo -e "\n📌 PROD : www.ba380.org"
-if [ -f /var/log/www.ba380.org.error.log ]; then
-  echo -e "🔍 5 dernières lignes du error.log (PROD) :"
-  tail -n 5 /var/log/www.ba380.org.error.log
-else
-  echo "❌ error.log (PROD) introuvable"
-fi
+# === Base SQLite PROD ===
+echo -e "\n📦 Base SQLite réellement utilisée (runtime DEV) :"
+curl -s \
+  -H "X-Internal-Token: ba38-internal-check" \
+  http://127.0.0.1:8000/_runtime/db
 
-if [ -f /var/log/www.ba380.org.server.log ]; then
-  echo -e "\n🔍 5 dernières lignes du server.log (PROD) :"
-  tail -n 5 /var/log/www.ba380.org.server.log
-else
-  echo "❌ server.log (PROD) introuvable"
-fi
-
-# Vérifier les tables SQLite
-echo -e "\n📦 Tables existantes dans la base utilisée :"
-sqlite3 /home/ndprz/ba380/ba380.sqlite "SELECT name FROM sqlite_master WHERE type='table';"
-
-# Dernière modif du WSGI
-echo -e "\n🕒 Dernière modif .wsgi :"
-ls -l /var/www/www_ba380_org_wsgi.py

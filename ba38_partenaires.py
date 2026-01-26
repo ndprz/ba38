@@ -751,12 +751,8 @@ def edition_tableau_associations():
 
 
 
-# @partenaires_bp.route('/generate_fiche_visite/<int:partner_id>', methods=['POST'])
-# def generate_fiche_visite(partner_id):
-#     """ Génère un PDF pour une fiche visite avec mise en page, logos et entêtes de groupes. """
-#     return generate_pdf(partner_id, ['coordonnées principales', 'fiche visite'], "FICHE DE VISITE")
-
 @partenaires_bp.route('/generate_annexe1/<int:partner_id>', methods=['POST'])
+@login_required
 def generate_annexe1(partner_id):
     """ Génère un PDF pour Annexe 1 avec mise en page, logos et entêtes de groupes. """
     return generate_pdf_annexe1bis(partner_id, ['coordonnées principales', 'annexe 1 bis'], "ANNEXE 1 BIS")
@@ -858,7 +854,10 @@ def update_associations_table():
     if lignes_modifiees == 0:
         flash("ℹ️ Aucune modification détectée.", "info")
 
-    return redirect(url_for("partenaires.partenaires"))
+    return redirect(url_for(
+        "partenaires.edition_tableau_associations",
+        columns=columns
+    ))
 
 
 def get_neighbor_ids_alphabetically(conn, current_id):

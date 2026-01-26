@@ -1,177 +1,149 @@
 import os
-import sqlite3
-import gspread
 import re
-import logging
-
-from pydrive2.auth import GoogleAuth
-from pydrive2.drive import GoogleDrive
-from oauth2client.service_account import ServiceAccountCredentials
-from dotenv import load_dotenv
-from datetime import datetime
-from googleapiclient.discovery import build
-from googleapiclient.discovery_cache.base import Cache
-from google.oauth2 import service_account
-from google.oauth2.service_account import Credentials
-from io import BytesIO
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from reportlab.lib.utils import simpleSplit
-from flask import send_file
-from pathlib import Path
-
 import sqlite3
-_real_connect = sqlite3.connect
+import logging
+import subprocess
+import base64
+
+
+from datetime import datetime
+from pathlib import Path
+from io import BytesIO
+
+
+SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
+
+try:
+    from flask import session, url_for
+except ImportError:
+    session = None
+    url_for = None
+
+import requests
+
+try:
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+    from googleapiclient.discovery_cache.base import Cache
+except ImportError:
+    service_account = None
+    build = None
+    MediaFileUpload = None
+    Cache = None
+
+# ============================================================================
+# 🔧 CONFIGURATION & CONSTANTES
+# ============================================================================
 
 
 
-
-
-FOLDER_ID_ASSOCIATIONS = os.getenv("FOLDER_ID_ASSOCIATIONS")
-FOLDER_ID_BENEVOLES = os.getenv("FOLDER_ID_BENEVOLES")
 
 SCOPES = [
     "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/spreadsheets"
+    "https://www.googleapis.com/auth/spreadsheets",
 ]
 
-
-
+SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
 VERSION = os.getenv("VERSION", "0.0.0")
 
-def get_version():
-    return VERSION
-
-
-# Constantes extraites du .env
-GDRIVE_DB_FOLDER_ID = os.getenv("GDRIVE_DB_FOLDER_ID")
-GDRIVE_DB_FILE_ID_PROD = os.getenv("GDRIVE_DB_FILE_ID_PROD")
-GDRIVE_DB_FILE_ID_DEV = os.getenv("GDRIVE_DB_FILE_ID_DEV")
-GDRIVE_DB_FILE_ID_TEST = os.getenv("GDRIVE_DB_FILE_ID_TEST")
-GDRIVE_DB_FILE_ID_DEV_TEST = os.getenv("GDRIVE_DB_FILE_ID_DEV_TEST")
-TEST_MODE = os.getenv("TEST_MODE", "0") == "1"
-SQLITE_TEST_DB = os.getenv("SQLITE_TEST_DB")
-SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
+_logger = None
 
 
 
-logger = logging.getLogger("BA38")
+def get_logger():
+    global _logger
+    if _logger:
+        return _logger
+
+    logger = logging.getLogger("ba38")
+    logger.setLevel(logging.INFO)
+
+    log_path = get_log_path("app.log")
+
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s"
+    )
+    handler.setFormatter(formatter)
+
+    logger.addHandler(handler)
+    logger.propagate = False
+
+    _logger = logger
+    return logger
+# ============================================================================
+# 🪵 LOGGING
+# ============================================================================
 
 def write_log(message: str):
-    logger.info(message)
+    get_logger().info(message)
 
-
-# def write_log(message, level="INFO"):
-#     """
-#     Logging robuste compatible PythonAnywhere ET serveur Debian.
-#     Ne doit JAMAIS lever d'exception.
-#     """
-#     print(f"LOG_FILE = {LOG_FILE}")
-
-#     try:
-#         timestamp = datetime.now().isoformat(sep=" ", timespec="seconds")
-#         log_message = f"[{timestamp}] {message}"
-#     except Exception:
-#         return
-
-#     # 1️⃣ stdout (PA + journald)
-#     try:
-#         print(log_message)
-#         sys.stdout.flush()
-#     except Exception:
-#         pass
-
-#     # 2️⃣ fichier app.log (source de vérité)
-#     try:
-#         with open(LOG_FILE, "a", encoding="utf-8") as f:
-#             f.write(log_message + "\n")
-#     except Exception:
-#         pass
-
-#     # 3️⃣ logging standard (Gunicorn / Cockpit)
-#     try:
-#         if level == "ERROR":
-#             logger.error(message)
-#         elif level == "WARNING":
-#             logger.warning(message)
-#         elif level == "DEBUG":
-#             logger.debug(message)
-#         else:
-#             logger.info(message)
-#     except Exception:
-#         pass
-
-# Connexion à la base de données SQLite
-def get_db_connection():
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-# Vérification validité des emails
-def is_valid_email(email: str) -> bool:
+def write_connexion_log(user_id, username, action="login"):
     """
-    Vérifie qu'une adresse e-mail est syntaxiquement valide.
-    Rejette les espaces internes et utilise une expression régulière stricte.
+    Écrit un message dans le journal des connexions (login / logout).
     """
-    email = email.strip()
-    if " " in email:
-        return False
-    # Regex stricte mais raisonnable pour usage courant
-    pattern = r'^[^@\s]+@[^@\s]+\.[^@\s]+$'
-    return re.match(pattern, email) is not None
+    try:
+        from flask import request
+        from datetime import datetime
+
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+        session_id = request.cookies.get("ba38_session", "unknown")
+
+        log_path = get_log_path("connexions.log")
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(
+                f"[{timestamp}] {action.upper()} : "
+                f"session={session_id}, user_id={user_id}, "
+                f"username={username}, ip={ip}\n"
+            )
+
+    except Exception as e:
+        try:
+            write_log(f"❌ Erreur write_connexion_log : {e}")
+        except Exception:
+            pass
 
 
-#Vérification de la validité des téléphones
-def is_valid_phone(phone):
+def get_log_path(filename="app.log"):
     """
-    Valide un numéro de téléphone français :
-    - 10 chiffres exacts après nettoyage (hors indicatif),
-    - autorise les espaces, tirets, parenthèses, +,
-    - rejette tout ce qui contient autre chose.
+    Retourne le chemin absolu d’un fichier de log BA38.
+
+    - app.log → logs DEV ou PROD (BA38_BASE_DIR)
+    - deploy.log → logs globaux (/srv/ba38/logs)
     """
-    if not phone:
-        return True  # Champ facultatif
-
-    # Supprimer tous les caractères non-chiffres
-    digits = re.sub(r"\D", "", phone)
-
-    # ✅ Accepte exactement 10 chiffres (ex: 0612345678, 0476041234)
-    return len(digits) == 10
-
-
-
-
-
-#Path des bases de données
-# utils.py
-
-def get_db_path():
     import os
 
-    # 🔒 GARDE-FOU CRITIQUE ENVIRONNEMENT
-    env = os.getenv("ENVIRONMENT")
-    base_dir = os.getenv("BA38_BASE_DIR")
+    # 🔹 Cas particulier : historique des déploiements (global)
+    if filename == "deploy.log":
+        base_dir = "/srv/ba38"
+    else:
+        base_dir = os.getenv("BA38_BASE_DIR") or os.getcwd()
 
-    if env == "prod" and base_dir and "dev" in base_dir:
-        raise RuntimeError(
-            "⛔ ERREUR CRITIQUE : ENVIRONMENT=prod mais BA38_BASE_DIR pointe vers /dev"
-        )
+    log_dir = os.path.join(base_dir, "logs")
+    os.makedirs(log_dir, exist_ok=True)
 
-    if env == "dev" and base_dir and "ba380" in base_dir:
-        raise RuntimeError(
-            "⛔ ERREUR CRITIQUE : ENVIRONMENT=dev mais BA38_BASE_DIR pointe vers PROD"
-        )
+    return os.path.join(log_dir, filename)
+
+
+
+
+# ============================================================================
+# 🗄️ BASE SQLITE
+# ============================================================================
+
+def get_db_path():
+    """
+    Retourne le chemin absolu de la base SQLite utilisée par l'application.
+    """
+    env = os.getenv("ENVIRONMENT", "prod").lower()
 
     try:
-        from flask import session
         test_mode = session.get("test_user", False)
     except RuntimeError:
         test_mode = os.getenv("TEST_MODE") == "1"
-
-    env = os.getenv("ENVIRONMENT", "prod").lower()
 
     if env == "dev" and test_mode:
         filename = os.getenv("SQLITE_DB_DEV_TEST")
@@ -183,18 +155,28 @@ def get_db_path():
         filename = os.getenv("SQLITE_DB_PROD")
 
     if not filename:
-        raise ValueError("❌ Nom de base SQLite non défini")
+        raise RuntimeError("Nom de base SQLite non défini")
 
     base_dir = os.getenv("BA38_BASE_DIR")
     if not base_dir:
-        raise RuntimeError("❌ BA38_BASE_DIR non défini dans .env")
+        raise RuntimeError("BA38_BASE_DIR non défini")
 
-    return os.path.join(base_dir, filename)
+    path = os.path.join(base_dir, filename)
+
+    if not os.path.isabs(path):
+        raise RuntimeError(f"Chemin SQLite non absolu : {path}")
+
+    return path
 
 
+def get_db_path_by_env(env: str, *, force_base_dir: str | None = None) -> str:
+    """
+    Retourne le chemin de la base SQLite pour un environnement donné.
 
-# Fonction utilisée pour les connexions actives de admin_scripts
-def get_db_path_by_env(env: str) -> str:
+    - env : "dev" | "prod"
+    - force_base_dir : permet de forcer la racine (scripts admin)
+    """
+
     env = env.lower()
     test_mode = os.getenv("TEST_MODE") == "1"
 
@@ -206,255 +188,444 @@ def get_db_path_by_env(env: str) -> str:
         filename = os.getenv("SQLITE_DB_PROD_TEST")
     else:
         filename = os.getenv("SQLITE_DB_PROD")
+    
+    base_dir = force_base_dir or os.getenv("BA38_BASE_DIR")
+
 
     if not filename:
-        raise ValueError(f"❌ SQLITE_DB non défini pour {env}")
+        raise RuntimeError(f"Nom de base SQLite non défini pour {env}")
 
-    base_dir = os.getenv("BA38_BASE_DIR")
+    if force_base_dir:
+        base_dir = force_base_dir
+    else:
+        base_dir = os.getenv("BA38_BASE_DIR")
+
     if not base_dir:
-        raise RuntimeError("❌ BA38_BASE_DIR non défini")
+        raise RuntimeError("BA38_BASE_DIR non défini")
+
+    write_log(f"    path final     = {os.path.join(base_dir, filename)}")
 
     return os.path.join(base_dir, filename)
 
-def get_drive_folder_id_from_path(service, path, shared_drive_id):
+
+def get_db_connection():
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def get_db_info():
     """
-    Résout un chemin Drive dans un Drive partagé
-    SANS créer les dossiers manquants.
-    Retourne None si le chemin n'existe pas.
+    Retourne des informations simples sur la base SQLite courante.
+    Utilisé pour debug / affichage admin.
     """
-    parts = path.strip("/").split("/")
-    current_parent = shared_drive_id
+    path = get_db_path()
+    info = {
+        "path": path,
+        "exists": os.path.exists(path),
+        "size": None,
+        "tables": []
+    }
 
-    for part in parts:
-        query = (
-            f"name = '{part}' and "
-            f"mimeType = 'application/vnd.google-apps.folder' and "
-            f"trashed = false and "
-            f"'{current_parent}' in parents"
-        )
+    if not info["exists"]:
+        return info
 
-        results = service.files().list(
-            q=query,
-            corpora="drive",
-            driveId=shared_drive_id,
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-            fields="files(id, name)"
-        ).execute()
+    try:
+        info["size"] = os.path.getsize(path)
+        with sqlite3.connect(path) as conn:
+            cur = conn.cursor()
+            rows = cur.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            ).fetchall()
+            info["tables"] = [r[0] for r in rows]
+    except Exception as e:
+        write_log(f"❌ get_db_info : {e}")
 
-        files = results.get("files", [])
-        if not files:
-            return None
+    return info
 
-        current_parent = files[0]["id"]
+def get_db_info_display():
+    """
+    Retourne une chaîne courte pour affichage pied de page.
+    Ex : 'DEV — NORMAL — ba380dev.sqlite'
+    """
+    try:
+        path = get_db_path()
+        db_name = os.path.basename(path)
 
-    return current_parent
+        env = os.getenv("ENVIRONMENT", "DEV").upper()
+        mode = "TEST" if os.getenv("TEST_MODE") == "1" else "NORMAL"
+
+        return f"{env} — {mode} — {db_name}"
+
+    except Exception as e:
+        write_log(f"❌ get_db_info_display : {e}")
+        return "Base inconnue"
 
 
-# Authentification PyDrive2 avec service account
-def get_drive():
-    gauth = GoogleAuth()
-    gauth.credentials = ServiceAccountCredentials.from_json_keyfile_name(
+def get_version():
+    """
+    Retourne la version applicative courante.
+    """
+    return os.getenv("VERSION", "0.0.0")
+
+def get_all_users():
+    """
+    Retourne la liste complète des utilisateurs (table users).
+    """
+    users = []
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            rows = cur.execute(
+                "SELECT * FROM users ORDER BY email"
+            ).fetchall()
+            users = [dict(r) for r in rows]
+    except Exception as e:
+        write_log(f"❌ get_all_users : {e}")
+    return users
+
+
+def get_user_info(user_email):
+    """
+    Retourne les informations complètes d'un utilisateur à partir de son email.
+    """
+    if not user_email:
+        return None
+
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            row = cur.execute(
+                "SELECT * FROM users WHERE LOWER(email) = LOWER(?)",
+                (user_email,)
+            ).fetchone()
+
+            if row:
+                return dict(row)
+
+    except Exception as e:
+        write_log(f"❌ get_user_info({user_email}) : {e}")
+
+    return None
+
+def get_param_value(key, default=None):
+    """
+    Retourne la valeur d'un paramètre depuis la table parametres.
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            row = cur.execute(
+                "SELECT valeur FROM parametres WHERE cle = ?",
+                (key,)
+            ).fetchone()
+            if row:
+                return row["valeur"]
+    except Exception as e:
+        write_log(f"❌ get_param_value({key}) : {e}")
+    return default
+
+# ============================================================================
+# ✅ VALIDATION
+# ============================================================================
+
+def is_valid_email(email: str) -> bool:
+    if not email:
+        return False
+    email = email.strip()
+    if " " in email:
+        return False
+    return re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email) is not None
+
+
+def is_valid_phone(phone: str) -> bool:
+    if not phone:
+        return True
+    digits = re.sub(r"\D", "", phone)
+    return len(digits) == 10
+
+
+# ============================================================================
+# 🔐 DROITS & ACCÈS
+# ============================================================================
+
+def get_user_roles(user_email):
+    roles = []
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        user = cur.execute(
+            "SELECT role FROM users WHERE LOWER(email)=LOWER(?)",
+            (user_email,)
+        ).fetchone()
+
+        if user and user["role"] == "admin":
+            applis = ["benevoles", "associations", "distribution", "fournisseurs"]
+            return [("admin", "global")] + [(a, "ecriture") for a in applis]
+
+        rows = cur.execute(
+            "SELECT appli, droit FROM roles_utilisateurs WHERE LOWER(user_email)=LOWER(?)",
+            (user_email,)
+        ).fetchall()
+
+        roles = [(r["appli"], r["droit"]) for r in rows]
+
+    except Exception as e:
+        write_log(f"❌ get_user_roles({user_email}) : {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    return roles
+
+
+
+
+
+# ============================================================================
+# 🌐 GOOGLE DRIVE
+# ============================================================================
+
+if Cache is not None:
+    class NoCache(Cache):
+        def get(self, url): return None
+        def set(self, url, content): pass
+else:
+    NoCache = None
+
+
+
+
+def get_drive_service():
+    if not SERVICE_ACCOUNT_FILE or not os.path.exists(SERVICE_ACCOUNT_FILE):
+        raise RuntimeError("SERVICE_ACCOUNT_FILE invalide")
+
+    creds = service_account.Credentials.from_service_account_file(
         SERVICE_ACCOUNT_FILE,
-        scopes=["https://www.googleapis.com/auth/drive"]
+        scopes=SCOPES
     )
-    return GoogleDrive(gauth)
+    return build("drive", "v3", credentials=creds, cache=NoCache())
 
-# Suppression robuste via API Google Drive
-def delete_file_directly(file_id):
+def get_google_services():
+    """
+    Fonction historique BA38.
+    Retourne :
+      - client gspread
+      - service Drive
+      - credentials
+    """
+    if not os.path.exists(SERVICE_ACCOUNT_FILE):
+        write_log(f"❌ Fichier manquant : {SERVICE_ACCOUNT_FILE}")
+        return None, None, None
+
     try:
-        credentials = service_account.Credentials.from_service_account_file(
+        creds = Credentials.from_service_account_file(
             SERVICE_ACCOUNT_FILE,
-            scopes=["https://www.googleapis.com/auth/drive"]
+            scopes=SCOPES
         )
-        class NoCache(Cache):
-            def get(self, url): return None
-            def set(self, url, content): pass
+        client = gspread.authorize(creds)
+        drive_service = build("drive", "v3", credentials=creds)
 
-        service = build('drive', 'v3', credentials=credentials, cache=NoCache())
-        service.files().delete(fileId=file_id, supportsAllDrives=True).execute()
+        write_log("✅ Connexion Google Sheets et Drive réussie.")
+        return client, drive_service, creds
 
-        write_log(f"🗑️ Suppression directe réussie pour le fichier ID: {file_id}")
     except Exception as e:
-        write_log(f"❌ Erreur suppression directe fichier {file_id} : {e}")
-
-# Sauvegarde automatique d'un fichier (ajoute un timestamp au nom)
-def backup_file(local_path):
-    backup_path = local_path + ".bak." + datetime.now().strftime("%Y%m%d%H%M%S")
-    try:
-        os.rename(local_path, backup_path)
-        write_log(f"📦 Fichier local sauvegardé : {backup_path}")
-    except Exception as e:
-        write_log(f"❌ Erreur sauvegarde fichier local : {e}")
-
-
-from googleapiclient.http import MediaFileUpload
+        write_log(f"❌ Erreur de connexion Google Sheets/Drive : {e}")
+        return None, None, None
 
 
 def upload_database():
     """
-    Upload de la base SQLite vers Google Drive.
-    Version verrouillée : impossible d'appeler Drive sans file_id.
-    Compatible PythonAnywhere + Debian.
+    Upload de la base SQLite vers Google Drive (update par file_id).
     """
-    from utils import write_log
-    import os
-
-    write_log("🚨 upload_database VERSION 3 VERROUILLÉE APPELÉE")
-
-    # ============================
-    # 1️⃣ Détermination du contexte
-    # ============================
     local_path = get_db_path()
-
     env = os.getenv("ENVIRONMENT", "dev").lower()
 
     try:
-        from flask import session
-        test_mode = bool(session.get("test_user", False))
-    except Exception:
+        test_mode = session.get("test_user", False)
+    except RuntimeError:
         test_mode = False
 
-    fid_dev = os.getenv("GDRIVE_DB_FILE_ID_DEV")
-    fid_dev_test = os.getenv("GDRIVE_DB_FILE_ID_DEV_TEST")
-    fid_test = os.getenv("GDRIVE_DB_FILE_ID_TEST")
-    fid_prod = os.getenv("GDRIVE_DB_FILE_ID_PROD")
-
+    file_id = None
     if env == "prod":
-        file_id = fid_prod
+        file_id = os.getenv("GDRIVE_DB_FILE_ID_PROD")
     elif env == "dev" and test_mode:
-        file_id = fid_dev_test
+        file_id = os.getenv("GDRIVE_DB_FILE_ID_DEV_TEST")
     elif env == "dev":
-        file_id = fid_dev
+        file_id = os.getenv("GDRIVE_DB_FILE_ID_DEV")
     elif test_mode:
-        file_id = fid_test
-    else:
-        file_id = None
+        file_id = os.getenv("GDRIVE_DB_FILE_ID_TEST")
 
-    write_log(f"🔍 upload_database debug → env={env}, test_mode={test_mode}, file_id={file_id!r}")
-
-    # ============================
-    # 🛑 GARDE-FOU ABSOLU
-    # ============================
     if not file_id:
-        write_log("⛔ upload_database STOP : file_id manquant → aucun appel Google Drive")
+        write_log("⛔ upload_database annulé : file_id manquant")
         return
 
-    # ============================
-    # 2️⃣ APPEL GOOGLE DRIVE
-    # ============================
-    try:
-        from google.oauth2 import service_account
-        from googleapiclient.discovery import build
-        from googleapiclient.http import MediaFileUpload
-        from googleapiclient.discovery_cache.base import Cache
+    service = get_drive_service()
 
-        credentials = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_FILE,
-            scopes=["https://www.googleapis.com/auth/drive"]
+    media = MediaFileUpload(local_path, mimetype="application/x-sqlite3", resumable=True)
+    service.files().update(
+        fileId=file_id,
+        media_body=media,
+        supportsAllDrives=True
+    ).execute()
+
+    write_log(f"✅ Base SQLite envoyée sur Drive (id={file_id})")
+
+
+def upload_file_to_drive(local_path, folder_id, filename=None):
+    if not os.path.exists(local_path):
+        write_log(f"❌ Fichier introuvable : {local_path}")
+        return None
+
+    service = get_drive_service()
+    filename = filename or os.path.basename(local_path)
+
+    metadata = {"name": filename, "parents": [folder_id]}
+    media = MediaFileUpload(local_path, resumable=True)
+
+    result = service.files().create(
+        body=metadata,
+        media_body=media,
+        supportsAllDrives=True,
+        fields="id"
+    ).execute()
+
+    write_log(f"📤 Upload Drive : {filename}")
+    return result.get("id")
+
+
+def get_or_create_drive_folder(service, path, shared_drive_id):
+    parts = path.strip("/").split("/")
+    parent = shared_drive_id
+
+    for part in parts:
+        q = (
+            f"name='{part}' and mimeType='application/vnd.google-apps.folder' "
+            f"and trashed=false and '{parent}' in parents"
         )
-
-        class NoCache(Cache):
-            def get(self, url): return None
-            def set(self, url, content): pass
-
-        service = build("drive", "v3", credentials=credentials, cache=NoCache())
-
-        media = MediaFileUpload(
-            local_path,
-            mimetype="application/x-sqlite3",
-            resumable=True
-        )
-
-        write_log(
-            f"🧪 file_id type={type(file_id)} "
-            f"len={len(file_id) if file_id is not None else 'None'} "
-            f"repr={file_id!r}"
-        )
-
-        updated_file = service.files().update(
-            fileId=file_id,
-            media_body=media,
-            supportsAllDrives=True
+        res = service.files().list(
+            q=q,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            fields="files(id,name)"
         ).execute()
 
-        write_log(f"✅ Base envoyée sur Drive (id={updated_file.get('id')})")
+        if res["files"]:
+            parent = res["files"][0]["id"]
+        else:
+            folder = service.files().create(
+                body={
+                    "name": part,
+                    "mimeType": "application/vnd.google-apps.folder",
+                    "parents": [parent]
+                },
+                supportsAllDrives=True,
+                fields="id"
+            ).execute()
+            parent = folder["id"]
 
-    except Exception as e:
-        write_log(f"❌ Erreur Google Drive upload_database() : {e}")
+    return parent
 
-
-def get_db_info():
-    """Retourne un résumé de la base actuellement utilisée"""
-    from flask import session
-    env = os.getenv("ENVIRONMENT", "prod").upper()
-    test = session.get("test_user", False)
-    mode = "TEST" if test else "NORMAL"
-
-    path = get_db_path()
-    filename = os.path.basename(path)
-
-    return f"{env} — {mode} — {filename}"
-
-
-
-# ✅ Helper global pour tous les fichiers de logs
-def get_log_path(filename="app.log"):
+def upload_file_to_drive_path(local_path, drive_path, shared_drive_id, filename=None):
     """
-    Retourne le chemin absolu vers un fichier de log dans le dossier 'logs' du projet actif.
-
-    Le dossier est calculé dynamiquement à partir de l'emplacement du fichier utils.py.
-    Exemple :
-        get_log_path("connexions.log") → /home/ndprz/dev/logs/connexions.log (en DEV)
-        get_log_path("deploy.log")     → /home/ndprz/ba380/logs/deploy.log (en PROD)
+    Upload un fichier local vers Google Drive en utilisant un chemin logique.
+    Le dossier est créé s'il n'existe pas.
     """
-    basedir = os.path.abspath(os.path.dirname(__file__))
-    return os.path.join(basedir, "logs", filename)
+    if not os.path.exists(local_path):
+        write_log(f"❌ Fichier introuvable : {local_path}")
+        return None
 
-import subprocess
+    service = get_drive_service()
 
-def get_git_commits(repo_path, max_commits=20):
+    folder_id = get_or_create_drive_folder(
+        service=service,
+        path=drive_path,
+        shared_drive_id=shared_drive_id
+    )
+
+    return upload_file_to_drive(
+        local_path=local_path,
+        folder_id=folder_id,
+        filename=filename
+    )
+
+def get_drive_folder_id_from_path(drive_path, shared_drive_id):
     """
-    Récupère les derniers commits Git sous forme de dictionnaires.
+    Retourne l'ID d'un dossier Google Drive à partir d'un chemin logique.
+    Le dossier est créé s'il n'existe pas.
     """
-    try:
-        output = subprocess.check_output(
-            ["git", "-C", repo_path, "log", f"--max-count={max_commits}", "--pretty=format:%h|%ad|%an|%s", "--date=short"],
-            stderr=subprocess.STDOUT
-        ).decode("utf-8")
+    service = get_drive_service()
 
-        commits = []
-        for line in output.strip().split("\n"):
-            parts = line.strip().split("|", 3)
-            if len(parts) == 4:
-                hash_, date, author, message = parts
-                commits.append({
-                    "hash": hash_,
-                    "date": date,
-                    "author": author,
-                    "message": message
-                })
+    return get_or_create_drive_folder(
+        service=service,
+        path=drive_path,
+        shared_drive_id=shared_drive_id
+    )
 
-        return commits
-    except subprocess.CalledProcessError as e:
-        return [{"error": f"Erreur Git : {e.output.decode()}"}]
-    except Exception as e:
-        return [{"error": str(e)}]
+# ============================================================================
+# 📧 MAILJET
+# ============================================================================
 
-import os
-import requests
-from flask import url_for
+def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None):
+    api_key = os.getenv("MAILJET_API_KEY")
+    api_secret = os.getenv("MAILJET_API_SECRET")
+    sender = sender_override or os.getenv("MAILJET_SENDER")
 
+    mail_mode = os.getenv("MAIL_MODE", "PROD").upper()
+    mail_test_to = os.getenv("MAIL_TEST_TO")
+
+    if mail_mode == "TEST":
+        sujet = f"[TEST] {sujet}"
+        destinataires = [mail_test_to]
+
+    attachments = []
+    if attachment_path and os.path.exists(attachment_path):
+        with open(attachment_path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode("utf-8")
+
+        attachments.append({
+            "ContentType": "application/pdf",
+            "Filename": os.path.basename(attachment_path),
+            "Base64Content": encoded
+        })
+
+    data = {
+        "Messages": [{
+            "From": {"Email": sender, "Name": "BA380"},
+            "To": [{"Email": d} for d in destinataires],
+            "Subject": sujet,
+            "TextPart": texte,
+            "Attachments": attachments or None
+        }]
+    }
+
+    data["Messages"][0].pop("Attachments", None)
+
+    response = requests.post(
+        "https://api.mailjet.com/v3.1/send",
+        auth=(api_key, api_secret),
+        json=data,
+        timeout=15
+    )
+
+    write_log(f"📧 Mail envoyé (status={response.status_code})")
+    response.raise_for_status()
 
 def send_reset_email(email, token):
-    """Envoie un email de réinitialisation via l’API Mailjet"""
+    """
+    Envoie un email de réinitialisation de mot de passe via Mailjet.
+    """
     api_key = os.getenv("MAILJET_API_KEY")
     api_secret = os.getenv("MAILJET_API_SECRET")
     sender = os.getenv("MAILJET_SENDER")
-    reset_link = url_for('reset_password', token=token, _external=True)
 
-    write_log(f"📧 Préparation d’un email de réinitialisation vers {email}")
-    write_log(f"🔑 Clé API : {'OK' if api_key else '❌'} | Secret : {'OK' if api_secret else '❌'}")
+    if not all([api_key, api_secret, sender]):
+        write_log("❌ Mailjet mal configuré (clé/secret/sender manquant)")
+        return
+
+    reset_link = url_for("reset_password", token=token, _external=True)
 
     data = {
         "Messages": [
@@ -467,7 +638,8 @@ Bonjour,
 
 Vous avez demandé la réinitialisation de votre mot de passe.
 
-👉 Cliquez ici : {reset_link}
+👉 Cliquez ici pour définir un nouveau mot de passe :
+{reset_link}
 
 Si vous n’êtes pas à l’origine de cette demande, ignorez simplement cet email.
 
@@ -481,162 +653,184 @@ L’équipe BA380
         response = requests.post(
             "https://api.mailjet.com/v3.1/send",
             auth=(api_key, api_secret),
-            json=data
+            json=data,
+            timeout=15
         )
-        write_log(f"📬 Statut Mailjet : {response.status_code}")
-        write_log(f"📨 Réponse Mailjet : {response.text}")
+        write_log(f"📧 Email de réinitialisation envoyé à {email} (status={response.status_code})")
         response.raise_for_status()
+
     except Exception as e:
-        write_log(f"❌ Erreur API Mailjet : {e}")
+        write_log(f"❌ Erreur send_reset_email({email}) : {e}")
+
+# ============================================================================
+# 🧰 UTILITAIRES
+# ============================================================================
+
+def format_tel(value):
+    if not value:
+        return value
+    digits = re.sub(r"\D", "", value)
+    if len(digits) == 10:
+        return " ".join(digits[i:i+2] for i in range(0, 10, 2))
+    return value
 
 
-def get_user_roles(user_email):
+def slugify_filename(text):
+    text = re.sub(r"[^\w\s-]", "", text.strip())
+    return re.sub(r"[\s_-]+", "_", text)
+
+def row_get(row, key, default=None):
     """
-    Retourne la liste complète des rôles pour un utilisateur.
-    Si l'utilisateur est admin global (table users.role = 'admin'),
-    il obtient automatiquement l'accès à toutes les applis.
+    Accès sécurisé à une valeur dans un sqlite3.Row ou un dict.
     """
-    roles = []
+    if row is None:
+        return default
+
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        if isinstance(row, dict):
+            return row.get(key, default)
+        return row[key]
+    except Exception:
+        return default
 
-        # Vérifie le rôle global
-        user = cursor.execute(
-            "SELECT role FROM users WHERE LOWER(email)=LOWER(?)", (user_email,)
-        ).fetchone()
-
-        if user and user["role"].lower() == "admin":
-            # Superadmin → accès complet
-            applis = [
-                "benevoles",
-                "associations",
-                "distribution",
-                "fournisseurs",
-                "evenements"
-            ]
-            roles = [("admin", "global")] + [(a, "ecriture") for a in applis]
-            conn.close()
-            # write_log(f"👑 Superadmin détecté : {user_email}, accès total")
-            return roles
-
-        # Sinon : lecture de la table roles_utilisateurs
-        rows = cursor.execute(
-            "SELECT appli, droit FROM roles_utilisateurs WHERE LOWER(user_email)=LOWER(?)",
-            (user_email,)
-        ).fetchall()
-
-        roles = [(r["appli"], r["droit"]) for r in rows]
-        conn.close()
-
-    except Exception as e:
-        write_log(f"❌ Erreur get_user_roles({user_email}) : {e}")
-    return roles
-
-
-
-def write_connexion_log(user_id, username, action="login"):
+def get_static_event_dir(event_name):
     """
-    Écrit un message dans le journal des connexions (login ou logout).
+    Retourne le chemin absolu vers le dossier static d'un événement.
+    Le dossier est créé s'il n'existe pas.
     """
+    if not event_name:
+        raise ValueError("event_name requis")
+
+    base_dir = os.getenv("BA38_BASE_DIR")
+    if not base_dir:
+        raise RuntimeError("BA38_BASE_DIR non défini")
+
+    path = os.path.join(base_dir, "static", event_name)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+def get_static_factures_dir():
+    """
+    Retourne le chemin absolu vers le dossier static/factures.
+    Le dossier est créé s'il n'existe pas.
+    """
+    base_dir = os.getenv("BA38_BASE_DIR")
+    if not base_dir:
+        raise RuntimeError("BA38_BASE_DIR non défini")
+
+    path = os.path.join(base_dir, "static", "factures")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+# ============================================================================
+# 🧰 GIT
+# ============================================================================
+def get_git_commits(repo_path, limit=20):
+    """
+    Retourne les derniers commits git du dépôt donné.
+    """
+    commits = []
+
+    if not repo_path or not os.path.isdir(repo_path):
+        return [{"error": f"Dépôt Git introuvable : {repo_path}"}]
+
     try:
-        from flask import request
-        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-        session_id = request.cookies.get("ba38_session", "unknown")
-        log_path = get_log_path("connexions.log")
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        result = subprocess.run(
+            [
+                "git", "-C", repo_path,
+                "log",
+                f"-n{limit}",
+                "--pretty=format:%h|%an|%ad|%s",
+                "--date=short"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
 
-        with open(log_path, "a") as f:
-            f.write(f"[{timestamp}] {action.upper()} : session_file={session_id}, user_id={user_id}, username={username}, ip={ip}\n")
+        if result.returncode != 0:
+            return [{"error": result.stderr.strip()}]
+
+        for line in result.stdout.splitlines():
+            parts = line.split("|", 3)
+            if len(parts) == 4:
+                commits.append({
+                    "hash": parts[0],
+                    "author": parts[1],
+                    "date": parts[2],
+                    "message": parts[3],
+                })
 
     except Exception as e:
-        write_log(f"❌ Erreur write_connexion_log : {e}")
+        commits.append({"error": str(e)})
 
-from flask import session
-from utils import write_log
+    return commits
 
-# utils.py
-from flask import session
 
-def has_access(appli, level):
-    alias = {
-        "assos": "associations",
-        "association": "associations",
-        "frs": "fournisseurs",
-        "fournisseur": "fournisseurs",
-        "benevole": "benevoles",
-        "evenements": "evenements",
+def get_runtime_db_info():
+    """
+    Retourne les informations runtime sur la base réellement utilisée.
+    """
+    db_path = get_db_path()
+    return {
+        "db_path": db_path,
+        "exists": os.path.exists(db_path) if db_path else False,
     }
-    appli = alias.get(str(appli).lower(), str(appli).lower())
-    level = str(level).lower()
 
-    # ✅ Si admin global → accès total
-    if session.get("user_role") == "admin":
-        return True
-
-    droits = session.get("roles_utilisateurs", [])
-
-    # blocage explicite
-    if (appli, "aucun") in droits:
-        return False
-
-    if level == "lecture":
-        return (appli, "lecture") in droits or (appli, "ecriture") in droits
-    elif level == "ecriture":
-        return (appli, "ecriture") in droits
-    return False
-
-# ✅ Connexion Google
-def get_google_services():
-    if not os.path.exists(SERVICE_ACCOUNT_FILE):
-        raise FileNotFoundError(f"Fichier manquant : {SERVICE_ACCOUNT_FILE}")
-    try:
-        creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-        client = gspread.authorize(creds)
-        drive_service = build("drive", "v3", credentials=creds)
-        write_log("✅ Connexion à Google Sheets et Drive réussie.")
-        return client, drive_service, creds
-    except Exception as e:
-        write_log(f"❌ Erreur de connexion Google Sheets/Drive : {e}")
-        return None, None, None
-
-
-
-
-import sqlite3
-import os
-import shutil
 
 def migrate_schema_and_data(source_db_path, dest_db_path, copy_data=False):
+    """
+    Synchronise le schéma et éventuellement les données
+    entre deux bases SQLite.
+
+    - Crée les tables manquantes
+    - Ajoute les colonnes absentes
+    - Copie les données si demandé (INSERT OR IGNORE)
+    """
+
     import sqlite3
     from utils import write_log
 
-    write_log(f"📂 Source : {source_db_path}")
+    write_log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    write_log("🔁 Migration schéma & données SQLite")
+    write_log(f"📂 Source      : {source_db_path}")
     write_log(f"📁 Destination : {dest_db_path}")
-    write_log(f"🧪 Mode copie des données : {'OUI' if copy_data else 'NON'}")
+    write_log(f"🧪 Copie data  : {'OUI' if copy_data else 'NON'}")
 
     source_conn = sqlite3.connect(source_db_path)
     dest_conn = sqlite3.connect(dest_db_path)
+
     source_cursor = source_conn.cursor()
     dest_cursor = dest_conn.cursor()
 
-    source_cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    source_tables = [row[0] for row in source_cursor.fetchall() if row[0] != 'sqlite_sequence']
+    # Liste des tables source
+    source_cursor.execute(
+        "SELECT name FROM sqlite_master "
+        "WHERE type='table' AND name != 'sqlite_sequence'"
+    )
+    source_tables = [row[0] for row in source_cursor.fetchall()]
 
     for table in source_tables:
-        # Vérifie si la table existe déjà dans la base destination
-        dest_cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
+        # Table existe en destination ?
+        dest_cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (table,)
+        )
         exists = dest_cursor.fetchone()
 
         if not exists:
-            # Crée la table dans la base destination
-            source_cursor.execute(f"SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,))
-            create_table_sql = source_cursor.fetchone()[0]
-            dest_cursor.execute(create_table_sql)
+            # Création de la table
+            source_cursor.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+                (table,)
+            )
+            create_sql = source_cursor.fetchone()[0]
+            dest_cursor.execute(create_sql)
             write_log(f"🆕 Table créée : {table}")
 
         else:
-            # Compare les colonnes et ajoute celles manquantes
+            # Synchronisation des colonnes
             source_cursor.execute(f"PRAGMA table_info({table})")
             source_columns = {col[1]: col[2] for col in source_cursor.fetchall()}
 
@@ -645,388 +839,59 @@ def migrate_schema_and_data(source_db_path, dest_db_path, copy_data=False):
 
             for column, col_type in source_columns.items():
                 if column not in dest_columns:
-                    alter_sql = f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"
+                    alter_sql = f'ALTER TABLE "{table}" ADD COLUMN "{column}" {col_type}'
                     dest_cursor.execute(alter_sql)
-                    write_log(f"➕ Colonne ajoutée à {table} : {column} ({col_type})")
+                    write_log(f"➕ Colonne ajoutée : {table}.{column} ({col_type})")
 
+        # Copie des données si demandé
         if copy_data:
-            source_cursor.execute(f"SELECT * FROM {table}")
+            source_cursor.execute(f'SELECT * FROM "{table}"')
             rows = source_cursor.fetchall()
 
             if rows:
-                source_cursor.execute(f"PRAGMA table_info({table})")
+                source_cursor.execute(f'PRAGMA table_info("{table}")')
                 col_names = [col[1] for col in source_cursor.fetchall()]
-                placeholders = ','.join('?' * len(col_names))
-                columns = ','.join(col_names)
-                insert_sql = f"INSERT OR IGNORE INTO {table} ({columns}) VALUES ({placeholders})"
+
+                placeholders = ",".join("?" * len(col_names))
+                columns = ",".join(f'"{c}"' for c in col_names)
+
+                insert_sql = (
+                    f'INSERT OR IGNORE INTO "{table}" ({columns}) '
+                    f'VALUES ({placeholders})'
+                )
+
                 dest_cursor.executemany(insert_sql, rows)
-                write_log(f"📥 Données copiées dans {table} : {len(rows)} lignes")
+                write_log(f"📥 Données copiées : {table} ({len(rows)} lignes)")
 
     dest_conn.commit()
     source_conn.close()
     dest_conn.close()
-    write_log("✅ Synchronisation terminée avec succès.")
+
+    write_log("✅ Synchronisation terminée avec succès")
+    write_log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 
-
-def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None):
+def has_access(appli: str, niveau_requis: str) -> bool:
     """
-    Envoie un email via Mailjet
-    - MODE TEST : redirection
-    - Pièce jointe PDF optionnelle
-    """
-
-    import os
-    import base64
-    import requests
-    from utils import write_log
-
-    api_key = os.getenv("MAILJET_API_KEY")
-    api_secret = os.getenv("MAILJET_API_SECRET")
-
-    sender = sender_override or os.getenv(
-        "MAILJET_SENDER",
-        "ba380.informatique2@banquealimentaire.org"
-    )
-
-    # ============================
-    # MODE TEST / PROD
-    # ============================
-    mail_mode = os.getenv("MAIL_MODE", "PROD").upper()
-    mail_test_to = os.getenv(
-        "MAIL_TEST_TO",
-        "ba380.informatique2@banquealimentaire.org"
-    )
-
-    destinataires_reels = destinataires
-
-    if mail_mode == "TEST":
-        write_log(
-            f"🧪 MODE TEST MAIL — redirection {sender} - {destinataires} → [{mail_test_to}]"
-        )
-        destinataires = [mail_test_to]
-        sujet = f"[TEST] {sujet}"
-
-    # ============================
-    # PIÈCE JOINTE
-    # ============================
-    attachments = []
-
-    if attachment_path and os.path.exists(attachment_path):
-        with open(attachment_path, "rb") as f:
-            encoded = base64.b64encode(f.read()).decode("utf-8")
-
-        attachments.append({
-            "ContentType": "application/pdf",
-            "Filename": os.path.basename(attachment_path),
-            "Base64Content": encoded
-        })
-
-        write_log(f"📎 Pièce jointe ajoutée : {attachment_path}")
-
-    # ============================
-    # PAYLOAD MAILJET
-    # ============================
-    data = {
-        "Messages": [
-            {
-                "From": {"Email": sender, "Name": "BA380"},
-                "To": [{"Email": dest} for dest in destinataires],
-                "Subject": sujet,
-                "TextPart": texte,
-                "Attachments": attachments if attachments else None
-            }
-        ]
-    }
-
-    # Nettoyage si pas de PJ
-    if not attachments:
-        data["Messages"][0].pop("Attachments")
-
-    # ============================
-    # ENVOI
-    # ============================
-    try:
-        response = requests.post(
-            "https://api.mailjet.com/v3.1/send",
-            auth=(api_key, api_secret),
-            json=data,
-            timeout=15
-        )
-
-        write_log(
-            f"📧 Email envoyé via Mailjet "
-            f"(status {response.status_code}, mode={mail_mode})"
-        )
-        write_log(
-            f"📤 Sujet : {sujet}\n"
-            f"✉️ Destinataires effectifs : {destinataires}\n"
-            f"🎯 Destinataires réels : {destinataires_reels}"
-        )
-
-        response.raise_for_status()
-
-    except Exception as e:
-        write_log(
-            f"❌ Erreur lors de l'envoi de l'email via Mailjet "
-            f"(mode={mail_mode}) : {e}"
-        )
-
-
-
-
-def get_all_users():
-    """ Récupère tous les utilisateurs avec les droits d'accès associés """
-    with get_db_connection() as conn:
-        users = conn.execute("""
-            SELECT id, username, email, role, actif, app_bene, app_assos
-            FROM users
-        """).fetchall()
-    return users
-
-
-def format_tel(value):
-    """
-    Formate un numéro de téléphone au format 00 00 00 00 00
-    si le champ contient exactement 10 chiffres.
-    """
-    if not value or not isinstance(value, str):
-        return value
-    tel = re.sub(r"\D", "", value)
-    if len(tel) == 10:
-        return " ".join(tel[i:i+2] for i in range(0, 10, 2))
-    return value
-
-
-def row_get(row, key, default=None):
-    return row[key] if key in row.keys() else default
-
-
-def get_static_event_dir():
-    """
-    Retourne le chemin absolu du dossier /static/evenements adapté à l'environnement.
-    Exemple :
-        DEV  → /home/ndprz/dev/static/evenements
-        PROD → /home/ndprz/ba380/static/evenements
-    """
-    base_dir = os.getenv("BA38_BASE_DIR")
-    if not base_dir:
-        raise RuntimeError("BA38_BASE_DIR non défini")
-    return os.path.join(base_dir, "static", "evenements")
-
-
-def get_static_factures_dir():
-    """
-    Retourne le chemin absolu du dossier static/factures
-    en fonction de l'environnement courant.
-    """
-    base_dir = os.getenv("BA38_BASE_DIR")
-    if not base_dir:
-        raise RuntimeError("Variable BA38_BASE_DIR non définie")
-
-    path = os.path.join(base_dir, "static", "factures")
-    os.makedirs(path, exist_ok=True)
-    return path
-
-
-
-def get_param_value(name):
-    """Retourne la valeur d’un paramètre global depuis la table `parametres`."""
-    conn = get_db_connection()
-    row = conn.execute("SELECT param_value FROM parametres WHERE param_name = ?", (name,)).fetchone()
-    conn.close()
-    return row["param_value"] if row else ""
-
-
-def get_user_info(user):
-    """Extrait email et rôle de l'utilisateur, quelle que soit la structure (Row, dict, ou objet)."""
-    try:
-        if hasattr(user, "email"):
-            return user.email, getattr(user, "role", None)
-        if isinstance(user, dict):
-            return user.get("email"), user.get("role")
-        if isinstance(user, sqlite3.Row):
-            return user["email"], user["role"]
-    except Exception:
-        pass
-    return None, None
-
-
-from googleapiclient.http import MediaFileUpload
-from googleapiclient.discovery_cache.base import Cache
-
-
-
-
-def upload_file_to_drive(local_path, folder_id, filename=None):
-    """
-    Upload d'un fichier local vers Google Drive (création).
-    Compatible Drive partagé.
+    Vérifie si l'utilisateur courant a le droit requis sur une application.
+    Source de vérité unique.
     """
 
-    from utils import write_log
-    import os
+    # Admin global
+    if session.get("user_role") == "admin":
+        return True
 
-    if not os.path.exists(local_path):
-        write_log(f"❌ upload_file_to_drive : fichier introuvable : {local_path}")
-        return None
+    roles = session.get("roles_utilisateurs", [])
+    hierarchy = ["lecture", "ecriture", "admin"]
 
-    filename = filename or os.path.basename(local_path)
+    for app, droit in roles:
+        if app == appli:
+            if hierarchy.index(droit) >= hierarchy.index(niveau_requis):
+                return True
 
-    try:
-        credentials = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_FILE,
-            scopes=["https://www.googleapis.com/auth/drive"]
-        )
-
-        class NoCache(Cache):
-            def get(self, url): return None
-            def set(self, url, content): pass
-
-        service = build("drive", "v3", credentials=credentials, cache=NoCache())
-
-        file_metadata = {
-            "name": filename,
-            "parents": [folder_id]
-        }
-
-        media = MediaFileUpload(
-            local_path,
-            resumable=True
-        )
-
-        write_log(f"📤 Upload Drive : {filename} → folder_id={folder_id}")
-
-        created = service.files().create(
-            body=file_metadata,
-            media_body=media,
-            supportsAllDrives=True,
-            fields="id"
-        ).execute()
-
-        file_id = created.get("id")
-        write_log(f"✅ Upload terminé : {filename} (id={file_id})")
-
-        return file_id
-
-    except Exception as e:
-        write_log(f"❌ Erreur upload_file_to_drive({filename}) : {e}")
-        return None
+    return False
 
 
-def get_or_create_drive_folder(service, path, shared_drive_id):
-    """
-    Résout un chemin Drive dans un Drive partagé donné
-    """
-    parts = path.strip("/").split("/")
-    current_parent = shared_drive_id   # 🔥 POINT CLÉ
+def is_admin_global():
+    return session.get("user_role") == "admin"
 
-    for part in parts:
-        query = (
-            f"name = '{part}' and "
-            f"mimeType = 'application/vnd.google-apps.folder' and "
-            f"trashed = false and "
-            f"'{current_parent}' in parents"
-        )
-
-        results = service.files().list(
-            q=query,
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-            fields="files(id, name)"
-        ).execute()
-
-        files = results.get("files", [])
-
-        if files:
-            folder = files[0]
-        else:
-            metadata = {
-                "name": part,
-                "mimeType": "application/vnd.google-apps.folder",
-                "parents": [current_parent]
-            }
-
-            folder = service.files().create(
-                body=metadata,
-                supportsAllDrives=True,
-                fields="id"
-            ).execute()
-
-        current_parent = folder["id"]
-
-    return current_parent
-
-
-
-
-def upload_file_to_drive_path(local_path, drive_path, filename=None):
-    """
-    Upload un fichier local vers Google Drive
-    en résolvant un chemin logique de dossier Drive.
-    Exemple :
-      drive_path = 'BA380 - TRESORERIE/COTISATIONS/Cotisations 2026'
-    """
-
-    from utils import write_log
-    import os
-
-    try:
-        # ============================
-        # ID du Drive partagé (OBLIGATOIRE)
-        # ============================
-        BA380_SHARED_DRIVE_ID = os.getenv("BA380_SHARED_DRIVE_ID")
-        if not BA380_SHARED_DRIVE_ID:
-            raise RuntimeError(
-                "BA380_SHARED_DRIVE_ID non défini dans l'environnement"
-            )
-
-        # ============================
-        # Initialisation Drive
-        # ============================
-        credentials = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_FILE,
-            scopes=["https://www.googleapis.com/auth/drive"]
-        )
-
-        class NoCache(Cache):
-            def get(self, url): return None
-            def set(self, url, content): pass
-
-        service = build("drive", "v3", credentials=credentials, cache=NoCache())
-
-        # ============================
-        # Résolution du chemin Drive
-        # ============================
-        folder_id = get_or_create_drive_folder(
-            service,
-            drive_path,
-            shared_drive_id=BA380_SHARED_DRIVE_ID
-        )
-
-        if not folder_id:
-            write_log(f"❌ Dossier Drive introuvable : {drive_path}")
-            return None
-
-        # ============================
-        # Upload via fonction existante
-        # ============================
-        return upload_file_to_drive(
-            local_path=local_path,
-            folder_id=folder_id,
-            filename=filename
-        )
-
-    except Exception as e:
-        write_log(f"❌ Erreur upload_file_to_drive_path : {e}")
-        return None
-
-
-def slugify_filename(text):
-    """
-    Nettoie une chaîne pour un nom de fichier sûr
-    """
-    text = text.strip()
-    text = re.sub(r"[^\w\s-]", "", text)
-    text = re.sub(r"[\s_-]+", "_", text)
-    return text

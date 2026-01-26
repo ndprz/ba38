@@ -1,39 +1,97 @@
 #!/usr/bin/env python3
+"""
+🧹 Nettoyage automatique des sauvegardes BA38
+
+- Supprime les fichiers plus anciens que RETENTION_DAYS
+- Fonctionne DEV / PROD
+- Logs visibles dans admin_scripts + app.log
+"""
+
+from pathlib import Path
 import os
+import sys
 import time
 from datetime import datetime
 
-# Dossiers à nettoyer
-directories = [
-    "/home/ndprz/dev/backup",
-    "/home/ndprz/ba380/backup",
-    "/home/ndprz/backups"
+# ============================================================
+# 📁 Rendre utils.py importable (racine BA38)
+# ============================================================
+BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE_DIR))
+
+from utils import write_log
+
+
+# ============================================================
+# 🔧 Configuration
+# ============================================================
+
+RETENTION_DAYS = 60
+RETENTION_SECONDS = RETENTION_DAYS * 86400
+NOW = time.time()
+
+# Dossiers de sauvegarde autorisés
+BACKUP_DIRECTORIES = [
+    "/srv/ba38/dev/backup",
+    "/srv/ba38/prod/backup",
+    "/srv/ba38/backups",
 ]
 
-# Nombre de jours de rétention
-RETENTION_DAYS = 60
-now = time.time()
 
-def delete_old_files(directory, days=RETENTION_DAYS):
-    if not os.path.exists(directory):
-        print(f"❌ Dossier introuvable : {directory}")
+# ============================================================
+# 🔊 Helper log
+# ============================================================
+def log(msg: str):
+    print(msg)
+    write_log(msg)
+
+
+# ============================================================
+# 🧹 Nettoyage
+# ============================================================
+def cleanup_directory(directory: str):
+    path = Path(directory)
+
+    if not path.exists():
+        log(f"❌ Dossier introuvable : {directory}")
         return
 
-    print(f"📁 Traitement du dossier : {directory}")
-    for filename in os.listdir(directory):
-        file_path = os.path.join(directory, filename)
+    if not path.is_dir():
+        log(f"⚠️ Ignoré (non dossier) : {directory}")
+        return
 
+    log(f"📁 Analyse du dossier : {directory}")
+
+    deleted = 0
+
+    for item in path.iterdir():
         try:
-            if os.path.isfile(file_path):
-                file_age = now - os.path.getmtime(file_path)
-                if file_age > days * 86400:
-                    os.remove(file_path)
-                    print(f"🗑️ Supprimé : {filename} ({file_path})")
-        except Exception as e:
-            print(f"⚠️ Erreur lors du traitement de {file_path} : {e}")
+            if not item.is_file():
+                continue
 
+            age = NOW - item.stat().st_mtime
+            if age > RETENTION_SECONDS:
+                item.unlink()
+                deleted += 1
+                log(f"🗑️ Supprimé : {item.name}")
+
+        except Exception as e:
+            log(f"⚠️ Erreur sur {item} : {e}")
+
+    log(f"✅ {deleted} fichier(s) supprimé(s) dans {directory}")
+
+
+# ============================================================
+# ▶️ Point d’entrée
+# ============================================================
 if __name__ == "__main__":
-    print(f"🕓 Lancement de la purge à {datetime.now().isoformat()}")
-    for dir in directories:
-        delete_old_files(dir)
-    print("✅ Purge terminée.")
+    log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    log("🧹 Nettoyage des sauvegardes BA38")
+    log(f"🕓 Démarrage : {datetime.now().isoformat()}")
+    log(f"📆 Rétention : {RETENTION_DAYS} jours")
+    log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+    for directory in BACKUP_DIRECTORIES:
+        cleanup_directory(directory)
+
+    log("🎉 Nettoyage terminé.")

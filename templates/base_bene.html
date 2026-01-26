@@ -102,7 +102,7 @@
                 <a href="{{ url_for('export_data.generation_fichiers') }}?source=benevoles">Export de données</a>
             {% endif %}
 
-            {% if user_role in ['admin'] %}
+            {% if is_admin_global() %}
                 <div class="dropdown">
                     <button class="dropbtn">Paramètres</button>
                     <div class="dropdown-content">
@@ -113,7 +113,7 @@
                     </div>
                 </div>
             {% endif %}
-            {% if user_role in ['admin'] %}
+            {% if is_admin_global() %}
                 <a href="{{ url_for('debug_bp.debug_console') }}" class="btn btn-outline-dark btn-sm ms-2">
                     🐞 Console de debug
                 </a>
@@ -131,17 +131,6 @@
                     {% endif %}
                 {% endwith %}
             </div>
-            {% if session.get('roles') and 'admin' in session.roles %}
-            <li class="nav-item dropdown">
-                <ul class="dropdown-menu" aria-labelledby="adminMenu">
-                    <li><a class="dropdown-item" href="{{ url_for('debug_bp.debug_console') }}">🪵 Console de logs</a></li>
-                    <li><a class="dropdown-item" href="{{ url_for('debug_bp.export_logs') }}">📥 Exporter les logs</a></li>
-                    <li><a class="dropdown-item" href="{{ url_for('debug_bp.where_are_my_logs') }}">📂 Diagnostic logs</a></li>
-                    <li><a class="dropdown-item" href="{{ url_for('debug_bp.debug_env') }}">🔍 Variables d'environnement</a></li>
-                </ul>
-            </li>
-            {% endif %}
-
         </nav>
 
         {% if current_user.is_authenticated %}

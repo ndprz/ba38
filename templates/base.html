@@ -119,14 +119,16 @@
         </div>
         <p style="text-align: center; color: #555;">Bienvenue sur la plateforme des programmes spécifiques de la BA38</p>
 
+
+
+
         <a href="/">Accueil</a>
 
-        {% if user_role in ['admin'] %}
+        {% if is_admin_global() %}
             <a href="{{ url_for('admin.gestion_utilisateurs') }}">👤 Gestion des utilisateurs</a>
-            <a href="{{ url_for('admin.gestion_roles') }}">🔐 Gestion des rôles</a>
         {% endif %}
 
-        {% if user_role in ['admin'] %}
+        {% if is_admin_global() %}
             <a href="{{ url_for('debug_bp.debug_console') }}" class="btn btn-outline-dark btn-sm">
                 🐞 Console de debug
             </a>

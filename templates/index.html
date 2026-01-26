@@ -7,11 +7,12 @@
 {% block content %}
 
 
-<div class="alert alert-secondary">
-  <strong>Rôle global :</strong> {{ session.get("user_role") }}<br>
+<!-- <div class="alert alert-secondary">
+  <strong>Rôle global :</strong> {{ g.user_role }}<br>
   <strong>Droits :</strong> {{ session.get("roles_utilisateurs") }}
 </div>
 
+<p>DEBUG rôle détecté : {{ user_role }}</p> -->
 
 
 
@@ -52,7 +53,7 @@
   {% endif %}
 </div>
 
-{% if session.get('user_role') == 'admin' %}
+{% if is_admin_global() %}
 <div style="margin-bottom: 12px;">
   <p style="margin: 0;"><strong>Explorez et gérez vos données Distribution.</strong></p>
   {% if has_access('distribution', 'lecture') %}
@@ -74,7 +75,7 @@
 {% endif %}
 
 
-{% if 'admin' in session.get('roles', []) or session.get('user_role') == 'admin' %}
+{% if g.user_role == 'admin' %}
 <div class="mt-4">
     <h5>⚙️ Administration</h5>
     <ul class="list-group">

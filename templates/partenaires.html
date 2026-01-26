@@ -20,7 +20,7 @@
     {% endif %}
 
     <!-- 📄 Publipostage -->
-    {% if user_role in ['admin', 'gestionnaire'] %}
+    {% if has_access("associations", "ecriture") %}
     <button type="button" class="btn btn-success" onclick="updatePublipostageFile()">
         📄 Fichiers Publipostage
     </button>

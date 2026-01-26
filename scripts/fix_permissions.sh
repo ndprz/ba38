@@ -1,11 +1,28 @@
 #!/bin/bash
+set -euo pipefail
 
-echo "🔧 Correction des permissions dans /home/ndprz/scripts/ ..."
+# ============================================================
+# 🔧 Correction des permissions des scripts BA38
+# ============================================================
 
-SCRIPT_DIR="/home/ndprz/scripts"
+if [ -z "${BA38_BASE_DIR:-}" ]; then
+    echo "❌ Variable BA38_BASE_DIR non définie"
+    exit 1
+fi
+
+SCRIPT_DIR="$BA38_BASE_DIR/scripts"
+
+if [ ! -d "$SCRIPT_DIR" ]; then
+    echo "❌ Dossier scripts introuvable : $SCRIPT_DIR"
+    exit 1
+fi
+
+echo "🔧 Correction des permissions dans $SCRIPT_DIR ..."
 CORRECTED=0
 
-# Fichiers .sh
+# ------------------------------------------------------------
+# Scripts shell (.sh)
+# ------------------------------------------------------------
 while IFS= read -r file; do
     if [ ! -x "$file" ]; then
         chmod +x "$file"
@@ -14,7 +31,9 @@ while IFS= read -r file; do
     fi
 done < <(find "$SCRIPT_DIR" -type f -name "*.sh")
 
-# Fichiers .py
+# ------------------------------------------------------------
+# Scripts Python (.py)
+# ------------------------------------------------------------
 while IFS= read -r file; do
     if [ ! -x "$file" ]; then
         chmod +x "$file"
@@ -23,6 +42,9 @@ while IFS= read -r file; do
     fi
 done < <(find "$SCRIPT_DIR" -type f -name "*.py")
 
+# ------------------------------------------------------------
+# Résumé
+# ------------------------------------------------------------
 if [ "$CORRECTED" -eq 0 ]; then
     echo "🟢 Tous les scripts étaient déjà correctement configurés."
 else

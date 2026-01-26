@@ -3,7 +3,7 @@ from pydrive2.auth import ServiceAccountCredentials
 from pydrive2.drive import GoogleDrive
 import sqlite3
 import json
-from utils import write_log
+from utils import write_log, get_db_path
 write_log("🔥 auth_gdrive.py IMPORTÉ")
 
 
@@ -34,7 +34,7 @@ def download_database():
         print("✅ Base de données téléchargée depuis Google Drive avec succès !")
 
         # 🔹 Vérifier que la table `field_groups` existe bien
-        conn = sqlite3.connect(db_filename)
+        conn = sqlite3.connect(get_db_path())
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
         tables = cursor.fetchall()

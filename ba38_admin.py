@@ -1,13 +1,99 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, g
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, g,current_app
 from flask_login import login_required
 from utils import (
     get_db_connection, upload_database, write_log, get_version,
-    get_db_info, get_all_users, has_access
+    get_db_info, get_all_users, has_access, get_db_info_display, has_access
 )
-from forms import RegistrationForm
+from forms import RegistrationForm, RegistrationForm
 from werkzeug.security import generate_password_hash
 
+import sqlite3
+
 admin_bp = Blueprint("admin", __name__)
+
+# ============================================================
+# GESTION DES DROITS UTILISATEUR – MATRICE (OPTION B)
+# ============================================================
+
+APPLICATIONS = {
+    "planning": "Plannings",
+    "benevoles": "Bénévoles",
+    "associations": "Associations",
+    "fournisseurs": "Fournisseurs",
+    "evenements": "Événements",
+}
+
+@admin_bp.route("/roles/<email>", methods=["GET", "POST"])
+@login_required
+def gestion_roles_matrice(email):
+    """
+    Gestion matricielle des droits pour un utilisateur.
+    """
+    if g.user_role != "admin":
+        flash("Accès réservé aux administrateurs.", "danger")
+        return redirect(url_for("index"))
+
+    with get_db_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+
+        # ---- Charger utilisateur ----
+        cur.execute("SELECT email, username, role, actif FROM users WHERE email = ?", (email,))
+        user = cur.fetchone()
+        if not user:
+            flash("Utilisateur introuvable.", "danger")
+            return redirect(url_for("admin.gestion_utilisateurs"))
+
+        # ---- POST : mise à jour complète ----
+        if request.method == "POST":
+            admin_global = request.form.get("admin_global") == "on"
+
+            # 1️⃣ Mise à jour admin global (users.role)
+            cur.execute(
+                "UPDATE users SET role = ? WHERE email = ?",
+                ("admin" if admin_global else "user", email),
+            )
+
+            # 2️⃣ Suppression de TOUS les rôles existants
+            cur.execute(
+                "DELETE FROM roles_utilisateurs WHERE user_email = ?",
+                (email,),
+            )
+
+            # 3️⃣ Réinsertion selon la matrice
+            for appli in APPLICATIONS:
+                droit = request.form.get(f"droit_{appli}", "")
+                if droit:
+                    cur.execute(
+                        """
+                        INSERT INTO roles_utilisateurs (user_email, appli, droit)
+                        VALUES (?, ?, ?)
+                        """,
+                        (email, appli, droit),
+                    )
+
+            conn.commit()
+            flash("Droits mis à jour avec succès.", "success")
+            return redirect(url_for("admin.gestion_roles_matrice", email=email))
+
+        # ---- GET : affichage ----
+        cur.execute(
+            "SELECT appli, droit FROM roles_utilisateurs WHERE user_email = ?",
+            (email,),
+        )
+        rows = cur.fetchall()
+        
+        droits_existants = {
+            row["appli"]: row["droit"]
+            for row in rows
+        }
+
+    return render_template(
+        "gestion_roles_matrice.html",
+        user=user,
+        applications=APPLICATIONS,
+        roles=droits_existants
+    )
 
 
 # ===========================
@@ -28,12 +114,48 @@ def test_session():
 # ===========================
 @admin_bp.app_context_processor
 def inject_globals():
-    role = session.get("user_role", "").lower()
-    return dict(
-        user_role=role,
-        version=get_version(),
-        db_info=get_db_info() if role == "admin" else None
-    )
+    return {
+        "version": get_version(),
+        "db_info": get_db_info_display(),   # affichage UI
+        "db_info_full": get_db_info(),       # debug/admin si besoin
+    }
+
+
+# # ===================================
+# #   droit requis sur une application
+# # ===================================
+# def has_access(appli, niveau_requis):
+#     """
+#     Vérifie si l'utilisateur courant a le droit requis sur une application.
+#     """
+#     roles = session.get("roles_utilisateurs", [])
+
+#     # Admin global
+#     if session.get("user_role") == "admin":
+#         return True
+
+#     hierarchy = ["lecture", "ecriture", "admin"]
+
+#     for app, droit in roles:
+#         if app == appli:
+#             if hierarchy.index(droit) >= hierarchy.index(niveau_requis):
+#                 return True
+
+#     return False
+
+def compute_user_role():
+    if session.get("user_role") == "admin":
+        return "admin"
+
+    roles = session.get("roles_utilisateurs", [])
+    droits = [d for _, d in roles]
+
+    if "admin" in droits:
+        return "admin"
+    if "ecriture" in droits:
+        return "gestionnaire"
+    return "user"
+
 
 # ===========================
 #   GESTION DES RÔLES
@@ -91,23 +213,142 @@ def gestion_roles():
 
     return render_template("gestion_roles.html", roles=roles, users=[u["email"] for u in users], filtre=filtre)
 
-# ===========================
-#  GESTION DES UTILISATEURS
-# ===========================
-@admin_bp.route('/gestion_utilisateurs')
+# ============================================================
+# GESTION DES UTILISATEURS – LISTE + RÉSUMÉ DES DROITS
+# ============================================================
+
+from flask import (
+    render_template, redirect, url_for,
+    flash, g, current_app
+)
+from flask_login import login_required
+import sqlite3
+
+@admin_bp.route("/gestion_utilisateurs", methods=["GET"])
 @login_required
 def gestion_utilisateurs():
-    if g.get("user_role") != "admin":
-        flash("Accès refusé.", "danger")
+    """
+    Page d'administration des utilisateurs.
+
+    Fonctionnalités :
+    - liste tous les utilisateurs
+    - affiche leur statut (actif / inactif)
+    - affiche leur rôle global (admin / car / user)
+    - affiche un résumé lisible des droits métiers
+    - accès à la gestion détaillée des droits (matrice)
+
+    ⚠️ IMPORTANT
+    - Aucun champ n’est supprimé en base
+    - app_bene / app_assos sont ignorés
+    - roles_utilisateurs est la seule source de vérité métier
+    """
+
+    # --------------------------------------------------
+    # Sécurité : admin global uniquement
+    # --------------------------------------------------
+    if g.user_role != "admin":
+        flash("⛔ Accès réservé aux administrateurs.", "danger")
         return redirect(url_for("index"))
 
-    users = [dict(u) for u in get_all_users()]
-    for user in users:
-        user['app_bene'] = int(user.get('app_bene') or 0)
-        user['app_assos'] = int(user.get('app_assos') or 0)
+    def normalize_email(email: str) -> str:
+        return email.strip().lower() if email else ""
 
-    form = RegistrationForm()
-    return render_template('gestion_utilisateurs.html', users=users, form=form)
+    with get_db_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+
+        # --------------------------------------------------
+        # 1️⃣ Charger les utilisateurs
+        # --------------------------------------------------
+        cur.execute("""
+            SELECT
+                id,
+                email,
+                username,
+                role,
+                actif
+            FROM users
+            ORDER BY email
+        """)
+        users = cur.fetchall()
+
+        # --------------------------------------------------
+        # 2️⃣ Charger tous les rôles métiers
+        # --------------------------------------------------
+        cur.execute("""
+            SELECT
+                user_email,
+                appli,
+                droit
+            FROM roles_utilisateurs
+            ORDER BY appli
+        """)
+        rows = cur.fetchall()
+
+        # --------------------------------------------------
+        # 3️⃣ Regrouper les rôles par utilisateur
+        #     → structure : { email: [(appli, droit), ...] }
+        # --------------------------------------------------
+        roles_par_user: dict[str, list[tuple[str, str]]] = {}
+
+        for row in rows:
+            email = normalize_email(row["user_email"])
+            roles_par_user.setdefault(email, []).append(
+                (row["appli"], row["droit"])
+            )
+
+        current_app.logger.info(
+            "ROLES PAR USER (normalisés) = %s",
+            roles_par_user
+        )
+
+        # Formulaire d’ajout utilisateur
+        form = RegistrationForm()
+
+        # --------------------------------------------------
+        # 4️⃣ Enrichir les utilisateurs pour l’affichage
+        # --------------------------------------------------
+        LABELS_APPLI = {
+            "benevoles": "Bénévoles",
+            "associations": "Associations",
+            "planning": "Plannings",
+            "facturation": "Facturation",
+            "evenements": "Événements",
+        }
+
+        users_enrichis = []
+
+        for user in users:
+            u = dict(user)
+            email = normalize_email(u["email"])
+
+            # ADMIN GLOBAL → résumé figé
+            if u["role"] == "admin":
+                u["resume_roles"] = [
+                    {"label": "Administrateur global", "droit": "admin"}
+                ]
+            else:
+                roles = []
+                for appli, droit in roles_par_user.get(email, []):
+                    roles.append({
+                        "label": LABELS_APPLI.get(appli, appli),
+                        "droit": droit
+                    })
+                u["resume_roles"] = roles
+
+            users_enrichis.append(u)
+
+    # --------------------------------------------------
+    # 5️⃣ Rendu
+    # --------------------------------------------------
+    return render_template(
+        "gestion_utilisateurs.html",
+        users=users_enrichis,
+        form=form
+    )
+
+
+
 
 # --- Mise à jour utilisateur ---
 @admin_bp.route("/update_user", methods=["POST"])
@@ -120,7 +361,7 @@ def update_user():
     email = request.form.get("email")
     username = request.form.get("username")
     role = request.form.get("role")
-    actif = int(request.form.get("actif", 1))
+    actif = 1 if request.form.get("actif") == "Oui" else 0
     app_assos = int(request.form.get("app_assos", 0))
     app_bene = int(request.form.get("app_bene", 0))
     new_password = request.form.get("new_password")
@@ -193,3 +434,62 @@ def ajouter_utilisateur():
 
     flash("Erreur lors de l'ajout de l'utilisateur.", "danger")
     return redirect(url_for('admin.gestion_utilisateurs'))
+
+
+
+@admin_bp.route("/update_users_batch", methods=["POST"])
+@login_required
+def update_users_batch():
+    """
+    Enregistrement en masse des utilisateurs depuis la page de gestion.
+    """
+
+    if g.user_role != "admin":
+        flash("⛔ Accès interdit.", "danger")
+        return redirect(url_for("index"))
+
+    users_data = request.form.to_dict(flat=False)
+
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+
+        # Déterminer tous les index présents (users[0], users[1], ...)
+        indexes = sorted({
+            key.split("[")[1].split("]")[0]
+            for key in users_data.keys()
+            if key.startswith("users[")
+        })
+
+        for idx in indexes:
+            user_id = request.form.get(f"users[{idx}][id]")
+            username = request.form.get(f"users[{idx}][username]", "").strip()
+            role = request.form.get(f"users[{idx}][role]", "user")
+            actif = request.form.get(f"users[{idx}][actif]", "Oui")
+            new_password = request.form.get(f"users[{idx}][new_password]", "").strip()
+
+            if not user_id:
+                continue
+
+            # Actif → bool
+            actif_db = 1 if actif == "Oui" else 0
+
+            # Mise à jour des champs standards
+            cur.execute("""
+                UPDATE users
+                SET username = ?, role = ?, actif = ?
+                WHERE id = ?
+            """, (username, role, actif_db, user_id))
+
+            # Mot de passe (si fourni)
+            if new_password:
+                password_hash = generate_password_hash(new_password)
+                cur.execute("""
+                    UPDATE users
+                    SET password_hash = ?
+                    WHERE id = ?
+                """, (password_hash, user_id))
+
+        conn.commit()
+
+    flash("✅ Modifications enregistrées.", "success")
+    return redirect(url_for("admin.gestion_utilisateurs"))

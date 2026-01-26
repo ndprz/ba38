@@ -2,43 +2,49 @@
 {% block title %}Où sont mes logs ?{% endblock %}
 
 {% block content %}
-<h2>🧭 Emplacement et état des fichiers de log</h2>
+<div class="container mt-4">
+  <h3>📍 Emplacement et état des fichiers</h3>
 
-<table class="table table-bordered">
-  <tr>
-    <th>Fichier log principal</th>
-    <td>{{ infos.log_path }}</td>
-  </tr>
-  <tr>
-    <th>Existe ?</th>
-    <td>{{ '✅ Oui' if infos.exists else '❌ Non' }}</td>
-  </tr>
-  <tr>
-    <th>Écriture possible ?</th>
-    <td>{{ '✅ Oui' if infos.writable else '❌ Non' }}</td>
-  </tr>
-  <tr>
-    <th>Fichier fallback détecté</th>
-    <td>{{ '✅ Oui' if infos.fallback_used else '❌ Non' }}</td>
-  </tr>
-  <tr>
-    <th>Fichier .env</th>
-    <td>{{ infos.env_path }}</td>
-  </tr>
-  <tr>
-    <th>.env lisible ?</th>
-    <td>{{ '✅ Oui' if infos.env_readable else '❌ Non' }}</td>
-  </tr>
-  <tr>
-    <th>Base SQLite utilisée</th>
-    <td>{{ infos.db_path }}</td>
-  </tr>
-</table>
+  <table class="table table-sm table-bordered mt-3">
+    <thead class="table-light">
+      <tr>
+        <th>Élément</th>
+        <th>Chemin</th>
+        <th>Existe</th>
+        <th>Écriture possible</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Environnement</td>
+        <td colspan="3"><strong>{{ infos.ENVIRONMENT }}</strong></td>
+      </tr>
+      <tr>
+        <td>BA38_BASE_DIR</td>
+        <td colspan="3"><code>{{ infos.BA38_BASE_DIR }}</code></td>
+      </tr>
 
-{% if fallback_tail %}
-<h4>🪵 Dernières lignes du fallback log :</h4>
-<div class="alert alert-secondary" style="white-space: pre-wrap; font-family: monospace;">
-  {{ fallback_tail | join('') }}
+      {% for key, item in infos.items() if item is mapping %}
+      <tr>
+        <td>{{ key }}</td>
+        <td><code>{{ item.path }}</code></td>
+        <td>
+          {% if item.exists %}
+            ✅ Oui
+          {% else %}
+            ❌ Non
+          {% endif %}
+        </td>
+        <td>
+          {% if item.writable %}
+            ✅ Oui
+          {% else %}
+            ❌ Non
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
-{% endif %}
 {% endblock %}

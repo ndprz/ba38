@@ -30,7 +30,7 @@ from pdf2image import convert_from_path
 
 # Utils maison
 from utils import (
-    get_db_connection, upload_database, write_log, get_static_event_dir
+    get_db_connection, upload_database, write_log, get_static_event_dir,is_admin_global
 )
 
 
@@ -42,11 +42,11 @@ evenements_bp = Blueprint("evenements", __name__, template_folder="templates")
 # =====================================================
 def role_autorise_evenements():
     """Vérifie si l'utilisateur connecté a accès au module Événements."""
-    # ✅ Accès total pour admin global
-    if session.get("user_role") == "admin":
+    # Admin global (nouvelle façade)
+    if is_admin_global():
         return True
 
-    # ✅ Vérifie un droit explicite dans roles_utilisateurs
+    # Droits applicatifs
     for appli, droit in session.get("roles_utilisateurs", []):
         if appli == "evenements" and droit.lower() != "aucun":
             return True

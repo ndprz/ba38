@@ -1,53 +1,122 @@
 #!/usr/bin/env python3
+"""
+🔧 Synchronisation du schéma de la table `benevoles` (DEV → PROD)
 
+Objectif :
+- Comparer la structure de la table `benevoles` entre la base DEV et la base PROD
+- Ajouter en PROD les colonnes présentes en DEV mais absentes en PROD
+- Ne JAMAIS modifier la base DEV
+- Être totalement indépendant de ENVIRONMENT / Flask
 
-import sqlite3
-import os
+Ce script est conçu pour être exécuté via l’interface admin_scripts.
+"""
+
+from pathlib import Path
 import sys
-sys.path.insert(0, "/home/ndprz/dev")  # 👈 chemin du dossier contenant utils.py
-from utils import write_log
+import sqlite3
+
+# ============================================================
+# 📁 Rendre utils.py importable (racine BA38)
+# ============================================================
+BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE_DIR))
+
+from utils import write_log, get_db_path_by_env
+
+def log_and_print(msg: str):
+    print(msg)
+    write_log(msg)
 
 
-def get_columns(db_path, table_name):
+# ============================================================
+# 🔍 Utilitaire : lecture des colonnes d’une table SQLite
+# ============================================================
+def get_columns(db_path: str, table_name: str) -> dict:
+    """
+    Retourne un dictionnaire :
+    { nom_colonne : row_pragma }
+    """
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute(f"PRAGMA table_info({table_name})")
         return {row[1]: row for row in cursor.fetchall()}
 
+
+# ============================================================
+# 🔧 Synchronisation DEV → PROD
+# ============================================================
 def compare_and_update_benevoles_structure():
-    base_dir = os.path.abspath(os.path.dirname(__file__))
-    dev_path = os.path.join("/home/ndprz/dev", "ba380dev.sqlite")
-    prod_path = os.path.join("/home/ndprz/ba380", "ba380.sqlite")
     table_name = "benevoles"
 
-    write_log("🧪 Début de la comparaison des colonnes benevoles entre DEV et PROD")
+    # --- Résolution EXPLICITE des bases ---
+    dev_path = get_db_path_by_env(
+        "dev",
+        force_base_dir="/srv/ba38/dev"
+    )
 
+    prod_path = get_db_path_by_env(
+        "prod",
+        force_base_dir="/srv/ba38/prod"
+    )
+
+    # --------------------------------------------------------
+    # 🛡️ GARDE-FOU CRITIQUE
+    # --------------------------------------------------------
+    if "/dev/" in prod_path:
+        raise RuntimeError(
+            f"❌ ERREUR CRITIQUE : base PROD incorrecte détectée : {prod_path}"
+        )
+
+    log_and_print("🧪 Début comparaison schéma table benevoles DEV → PROD")
+    log_and_print(f"📄 DEV  : {dev_path}")
+    log_and_print(f"📄 PROD : {prod_path}")
+
+    # --- Lecture des schémas ---
     dev_columns = get_columns(dev_path, table_name)
     prod_columns = get_columns(prod_path, table_name)
 
-    missing_columns = [col for col in dev_columns if col not in prod_columns]
+    missing_columns = [
+        col for col in dev_columns
+        if col not in prod_columns
+    ]
 
     if not missing_columns:
-        write_log("✅ Table benevoles à jour : aucune colonne manquante.")
+        log_and_print("✅ Table benevoles à jour : aucune colonne manquante.")
         return
 
-    write_log(f"🔍 Colonnes manquantes dans benevoles (PROD) : {missing_columns}")
+    log_and_print(f"🔍 Colonnes manquantes en PROD : {missing_columns}")
 
+    # --- Mise à jour PROD ---
     with sqlite3.connect(prod_path) as conn:
         cursor = conn.cursor()
+
         for col in missing_columns:
             col_type = dev_columns[col][2] or "TEXT"
             default_val = dev_columns[col][4]
-            default_clause = f"DEFAULT '{default_val}'" if default_val is not None else ""
-            alter_stmt = f"ALTER TABLE {table_name} ADD COLUMN `{col}` {col_type} {default_clause}".strip()
+
+            default_clause = (
+                f"DEFAULT '{default_val}'"
+                if default_val is not None else ""
+            )
+
+            alter_stmt = (
+                f"ALTER TABLE {table_name} "
+                f"ADD COLUMN `{col}` {col_type} {default_clause}"
+            )
+
             try:
                 cursor.execute(alter_stmt)
-                write_log(f"✅ Colonne ajoutée : {alter_stmt}")
+                log_and_print(f"✅ Colonne ajoutée : {alter_stmt}")
             except Exception as e:
-                write_log(f"❌ Erreur lors de l'ajout de {col} : {e}")
+                log_and_print(f"❌ Erreur ajout colonne {col} : {e}")
+
         conn.commit()
 
-    write_log("🎉 Mise à jour terminée pour la table benevoles (PROD).")
+    log_and_print("🎉 Mise à jour terminée pour la table benevoles (PROD).")
 
+
+# ============================================================
+# ▶️ Point d’entrée
+# ============================================================
 if __name__ == "__main__":
     compare_and_update_benevoles_structure()

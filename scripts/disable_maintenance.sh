@@ -1,6 +1,6 @@
 #!/bin/bash
 
-FLAG="/home/ndprz/ba380/maintenance.flag"
+FLAG="/srv/ba38/prod/maintenance.flag"
 
 if [ -f "$FLAG" ]; then
     rm "$FLAG"

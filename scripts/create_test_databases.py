@@ -1,164 +1,317 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Script : create_test_databases.py
-Objectif :
-Créer et anonymiser les bases de test DEV et PROD à partir de la base ba380.sqlite,
-en limitant chaque table à 100 enregistrements.
-⚠️ La table 'users' n'est PAS anonymisée pour garder les connexions valides.
-"""
 
+import sys
 import os
 import shutil
 import sqlite3
 import random
 import string
+from pathlib import Path
 
-# ========================
-# 🔧 Configuration
-# ========================
-BASE_PROD = "/home/ndprz/ba380/ba380.sqlite"
-BASE_TEST_PROD = "/home/ndprz/ba380/ba380_test.sqlite"
-BASE_TEST_DEV = "/home/ndprz/dev/ba380dev_test.sqlite"
-LIMIT = 100  # Limite de lignes par table
+# -------------------------------------------------------------------
+# PYTHONPATH
+# -------------------------------------------------------------------
+BASE_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(BASE_DIR))
 
-# ========================
-# 🧰 Fonctions utilitaires
-# ========================
+from utils import write_log
 
-def random_nom():
-    return "Nom" + ''.join(random.choices(string.ascii_uppercase, k=4))
+# -------------------------------------------------------------------
+# CONFIG
+# -------------------------------------------------------------------
+LIMIT = 10
+NO_LIMIT_TABLES = {"field_groups", "parametres"}
 
-def random_prenom():
-    return "Prenom" + ''.join(random.choices(string.ascii_uppercase, k=4))
+SUMMARY = []
 
-def random_email():
-    return ''.join(random.choices(string.ascii_lowercase, k=6)) + "@example.org"
+def summary(msg):
+    SUMMARY.append(msg)
+    print(msg)
+    write_log(msg)
 
-def random_tel():
+# -------------------------------------------------------------------
+# RANDOM GENERATORS
+# -------------------------------------------------------------------
+def rnd_txt(prefix="TXT"):
+    return f"{prefix}_{''.join(random.choices(string.ascii_uppercase, k=5))}"
+
+def rnd_email():
+    return ''.join(random.choices(string.ascii_lowercase, k=8)) + "@example.org"
+
+def rnd_tel():
     return "06" + ''.join(random.choices(string.digits, k=8))
 
-def write_log(msg):
-    print(f"[INFO] {msg}")
+def rnd_cp():
+    return ''.join(random.choices(string.digits, k=5))
 
-# ========================
-# 🚀 Étapes principales
-# ========================
+def rnd_ville():
+    return "VILLE_" + ''.join(random.choices(string.ascii_uppercase, k=4))
 
-def create_test_copy(source_path, target_path):
-    """Copie la base source vers une base de test (overwrite)."""
-    if not os.path.exists(source_path):
-        raise FileNotFoundError(f"Base source introuvable : {source_path}")
+def rnd_siret():
+    return ''.join(random.choices(string.digits, k=14))
 
-    os.makedirs(os.path.dirname(target_path), exist_ok=True)
-    shutil.copy2(source_path, target_path)
-    write_log(f"✅ Copie créée : {target_path}")
+# -------------------------------------------------------------------
+# PATH RESOLUTION (anti instance/instance)
+# -------------------------------------------------------------------
+BASE_PROD_DIR = Path("/srv/ba38/prod")
+BASE_DEV_DIR = Path("/srv/ba38/dev")
 
-def anonymize_and_limit_database(db_path):
-    """Anonymise les tables sensibles et limite leur taille à 100 enregistrements."""
+def resolve_db(base_dir: Path, db_name: str) -> Path:
+    p = Path(db_name)
+    if p.is_absolute():
+        return p
+    if p.parts and p.parts[0] == "instance":
+        return base_dir / p
+    return base_dir / "instance" / p
+
+PROD_DB_NAME = os.getenv("SQLITE_DB_PROD", "ba380.sqlite")
+PROD_TEST_DB_NAME = os.getenv("SQLITE_DB_PROD_TEST", "ba380_test.sqlite")
+DEV_TEST_DB_NAME = os.getenv("SQLITE_DB_DEV_TEST", "ba380dev_test.sqlite")
+
+BASE_PROD = resolve_db(BASE_PROD_DIR, PROD_DB_NAME)
+BASE_TEST_PROD = resolve_db(BASE_PROD_DIR, PROD_TEST_DB_NAME)
+BASE_TEST_DEV = resolve_db(BASE_DEV_DIR, DEV_TEST_DB_NAME)
+
+# -------------------------------------------------------------------
+def create_copy(src: Path, dst: Path):
+    if not src.exists():
+        raise FileNotFoundError(f"❌ Base source introuvable : {src}")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+    summary(f"✅ Copie créée : {dst}")
+
+# -------------------------------------------------------------------
+def anonymize_database(db_path: Path):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
 
-    # Liste des tables (hors sqlite_sequence et vues)
-    tables = [r[0] for r in c.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()]
+    tables = [r["name"] for r in c.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    )]
 
     for table in tables:
-        try:
-            cols = [r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()]
-            if not cols:
-                continue
+        cols = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
+        pk = next((r["name"] for r in c.execute(f"PRAGMA table_info({table})") if r["pk"]), None)
 
-            # ✅ Limiter à 100 enregistrements
+        # ---------------- LIMIT ----------------
+        if table not in NO_LIMIT_TABLES and pk:
             count = c.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
             if count > LIMIT:
-                write_log(f"📉 Réduction de {table} ({count} → {LIMIT})")
                 c.execute(f"""
                     DELETE FROM {table}
-                    WHERE id NOT IN (
-                        SELECT id FROM {table} ORDER BY id LIMIT {LIMIT}
+                    WHERE {pk} NOT IN (
+                        SELECT {pk} FROM {table}
+                        ORDER BY {pk}
+                        LIMIT {LIMIT}
                     )
                 """)
                 conn.commit()
+                summary(f"📉 {table} limité à {LIMIT}")
 
-            # ======================
-            # 👥 Table bénévole
-            # ======================
-            if table == "benevoles":
-                write_log("🧩 Anonymisation table benevoles…")
-                if all(col in cols for col in ("nom", "prenom")):
-                    rows = c.execute("SELECT id FROM benevoles").fetchall()
-                    for r in rows:
-                        id_ = r["id"]
-                        updates = {}
-                        if "nom" in cols: updates["nom"] = random_nom()
-                        if "prenom" in cols: updates["prenom"] = random_prenom()
-                        if "email" in cols: updates["email"] = random_email()
-                        if "telephone" in cols: updates["telephone"] = random_tel()
+        # ---------------- BENEVOLES ----------------
+        if table == "benevoles":
+            summary("🧩 Anonymisation benevoles")
+            ids = [r["id"] for r in c.execute("SELECT id FROM benevoles").fetchall()]
+            for bid in ids:
+                c.execute("""
+                    UPDATE benevoles SET
+                        nom=?, prenom=?, email=?,
+                        telephone_fixe=?, telephone_portable=?,
+                        code_postal=?, ville=?, rue=?
+                    WHERE id=?
+                """, (
+                    rnd_txt("Nom"), rnd_txt("Prenom"), rnd_email(),
+                    rnd_tel(), rnd_tel(),
+                    rnd_cp(), rnd_ville(), rnd_txt("Rue"),
+                    bid
+                ))
+            conn.commit()
 
-                        if updates:
-                            set_clause = ", ".join([f"{k}=?" for k in updates])
-                            c.execute(f"UPDATE benevoles SET {set_clause} WHERE id=?",
-                                      list(updates.values()) + [id_])
-                    conn.commit()
-                else:
-                    write_log("⚠️ Colonnes attendues absentes dans benevoles, aucune anonymisation appliquée.")
+        elif table == "benevoles_inactifs":
+            c.execute("DELETE FROM benevoles_inactifs")
+            conn.commit()
+            summary("🧹 Table benevoles_inactifs vidée")
 
-            # ======================
-            # 🏛 Table associations
-            # ======================
-            elif table == "associations":
-                write_log("🏛 Anonymisation table associations…")
-                rows = c.execute("SELECT id FROM associations").fetchall()
-                for r in rows:
-                    id_ = r["id"]
-                    updates = {}
-                    if "nom_association" in cols: updates["nom_association"] = "Association_" + ''.join(random.choices(string.ascii_uppercase, k=4))
-                    if "courriel_association" in cols: updates["courriel_association"] = random_email()
-                    if "courriel_president" in cols: updates["courriel_president"] = random_email()
-                    if "courriel_resp_operationnel" in cols: updates["courriel_resp_operationnel"] = random_email()
-                    if "contact_nom" in cols: updates["contact_nom"] = random_nom()
-                    if "contact_prenom" in cols: updates["contact_prenom"] = random_prenom()
-                    if "contact_tel" in cols: updates["contact_tel"] = random_tel()
+        # ---------------- ASSOCIATIONS ----------------
+        elif table == "associations":
+            summary("🏛 Anonymisation associations")
 
-                    if updates:
-                        set_clause = ", ".join([f"{k}=?" for k in updates])
-                        c.execute(f"UPDATE associations SET {set_clause} WHERE id=?",
-                                  list(updates.values()) + [id_])
-                conn.commit()
+            ids = [r["Id"] for r in c.execute("SELECT Id FROM associations").fetchall()]
 
-            # ======================
-            # 🔒 Table log_connexions
-            # ======================
-            elif table == "log_connexions":
-                write_log("🧹 Nettoyage table log_connexions…")
-                c.execute("DELETE FROM log_connexions")
-                conn.commit()
+            for aid in ids:
+                c.execute("""
+                    UPDATE associations SET
+                        nom_association=?,
+                        code_SIRET=?,
+                        raison_sociale_VIF=?,
+                        adresse_siege=?,
+                        adresse_association_1=?,
+                        adresse_association_2=?,
+                        CP=?,
+                        COMMUNE=?,
+                        tel_association=?,
+                        courriel_association=?,
 
-            # ======================
-            # 👤 Table users
-            # ======================
-            elif table == "users":
-                write_log("Table users conservée telle quelle ✅ (aucune anonymisation).")
+                        -- Courriels
+                        courriel_distribution=?,
+                        courriel_president=?,
+                        courriel_resp_accueil=?,
+                        courriel_resp_collecte=?,
+                        courriel_resp_Hysa=?,
+                        courriel_resp_IE1=?,
+                        courriel_resp_IE2=?,
+                        courriel_resp_operationnel=?,
+                        courriel_resp_proxidon=?,
+                        courriel_resp_tresorerie=?,
+                        courriel_resp_tresorerie2=?,
 
-        except Exception as e:
-            write_log(f"⚠️ Erreur sur la table {table}: {e}")
+                        -- Responsables / noms
+                        nom_president_ou_officiel=?,
+                        responsable_accueil=?,
+                        responsable_collecte=?,
+                        responsable_distribution=?,
+                        responsable_HySA=?,
+                        responsable_IE=?,
+                        responsable_operationnel=?,
+                        responsable_proxidon=?,
+                        responsable_tresorerie=?,
+                        responsable_tresorerie2=?,
+
+                        -- Téléphones
+                        tel_president_officiel_1=?,
+                        tel_president_officiel_2=?,
+                        tel_resp_accueil=?,
+                        tel_resp_collecte=?,
+                        tel_resp_distribution_1=?,
+                        tel_resp_distribution_2=?,
+                        teL_resp_Hysa_1=?,
+                        tel_resp_Hysa_2=?,
+                        tel_resp_IE=?,
+                        tel_resp_operationnel_1=?,
+                        tel_resp_operationnel_2=?,
+                        tel_resp_proxidon=?,
+                        tel_resp_tresorerie_1=?,
+                        tel_resp_tresorerie_2=?
+
+                    WHERE Id=?
+                """, (
+                    rnd_txt("Association"),
+                    rnd_siret(),
+                    rnd_txt("RS"),
+                    rnd_txt("Adresse"),
+                    rnd_txt("Adresse"),
+                    rnd_txt("Adresse"),
+                    rnd_cp(),
+                    rnd_ville(),
+                    rnd_tel(),
+                    rnd_email(),
+
+                    # Courriels
+                    rnd_email(),
+                    rnd_email(),
+                    rnd_email(),
+                    rnd_email(),
+                    rnd_email(),
+                    rnd_email(),
+                    rnd_email(),
+                    rnd_email(),
+                    rnd_email(),
+                    rnd_email(),
+                    rnd_email(),
+
+                    # Responsables / noms
+                    rnd_txt("Nom"),
+                    rnd_txt("Resp"),
+                    rnd_txt("Resp"),
+                    rnd_txt("Resp"),
+                    rnd_txt("Resp"),
+                    rnd_txt("Resp"),
+                    rnd_txt("Resp"),
+                    rnd_txt("Resp"),
+                    rnd_txt("Resp"),
+                    rnd_txt("Resp"),
+
+                    # Téléphones
+                    rnd_tel(),
+                    rnd_tel(),
+                    rnd_tel(),
+                    rnd_tel(),
+                    rnd_tel(),
+                    rnd_tel(),
+                    rnd_tel(),
+                    rnd_tel(),
+                    rnd_tel(),
+                    rnd_tel(),
+                    rnd_tel(),
+                    rnd_tel(),
+                    rnd_tel(),
+                    rnd_tel(),
+
+                    aid
+                ))
+
+            conn.commit()
+
+        # ---------------- FOURNISSEURS ----------------
+        elif table == "fournisseurs":
+            summary("🚚 Anonymisation fournisseurs")
+            ids = [r["id"] for r in c.execute("SELECT id FROM fournisseurs").fetchall()]
+            for fid in ids:
+                c.execute("""
+                    UPDATE fournisseurs SET
+                        nom=?, adresse=?, cp=?, ville=?, tel=?, mail=?
+                    WHERE id=?
+                """, (
+                    rnd_txt("Fournisseur"), rnd_txt("Adresse"),
+                    rnd_cp(), rnd_ville(), rnd_tel(), rnd_email(),
+                    fid
+                ))
+            conn.commit()
+
+        # ---------------- FOURNISSEURS CONTACTS ----------------
+        elif table == "fournisseurs_contacts":
+            summary("👥 Anonymisation fournisseurs_contacts")
+            ids = [r["id"] for r in c.execute("SELECT id FROM fournisseurs_contacts").fetchall()]
+            for cid in ids:
+                c.execute("""
+                    UPDATE fournisseurs_contacts SET
+                        prenom=?, nom=?, tel_mobile=?, tel_fixe=?, email=?,
+                        adresse1=?, adresse2=?, cp=?, ville=?
+                    WHERE id=?
+                """, (
+                    rnd_txt("Prenom"), rnd_txt("Nom"),
+                    rnd_tel(), rnd_tel(), rnd_email(),
+                    rnd_txt("Adresse"), rnd_txt("Adresse"),
+                    rnd_cp(), rnd_ville(),
+                    cid
+                ))
+            conn.commit()
 
     conn.close()
-    write_log(f"✅ Anonymisation + limitation terminées pour {db_path}")
+    summary(f"✅ Anonymisation terminée : {db_path}")
 
-# ========================
-# 🧩 Programme principal
-# ========================
+# -------------------------------------------------------------------
+def create_test_databases():
+    SUMMARY.clear()
+    summary("🧩 Création des bases de test anonymisées")
 
+    if not BASE_PROD.exists():
+        raise FileNotFoundError(
+            f"❌ Base PROD introuvable : {BASE_PROD}\n"
+            "Vérifie SQLITE_DB_PROD et le dossier instance/"
+        )
+
+    create_copy(BASE_PROD, BASE_TEST_PROD)
+    anonymize_database(BASE_TEST_PROD)
+
+    create_copy(BASE_PROD, BASE_TEST_DEV)
+    anonymize_database(BASE_TEST_DEV)
+
+    summary("🎉 Bases de test créées avec succès")
+    return "\n".join(SUMMARY)
+
+# -------------------------------------------------------------------
 if __name__ == "__main__":
-    write_log("=== Création des bases de test anonymisées (100 lignes max) ===")
-
-    create_test_copy(BASE_PROD, BASE_TEST_PROD)
-    anonymize_and_limit_database(BASE_TEST_PROD)
-
-    create_test_copy(BASE_PROD, BASE_TEST_DEV)
-    anonymize_and_limit_database(BASE_TEST_DEV)
-
-    write_log("🎉 Bases de test créées et anonymisées avec succès.")
+    create_test_databases()

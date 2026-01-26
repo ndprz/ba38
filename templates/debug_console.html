@@ -18,7 +18,7 @@
 
 <!-- 🧰 Boutons contextuels selon le fichier sélectionné -->
 <div class="mb-3">
-  {% if selected_log == 'app.log' and session.get("user_role") == "admin" %}
+  {% if selected_log == 'app.log' and is_admin_global() %}
     <a href="{{ url_for('debug_bp.export_logs') }}" class="btn btn-success btn-sm mr-2">📥 Exporter</a>
     <form method="POST" action="{{ url_for('debug_bp.clear_logs') }}" class="d-inline">
       <button type="submit" class="btn btn-danger btn-sm"
@@ -26,7 +26,7 @@
         🧹 Effacer app.log
       </button>
     </form>
-  {% elif selected_log == 'error.log (PA)' and session.get("user_role") == "admin" %}
+  {% elif selected_log == 'error.log (PA)' and is_admin_global() %}
     <form method="POST" action="{{ url_for('debug_bp.clear_error_log') }}" class="d-inline mr-2">
       <button type="submit" class="btn btn-danger btn-sm"
               onclick="return confirm('Effacer le fichier error.log ?');">
@@ -35,12 +35,12 @@
     </form>
   {% endif %}
 
-  {% if selected_log == 'error.log (PA)' and session.get("user_role") == "admin" %}
+  {% if selected_log == 'error.log (PA)' and is_admin_global() %}
     <form method="POST" action="{{ url_for('debug_bp.trigger_error_log') }}" class="d-inline">
       <button type="submit" class="btn btn-warning btn-sm">🔊 Echo vers error.log</button>
     </form>
   {% endif %}
-</div>
+
 
 <!-- 📄 Affichage du contenu du log sélectionné (app.log ou autre) -->
 {% if output %}

@@ -5,7 +5,7 @@
 {% block content %}
 <h2>Planning des Bénévoles</h2>
 
-{% if user_role in ['admin', 'gestionnaire'] %}
+{% if has_access('planning', 'lecture') %}
 <div class="mb-4 d-flex gap-3 flex-wrap justify-content-between">
     <a href="{{ url_for('planning_utils.planning_absences') }}" class="btn btn-outline-secondary">
         📅 Gérer les absences des bénévoles

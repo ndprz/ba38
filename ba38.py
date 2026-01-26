@@ -2,7 +2,7 @@
 # BOOTSTRAP ENVIRONNEMENT
 # =============================
 import os
-from dotenv import load_dotenv   # ← MANQUANT, CAUSE DU CRASH
+from dotenv import load_dotenv
 
 
 # --------------------------------------------------
@@ -58,9 +58,9 @@ if not logger.handlers:
 # --------------------------------------------------
 
 from datetime import datetime, timedelta
-from utils import get_db_connection, write_log, send_reset_email, get_user_roles, get_db_path, get_db_info, has_access, upload_database, get_version, get_all_users, format_tel, get_param_value
-from utils import get_user_info
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, g
+from utils import get_db_connection, write_log, send_reset_email, get_user_roles, get_db_path, get_db_info, upload_database, get_version, get_all_users, format_tel, get_param_value
+from utils import get_user_info,has_access
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, g, current_app
 from flask_login import current_user, LoginManager, UserMixin, login_user, logout_user, login_required
 from flask_session import Session
 from wtforms import StringField, PasswordField, SubmitField, SelectField
@@ -110,7 +110,7 @@ from ba38_planning_report import planning_report_bp
 
 # Initialisation Flask
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "default_secret")
+app.secret_key = os.getenv("FLASK_SECRET_KEY")
 app.jinja_env.filters['format_tel'] = format_tel
 
 # ✅ Augmente la taille maximale des requêtes POST à 10 Mo
@@ -122,18 +122,40 @@ def __ping():
     return "PING OK"
 
 
-# # Détection de l'environnement et choix de la base
-# env = os.getenv("ENVIRONMENT", "dev").lower()
-# is_prod = env == "prod"
-# is_test = os.getenv("TEST_MODE", "0") in ["1", "true", "yes"]
+# =========================
+# Injection globale Jinja
+# =========================
+from utils import has_access, is_admin_global
 
-# if is_prod:
-#     SQLITE_DB = os.getenv("SQLITE_DB_PROD_TEST") if is_test else os.getenv("SQLITE_DB_PROD")
-# else:
-#     SQLITE_DB = os.getenv("SQLITE_DB_DEV_TEST") if is_test else os.getenv("SQLITE_DB_DEV")
+@app.context_processor
+def inject_access_helpers():
+    return dict(
+        has_access=has_access,
+        is_admin_global=is_admin_global
+    )
 
-# if not SQLITE_DB:
-#     raise ValueError("❌ Variable d'environnement SQLITE_DB non définie.")
+
+# --------------------------------------------------
+# CONTEXTE UTILISATEUR & DROITS (GLOBAL)
+# --------------------------------------------------
+
+from ba38_admin import compute_user_role
+
+@app.before_request
+def load_user_context():
+    """
+    Construit le contexte utilisateur global pour chaque requête.
+    """
+    g.user_role = compute_user_role()
+
+@app.context_processor
+def inject_user_role():
+    """
+    Rend user_role disponible dans TOUS les templates.
+    """
+    return {
+        "user_role": g.user_role
+    }
 
 
 # Authentification Flask-Login
@@ -225,7 +247,7 @@ def log_connexion(user, action="login"):
             conn.execute("""
                 INSERT INTO log_connexions (email, username, environ, ip, user_agent, timestamp, action)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (user.email, user.username, environ, ip, user_agent, now, action))
+            """, (user.email, user.username, env, ip, user_agent, now, action))
     except Exception as e:
         print(f"⚠️ Erreur log_connexion : {e}")
 
@@ -313,10 +335,6 @@ class User(UserMixin):
 
 
 
-
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "une_clé_secrète_ultra_sécurisée")
-
-
 @app.route("/debug_env_session")
 def debug_env_session():
     return f"ENV={ENVIRONMENT} — Dossier de session : {app.config['SESSION_FILE_DIR']}"
@@ -325,28 +343,49 @@ def debug_env_session():
 
 # ✅ Configuration du dossier de sessions à partir du .env
 
+# ENVIRONMENT = os.getenv("ENVIRONMENT", "prod").lower()
+
+# BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+# SESSION_DIR = os.path.join(BASE_DIR, "flask_sessions")
+
+# if not os.path.exists(SESSION_DIR):
+#     os.makedirs(SESSION_DIR)
+
+# app.config.update(
+#     SESSION_TYPE="filesystem",
+#     SESSION_FILE_DIR=SESSION_DIR,
+#     SESSION_PERMANENT=False,
+#     SESSION_USE_SIGNER=True,
+#     SESSION_KEY_PREFIX="ba38_",
+#     SESSION_COOKIE_NAME="ba38_session",
+    
+# )
+
+# ------------------------------------------------------------------
+# Séparation stricte des sessions DEV / PROD
+# ------------------------------------------------------------------
+
 ENVIRONMENT = os.getenv("ENVIRONMENT", "prod").lower()
 
-# if ENVIRONMENT == "dev":
-#     SESSION_DIR = "/home/ndprz/dev/flask_sessions"
-# else:
-#     SESSION_DIR = "/home/ndprz/ba380/flask_sessions"
+if ENVIRONMENT == "prod":
+    SESSION_DIR = "/srv/ba38/prod/sessions"
+    SESSION_COOKIE_NAME = "ba38_prod_session"
+    SESSION_KEY_PREFIX = "ba38_prod_"
+else:
+    SESSION_DIR = "/srv/ba38/dev/sessions"
+    SESSION_COOKIE_NAME = "ba38_dev_session"
+    SESSION_KEY_PREFIX = "ba38_dev_"
 
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-SESSION_DIR = os.path.join(BASE_DIR, "flask_sessions")
-
-if not os.path.exists(SESSION_DIR):
-    os.makedirs(SESSION_DIR)
-
-# write_log(f"✅ ENV={ENVIRONMENT.upper()} — dossier SESSION = {SESSION_DIR}")
+os.makedirs(SESSION_DIR, exist_ok=True)
 
 app.config.update(
     SESSION_TYPE="filesystem",
     SESSION_FILE_DIR=SESSION_DIR,
     SESSION_PERMANENT=False,
     SESSION_USE_SIGNER=True,
-    SESSION_KEY_PREFIX="ba38_",
-    SESSION_COOKIE_NAME="ba38_session"
+
+    SESSION_COOKIE_NAME=SESSION_COOKIE_NAME,
+    SESSION_KEY_PREFIX=SESSION_KEY_PREFIX,
 )
 
 Session(app)
@@ -504,40 +543,37 @@ import os
 from collections import defaultdict
 
 
-FLAG_PATH = "/home/ndprz/ba380/maintenance.flag"
 
+ENV = os.getenv("ENVIRONMENT", "DEV").upper()
 
+if ENV == "PROD":
+    FLAG_PATH = "/srv/ba38/prod/maintenance.flag"
+else:
+    FLAG_PATH = "/srv/ba38/dev/maintenance.flag"
 
-from flask import current_app
 
 @app.before_request
 def check_maintenance_mode():
-    if os.getenv("MAINTENANCE_MODE") == "1":
-        current_app.logger.warning("Mode maintenance actif")
-        return "Maintenance en cours", 503
+    if os.path.exists(FLAG_PATH):
+        current_app.logger.warning(
+            "🛠️ Mode maintenance actif – page HTML affichée"
+        )
+        return render_template("maintenance.html"), 503
 
 @app.before_request
 def set_user_roles():
     if current_user.is_authenticated:
-        roles = get_user_roles(current_user.email)
-        session["roles"] = roles
-        # write_log(f"👤 Rôles chargés pour {current_user.email} → {roles}")
+        session["roles_utilisateurs"] = get_user_roles(current_user.email)
 
 @app.before_request
-def update_last_seen():
+def sync_user_role():
     if current_user.is_authenticated:
-        from datetime import datetime
-        from utils import get_db_connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE log_connexions
-            SET last_seen = ?
-            WHERE email = ? AND environ = ?
-            ORDER BY timestamp DESC
-            LIMIT 1
-        """, (datetime.utcnow().isoformat(), current_user.email, os.getenv("ENVIRONMENT")))
-        conn.commit()
+        g.user_role = session.get("user_role", "").lower()
+    else:
+        g.user_role = None
+
+
+
 
 
 
@@ -623,11 +659,17 @@ def get_user_role():
 # ✅ Avant chaque requête, charge le rôle de l'utilisateur
 @app.before_request
 def load_user_role():
-    """ Charge correctement le rôle utilisateur à chaque requête """
-    if "user_role" in session:
-        g.user_role = session["user_role"]
+    if not current_user.is_authenticated:
+        g.user_role = None
+        return
+
+    roles = session.get("roles_utilisateurs", [])
+
+    # 👑 Admin global si présent
+    if ("admin", "global") in roles:
+        g.user_role = "admin"
     else:
-        g.user_role = "Utilisateur"
+        g.user_role = "utilisateur"
 
 
 
@@ -878,15 +920,12 @@ def login():
             login_user(user_obj)
 
             # 🧩 Initialisation session
-            email, role = get_user_info(user)
+            email = user["email"]
+            role = user["role"]
             session["user_id"] = str(user["id"])
             session["username"] = user["username"]
-            session["user_role"] = role
             session["roles_utilisateurs"] = get_user_roles(email)
 
-            # ✅ On inclut le rôle global ET les droits détaillés
-            session["roles_utilisateurs"] = get_user_roles(email)
-            # plus de session["roles"]
 
             # 👑 Si superadmin : ajoute accès complet + indicateur clair
             if role == "admin":
@@ -909,7 +948,10 @@ def login():
             write_connexion_log(user["id"], user["username"])
             log_connexion(user_obj, action="login")
 
-            write_log(f"✅ Connexion réussie ! Utilisateur : {session['username']} (Rôle: {session['user_role']})")
+            write_log(
+                f"✅ Connexion réussie ! Utilisateur : {session.get('username')} "
+                f"(Rôle: {session.get('user_role', 'utilisateur')})"
+            )
             return redirect(url_for("index"))
 
         # 🔴 Erreurs de login
@@ -928,32 +970,9 @@ def login():
 
 
 
-# Route pour la déconnexion
 @app.route('/logout')
 @login_required
 def logout():
-    from flask import request
-    import os
-
-    session_id = request.cookies.get("ba38_session")
-    session_dir = app.config.get("SESSION_FILE_DIR")
-
-    # 🔥 Supprimer le fichier de session si possible
-    if session_id and session_dir:
-        session_file = os.path.join(session_dir, session_id)
-        try:
-            if os.path.exists(session_file):
-                os.remove(session_file)
-                write_log(f"🧹 Session supprimée à la déconnexion : {session_file}")
-        except Exception as e:
-            write_log(f"⚠️ Erreur suppression session fichier : {e}")
-
-    from utils import write_connexion_log
-    write_connexion_log(session.get("user_id"), session.get("username"), action="logout")
-
-    if current_user.is_authenticated:
-        log_connexion(current_user, action="logout")
-
     logout_user()
     session.clear()
     flash("Déconnexion réussie.", "info")
@@ -1251,15 +1270,13 @@ def update_field_groups():
         return "Erreur lors de la mise à jour", 500
 
 
+from flask_login import login_required, current_user
+
 @app.route('/')
+@login_required
 def index():
-    if not current_user.is_authenticated:
-        return redirect(url_for('login'))
+    return render_template("index.html")
 
-    user_role = current_user.role.lower()
-
-    # plus besoin de lire app_bene ou app_assos
-    return render_template("index.html", user_role=user_role)
 
 
 
@@ -1353,7 +1370,6 @@ def test_email_api():
     sender = os.getenv("MAILJET_SENDER")
     destinataire = sender
 
-    # 🪵 Affichage complet et sécurisé des valeurs
     write_log("📤 Test API Mailjet — Début")
     write_log(f"MAILJET_SENDER = {sender}")
     write_log(f"MAILJET_API_KEY = {repr(api_key)[:8]}... ({'✔️' if api_key else '❌'})")
@@ -1365,7 +1381,10 @@ def test_email_api():
                 "From": {"Email": sender},
                 "To": [{"Email": destinataire}],
                 "Subject": "✅ Test API Mailjet depuis BA380",
-                "TextPart": "Ceci est un test automatique via l'API Mailjet.\n\nSi vous recevez ce message, tout fonctionne !"
+                "TextPart": (
+                    "Ceci est un test automatique via l'API Mailjet.\n\n"
+                    "Si vous recevez ce message, tout fonctionne !"
+                )
             }
         ]
     }
@@ -1379,12 +1398,15 @@ def test_email_api():
         write_log(f"📬 Statut réponse Mailjet : {response.status_code}")
         write_log(f"📨 Réponse Mailjet : {response.text}")
         response.raise_for_status()
+
         flash("✅ Email de test envoyé avec succès via l’API Mailjet.", "success")
+
     except Exception as e:
         write_log(f"❌ Erreur Mailjet : {e}")
         flash(f"❌ Erreur Mailjet : {e}", "danger")
 
-    return redirect(url_for("index"))
+    return redirect(url_for("debug_bp.admin_scripts"))
+
 
 
 

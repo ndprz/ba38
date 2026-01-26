@@ -895,6 +895,7 @@ def update_benevoles_table():
 
 
 @benevoles_bp.route('/photo_benevole_mobile', methods=['GET', 'POST'])
+@login_required
 def photo_benevole_mobile():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1005,19 +1006,48 @@ def desactiver_benevole(benevole_id):
         if not motif:
             flash("⛔ Le motif est obligatoire.", "danger")
             return render_template("desactiver_benevole.html", benevole=benevole)
+    
+        now = datetime.now().strftime("%Y-%m-%d")
 
         try:
-            colonnes = [desc[1] for desc in cursor.execute("PRAGMA table_info(benevoles)").fetchall()]
-            colonnes_str = ", ".join(colonnes)
-            placeholders = ", ".join(["?"] * len(colonnes))
-            valeurs = tuple(benevole[col] for col in colonnes)
+            # 🔹 Colonnes des deux tables
+            cols_bene = {
+                row["name"]
+                for row in cursor.execute("PRAGMA table_info(benevoles)").fetchall()
+            }
+            cols_inactifs = {
+                row["name"]
+                for row in cursor.execute("PRAGMA table_info(benevoles_inactifs)").fetchall()
+            }
 
-            now = datetime.now().strftime("%Y-%m-%d")
-            colonnes_str += ", motif_inactivite, date_desactivation"
-            placeholders += ", ?, ?"
+            # ✅ Colonnes communes
+            colonnes = sorted(cols_bene & cols_inactifs)
+
+            # 🔹 Préparer valeurs communes
+            colonnes_sql = ", ".join(f"`{c}`" for c in colonnes)
+            placeholders = ", ".join(["?"] * len(colonnes))
+            valeurs = [benevole[c] for c in colonnes]
+
+            # 🔹 Ajouter les champs d’archivage s’ils existent
+            extra_cols = []
+            extra_vals = []
+
+            if "motif_inactivite" in cols_inactifs:
+                extra_cols.append("motif_inactivite")
+                extra_vals.append(motif)
+
+            if "date_desactivation" in cols_inactifs:
+                extra_cols.append("date_desactivation")
+                extra_vals.append(now)
+
+            if extra_cols:
+                colonnes_sql += ", " + ", ".join(extra_cols)
+                placeholders += ", " + ", ".join(["?"] * len(extra_cols))
+                valeurs.extend(extra_vals)
+
             cursor.execute(
-                f"INSERT INTO benevoles_inactifs ({colonnes_str}) VALUES ({placeholders})",
-                valeurs + (motif, now)
+                f"INSERT INTO benevoles_inactifs ({colonnes_sql}) VALUES ({placeholders})",
+                valeurs
             )
 
             cursor.execute("DELETE FROM benevoles WHERE id = ?", (benevole_id,))
@@ -1025,6 +1055,7 @@ def desactiver_benevole(benevole_id):
 
             flash("✅ Bénévole désactivé et archivé avec succès.", "success")
             return redirect(url_for("benevoles.benevoles"))
+
         except Exception as e:
             conn.rollback()
             flash(f"❌ Erreur lors de la désactivation : {e}", "danger")
@@ -1047,26 +1078,53 @@ def restaurer_benevole(benevole_id):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    benevole = cursor.execute("SELECT * FROM benevoles_inactifs WHERE id = ?", (benevole_id,)).fetchone()
+    benevole = cursor.execute(
+        "SELECT * FROM benevoles_inactifs WHERE id = ?",
+        (benevole_id,)
+    ).fetchone()
+
     if not benevole:
         flash("⛔ Bénévole introuvable en archive.", "danger")
         return redirect(url_for("benevoles.benevoles_archives"))
 
     try:
-        colonnes = [desc[1] for desc in cursor.execute("PRAGMA table_info(benevoles)").fetchall()]
-        colonnes_str = ", ".join(colonnes)
+        # 🔹 Colonnes de chaque table
+        cols_benevoles = {
+            row["name"]
+            for row in cursor.execute("PRAGMA table_info(benevoles)").fetchall()
+        }
+        cols_inactifs = {
+            row["name"]
+            for row in cursor.execute("PRAGMA table_info(benevoles_inactifs)").fetchall()
+        }
+
+        # ✅ Colonnes communes uniquement
+        colonnes = sorted(cols_benevoles & cols_inactifs)
+
+        colonnes_sql = ", ".join(f"`{c}`" for c in colonnes)
         placeholders = ", ".join(["?"] * len(colonnes))
-        valeurs = tuple(benevole[col] for col in colonnes)
+        valeurs = [benevole[c] for c in colonnes]
 
         cursor.execute(
-            f"INSERT INTO benevoles ({colonnes_str}) VALUES ({placeholders})", valeurs
+            f"INSERT INTO benevoles ({colonnes_sql}) VALUES ({placeholders})",
+            valeurs
         )
-        cursor.execute("DELETE FROM benevoles_inactifs WHERE id = ?", (benevole_id,))
+
+        cursor.execute(
+            "DELETE FROM benevoles_inactifs WHERE id = ?",
+            (benevole_id,)
+        )
+
         conn.commit()
+        upload_database()
         flash("✅ Bénévole restauré avec succès.", "success")
+
     except Exception as e:
         conn.rollback()
         flash(f"❌ Erreur lors de la restauration : {e}", "danger")
+
+    finally:
+        conn.close()
 
     return redirect(url_for("benevoles.benevoles_archives"))
 

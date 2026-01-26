@@ -1,60 +1,79 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ============================================================
-# 🔐 Chargement des variables d’environnement
-# ============================================================
+# ============================================================================
+# 🔍 Détermination du contexte d’exécution
+# ============================================================================
 
-# Le script est dans /srv/ba38/scripts
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-ENV_FILE="$BASE_DIR/.env"
-
-if [[ ! -f "$ENV_FILE" ]]; then
-  echo "❌ Fichier .env introuvable : $ENV_FILE"
+if [[ "$SCRIPT_DIR" == *"/dev/"* ]]; then
+  CONTEXT="DEV"
+  BASE_DIR="/srv/ba38/dev"
+  PROD_DIR="/srv/ba38/prod"
+elif [[ "$SCRIPT_DIR" == *"/prod/"* ]]; then
+  CONTEXT="PROD"
+  BASE_DIR="/srv/ba38/prod"
+  PROD_DIR="/srv/ba38/prod"
+else
+  echo "❌ Contexte inconnu (ni DEV ni PROD)"
   exit 1
 fi
 
-set -a
-source "$ENV_FILE"
-set +a
+# ============================================================================
+# 📦 Chargement .env PROD si présent
+# ============================================================================
 
-# ============================================================
-# 🛑 Sécurité : uniquement PROD
-# ============================================================
+ENV_FILE="$PROD_DIR/.env"
 
-if [[ "${ENVIRONMENT:-}" != "PROD" ]]; then
-  echo "⛔ Ce script est réservé à l’environnement PROD"
-  echo "ENVIRONMENT=${ENVIRONMENT:-non défini}"
+if [[ -f "$ENV_FILE" ]]; then
+  source "$ENV_FILE"
+else
+  echo "⚠️ Aucun .env PROD trouvé ($ENV_FILE)"
+  echo "⚠️ Sauvegarde limitée (mode initialisation)"
+fi
+
+# ============================================================================
+# 📁 Dossiers
+# ============================================================================
+
+BACKUP_DIR="/srv/ba38/backups"
+LOG_DIR="$PROD_DIR/logs"
+LOG_FILE="$LOG_DIR/backup.log"
+
+mkdir -p "$BACKUP_DIR" "$LOG_DIR"
+
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "📦 BACKUP PROD — $(date '+%Y-%m-%d %H:%M:%S')"
+echo "Contexte appel : $CONTEXT"
+echo "Script : $SCRIPT_DIR"
+
+# ============================================================================
+# 🔒 Vérification répertoire PROD
+# ============================================================================
+
+if [[ ! -d "$PROD_DIR" ]]; then
+  echo "❌ Répertoire PROD introuvable : $PROD_DIR"
   exit 1
 fi
 
-# ============================================================
-# 📦 Paramètres sauvegarde
-# ============================================================
+# ============================================================================
+# 🗄️ Création de l’archive
+# ============================================================================
 
-DATE="$(date +'%Y%m%d-%H%M')"
-VERSION="${VERSION:-unknown}"
+VERSION="$(date '+%Y%m%d-%H%M%S')"
+ARCHIVE="$BACKUP_DIR/ba380-v$VERSION.tar.gz"
 
-BA38_ROOT="$(cd "$BASE_DIR/.." && pwd)"   # /srv/ba38
-BACKUPS_DIR="${BACKUPS_DIR:-$BA38_ROOT/backups}"
-SOURCE_DIR="${APP_ROOT:-$BASE_DIR}"
+echo "📁 Source : $PROD_DIR"
+echo "📦 Archive : $ARCHIVE"
 
-mkdir -p "$BACKUPS_DIR"
+tar -czf "$ARCHIVE" \
+  --exclude="$PROD_DIR/venv" \
+  --exclude="$PROD_DIR/__pycache__" \
+  --exclude="$PROD_DIR/logs/*.log" \
+  -C "$(dirname "$PROD_DIR")" "$(basename "$PROD_DIR")"
 
-DEST="$BACKUPS_DIR/ba38-prod-v${VERSION}-${DATE}.tar.gz"
-
-# ============================================================
-# 🚀 Sauvegarde
-# ============================================================
-
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "🔄 Sauvegarde PROD en cours"
-echo "📂 Source  : $SOURCE_DIR"
-echo "📦 Archive : $DEST"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-tar -czf "$DEST" "$SOURCE_DIR"
-
-echo "✅ Sauvegarde terminée avec succès"
+echo "✅ Sauvegarde terminée"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
