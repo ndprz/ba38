@@ -9,6 +9,7 @@ import io
 import json
 import sqlite3
 
+
 # ================================================================
 # 🧩 Blueprint : EXPORTS / GÉNÉRATEUR EXCEL / FICHIERS
 # ================================================================
@@ -327,41 +328,92 @@ def generateur_excel():
 # 📦 ROUTE : génération de fichiers standards
 # ================================================================
 @export_data_bp.route("/generation_fichiers", methods=["GET", "POST"])
+@login_required
 def generation_fichiers():
-    """Exports prédéfinis rapides (assos actives, besoins, etc.)"""
+    """Exports Excel dynamiques basés sur field_groups"""
+
     source = request.args.get("source", "assos")
     base_template = "base_assos.html" if source == "assos" else "base_bene.html"
 
     if request.method == "POST":
         data_type = request.form.get("data_type", "all")
+
         conn = get_db_connection()
+        cursor = conn.cursor()
 
-        queries = {
-            "all": ("SELECT * FROM associations", "extraction_toutes_associations.xlsx"),
-            "active": ("SELECT * FROM associations WHERE validite = 'oui'", "extraction_associations_actives.xlsx"),
-            "inactive": ("SELECT * FROM associations WHERE validite != 'oui'", "extraction_associations_inactives.xlsx"),
-            "indicateurs_etats": ("""
-                SELECT code_VIF, nom_association, responsable_IE, tel_resp_IE, courriel_resp_IE1, courriel_resp_IE2, car
-                FROM associations
-            """, "extraction_indicateurs_etats.xlsx"),
-            "besoins": ("""
-                SELECT Code_VIF, nom_association, besoins_particuliers, Validite, heure_de_passage
-                FROM associations
-            """, "extraction_associations_besoins.xlsx"),
-            "benevoles_complet": ("SELECT * FROM benevoles", "benevoles.xlsx"),
-        }
+        # ======================================================
+        # 🔎 Déterminer la table et le filtre associé
+        # ======================================================
 
-        if data_type not in queries:
+        if data_type in ["all", "active", "inactive", "indicateurs_etats", "besoins"]:
+            table = "associations"
+            appli = "associations"
+        elif data_type == "benevoles_complet":
+            table = "benevoles"
+            appli = "benevoles"
+        else:
             flash("Type d'extraction inconnu", "danger")
             return redirect(url_for("export_data.generation_fichiers"))
 
-        query, file_name = queries[data_type]
+        # ======================================================
+        # 📋 Récupération des champs depuis field_groups
+        # ======================================================
+
+        fields = cursor.execute("""
+            SELECT field_name
+            FROM field_groups
+            WHERE appli = ?
+            ORDER BY display_order
+        """, (appli,)).fetchall()
+
+        field_names = [row["field_name"] for row in fields]
+
+        if not field_names:
+            flash("⚠️ Aucun champ défini dans field_groups.", "warning")
+            return redirect(url_for("export_data.generation_fichiers"))
+
+        columns_sql = ", ".join([f'"{c}"' for c in field_names])
+
+        # ======================================================
+        # 📊 Filtres spécifiques
+        # ======================================================
+
+        where_clause = ""
+
+        if data_type == "active":
+            where_clause = "WHERE validite = 'oui'"
+
+        elif data_type == "inactive":
+            where_clause = "WHERE validite != 'oui'"
+
+        # indicateurs_etats et besoins
+        # 👉 on exporte maintenant tous les champs field_groups
+        #    (plus cohérent que sélection partielle codée en dur)
+
+        query = f"SELECT {columns_sql} FROM {table} {where_clause}"
+
         df = pd.read_sql_query(query, conn)
         conn.close()
+
+        # ======================================================
+        # 📤 Génération Excel
+        # ======================================================
+
+        file_map = {
+            "all": "extraction_toutes_associations.xlsx",
+            "active": "extraction_associations_actives.xlsx",
+            "inactive": "extraction_associations_inactives.xlsx",
+            "indicateurs_etats": "extraction_indicateurs_etats.xlsx",
+            "besoins": "extraction_associations_besoins.xlsx",
+            "benevoles_complet": "benevoles.xlsx",
+        }
+
+        file_name = file_map.get(data_type, "export.xlsx")
 
         output = io.BytesIO()
         df.to_excel(output, index=False, engine="openpyxl")
         output.seek(0)
+
         return send_file(
             output,
             as_attachment=True,
@@ -369,14 +421,20 @@ def generation_fichiers():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-    # --- Rendu initial de la page
+    # ======================================================
+    # Rendu initial page
+    # ======================================================
+
     conn = get_db_connection()
     cursor = conn.cursor()
+
     fields_data = cursor.execute("""
-        SELECT * FROM field_groups
+        SELECT *
+        FROM field_groups
         WHERE appli = 'associations'
         ORDER BY display_order
     """).fetchall()
+
     conn.close()
 
     grouped_fields = {}

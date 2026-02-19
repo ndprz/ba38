@@ -67,6 +67,7 @@ from wtforms import StringField, PasswordField, SubmitField, SelectField
 from wtforms.validators import Optional, DataRequired, Email, Length, EqualTo, ValidationError
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import MethodNotAllowed
 from docx import Document
 from fpdf import FPDF
 from weasyprint import HTML
@@ -102,6 +103,7 @@ from ba38_evenements import evenements_bp
 from ba38_factures import factures_bp
 from ba38_mail_benevoles import mail_bene_bp
 from ba38_planning_report import planning_report_bp
+from ba38_aide import aide_bp
 
 
 
@@ -113,6 +115,25 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY")
 app.jinja_env.filters['format_tel'] = format_tel
 
+# ==================================================
+# 🔴 Sessions Flask via Redis
+# ==================================================
+from flask_session import Session
+from redis import Redis
+from datetime import timedelta
+
+app.config.update(
+    SESSION_TYPE="redis",
+    SESSION_REDIS=Redis(host="127.0.0.1", port=6379, db=0),
+
+    SESSION_PERMANENT=True,
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
+
+    SESSION_USE_SIGNER=True,
+)
+Session(app)
+
+
 # ✅ Augmente la taille maximale des requêtes POST à 10 Mo
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024
 app.config["LOG_FILE"] = LOG_FILE
@@ -120,6 +141,28 @@ app.config["LOG_FILE"] = LOG_FILE
 @app.route("/__ping")
 def __ping():
     return "PING OK"
+
+@app.context_processor
+def inject_env():
+    return {
+        "env_name": os.getenv("ENVIRONMENT", "dev")
+    }
+
+@app.errorhandler(404)
+def page_not_found(e):
+    if request.path.startswith(("/static", "/login", "/admin")):
+        write_log(f"❌ 404 - URL non trouvée : {request.url}")
+    return render_template("404.html"), 404
+
+
+@app.errorhandler(MethodNotAllowed)
+def handle_405(e):
+    current_app.logger.warning(
+        f"405 {request.method} {request.path} "
+        f"user={getattr(current_user,'id','anon')} "
+        f"ip={request.remote_addr}"
+    )
+    return e
 
 
 # =========================
@@ -141,6 +184,31 @@ def inject_access_helpers():
 
 from ba38_admin import compute_user_role
 
+@app.after_request
+def add_security_headers(response):
+    response.headers.setdefault(
+        "Strict-Transport-Security",
+        "max-age=31536000; includeSubDomains"
+    )
+    response.headers.setdefault(
+        "X-Frame-Options",
+        "SAMEORIGIN"
+    )
+    response.headers.setdefault(
+        "X-Content-Type-Options",
+        "nosniff"
+    )
+    response.headers.setdefault(
+        "Referrer-Policy",
+        "strict-origin-when-cross-origin"
+    )
+    response.headers.setdefault(
+        "X-XSS-Protection",
+        "1; mode=block"
+    )
+    return response
+
+
 @app.before_request
 def load_user_context():
     """
@@ -157,6 +225,18 @@ def inject_user_role():
         "user_role": g.user_role
     }
 
+@app.before_request
+def log_requests():
+    user = (
+        current_user.id
+        if hasattr(current_user, "is_authenticated") and current_user.is_authenticated
+        else "anonymous"
+    )
+
+    current_app.logger.info(
+        f"REQ {request.method} {request.path} "
+        f"user={user} ip={request.remote_addr}"
+    )
 
 # Authentification Flask-Login
 login_manager = LoginManager()
@@ -189,11 +269,9 @@ app.register_blueprint(evenements_bp)
 app.register_blueprint(factures_bp)
 app.register_blueprint(mail_bene_bp)
 app.register_blueprint(planning_report_bp)
+app.register_blueprint(aide_bp)
 
 
-
-# if __name__ == "__main__":
-#     app.run(debug=True)
 
 # Enregistrement de la fonction has_access dans l’environnement Jinja
 app.jinja_env.globals['has_access'] = has_access
@@ -335,60 +413,39 @@ class User(UserMixin):
 
 
 
-@app.route("/debug_env_session")
-def debug_env_session():
-    return f"ENV={ENVIRONMENT} — Dossier de session : {app.config['SESSION_FILE_DIR']}"
+# @app.route("/debug_env_session")
+# def debug_env_session():
+#     return f"ENV={ENVIRONMENT} — Dossier de session : {app.config['SESSION_FILE_DIR']}"
 
 
-
-# ✅ Configuration du dossier de sessions à partir du .env
+# # ------------------------------------------------------------------
+# # Séparation stricte des sessions DEV / PROD
+# # ------------------------------------------------------------------
 
 # ENVIRONMENT = os.getenv("ENVIRONMENT", "prod").lower()
 
-# BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-# SESSION_DIR = os.path.join(BASE_DIR, "flask_sessions")
+# if ENVIRONMENT == "prod":
+#     SESSION_DIR = "/srv/ba38/prod/sessions"
+#     SESSION_COOKIE_NAME = "ba38_prod_session"
+#     SESSION_KEY_PREFIX = "ba38_prod_"
+# else:
+#     SESSION_DIR = "/srv/ba38/dev/sessions"
+#     SESSION_COOKIE_NAME = "ba38_dev_session"
+#     SESSION_KEY_PREFIX = "ba38_dev_"
 
-# if not os.path.exists(SESSION_DIR):
-#     os.makedirs(SESSION_DIR)
+# os.makedirs(SESSION_DIR, exist_ok=True)
 
 # app.config.update(
 #     SESSION_TYPE="filesystem",
 #     SESSION_FILE_DIR=SESSION_DIR,
 #     SESSION_PERMANENT=False,
 #     SESSION_USE_SIGNER=True,
-#     SESSION_KEY_PREFIX="ba38_",
-#     SESSION_COOKIE_NAME="ba38_session",
-    
+
+#     SESSION_COOKIE_NAME=SESSION_COOKIE_NAME,
+#     SESSION_KEY_PREFIX=SESSION_KEY_PREFIX,
 # )
 
-# ------------------------------------------------------------------
-# Séparation stricte des sessions DEV / PROD
-# ------------------------------------------------------------------
-
-ENVIRONMENT = os.getenv("ENVIRONMENT", "prod").lower()
-
-if ENVIRONMENT == "prod":
-    SESSION_DIR = "/srv/ba38/prod/sessions"
-    SESSION_COOKIE_NAME = "ba38_prod_session"
-    SESSION_KEY_PREFIX = "ba38_prod_"
-else:
-    SESSION_DIR = "/srv/ba38/dev/sessions"
-    SESSION_COOKIE_NAME = "ba38_dev_session"
-    SESSION_KEY_PREFIX = "ba38_dev_"
-
-os.makedirs(SESSION_DIR, exist_ok=True)
-
-app.config.update(
-    SESSION_TYPE="filesystem",
-    SESSION_FILE_DIR=SESSION_DIR,
-    SESSION_PERMANENT=False,
-    SESSION_USE_SIGNER=True,
-
-    SESSION_COOKIE_NAME=SESSION_COOKIE_NAME,
-    SESSION_KEY_PREFIX=SESSION_KEY_PREFIX,
-)
-
-Session(app)
+# Session(app)
 
 
 
@@ -554,10 +611,13 @@ else:
 
 @app.before_request
 def check_maintenance_mode():
-    if os.path.exists(FLAG_PATH):
-        current_app.logger.warning(
-            "🛠️ Mode maintenance actif – page HTML affichée"
-        )
+    base_dir = os.getenv("BA38_BASE_DIR")
+    if not base_dir:
+        return
+
+    flag_path = os.path.join(base_dir, "maintenance.flag")
+
+    if os.path.exists(flag_path):
         return render_template("maintenance.html"), 503
 
 @app.before_request
@@ -565,12 +625,12 @@ def set_user_roles():
     if current_user.is_authenticated:
         session["roles_utilisateurs"] = get_user_roles(current_user.email)
 
-@app.before_request
-def sync_user_role():
-    if current_user.is_authenticated:
-        g.user_role = session.get("user_role", "").lower()
-    else:
-        g.user_role = None
+# @app.before_request
+# def sync_user_role():
+#     if current_user.is_authenticated:
+#         g.user_role = session.get("user_role", "").lower()
+#     else:
+#         g.user_role = None
 
 
 
@@ -656,12 +716,12 @@ def get_user_role():
         return getattr(current_user, 'role', 'Utilisateur')
     return session.get('user_role', 'Utilisateur')  # Valeur par défaut
 
-# ✅ Avant chaque requête, charge le rôle de l'utilisateur
-@app.before_request
-def load_user_role():
-    if not current_user.is_authenticated:
-        g.user_role = None
-        return
+# # ✅ Avant chaque requête, charge le rôle de l'utilisateur
+# @app.before_request
+# def load_user_role():
+#     if not current_user.is_authenticated:
+#         g.user_role = None
+#         return
 
     roles = session.get("roles_utilisateurs", [])
 
@@ -677,110 +737,110 @@ def load_user_role():
 
 
 
-@app.route('/active_sessions')
-@login_required
-def active_sessions():
-    if g.user_role != 'admin':
-        return "⛔ Accès refusé", 403
+# @app.route('/active_sessions')
+# @login_required
+# def active_sessions():
+#     if g.user_role != 'admin':
+#         return "⛔ Accès refusé", 403
 
-    session_dir = app.config['SESSION_FILE_DIR']
-    users = []
+#     session_dir = app.config['SESSION_FILE_DIR']
+#     users = []
 
-    for filename in os.listdir(session_dir):
-        path = os.path.join(session_dir, filename)
-        try:
-            with open(path, 'rb') as f:
-                data = f.read()
-                # Flask commence souvent par b'\x80' → pickle
-                try:
-                    raw = data.decode()
-                    session_data = serializer.loads(raw)
-                except Exception:
-                    continue
-                    user_id = session_data.get('user_id')
-                    username = session_data.get('username')
-                    role = session_data.get('user_role')
+#     for filename in os.listdir(session_dir):
+#         path = os.path.join(session_dir, filename)
+#         try:
+#             with open(path, 'rb') as f:
+#                 data = f.read()
+#                 # Flask commence souvent par b'\x80' → pickle
+#                 try:
+#                     raw = data.decode()
+#                     session_data = serializer.loads(raw)
+#                 except Exception:
+#                     continue
+#                     user_id = session_data.get('user_id')
+#                     username = session_data.get('username')
+#                     role = session_data.get('user_role')
 
-                    if user_id:
-                        users.append({
-                            "session": filename,
-                            "user_id": user_id,
-                            "username": username,
-                            "role": role
-                        })
-        except Exception as e:
-            continue
+#                     if user_id:
+#                         users.append({
+#                             "session": filename,
+#                             "user_id": user_id,
+#                             "username": username,
+#                             "role": role
+#                         })
+#         except Exception as e:
+#             continue
 
-    if not users:
-        return "Aucune session utilisateur actuellement active."
+#     if not users:
+#         return "Aucune session utilisateur actuellement active."
 
-    # Générer un petit tableau HTML
-    rows = [
-        f"<tr><td>{u['session']}</td><td>{u['user_id']}</td><td>{u['username']}</td><td>{u['role']}</td></tr>"
-        for u in users
-    ]
-    table = "<table class='table table-bordered'><tr><th>Session</th><th>User ID</th><th>Nom</th><th>Rôle</th></tr>" + "\n".join(rows) + "</table>"
-    return f"<h3>📋 Sessions utilisateur actives :</h3>{table}"
+#     # Générer un petit tableau HTML
+#     rows = [
+#         f"<tr><td>{u['session']}</td><td>{u['user_id']}</td><td>{u['username']}</td><td>{u['role']}</td></tr>"
+#         for u in users
+#     ]
+#     table = "<table class='table table-bordered'><tr><th>Session</th><th>User ID</th><th>Nom</th><th>Rôle</th></tr>" + "\n".join(rows) + "</table>"
+#     return f"<h3>📋 Sessions utilisateur actives :</h3>{table}"
 
-# temporaire a supprimer : 
-@app.route("/debug_session_dir")
-def debug_session_dir():
-    return f"Session file dir utilisé : {app.config['SESSION_FILE_DIR']}"
+# # temporaire a supprimer : 
+# @app.route("/debug_session_dir")
+# def debug_session_dir():
+#     return f"Session file dir utilisé : {app.config['SESSION_FILE_DIR']}"
 
-@app.route('/sessions_globales')
-@login_required
-def sessions_globales():
-    if g.user_role != 'admin':
-        return "⛔ Accès refusé", 403
+# @app.route('/sessions_globales')
+# @login_required
+# def sessions_globales():
+#     if g.user_role != 'admin':
+#         return "⛔ Accès refusé", 403
 
-    import pickle
+#     import pickle
 
-    base_dirs = {
-        "DEV": "/home/ndprz/dev/flask_sessions",
-        "PROD": "/home/ndprz/ba380/flask_sessions"
-    }
+#     base_dirs = {
+#         "DEV": "/home/ndprz/dev/flask_sessions",
+#         "PROD": "/home/ndprz/ba380/flask_sessions"
+#     }
 
-    all_sessions = []
+#     all_sessions = []
 
-    for env, session_dir in base_dirs.items():
-        if not os.path.exists(session_dir):
-            continue
+#     for env, session_dir in base_dirs.items():
+#         if not os.path.exists(session_dir):
+#             continue
 
-        for filename in os.listdir(session_dir):
-            path = os.path.join(session_dir, filename)
-            try:
-                with open(path, "rb") as f:
-                    data = f.read()
-                    if not data.startswith(b'\x80'):
-                        continue  # ignorer les formats non pickle
-                    session_data = pickle.loads(data)
+#         for filename in os.listdir(session_dir):
+#             path = os.path.join(session_dir, filename)
+#             try:
+#                 with open(path, "rb") as f:
+#                     data = f.read()
+#                     if not data.startswith(b'\x80'):
+#                         continue  # ignorer les formats non pickle
+#                     session_data = pickle.loads(data)
 
-                    user_id = session_data.get('user_id')
-                    username = session_data.get('username')
-                    role = session_data.get('user_role')
+#                     user_id = session_data.get('user_id')
+#                     username = session_data.get('username')
+#                     role = session_data.get('user_role')
 
-                    if user_id:
-                        all_sessions.append({
-                            "env": env,
-                            "session": filename,
-                            "user_id": user_id,
-                            "username": username,
-                            "role": role
-                        })
-            except Exception as e:
-                continue
+#                     if user_id:
+#                         all_sessions.append({
+#                             "env": env,
+#                             "session": filename,
+#                             "user_id": user_id,
+#                             "username": username,
+#                             "role": role
+#                         })
+#             except Exception as e:
+#                 continue
 
-    if not all_sessions:
-        return "Aucune session utilisateur active trouvée en DEV ou PROD."
+#     if not all_sessions:
+#         return "Aucune session utilisateur active trouvée en DEV ou PROD."
 
-    # Affichage HTML
-    html = "<h3>🧾 Sessions actives (DEV + PROD)</h3>"
-    html += "<table class='table table-striped'><thead><tr><th>ENV</th><th>Session</th><th>User ID</th><th>Nom</th><th>Rôle</th></tr></thead><tbody>"
-    for s in all_sessions:
-        html += f"<tr><td>{s['env']}</td><td>{s['session']}</td><td>{s['user_id']}</td><td>{s['username']}</td><td>{s['role']}</td></tr>"
-    html += "</tbody></table>"
+#     # Affichage HTML
+#     html = "<h3>🧾 Sessions actives (DEV + PROD)</h3>"
+#     html += "<table class='table table-striped'><thead><tr><th>ENV</th><th>Session</th><th>User ID</th><th>Nom</th><th>Rôle</th></tr></thead><tbody>"
+#     for s in all_sessions:
+#         html += f"<tr><td>{s['env']}</td><td>{s['session']}</td><td>{s['user_id']}</td><td>{s['username']}</td><td>{s['role']}</td></tr>"
+#     html += "</tbody></table>"
 
-    return html
+#     return html
 
 
 
@@ -1314,10 +1374,10 @@ def list_routes():
     return "<pre>" + "\n".join(sorted(output)) + "</pre>"
 
 
-@app.errorhandler(404)
-def not_found_error(error):
-    write_log(f"❌ 404 - URL non trouvée : {request.url}")
-    return render_template('404.html', url=request.url), 404
+# @app.errorhandler(404)
+# def not_found_error(error):
+#     write_log(f"❌ 404 - URL non trouvée : {request.url}")
+#     return render_template('404.html', url=request.url), 404
 
 @app.route('/test_404_page')
 def test_404_page():

@@ -15,6 +15,7 @@
 <table class="table table-bordered table-sm" id="usersTable">
     <thead>
         <tr>
+            <th>Id</th>
             <th>Email</th>
             <th>Nom</th>
             <th>Rôle (UI)</th>
@@ -27,6 +28,11 @@
     <tbody>
     {% for user in users %}
         <tr>
+            <td>
+                <input class="form-control text-center"
+                    style="width: 6ch;"
+                    name="id[{{ loop.index0 }}][username]"
+                    value="{{ user.id }}">            </td>
             <td>
                 <input type="hidden"
                     name="users[{{ loop.index0 }}][id]"

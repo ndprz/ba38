@@ -24,3 +24,4 @@ def read_env(path: Path):
 
 if __name__ == "__main__":
     read_env(ENV_FILE)
+

@@ -9,12 +9,15 @@ from flask import (
     session, g, current_app, jsonify
 )
 from flask_login import login_required
+from redis import Redis
+
 import os
 import logging
 import subprocess
 import sqlite3
 import re
 import sys
+import json
 
 from datetime import datetime, timedelta
 
@@ -77,7 +80,38 @@ def git_log():
         </a>
     """, commits=commits)
 
+# ============================
+# 📡 2. Affichage rapide logs PA
+# ============================
+@debug_bp.route('/get_error_log_tail')
+@login_required
+def get_error_log_tail():
+    """
+    📡 Retourne les 100 dernières lignes du fichier error.log (DEV ou PROD).
+    Détection par ENVIRONMENT dans .env
+    """
+    try:
+        env = os.getenv("ENVIRONMENT", "prod")
+        if env == "dev":
+            log_path = "/var/log/ndprz.pythonanywhere.com.error.log"
+        else:
+            log_path = "/var/log/www_ba380_org.error.log"
 
+        if not os.path.exists(log_path):
+            return f"❌ Fichier introuvable : {log_path}", 404
+        if not os.access(log_path, os.R_OK):
+            return f"❌ Accès refusé à : {log_path}", 403
+
+        result = subprocess.run(['tail', '-n', '100', log_path], capture_output=True, text=True)
+        if result.returncode != 0:
+            write_log("l'erreur est la")
+            return f"Erreur lecture : {result.stderr}", 500
+
+        return result.stdout
+
+    except Exception as e:
+        import traceback
+        return f"❌ Exception Python :\n{traceback.format_exc()}", 500
 # ============================================================================
 # 📝 HISTORIQUE DES DÉPLOIEMENTS
 # ============================================================================
@@ -472,33 +506,51 @@ def restaurer_version():
     return render_template("restaurer_version.html", fichiers=fichiers)
 
 
-@debug_bp.route("/check_drive_ids", methods=["GET", "POST"])
+# ============================================================================
+# 🔍 Vérification des IDs Google Drive (DEV / PROD)
+# ============================================================================
+@debug_bp.route("/check_drive_ids", methods=["GET"])
 @login_required
 def check_drive_ids():
+    if session.get("user_role") != "admin":
+        flash("⛔ Accès interdit.", "danger")
+        return redirect(url_for("index"))
+
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
     from dotenv import dotenv_values
+    import os
+
+    write_log("🔍 Vérification des IDs Google Drive")
 
     base_envs = {
-        "DEV": "/home/ndprz/dev/.env",
-        "PROD": "/home/ndprz/ba380/.env"
+        "DEV": "/srv/ba38/dev/.env",
+        "PROD": "/srv/ba38/prod/.env",
     }
 
     results = []
 
     for env_name, env_path in base_envs.items():
+        # --- Vérification fichier .env ---
+        if not os.path.exists(env_path):
+            results.append((env_name, ".env", "❌", f"Fichier introuvable : {env_path}"))
+            continue
+
         try:
             config = dotenv_values(env_path)
-            service_file = config.get("SERVICE_ACCOUNT_FILE")
-            folder_id = config.get("GDRIVE_DB_FOLDER_ID")
 
+            service_file = config.get("SERVICE_ACCOUNT_FILE")
             if not service_file:
                 results.append((env_name, "SERVICE_ACCOUNT_FILE", "❌", "Non défini"))
                 continue
 
+            if not os.path.exists(service_file):
+                results.append((env_name, "SERVICE_ACCOUNT_FILE", "❌", f"Fichier absent : {service_file}"))
+                continue
+
             credentials = service_account.Credentials.from_service_account_file(
                 service_file,
-                scopes=["https://www.googleapis.com/auth/drive"]
+                scopes=["https://www.googleapis.com/auth/drive"],
             )
             service = build("drive", "v3", credentials=credentials)
 
@@ -517,20 +569,20 @@ def check_drive_ids():
                     file = service.files().get(
                         fileId=file_id,
                         fields="id, name",
-                        supportsAllDrives=True
+                        supportsAllDrives=True,
                     ).execute()
                     results.append((env_name, key, "✅", file["name"]))
                 except Exception as e:
                     results.append((env_name, key, "❌", str(e)))
 
         except Exception as e:
-            results.append((env_name, "Chargement .env", "❌", f"Erreur : {e}"))
+            results.append((env_name, "Chargement", "❌", f"Erreur : {e}"))
 
-    # Rendu HTML simple (page diagnostic)
+    # --- Rendu HTML intégré admin_scripts ---
     html = """
-    <h3>🗃️ Vérification des fichiers Google Drive</h3>
-    <table class="table table-bordered">
-      <thead>
+    <h4 class="mb-3">🗃️ Vérification des fichiers Google Drive</h4>
+    <table class="table table-sm table-bordered">
+      <thead class="table-light">
         <tr>
           <th>ENV</th>
           <th>Clé</th>
@@ -542,15 +594,67 @@ def check_drive_ids():
     """
 
     for env, key, status, detail in results:
-        html += f"<tr><td>{env}</td><td>{key}</td><td>{status}</td><td>{detail}</td></tr>"
+        html += f"""
+        <tr>
+          <td>{env}</td>
+          <td><code>{key}</code></td>
+          <td>{status}</td>
+          <td>{detail}</td>
+        </tr>
+        """
 
     html += """
       </tbody>
     </table>
-    <a href="/admin_scripts" class="btn btn-secondary mt-3">⬅️ Retour</a>
     """
 
-    return html
+    return render_template(
+        "admin_scripts.html",
+        output=html,
+        script_name="Vérification Google Drive",
+        error=False,
+    )
+
+
+def count_active_sessions():
+    r = Redis(host="127.0.0.1", port=6379)
+    return sum(1 for _ in r.scan_iter("session:*"))
+
+
+
+def get_active_sessions(env):
+    """
+    Retourne les sessions Redis actives pour DEV ou PROD
+    """
+    redis_client = Redis(host="127.0.0.1", port=6379, decode_responses=True)
+
+    sessions = []
+    prefix = "session:"
+
+    for key in redis_client.scan_iter(f"{prefix}*"):
+        try:
+            raw = redis_client.get(key)
+            if not raw:
+                continue
+
+            data = json.loads(raw)
+
+            # Sécurité : on filtre sur l'env si présent
+            if data.get("ENVIRONMENT") and data["ENVIRONMENT"] != env:
+                continue
+
+            sessions.append({
+                "username": data.get("username", "?"),
+                "email": data.get("email", "?"),
+                "connexion_time": data.get("login_time", "?"),
+                "last_seen": data.get("last_seen", "?"),
+                "actif": "oui",
+            })
+
+        except Exception:
+            continue
+
+    return sessions
 
 
 # ============================================================================
@@ -575,9 +679,23 @@ def admin_scripts():
         "status_site.sh": "status_site.sh",
         "backup_prod.sh": "backup_prod.sh",
         "deploy_to_prod.sh": "deploy_to_prod.sh",
+        "enable_maintenance.sh": "enable_maintenance.sh",
+        "disable_maintenance.sh": "disable_maintenance.sh",
+        "sync_type_champ.py": "sync_type_champ.py",
+        "check_schema_diff.sh": "check_schema_diff.sh",
+        "migrate_schema_and_data_dev_to_prod.py": "migrate_schema_and_data_dev_to_prod.py",
+        "check_env.py": "check_env.py",
         "read_env.py": "read_env.py",
+        "fix_permissions.sh": "fix_permissions.sh",
+        "fix_line_endings.sh": "fix_line_endings.sh",
+        "update_benevoles_schema_prod.py": "update_benevoles_schema_prod.py",
+        "update_associations_schema_prod.py": "update_associations_schema_prod.py",
+        "verify_env_consistency.py": "verify_env_consistency.py",
+        "restore_prod.sh": "restore_prod.sh",
+        "cleanup_backups.py": "cleanup_backups.py",
+        "recreer_table_benevoles_inactifs.py": "recreer_table_benevoles_inactifs.py",
+        "create_test_databases.py": "create_test_databases.py",
     }
-
     if request.method == "POST":
         script_name = request.form.get("script_name")
 
@@ -615,14 +733,19 @@ def admin_scripts():
 
     version_msg = os.getenv("VERSION_MSG", "Version inconnue")
 
+    nb_sessions = count_active_sessions()
+
+    connexions_dev = [{"label": f"{nb_sessions} session(s) active(s)"}] if nb_sessions else []
+    connexions_prod = [{"label": f"{nb_sessions} session(s) active(s)"}] if nb_sessions else []
+
     return render_template(
         "admin_scripts.html",
         output=output,
         error=error,
         script_name=script_name,
         version_msg=version_msg,
-        connexions_dev=[],
-        connexions_prod=[],
+        connexions_dev=connexions_dev,
+        connexions_prod=connexions_prod,
         connexions_historiques=[],
         connexions_log=[]
     )

@@ -1,0 +1,103 @@
+{% extends "base_distribution.html" %}
+
+{% block title %}Bon de transfert {{ num_mvt }}{% endblock %}
+
+{% block content %}
+
+<div class="container mt-4">
+
+    <!-- ===================================================== -->
+    <!-- EN-TÊTE -->
+    <!-- ===================================================== -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+
+    <h2>
+        📦 Bordereau de transfert – {{ num_mvt }}
+    </h2>
+
+    <div>
+        <button onclick="retourMouvements()" 
+                class="btn btn-secondary btn-sm">
+        ⬅ Retour aux mouvements
+        </button>
+
+        <button onclick="window.print()" 
+                class="btn btn-primary btn-sm ms-2">
+        🖨 Imprimer
+        </button>
+    </div>
+
+    </div>
+
+    <!-- ===================================================== -->
+    <!-- TABLEAU -->
+    <!-- ===================================================== -->
+
+    <div class="table-responsive">
+        <table class="table table-sm table-striped table-hover sticky-table">
+            <thead class="table-light">
+                <tr>
+                    <th>Article</th>
+                    <th>Lot</th>
+                    <th>Dépôt départ</th>
+                    <th>Dépôt arrivée</th>
+                    <th>PAL</th>
+                    <th>COL</th>
+                    <th>Kg net</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for l in lignes %}
+                <tr>
+                    <td>{{ l.article }}</td>
+                    <td>{{ l.lot or "" }}</td>
+                    <td>{{ l.depot_depart }}</td>
+                    <td>{{ l.depot_arrivee }}</td>
+                    <td class="text-end">{{ l.qte_pal or "" }}</td>
+                    <td class="text-end">{{ l.qte_col or "" }}</td>
+                    <td class="text-end">{{ l.qte_kgn or "" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+
+        </table>
+    </div>
+
+</div>
+
+<!-- ===================================================== -->
+<!-- MODE IMPRESSION -->
+<!-- ===================================================== -->
+
+<style>
+@media print {
+
+    body {
+        background: white !important;
+    }
+
+    .btn,
+    a {
+        display: none !important;
+    }
+
+    h2 {
+        font-size: 20px;
+    }
+
+    table {
+        font-size: 12px;
+    }
+}
+</style>
+
+<script>
+function retourMouvements() {
+    window.location.href = "{{ url_for('distribution.mouvements_stocks_depot') }}?reload=" + Date.now();
+}
+</script>
+
+
+
+{% endblock %}

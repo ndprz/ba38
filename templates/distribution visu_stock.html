@@ -1,0 +1,93 @@
+{% extends "base_distribution.html" %}
+
+
+<div class="table-responsive">
+  <table class="table table-sm table-striped table-hover">
+
+    <thead class="table-light">
+      <tr>
+        <th data-type="text">Article</th>
+        <th data-type="text">Libellé</th>
+        <!-- <th data-type="text">Famille</th> -->
+        <th data-type="text">Sous-famille</th>
+        
+        <th data-column="depot" class="no-sort">
+          <span id="depotFilterBtn" style="cursor:pointer;">
+            Dépôt ⏷
+          </span>
+        </th>
+
+        <th data-type="text">Emplacement</th>
+        <th data-type="number">Kg net</th>
+        <th>Kg ERP</th>
+        <th>Δ jour</th>
+        <th>Kg corrigé</th>
+
+        <th data-type="number">Kg brut</th>
+        <th data-type="number">COL</th>
+        <th data-type="number">PAL</th>
+        <th data-type="text">Lot</th>
+        <th data-type="date">DLC</th>
+        <th data-type="date">DDM</th>
+
+        <th>Mvt PAL</th>
+        <th>Mvt COL</th>
+        <th>Mvt Kg net</th>
+        <th>Dépôt arrivée</th>
+
+      </tr>
+    </thead>
+
+    <tbody>
+    {% for a in articles %}
+      <!--
+        data-famille      : utilisé pour le regroupement
+        data-stock-zero   : 1 si stock nul (kg_net <= 0), sinon 0
+      -->
+      <tr data-famille="{{ a.famille or 'Sans famille' }}"
+          data-stock-zero="{% if a.kg_net is none or (a.kg_net|string|replace(',', '.')|float) <= 0 %}1{% else %}0{% endif %}">
+
+        <td>{{ a.article }}</td>
+        <td>{{ a.libelle }}</td>
+        <!-- <td>{{ a.famille }}</td> -->
+        <td>{{ a.sous_famille }}</td>
+        <td>{{ a.depot or "" }}</td>
+        <td>{{ a.emplacement or "" }}</td>
+
+        <!-- Colonnes numériques alignées -->
+
+        <td class="qty">{{ a.kg_net }}</td>
+        <td class="qty text-muted">{{ a.delta_jour }}</td>
+        <td class="qty fw-bold">
+            {{ (a.kg_net or 0) + (a.delta_jour or 0) }}
+        </td>
+
+        <td class="qty">{{ a.kg_brut if a.kg_brut is not none else "" }}</td>
+
+        <td class="qty">{{ a.col if a.col is not none else "" }}</td>
+
+        <td class="qty">{{ a.pal if a.pal is not none else "" }}</td>
+
+
+        <td>{{ a.lot or "" }}</td>
+        <td>{{ a.dlc or "" }}</td>
+        <td>{{ a.ddm or "" }}</td>
+
+        <td><input type="number" name="pal_{{ loop.index }}" class="form-control form-control-sm"></td>
+        <td><input type="number" name="col_{{ loop.index }}" class="form-control form-control-sm"></td>
+        <td><input type="number" step="0.01" name="kgn_{{ loop.index }}" class="form-control form-control-sm"></td>
+        <td>
+            <select name="depot_arrivee_{{ loop.index }}" class="form-select form-select-sm">
+                <option value="03" selected>03</option>
+                <option value="04">04</option>
+            </select>
+        </td>
+
+
+      </tr>
+    {% endfor %}
+    </tbody>
+
+
+
+  </table>

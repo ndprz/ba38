@@ -62,17 +62,6 @@
     .photo-hover-container:hover .photo-popup { display: block; }
     </style>
 
-    <!-- 🔹 Messages Flash -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <div class="alert-container">
-          {% for category, message in messages %}
-            <div class="alert alert-{{ category }}">{{ message }}</div>
-          {% endfor %}
-        </div>
-      {% endif %}
-    {% endwith %}
-
 
     <!-- 🔹 Formulaire principal de mise à jour -->
     <form id="updateForm" method="POST" enctype="multipart/form-data"
@@ -102,7 +91,15 @@
                             {% endif %}
                         </div>
                         <div class="col-md-8">
-                            {% if field['field_name'] == 'type_benevole' or field['type_champ'] == 'liste_type_benevole' %}
+                            {% if field['field_name'] == 'civilite' %}
+                            <select name="civilite"
+                                    class="form-select {% if champs_invalides and 'civilite' in champs_invalides %}is-invalid{% endif %}"
+                                    {% if lecture_seule %}disabled{% endif %}>
+                                <option value="">-- Choisir --</option>
+                                <option value="Monsieur" {% if field['value'] == 'Monsieur' %}selected{% endif %}>Monsieur</option>
+                                <option value="Madame" {% if field['value'] == 'Madame' %}selected{% endif %}>Madame</option>
+                            </select>
+                            {% elif field['field_name'] == 'type_benevole' or field['type_champ'] == 'liste_type_benevole' %}
                             {% set current = (field['value'] or '')|lower %}
                             <select name="{{ field['field_name'] }}" id="{{ field['field_name'] }}"
                                     class="form-select {% if champs_invalides and field['field_name'] in champs_invalides %}is-invalid{% endif %}"

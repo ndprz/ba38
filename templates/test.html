@@ -53,15 +53,6 @@
     </style>
 
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <div class="alert-container">
-          {% for category, message in messages %}
-            <div class="alert alert-{{ category }}">{{ message }}</div>
-          {% endfor %}
-        </div>
-      {% endif %}
-    {% endwith %}
 
     <form id="updateForm" method="POST" enctype="multipart/form-data"
           action="{{ url_for('benevoles.update_benevole', benevole_id=benevole_id) }}?{{ next_url }}"

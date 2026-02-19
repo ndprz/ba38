@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required
 from utils import (
     get_db_connection, upload_database, write_log, get_version,
-    get_db_info, get_all_users, has_access, get_db_info_display, has_access
+    get_db_info, get_all_users, has_access, get_db_info_display
 )
 from forms import RegistrationForm, RegistrationForm
 from werkzeug.security import generate_password_hash
@@ -19,6 +19,7 @@ APPLICATIONS = {
     "planning": "Plannings",
     "benevoles": "Bénévoles",
     "associations": "Associations",
+    "distribution": "Distribution",   # ← doit être ici
     "fournisseurs": "Fournisseurs",
     "evenements": "Événements",
 }
@@ -121,27 +122,6 @@ def inject_globals():
     }
 
 
-# # ===================================
-# #   droit requis sur une application
-# # ===================================
-# def has_access(appli, niveau_requis):
-#     """
-#     Vérifie si l'utilisateur courant a le droit requis sur une application.
-#     """
-#     roles = session.get("roles_utilisateurs", [])
-
-#     # Admin global
-#     if session.get("user_role") == "admin":
-#         return True
-
-#     hierarchy = ["lecture", "ecriture", "admin"]
-
-#     for app, droit in roles:
-#         if app == appli:
-#             if hierarchy.index(droit) >= hierarchy.index(niveau_requis):
-#                 return True
-
-#     return False
 
 def compute_user_role():
     if session.get("user_role") == "admin":
@@ -297,10 +277,10 @@ def gestion_utilisateurs():
                 (row["appli"], row["droit"])
             )
 
-        current_app.logger.info(
-            "ROLES PAR USER (normalisés) = %s",
-            roles_par_user
-        )
+        # current_app.logger.info(
+        #     "ROLES PAR USER (normalisés) = %s",
+        #     roles_par_user
+        # )
 
         # Formulaire d’ajout utilisateur
         form = RegistrationForm()
@@ -415,26 +395,79 @@ def supprimer_utilisateur(user_id):
     return redirect(url_for('admin.gestion_utilisateurs'))
 
 # --- Ajout utilisateur ---
+# @admin_bp.route('/ajouter_utilisateur', methods=['POST'])
+# @login_required
+# def ajouter_utilisateur():
+#     form = RegistrationForm()
+#     if form.validate_on_submit():
+#         with get_db_connection() as conn:
+#             hashed_password = generate_password_hash(form.password.data)
+#             conn.execute(
+#                 "INSERT INTO users (username, email, password_hash, role, actif) VALUES (?, ?, ?, ?, ?)",
+#                 (form.username.data, form.email.data, hashed_password, form.role.data, form.actif.data)
+#             )
+#             conn.commit()
+
+#         upload_database()
+#         flash("Utilisateur ajouté avec succès.", "success")
+#         return redirect(url_for('admin.gestion_utilisateurs'))
+
+#     flash("Erreur lors de l'ajout de l'utilisateur.", "danger")
+#     return redirect(url_for('admin.gestion_utilisateurs'))
+
 @admin_bp.route('/ajouter_utilisateur', methods=['POST'])
 @login_required
 def ajouter_utilisateur():
-    form = RegistrationForm()
-    if form.validate_on_submit():
+
+    if g.user_role != "admin":
+        flash("⛔ Accès interdit.", "danger")
+        return redirect(url_for("index"))
+
+    email = request.form.get("email", "").strip().lower()
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    role = request.form.get("role", "user")
+    actif = request.form.get("actif", "Oui")
+
+    # --- Validation minimale ---
+    if not email or not password:
+        flash("Email et mot de passe obligatoires.", "danger")
+        return redirect(url_for("admin.gestion_utilisateurs"))
+
+    actif_db = 1 if actif == "Oui" else 0
+
+    try:
         with get_db_connection() as conn:
-            hashed_password = generate_password_hash(form.password.data)
-            conn.execute(
-                "INSERT INTO users (username, email, password_hash, role, actif) VALUES (?, ?, ?, ?, ?)",
-                (form.username.data, form.email.data, hashed_password, form.role.data, form.actif.data)
-            )
+            cur = conn.cursor()
+
+            # Vérifier doublon email
+            existing = cur.execute(
+                "SELECT id FROM users WHERE email = ?",
+                (email,)
+            ).fetchone()
+
+            if existing:
+                flash("⚠️ Un utilisateur avec cet email existe déjà.", "warning")
+                return redirect(url_for("admin.gestion_utilisateurs"))
+
+            hashed_password = generate_password_hash(password)
+
+            cur.execute("""
+                INSERT INTO users (username, email, password_hash, role, actif)
+                VALUES (?, ?, ?, ?, ?)
+            """, (username, email, hashed_password, role, actif_db))
+
             conn.commit()
 
         upload_database()
-        flash("Utilisateur ajouté avec succès.", "success")
-        return redirect(url_for('admin.gestion_utilisateurs'))
 
-    flash("Erreur lors de l'ajout de l'utilisateur.", "danger")
+        flash("✅ Utilisateur ajouté avec succès.", "success")
+
+    except Exception as e:
+        current_app.logger.exception("Erreur ajout utilisateur")
+        flash("❌ Erreur technique lors de l'ajout.", "danger")
+
     return redirect(url_for('admin.gestion_utilisateurs'))
-
 
 
 @admin_bp.route("/update_users_batch", methods=["POST"])

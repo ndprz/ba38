@@ -3,17 +3,6 @@
 
 {% block content %}
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    <div class="container mt-2">
-      {% for category, message in messages %}
-        <div class="alert alert-{{ category }} py-2 mb-2">
-          {{ message }}
-        </div>
-      {% endfor %}
-    </div>
-  {% endif %}
-{% endwith %}
 
 
 <div class="container mt-4">
@@ -48,6 +37,10 @@
         <td>{{ ligne.connexion_time }}</td>
         <td>{{ ligne.last_seen }}</td>
         <td class="text-center">✅</td>
+        {% for c in connexions_dev %}
+          <li>{{ c.label }}</li>
+        {% endfor %}
+
       </tr>
     {% endfor %}
     </tbody>
@@ -145,7 +138,7 @@
         <button class="btn btn-outline-secondary mb-2 w-100">🔍 Vérifier les variables d'environnement</button>
       </form>
       <form method="POST"><input type="hidden" name="script_name" value="read_env.py">
-        <button class="btn btn-outline-info mb-2 w-100">📄 Afficher le fichier .env (prod)</button>
+        <button class="btn btn-outline-info mb-2 w-100">📄 Afficher le fichier .env (dev)</button>
       </form>
 
       <form method="POST"><input type="hidden" name="script_name" value="fix_permissions.sh">

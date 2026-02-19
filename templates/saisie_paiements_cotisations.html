@@ -1,0 +1,139 @@
+{% extends "base_assos.html" %}
+{% block title %}Saisie des paiements{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <h2>💳 Saisie des paiements de cotisations</h2>
+
+  <!-- Sélecteur année -->
+  <form method="get" class="mb-4">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label">Année</label>
+        <input type="number" name="annee"
+               class="form-control"
+               value="{{ annee or '' }}"
+               required>
+      </div>
+      <div class="col-md-3">
+        <button class="btn btn-primary w-100">
+          Afficher
+        </button>
+      </div>
+    </div>
+  </form>
+
+    <a href="{{ url_for('traitements.saisie_paiements_cotisations', annee=annee, impayes=1) }}"
+        class="btn btn-outline-danger btn-sm">
+        🔎 Impayés uniquement
+    </a>
+
+    <a href="{{ url_for('traitements.saisie_paiements_cotisations', annee=annee) }}"
+        class="btn btn-outline-secondary btn-sm">
+        📄 Tous
+    </a>
+
+    <a href="{{ url_for('traitements.export_cotisations_excel', annee=annee) }}"
+        class="btn btn-success btn-sm">
+        📊 Export Excel
+    </a>
+
+    <div class="card mb-3">
+        <div class="card-body">
+
+            <h6>📊 Recouvrement {{ annee }}</h6>
+
+            <div class="progress" style="height: 25px;">
+                <div class="progress-bar bg-success"
+                    role="progressbar"
+                    style="width: {{ taux_recouvrement }}%;">
+                    {{ taux_recouvrement }} %
+                </div>
+            </div>
+
+            <div class="mt-2">
+                💰 {{ total_paye }} € encaissés sur {{ total_facture }} €
+            </div>
+
+        </div>
+    </div>
+
+  {% if resultats %}
+
+  <table class="table table-sm table-striped">
+    <thead>
+      <tr>
+        <th>Facture</th>
+        <th>Association</th>
+        <th>Code VIF</th>
+        <th>Compte comptable</th>
+        <th class="text-end">Montant (€)</th>
+        <th>Statut</th>
+        <th>Date paiement</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in resultats %}
+      <tr class="{% if r.statut == 'envoyee' and not r.date_paiement %}table-danger{% endif %}">
+        <td>{{ r.numero_facture }}</td>
+        <td>{{ r.nom_association }}</td>
+        <td class="text-monospace">{{ r.code_vif }}</td>
+        <td class="text-monospace">{{ r.compte_comptable or "" }}</td>
+        <td class="text-end">{{ "%.2f"|format(r.montant) }}</td>
+        <td>
+            {% if r.statut == "paye" %}
+                <span class="badge bg-success">Payé</span>
+
+            {% elif r.statut == "envoyee" %}
+                <span class="badge bg-primary">Envoyé</span>
+
+            {% elif r.statut == "calcule" %}
+                <span class="badge bg-secondary">Calculé</span>
+
+            {% else %}
+                <span class="badge bg-light text-dark">
+                    {{ r.statut }}
+                </span>
+            {% endif %}
+        </td>
+        <td>{{ r.date_paiement or "" }}</td>
+        <td>
+          {% if r.statut != "paye" %}
+          <form method="post" class="d-flex gap-2">
+            <input type="hidden"
+                   name="annee"
+                   value="{{ annee }}">
+            <input type="hidden"
+                   name="cotisation_id"
+                   value="{{ r.id }}">
+            <input type="date"
+                   name="date_paiement"
+                   class="form-control"
+                   required>
+            <button class="btn btn-success btn-sm">
+              Valider
+            </button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Totaux -->
+  <tfoot class="table-light fw-bold">
+  <tr>
+    <td colspan="4" class="text-end">TOTAL :</td>
+    <td>{{ total_facture }} €</td>
+    <td>{{ total_paye }} € encaissés</td>
+    <td>{{ total_restant }} € restant</td>
+  </tr>
+  </tfoot>
+
+  {% endif %}
+
+</div>
+{% endblock %}

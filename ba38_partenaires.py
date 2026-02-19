@@ -24,6 +24,7 @@ from io import BytesIO
 
 
 
+
 def header_footer(canvas, doc, title, nom_association):
     # --- EN-TÊTE ---
     canvas.saveState()
@@ -77,7 +78,7 @@ class CSRFForm(FlaskForm):
 
 partenaires_bp = Blueprint("partenaires", __name__)
 
-@partenaires_bp.route("/partenaires", methods=["GET"])
+@partenaires_bp.route("/partenaires", methods=["GET", "POST"])
 @login_required
 def partenaires():
     """
@@ -98,6 +99,13 @@ def partenaires():
       * filtre validité via ?voir_non_valides=1 (sinon on masque les invalides)
     - Trie par nom_association (COLLATE NOCASE).
     """
+
+    selected_columns = request.values.getlist("columns")
+    selected_groups = request.values.getlist("selected_groups")
+    has_interacted = request.values.get("has_interacted") == "1"
+
+    selected_groups = selected_groups or []
+    selected_columns = selected_columns or []
 
     # 🔐 Accès
     if not has_access("associations", "lecture"):
@@ -133,33 +141,16 @@ def partenaires():
         group = row["group_name"] or "Autres"
         grouped_fields.setdefault(group, []).append(row)
 
-    # 🎛️ Lecture des colonnes sélectionnées (GET)
-    selected_columns = request.args.getlist("columns")
-    has_interacted = request.args.get("has_interacted") == "1"
+    has_interacted = request.values.get("has_interacted") == "1"
 
     # 🧩 Compat : parfois les colonnes arrivent en CSV dans un seul champ caché
     if len(selected_columns) == 1 and ',' in selected_columns[0]:
         selected_columns = [c.strip() for c in selected_columns[0].split(',') if c.strip()]
 
     # 🧠 Par défaut (première visite) : groupes « coordonnées »
-    if not has_interacted:
-        selected_groups = [g for g in grouped_fields if g.lower().startswith("coordonnées")]
-        selected_columns = []
-        seen = set()
-        for group in selected_groups:
-            for field in grouped_fields[group]:
-                fname = field["field_name"]
-                # On évite id / nom_association ici (ajoutés à part)
-                if fname not in ['id', 'nom_association'] and fname not in seen:
-                    selected_columns.append(fname)
-                    seen.add(fname)
-    else:
-        # Déduplique et force l’exclusion de id / nom_association
-        dedup = []
-        for c in selected_columns:
-            if c not in ['id', 'nom_association'] and c not in dedup:
-                dedup.append(c)
-        selected_columns = dedup
+    # Aucun forçage côté serveur
+    selected_groups = selected_groups or []
+    selected_columns = selected_columns or []
 
     # ↔️ Groupes « cochés » (pour l’UI)
     selected_groups = []
@@ -691,7 +682,7 @@ def delete_partner(partner_id):
 
 
 
-@partenaires_bp.route("/edition_tableau_associations")
+@partenaires_bp.route("/edition_tableau_associations", methods=["GET", "POST"])
 @login_required
 def edition_tableau_associations():
     if not has_access("associations", "lecture"):
@@ -1761,3 +1752,14 @@ def generate_pdf_annexe1bis(partner_id, groups=None, title="Annexe 1 bis : Infor
     )
     buffer.seek(0)
     return send_file(buffer, as_attachment=True, download_name=f"annexe1bis_{partner_id}.pdf", mimetype='application/pdf')
+
+
+from flask import flash
+
+@partenaires_bp.route("/test_flash")
+def test_flash():
+    flash("Message de test SUCCESS", "success")
+    flash("Message de test DANGER", "danger")
+    flash("Message de test WARNING", "warning")
+    flash("Message de test INFO", "info")
+    return redirect(url_for("partenaires.partenaires"))

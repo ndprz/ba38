@@ -12,7 +12,7 @@
 <tr>
   <th>Jour</th>
   <th>Pesée 1</th><th>Pesée 2</th><th>Pesée 3</th><th>Pesée 4</th>
-  <th>Pesée 5</th><th>Pesée 6</th><th>Fruit 1</th><th>Fruit 2</th>
+  <th>Pesée 5</th><th>Pesée 6</th><th>Pesée 7</th><th>Pesée 8</th><th>Pesée 9</th>
   <th>Durée</th>  <!-- ✅ Durée ajoutée -->
 </tr>
 </thead>
@@ -24,7 +24,7 @@
   <td class="text-capitalize">{{ jour }}</td>
 
   {% for champ in ['pesee01_id','pesee02_id','pesee03_id','pesee04_id',
-                    'pesee05_id','pesee06_id','pesee07_id','pesee08_id'] %}
+                    'pesee05_id','pesee06_id','pesee07_id','pesee08_id','pesee09_id'] %}
   <td>
     <select class="form-select form-select-sm" name="{{ champ }}_{{ jour }}" style="max-width:150px;">
       <option value="">-- Aucun --</option>

@@ -14,15 +14,26 @@
 
     <a href="{{ url_for('traitements.cotisations_start') }}"
        class="list-group-item list-group-item-action">
-      💰 Facturation des cotisations
+      💰 Facturation des cotisations (assos)
+    </a>
+
+    <a href="{{ url_for('traitements.saisie_paiements_cotisations') }}"
+      class="list-group-item list-group-item-action">
+      💳 Saisie des paiements de cotisations (assos)
+    </a>
+
+    <a href="{{ url_for('traitements.cotisations_relance_start') }}"
+      class="list-group-item list-group-item-action">
+      🔔 Relance des cotisations (assos)
+    </a>
+
+    <a href="{{ url_for('factures.decouper_factures') }}"
+      class="list-group-item list-group-item-action">
+      🧾 Découpe de factures PDF
     </a>
 
   </div>
-
-  <a href="{{ url_for('factures.decouper_factures') }}"
-     class="list-group-item list-group-item-action">
-    🧾 Découpe de factures PDF
-  </a>
+  <hr>
 
   <form action="{{ url_for('factures.nettoyer_factures') }}" method="post"
         onsubmit="return confirm('⚠️ Cette action supprimera tous les fichiers et ZIP de factures. Continuer ?');">

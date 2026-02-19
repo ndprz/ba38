@@ -1,0 +1,49 @@
+{% extends "base_assos.html" %}
+{% block title %}Relance des cotisations{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>🔔 Relance des cotisations</h2>
+
+  {% if mail_mode == "TEST" %}
+  <div class="alert alert-warning">
+    🧪 MODE TEST – Les mails seront envoyés à {{ mail_test_to }}
+  </div>
+  {% endif %}
+
+  <form method="post"
+        action="{{ url_for('traitements.cotisations_relance') }}"
+        enctype="multipart/form-data">
+
+    <div class="row g-3 align-items-end">
+
+      <div class="col-md-2">
+        <label class="form-label">Année</label>
+        <input type="number" name="annee" class="form-control" required>
+      </div>
+
+      <div class="col-md-5">
+        <label class="form-label">Fichier PARSOL2 annuel</label>
+        <input type="file" name="parsol_file" class="form-control" required>
+      </div>
+
+      <div class="col-md-2">
+        <label class="form-label">Numéro de relance</label>
+        <select name="numero_relance" class="form-select" required>
+          <option value="1">1ère relance</option>
+          <option value="2">2ème relance</option>
+          <option value="3">3ème relance</option>
+        </select>
+      </div>
+
+      <div class="col-md-3">
+        <button class="btn btn-warning w-100">
+          🔔 Lancer la relance
+        </button>
+      </div>
+
+    </div>
+
+  </form>
+</div>
+{% endblock %}

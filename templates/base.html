@@ -76,71 +76,65 @@
 </head>
 
 <body>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            <script>
-                window.onload = function() {
-                    setTimeout(function() {
-                        var alerts = document.querySelectorAll('.flash-message');
-                        alerts.forEach(alert => alert.remove());
-                    }, 5000);  // Supprime les messages après 5 secondes
-                };
-            </script>
-            <div class="flash-container">
-                {% for category, message in messages %}
-                    <div class="flash-message alert alert-{{ category }}">
-                        {{ message }}
-                    </div>
-                {% endfor %}
-            </div>
-        {% endif %}
-    {% endwith %}
+
 
     <!-- En-tête -->
     <header>
 
-        {% if request.endpoint == "index" %}
-            {% with messages = get_flashed_messages(with_categories=true) %}
-              {% if messages %}
-                {% for category, msg in messages %}
-                  <div class="alert alert-{{ category }}">{{ msg }}</div>
-                {% endfor %}
-              {% endif %}
-            {% endwith %}
-        {% endif %}
 
         {% if session.get('test_user') %}
             <div style="background-color: red; color: white; text-align: center; padding: 10px; font-weight: bold;">
                 ⚠️ MODE TEST ⚠️
             </div>
         {% endif %}
-        <div>
-            <img src="{{ url_for('static', filename='images/logo-circle-orange.svg') }}" alt="Logo">
+
+        <!-- Bloc gauche -->
+        <div class="header-left">
+            <img src="{{ url_for('static', filename='images/logo-circle-orange.svg') }}"
+                alt="Logo BA38"
+                class="header-logo">
+
+            <div class="header-text">
+                <strong>BA38</strong>
+                <span class="header-subtitle">
+                    Bienvenue sur la plateforme des programmes spécifiques de la BA38
+                </span>
+            </div>
+
+            {% if env_name == "dev" %}
+                <span class="badge bg-danger ms-2">Développement</span>
+            {% endif %}
         </div>
-        <p style="text-align: center; color: #555;">Bienvenue sur la plateforme des programmes spécifiques de la BA38</p>
 
+        <!-- Navigation centrale -->
+        <nav class="main-nav">
 
+            <a href="/">Accueil</a>
 
+            {% if is_admin_global() %}
+                <a href="{{ url_for('admin.gestion_utilisateurs') }}">👤 Gestion des utilisateurs</a>
+            {% endif %}
+        </nav>
 
-        <a href="/">Accueil</a>
+        <!-- Bloc droit -->
+        <div class="header-right">
 
-        {% if is_admin_global() %}
-            <a href="{{ url_for('admin.gestion_utilisateurs') }}">👤 Gestion des utilisateurs</a>
-        {% endif %}
+            {% if is_admin_global() %}
+                <a href="{{ url_for('debug_bp.debug_console') }}" class="btn btn-outline-dark btn-sm">
+                    🐞 Console de debug
+                </a>
+            {% endif %}
 
-        {% if is_admin_global() %}
-            <a href="{{ url_for('debug_bp.debug_console') }}" class="btn btn-outline-dark btn-sm">
-                🐞 Console de debug
-            </a>
-        {% endif %}
-
-        {% if current_user.is_authenticated %}
-        <div class="user-info">
-            <span>Connecté : {{ current_user.email }}</span>
-            <a href="{{ url_for('logout') }}" class="btn btn-danger">Déconnexion</a>
-        </div>
-        {% endif %}
+            {% if current_user.is_authenticated %}
+            <div class="user-info">
+                <span>Connecté : {{ current_user.email }}</span>
+                <a href="{{ url_for('logout') }}" class="btn btn-danger">Déconnexion</a>
+            </div>
+            {% endif %}
+       
     </header>
+
+    {% include "_flash.html" %}
 
     <main>
         {% if not current_user.is_authenticated %}
@@ -160,6 +154,11 @@
         </p>
     </footer>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script src="{{ url_for('static', filename='js/layout.js') }}"></script>
+
+
 
     <!-- Scripts JS -->
     <!-- <script src="{{ url_for('static', filename='js/jquery-3.5.1.min.js') }}"></script> -->
@@ -176,9 +175,13 @@
                 console.error(`❌ Élément introuvable : container-${groupName}`);
             }
         }
+
     </script>
+
 </body>
+
 {% if db_info %}
+
 <div class="alert alert-warning text-center m-0 py-1 small" style="font-weight: bold;">
   ⚙️ Base en cours : {{ db_info }}
 </div>

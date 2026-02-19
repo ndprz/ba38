@@ -6,15 +6,6 @@
 <div class="container mt-4">
     <h2>Créer un nouveau bénévole</h2>
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-    <div class="alert-container">
-        {% for category, message in messages %}
-        <div class="alert alert-{{ category }}">{{ message }}</div>
-        {% endfor %}
-    </div>
-    {% endif %}
-    {% endwith %}
 
     <form method="POST" id="createForm" class="partner-form">
         {% for group_name, fields in grouped_fields.items() %}
@@ -27,7 +18,14 @@
                     {% if field['field_name'] != 'id' %}
                     <div class="form-group">
                         <label for="{{ field['field_name'] }}">{{ field['field_name'] }}{% if field['required'] %}<span class="text-danger">*</span>{% endif %}</label>
-                        
+                        {% if field['field_name'] == 'civilite' %}
+                        <select name="civilite"
+                                class="form-select {% if champs_invalides and 'civilite' in champs_invalides %}is-invalid{% endif %}">
+                            <option value="">-- Choisir --</option>
+                            <option value="Monsieur" {% if field['value'] == 'Monsieur' %}selected{% endif %}>Monsieur</option>
+                            <option value="Madame" {% if field['value'] == 'Madame' %}selected{% endif %}>Madame</option>
+                        </select>
+
                         {% if field.field_name == 'type_benevole' or field.type_champ == 'liste_type_benevole' %}
                             {# 🔽 Select dynamique depuis parametres #}
                             {% set current = (field.value or '')|lower %}

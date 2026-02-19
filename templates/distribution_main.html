@@ -1,7 +1,21 @@
 {% extends "base_distribution.html" %}
+
 {% block title %}Module Distribution{% endblock %}
 
 {% block content %}
-<h2>📦 Module Distribution</h2>
-<p>Ceci est la page d'accueil provisoire du module Distribution.</p>
+<h2 class="mb-3">📦 Module Distribution</h2>
+
+<div class="list-group">
+
+  <a href="{{ url_for('distribution.visualisation_stock') }}"
+     class="list-group-item list-group-item-action">
+    👁️ Visualisation des stocks
+  </a>
+
+  <a href="{{ url_for('distribution.mouvements_stocks_depot') }}"
+     class="list-group-item list-group-item-action">
+    📊 Mouvements de stocks – Dépôt
+  </a>
+
+</div>
 {% endblock %}

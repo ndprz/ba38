@@ -32,13 +32,6 @@
   <div class="container">
     <h3 class="text-center mb-4">📸 Photo bénévole</h3>
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
 
     <!-- Formulaire de sélection du bénévole -->
     <form method="POST" class="mb-4">

@@ -75,16 +75,36 @@
 
 <body>
     <header>
+
+
+
         {% if session.get('test_user') %}
             <div style="background-color: red; color: white; text-align: center; padding: 10px; font-weight: bold;">
                 ⚠️ MODE TEST ⚠️
             </div>
         {% endif %}
-        <div>
-            <img src="{{ url_for('static', filename='images/logo-circle-orange.svg') }}" alt="Logo">
+
+        <!-- Bloc gauche -->
+        <div class="header-left">
+            <img src="{{ url_for('static', filename='images/logo-circle-orange.svg') }}"
+                alt="Logo BA38"
+                class="header-logo">
+
+            <div class="header-text">
+                <strong>BA38</strong>
+                <span class="header-subtitle">
+                    Plateforme bénévoles
+                </span>
+            </div>
+
+            {% if env_name == "dev" %}
+                <span class="badge bg-danger ms-2">Développement</span>
+            {% endif %}
         </div>
-        <p style="text-align: center; color: #555;">Bienvenue sur la plateforme des bénévoles de la BA38</p>
-        <nav>
+
+        <!-- Navigation centrale -->
+        <nav class="main-nav">
+
             <a href="/">Accueil</a>
             {% if has_access('benevoles', 'lecture') %} 
                 <a href="/benevoles">Bénévoles</a>
@@ -119,18 +139,6 @@
                 </a>
             {% endif %}
 
-            <div class="position-fixed" style="top:10px; right:10px; z-index:1055;">
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                    {% if messages %}
-                        {% for category, message in messages %}
-                            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                                {{ message }}
-                                <button type="button" class="close" data-dismiss="alert">&times;</button>
-                            </div>
-                        {% endfor %}
-                    {% endif %}
-                {% endwith %}
-            </div>
         </nav>
 
         {% if current_user.is_authenticated %}
@@ -140,6 +148,9 @@
         </div>
         {% endif %}
     </header>
+
+    {% include "_flash.html" %}
+
 
     <main>
         {% if not current_user.is_authenticated %}
@@ -159,16 +170,10 @@
 
     <!-- Scripts JS -->
     <script src="{{ url_for('static', filename='js/jquery-3.5.1.min.js') }}"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/quick_benevole.js') }}?v=2"></script>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-            tooltipTriggerList.forEach(function (tooltipTriggerEl) {
-                new bootstrap.Tooltip(tooltipTriggerEl);
-            });
-        });
-    </script>
+    <script src="{{ url_for('static', filename='js/layout.js') }}"></script>
 
     {% block scripts %}{% endblock %}
 </body>

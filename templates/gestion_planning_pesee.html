@@ -64,8 +64,9 @@
           <th>Pesée 4</th>
           <th>Pesée 5</th>
           <th>Pesée 6</th>
-          <th>Pesée fruits 1</th>
-          <th>Pesée fruits 2</th>
+          <th>Pesée 7</th>
+          <th>Pesée 8</th>
+          <th>Pesée 9</th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -82,7 +83,7 @@
 
           {# Liste temporaire des bénévoles déjà affectés (titulaires + remplaçants) #}
           {% set deja_affectes = [] %}
-          {% for j in range(1, 9) %}
+          {% for j in range(1, 10) %}
             {% set titulaire = ligne['pesee%02d_id' % j] %}
             {% set remplacant = ligne['pesee%02d_remplacant' % j] %}
             {% if titulaire %}{% set _ = deja_affectes.append(titulaire) %}{% endif %}
@@ -90,9 +91,9 @@
           {% endfor %}
 
           {# ============================ #
-            Colonnes Pesée 1 → 8 (6 normales + 2 fruits)
+            Colonnes Pesée 1 → 9 
           # ============================ #}
-          {% for i in range(1, 9) %}
+          {% for i in range(1, 10) %}
             {% set champ_id   = 'pesee%02d_id' % i %}
             {% set champ_remp = 'pesee%02d_remplacant' % i %}
             {% set champ_abs  = 'pesee%02d_absent' % i %}

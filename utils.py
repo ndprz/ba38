@@ -4,11 +4,12 @@ import sqlite3
 import logging
 import subprocess
 import base64
-
+import gspread
 
 from datetime import datetime
 from pathlib import Path
 from io import BytesIO
+from google.oauth2.service_account import Credentials   
 
 
 SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
@@ -37,6 +38,24 @@ except ImportError:
 # ============================================================================
 
 
+from dotenv import load_dotenv
+import os
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Chargement robuste du .env (CLI + Flask + gunicorn)
+# ---------------------------------------------------------------------------
+
+# 1️⃣ Charger le .env depuis le répertoire courant (CLI, gunicorn, Flask)
+load_dotenv(override=False)
+
+# 2️⃣ Si BA38_BASE_DIR est maintenant défini, recharger explicitement depuis là
+base_dir = os.getenv("BA38_BASE_DIR")
+if base_dir:
+    env_path = Path(base_dir) / ".env"
+    if env_path.exists():
+        load_dotenv(env_path, override=False)
+
 
 
 SCOPES = [
@@ -48,7 +67,6 @@ SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
 VERSION = os.getenv("VERSION", "0.0.0")
 
 _logger = None
-
 
 
 def get_logger():
@@ -133,29 +151,18 @@ def get_log_path(filename="app.log"):
 # ============================================================================
 # 🗄️ BASE SQLITE
 # ============================================================================
-
 def get_db_path():
-    """
-    Retourne le chemin absolu de la base SQLite utilisée par l'application.
-    """
-    env = os.getenv("ENVIRONMENT", "prod").lower()
-
     try:
         test_mode = session.get("test_user", False)
     except RuntimeError:
         test_mode = os.getenv("TEST_MODE") == "1"
 
-    if env == "dev" and test_mode:
-        filename = os.getenv("SQLITE_DB_DEV_TEST")
-    elif env == "dev":
-        filename = os.getenv("SQLITE_DB_DEV")
-    elif test_mode:
-        filename = os.getenv("SQLITE_DB_PROD_TEST")
-    else:
-        filename = os.getenv("SQLITE_DB_PROD")
+    db_var = "SQLITE_DB_TEST" if test_mode else "SQLITE_DB"
+    filename = os.getenv(db_var)
+
 
     if not filename:
-        raise RuntimeError("Nom de base SQLite non défini")
+        raise RuntimeError(f"{db_var} non défini dans le .env")
 
     base_dir = os.getenv("BA38_BASE_DIR")
     if not base_dir:
@@ -163,8 +170,11 @@ def get_db_path():
 
     path = os.path.join(base_dir, filename)
 
-    if not os.path.isabs(path):
-        raise RuntimeError(f"Chemin SQLite non absolu : {path}")
+    if os.getenv("ENVIRONMENT") == "dev" and "ba380.sqlite" in path:
+        raise RuntimeError("❌ Base PROD utilisée en DEV")
+
+    if not os.path.exists(path):
+        raise RuntimeError(f"Base SQLite inexistante : {path}")
 
     return path
 
@@ -411,18 +421,17 @@ def get_drive_service():
 def get_google_services():
     """
     Fonction historique BA38.
-    Retourne :
-      - client gspread
-      - service Drive
-      - credentials
+    Compatible Flask + script standalone (cron)
     """
-    if not os.path.exists(SERVICE_ACCOUNT_FILE):
-        write_log(f"❌ Fichier manquant : {SERVICE_ACCOUNT_FILE}")
+    service_account_file = os.getenv("SERVICE_ACCOUNT_FILE")
+
+    if not service_account_file or not os.path.exists(service_account_file):
+        write_log(f"❌ SERVICE_ACCOUNT_FILE manquant ou invalide : {service_account_file}")
         return None, None, None
 
     try:
         creds = Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_FILE,
+            service_account_file,
             scopes=SCOPES
         )
         client = gspread.authorize(creds)
@@ -438,8 +447,13 @@ def get_google_services():
 
 def upload_database():
     """
-    Upload de la base SQLite vers Google Drive (update par file_id).
+    Upload de la base SQLite vers Google Drive (optionnel).
     """
+
+    # 🔒 Désactivation globale via .env
+    if os.getenv("UPLOAD_DB_ON_WRITE", "1") != "1":
+        return
+
     local_path = get_db_path()
     env = os.getenv("ENVIRONMENT", "dev").lower()
 
@@ -464,7 +478,12 @@ def upload_database():
 
     service = get_drive_service()
 
-    media = MediaFileUpload(local_path, mimetype="application/x-sqlite3", resumable=True)
+    media = MediaFileUpload(
+        local_path,
+        mimetype="application/x-sqlite3",
+        resumable=True
+    )
+
     service.files().update(
         fileId=file_id,
         media_body=media,
@@ -693,19 +712,24 @@ def row_get(row, key, default=None):
     except Exception:
         return default
 
-def get_static_event_dir(event_name):
+def get_static_event_dir(event_name=None):
     """
-    Retourne le chemin absolu vers le dossier static d'un événement.
+    Retourne le chemin absolu vers le dossier static des événements.
+    - Sans argument → /static/evenements
+    - Avec event_name → /static/evenements/<event_name>
     Le dossier est créé s'il n'existe pas.
     """
-    if not event_name:
-        raise ValueError("event_name requis")
-
     base_dir = os.getenv("BA38_BASE_DIR")
     if not base_dir:
         raise RuntimeError("BA38_BASE_DIR non défini")
 
-    path = os.path.join(base_dir, "static", event_name)
+    base_path = os.path.join(base_dir, "static", "evenements")
+
+    if event_name:
+        path = os.path.join(base_path, event_name)
+    else:
+        path = base_path
+
     os.makedirs(path, exist_ok=True)
     return path
 
@@ -871,10 +895,11 @@ def migrate_schema_and_data(source_db_path, dest_db_path, copy_data=False):
     write_log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 
+
 def has_access(appli: str, niveau_requis: str) -> bool:
     """
     Vérifie si l'utilisateur courant a le droit requis sur une application.
-    Source de vérité unique.
+    Source de vérité unique.  NICOLAS
     """
 
     # Admin global
@@ -885,13 +910,23 @@ def has_access(appli: str, niveau_requis: str) -> bool:
     hierarchy = ["lecture", "ecriture", "admin"]
 
     for app, droit in roles:
-        if app == appli:
-            if hierarchy.index(droit) >= hierarchy.index(niveau_requis):
-                return True
+        if app != appli:
+            continue
+
+        # Aucun droit ou droit explicite "aucun"
+        if not droit or droit == "aucun":
+            return False
+
+        # Sécurité : valeurs inattendues
+        if droit not in hierarchy or niveau_requis not in hierarchy:
+            write_log(
+                f"⚠️ has_access incohérent : appli={appli}, droit={droit}, requis={niveau_requis}"
+            )
+            return False
+
+        return hierarchy.index(droit) >= hierarchy.index(niveau_requis)
 
     return False
 
-
 def is_admin_global():
     return session.get("user_role") == "admin"
-

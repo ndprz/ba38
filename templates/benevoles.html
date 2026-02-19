@@ -20,7 +20,7 @@
 
     {% if has_access("benevoles", "ecriture") %}
     <button type="button" class="btn btn-success" onclick="updatePublipostageFile()">
-        📄 Fichier Publipostage
+        📄 Fichiers Publipostage
     </button>
     {% endif %}
 
@@ -40,12 +40,18 @@
     {% endif %}
 
     <a href="{{ url_for('benevoles.benevoles_archives') }}" class="btn btn-outline-secondary">
-        👁 Voir les archivés
+        👁 Voir les désactivés
     </a>
 
     <a href="{{ url_for('mail_bene.envoi_mail_benevoles') }}" class="btn btn-outline-primary">
         📧 Mail groupé bénévoles
     </a>
+
+    <button type="button" class="btn btn-outline-danger"
+            onclick="resetFilters()">
+        ♻️ Réinitialiser les filtres
+    </button>
+
 
     <!-- 🔄 Bouton Actualiser (soumet form-options) -->
     <button type="button" class="btn btn-secondary"
@@ -73,7 +79,7 @@
                         <input type="checkbox" class="toggle-master-checkbox" id="toggle-{{ safe_group_name }}"
                             name="selected_groups"
                             value="{{ group_name }}"
-                            onclick="toggleAll('{{ safe_group_name }}', this.checked)"
+                            onclick="toggleAll('{{ safe_group_name }}', this.checked); saveDisplayOptions();"
                             {% if group_name in selected_groups %}checked{% endif %}>
                         Tout sélectionner
                     </label>
@@ -82,11 +88,12 @@
                     {% for field in fields %}
                     {% if field.field_name not in ['id', 'nom'] %}
                     <label>
-                        <input type="checkbox" class="field-{{ safe_group_name }} green-checkbox"
+                        <input type="checkbox"
+                            class="field-{{ safe_group_name }} green-checkbox"
                             name="columns"
                             value="{{ field.field_name }}"
                             {% if field.field_name in selected_columns %}checked{% endif %}
-                            onchange="updateGroupCheckboxState('{{ safe_group_name }}')">
+                            onchange="updateGroupCheckboxState('{{ safe_group_name }}'); saveDisplayOptions();">
                         {{ field.field_name | format_label }}
                     </label><br>
                     {% endif %}
@@ -114,8 +121,12 @@
         <thead>
             <tr>
                 <th class="sticky-col sticky-col-1">Action</th>
-                <th class="sticky-col sticky-col-2">ID</th>
-                <th class="sticky-col sticky-col-3">Nom</th>
+                <th class="sticky-col sticky-col-2 sortable" data-sort="id">
+                    ID <span class="arrow">▲▼</span>
+                </th>
+                <th class="sticky-col sticky-col-3 sortable" data-sort="nom">
+                    Nom <span class="arrow">▲▼</span>
+                </th>
                 {% for column in selected_columns %}
                 <th>{{ column | format_label }}</th>
                 {% endfor %}
@@ -132,7 +143,7 @@
                     </form>
                     <a href="{{ url_for('benevoles.desactiver_benevole', benevole_id=row['id']) }}"
                     class="btn btn-sm btn-outline-warning" title="Archiver ce bénévole">
-                    💤 Inactif
+                    💤 Désactiver
                     </a>
                     {% else %}
                     <span class="text-muted">ID manquant</span>
@@ -171,6 +182,26 @@
 {% endif %}
 
 <script>
+
+const OPTIONS_KEY = "benevoles_display_options";
+
+function saveDisplayOptions() {
+
+    const selectedColumns = Array.from(
+        document.querySelectorAll("input[name='columns']:checked")
+    ).map(cb => cb.value);
+
+    const selectedGroups = Array.from(
+        document.querySelectorAll("input[name='selected_groups']:checked")
+    ).map(cb => cb.value);
+
+    localStorage.setItem(OPTIONS_KEY, JSON.stringify({
+        columns: selectedColumns,
+        groups: selectedGroups
+    }));
+}
+
+
 function toggleGroup(groupName, titreElement) {
   const container = document.getElementById(`container-${groupName}`);
   if (container) container.classList.toggle('expanded');
@@ -182,18 +213,43 @@ function toggleGroup(groupName, titreElement) {
 
 function toggleAll(group, checked) {
     document.querySelectorAll('.field-' + group).forEach(cb => cb.checked = checked);
+
+    const master = document.getElementById('toggle-' + group);
+    if (master) {
+        master.indeterminate = false;
+        master.checked = checked;
+    }
+
     updateGroupCheckboxState(group);
 }
 
 function updateGroupCheckboxState(group) {
+
     const boxes = document.querySelectorAll('.field-' + group);
-    const allChecked = Array.from(boxes).every(cb => cb.checked);
-    document.getElementById('toggle-' + group).checked = allChecked;
+    const master = document.getElementById('toggle-' + group);
+
+    if (!master || boxes.length === 0) return;
+
+    const total = boxes.length;
+    const checkedCount = Array.from(boxes).filter(cb => cb.checked).length;
+
+    if (checkedCount === 0) {
+        master.checked = false;
+        master.indeterminate = false;
+    }
+    else if (checkedCount === total) {
+        master.checked = true;
+        master.indeterminate = false;
+    }
+    else {
+        master.checked = false;
+        master.indeterminate = true;
+    }
 }
 
 function updatePublipostageFile() {
     if (confirm("Voulez-vous vraiment mettre à jour le fichier de publipostage sur Google Drive ?")) {
-        fetch("{{ url_for('export.export_all_publipostage') }}", { method: "POST" })
+        fetch("{{ url_for('export.trigger_publipostage_cron') }}", { method: "POST" })
             .then(response => response.json())
             .then(data => alert(data.message))
             .catch(error => alert("❌ Erreur lors de la mise à jour : " + error));
@@ -266,5 +322,134 @@ document.querySelectorAll(".photo-hover-container").forEach(container => {
         }
     });
 });
+
+
+const SORT_KEY = "benevoles_sort_state";
+
+let currentSort = JSON.parse(localStorage.getItem(SORT_KEY)) || {
+    column: null,
+    asc: true
+};
+
+function applySort(column, updateStorage = true) {
+    const table = document.getElementById("benevole-table");
+    const tbody = table.querySelector("tbody");
+    const rows = Array.from(tbody.querySelectorAll("tr"));
+
+    const colIndex = column === "id" ? 1 : 2;
+
+    rows.sort((a, b) => {
+        let va = a.children[colIndex].innerText.trim();
+        let vb = b.children[colIndex].innerText.trim();
+
+        if (column === "id") {
+            va = parseInt(va, 10);
+            vb = parseInt(vb, 10);
+            return currentSort.asc ? va - vb : vb - va;
+        } else {
+            return currentSort.asc
+                ? va.localeCompare(vb, "fr", { sensitivity: "base" })
+                : vb.localeCompare(va, "fr", { sensitivity: "base" });
+        }
+    });
+
+    rows.forEach(tr => tbody.appendChild(tr));
+
+    // UI : flèches et état actif
+    document.querySelectorAll("th.sortable").forEach(th => {
+        th.classList.remove("active");
+        th.querySelector(".arrow").textContent = "▲▼";
+    });
+
+    const activeTh = document.querySelector(`th.sortable[data-sort="${column}"]`);
+    if (activeTh) {
+        activeTh.classList.add("active");
+        activeTh.querySelector(".arrow").textContent = currentSort.asc ? "▲" : "▼";
+    }
+
+    if (updateStorage) {
+        localStorage.setItem(SORT_KEY, JSON.stringify(currentSort));
+    }
+}
+
+document.querySelectorAll("th.sortable").forEach(th => {
+    th.addEventListener("click", () => {
+        const column = th.dataset.sort;
+
+        if (currentSort.column === column) {
+            currentSort.asc = !currentSort.asc;
+        } else {
+            currentSort.column = column;
+            currentSort.asc = true;
+        }
+
+        applySort(column);
+    });
+});
+
+// 🔁 Appliquer le tri mémorisé au chargement
+window.addEventListener("DOMContentLoaded", () => {
+    if (currentSort.column) {
+        applySort(currentSort.column, false);
+    }
+});
+
+window.addEventListener("DOMContentLoaded", () => {
+
+    const saved = localStorage.getItem(OPTIONS_KEY);
+    if (!saved) return;
+
+    const options = JSON.parse(saved);
+
+    const urlParams = new URLSearchParams(window.location.search);
+
+    if (!urlParams.getAll("columns").length && options.columns.length > 0) {
+
+        options.columns.forEach(col => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "columns";
+            input.value = col;
+            document.getElementById("form-options").appendChild(input);
+        });
+
+        options.groups.forEach(grp => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "selected_groups";
+            input.value = grp;
+            document.getElementById("form-options").appendChild(input);
+        });
+
+        document.getElementById("form-options").submit();
+    }
+    // Recalculer état des masters
+    document.querySelectorAll(".toggle-master-checkbox").forEach(master => {
+        const group = master.id.replace("toggle-", "");
+        updateGroupCheckboxState(group);
+    });
+
+});
+
+function resetFilters() {
+
+    if (!confirm("Réinitialiser tous les filtres et options d'affichage ?")) {
+        return;
+    }
+
+    // Supprimer filtres sauvegardés
+    localStorage.removeItem("benevole_search_filter");
+    localStorage.removeItem("benevoles_sort_state");
+    localStorage.removeItem(OPTIONS_KEY);   // ← AJOUT ICI
+
+    // Vider champ recherche
+    const searchInput = document.getElementById("filtre-benevole");
+    if (searchInput) searchInput.value = "";
+
+    // Recharger la page sans paramètres
+    window.location.href = "{{ url_for('benevoles.benevoles') }}";
+}
+
+
 </script>
 {% endblock %}

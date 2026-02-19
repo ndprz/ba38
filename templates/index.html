@@ -3,7 +3,6 @@
 {% block title %}Accueil{% endblock %}
 
 
-
 {% block content %}
 
 
@@ -53,23 +52,29 @@
   {% endif %}
 </div>
 
-{% if is_admin_global() %}
 <div style="margin-bottom: 12px;">
-  <p style="margin: 0;"><strong>Explorez et gérez vos données Distribution.</strong></p>
+  <p style="margin: 0;">
+    <strong>Explorez et gérez vos données Distribution.</strong>
+  </p>
+
   {% if has_access('distribution', 'lecture') %}
-    <a href="{{ url_for('distribution.distribution_main') }}" class="big-link">Voir la distribution</a>
+    <a href="{{ url_for('distribution.distribution_main') }}"
+       class="big-link">
+        Voir la distribution
+    </a>
   {% else %}
-    <span class="text-muted">Accès à la distribution désactivé pour votre compte</span>
+    <span class="text-muted">
+        Accès à la distribution désactivé pour votre compte
+    </span>
   {% endif %}
 </div>
-{% endif %}
 
 
 
 {% if has_access('evenements', 'lecture') %}
 <div style="margin-bottom: 12px;">
   <p style="margin: 0;"><strong>Gérez l'affichage des événements.</strong></p>
-  <a href="{{ url_for('evenements.gestion_evenements') }}" class="btn btn-outline-warning">
+  <a href="{{ url_for('evenements.gestion_evenements') }}" class="big-link">
     🎬 Événements écran
   </a></div>
 {% endif %}

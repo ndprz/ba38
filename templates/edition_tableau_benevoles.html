@@ -1,4 +1,5 @@
 
+
 {% extends "base_bene.html" %}
 
 {% block title %}Mise à jour en tableau des bénévoles{% endblock %}
@@ -60,15 +61,6 @@
     </div>
   </div>
 
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      <div class="alert-container">
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }}">{{ message }}</div>
-        {% endfor %}
-      </div>
-    {% endif %}
-  {% endwith %}
 
   <div id="scroll-top" class="scroll-sync scroll-sync-top"><div></div></div>
 
@@ -100,6 +92,7 @@
             {% set prenom = benevole['prenom'] %}
             {% set id_bene = benevole['id'] %}
           {% endif %}
+        
 
           <tr>
             <td><input type="hidden" name="id_{{ row_index }}" value="{{ id_bene }}">{{ id_bene }}</td>
@@ -112,7 +105,15 @@
               {% set valeur = valeurs[column] %}
               {% set v = valeur if valeur is not none and valeur != 'None' else '' %}
               <td>
-                {% if column|lower == 'type_benevole' %}
+                {% if column|lower == 'civilite' %}
+                <select name="{{ column }}_{{ row_index }}"
+                        class="form-select form-select-sm {% if column in champs_invalides %}is-invalid{% endif %}">
+                    <option value=""></option>
+                    <option value="Monsieur" {% if v == 'Monsieur' %}selected{% endif %}>Monsieur</option>
+                    <option value="Madame" {% if v == 'Madame' %}selected{% endif %}>Madame</option>
+                </select>
+
+                {% elif column|lower == 'type_benevole' %}
                   {# 🔽 Select dynamique alimenté par la table parametres #}
                   <select name="{{ column }}_{{ row_index }}" class="form-select form-select-sm {% if column in champs_invalides %}is-invalid{% endif %}">
                     <option value=""></option>

@@ -79,8 +79,9 @@
         <th>Pesée 4</th>
         <th>Pesée 5</th>
         <th>Pesée 6</th>
-        <th>Pesée fruits 1</th>
-        <th>Pesée fruits 2</th>
+        <th>Pesée 7</th>
+        <th>Pesée 8</th>
+        <th>Pesée 9</th>
       </tr>
     </thead>
     <tbody>
@@ -88,7 +89,7 @@
       <tr class="{{ ligne.jour|lower }}">
         <td>{{ ligne.date_jour }}</td>
         <td>{{ ligne.jour|capitalize }}</td>
-        {% for i in range(1, 9) %}
+        {% for i in range(1, 10) %}
           {% set champ = 'pesee%02d' % i %}
           {% set nom = ligne[champ ~ '_nom'] %}
           {% set absent = ligne[champ ~ '_absent'] == 'oui' %}

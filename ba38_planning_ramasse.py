@@ -34,28 +34,6 @@ def safe(row, key):
     return row[key] if key in row.keys() and row[key] else "-"
 
 
-# def enregistrer_planning_semaine(semaine, lignes):
-#     conn = get_db_connection()
-#     cursor = conn.cursor()
-#     cursor.execute("DELETE FROM plannings_ramasse WHERE annee = ? AND semaine = ?", (annee, semaine,))
-#     for ligne in lignes:
-#         cursor.execute("""
-#             INSERT INTO plannings_ramasse
-#             (type, semaine, tournee_id, jour, tournee, chauffeur_id, responsable_id, equipier_id, camion_id)
-#             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-#         """, (
-#             "Ramasse", semaine,
-#             ligne["tournee_id"],  # ✅ Correction ici
-#             ligne["jour"],
-#             ligne["tournee"],
-#             ligne["chauffeur_id"],
-#             ligne["responsable_id"],
-#             ligne["equipier_id"],
-#             ligne["camion_id"]
-#     ))
-
-#     conn.commit()
-#     conn.close()
 
 def purge_plannings_ramasse():
     from datetime import datetime, timedelta
@@ -605,6 +583,8 @@ def print_planning_ramasse():
     from reportlab.lib.units import cm
     from io import BytesIO
 
+    impression_partielle = request.form.get("impression_partielle") == "on"
+
     semaine = request.form.get("semaine")
     try:
         annee, numero_semaine = map(int, semaine.split("-W"))
@@ -630,20 +610,6 @@ def print_planning_ramasse():
             END, id ASC
     """, (annee, numero_semaine,)).fetchall()
 
-    # def get_nom_benevole(bid):
-    #     if not bid: return "-"
-    #     conn = get_db_connection()
-    #     r = conn.execute("SELECT prenom, nom FROM benevoles WHERE id = ?", (bid,)).fetchone()
-    #     conn.close()
-    #     return f"{r['prenom']} {r['nom']}" if r else "-"
-    
-    # def get_nom_camion(cid):
-    #     if not cid: return "-"
-    #     conn = get_db_connection()
-    #     r = conn.execute("SELECT nom, immat FROM camions WHERE id = ?", (cid,)).fetchone()
-    #     conn.close()
-    #     return f"{r['nom']} ({r['immat']})" if r else "-"
-    
     conn.close()
 
     buffer = BytesIO()
@@ -663,10 +629,12 @@ def print_planning_ramasse():
     pdf.drawString(x, y, "Jour")
     pdf.drawString(x + 3*cm, y, "Tournée")
     pdf.drawString(x + 8*cm, y, "Chauffeur")
-    pdf.drawString(x + 13*cm, y, "Responsable")
-    pdf.drawString(x + 18*cm, y, "Équipier")
-    pdf.drawString(x + 23*cm, y, "Camion")
-    y -= line_height
+
+    if not impression_partielle:
+        pdf.drawString(x + 13*cm, y, "Responsable")
+        pdf.drawString(x + 18*cm, y, "Équipier")
+        pdf.drawString(x + 23*cm, y, "Camion")    
+        y -= line_height
 
     pdf.setFont("Helvetica", 10)
     for ligne in lignes:
@@ -676,9 +644,10 @@ def print_planning_ramasse():
         pdf.drawString(x, y, ligne["jour"].capitalize())
         pdf.drawString(x + 3*cm, y, ligne["tournee"] or "-")
         pdf.drawString(x + 8*cm, y, get_nom_benevole(ligne["chauffeur_id"]))
-        pdf.drawString(x + 13*cm, y, get_nom_benevole(ligne["responsable_id"]))
-        pdf.drawString(x + 18*cm, y, get_nom_benevole(ligne["equipier_id"]))
-        pdf.drawString(x + 23*cm, y, get_nom_camion(ligne["camion_id"]))
+        if not impression_partielle:
+            pdf.drawString(x + 13*cm, y, get_nom_benevole(ligne["responsable_id"]))
+            pdf.drawString(x + 18*cm, y, get_nom_benevole(ligne["equipier_id"]))
+            pdf.drawString(x + 23*cm, y, get_nom_camion(ligne["camion_id"]))
         y -= line_height
 
     pdf.save()

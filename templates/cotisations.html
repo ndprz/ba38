@@ -1,9 +1,16 @@
 {% extends "base_assos.html" %}
 {% block title %}Facturation des cotisations{% endblock %}
 
+
 {% block content %}
 <div class="container mt-4">
-  <h2>💰 Facturation des cotisations</h2>
+  {% if mode_relance %}
+    <h2>🔔 Relance des cotisations</h2>
+  {% else %}
+    <h2>💰 Facturation des cotisations</h2>
+  {% endif %}
+
+
 
   {% if job_done %}
   <div class="alert alert-success d-flex align-items-center gap-2" role="alert">
@@ -38,8 +45,10 @@
     {% endif %}
   </form>
 
+
+  {% if not mode_relance %}
   <!-- ========================= -->
-  <!-- FORMULAIRE DE CALCUL -->
+  <!-- FORMULAIRE FACTURATION    -->
   <!-- ========================= -->
   <form method="post" enctype="multipart/form-data" class="mb-4">
     <div class="row g-3 align-items-end">
@@ -78,6 +87,49 @@
 
     </div>
   </form>
+  {% endif %}
+
+  <!-- <hr class="my-5"> -->
+
+  {% if mode_relance %}
+
+  <h3>🔔 Relance des cotisations</h3>
+
+  <form method="post"
+        action="{{ url_for('traitements.cotisations_relance') }}"
+        enctype="multipart/form-data"
+        class="mb-4">
+
+    <div class="row g-3 align-items-end">
+
+      <div class="col-md-2">
+        <label class="form-label">Année</label>
+        <input type="number" name="annee" class="form-control" required>
+      </div>
+
+      <div class="col-md-5">
+        <label class="form-label">Fichier PARSOL2 annuel</label>
+        <input type="file" name="parsol_file" class="form-control" required>
+      </div>
+
+      <div class="col-md-2">
+        <label class="form-label">Numéro de relance</label>
+        <input type="number" name="numero_relance" class="form-control" required>
+      </div>
+
+      <div class="col-md-3">
+        <button class="btn btn-warning w-100">
+          Lancer la relance
+        </button>
+      </div>
+
+    </div>
+  </form>
+
+  {% endif %}
+
+
+
   {% if resultats %}
   <!-- ========================= -->
   <!-- TABLEAU RÉSULTATS -->

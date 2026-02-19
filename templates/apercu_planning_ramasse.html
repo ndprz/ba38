@@ -18,7 +18,17 @@
 <h2>Planning de Ramasse – Semaine {{ semaine }} ({{ date_debut }} au {{ date_fin }})</h2>
 
 <div style="text-align: center; margin-bottom: 20px;" class="no-print">
-    <button onclick="window.print()" style="padding: 8px 16px; font-size: 14px; cursor: pointer;">
+
+    <label style="margin-right: 20px; font-size: 14px; cursor: pointer;">
+        <input type="checkbox"
+               id="impression_partielle"
+               checked
+               onchange="toggleColonnes()">
+        Impression partielle (sans tri et camion)
+    </label>
+
+    <button onclick="window.print()"
+            style="padding: 8px 16px; font-size: 14px; cursor: pointer;">
         🖨️ Imprimer cette page
     </button>
 </div>
@@ -26,52 +36,48 @@
 <table>
     <thead>
         <tr>
-            <th>Jour</th>
-            <th class="tournee">Tournée</th>
-            <th>Chauffeur</th>
-            <th>Équipier</th>
-            <th>Responsable Tri</th>
-            <th>Tri 1</th>
-            <th>Tri 2</th>
-            <th>Tri 3</th>
-            <th>Camion</th>
+            <th class="col-jour">Jour</th>
+            <th class="tournee col-tournee">Tournée</th>
+            <th class="col-chauffeur">Chauffeur</th>
+            <th class="col-equipier">Équipier</th>
+
+            <th class="col-responsable col-optional">Responsable Tri</th>
+            <th class="col-tri col-optional">Tri 1</th>
+            <th class="col-tri col-optional">Tri 2</th>
+            <th class="col-tri col-optional">Tri 3</th>
+            <th class="col-camion col-optional">Camion</th>
         </tr>
     </thead>
     <tbody>
         {% for l in lignes %}
         <tr class="{{ l.jour|lower }}">
-            <td>{{ l.jour|capitalize }} {{ l.date_jour[0:2] }}</td>
-            <td class="tournee">{{ l.tournee }}</td>
+            <td class="col-jour">{{ l.jour|capitalize }} {{ l.date_jour[0:2] }}</td>
+            <td class="tournee col-tournee">{{ l.tournee }}</td>
+            <td class="col-chauffeur">{{ l.chauffeur|safe }}</td>
+            <td class="col-equipier">{{ l.equipier|safe }}</td>
 
-            <td>
-                {{ l.chauffeur|safe }}
-            </td>
-
-            <td>
-                {{ l.equipier|safe }}
-            </td>
-
-            <td>
-                {{ l.responsable|safe }}
-            </td>
-
-            <td>
-                {{ l.ramasse_tri1|safe }}
-            </td>
-
-            <td>
-                {{ l.ramasse_tri2|safe }}
-            </td>
-
-            <td>
-                {{ l.ramasse_tri3|safe }}
-            </td>
-
-            <td>{{ l.camion }}</td>
+            <td class="col-responsable col-optional">{{ l.responsable|safe }}</td>
+            <td class="col-tri col-optional">{{ l.ramasse_tri1|safe }}</td>
+            <td class="col-tri col-optional">{{ l.ramasse_tri2|safe }}</td>
+            <td class="col-tri col-optional">{{ l.ramasse_tri3|safe }}</td>
+            <td class="col-camion col-optional">{{ l.camion }}</td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
+
+<script>
+function toggleColonnes() {
+    const checked = document.getElementById("impression_partielle").checked;
+    document.querySelectorAll(".col-optional").forEach(el => {
+        el.style.display = checked ? "none" : "";
+    });
+}
+
+// appliqué au chargement (coché par défaut)
+document.addEventListener("DOMContentLoaded", toggleColonnes);
+</script>
+
 
 </body>
 </html>
@@ -134,6 +140,12 @@
 
     @media print {
         .no-print {
+            display: none !important;
+        }
+    }
+
+    @media print {
+        .col-optional {
             display: none !important;
         }
     }

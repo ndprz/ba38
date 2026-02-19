@@ -44,7 +44,7 @@ def maj_modele_planning_pesee():
 
                 champs = [
                     "pesee01_id","pesee02_id","pesee03_id","pesee04_id",
-                    "pesee05_id","pesee06_id","pesee07_id","pesee08_id"
+                    "pesee05_id","pesee06_id","pesee07_id","pesee08_id","pesee09_id"
                 ]
 
                 valeurs = []
@@ -63,7 +63,7 @@ def maj_modele_planning_pesee():
                         duree
                     ) VALUES (
                         ?,
-                        {", ".join(['?']*8)},
+                        {", ".join(['?']*9)},
                         ?
                     )
                 """, (jour, *valeurs, duree))
@@ -133,7 +133,7 @@ def creation_planning_pesee():
     absents_par_jour = get_absents_par_jour(absences, jours_dates)
 
     model = cursor.execute("SELECT * FROM planning_standard_pesee_ids").fetchall()
-    poste_mapping = {f"pesee{str(i).zfill(2)}_id": f"pesee{str(i).zfill(2)}" for i in range(1, 9)}
+    poste_mapping = {f"pesee{str(i).zfill(2)}_id": f"pesee{str(i).zfill(2)}" for i in range(1, 10)}
 
     planning = []
 
@@ -155,26 +155,26 @@ def creation_planning_pesee():
 
     for bloc in planning:
         values = [annee, num_semaine, bloc["jour"]]
-        for i in range(1, 9):
+        for i in range(1, 10):
             values.append(bloc.get(f"pesee{str(i).zfill(2)}_id"))
-        for i in range(1, 9):
+        for i in range(1, 10):
             values.append(bloc.get(f"pesee{str(i).zfill(2)}_absent", "non"))
-        for i in range(1, 9):
+        for i in range(1, 10):
             values.append(bloc.get(f"pesee{str(i).zfill(2)}_remplacant"))
 
         cursor.execute(f"""
             INSERT INTO plannings_pesee (
                 annee, semaine, jour,
                 pesee01_id, pesee02_id, pesee03_id, pesee04_id,
-                pesee05_id, pesee06_id, pesee07_id, pesee08_id,
+                pesee05_id, pesee06_id, pesee07_id, pesee08_id,pesee09_id,
                 pesee01_absent, pesee02_absent, pesee03_absent, pesee04_absent,
-                pesee05_absent, pesee06_absent, pesee07_absent, pesee08_absent,
+                pesee05_absent, pesee06_absent, pesee07_absent, pesee08_absent,pesee09_absent,
                 pesee01_remplacant, pesee02_remplacant, pesee03_remplacant, pesee04_remplacant,
-                pesee05_remplacant, pesee06_remplacant, pesee07_remplacant, pesee08_remplacant
+                pesee05_remplacant, pesee06_remplacant, pesee07_remplacant, pesee08_remplacant,pesee09_remplacant
             ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
         """, values)
 
@@ -224,7 +224,7 @@ def apercu_planning_pesee():
         l["date_jour"] = (lundi + timedelta(days=delta)).strftime("%d/%m/%Y")
 
         # 👥 Pour chaque poste de pesée : récupérer les noms/remplaçants
-        for i in range(1, 9):
+        for i in range(1, 10):
             champ = f"pesee{i:02d}"
             id_val = l.get(f"{champ}_id")
             remp_val = l.get(f"{champ}_remplacant")
@@ -358,7 +358,7 @@ def gestion_planning_pesee():
             continue
 
         updates = []
-        for i in range(1, 9):
+        for i in range(1, 10):
             champ_id = f"pesee{i:02d}_id"
             champ_abs = f"pesee{i:02d}_absent"
             champ_remp = f"pesee{i:02d}_remplacant"
@@ -392,7 +392,7 @@ def gestion_planning_pesee():
     # 3) Normalisation + effectif (titulaire vs remplaçant)
     # -------------------------
     for l in lignes:
-        for i in range(1, 9):
+        for i in range(1, 10):
             tid = to_int_or_none(l.get(f"pesee{i:02d}_id"))
             rid = to_int_or_none(l.get(f"pesee{i:02d}_remplacant"))
             l[f"pesee{i:02d}_id"] = tid
@@ -414,7 +414,7 @@ def gestion_planning_pesee():
         jour = (l.get("jour") or "").strip().lower()
         if jour not in jours:
             continue
-        for i in range(1, 9):
+        for i in range(1, 10):
             eff = l.get(f"pesee{i:02d}_effectif")
             if eff:
                 collections_du_jour[f"pesee{i:02d}"][jour].add(eff)
@@ -424,7 +424,7 @@ def gestion_planning_pesee():
     # -------------------------
     if request.method == "POST":
         try:
-            champs = [f"pesee{i:02d}" for i in range(1, 9)]
+            champs = [f"pesee{i:02d}" for i in range(1, 10)]
             ligne_ids = request.form.getlist("ligne_ids[]")
 
             # Les <select> du template doivent être: name="peseeXX_ids[]"

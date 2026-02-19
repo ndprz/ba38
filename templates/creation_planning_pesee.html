@@ -62,8 +62,9 @@
             <th>Pesée 4</th>
             <th>Pesée 5</th>
             <th>Pesée 6</th>
-            <th>Pesée fruits 1</th>
-            <th>Pesée fruits 2</th>
+            <th>Pesée 7</th>
+            <th>Pesée 8</th>
+            <th>Pesée 9</th>
         </tr>
     </thead>
 
@@ -71,7 +72,7 @@
         {% for row in planning %}
         <tr class="jour-{{ row.jour|lower }}">
             <td>{{ row.jour.capitalize() }}</td>
-            {% for i in range(1, 9) %}
+            {% for i in range(1, 10) %}
                 {% set nom = row['pesee%02d_nom' % i] %}
                 {% set remp = row['pesee%02d_remplacant_nom' % i] %}
                 {% set absent = row['pesee%02d_absent' % i] == 'oui' %}

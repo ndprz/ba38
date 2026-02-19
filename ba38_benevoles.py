@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, current_app
 from flask_login import login_required, current_user
 from utils import get_db_connection, upload_database, write_log, has_access, is_valid_email, is_valid_phone
 from werkzeug.security import generate_password_hash
@@ -47,6 +47,16 @@ def coerce_type_benevole(value, options):
     return None
 
 
+CIVILITE_OPTIONS = ["Monsieur", "Madame"]
+
+def coerce_civilite(value):
+    if not value:
+        return None
+    v = value.strip().lower()
+    for opt in CIVILITE_OPTIONS:
+        if v == opt.lower():
+            return opt
+    return None
 
 
 
@@ -54,85 +64,62 @@ benevoles_bp = Blueprint("benevoles", __name__)
 
 
 
-@benevoles_bp.route("/api/benevoles/quick_create", methods=["POST"])
+
+@benevoles_bp.route("/api/quick_create_benevole", methods=["POST"])
 @login_required
 def api_quick_create_benevole():
-    if not has_access("benevoles", "ecriture"):
-        return jsonify({"error": "forbidden"}), 403
 
-    data = request.get_json(force=True) or {}
-    nom = (data.get("nom") or "").strip()
-    prenom = (data.get("prenom") or "").strip()
-    role = (data.get("role") or "equipier").strip().lower()
+    current_app.logger.info(
+        f"API quick_create_benevole called by user={current_user.id}"
+    )
 
-    # Champs modale
-    type_benevole = (data.get("type_benevole") or "").strip()
-    civilite = (data.get("civilite") or "").strip()
-    telephone_portable = (data.get("telephone_portable") or "").strip()
-
-    if not (nom and prenom and type_benevole and civilite):
-        return jsonify({"error": "champs requis manquants"}), 400
-
-    # Flags par rôle
-    flags = {
-        "ramasse_chauffeur": "non",
-        "ramasse_equipier": "non",
-        "ramasse_responsable_tri": "non",
-        "ramasse_tri_externe": "non",
-    }
-    if role == "chauffeur":
-        flags["ramasse_chauffeur"] = "oui"
-    elif role == "responsable":
-        flags["ramasse_responsable_tri"] = "oui"
-    elif role == "tri_externe":
-        flags["ramasse_tri_externe"] = "oui"
-        # souvent utile d'être aussi équipier
-        flags["ramasse_equipier"] = "oui"
-    else:
-        flags["ramasse_equipier"] = "oui"
-
-    # option : sécuriser le type via parametres
-    conn = get_db_connection()
-    cur = conn.cursor()
     try:
-        # coerce type_benevole depuis parametres si table existante
-        try:
-            rows = cur.execute(
-                "SELECT param_value FROM parametres WHERE param_name='type_benevole'"
-            ).fetchall()
-            allowed = {r[0].strip().lower() for r in rows} or {"benevole","service civique","pass region","salarie"}
-            if type_benevole.strip().lower() not in allowed:
-                type_benevole = "benevole"
-        except Exception:
-            pass
+        data = request.get_json(force=True)
+
+        nom = data.get("nom", "").strip()
+        prenom = data.get("prenom", "").strip()
+        civilite = data.get("civilite", "")
+        type_benevole = data.get("type_benevole", "")
+        telephone = data.get("telephone_portable", "")
+
+        if not nom or not prenom or not civilite or not type_benevole:
+            return jsonify(success=False, error="Champs obligatoires manquants")
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        current_app.logger.info(
+            f"Creating benevole: {nom} {prenom} / {type_benevole}"
+        )
 
         cur.execute("""
-            INSERT INTO benevoles (
-                nom, prenom, civilite, telephone_portable,
-                ramasse_chauffeur, ramasse_equipier, ramasse_responsable_tri, ramasse_tri_externe,
-                type_benevole
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            nom, prenom, civilite, telephone_portable,
-            flags["ramasse_chauffeur"], flags["ramasse_equipier"],
-            flags["ramasse_responsable_tri"], flags["ramasse_tri_externe"],
-            type_benevole
-        ))
-        new_id = cur.lastrowid
+            INSERT INTO benevoles (civilite, nom, prenom, telephone_portable, type_benevole)
+            VALUES (?, ?, ?, ?, ?)
+        """, (civilite, nom, prenom, telephone or None, type_benevole))
+
+        benevole_id = cur.lastrowid
         conn.commit()
-    finally:
         conn.close()
 
-    return jsonify({
-        "success": True,
-        "id": new_id,
-        "nom": nom,
-        "prenom": prenom
-    })
+        upload_database()
 
-    
-    
+        return jsonify(
+            success=True,
+            id=benevole_id,
+            nom=nom,
+            prenom=prenom
+        )
+
+    except Exception as e:
+        current_app.logger.exception(
+            "❌ Exception api_quick_create_benevole"
+        )
+
+        write_log(f"❌ Erreur création bénévole rapide : {e}")
+        return jsonify(success=False, error="Erreur serveur")
+
+
+
 @benevoles_bp.route('/benevoles', methods=['GET'])
 @login_required
 def benevoles():
@@ -198,7 +185,7 @@ def benevoles():
         selected_groups = selected_groups[0].split(',')
 
     # Pas d’interaction → colonnes par défaut coordonnées principales
-    if not has_interacted and not test_mode:
+    if not has_interacted and not test_mode and not selected_columns:
         selected_groups = [g for g in grouped_fields if g.lower().startswith("coordonnées principales")]
         selected_columns = []
         seen = set()
@@ -317,6 +304,7 @@ def create_benevole():
         flash("⛔ Accès refusé : modification non autorisée.", "danger")
         return redirect(url_for("benevoles.benevoles"))
 
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -374,6 +362,16 @@ def create_benevole():
             if field["type_champ"] == "oui_non" and value == "":
                 value = "non"
 
+            if field_name == "civilite":
+                coerced = coerce_civilite(value)
+                if value and coerced is None:
+                    erreurs.append(
+                        f"Civilité invalide « {value} ». Valeurs possibles : {', '.join(CIVILITE_OPTIONS)}."
+                    )
+                    champs_invalides.append("civilite")
+                value = coerced
+
+
             # Validation email / téléphone
             if value:
                 if "email" in field_name.lower() and not is_valid_email(value):
@@ -428,7 +426,6 @@ def create_benevole():
                                 champs_invalides=champs_invalides,
                                 type_benevole_options=type_benevole_options)
         try:
-            from datetime import datetime
             now = datetime.now()
             values["date_modif"] = now.strftime("%Y-%m-%d")
             values["heure_modif"] = now.strftime("%H:%M:%S")
@@ -451,9 +448,16 @@ def create_benevole():
             return redirect(url_for("benevoles.create_benevole"))
 
     # Si GET : initialisation vide
+
+    # Si GET : initialisation des valeurs par défaut
+    annee_courante = str(datetime.now().year)
+
     for field in fields_data:
         fname = field["field_name"]
-        field["value"] = ""
+        if fname == "annee_arrivee_bai":
+            field["value"] = annee_courante
+        else:
+            field["value"] = ""
 
     type_benevole_options = get_type_benevole_options(conn)
 
@@ -600,6 +604,16 @@ def update_benevole(benevole_id):
                         f"Valeurs possibles : {', '.join(opts_type_bene)}.", "danger")
                     # réaffichage du formulaire avec erreurs géré plus bas
                 value = coerced
+
+            if field_name == "civilite":
+                coerced = coerce_civilite(value)
+                if value and coerced is None:
+                    flash(
+                        f"Civilité invalide « {value} ». Valeurs possibles : {', '.join(CIVILITE_OPTIONS)}.",
+                        "danger"
+                    )
+                value = coerced
+
 
             updates[field_name] = None if value == "" or value is None else value
 
@@ -778,8 +792,6 @@ def update_benevoles_table():
         flash("⚠️ Trop de colonnes sélectionnées. Veuillez limiter votre sélection à 40 colonnes maximum.", "danger")
         return redirect(url_for("benevoles.benevoles"))
 
-    from datetime import datetime
-
     erreurs = []
     lignes_modifiees = 0
     benevoles_data = []
@@ -818,6 +830,16 @@ def update_benevoles_table():
                         champs_invalides.append(col)
                     else:
                         modifications[col] = nv  # None si vide, sinon valeur canonique
+                elif col == "civilite":
+                    nv = coerce_civilite(new_val)
+                    if new_val and nv is None:
+                        erreurs.append(
+                            f"Ligne {i+1}, champ civilite : valeur non autorisée « {new_val} »."
+                        )
+                        champs_invalides.append(col)
+                    else:
+                        modifications[col] = nv
+
                 else:
                     modifications[col] = new_val if new_val else None
 
@@ -889,7 +911,13 @@ def update_benevoles_table():
     if lignes_modifiees == 0:
         flash("ℹ️ Aucune modification détectée.", "info")
 
-    return redirect(url_for("benevoles.benevoles"))
+    return redirect(
+        url_for(
+            "benevoles.edition_tableau_benevoles",
+            **request.args,
+            columns=columns
+        )
+    )
 
 
 

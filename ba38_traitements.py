@@ -7,19 +7,14 @@ import tempfile
 import uuid
 import tempfile
 import json
-from pathlib import Path
-
-
-from flask import Blueprint, request, render_template, flash, redirect, url_for, send_file,abort,current_app, session
-from flask_login import login_required
-
-from utils import get_google_services, write_log, envoyer_mail,get_db_path,upload_file_to_drive_path,slugify_filename
-from utils import get_drive_folder_id_from_path
-
 
 from datetime import datetime
 from collections import defaultdict
 from pathlib import Path
+from flask import Blueprint, request, render_template, flash, redirect, url_for, send_file,abort,current_app, session
+from flask_login import login_required
+from utils import get_google_services, write_log, envoyer_mail,get_db_path,upload_file_to_drive_path,slugify_filename
+from utils import get_drive_folder_id_from_path
 from openpyxl.utils import get_column_letter
 
 
@@ -29,10 +24,19 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 
-
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
+from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
+from datetime import date
+from pathlib import Path
+
+BA380_SHARED_DRIVE_ID = os.getenv("BA380_SHARED_DRIVE_ID")
+
+if not BA380_SHARED_DRIVE_ID:
+    raise RuntimeError("BA380_SHARED_DRIVE_ID non défini dans l'environnement")
+
 
 # ===============================
 # 📌 Blueprint
@@ -136,7 +140,6 @@ def delete_drive_folder_contents(drive_path, wait_until_empty=True, timeout=30):
     from googleapiclient.discovery import build
 
     try:
-        BA380_SHARED_DRIVE_ID = os.getenv("BA380_SHARED_DRIVE_ID")
         if not BA380_SHARED_DRIVE_ID:
             write_log("❌ BA380_SHARED_DRIVE_ID non défini")
             return
@@ -150,7 +153,6 @@ def delete_drive_folder_contents(drive_path, wait_until_empty=True, timeout=30):
 
         # 🔎 Résolution du dossier (sans création)
         folder_id = get_drive_folder_id_from_path(
-            service,
             drive_path,
             BA380_SHARED_DRIVE_ID
         )
@@ -753,57 +755,83 @@ def calculer_cotisations_par_annee(db_path, benef_par_vif):
 @traitements_bp.route("/cotisations", methods=["GET", "POST"])
 @login_required
 def cotisations():
+    """
+    Module principal de facturation des cotisations.
 
-    job_done = request.args.get("job_done") == "1"
+    Fonctionnement :
+    - GET  : affiche les cotisations déjà calculées pour une année
+    - POST : calcule les cotisations à partir du fichier PARSOL,
+             insère en base (si année non verrouillée),
+             puis affiche le résultat.
 
-    resultats = None
-    orphelines = None
-    annee = None
+    Règle métier :
+    - Si des factures ont déjà été envoyées en PROD pour une année,
+      le recalcul est bloqué.
+    - Le mode TEST ne bloque jamais.
+    """
+
+    from datetime import datetime
 
     mail_mode = session.get(
         "MAIL_MODE",
         os.getenv("MAIL_MODE", "PROD").upper()
     )
+
     mail_test_to = os.getenv(
         "MAIL_TEST_TO",
         "ba380.informatique2@banquealimentaire.org"
     )
 
+    resultats = None
+    orphelines = None
+    annee = request.args.get("annee")
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
     # ==========================================================
-    # 🔁 RECHARGEMENT D'UN CALCUL EXISTANT (GET)
-    # ==========================================================
-    job_id = session.get("COTISATIONS_JOB_ID")
-    if request.method == "GET" and job_id:
-        job_file = Path(tempfile.gettempdir()) / f"cotisations_{job_id}.json"
-        if job_file.exists():
-            with open(job_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        if isinstance(data, dict):
-            resultats = data.get("resultats")
-            orphelines = data.get("orphelines")
-        elif isinstance(data, list):
-            # fallback sécurité
-            resultats = data
-            orphelines = {}
-        else:
-            raise ValueError("Format de job cotisations invalide")
-    # ==========================================================
-    # 🧮 NOUVEAU CALCUL (POST)
+    # POST → CALCUL NOUVELLE ANNÉE
     # ==========================================================
     if request.method == "POST":
+        write_log("DEBUG POST COTISATIONS")
+
         try:
-            # Nettoyage ancien job
-            old_job = session.get("COTISATIONS_JOB_ID")
-            if old_job:
-                Path(tempfile.gettempdir(), f"cotisations_{old_job}.json").unlink(missing_ok=True)
-
-            session.pop("COTISATIONS_JOB_ID", None)
-            session.pop("COTISATIONS_ANNEE", None)
-
-            # Année
             annee = int(request.form.get("annee"))
 
-            # Fichier PARSOL
+            # --------------------------------------------------
+            # 🔒 BLOCAGE SI ANNÉE VALIDÉE EN PROD
+            # --------------------------------------------------
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM cotisations
+                WHERE annee = ?
+                AND date_envoi_mail IS NOT NULL
+                AND mode_test = 0
+            """, (annee,))
+
+            if cursor.fetchone()[0] > 0:
+                flash(
+                    "⚠️ Cette année a déjà été validée "
+                    "(factures envoyées en PROD). "
+                    "Recalcul interdit.",
+                    "danger"
+                )
+                conn.close()
+                return redirect(url_for("traitements.cotisations"))
+
+            # --------------------------------------------------
+            # SUPPRESSION DES CALCULS PRÉCÉDENTS
+            # (uniquement si non verrouillée)
+            # --------------------------------------------------
+            cursor.execute(
+                "DELETE FROM cotisations WHERE annee = ?",
+                (annee,)
+            )
+
+            # --------------------------------------------------
+            # PARSE FICHIER PARSOL
+            # --------------------------------------------------
             fichier = request.files.get("parsol_file")
             if not fichier:
                 raise ValueError("Fichier PARSOL manquant")
@@ -814,33 +842,104 @@ def cotisations():
 
             benefs = parse_parsol2l_annuel(parsol_path)
 
-            data = calculer_cotisations_par_annee(get_db_path(), benefs)
+            data = calculer_cotisations_par_annee(
+                get_db_path(),
+                benefs
+            )
+
             resultats = data["facturables"]
             orphelines = data["orphelines"]
 
-            # Sauvegarde job
-            job_id = str(uuid.uuid4())
-            session["COTISATIONS_JOB_ID"] = job_id
-            session["COTISATIONS_ANNEE"] = annee
+            facture_start = int(request.form.get("facture_start"))
 
-            job_file = Path(tempfile.gettempdir()) / f"cotisations_{job_id}.json"
-            with open(job_file, "w", encoding="utf-8") as f:
-                json.dump(
-                    {
-                        "resultats": resultats,
-                        "orphelines": orphelines
-                    },
-                    f,
-                    ensure_ascii=False
-                )
+            # Tri par compte comptable
+            resultats = sorted(
+                resultats,
+                key=lambda x: (x.get("compte_comptable") or "")
+            )
+
+            # --------------------------------------------------
+            # INSERTION EN BASE
+            # --------------------------------------------------
+            for i, r in enumerate(resultats):
+                numero_facture = facture_start + i
+
+                cursor.execute("""
+                    INSERT INTO cotisations (
+                        annee,
+                        id_association,
+                        numero_facture,
+                        code_vif,
+                        beneficiaires,
+                        montant,
+                        date_calcul,
+                        statut,
+                        commentaire_regroupement
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    annee,
+                    r["id_association"],
+                    numero_facture,
+                    r["code_vif_facture"],
+                    r["beneficiaires"],
+                    r["cotisation"],
+                    datetime.now().isoformat(),
+                    "calcule",
+                    r.get("commentaire_regroupement")
+                ))
+
+            conn.commit()
+
+            flash(
+                f"✅ Cotisations {annee} calculées et enregistrées.",
+                "success"
+            )
+
+            return redirect(
+                url_for("traitements.cotisations", annee=annee)
+            )
 
         except Exception:
-            current_app.logger.exception("❌ Erreur calcul cotisations")
-            flash("Erreur lors du calcul des cotisations", "danger")
+            current_app.logger.exception(
+                "Erreur calcul cotisations"
+            )
+            flash(
+                "Erreur lors du calcul des cotisations",
+                "danger"
+            )
+            conn.close()
             return redirect(url_for("traitements.cotisations"))
 
     # ==========================================================
-    # 🖥️ AFFICHAGE
+    # GET → AFFICHAGE ANNÉE
+    # ==========================================================
+    if annee:
+        cursor.execute("""
+            SELECT *
+            FROM cotisations
+            WHERE annee = ?
+            ORDER BY numero_facture
+        """, (annee,))
+
+        lignes = cursor.fetchall()
+
+        if lignes:
+            resultats = []
+            for l in lignes:
+                resultats.append({
+                    "id_association": l["id_association"],
+                    "code_vif_facture": l["code_vif"],
+                    "numero_facture": l["numero_facture"],
+                    "beneficiaires": l["beneficiaires"],
+                    "cotisation": l["montant"],
+                    "statut": l["statut"]
+                })
+
+    conn.close()
+
+    # ==========================================================
+    # RENDU TEMPLATE
     # ==========================================================
     return render_template(
         "cotisations.html",
@@ -849,7 +948,8 @@ def cotisations():
         annee=annee,
         mail_mode=mail_mode,
         mail_test_to=mail_test_to,
-        job_done=job_done,
+        job_done=False,
+        mode_relance=False
     )
 
 
@@ -876,114 +976,160 @@ def cotisations_toggle_test_mode():
 
 
 
-@traitements_bp.route("/cotisations/generer_pdfs", methods=["POST", "GET"])
+@traitements_bp.route("/cotisations/generer_pdfs", methods=["GET"])
 @login_required
 def cotisations_generer_pdfs():
+    """
+    Génère les PDF des cotisations pour une année donnée.
 
-    # ----------------------------
-    # Paramètres
-    # ----------------------------
+    - Lecture depuis cotisations
+    - JOIN avec associations
+    - Batch pour éviter timeout
+    - Mise à jour date_generation_pdf + statut
+    """
+
+    from datetime import datetime
+    import shutil
+
     BATCH_SIZE = 20
 
-    # ----------------------------
-    # POST = lancement du job
-    # ----------------------------
-    if request.method == "POST":
-        annee = int(request.form["annee"])
-        lignes = json.loads(request.form["data"])
-        offset = 0
+    annee = request.args.get("annee")
+    offset = int(request.args.get("offset", 0))
 
+    if not annee:
+        flash("Année manquante", "danger")
+        return redirect(url_for("traitements.cotisations"))
 
-        base_drive = f"COTISATIONS/Cotisations {annee}/Factures PDF"
+    annee = int(annee)
 
-        delete_drive_folder_contents(
-            drive_path=base_drive,
-            wait_until_empty=True,
-            timeout=60
-        )
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
 
-    # ----------------------------
-    # GET = batch suivant
-    # ----------------------------
-    else:
-        offset = int(request.args.get("offset", 0))
-        job_id = session.get("COTISATIONS_JOB_ID")
-        annee = session.get("COTISATIONS_ANNEE")
+    # ==========================================================
+    # Lecture cotisations + associations
+    # ==========================================================
+    cursor.execute("""
+        SELECT
+            c.*,
+            a.nom_association,
+            a.adresse_association_1,
+            a.adresse_association_2,
+            a.CP,
+            a.COMMUNE,
+            a.courriel_association
+        FROM cotisations c
+        JOIN associations a
+            ON a.Id = c.id_association
+        WHERE c.annee = ?
+        ORDER BY c.numero_facture
+    """, (annee,))
 
-        if not job_id or not annee:
-            flash("❌ Session de génération expirée", "danger")
-            return redirect(url_for("traitements.cotisations"))
+    lignes = cursor.fetchall()
 
-        job_file = Path(tempfile.gettempdir()) / f"cotisations_{job_id}.json"
-
-        with open(job_file, "r", encoding="utf-8") as f:
-            lignes = json.load(f)
-
-        base_drive = f"COTISATIONS/Cotisations {annee}/Factures PDF"
-
-    # ----------------------------
-    # Traitement du lot
-    # ----------------------------
     total = len(lignes)
     end = min(offset + BATCH_SIZE, total)
 
+    if total == 0:
+        flash("Aucune cotisation trouvée", "warning")
+        conn.close()
+        return redirect(url_for("traitements.cotisations", annee=annee))
+
     write_log(f"📄 PDF {offset+1} à {end} / {total}")
+
+    base_drive = f"COTISATIONS/Cotisations {annee}/Factures PDF"
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="cotisations_pdf_"))
 
     try:
         for ligne in lignes[offset:end]:
-            if "code_vif_facture" not in ligne or "nom_association" not in ligne:
-                continue
 
-            nom_asso = slugify_filename(ligne["nom_association"])
-            code_vif = ligne["code_vif_facture"]
+            # --------------------------------------------------
+            # Construction adresse multi-lignes
+            # --------------------------------------------------
+            adresse = "\n".join(filter(None, [
+                ligne["adresse_association_1"],
+                ligne["adresse_association_2"],
+                " ".join(filter(None, [
+                    ligne["CP"],
+                    ligne["COMMUNE"]
+                ]))
+            ]))
 
-            nom_pdf = f"FACTURE_{code_vif}_{nom_asso}.pdf"
+            nom_asso_slug = slugify_filename(ligne["nom_association"])
+            code_vif = ligne["code_vif"]
+
+            nom_pdf = (
+                f"FACTURE_{ligne['numero_facture']}_"
+                f"{code_vif}_{nom_asso_slug}.pdf"
+            )
+
             pdf_path = tmp_dir / nom_pdf
 
+            # --------------------------------------------------
+            # Génération PDF
+            # --------------------------------------------------
             generer_facture_pdf(
-                {**ligne, "annee": annee},
+                {
+                    "nom_association": ligne["nom_association"],
+                    "adresse": adresse,
+                    "cotisation": ligne["montant"],
+                    "annee": annee,
+                    "code_vif_facture": code_vif,
+                    "numero_facture": ligne["numero_facture"],
+                    "commentaire_regroupement": ligne["commentaire_regroupement"]
+                },
                 pdf_path
             )
 
+            # --------------------------------------------------
+            # Upload Drive
+            # --------------------------------------------------
             upload_file_to_drive_path(
                 local_path=str(pdf_path),
                 drive_path=base_drive,
-                filename=nom_pdf
+                filename=nom_pdf,
+                shared_drive_id=BA380_SHARED_DRIVE_ID
             )
 
+            # --------------------------------------------------
+            # Mise à jour base
+            # --------------------------------------------------
+            cursor.execute("""
+                UPDATE cotisations
+                SET date_generation_pdf = ?,
+                    statut = 'pdf_genere'
+                WHERE id = ?
+            """, (
+                datetime.now().isoformat(),
+                ligne["id"]
+            ))
+
+        conn.commit()
+
     finally:
-        import shutil
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    # ----------------------------
-    # Encore des PDF ?
-    # ----------------------------
+    # ==========================================================
+    # Batch suivant ?
+    # ==========================================================
     if end < total:
+        conn.close()
         return redirect(
             url_for(
                 "traitements.cotisations_generer_pdfs",
+                annee=annee,
                 offset=end
             )
         )
 
-    # ----------------------------
-    # FIN
-    # ----------------------------
+    conn.close()
 
-    flash(f"✅ {total} factures PDF générées avec succès", "success")
+    flash(f"✅ {total} factures PDF générées.", "success")
 
     return redirect(
-        url_for(
-            "traitements.cotisations",
-            job_done=1
-        )
+        url_for("traitements.cotisations", annee=annee)
     )
-
-    import shutil
-    shutil.rmtree(tmp_dir, ignore_errors=True)
-
 
 
 
@@ -992,103 +1138,116 @@ def cotisations_generer_pdfs():
 @login_required
 def cotisations_envoyer_mails():
     """
-    Envoi des mails de cotisation aux associations.
+    Envoi des mails de cotisation pour une année.
 
-    Fonctionnement :
-    - Récupère l'année, les données de cotisation et l'expéditeur choisi
-    - En MODE TEST :
-        * redirection automatique vers MAIL_TEST_TO
-        * ajout du préfixe [TEST] dans le sujet
-    - En MODE PROD :
-        * blocage serveur tant que la double confirmation n’est pas validée
-    - Pour chaque association :
-        * génération du PDF de facture (temporaire)
-        * envoi d’un mail avec le PDF correspondant en pièce jointe
+    - Lecture base + JOIN associations
+    - Respect mode TEST / PROD
+    - Mise à jour date_envoi_mail + statut
     """
 
-    import os
-    import json
-    import tempfile
-    from pathlib import Path
+    from datetime import datetime
 
-    # ============================
-    # Données de base
-    # ============================
     annee = request.form.get("annee")
     mail_sender = request.form.get("mail_sender")
+    confirmation_prod = request.form.get("confirmation_prod")
 
     if not annee:
         flash("Année manquante", "danger")
         return redirect(url_for("traitements.cotisations"))
 
     if not mail_sender:
-        flash("Adresse d’expéditeur manquante", "danger")
-        return redirect(url_for("traitements.cotisations"))
+        flash("Expéditeur manquant", "danger")
+        return redirect(url_for("traitements.cotisations", annee=annee))
 
-    raw = request.form.get("data")
-    if not raw:
-        flash("Aucune donnée de cotisation transmise", "danger")
-        return redirect(url_for("traitements.cotisations"))
-
-    try:
-        lignes = json.loads(raw)
-    except Exception:
-        flash("Données de cotisation invalides", "danger")
-        return redirect(url_for("traitements.cotisations"))
-
-    # ============================
-    # Mode mail
-    # ============================
+    annee = int(annee)
 
     mail_mode = session.get(
         "MAIL_MODE",
         os.getenv("MAIL_MODE", "PROD").upper()
     )
+
     mail_test_to = os.getenv(
         "MAIL_TEST_TO",
         "ba380.informatique2@banquealimentaire.org"
     )
 
-    confirmation_prod = request.form.get("confirmation_prod")
-
-    # ============================
+    # ==========================================================
     # Sécurité PROD
-    # ============================
+    # ==========================================================
     if mail_mode == "PROD" and confirmation_prod != "1":
         flash(
-            "⚠️ Envoi bloqué : confirmation PROD manquante.",
+            "⚠️ Envoi bloqué : confirmation PROD requise.",
             "danger"
         )
-        return redirect(url_for("traitements.cotisations"))
+        return redirect(url_for("traitements.cotisations", annee=annee))
 
-    # ============================
-    # Envoi des mails
-    # ============================
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    # ==========================================================
+    # Lecture cotisations non encore envoyées
+    # ==========================================================
+    cursor.execute("""
+        SELECT
+            c.*,
+            a.nom_association,
+            a.adresse_association_1,
+            a.adresse_association_2,
+            a.CP,
+            a.COMMUNE,
+            a.courriel_association
+        FROM cotisations c
+        JOIN associations a
+            ON a.Id = c.id_association
+        WHERE c.annee = ?
+        AND c.statut = 'pdf_genere'
+        ORDER BY c.numero_facture
+    """, (annee,))
+
+    lignes = cursor.fetchall()
+
+    if not lignes:
+        flash("Aucune facture prête à être envoyée.", "warning")
+        conn.close()
+        return redirect(url_for("traitements.cotisations", annee=annee))
+
     nb_mails = 0
 
     for ligne in lignes:
-        # Sécurité minimale
-        if not ligne.get("email"):
+
+        if not ligne["courriel_association"]:
             continue
 
-        # ----------------------------
+        # --------------------------------------------------
+        # Construction adresse
+        # --------------------------------------------------
+        adresse = "\n".join(filter(None, [
+            ligne["adresse_association_1"],
+            ligne["adresse_association_2"],
+            " ".join(filter(None, [
+                ligne["CP"],
+                ligne["COMMUNE"]
+            ]))
+        ]))
+
+        # --------------------------------------------------
         # Corps du mail
-        # ----------------------------
+        # --------------------------------------------------
         texte_mail = f"""Association : {ligne['nom_association']}
 
         Madame, Monsieur,
 
-        Conformément à la convention que vous avez signée avec la Banque Alimentaire de l'Isère,
-        votre cotisation pour l'année {annee} s'élève à {ligne['cotisation']} €.
+        Conformément à la convention signée avec la Banque Alimentaire de l'Isère,
+        votre cotisation pour l'année {annee} s'élève à {ligne['montant']} €.
 
         Nous vous remercions d'avance pour votre règlement avant le 28 février {annee}.
         """
-                
-        # Ajout commentaire regroupement (si présent)
+
         if ligne.get("commentaire_regroupement"):
             texte_mail += "\n" + ligne["commentaire_regroupement"] + "\n"
 
-        texte_mail +=  """
+        texte_mail += """
 
         Bien cordialement,
 
@@ -1096,39 +1255,51 @@ def cotisations_envoyer_mails():
         Comptable BAI
         """
 
-        # ----------------------------
-        # Destinataire & sujet selon mode
-        # ----------------------------
+        # --------------------------------------------------
+        # Destinataires
+        # --------------------------------------------------
         if mail_mode == "TEST":
             destinataires = [mail_test_to]
-            sujet = f"[TEST] Appel de cotisation {annee} – {ligne['nom_association']}"
+            sujet = (
+                f"[TEST] Appel de cotisation {annee} – "
+                f"{ligne['nom_association']}"
+            )
         else:
-            destinataires = [ligne["email"]]
-            sujet = f"Appel de cotisation {annee} – {ligne['nom_association']}"
-
-        if mail_mode == "TEST" and ligne["email"] != mail_test_to:
-            write_log(
-                f"🧪 MODE TEST — mail redirigé de {ligne['email']} vers {mail_test_to}"
+            destinataires = [ligne["courriel_association"]]
+            sujet = (
+                f"Appel de cotisation {annee} – "
+                f"{ligne['nom_association']}"
             )
 
-        # ----------------------------
+        # --------------------------------------------------
         # Génération PDF temporaire
-        # ----------------------------
+        # --------------------------------------------------
         with tempfile.TemporaryDirectory() as tmpdir:
-            nom_asso = slugify_filename(ligne["nom_association"])
-            code_vif = ligne["code_vif_facture"]
 
-            nom_pdf = f"FACTURE_{code_vif}_{nom_asso}.pdf"
+            nom_asso_slug = slugify_filename(
+                ligne["nom_association"]
+            )
+
+            nom_pdf = (
+                f"FACTURE_{ligne['numero_facture']}_"
+                f"{ligne['code_vif']}_{nom_asso_slug}.pdf"
+            )
+
             pdf_path = Path(tmpdir) / nom_pdf
 
             generer_facture_pdf(
-                {**ligne, "annee": annee},
+                {
+                    "nom_association": ligne["nom_association"],
+                    "adresse": adresse,
+                    "cotisation": ligne["montant"],
+                    "annee": annee,
+                    "code_vif_facture": ligne["code_vif"],
+                    "numero_facture": ligne["numero_facture"],
+                    "commentaire_regroupement": ligne["commentaire_regroupement"]
+                },
                 pdf_path
             )
 
-            # ----------------------------
-            # Envoi du mail avec PJ
-            # ----------------------------
             envoyer_mail(
                 sujet=sujet,
                 destinataires=destinataires,
@@ -1137,29 +1308,44 @@ def cotisations_envoyer_mails():
                 attachment_path=str(pdf_path)
             )
 
-            nb_mails += 1
+        # --------------------------------------------------
+        # Mise à jour base
+        # --------------------------------------------------
+        mode_test_flag = 1 if mail_mode == "TEST" else 0
 
-    # ============================
-    # Message final utilisateur
-    # ============================
+        cursor.execute("""
+            UPDATE cotisations
+            SET date_envoi_mail = ?,
+                statut = 'envoye',
+                mode_test = ?
+            WHERE id = ?
+        """, (
+            datetime.now().isoformat(),
+            mode_test_flag,
+            ligne["id"]
+        ))
+
+        nb_mails += 1
+
+    conn.commit()
+    conn.close()
+
     if mail_mode == "TEST":
         flash(
-            f"🧪 {nb_mails} mails envoyés en MODE TEST "
-            f"vers {mail_test_to}",
+            f"🧪 {nb_mails} mails envoyés en MODE TEST.",
             "warning"
         )
     else:
         flash(
-            f"✅ {nb_mails} mails envoyés aux associations",
+            f"✅ {nb_mails} mails envoyés en PROD.",
             "success"
         )
 
-    return redirect(url_for("traitements.cotisations"))
+    return redirect(
+        url_for("traitements.cotisations", annee=annee)
+    )
 
 
-import re
-from datetime import datetime
-from collections import defaultdict
 
 DATE_REGEX = re.compile(r"\d{2}/\d{2}/\d{4}")
 ASSO_REGEX = re.compile(r"Association\s*:\s*(\d{8})")
@@ -1210,12 +1396,7 @@ def parse_parsol2l_annuel(file_path):
     return dict(totaux)
 
 
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import mm
-from reportlab.lib.utils import ImageReader
-from datetime import date
-from pathlib import Path
+
 
 # ============================
 # PARAMÈTRES FIXES BAI
@@ -1233,7 +1414,7 @@ BAI_NAF = "8899B"
 
 def generer_facture_pdf(data, output_path):
     """
-    Génère une facture PDF individuelle de cotisation BA38.
+    Génère une facture ou relance PDF individuelle de cotisation BA38.
 
     data doit contenir :
       - nom_association
@@ -1328,6 +1509,26 @@ def generer_facture_pdf(data, output_path):
         y_fact,
         f"Échéance : 28/02/{data['annee']}"
     )
+    # Numéro de facture uniquement en facturation normale
+    if not data.get("mode_relance"):
+        y_fact -= 15
+        c.drawRightString(
+            largeur - 20 * mm,
+            y_fact,
+            f"Facture n° {data.get('numero_facture')}"
+        )
+    if data.get("mode_relance"):
+        y_fact -= 15
+        c.setFont("Helvetica-Bold", 10)
+        c.drawRightString(
+            largeur - 20 * mm,
+            y_fact,
+            f"RELANCE n°{data.get('numero_relance')}"
+        )
+        c.setFont("Helvetica", 9)
+
+        c.setFillColorRGB(0, 0, 0)
+
 
     # ============================
     # ADRESSE ASSOCIATION
@@ -1425,7 +1626,8 @@ def generer_facture_pdf(data, output_path):
         )
 
         w, h = p.wrap(largeur_bloc, 60 * mm)
-        p.drawOn(c, x_bloc, y_bloc)    # ============================
+        p.drawOn(c, x_bloc, y_bloc)    
+    # ============================
     # FINALISATION
     # ============================
 
@@ -1560,3 +1762,258 @@ def cotisations_quit():
     return redirect(url_for("traitements.utilitaires"))
 
 
+# ============================
+# RELANCES
+# ============================
+
+@traitements_bp.route("/cotisations/relance", methods=["GET"])
+@login_required
+def cotisations_relance_start():
+
+    mail_mode = session.get(
+        "MAIL_MODE",
+        os.getenv("MAIL_MODE", "PROD").upper()
+    )
+
+    mail_test_to = os.getenv(
+        "MAIL_TEST_TO",
+        "ba380.informatique2@banquealimentaire.org"
+    )
+
+    return render_template(
+        "cotisations_relance.html",
+        mail_mode=mail_mode,
+        mail_test_to=mail_test_to
+    )
+
+
+
+@traitements_bp.route("/cotisations/relance", methods=["POST"])
+@login_required
+def cotisations_relance():
+
+    mode_relance=True
+
+    mail_mode = session.get(
+        "MAIL_MODE",
+        os.getenv("MAIL_MODE", "PROD").upper()
+    )
+
+    mail_test_to = os.getenv(
+        "MAIL_TEST_TO",
+        "ba380.informatique2@banquealimentaire.org"
+    )
+
+
+    try:
+        annee = int(request.form.get("annee"))
+        numero_relance = int(request.form.get("numero_relance"))
+
+        fichier = request.files.get("parsol_file")
+        if not fichier:
+            raise ValueError("Fichier PARSOL manquant")
+
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            fichier.save(tmp.name)
+            parsol_path = tmp.name
+
+        benefs = parse_parsol2l_annuel(parsol_path)
+
+        data = calculer_cotisations_par_annee(get_db_path(), benefs)
+        resultats = data["facturables"]
+
+        current_app.logger.info(
+            f"NB FACTURABLES = {len(resultats)}"
+        )
+
+        # 🔎 Charger relance depuis DB
+        conn = sqlite3.connect(get_db_path())
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT Id, relance FROM associations")
+        relances = {row["Id"]: row["relance"] for row in cursor.fetchall()}
+        conn.close()
+
+        write_log(f"EXEMPLE RESULTAT : {resultats[0]}")
+
+        # 🔹 Filtrer uniquement celles à relancer
+        resultats = [
+            r for r in resultats
+            if int(relances.get(r["id_association"], 0)) == numero_relance
+        ]
+        write_log(f"NB RELANCES TROUVÉES : {len(resultats)}")
+
+        for r in resultats:
+            r["mode_relance"] = True
+            r["numero_relance"] = numero_relance
+
+        session["RELANCE_DATA"] = resultats
+        session["RELANCE_ANNEE"] = annee
+        session["RELANCE_NUMERO"] = numero_relance
+
+        return render_template(
+            "cotisations.html",
+            resultats=resultats,
+            orphelines=None,
+            annee=annee,
+            mail_mode=mail_mode,
+            mail_test_to=mail_test_to,
+            job_done=True,
+            mode_relance=True,         # ← ICI
+            numero_relance=numero_relance
+        )
+
+    except Exception:
+        current_app.logger.exception("Erreur relance cotisations")
+        flash("Erreur lors du traitement des relances", "danger")
+        return redirect(url_for("traitements.cotisations"))
+
+
+@traitements_bp.route("/cotisations/saisie-paiements", methods=["GET", "POST"])
+@login_required
+def saisie_paiements_cotisations():
+    """
+    Écran de saisie des paiements des cotisations.
+
+    - GET  : affiche les cotisations d’une année
+    - POST : enregistre une date de paiement
+    """
+
+    from datetime import datetime
+
+    annee = request.args.get("annee") or request.form.get("annee")
+    impayes_only = request.args.get("impayes") == "1"
+
+    if not annee:
+        flash("Sélectionner une année.", "warning")
+        return render_template(
+            "saisie_paiements_cotisations.html",
+            resultats=None
+        )
+
+    annee = int(annee)
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    # ==========================================================
+    # POST → ENREGISTRER PAIEMENT
+    # ==========================================================
+    if request.method == "POST":
+
+        cotisation_id = request.form.get("cotisation_id")
+        date_paiement = request.form.get("date_paiement")
+
+        if cotisation_id and date_paiement:
+            cursor.execute("""
+                UPDATE cotisations
+                SET date_paiement = ?,
+                    statut = 'paye'
+                WHERE id = ?
+            """, (date_paiement, cotisation_id))
+
+            conn.commit()
+            flash("Paiement enregistré.", "success")
+
+        return redirect(
+            url_for(
+                "traitements.saisie_paiements_cotisations",
+                annee=annee
+            )
+        )
+
+    # ==========================================================
+    # GET → AFFICHAGE
+    # ==========================================================
+    sql = """
+        SELECT
+            c.*,
+            a.nom_association,
+            a.compte_comptable
+        FROM cotisations c
+        JOIN associations a
+            ON a.Id = c.id_association
+        WHERE c.annee = ?
+    """
+
+    params = [annee]
+
+    if impayes_only:
+        sql += " AND c.statut != 'paye'"
+
+    sql += " ORDER BY c.numero_facture"
+
+    cursor.execute(sql, params)
+
+    # 🔹 ICI on récupère les lignes
+    lignes = cursor.fetchall()
+
+    total_facture = 0
+    total_paye = 0
+    resultats = []
+
+    for l in lignes:
+        montant = l["montant"] or 0
+
+        total_facture += montant
+
+        if l["statut"] == "paye":
+            total_paye += montant
+
+        resultats.append(dict(l))
+
+    total_restant = total_facture - total_paye
+
+    taux_recouvrement = 0
+    if total_facture > 0:
+        taux_recouvrement = round((total_paye / total_facture) * 100, 2)
+
+    conn.close()
+
+    return render_template(
+        "saisie_paiements_cotisations.html",
+        resultats=resultats,
+        annee=annee,
+        total_facture=total_facture,
+        total_paye=total_paye,
+        total_restant=total_restant,
+        taux_recouvrement=taux_recouvrement
+    )
+
+@traitements_bp.route("/cotisations/export/<int:annee>")
+@login_required
+def export_cotisations_excel(annee):
+
+    import pandas as pd
+
+    conn = sqlite3.connect(get_db_path())
+    df = pd.read_sql_query("""
+        SELECT
+            c.numero_facture,
+            a.nom_association,
+            a.compte_comptable,
+            c.code_vif,
+            c.beneficiaires,
+            c.montant,
+            c.statut,
+            c.date_paiement
+        FROM cotisations c
+        JOIN associations a
+            ON a.Id = c.id_association
+        WHERE c.annee = ?
+        ORDER BY c.numero_facture
+    """, conn, params=(annee,))
+    conn.close()
+
+    output = io.BytesIO()
+    df.to_excel(output, index=False)
+    output.seek(0)
+
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=f"cotisations_{annee}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )

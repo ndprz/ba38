@@ -1,0 +1,734 @@
+{% extends "base_distribution.html" %}
+
+{% block title %}Mouvements de stocks – Dépôt{% endblock %}
+
+{% block content %}
+<!-- =========================================================
+     ENTETE
+========================================================= -->
+<div class="d-flex justify-content-between align-items-center mb-4 flex-nowrap">
+
+  <h2 class="mb-0">
+    📊 Mouvements de stocks – Dépôt
+    {% if date_stock %}
+        <small class="text-muted">
+            — Stock au {{ date_stock }}
+        </small>
+    {% endif %}
+  </h2>
+
+  <input type="hidden" id="currentNumMvt">
+
+  <div class="d-flex align-items-center pe-3 actions-stock flex-nowrap">
+
+
+    <div class="form-check mb-0 me-5">
+        <input class="form-check-input"
+               type="checkbox"
+               id="toggleZeroStock"
+               checked>
+        <label class="form-check-label" for="toggleZeroStock">
+            Masquer stocks = 0
+        </label>
+    </div>
+    
+    <a href="{{ url_for('distribution.distribution_main') }}"
+       class="btn btn-success btn-sm me-4">
+        ↩️ Retour Distribution
+    </a>
+
+    <a href="{{ url_for('distribution.export_stocks_excel') }}"
+       class="btn btn-success btn-sm me-4">
+        📥 Export Excel
+    </a>
+
+    <button id="btnSaveMvt"
+            class="btn btn-secondary btn-sm me-3">
+        💾 Enregistrer
+    </button>
+
+    <button id="btnValiderMvt"
+            class="btn btn-warning btn-sm">
+        ✅ Valider transfert
+    </button>
+
+  </div>
+
+
+</div>
+
+
+<!-- =========================================================
+     CHAMP DE RECHERCHE INSTANTANÉ
+     ========================================================= -->
+<div class="mb-3">
+  <input type="text"
+         id="searchInput"
+         class="form-control"
+         placeholder="🔍 Rechercher (article, libellé, famille, sous-famille)…">
+</div>
+
+<!-- =========================================================
+     TABLE DES ARTICLES
+     ========================================================= -->
+  <div class="table-responsive">
+    <table class="table table-sm table-striped table-hover sticky-table">
+
+      <thead class="table-light">
+        <tr>
+          <th>Article</th>
+          <th>Libellé</th>
+          <th>Sous-famille</th>
+
+          <th>
+            <span id="depotFilterBtn" style="cursor:pointer;">
+              Dépôt ⏷
+            </span>
+          </th>
+
+          <th>Emplacement</th>
+
+          <th>Kgn ERP</th>
+          <th>Δ jour</th>
+          <th>Kgn corrigé</th>
+
+          <th>Kg brut</th>
+          <th>COL</th>
+          <th>PAL</th>
+
+          <th>Lot</th>
+          <th>DLC</th>
+          <th>DDM</th>
+
+          <th>Mvt PAL</th>
+          <th>Mvt COL</th>
+          <th>Mvt Kg net</th>
+          <th>Dépôt arrivée</th>
+        </tr>
+      </thead>
+
+      <tbody>
+      {% for a in articles %}
+          {% set stock_corrige = (a.kg_net or 0) + (a.delta_jour or 0) %}
+
+          <tr
+            class="
+              {% if stock_corrige == 0 %}
+                  stock-zero
+              {% elif stock_corrige != (a.kg_net or 0) %}
+                  stock-modifie
+              {% endif %}
+            "
+            data-famille="{{ a.famille or 'Sans famille' }}"
+            data-stock-zero="{% if stock_corrige == 0 %}1{% else %}0{% endif %}"
+            data-article="{{ a.article }}"
+            data-lot="{{ a.lot or '' }}"
+            data-depot="{{ a.depot }}"
+            data-kg-erp="{{ a.kg_net or 0 }}"
+            data-delta-initial="{{ a.delta_jour or 0 }}"
+            data-cdt2="{{ a.cdt_unite2 or 0 }}"
+            data-cdt3="{{ a.cdt_unite3 or 0 }}"
+            data-cdt4="{{ a.cdt_unite4 or 0 }}"
+          >
+
+          <td>{{ a.article }}</td>
+          <td>{{ a.libelle }}</td>
+          <td>{{ a.sous_famille }}</td>
+          <td>{{ a.depot }}</td>
+          <td>{{ a.emplacement or "" }}</td>
+
+          <!-- Stock ERP -->
+          {% set reste = (a.kg_net or 0) | float %}
+          {% set stock_parts = [] %}
+
+          {% if a.cdt_unite4 %}
+              {% set nb_pal = (reste // a.cdt_unite4) | int %}
+              {% set reste = reste - (nb_pal * a.cdt_unite4) %}
+              {% if nb_pal > 0 %}
+                  {% set _ = stock_parts.append(nb_pal ~ ' PAL') %}
+              {% endif %}
+          {% endif %}
+
+          {% if a.cdt_unite3 %}
+              {% set nb_col = (reste // a.cdt_unite3) | int %}
+              {% set reste = reste - (nb_col * a.cdt_unite3) %}
+              {% if nb_col > 0 %}
+                  {% set _ = stock_parts.append(nb_col ~ ' COL') %}
+              {% endif %}
+          {% endif %}
+
+          {% if a.cdt_unite2 %}
+              {% set nb_p = (reste // a.cdt_unite2) | int %}
+              {% set reste = reste - (nb_p * a.cdt_unite2) %}
+              {% if nb_p > 0 %}
+                  {% set _ = stock_parts.append(nb_p ~ ' P') %}
+              {% endif %}
+          {% endif %}
+
+          {% if reste > 0.01 %}
+              {% set _ = stock_parts.append(reste | round(2) ~ ' Kgn') %}
+          {% endif %}
+
+          {% set tooltip =
+              "Unité principale : " ~ a.unite1_principale
+              ~ (a.unite2 and "\n1 " ~ a.unite2 ~ " = " ~ a.cdt_unite2 ~ " Kgn" or "")
+              ~ (a.unite3 and "\n1 " ~ a.unite3 ~ " = " ~ a.cdt_unite3 ~ " Kgn" or "")
+              ~ (a.unite4 and "\n1 " ~ a.unite4 ~ " = " ~ a.cdt_unite4 ~ " Kgn" or "")
+              ~ ((a.coef_kgn_vers_kg and a.coef_kgn_vers_kg != 1)
+                  and "\nCoef brut : " ~ (a.coef_kgn_vers_kg | round(4))
+                  or "")
+              ~ "\n----------------"
+              ~ "\nStock = "
+              ~ (stock_parts | join(' + ') if stock_parts else (a.kg_net | round(2)) ~ " Kgn")
+          %}
+
+          <td class="qty"
+              style="cursor: help;"
+              title="{{ tooltip }}">
+              {{ a.kg_net }}
+          </td>
+
+          <!-- Delta jour -->
+          <td class="qty text-muted">{{ a.delta_jour }}</td>
+
+          <!-- Stock corrigé -->
+          <td class="qty fw-bold">
+            {{ (a.kg_net or 0) + (a.delta_jour or 0) }}
+          </td>
+
+          <td class="qty">{{ a.kg_brut or "" }}</td>
+          <td class="qty">{{ a.col or "" }}</td>
+          <td class="qty">{{ a.pal or "" }}</td>
+
+          <td>{{ a.lot or "" }}</td>
+          <td>{{ a.dlc or "" }}</td>
+          <td>{{ a.ddm or "" }}</td>
+
+          {% if a.depot == "02" %}
+            <td>
+              <input type="number"
+                    class="form-control form-control-sm input-pal"
+                    min="0"
+                    step="1"
+                    placeholder="0">
+            </td>
+
+            <td>
+              <input type="number"
+                    class="form-control form-control-sm input-col"
+                    min="0"
+                    step="1"
+                    placeholder="0">
+            </td>
+
+            <td>
+              <input type="number"
+                    class="form-control form-control-sm input-kgn"
+                    min="0"
+                    step="0.01"
+                    placeholder="0">
+            </td>
+
+            <td>
+              <select class="form-select form-select-sm input-arrivee">
+                <option value="03" selected>03</option>
+                <option value="04">04</option>
+              </select>
+            </td>
+          {% else %}
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          {% endif %}
+
+        </tr>
+      {% endfor %}
+      </tbody>
+
+    </table>
+  </div>
+
+
+
+
+</div>
+
+<div id="filter-depot" class="filter-dropdown"></div>
+
+
+
+<a href="{{ url_for('distribution.distribution_main') }}"
+   class="btn btn-secondary mt-3">
+  ← Retour Distribution
+</a>
+
+
+
+<!-- =========================================================
+    SCRIPT JAVASCRIPT (LOGIQUE UNIQUE DE VISIBILITÉ)
+========================================================= -->
+
+<script>
+let selectedDepots = [];
+window.currentNumMvt
+
+
+document.addEventListener("DOMContentLoaded", () => {
+
+  const tbody = document.querySelector("tbody");
+  const toggleZeroStock = document.getElementById("toggleZeroStock");
+  const searchInput = document.getElementById("searchInput");
+
+  const originalRows = Array.from(
+    tbody.querySelectorAll("tr[data-famille]")
+  );
+
+  let currentSearch = "";
+
+  document.querySelectorAll(".input-kgn, .input-pal, .input-col")
+  .forEach(input => {
+
+      input.addEventListener("input", function() {
+
+          const tr = this.closest("tr");
+          updateRowCalcul(tr);
+
+      });
+
+  });
+
+
+function updateRowCalcul(tr) {
+
+    const kgERP = parseFloat(tr.dataset.kgErp || 0);
+    const deltaInitial = parseFloat(tr.dataset.deltaInitial || 0);
+
+    const inputKgn = parseFloat(tr.querySelector(".input-kgn")?.value || 0);
+    const inputPal = parseFloat(tr.querySelector(".input-pal")?.value || 0);
+    const inputCol = parseFloat(tr.querySelector(".input-col")?.value || 0);
+
+    // 🔥 coefficients maintenant pris sur le TR
+    const cdt4 = parseFloat(tr.dataset.cdt4 || 0);
+    const cdt3 = parseFloat(tr.dataset.cdt3 || 0);
+
+    const mvtFromPal = inputPal * cdt4;
+    const mvtFromCol = inputCol * cdt3;
+
+    const mvtTotalKgn = inputKgn + mvtFromPal + mvtFromCol;
+
+    const nouveauDelta = deltaInitial - mvtTotalKgn;
+    const stockCorrige = kgERP + nouveauDelta;
+
+    // Mise à jour affichage
+    tr.children[6].innerText = nouveauDelta.toFixed(2);
+    tr.children[7].innerText = stockCorrige.toFixed(2);
+
+    // Couleurs
+    tr.classList.remove("stock-zero", "stock-modifie");
+
+    if (stockCorrige === 0) {
+        tr.classList.add("stock-zero");
+    } else if (stockCorrige !== kgERP) {
+        tr.classList.add("stock-modifie");
+    }
+}
+
+  function rebuildTable() {
+
+    tbody.innerHTML = "";
+
+    const familles = {};
+
+    originalRows.forEach(row => {
+
+      const fam = row.dataset.famille || "Sans famille";
+
+      const article = row.children[0].innerText.toLowerCase();
+      const libelle = row.children[1].innerText.toLowerCase();
+      const sousFam = row.children[2].innerText.toLowerCase();
+      const depotValue = row.children[3].innerText.trim();
+
+      const matchSearch =
+        !currentSearch ||
+        article.includes(currentSearch) ||
+        libelle.includes(currentSearch) ||
+        sousFam.includes(currentSearch);
+
+      const isZeroStock = row.dataset.stockZero === "1";
+      const hideZero = toggleZeroStock.checked;
+
+      const matchDepot =
+        selectedDepots.length === 0 ||
+        selectedDepots.includes(depotValue);
+
+      const visible =
+        matchSearch &&
+        matchDepot &&
+        !(hideZero && isZeroStock);
+
+      if (!visible) return;
+
+      if (!familles[fam]) familles[fam] = [];
+      familles[fam].push(row);
+    });
+
+    Object.keys(familles).forEach(fam => {
+
+      const famRow = document.createElement("tr");
+      famRow.className = "famille-row";
+      famRow.innerHTML = `<td colspan="13">📁 ${fam}</td>`;
+
+      famRow.addEventListener("click", () => {
+        const collapsed = famRow.classList.toggle("collapsed");
+        let next = famRow.nextElementSibling;
+        while (next && !next.classList.contains("famille-row")) {
+          next.style.display = collapsed ? "none" : "";
+          next = next.nextElementSibling;
+        }
+      });
+
+      tbody.appendChild(famRow);
+
+      familles[fam].forEach(row => {
+        row.style.display = "table-row";
+        tbody.appendChild(row);
+      });
+
+    });
+  }
+
+  function collectLignes() {
+
+      const lignes = [];
+
+      document.querySelectorAll("tbody tr[data-article]").forEach(tr => {
+
+          const qte_pal = parseFloat(tr.querySelector(".input-pal")?.value || 0);
+          const qte_col = parseFloat(tr.querySelector(".input-col")?.value || 0);
+          const qte_kgn = parseFloat(tr.querySelector(".input-kgn")?.value || 0);
+
+          if (qte_pal > 0 || qte_col > 0 || qte_kgn > 0) {
+
+              lignes.push({
+                  article: tr.dataset.article,
+                  lot: tr.dataset.lot,
+                  depot_depart: tr.dataset.depot,
+                  depot_arrivee: tr.querySelector(".input-arrivee")?.value || "03",
+                  qte_pal: qte_pal,
+                  qte_col: qte_col,
+                  qte_kgn: qte_kgn
+              });
+          }
+      });
+
+      return lignes;
+  }
+
+  // =============================
+  // BOUTON ENREGISTRER BROUILLON
+  // =============================
+  const btnSave = document.getElementById("btnSaveMvt");
+
+  if (btnSave) {
+      btnSave.addEventListener("click", function() {
+
+          const lignes = collectLignes();
+
+          if (lignes.length === 0) {
+              alert("Aucune ligne saisie.");
+              return;
+          }
+
+          fetch("{{ url_for('distribution.save_mvt_brouillon') }}", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ lignes: lignes })
+          })
+          .then(r => r.json())
+          .then(data => {
+              if (data.success) {
+
+                  document.getElementById("currentNumMvt").value = data.num_mvt;
+
+                  alert("Brouillon enregistré : " + data.num_mvt);
+
+              } else {
+                  alert(data.error || "Erreur.");
+              }
+          })
+          .catch(() => {
+              alert("Erreur serveur.");
+          });
+
+      });   // ← fermeture addEventListener
+  }        // ← fermeture if
+
+
+
+  // =============================
+  // BOUTON VALIDER
+  // =============================
+  const btnValider = document.getElementById("btnValiderMvt");
+
+  if (btnValider) {
+      btnValider.addEventListener("click", function() {
+
+          const numMvt = document.getElementById("currentNumMvt").value;
+
+          if (!numMvt) {
+              alert("Veuillez enregistrer le brouillon avant de valider.");
+              return;
+          }
+
+          btnValider.disabled = true;
+
+          fetch("{{ url_for('distribution.valider_mvt') }}", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ num_mvt: numMvt })
+          })
+          .then(r => r.json())
+          .then(data => {
+
+              if (data.success) {
+
+                  window.location.href =
+                      "{{ url_for('distribution.afficher_mvt', num_mvt='__NUM__') }}"
+                      .replace('__NUM__', data.num_mvt);
+
+              } else {
+                  alert(data.error || "Erreur.");
+                  btnValider.disabled = false;
+              }
+          })
+          .catch(() => {
+              alert("Erreur serveur.");
+              btnValider.disabled = false;
+          });
+
+      });
+  }
+
+
+
+  searchInput.addEventListener("input", () => {
+    currentSearch = searchInput.value.toLowerCase();
+    rebuildTable();
+  });
+
+  toggleZeroStock.addEventListener("change", rebuildTable);
+
+  initDepotFilter(originalRows, rebuildTable);
+
+  rebuildTable();
+});
+
+
+function initDepotFilter(rows, rebuildTable) {
+
+  const btn = document.getElementById("depotFilterBtn");
+  const dropdown = document.getElementById("filter-depot");
+
+  if (!btn || !dropdown) return;
+
+  const values = new Set();
+
+  rows.forEach(r => {
+    const depot = r.children[3].innerText.trim();
+    if (depot) values.add(depot);
+  });
+
+  const sorted = Array.from(values).sort();
+  const storageKey = "filterDepot_mouvements_stocks";
+
+  // Récupération sauvegarde navigateur
+  const saved = localStorage.getItem(storageKey);
+
+  if (saved) {
+      try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+              selectedDepots = parsed;
+          } else {
+              selectedDepots = [...sorted];
+          }
+      } catch (e) {
+          selectedDepots = [...sorted];
+      }
+  } else {
+      selectedDepots = [...sorted];
+  }
+
+  dropdown.innerHTML = "";
+
+  sorted.forEach(val => {
+
+      const label = document.createElement("label");
+      const cb = document.createElement("input");
+
+      cb.type = "checkbox";
+      cb.value = val;
+      cb.checked = selectedDepots.includes(val);
+
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(" " + val));
+      dropdown.appendChild(label);
+  });
+
+  function applyFilter() {
+
+      const checked = Array.from(
+          dropdown.querySelectorAll("input:checked")
+      ).map(cb => cb.value);
+
+      // Empêche filtre vide accidentel
+      selectedDepots = checked.length > 0 ? checked : [...sorted];
+
+      localStorage.setItem(storageKey, JSON.stringify(selectedDepots));
+
+      rebuildTable();
+  }
+
+  dropdown.addEventListener("change", applyFilter);
+
+  btn.addEventListener("click", (e) => {
+
+    e.stopPropagation();
+
+    const rect = btn.getBoundingClientRect();
+
+    dropdown.style.left = rect.left + "px";
+    dropdown.style.top = rect.bottom + "px";
+
+    dropdown.style.display =
+      dropdown.style.display === "block" ? "none" : "block";
+  });
+
+  document.addEventListener("click", () => {
+    dropdown.style.display = "none";
+  });
+
+  dropdown.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
+}
+
+// =======================================
+// INITIALISATION TOOLTIP UNITÉS
+// =======================================
+
+function buildTooltipContent(cell){
+
+    const u1 = cell.dataset.unite1 || "";
+    const u2 = cell.dataset.unite2 || "";
+    const c2 = cell.dataset.cdt2 || "";
+    const u3 = cell.dataset.unite3 || "";
+    const c3 = cell.dataset.cdt3 || "";
+    const u4 = cell.dataset.unite4 || "";
+    const c4 = cell.dataset.cdt4 || "";
+    const coefBrut = cell.dataset.coefbrut || 1;
+
+    let content = "<strong>Unités article</strong><br>";
+
+    if(u1){
+        content += `Unité principale : ${u1}<br>`;
+    }
+
+    if(u2){
+        content += `1 ${u2} = ${c2} Kgn<br>`;
+    }
+
+    if(u3){
+        content += `1 ${u3} = ${c3} Kgn<br>`;
+    }
+
+    if(u4){
+        content += `1 ${u4} = ${c4} Kgn<br>`;
+    }
+
+    if(coefBrut && coefBrut != 1){
+        content += `<hr style="margin:4px 0">`;
+        content += `Coef brut : ${coefBrut}`;
+    }
+
+    return content;
+}
+
+// Initialisation une seule fois
+document.querySelectorAll(".kgn-tooltip").forEach(cell => {
+
+    const content = buildTooltipContent(cell);
+
+    cell.setAttribute("data-bs-toggle", "tooltip");
+    cell.setAttribute("data-bs-html", "true");
+    cell.setAttribute("title", content);
+
+});
+
+// Activer tous les tooltips Bootstrap
+const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl);
+});
+
+// =======================================
+// CALCUL DÉCOMPOSITION STOCK EN UNITÉS
+// =======================================
+
+function decomposeStock(cell){
+
+    const kg = parseFloat(cell.innerText.replace(",", ".")) || 0;
+
+    const cdt2 = parseFloat(cell.dataset.cdt2 || 0);
+    const cdt3 = parseFloat(cell.dataset.cdt3 || 0);
+    const cdt4 = parseFloat(cell.dataset.cdt4 || 0);
+
+    let reste = kg;
+    let parts = [];
+
+    if(cdt4 > 0){
+        const nbPal = Math.floor(reste / cdt4);
+        if(nbPal > 0){
+            parts.push(nbPal + " PAL");
+            reste -= nbPal * cdt4;
+        }
+    }
+
+    if(cdt3 > 0){
+        const nbCol = Math.floor(reste / cdt3);
+        if(nbCol > 0){
+            parts.push(nbCol + " COL");
+            reste -= nbCol * cdt3;
+        }
+    }
+
+    if(cdt2 > 0){
+        const nbP = Math.floor(reste / cdt2);
+        if(nbP > 0){
+            parts.push(nbP + " P");
+            reste -= nbP * cdt2;
+        }
+    }
+
+    return parts.join(" + ");
+}
+
+document.querySelectorAll(".qty[title]").forEach(cell => {
+
+    if(!cell.dataset.cdt2 && !cell.dataset.cdt3 && !cell.dataset.cdt4){
+        return;
+    }
+
+    const decomposition = decomposeStock(cell);
+
+    if(decomposition){
+        cell.title += "\n----------------\nStock = " + decomposition;
+    }
+});
+
+
+
+</script>
+
+{% endblock %}

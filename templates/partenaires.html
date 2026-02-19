@@ -28,7 +28,9 @@
 
     <!-- 📝 Mise à jour en tableau -->
     {% if not lecture_seule %}
-    <form method="GET" action="{{ url_for('partenaires.edition_tableau_associations') }}" style="display: inline;">
+    <form method="POST"
+        action="{{ url_for('partenaires.edition_tableau_associations') }}"
+        style="display: inline;">
         {% for col in selected_columns %}
             <input type="hidden" name="columns" value="{{ col }}">
         {% endfor %}
@@ -56,6 +58,11 @@
         {% endif %}
     </button>
 
+    <button type="button" class="btn btn-outline-danger"
+            onclick="resetFiltersPart()">
+        ♻️ Réinitialiser les filtres
+    </button>
+
     <button class="btn btn-secondary" onclick="document.getElementById('form-options').submit();">
         🔄 Actualiser
     </button>
@@ -64,7 +71,9 @@
 
 
 <!-- 🔧 Formulaire de configuration -->
-<form method="GET" id="form-options">
+<form method="POST"
+      action="{{ url_for('partenaires.partenaires') }}"
+      id="form-options">
     <fieldset>
         <legend>Options d'affichage</legend>
         <input type="hidden" name="has_interacted" value="1">
@@ -86,7 +95,8 @@
                             <input type="checkbox" class="toggle-master-checkbox" id="toggle-{{ safe_group_name }}"
                                 name="selected_groups"
                                 value="{{ group_name }}"
-                                onclick="toggleAll('{{ safe_group_name }}', this.checked)"
+                                onclick="toggleAll('{{ safe_group_name }}', this.checked); saveDisplayOptionsPart();"
+
                                 {% if group_name in selected_groups %}checked{% endif %}>
 
                             Tout sélectionner
@@ -99,7 +109,8 @@
                                 name="columns"
                                 value="{{ field.field_name }}"
                                 {% if field.field_name in selected_columns %}checked{% endif %}
-                                onchange="updateGroupCheckboxState('{{ safe_group_name }}')">
+                                onchange="updateGroupCheckboxState('{{ safe_group_name }}'); saveDisplayOptionsPart();"
+>
 
                             {{ field.field_name | format_label }}
                         </label><br>
@@ -111,7 +122,14 @@
 
         <!-- 🔍 Barre de recherche + option "voir toutes" -->
         <div style="display: flex; gap: 15px; align-items: center; margin-top: 10px;">
-            <input type="text" id="filtre-association" class="form-control" placeholder="🔍 Rechercher une association...">
+            <input type="text"
+                id="filtre-association"
+                class="form-control"
+                placeholder="🔎 Rechercher une association...">
+
+            <div id="filtre-info"
+                style="font-size: 0.9rem; color: #666; margin-top: 4px;">
+            </div>
             {% if user_role == 'car' %}
                 <div class="form-check" style="margin-left: 15px;">
                     <input class="form-check-input" type="checkbox" id="voir_toutes" name="voir_toutes" value="1"
@@ -149,13 +167,18 @@
 </div>
 
 <!-- 📊 Tableau principal avec colonnes figées -->
-<div id="scroll-bottom" style="overflow-x: auto; white-space: nowrap;">
+<div id="scroll-bottom"
+     style="overflow-x: auto; overflow-y: auto; max-height: 70vh; white-space: nowrap;">
 <table class="table table-bordered table-sticky" id="partenaire-table">
     <thead>
         <tr class="{% if request.args.get('voir_non_valides') == '1' %}ligne-non-valide{% endif %}">
             <th class="sticky-col sticky-col-1">Action</th>
-            <th class="sticky-col sticky-col-2">ID</th>
-            <th class="sticky-col sticky-col-3">Nom</th>
+            <th class="sticky-col sticky-col-2 sortable" data-sort="id">
+                ID <span class="arrow">▲▼</span>
+            </th>
+            <th class="sticky-col sticky-col-3 sortable" data-sort="nom">
+                Nom <span class="arrow">▲▼</span>
+            </th>
             {% for column in selected_columns %}
                 {% if column != 'nom_association' %}
                 <th>{{ column | format_label }}</th>
@@ -225,25 +248,136 @@
 <!-- 🔁 JS : dynamique et synchronisation -->
 <script>
 
-function toggleNonValides() {
-    const f = document.getElementById('form-options');
-    if (!f) return;
+// ===============================
+// 🔐 PERSISTANCE OPTIONS AFFICHAGE
+// ===============================
+const OPTIONS_KEY_PART = "partenaires_display_options";
 
-    // Supprimer tous les anciens champs voir_non_valides
-    const olds = f.querySelectorAll('input[name="voir_non_valides"]');
-    olds.forEach(el => el.remove());
+function saveDisplayOptionsPart() {
 
-    // Créer un nouveau champ avec la valeur inversée
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = 'voir_non_valides';
-    input.value = {{ '0' if request.args.get('voir_non_valides') == '1' else '1' }};
-    f.appendChild(input);
+    const selectedColumns = Array.from(
+        document.querySelectorAll("input[name='columns']:checked")
+    ).map(cb => cb.value);
 
-    // Soumettre le formulaire complet (cases cochées incluses)
-    f.submit();
+    const selectedGroups = Array.from(
+        document.querySelectorAll("input[name='selected_groups']:checked")
+    ).map(cb => cb.value);
+
+    localStorage.setItem(OPTIONS_KEY_PART, JSON.stringify({
+        columns: selectedColumns,
+        groups: selectedGroups
+    }));
 }
 
+/* =====================================================
+   🚀 Initialisation complète page partenaires
+===================================================== */
+function initPartenairesPage() {
+
+    /* ===============================
+       🔐 PERSISTANCE OPTIONS
+    =============================== */
+    const saved = localStorage.getItem(OPTIONS_KEY_PART);
+    const isPost = "{{ request.method }}" === "POST";
+
+    if (!isPost && saved) {
+
+        const options = JSON.parse(saved);
+        const form = document.getElementById("form-options");
+
+        options.columns.forEach(col => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "columns";
+            input.value = col;
+            form.appendChild(input);
+        });
+
+        options.groups.forEach(grp => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "selected_groups";
+            input.value = grp;
+            form.appendChild(input);
+        });
+
+        form.submit();
+        return; // stop ici
+    }
+
+    /* ===============================
+       🔘 Recalcul états groupes
+    =============================== */
+    document.querySelectorAll(".toggle-master-checkbox").forEach(master => {
+        const group = master.id.replace("toggle-", "");
+        updateGroupCheckboxState(group);
+    });
+
+    /* ===============================
+       📌 Restauration tri
+    =============================== */
+    if (currentSortPart.column) {
+        applySortPart(currentSortPart.column, false);
+    }
+
+    /* ===============================
+    🔁 Synchronisation scroll horizontal
+    =============================== */
+
+    const scrollTop = document.getElementById("scroll-top");
+    const scrollBottom = document.getElementById("scroll-bottom");
+    const syncScroll = document.getElementById("sync-scroll");
+
+    if (scrollTop && scrollBottom && syncScroll) {
+
+        // largeur virtuelle
+        syncScroll.style.width = scrollBottom.scrollWidth + "px";
+
+        // sync haut → bas
+        scrollTop.addEventListener("scroll", () => {
+            scrollBottom.scrollLeft = scrollTop.scrollLeft;
+        });
+
+        // sync bas → haut
+        scrollBottom.addEventListener("scroll", () => {
+            scrollTop.scrollLeft = scrollBottom.scrollLeft;
+        });
+
+        // cacher barre du haut si inutile
+        if (scrollBottom.scrollWidth <= scrollBottom.clientWidth) {
+            scrollTop.style.display = "none";
+        }
+    }
+
+
+}
+
+
+/* =====================================================
+   🎬 Lancement au chargement DOM
+===================================================== */
+document.addEventListener("DOMContentLoaded", initPartenairesPage);
+
+
+
+// ===============================
+// ♻️ RESET COMPLET
+// ===============================
+function resetFiltersPart() {
+
+    if (!confirm("Réinitialiser tous les filtres et options d'affichage ?")) {
+        return;
+    }
+
+    localStorage.removeItem(OPTIONS_KEY_PART);
+    localStorage.removeItem(SORT_KEY_PART);
+
+    window.location.href = "{{ url_for('partenaires.partenaires') }}";
+}
+
+// ===============================
+// 🔘 GROUPES
+// ===============================
 function toggleGroup(groupName, titreElement) {
     const container = document.getElementById(`container-${groupName}`);
     if (container) container.classList.toggle('expanded');
@@ -254,56 +388,151 @@ function toggleGroup(groupName, titreElement) {
     }
 }
 
-
 function toggleAll(group, checked) {
     document.querySelectorAll('.field-' + group).forEach(cb => cb.checked = checked);
     updateGroupCheckboxState(group);
+    saveDisplayOptionsPart();
 }
 
 function updateGroupCheckboxState(group) {
-    const boxes = document.querySelectorAll('.field-' + group);
-    const relevantBoxes = Array.from(checkboxes).filter(cb => cb.offsetParent !== null);
-    const allChecked = relevantBoxes.length > 0 && relevantBoxes.every(cb => cb.checked);
-    document.getElementById('toggle-' + group).checked = allChecked;
-}
 
-function updatePublipostageFile() {
-    if (confirm("Voulez-vous vraiment mettre à jour les fichiers de publipostage ?")) {
-        fetch("{{ url_for('export.export_all_publipostage') }}", { method: "POST" })
-            .then(response => response.json())
-            .then(data => alert(data.message))
-            .catch(error => alert("❌ Erreur lors de la mise à jour : " + error));
+    const boxes = document.querySelectorAll('.field-' + group);
+    const master = document.getElementById('toggle-' + group);
+
+    if (!master || boxes.length === 0) return;
+
+    const total = boxes.length;
+    const checkedCount = Array.from(boxes).filter(cb => cb.checked).length;
+
+    if (checkedCount === 0) {
+        master.checked = false;
+        master.indeterminate = false;
+    }
+    else if (checkedCount === total) {
+        master.checked = true;
+        master.indeterminate = false;
+    }
+    else {
+        master.checked = false;
+        master.indeterminate = true;
     }
 }
 
+// ===============================
+// 📌 TRI
+// ===============================
+const SORT_KEY_PART = "partenaires_sort_state";
 
+let currentSortPart = JSON.parse(localStorage.getItem(SORT_KEY_PART)) || {
+    column: null,
+    asc: true
+};
 
-// 📌 Scroll horizontal synchronisé
-const topScroll = document.getElementById("scroll-top");
-const bottomScroll = document.getElementById("scroll-bottom");
-const syncDiv = document.getElementById("sync-scroll");
-const table = document.getElementById("partenaire-table");
-if (syncDiv && table) syncDiv.style.width = table.scrollWidth + "px";
-topScroll.addEventListener("scroll", () => bottomScroll.scrollLeft = topScroll.scrollLeft);
-bottomScroll.addEventListener("scroll", () => topScroll.scrollLeft = bottomScroll.scrollLeft);
+function applySortPart(column, updateStorage = true) {
+    const table = document.getElementById("partenaire-table");
+    if (!table) return;
 
-// 🔎 Filtrage dynamique client
-document.getElementById("filtre-association").addEventListener("input", function () {
-    const filtre = this.value.toLowerCase();
-    document.querySelectorAll("table tbody tr").forEach(row => {
-        row.style.display = row.innerText.toLowerCase().includes(filtre) ? "" : "none";
+    const tbody = table.querySelector("tbody");
+    const rows = Array.from(tbody.querySelectorAll("tr"));
+    const colIndex = column === "id" ? 1 : 2;
+
+    rows.sort((a, b) => {
+        let va = a.children[colIndex].innerText.trim();
+        let vb = b.children[colIndex].innerText.trim();
+
+        if (column === "id") {
+            return currentSortPart.asc
+                ? Number(va) - Number(vb)
+                : Number(vb) - Number(va);
+        }
+        return currentSortPart.asc
+            ? va.localeCompare(vb, "fr", { sensitivity: "base" })
+            : vb.localeCompare(va, "fr", { sensitivity: "base" });
     });
-});
-// 🧠 Vérifie l’état initial des groupes au chargement
-function initGroupCheckboxStates() {
-    document.querySelectorAll('[id^="toggle-"]').forEach(groupCheckbox => {
-        const groupName = groupCheckbox.id.replace("toggle-", "");
-        updateGroupCheckboxState(groupName);
+
+    rows.forEach(tr => tbody.appendChild(tr));
+
+    document.querySelectorAll("th.sortable").forEach(th => {
+        th.classList.remove("active");
+        th.querySelector(".arrow").textContent = "▲▼";
     });
+
+    const active = document.querySelector(`th.sortable[data-sort="${column}"]`);
+    if (active) {
+        active.classList.add("active");
+        active.querySelector(".arrow").textContent = currentSortPart.asc ? "▲" : "▼";
+    }
+
+    if (updateStorage) {
+        localStorage.setItem(SORT_KEY_PART, JSON.stringify(currentSortPart));
+    }
 }
 
-// Appelé au chargement de la page
-document.addEventListener("DOMContentLoaded", initGroupCheckboxStates);
+document.querySelectorAll("th.sortable").forEach(th => {
+    th.addEventListener("click", () => {
+        const col = th.dataset.sort;
+        currentSortPart.asc = currentSortPart.column === col ? !currentSortPart.asc : true;
+        currentSortPart.column = col;
+        applySortPart(col);
+    });
+});
+
+
+// ===============================
+// 🔎 FILTRE CLIENT
+// ===============================
+const filtreInput = document.getElementById("filtre-association");
+
+function applyFiltrePart() {
+
+    const filtre = filtreInput.value.toLowerCase();
+    const rows = document.querySelectorAll("#partenaire-table tbody tr");
+
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+        const match = row.innerText.toLowerCase().includes(filtre);
+        row.style.display = match ? "" : "none";
+        if (match) visibleCount++;
+    });
+
+    const info = document.getElementById("filtre-info");
+
+    if (!filtre) {
+        info.textContent = "";
+    } else {
+        info.textContent = visibleCount + " résultat" + (visibleCount > 1 ? "s" : "");
+    }
+}
+
+/* 🔎 Filtre dynamique */
+filtreInput.addEventListener("input", applyFiltrePart);
+
+/* ⎋ Annulation avec touche Echap */
+filtreInput.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+
+        this.value = "";
+        applyFiltrePart();
+
+        // Optionnel : empêcher propagation
+        e.preventDefault();
+    }
+});
+
+function toggleNonValides() {
+
+    const url = new URL(window.location.href);
+    const params = url.searchParams;
+
+    if (params.get("voir_non_valides") === "1") {
+        params.delete("voir_non_valides");
+    } else {
+        params.set("voir_non_valides", "1");
+    }
+
+    window.location.href = url.toString();
+}
 
 </script>
 {% endblock %}

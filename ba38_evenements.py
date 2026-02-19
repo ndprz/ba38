@@ -109,6 +109,52 @@ def to_abs_path(web_path: str) -> str:
 def base_noext(path: str) -> str:
     return os.path.splitext(os.path.basename(path))[0]
 
+
+def remove_all_files_for_base(base: str):
+    """
+    Supprime TOUS les fichiers liés à un événement
+    (vidéo incluse) — à utiliser UNIQUEMENT lors
+    de la suppression d’un événement.
+    """
+    upload_dir = get_upload_dir()
+    patterns = [
+        f"{base}.*",
+        f"{base}_page_*.jpg",
+        f"{base}_slide_*.jpg",
+        f"{base}_*.jpg",
+    ]
+    for pat in patterns:
+        for fp in glob.glob(os.path.join(upload_dir, pat)):
+            try:
+                os.remove(fp)
+                write_log(f"🗑️ Fichier supprimé : {fp}")
+            except Exception as e:
+                write_log(f"⚠️ Suppression échouée {fp} : {e}")
+
+def remove_derived_files_for_base(base: str):
+    """
+    Supprime UNIQUEMENT les fichiers dérivés
+    (PDF, images, sous-titres), JAMAIS la vidéo source.
+    """
+    upload_dir = get_upload_dir()
+    patterns = [
+        f"{base}.pdf",
+        f"{base}.pptx",
+        f"{base}.vtt",
+        f"{base}.srt",
+        f"{base}_page_*.jpg",
+        f"{base}_slide_*.jpg",
+        f"{base}_*.jpg",
+    ]
+    for pat in patterns:
+        for fp in glob.glob(os.path.join(upload_dir, pat)):
+            try:
+                os.remove(fp)
+                write_log(f"🧹 Fichier dérivé supprimé : {fp}")
+            except Exception as e:
+                write_log(f"⚠️ Suppression échouée {fp} : {e}")
+
+
 def remove_files_for_base(base: str):
     """
     Supprime tous les fichiers liés à une base (sans extension) :
@@ -242,7 +288,19 @@ def get_benevole_photo_path(benevole_id) -> str | None:
 @evenements_bp.route("/gestion_evenements", methods=["GET", "POST"])
 @login_required
 def gestion_evenements():
+    """
+    Gestion complète des événements (CRUD).
 
+    Règles fonctionnelles :
+    - Création : sauvegarde du fichier, aucune suppression.
+    - Modification avec nouveau fichier : suppression de l’ancien média AVANT remplacement.
+    - Suppression événement : suppression complète (vidéo, image, dérivés, sous-titres).
+    """
+
+    # Debug upload (à garder tant que nécessaire)
+    write_log(f"DEBUG files keys = {list(request.files.keys())}")
+
+    # Sécurité : contrôle des droits
     if not role_autorise_evenements():
         flash("⛔ Accès refusé au module Événements.", "danger")
         return redirect(url_for("index"))
@@ -251,77 +309,71 @@ def gestion_evenements():
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    # --------------------------
+    # ======================================================================
     # POST : actions
-    # --------------------------
+    # ======================================================================
     if request.method == "POST":
         action = request.form.get("action", "ajouter")
 
-        # Suppression
+        # ------------------------------------------------------------------
+        # 🗑️ SUPPRESSION D’UN ÉVÉNEMENT (nettoyage COMPLET)
+        # ------------------------------------------------------------------
         if action == "supprimer":
             eid = request.form.get("id")
             if eid:
-                row = cur.execute("SELECT fichier_path, image_path FROM evenements WHERE id = ?", (eid,)).fetchone()
-                f_abs = to_abs_path(row["fichier_path"]) if row and row["fichier_path"] else None
-                i_abs = to_abs_path(row["image_path"]) if row and row["image_path"] else None
+                row = cur.execute(
+                    "SELECT fichier_path, image_path FROM evenements WHERE id = ?",
+                    (eid,)
+                ).fetchone()
 
-                # 🗑️ suppression directe du fichier exact (vidéo / image)
-                for p in [f_abs, i_abs]:
-                    if p:
-                        exists = os.path.exists(p)
-                        write_log(f"🔍 Tentative suppression fichier : {p} | Existe: {exists}")
-                        if exists:
+                if row:
+                    # Base commune pour suppression complète
+                    paths = []
+                    if row["fichier_path"]:
+                        paths.append(to_abs_path(row["fichier_path"]))
+                    if row["image_path"]:
+                        paths.append(to_abs_path(row["image_path"]))
+
+                    # Suppression complète des fichiers liés
+                    for p in paths:
+                        if p and os.path.exists(p):
                             try:
                                 os.remove(p)
                                 write_log(f"🗑️ Fichier supprimé : {p}")
                             except Exception as e:
                                 write_log(f"❌ Erreur suppression fichier {p} : {e}")
-                        else:
-                            if p.startswith("/static/"):
-                                abs_path_test = os.path.join(get_upload_dir(), os.path.basename(p))
-                                write_log(f"⚠️ Fichier non trouvé à {p}, test chemin alternatif : {abs_path_test}")
-                                if os.path.exists(abs_path_test):
-                                    try:
-                                        os.remove(abs_path_test)
-                                        write_log(f"🗑️ Fichier supprimé via chemin alternatif : {abs_path_test}")
-                                    except Exception as e:
-                                        write_log(f"❌ Erreur suppression (alternatif) {abs_path_test} : {e}")
 
-                # 🧹 suppression des fichiers dérivés (PDF, images, etc.)
-                bases = {base_noext(p) for p in [f_abs, i_abs] if p}
-                for b in bases:
-                    remove_files_for_base(b)
+                        # Suppression des dérivés + sous-titres
+                        if p:
+                            base = base_noext(p)
+                            remove_all_files_for_base(base)
 
-                # 🎞️ suppression automatique des sous-titres associés (VTT et SRT)
-                if f_abs:
-                    base_video = os.path.splitext(f_abs)[0]
-                    for ext in [".vtt", ".srt"]:
-                        sub_path = base_video + ext
-                        if os.path.exists(sub_path):
-                            try:
-                                os.remove(sub_path)
-                                write_log(f"🗑️ Sous-titres supprimés : {sub_path}")
-                            except Exception as e:
-                                write_log(f"⚠️ Erreur suppression sous-titres {sub_path} : {e}")
-
-                # 🧱 suppression de la ligne en base
+                # Suppression BDD
                 cur.execute("DELETE FROM evenements WHERE id = ?", (eid,))
                 conn.commit()
                 upload_database()
-                flash("🗑️ Événement supprimé (vidéo, image et sous-titres nettoyés).", "info")
+                flash("🗑️ Événement supprimé (fichiers nettoyés).", "info")
+
             return redirect(url_for("evenements.gestion_evenements"))
 
-        # Bascule actif
+        # ------------------------------------------------------------------
+        # 🔁 Bascule actif / inactif
+        # ------------------------------------------------------------------
         if action == "basculer_actif":
             eid = request.form.get("id")
             if eid:
-                cur.execute("UPDATE evenements SET actif = 1 - actif WHERE id = ?", (eid,))
+                cur.execute(
+                    "UPDATE evenements SET actif = 1 - actif WHERE id = ?",
+                    (eid,)
+                )
                 conn.commit()
                 upload_database()
                 flash("🔁 Statut mis à jour.", "info")
             return redirect(url_for("evenements.gestion_evenements"))
 
-        # Champs communs
+        # ------------------------------------------------------------------
+        # Champs communs (ajout / modification)
+        # ------------------------------------------------------------------
         type_ev = request.form.get("type")
         titre = (request.form.get("titre") or "").strip()
         contenu = (request.form.get("contenu") or "").strip()
@@ -332,79 +384,123 @@ def gestion_evenements():
         recurrence = request.form.get("recurrence") or "aucune"
         duree = int(request.form.get("duree_affichage") or 15)
 
-        # 🧩 Si un bénévole est sélectionné et qu'aucune image manuelle n’a été donnée :
+        # ------------------------------------------------------------------
+        # 📸 Image automatique depuis photo bénévole si applicable
+        # ------------------------------------------------------------------
         if not image_path and benevole_id:
             try:
-                benevole_id_int = int(benevole_id)
-                src_dir = os.path.join(os.path.dirname(get_static_event_dir()), "photos_benevoles")
-                for ext in [".jpg", ".jpeg", ".png"]:
-                    src = os.path.join(src_dir, f"{benevole_id_int}{ext}")
+                bid = int(benevole_id)
+                src_dir = os.path.join(
+                    os.path.dirname(get_static_event_dir()),
+                    "photos_benevoles"
+                )
+                for ext in (".jpg", ".jpeg", ".png"):
+                    src = os.path.join(src_dir, f"{bid}{ext}")
                     if os.path.exists(src):
-                        dest = os.path.join(get_static_event_dir(), f"benevole_{benevole_id_int}{ext}")
+                        dest = os.path.join(
+                            get_static_event_dir(),
+                            f"benevole_{bid}{ext}"
+                        )
                         shutil.copy2(src, dest)
-                        image_path = f"/static/evenements/benevole_{benevole_id_int}{ext}"
-                        write_log(f"📸 Photo bénévole trouvée et copiée : {image_path}")
+                        image_path = f"/static/evenements/benevole_{bid}{ext}"
+                        write_log(f"📸 Photo bénévole copiée : {image_path}")
                         break
-                else:
-                    write_log(f"⚠️ Aucune photo trouvée pour bénévole ID={benevole_id_int} dans {src_dir}")
             except Exception as e:
-                write_log(f"❌ Erreur copie automatique photo bénévole : {e}")
+                write_log(f"❌ Erreur copie photo bénévole : {e}")
 
-        # 🧠 Log clair avant insertion
-        write_log(f"🧾 Insertion événement → image_path={image_path}, benevole_id={benevole_id}")
+        write_log(
+            f"🧾 Traitement événement → image_path={image_path}, benevole_id={benevole_id}"
+        )
 
+        # ------------------------------------------------------------------
+        # 📎 Upload fichier (vidéo / PDF / etc.)
+        # ------------------------------------------------------------------
         new_file_web = None
         if "fichier" in request.files and request.files["fichier"].filename:
             f = request.files["fichier"]
             if not allowed_file(f.filename):
                 flash("❌ Extension non autorisée.", "danger")
                 return redirect(url_for("evenements.gestion_evenements"))
+
             new_file_web = save_uploaded_file(f)
 
+        # ------------------------------------------------------------------
+        # 🔁 MODIFICATION (remplacement contrôlé)
+        # ------------------------------------------------------------------
         if action == "modifier":
             eid = request.form.get("id")
             if not eid:
                 flash("❌ Identifiant manquant.", "danger")
                 return redirect(url_for("evenements.gestion_evenements"))
+
+            # Si nouveau fichier : suppression de l’ancien média AVANT remplacement
             if new_file_web:
-                old = cur.execute("SELECT fichier_path FROM evenements WHERE id = ?", (eid,)).fetchone()
+                old = cur.execute(
+                    "SELECT fichier_path FROM evenements WHERE id = ?",
+                    (eid,)
+                ).fetchone()
                 if old and old["fichier_path"]:
-                    remove_files_for_base(base_noext(to_abs_path(old["fichier_path"])))
-            champs = ["type", "titre", "contenu", "benevole_id", "image_path",
-                      "date_debut", "date_fin", "recurrence", "duree_affichage"]
-            params = [type_ev, titre, contenu, benevole_id, image_path,
-                      date_debut, date_fin, recurrence, duree]
-            sql = f"UPDATE evenements SET {', '.join([c+'=?' for c in champs])}"
+                    base = base_noext(to_abs_path(old["fichier_path"]))
+                    remove_all_files_for_base(base)
+
+            champs = [
+                "type", "titre", "contenu", "benevole_id", "image_path",
+                "date_debut", "date_fin", "recurrence", "duree_affichage"
+            ]
+            params = [
+                type_ev, titre, contenu, benevole_id, image_path,
+                date_debut, date_fin, recurrence, duree
+            ]
+
+            sql = f"UPDATE evenements SET {', '.join(c + '=?' for c in champs)}"
             if new_file_web:
                 sql += ", fichier_path=?"
                 params.append(new_file_web)
             sql += " WHERE id=?"
             params.append(eid)
+
             cur.execute(sql, params)
             conn.commit()
             upload_database()
             flash("💾 Événement modifié.", "success")
             return redirect(url_for("evenements.gestion_evenements"))
 
-        cur.execute("""
+        # ------------------------------------------------------------------
+        # ➕ CRÉATION (aucune suppression)
+        # ------------------------------------------------------------------
+        cur.execute(
+            """
             INSERT INTO evenements
               (type, titre, contenu, fichier_path, benevole_id, image_path,
                date_debut, date_fin, recurrence, duree_affichage, actif)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-        """, (type_ev, titre, contenu, new_file_web, benevole_id, image_path,
-              date_debut, date_fin, recurrence, duree))
+            """,
+            (
+                type_ev, titre, contenu, new_file_web, benevole_id, image_path,
+                date_debut, date_fin, recurrence, duree
+            )
+        )
         conn.commit()
         upload_database()
         flash("✅ Événement ajouté.", "success")
         return redirect(url_for("evenements.gestion_evenements"))
 
-    ev_rows = cur.execute("SELECT * FROM evenements ORDER BY date_debut DESC, id DESC").fetchall()
-    ben_rows = cur.execute("SELECT id, nom, prenom FROM benevoles ORDER BY nom, prenom").fetchall()
+    # ======================================================================
+    # GET : affichage
+    # ======================================================================
+    ev_rows = cur.execute(
+        "SELECT * FROM evenements ORDER BY date_debut DESC, id DESC"
+    ).fetchall()
+    ben_rows = cur.execute(
+        "SELECT id, nom, prenom FROM benevoles ORDER BY nom, prenom"
+    ).fetchall()
     conn.close()
 
-    evenements = [dict(r) for r in ev_rows]
-    benevoles = [dict(r) for r in ben_rows]
-    return render_template("gestion_evenements.html", evenements=evenements, benevoles=benevoles)
+    return render_template(
+        "gestion_evenements.html",
+        evenements=[dict(r) for r in ev_rows],
+        benevoles=[dict(r) for r in ben_rows],
+    )
 
 # ============================================================
 # 🌍 API : événements actifs
@@ -458,17 +554,20 @@ def api_evenements_actifs():
 # ============================================================
 from flask import jsonify
 from openai import OpenAI
-from dotenv import load_dotenv
 import os
 from utils import write_log, get_db_connection, get_static_event_dir
 
 @evenements_bp.route("/evenements/generer_sous_titres/<int:event_id>", methods=["POST"])
 @login_required
 def generer_sous_titres(event_id):
-    load_dotenv()
     api_key = os.getenv("OPENAI_API_KEY")
+    write_log(f"🔑 OPENAI_API_KEY utilisée = {api_key[:8]}...{api_key[-4:]}")
+
     if not api_key:
-        return jsonify({"error": "Clé API OpenAI manquante dans .env"}), 400
+        write_log("❌ OPENAI_API_KEY absente – génération sous-titres impossible")
+        return jsonify({"error": "Service de sous-titres indisponible"}), 503
+    
+    write_log(f"🔑 OPENAI_API_KEY chargée ? {'OUI' if api_key else 'NON'}")
 
     client = OpenAI(api_key=api_key)
 
@@ -557,6 +656,7 @@ def save_srt(eid):
 
     write_log(f"💾 Sous-titres corrigés enregistrés : {srt_path}")
     return "OK"
+
 
 
 
