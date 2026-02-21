@@ -1,7 +1,18 @@
-# debug_tools.py
-# Outils de diagnostic et d'administration BA38
+"""
+debug_tools.py
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Outils d'administration et de diagnostic BA38.
 
-__all__ = []
+Fonctions principales :
+- Consultation des logs applicatifs
+- Historique des déploiements
+- Comparaison des bases DEV / PROD
+- Exécution sécurisée de scripts admin
+- Diagnostic environnement
+- Gestion des sessions Redis
+
+⚠ Accès réservé aux administrateurs.
+"""
 
 from flask import (
     Blueprint, render_template, render_template_string,
@@ -12,14 +23,13 @@ from flask_login import login_required
 from redis import Redis
 
 import os
-import logging
+import re
 import subprocess
 import sqlite3
-import re
 import sys
 import json
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from utils import (
     write_log,
@@ -80,38 +90,7 @@ def git_log():
         </a>
     """, commits=commits)
 
-# ============================
-# 📡 2. Affichage rapide logs PA
-# ============================
-@debug_bp.route('/get_error_log_tail')
-@login_required
-def get_error_log_tail():
-    """
-    📡 Retourne les 100 dernières lignes du fichier error.log (DEV ou PROD).
-    Détection par ENVIRONMENT dans .env
-    """
-    try:
-        env = os.getenv("ENVIRONMENT", "prod")
-        if env == "dev":
-            log_path = "/var/log/ndprz.pythonanywhere.com.error.log"
-        else:
-            log_path = "/var/log/www_ba380_org.error.log"
 
-        if not os.path.exists(log_path):
-            return f"❌ Fichier introuvable : {log_path}", 404
-        if not os.access(log_path, os.R_OK):
-            return f"❌ Accès refusé à : {log_path}", 403
-
-        result = subprocess.run(['tail', '-n', '100', log_path], capture_output=True, text=True)
-        if result.returncode != 0:
-            write_log("l'erreur est la")
-            return f"Erreur lecture : {result.stderr}", 500
-
-        return result.stdout
-
-    except Exception as e:
-        import traceback
-        return f"❌ Exception Python :\n{traceback.format_exc()}", 500
 # ============================================================================
 # 📝 HISTORIQUE DES DÉPLOIEMENTS
 # ============================================================================
@@ -194,17 +173,36 @@ def deploy_log():
 
 
 
-@debug_bp.route("/debug/clear_logs", methods=["GET", "POST"])
+@debug_bp.route("/debug/clear_logs", methods=["POST"])
 @login_required
 def clear_logs():
-    for name in ["app.log", "connexions.log", "deploy.log"]:
-        path = get_log_path(name)
-        try:
-            open(path, "w").close()
-        except Exception:
-            pass
-    flash("Logs effacés.", "success")
-    return redirect(url_for("debug_bp.debug_console"))
+
+    if session.get("user_role") != "admin":
+        flash("⛔ Accès interdit.", "danger")
+        return redirect(url_for("index"))
+
+    log_files = get_available_logs()
+    selected = request.form.get("log_file")
+
+    # Sécurité : ne pas autoriser journalctl
+    if not selected or selected == "cron (journalctl)":
+        flash("⚠️ Log non vidable.", "warning")
+        return redirect(url_for("debug_bp.debug_console"))
+
+    path = log_files.get(selected)
+
+    if not path:
+        flash("❌ Log introuvable.", "danger")
+        return redirect(url_for("debug_bp.debug_console"))
+
+    try:
+        open(path, "w").close()
+        write_log(f"🗑️ Log vidé : {selected}")
+        flash(f"🗑️ {selected} vidé.", "success")
+    except Exception as e:
+        flash(f"❌ Erreur : {e}", "danger")
+
+    return redirect(url_for("debug_bp.debug_console", log_file=selected))
 
 
 # ============================================================================
@@ -287,6 +285,7 @@ def compare_db_full():
 @debug_bp.route("/debug_console", methods=["GET", "POST"])
 @login_required
 def debug_console():
+
     if session.get("user_role") != "admin":
         flash("⛔ Accès interdit.", "danger")
         return redirect(url_for("index"))
@@ -296,13 +295,10 @@ def debug_console():
     if "benevoles" in ref or request.args.get("source") == "benevoles":
         base_template = "base_bene.html"
 
-    log_files = {
-        "app.log": get_log_path("app.log"),
-        "connexions.log": get_log_path("connexions.log"),
-        "deploy.log": get_log_path("deploy.log"),
-    }
+    log_files = get_available_logs()
 
-    selected = request.form.get("log_file", "app.log")
+    selected = request.form.get("log_file") or request.args.get("log_file") or "app.log"
+
     path = log_files.get(selected)
 
     try:
@@ -491,7 +487,10 @@ def restaurer_version():
 
         try:
             write_log(f"🔄 Début restauration depuis : {backup_path}")
-            subprocess.run(["tar", "-xzf", backup_path, "-C", "/"], check=True)
+            subprocess.run(
+                ["tar", "-xzf", backup_path, "-C", "/srv/ba38/prod"],
+                check=True
+            )
             write_log(f"✅ Restauration terminée depuis : {backup_path}")
             flash(f"✅ Version restaurée depuis : {nom_fichier}", "success")
         except subprocess.CalledProcessError as e:
@@ -617,10 +616,9 @@ def check_drive_ids():
 
 
 def count_active_sessions():
-    r = Redis(host="127.0.0.1", port=6379)
-    return sum(1 for _ in r.scan_iter("session:*"))
-
-
+    dev = get_active_sessions("dev")
+    prod = get_active_sessions("prod")
+    return len(dev) + len(prod)
 
 def get_active_sessions(env):
     """
@@ -750,7 +748,6 @@ def admin_scripts():
         connexions_log=[]
     )
 
-__all__ = ["debug_bp"]
 
 @debug_bp.route("/_runtime/db", methods=["GET", "POST"])
 def runtime_db_info():
@@ -767,3 +764,104 @@ def runtime_db_info():
 
 
 __all__ = ["debug_bp"]
+
+
+@debug_bp.route("/debug_console_stream", methods=["GET"])
+@login_required
+def debug_console_stream():
+
+    if session.get("user_role") != "admin":
+        return jsonify({"error": "Accès interdit"}), 403
+
+    log_files = get_available_logs()
+
+    selected = request.args.get("log_file", "app.log")
+    nb_lines = int(request.args.get("lines", 100))
+    level = request.args.get("level")
+
+    try:
+
+        # 🔵 CAS CRON (journalctl)
+        if selected == "cron (journalctl)":
+
+            result = subprocess.run(
+                ["journalctl", "-u", "cron", "-n", str(nb_lines), "--no-pager", "-o", "short-iso"],
+                capture_output=True,
+                text=True
+            )
+
+            raw_lines = result.stdout.splitlines()
+
+            jobs = []
+
+            for line in raw_lines:
+
+                # ✅ On garde uniquement les vraies commandes cron
+                if "CMD (" in line and "/etc/munin" not in line:
+                    # ❌ On supprime TEST_CRON
+                    if "TEST_CRON" in line:
+                        continue
+
+                    try:
+                        date_part, rest = line.split(" ", 1)
+                        host, rest = rest.split(" CRON[", 1)
+                        pid, rest = rest.split("]: ", 1)
+
+                        user = rest.split("(")[1].split(")")[0]
+                        command = rest.split("CMD (")[1].rstrip(")")
+
+                        jobs.append({
+                            "date": date_part,
+                            "user": user,
+                            "pid": pid,
+                            "command": command
+                        })
+
+                    except:
+                        continue
+
+            return jsonify({
+                "cron_jobs": jobs,
+                "count": len(jobs)
+            })            
+        # 🟢 CAS FICHIERS CLASSIQUES
+        else:
+            path = log_files.get(selected)
+
+            with open(path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            lines = lines[-nb_lines:]
+
+        # 🔎 Filtrage niveau
+        if level:
+            lines = [l for l in lines if level in l]
+
+        return jsonify({
+            "content": "".join(lines)
+        })
+
+    except Exception as e:
+        return jsonify({
+            "content": f"❌ Erreur lecture : {e}"
+        })
+
+
+def get_available_logs():
+
+    logs = {
+        "app.log": get_log_path("app.log"),
+        "connexions.log": get_log_path("connexions.log"),
+        "deploy.log": get_log_path("deploy.log"),
+        "cron (journalctl)": "journalctl",
+    }
+
+    # 🔵 Logs CRON PROD visibles depuis DEV ou PROD
+    prod_logs_dir = "/srv/ba38/prod/logs"
+
+    logs.update({
+        "cron_backup_db.log (PROD)": os.path.join(prod_logs_dir, "cron_backup_db.log"),
+        "cron_publipostage.log (PROD)": os.path.join(prod_logs_dir, "cron_publipostage.log"),
+    })
+
+    return logs

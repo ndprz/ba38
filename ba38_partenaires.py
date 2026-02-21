@@ -23,8 +23,6 @@ from flask import send_file
 from io import BytesIO
 
 
-
-
 def header_footer(canvas, doc, title, nom_association):
     # --- EN-TÊTE ---
     canvas.saveState()

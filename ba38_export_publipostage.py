@@ -30,17 +30,31 @@ if not PUBLIPOSTAGE_DB_PATH:
 # ============================================================================
 # Outils
 # ============================================================================
+import re
+
 def is_valid_email(email):
+
     if not isinstance(email, str):
         return False
+
     email = email.strip()
-    if not email or email.lower() == "none":
-        return False
-    if email.endswith("."):
-        return False
-    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[a-zA-Z]{2,}$", email))
 
+    if not email:
+        return False
 
+    if email.lower() == "none":
+        return False
+
+    # Refuser tout caractère non ASCII
+    try:
+        email.encode("ascii")
+    except UnicodeEncodeError:
+        return False
+
+    # Regex stricte ASCII
+    pattern = r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
+
+    return bool(re.match(pattern, email))
 
 @export_bp.route("/trigger", methods=["POST"])
 def trigger_publipostage_cron():
@@ -110,8 +124,9 @@ def export_all_publipostage_job():
 
     try:
         # ============================================================
-        # ASSOCIATIONS — Tous les emails
+        # ASSOCIATIONS — Tous les emails (déduplication robuste)
         # ============================================================
+
         all_columns = [
             "courriel_association",
             "courriel_president",
@@ -132,25 +147,32 @@ def export_all_publipostage_job():
             conn
         )
 
+        emails_uniques = set()
         rows = []
+
         for _, row in df_all.iterrows():
             nom = str(row["nom_association"])
+
             for col in all_columns:
                 email = row[col]
+
                 if is_valid_email(email):
-                    rows.append({
-                        "nom_association": nom,
-                        "email": str(email).strip()
-                    })
+                    email_clean = str(email).strip().lower()
+
+                    if email_clean not in emails_uniques:
+                        emails_uniques.add(email_clean)
+
+                        rows.append({
+                            "nom_association": nom,
+                            "email": email_clean
+                        })
+
                 elif email and str(email).strip().lower() != "none":
                     emails_invalides.setdefault(
                         "Publipostage_Assos_Tous_Les_Mails", []
                     ).append(f"{nom} → {email}")
 
-        df_final = (
-            pd.DataFrame(rows)
-            .drop_duplicates(subset=["email"], keep="first")
-        )
+        df_final = pd.DataFrame(rows)
 
         summary.append(
             export_dataframe_to_drive(
@@ -467,3 +489,11 @@ def export_all_publipostage():
         return jsonify({"message": f"❌ Erreur : {e}"}), 500
 
 
+@export_bp.route("/last_summary", methods=["GET"])
+def last_summary():
+    try:
+        with open("/srv/ba38/prod/logs/last_publipostage_summary.txt") as f:
+            content = f.read()
+        return jsonify({"summary": content})
+    except:
+        return jsonify({"summary": "Aucun rapport disponible."})

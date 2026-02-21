@@ -347,9 +347,9 @@ function initPartenairesPage() {
         if (scrollBottom.scrollWidth <= scrollBottom.clientWidth) {
             scrollTop.style.display = "none";
         }
+        
     }
-
-
+    initFiltreCache();
 }
 
 
@@ -481,45 +481,63 @@ document.querySelectorAll("th.sortable").forEach(th => {
 // ===============================
 // 🔎 FILTRE CLIENT
 // ===============================
+
 const filtreInput = document.getElementById("filtre-association");
+
+// Cache
+let partnerRows = [];
+
+function initFiltreCache() {
+
+    const rows = document.querySelectorAll("#partenaire-table tbody tr");
+
+    partnerRows = Array.from(rows).map(row => ({
+        element: row,
+        text: row.innerText.toLowerCase()
+    }));
+}
 
 function applyFiltrePart() {
 
     const filtre = filtreInput.value.toLowerCase();
-    const rows = document.querySelectorAll("#partenaire-table tbody tr");
-
     let visibleCount = 0;
 
-    rows.forEach(row => {
-        const match = row.innerText.toLowerCase().includes(filtre);
-        row.style.display = match ? "" : "none";
+    partnerRows.forEach(obj => {
+
+        const match = obj.text.includes(filtre);
+        obj.element.style.display = match ? "" : "none";
+
         if (match) visibleCount++;
     });
 
     const info = document.getElementById("filtre-info");
 
-    if (!filtre) {
-        info.textContent = "";
-    } else {
-        info.textContent = visibleCount + " résultat" + (visibleCount > 1 ? "s" : "");
-    }
+    info.textContent = filtre
+        ? visibleCount + " résultat" + (visibleCount > 1 ? "s" : "")
+        : "";
 }
 
-/* 🔎 Filtre dynamique */
-filtreInput.addEventListener("input", applyFiltrePart);
+// Debounce
+let filtreTimeout;
 
-/* ⎋ Annulation avec touche Echap */
+filtreInput.addEventListener("input", function() {
+
+    clearTimeout(filtreTimeout);
+
+    filtreTimeout = setTimeout(() => {
+        applyFiltrePart();
+    }, 150);
+});
+
+// Escape
 filtreInput.addEventListener("keydown", function (e) {
     if (e.key === "Escape") {
 
         this.value = "";
         applyFiltrePart();
-
-        // Optionnel : empêcher propagation
         e.preventDefault();
     }
 });
-
 function toggleNonValides() {
 
     const url = new URL(window.location.href);
@@ -533,6 +551,33 @@ function toggleNonValides() {
 
     window.location.href = url.toString();
 }
+
+function updatePublipostageFile() {
+
+    if (!confirm("Lancer la génération complète des fichiers publipostage ?")) {
+        return;
+    }
+
+    fetch("/export_publipostage/trigger", { method: "POST" })
+    .then(response => response.json())
+    .then(data => {
+
+        alert(data.message);
+
+        // Attendre 10 secondes puis récupérer le rapport
+        setTimeout(() => {
+
+            fetch("/export_publipostage/last_summary")
+            .then(r => r.json())
+            .then(d => {
+                alert("📊 Rapport d'export :\n\n" + d.summary);
+            });
+
+        }, 10000);
+
+    });
+}
+
 
 </script>
 {% endblock %}

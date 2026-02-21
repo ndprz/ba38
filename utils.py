@@ -1,46 +1,35 @@
+# =========================
+# Standard library
+# =========================
 import os
 import re
 import sqlite3
 import logging
 import subprocess
 import base64
-import gspread
-
 from datetime import datetime
 from pathlib import Path
-from io import BytesIO
-from google.oauth2.service_account import Credentials   
 
-
-SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
-
-try:
-    from flask import session, url_for
-except ImportError:
-    session = None
-    url_for = None
-
+# =========================
+# Third-party
+# =========================
 import requests
-
-try:
-    from google.oauth2 import service_account
-    from googleapiclient.discovery import build
-    from googleapiclient.http import MediaFileUpload
-    from googleapiclient.discovery_cache.base import Cache
-except ImportError:
-    service_account = None
-    build = None
-    MediaFileUpload = None
-    Cache = None
-
-# ============================================================================
-# 🔧 CONFIGURATION & CONSTANTES
-# ============================================================================
-
-
+import gspread
 from dotenv import load_dotenv
-import os
-from pathlib import Path
+from flask import current_app, session, url_for, request
+from google.oauth2.service_account import Credentials
+
+# =========================
+# Google API 
+# =========================
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from googleapiclient.discovery_cache.base import Cache
+
+
+# SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
+
 
 # ---------------------------------------------------------------------------
 # Chargement robuste du .env (CLI + Flask + gunicorn)
@@ -66,45 +55,23 @@ SCOPES = [
 SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
 VERSION = os.getenv("VERSION", "0.0.0")
 
-_logger = None
-
-
-def get_logger():
-    global _logger
-    if _logger:
-        return _logger
-
-    logger = logging.getLogger("ba38")
-    logger.setLevel(logging.INFO)
-
-    log_path = get_log_path("app.log")
-
-    handler = logging.FileHandler(log_path, encoding="utf-8")
-    formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(message)s"
-    )
-    handler.setFormatter(formatter)
-
-    logger.addHandler(handler)
-    logger.propagate = False
-
-    _logger = logger
-    return logger
 # ============================================================================
 # 🪵 LOGGING
 # ============================================================================
 
 def write_log(message: str):
-    get_logger().info(message)
+    try:
+        current_app.logger.info(message)
+    except RuntimeError:
+        # Cas script standalone (cron)
+        logging.getLogger("BA38").info(message)
+
 
 def write_connexion_log(user_id, username, action="login"):
     """
     Écrit un message dans le journal des connexions (login / logout).
     """
     try:
-        from flask import request
-        from datetime import datetime
-
         ip = request.headers.get("X-Forwarded-For", request.remote_addr)
         session_id = request.cookies.get("ba38_session", "unknown")
 
@@ -132,7 +99,6 @@ def get_log_path(filename="app.log"):
     - app.log → logs DEV ou PROD (BA38_BASE_DIR)
     - deploy.log → logs globaux (/srv/ba38/logs)
     """
-    import os
 
     # 🔹 Cas particulier : historique des déploiements (global)
     if filename == "deploy.log":
@@ -813,8 +779,6 @@ def migrate_schema_and_data(source_db_path, dest_db_path, copy_data=False):
     - Copie les données si demandé (INSERT OR IGNORE)
     """
 
-    import sqlite3
-    from utils import write_log
 
     write_log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     write_log("🔁 Migration schéma & données SQLite")

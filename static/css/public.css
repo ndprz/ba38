@@ -140,9 +140,22 @@ pre {
 .table-fw th:last-child { padding-right: 1rem; }
 .table-fw td:last-child { padding-right: 1rem; }
 
-.table-sticky { position: relative; }
-.table-sticky thead tr th { position: sticky; top: 0; background-color:white; }
+.table-sticky { 
+    position: relative; 
+}
 
+.table-sticky thead th {
+    position: sticky;
+    top: 0;
+    background: #ffffff !important;
+    z-index: 50;          /* ← clé */
+}
+.table-sticky thead tr {
+    position: sticky;
+    top: 0;
+    background: #ffffff !important;
+    z-index: 50;          /* ← clé */
+}
 .table-invalid { border-color: #E04620 !important; }
 
 th.rotate {
@@ -424,10 +437,6 @@ table td form {
 
 #scroll-bottom {
     overflow-x: auto;
-}
-
-.table-sticky {
-    min-width: max-content;
 }
 
 

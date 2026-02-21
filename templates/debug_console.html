@@ -1,97 +1,230 @@
 {% extends base_template %}
-
-{% block title %}Console de Debug{% endblock %}
+{% block title %}Console Ultra Debug{% endblock %}
 
 {% block content %}
-<h2>🪵 Console de Debug</h2>
+<h2 class="mb-3">🧠 Console Ultra Admin</h2>
 
-<!-- 🔀 Formulaire de sélection du fichier log à afficher -->
-<form method="POST" class="form-inline mb-3">
-  <label for="log_file" class="mr-2">Fichier à afficher :</label>
-  <select name="log_file" id="log_file" class="form-control mr-2">
-    {% for name, path in log_files.items() %}
-      <option value="{{ name }}" {% if name == selected_log %}selected{% endif %}>{{ name }}</option>
-    {% endfor %}
-  </select>
-  <button type="submit" class="btn btn-primary btn-sm mr-2">Afficher</button>
-</form>
+<div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
 
-<!-- 🧰 Boutons contextuels selon le fichier sélectionné -->
-<div class="mb-3">
-  {% if selected_log == 'app.log' and is_admin_global() %}
-    <a href="{{ url_for('debug_bp.export_logs') }}" class="btn btn-success btn-sm mr-2">📥 Exporter</a>
-    <form method="POST" action="{{ url_for('debug_bp.clear_logs') }}" class="d-inline">
-      <button type="submit" class="btn btn-danger btn-sm"
-              onclick="return confirm('Effacer le fichier app.log ?');">
-        🧹 Effacer app.log
-      </button>
+    <!-- Fichier log -->
+    <select id="log_file" class="form-select form-select-sm w-auto">
+        {% for name, path in log_files.items() %}
+        <option value="{{ name }}">{{ name }}</option>
+        {% endfor %}
+    </select>
+
+    <!-- Nombre de lignes -->
+    <select id="lines" class="form-select form-select-sm w-auto">
+        <option value="50">50</option>
+        <option value="100" selected>100</option>
+        <option value="200">200</option>
+        <option value="500">500</option>
+    </select>
+
+    <!-- Filtre niveau -->
+    <select id="level" class="form-select form-select-sm w-auto">
+        <option value="">Tous</option>
+        <option value="ERROR">ERROR</option>
+        <option value="WARNING">WARNING</option>
+        <option value="INFO">INFO</option>
+        <option value="DEBUG">DEBUG</option>
+    </select>
+
+    <!-- Pause -->
+    <button id="pauseBtn" class="btn btn-warning btn-sm">
+        ⏸ Pause
+    </button>
+
+    <form method="post"
+        action="{{ url_for('debug_bp.clear_logs') }}"
+        style="display:inline;"
+        onsubmit="return confirm('Vider ce log ?');">
+
+        <input type="hidden" name="log_file" id="hidden_log_file">
+
+        <button type="submit" class="btn btn-danger btn-sm">
+            🗑️ Vider le log
+        </button>
+
     </form>
-  {% elif selected_log == 'error.log (PA)' and is_admin_global() %}
-    <form method="POST" action="{{ url_for('debug_bp.clear_error_log') }}" class="d-inline mr-2">
-      <button type="submit" class="btn btn-danger btn-sm"
-              onclick="return confirm('Effacer le fichier error.log ?');">
-        🧹 Effacer error.log (PA)
-      </button>
-    </form>
-  {% endif %}
 
-  {% if selected_log == 'error.log (PA)' and is_admin_global() %}
-    <form method="POST" action="{{ url_for('debug_bp.trigger_error_log') }}" class="d-inline">
-      <button type="submit" class="btn btn-warning btn-sm">🔊 Echo vers error.log</button>
-    </form>
-  {% endif %}
-
-
-<!-- 📄 Affichage du contenu du log sélectionné (app.log ou autre) -->
-{% if output %}
-<div id="log-content" class="alert alert-{{ 'danger' if error else 'light' }}"
-     style="max-height: 300px; overflow-y: auto;">
-  <pre style="white-space: pre-wrap; font-size: 0.9rem;">{{ output }}</pre>
 </div>
-{% endif %}
 
-<!-- 📡 Section dédiée à error.log (PA), toujours visible -->
-<h4>📡 Logs PythonAnywhere (error.log)</h4>
-<button id="refresh-error-log" class="btn btn-outline-primary btn-sm">🔁 Rafraîchir</button>
-<pre id="pa-log" style="max-height: 400px; overflow-y: auto; background: #000; color: #0f0; padding: 10px;">Chargement...</pre>
+<!-- Console -->
+<div class="mb-2">
+    <span class="badge bg-primary">
+    Jobs exécutés : <span id="cronCounter">0</span>
+    </span>
+</div>
+<div id="log-container"
+     style="
+        background:#0d1117;
+        color:#c9d1d9;
+        font-family: monospace;
+        font-size:0.85rem;
+        padding:15px;
+        border-radius:8px;
+        border:1px solid #30363d;
+        max-height:650px;
+        overflow-y:auto;
+     ">
+    <pre id="log-content"
+        style="
+            margin:0;
+            white-space: pre-wrap;
+            color:#e6edf3;
+            font-family: monospace;
+     ">
+    </pre>
+</div>
 
 {% endblock %}
 
+<style>
+#log-container {
+    background: #0d1117;
+    border: 1px solid #30363d;
+}
+
+#log-content {
+    color: #e6edf3;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+#log-content span.error { color:#ff6b6b; }
+#log-content span.warn  { color:#feca57; }
+#log-content span.info  { color:#1dd1a1; }
+#log-content span.debug { color:#74b9ff; }
+</style>
+
 {% block scripts %}
 <script>
-  document.addEventListener("DOMContentLoaded", function () {
-    console.log("✅ DOM prêt");
-  
-    // Fonction appelée au clic ou initialement
-    function refreshErrorLog() {
-      console.log("→ Appel refreshErrorLog()");
-      fetch('/get_error_log_tail')
-        .then(response => {
-          console.log("→ Reçu : " + response.status);
-          return response.text();
-        })
-        .then(data => {
-          console.log("→ Contenu log (aperçu) :", data.slice(0, 100));
-          document.getElementById('pa-log').textContent = data;
-        })
-        .catch(err => {
-          console.log("❌ Erreur JS :", err);
-          document.getElementById('pa-log').textContent = "❌ Erreur : " + err;
-        });
-    }
-  
-    const btn = document.getElementById("refresh-error-log");
-    if (btn) {
-      console.log("✅ Bouton trouvé, liaison click...");
-      btn.addEventListener("click", refreshErrorLog);
-    } else {
-      console.log("❌ Bouton introuvable !");
-    }
-  
-    refreshErrorLog();  // Appel initial dès le chargement
-  });
 
-  
+let paused = false;
+let interval = null;
+
+function fetchLogs() {
+
+    if (paused) return;
+
+    const logFile = document.getElementById("log_file").value;
+    const lines = document.getElementById("lines").value;
+    const level = document.getElementById("level").value;
+
+    fetch(`/debug_console_stream?log_file=${encodeURIComponent(logFile)}&lines=${lines}&level=${level}`)
+        .then(r => r.json())
+        .then(data => {
+
+            console.log(data);
+
+            const container = document.getElementById("log-container");
+            const content = document.getElementById("log-content");
+
+            const wasAtBottom =
+                container.scrollHeight - container.scrollTop <= container.clientHeight + 10;
+
+            // 🔵 CAS CRON
+            if (data.cron_jobs) {
+
+                const badge = document.getElementById("cronCounter");
+                if (badge) badge.textContent = data.count;
+
+                const container = document.getElementById("log-container");
+                const content = document.getElementById("log-content");
+
+                const wasAtBottom =
+                    container.scrollHeight - container.scrollTop <= container.clientHeight + 10;
+
+                content.textContent = data.cron_jobs.map(job =>
+                    `${job.date} | ${job.user} | PID:${job.pid} | ${job.command}`
+                ).join("\n");
+
+                if (wasAtBottom) {
+                    container.scrollTop = container.scrollHeight;
+                }
+
+                return;
+            }
+            // 🟢 CAS LOGS CLASSIQUES
+            else {
+
+                content.textContent = data.content;
+
+            }
+
+            if (wasAtBottom) {
+                container.scrollTop = container.scrollHeight;
+            }
+
+        }) 
+       .catch(err => {
+            console.error("Erreur fetch logs:", err);
+        });
+}
+
+document.querySelector("form[action*='clear_logs']")
+    .addEventListener("submit", function() {
+
+        const selected = document.getElementById("log_file").value;
+        document.getElementById("hidden_log_file").value = selected;
+
+    });
+
+    
+function escapeHtml(text) {
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
+function colorize(text) {
+
+    return text.split("\n").map(line => {
+
+        const safeLine = escapeHtml(line);
+
+        if (line.includes("ERROR")) {
+            return `<span style="color:#ff6b6b;">${safeLine}</span>`;
+        }
+        if (line.includes("WARNING")) {
+            return `<span style="color:#feca57;">${safeLine}</span>`;
+        }
+        if (line.includes("INFO")) {
+            return `<span style="color:#1dd1a1;">${safeLine}</span>`;
+        }
+        if (line.includes("DEBUG")) {
+            return `<span style="color:#74b9ff;">${safeLine}</span>`;
+        }
+
+        return `<span style="color:#c9d1d9;">${safeLine}</span>`;
+
+    }).join("\n");
+}
+document.addEventListener("DOMContentLoaded", function() {
+
+    fetchLogs();
+
+    interval = setInterval(fetchLogs, 3000);
+
+    document.getElementById("pauseBtn").addEventListener("click", function() {
+
+        paused = !paused;
+
+        this.textContent = paused ? "▶ Reprendre" : "⏸ Pause";
+        this.classList.toggle("btn-success");
+        this.classList.toggle("btn-warning");
+
+    });
+
+    document.getElementById("log_file").addEventListener("change", fetchLogs);
+    document.getElementById("lines").addEventListener("change", fetchLogs);
+    document.getElementById("level").addEventListener("change", fetchLogs);
+
+});
+
 </script>
+
 
 {% endblock %}

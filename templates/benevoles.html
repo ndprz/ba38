@@ -4,6 +4,7 @@
 
 {% block content %}
 
+
 <h2>Liste des Bénévoles</h2>
 
 <div class="mb-3" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
@@ -116,8 +117,11 @@
     <div id="sync-scroll" style="height: 1px;"></div>
 </div>
 
-<div id="scroll-bottom" style="overflow-x: auto; white-space: nowrap;">
-    <table class="table table-striped table-bordered table-sticky" id="benevole-table">
+<div id="scroll-bottom"
+     style="overflow-x: auto;
+            overflow-y: auto;
+            height: 65vh;
+            white-space: nowrap;">    <table class="table table-striped table-bordered table-sticky" id="benevole-table">
         <thead>
             <tr>
                 <th class="sticky-col sticky-col-1">Action</th>
@@ -256,33 +260,71 @@ function updatePublipostageFile() {
     }
 }
 
-// --- Filtrage dynamique avec persistance ---
-const searchInput = document.getElementById("filtre-benevole");
-const savedFilter = localStorage.getItem("benevole_search_filter") || "";
-if (savedFilter) {
-    searchInput.value = savedFilter;
-}
+// ===============================
+// 🔎 FILTRE RAPIDE OPTIMISÉ
+// ===============================
 
-function applyFilter() {
-    const filtre = searchInput.value.toLowerCase();
-    localStorage.setItem("benevole_search_filter", filtre);
+const filtreInput = document.getElementById("filtre-benevole");
 
-    document.querySelectorAll("#benevole-table tbody tr").forEach(row => {
-        // Exclure le contenu de la colonne user_modif du texte recherché
+let benevoleRows = [];
+
+function initFiltreCacheBene() {
+
+    const rows = document.querySelectorAll("#benevole-table tbody tr");
+
+    benevoleRows = Array.from(rows).map(row => {
+
         const cellules = Array.from(row.querySelectorAll("td"));
-        const texteSansUserModif = cellules
-            .filter(td => !td.classList.contains("col-user-modif")) // colonne marquée comme user_modif
+
+        const texte = cellules
+            .filter(td => !td.classList.contains("col-user-modif"))
             .map(td => td.innerText)
             .join(" ")
             .toLowerCase();
 
-        row.style.display = texteSansUserModif.includes(filtre) ? "" : "none";
+        return {
+            element: row,
+            text: texte
+        };
     });
 }
 
-searchInput.addEventListener("input", applyFilter);
-window.addEventListener("DOMContentLoaded", applyFilter);
+function applyFiltreBene() {
 
+    const filtre = filtreInput.value.toLowerCase();
+    let visibleCount = 0;
+
+    benevoleRows.forEach(obj => {
+
+        const match = obj.text.includes(filtre);
+        obj.element.style.display = match ? "" : "none";
+
+        if (match) visibleCount++;
+    });
+
+    localStorage.setItem("benevole_search_filter", filtre);
+}
+
+/* Debounce */
+let filtreTimeout;
+
+filtreInput.addEventListener("input", function() {
+
+    clearTimeout(filtreTimeout);
+
+    filtreTimeout = setTimeout(() => {
+        applyFiltreBene();
+    }, 120);
+});
+
+/* Échap */
+filtreInput.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+        this.value = "";
+        applyFiltreBene();
+        e.preventDefault();
+    }
+});
 
 // Scroll synchronisé
 const topScroll = document.getElementById("scroll-top");
@@ -428,7 +470,13 @@ window.addEventListener("DOMContentLoaded", () => {
         const group = master.id.replace("toggle-", "");
         updateGroupCheckboxState(group);
     });
+    initFiltreCacheBene();
 
+    const savedFilter = localStorage.getItem("benevole_search_filter");
+    if (savedFilter) {
+        filtreInput.value = savedFilter;
+        applyFiltreBene();
+    }
 });
 
 function resetFilters() {

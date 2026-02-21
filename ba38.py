@@ -33,6 +33,7 @@ LOG_FILE = os.getenv(
 )
 
 logger = logging.getLogger("BA38")
+
 logger.setLevel(logging.INFO)
 
 # éviter les handlers multiples (reload gunicorn)
@@ -112,6 +113,32 @@ from ba38_aide import aide_bp
 
 # Initialisation Flask
 app = Flask(__name__)
+
+import logging
+from logging.handlers import RotatingFileHandler
+import os
+
+LOG_FILE = os.path.join(BASE_DIR, "logs", "app.log")
+
+if not os.path.exists(os.path.dirname(LOG_FILE)):
+    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+
+file_handler = RotatingFileHandler(
+    LOG_FILE,
+    maxBytes=5 * 1024 * 1024,
+    backupCount=3,
+    encoding="utf-8"
+)
+
+formatter = logging.Formatter(
+    "%(asctime)s [%(levelname)s] %(message)s"
+)
+
+file_handler.setFormatter(formatter)
+
+app.logger.setLevel(logging.INFO)
+app.logger.addHandler(file_handler)
+
 app.secret_key = os.getenv("FLASK_SECRET_KEY")
 app.jinja_env.filters['format_tel'] = format_tel
 
@@ -225,15 +252,28 @@ def inject_user_role():
         "user_role": g.user_role
     }
 
+EXCLUDED_LOG_PATHS = [
+    "/debug_console_stream",
+    "/static/",
+    "/_runtime/",
+]
+
 @app.before_request
 def log_requests():
+
+    if request.method == "GET":
+        return
+
+    if any(request.path.startswith(p) for p in EXCLUDED_LOG_PATHS):
+        return
+
     user = (
         current_user.id
         if hasattr(current_user, "is_authenticated") and current_user.is_authenticated
         else "anonymous"
     )
 
-    current_app.logger.info(
+    current_app.logger.debug(
         f"REQ {request.method} {request.path} "
         f"user={user} ip={request.remote_addr}"
     )

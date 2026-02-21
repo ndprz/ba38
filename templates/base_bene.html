@@ -152,16 +152,15 @@
     {% include "_flash.html" %}
 
 
-    <main>
-        {% if not current_user.is_authenticated %}
-            <p style="text-align: center; color: red;">Veuillez vous connecter pour accéder aux fonctionnalités.</p>
-        {% endif %}
-    </main>
-
     <main class="container mt-4" style="padding-top: 70px;">
-        {% block content %}{% endblock %}
-    </main>
 
+        {% if not current_user.is_authenticated %}
+            <p style="text-align: center; color: red;">Veuillez vous connecter...</p>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+
+    </main>
     <footer style="text-align: center; padding: 10px; background-color: #fff; border-top: 2px solid #ddd;">
         <p style="margin: 0; font-size: 0.9em; color: #555;">
             &copy; 2025 Gestion BA38. Tous droits réservés. — Version : {{ version or "Non définie" }}

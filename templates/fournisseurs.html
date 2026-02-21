@@ -42,8 +42,11 @@
 </div>
 
 <!-- 📊 Tableau principal avec colonnes figées -->
-<div id="scroll-bottom" style="overflow-x: auto; white-space: nowrap;">
-<table class="table table-bordered table-sticky" id="fournisseurs-table">
+<div id="scroll-bottom"
+     style="overflow-x: auto;
+            overflow-y: auto;
+            height: 65vh;
+            white-space: nowrap;"><table class="table table-bordered table-sticky" id="fournisseurs-table">
     <thead>
         <tr>
             <th class="sticky-col sticky-col-1">Action</th>
@@ -120,16 +123,72 @@ topScroll.addEventListener("scroll", () => bottomScroll.scrollLeft = topScroll.s
 bottomScroll.addEventListener("scroll", () => topScroll.scrollLeft = bottomScroll.scrollLeft);
 
 
-// 🔎 Recherche dynamique dans tous les champs
-document.getElementById("searchInput").addEventListener("keyup", function() {
-    const filter = this.value.toLowerCase();
+// ===============================
+// 🔎 FILTRE RAPIDE FOURNISSEURS
+// ===============================
+
+const searchInput = document.getElementById("searchInput");
+
+let fournisseurRows = [];
+
+function initFiltreCacheFournisseurs() {
+
     const rows = document.querySelectorAll("#fournisseurs-table tbody tr");
-    rows.forEach(row => {
-        const text = row.textContent.toLowerCase();
-        row.style.display = text.includes(filter) ? "" : "none";
+
+    fournisseurRows = Array.from(rows).map(row => ({
+        element: row,
+        text: row.innerText.toLowerCase()
+    }));
+}
+
+function applyFiltreFournisseurs() {
+
+    const filtre = searchInput.value.toLowerCase();
+    let visibleCount = 0;
+
+    fournisseurRows.forEach(obj => {
+
+        const match = obj.text.includes(filtre);
+        obj.element.style.display = match ? "" : "none";
+
+        if (match) visibleCount++;
     });
+
+    localStorage.setItem("fournisseurs_search_filter", filtre);
+}
+
+/* Debounce */
+let filtreTimeout;
+
+searchInput.addEventListener("input", function() {
+
+    clearTimeout(filtreTimeout);
+
+    filtreTimeout = setTimeout(() => {
+        applyFiltreFournisseurs();
+    }, 120);
 });
 
+/* Échap */
+searchInput.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+        this.value = "";
+        applyFiltreFournisseurs();
+        e.preventDefault();
+    }
+});
+
+/* Initialisation */
+window.addEventListener("DOMContentLoaded", () => {
+
+    initFiltreCacheFournisseurs();
+
+    const saved = localStorage.getItem("fournisseurs_search_filter");
+    if (saved) {
+        searchInput.value = saved;
+        applyFiltreFournisseurs();
+    }
+});
 
 </script>
 {% endblock %}
