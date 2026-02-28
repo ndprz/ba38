@@ -1,5 +1,6 @@
 {% extends "base_assos.html" %}
 
+
 {% block title %}Liste des Associations{% endblock %}
 
 {% block content %}
@@ -28,15 +29,13 @@
 
     <!-- 📝 Mise à jour en tableau -->
     {% if not lecture_seule %}
-    <form method="POST"
-        action="{{ url_for('partenaires.edition_tableau_associations') }}"
-        style="display: inline;">
+    <form method="POST" action="{{ url_for('partenaires.edition_tableau_associations') }}" style="display: inline;">
         {% for col in selected_columns %}
-            <input type="hidden" name="columns" value="{{ col }}">
+        <input type="hidden" name="columns" value="{{ col }}">
         {% endfor %}
         <input type="hidden" name="has_interacted" value="1">
         {% if voir_toutes %}
-            <input type="hidden" name="voir_toutes" value="1">
+        <input type="hidden" name="voir_toutes" value="1">
         {% endif %}
         <button type="submit" class="btn btn-warning">📝 Mise à jour en tableau</button>
     </form>
@@ -47,19 +46,15 @@
     {% endif %}
 
     <!-- ❌ Bouton associations non valides -->
-    <button
-        type="button"
-        class="btn btn-danger"
-        onclick="toggleNonValides()">
+    <button type="button" class="btn btn-danger" onclick="toggleNonValides()">
         {% if request.args.get("voir_non_valides") == "1" %}
-            ✔ Toutes les associations
+        ✔ Toutes les associations
         {% else %}
-            ❌ Non valides
+        ❌ Non valides
         {% endif %}
     </button>
 
-    <button type="button" class="btn btn-outline-danger"
-            onclick="resetFiltersPart()">
+    <button type="button" class="btn btn-outline-danger" onclick="resetFiltersPart()">
         ♻️ Réinitialiser les filtres
     </button>
 
@@ -71,9 +66,7 @@
 
 
 <!-- 🔧 Formulaire de configuration -->
-<form method="POST"
-      action="{{ url_for('partenaires.partenaires') }}"
-      id="form-options">
+<form method="POST" action="{{ url_for('partenaires.partenaires') }}" id="form-options">
     <fieldset>
         <legend>Options d'affichage</legend>
         <input type="hidden" name="has_interacted" value="1">
@@ -81,61 +74,54 @@
 
         <!-- 📦 Liste des groupes de champs, "Coordonnées principales" en tête -->
         <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start;">
-            {% set group_order = ['coordonnées principales'] + (grouped_fields.keys() | list | reject('equalto', 'coordonnées principales') | list) %}
+            {% set group_order = ['coordonnées principales'] + (grouped_fields.keys() | list | reject('equalto',
+            'coordonnées principales') | list) %}
             {% for group_name in group_order %}
-                {% set fields = grouped_fields[group_name] %}
-                {% set safe_group_name = group_name|replace(' ', '_')|lower %}
-                <div class="fields-group" style="flex: 1; min-width: 220px;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <div class="titre-depliable" onclick="toggleGroup('{{ safe_group_name }}', this)">
-                            <span class="chevron">➤</span> {{ group_name }}
-                          </div>
-                          
-                        <label style="margin: 0;">
-                            <input type="checkbox" class="toggle-master-checkbox" id="toggle-{{ safe_group_name }}"
-                                name="selected_groups"
-                                value="{{ group_name }}"
-                                onclick="toggleAll('{{ safe_group_name }}', this.checked); saveDisplayOptionsPart();"
-
-                                {% if group_name in selected_groups %}checked{% endif %}>
-
-                            Tout sélectionner
-                        </label>
+            {% set fields = grouped_fields[group_name] %}
+            {% set safe_group_name = group_name|replace(' ', '_')|lower %}
+            <div class="fields-group" style="flex: 1; min-width: 220px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div class="titre-depliable" onclick="toggleGroup('{{ safe_group_name }}', this)">
+                        <span class="chevron">➤</span> {{ group_name }}
                     </div>
-                    <div class="fields-container" id="container-{{ safe_group_name }}">
-                        {% for field in fields %}
-                        <label>
-                            <input type="checkbox" class="field-{{ safe_group_name }} green-checkbox"
-                                name="columns"
-                                value="{{ field.field_name }}"
-                                {% if field.field_name in selected_columns %}checked{% endif %}
-                                onchange="updateGroupCheckboxState('{{ safe_group_name }}'); saveDisplayOptionsPart();"
->
 
-                            {{ field.field_name | format_label }}
-                        </label><br>
-                        {% endfor %}
-                    </div>
+                    <label style="margin: 0;">
+                        <input type="checkbox" class="toggle-master-checkbox" id="toggle-{{ safe_group_name }}"
+                            name="selected_groups" value="{{ group_name }}"
+                            onclick="toggleAll('{{ safe_group_name }}', this.checked); saveDisplayOptionsPart();" {% if
+                            group_name in selected_groups %}checked{% endif %}>
+
+                        Tout sélectionner
+                    </label>
                 </div>
+                <div class="fields-container" id="container-{{ safe_group_name }}">
+                    {% for field in fields %}
+                    <label>
+                        <input type="checkbox" class="field-{{ safe_group_name }} green-checkbox" name="columns"
+                            value="{{ field.field_name }}" {% if field.field_name in selected_columns %}checked{% endif
+                            %} onchange="updateGroupCheckboxState('{{ safe_group_name }}'); saveDisplayOptionsPart();">
+
+                        {{ field.field_name | format_label }}
+                    </label><br>
+                    {% endfor %}
+                </div>
+            </div>
             {% endfor %}
         </div>
 
         <!-- 🔍 Barre de recherche + option "voir toutes" -->
         <div style="display: flex; gap: 15px; align-items: center; margin-top: 10px;">
-            <input type="text"
-                id="filtre-association"
-                class="form-control"
+            <input type="text" id="filtre-association" class="form-control"
                 placeholder="🔎 Rechercher une association...">
 
-            <div id="filtre-info"
-                style="font-size: 0.9rem; color: #666; margin-top: 4px;">
+            <div id="filtre-info" style="font-size: 0.9rem; color: #666; margin-top: 4px;">
             </div>
             {% if user_role == 'car' %}
-                <div class="form-check" style="margin-left: 15px;">
-                    <input class="form-check-input" type="checkbox" id="voir_toutes" name="voir_toutes" value="1"
-                        {% if voir_toutes %}checked{% endif %}>
-                    <label class="form-check-label" for="voir_toutes">👁️ Voir toutes les associations</label>
-                </div>
+            <div class="form-check" style="margin-left: 15px;">
+                <input class="form-check-input" type="checkbox" id="voir_toutes" name="voir_toutes" value="1" {% if
+                    voir_toutes %}checked{% endif %}>
+                <label class="form-check-label" for="voir_toutes">👁️ Voir toutes les associations</label>
+            </div>
             {% endif %}
         </div>
     </fieldset>
@@ -167,417 +153,451 @@
 </div>
 
 <!-- 📊 Tableau principal avec colonnes figées -->
-<div id="scroll-bottom"
-     style="overflow-x: auto; overflow-y: auto; max-height: 70vh; white-space: nowrap;">
-<table class="table table-bordered table-sticky" id="partenaire-table">
-    <thead>
-        <tr class="{% if request.args.get('voir_non_valides') == '1' %}ligne-non-valide{% endif %}">
-            <th class="sticky-col sticky-col-1">Action</th>
-            <th class="sticky-col sticky-col-2 sortable" data-sort="id">
-                ID <span class="arrow">▲▼</span>
-            </th>
-            <th class="sticky-col sticky-col-3 sortable" data-sort="nom">
-                Nom <span class="arrow">▲▼</span>
-            </th>
-            {% for column in selected_columns %}
+<div id="scroll-bottom" style="overflow-x: auto; overflow-y: auto; max-height: 70vh; white-space: nowrap;">
+    <table class="table table-bordered table-sticky" id="partenaire-table">
+        <thead>
+            <tr class="{% if request.args.get('voir_non_valides') == '1' %}ligne-non-valide{% endif %}">
+                <th class="sticky-col sticky-col-1">Action</th>
+                <th class="sticky-col sticky-col-2 sortable" data-sort="id">
+                    ID <span class="arrow">▲▼</span>
+                </th>
+                <th class="sticky-col sticky-col-3 sortable" data-sort="nom">
+                    Nom <span class="arrow">▲▼</span>
+                </th>
+                {% for column in selected_columns %}
                 {% if column != 'nom_association' %}
                 <th>{{ column | format_label }}</th>
                 {% endif %}
-            {% endfor %}
-        </tr>
-    </thead>
-    <tbody>
-        {% set date_columns = ["date de la visite", "date agrement regional", "date FIN habilitation", "date précédente visite"] %}
-        {% set email_columns = ["courriel président", "Code comptable", "courriel association", "courriel resp opérationnel", "courriel resp IE1", "courriel resp IE2", "courriel distribution", "courriel resp Hysa", "courriel resp trésorerie"] %}
-        {% set drive_columns = ["drive_link"] %}
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% set date_columns = ["date de la visite", "date agrement regional", "date FIN habilitation", "date
+            précédente visite"] %}
+            {% set email_columns = ["courriel président", "Code comptable", "courriel association", "courriel resp
+            opérationnel", "courriel resp IE1", "courriel resp IE2", "courriel distribution", "courriel resp Hysa",
+            "courriel resp trésorerie"] %}
+            {% set drive_columns = ["drive_link"] %}
 
-        {% for row in rows %}
-        <tr>
-            <td class="sticky-col sticky-col-1">
-                <form method="GET" action="{{ url_for('partenaires.update_partner', partner_id=row['id']) }}" style="display:inline;">
-                    <input type="hidden" name="has_interacted" value="1">
-                    {% for col in selected_columns %}
-                    <input type="hidden" name="columns" value="{{ col }}">
-                    {% endfor %}
-                    {% for grp in selected_groups %}
-                    <input type="hidden" name="selected_groups" value="{{ grp }}">
-                    {% endfor %}
-                    <button type="submit" class="btn btn-primary btn-sm">Modifier</button>
-                </form>
-            </td>
-            <td class="sticky-col sticky-col-2">{{ row['id'] }}</td>
-            <td class="sticky-col sticky-col-3">{{ row['nom_association'] }}</td>
-            {% for column in selected_columns %}
+            {% for row in rows %}
+            <tr data-search="{{ row.search_blob|e }}">
+                <td class="sticky-col sticky-col-1">
+                    <form method="GET"
+                        action="{{ url_for('partenaires.update_partner', partner_id=row.display['id']) }}"
+                        style="display:inline;">
+                        <input type="hidden" name="has_interacted" value="1">
+                        {% for col in selected_columns %}
+                        <input type="hidden" name="columns" value="{{ col }}">
+                        {% endfor %}
+                        {% for grp in selected_groups %}
+                        <input type="hidden" name="selected_groups" value="{{ grp }}">
+                        {% endfor %}
+                        <button type="submit" class="btn btn-primary btn-sm">Modifier</button>
+                    </form>
+                </td>
+                <td class="sticky-col sticky-col-2">{{ row.display['id'] }}</td>
+                <td class="sticky-col sticky-col-3">{{ row.display['nom_association'] }}</td>
+                {% for column in selected_columns %}
                 {% if column != 'nom_association' %}
                 <td>
-                    {% if row[column] %}
-                        {% if column in date_columns %}
-                            {{ row[column][:10].split('-')[2] }}/{{ row[column][:10].split('-')[1] }}/{{ row[column][:10].split('-')[0] }}
-                        {% elif column in email_columns %}
-                            <a href="mailto:{{ row[column] }}">{{ row[column] }}</a>
-                        {% elif column in drive_columns %}
-                            <a href="{{ row[column] }}" target="_blank" class="btn btn-outline-primary">📂 Dossier</a>
-                        {% elif column.lower().startswith("tel") or "téléphone" in column.lower() %}
-                            {{ row[column] | format_tel }}
-                        {% else %}
-                            {{ row[column] }}
-                        {% endif %}
+                    {% if row.display[column] %}
+                    {% if column in date_columns %}
+                    {{ row.display[column][:10].split('-')[2] }}/{{ row.display[column][:10].split('-')[1] }}/{{
+                    row.display[column][:10].split('-')[0] }}
+                    {% elif column in email_columns %}
+                    <a href="mailto:{{ row.display[column] }}">{{ row.display[column] }}</a>
+                    {% elif column in drive_columns %}
+                    <a href="{{ row.display[column] }}" target="_blank" class="btn btn-outline-primary">📂 Dossier</a>
+                    {% elif column.lower().startswith("tel") or "téléphone" in column.lower() %}
+                    {{ row.display[column] | format_tel }}
                     {% else %}
-                        -
+                    {{ row.display[column] }}
+                    {% endif %}
+                    {% else %}
+                    -
                     {% endif %}
                 </td>
                 {% endif %}
+                {% endfor %}
+            </tr>
             {% endfor %}
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+        </tbody>
+    </table>
 </div>
 {% else %}
 <p>Aucune association trouvée.</p>
 {% endif %}
 
 <style>
-.ligne-non-valide {
-    background-color: #ffe5e5 !important;   /* rose très léger */
-    border-left: 4px solid #ff6666 !important;
-}
+    .ligne-non-valide {
+        background-color: #ffe5e5 !important;
+        /* rose très léger */
+        border-left: 4px solid #ff6666 !important;
+    }
 </style>
 
 
 <!-- 🔁 JS : dynamique et synchronisation -->
 <script>
 
-// ===============================
-// 🔐 PERSISTANCE OPTIONS AFFICHAGE
-// ===============================
-const OPTIONS_KEY_PART = "partenaires_display_options";
+    // ===============================
+    // 🔐 PERSISTANCE OPTIONS AFFICHAGE
+    // ===============================
+    const OPTIONS_KEY_PART = "partenaires_display_options";
 
-function saveDisplayOptionsPart() {
+    function saveDisplayOptionsPart() {
 
-    const selectedColumns = Array.from(
-        document.querySelectorAll("input[name='columns']:checked")
-    ).map(cb => cb.value);
+        const selectedColumns = Array.from(
+            document.querySelectorAll("input[name='columns']:checked")
+        ).map(cb => cb.value);
 
-    const selectedGroups = Array.from(
-        document.querySelectorAll("input[name='selected_groups']:checked")
-    ).map(cb => cb.value);
+        const selectedGroups = Array.from(
+            document.querySelectorAll("input[name='selected_groups']:checked")
+        ).map(cb => cb.value);
 
-    localStorage.setItem(OPTIONS_KEY_PART, JSON.stringify({
-        columns: selectedColumns,
-        groups: selectedGroups
-    }));
-}
-
-/* =====================================================
-   🚀 Initialisation complète page partenaires
-===================================================== */
-function initPartenairesPage() {
-
-    /* ===============================
-       🔐 PERSISTANCE OPTIONS
-    =============================== */
-    const saved = localStorage.getItem(OPTIONS_KEY_PART);
-    const isPost = "{{ request.method }}" === "POST";
-
-    if (!isPost && saved) {
-
-        const options = JSON.parse(saved);
-        const form = document.getElementById("form-options");
-
-        options.columns.forEach(col => {
-            const input = document.createElement("input");
-            input.type = "hidden";
-            input.name = "columns";
-            input.value = col;
-            form.appendChild(input);
-        });
-
-        options.groups.forEach(grp => {
-            const input = document.createElement("input");
-            input.type = "hidden";
-            input.name = "selected_groups";
-            input.value = grp;
-            form.appendChild(input);
-        });
-
-        form.submit();
-        return; // stop ici
+        localStorage.setItem(OPTIONS_KEY_PART, JSON.stringify({
+            columns: selectedColumns,
+            groups: selectedGroups
+        }));
     }
 
-    /* ===============================
-       🔘 Recalcul états groupes
-    =============================== */
-    document.querySelectorAll(".toggle-master-checkbox").forEach(master => {
-        const group = master.id.replace("toggle-", "");
-        updateGroupCheckboxState(group);
-    });
-
-    /* ===============================
-       📌 Restauration tri
-    =============================== */
-    if (currentSortPart.column) {
-        applySortPart(currentSortPart.column, false);
-    }
-
-    /* ===============================
-    🔁 Synchronisation scroll horizontal
-    =============================== */
-
-    const scrollTop = document.getElementById("scroll-top");
-    const scrollBottom = document.getElementById("scroll-bottom");
-    const syncScroll = document.getElementById("sync-scroll");
-
-    if (scrollTop && scrollBottom && syncScroll) {
-
-        // largeur virtuelle
-        syncScroll.style.width = scrollBottom.scrollWidth + "px";
-
-        // sync haut → bas
-        scrollTop.addEventListener("scroll", () => {
-            scrollBottom.scrollLeft = scrollTop.scrollLeft;
-        });
-
-        // sync bas → haut
-        scrollBottom.addEventListener("scroll", () => {
-            scrollTop.scrollLeft = scrollBottom.scrollLeft;
-        });
-
-        // cacher barre du haut si inutile
-        if (scrollBottom.scrollWidth <= scrollBottom.clientWidth) {
-            scrollTop.style.display = "none";
-        }
-        
-    }
-    initFiltreCache();
-}
-
-
-/* =====================================================
-   🎬 Lancement au chargement DOM
-===================================================== */
-document.addEventListener("DOMContentLoaded", initPartenairesPage);
-
-
-
-// ===============================
-// ♻️ RESET COMPLET
-// ===============================
-function resetFiltersPart() {
-
-    if (!confirm("Réinitialiser tous les filtres et options d'affichage ?")) {
-        return;
-    }
-
-    localStorage.removeItem(OPTIONS_KEY_PART);
-    localStorage.removeItem(SORT_KEY_PART);
-
-    window.location.href = "{{ url_for('partenaires.partenaires') }}";
-}
-
-// ===============================
-// 🔘 GROUPES
-// ===============================
-function toggleGroup(groupName, titreElement) {
-    const container = document.getElementById(`container-${groupName}`);
-    if (container) container.classList.toggle('expanded');
-
-    const chevron = titreElement.querySelector('.chevron');
-    if (chevron) {
-        chevron.textContent = container.classList.contains('expanded') ? '▼' : '➤';
-    }
-}
-
-function toggleAll(group, checked) {
-    document.querySelectorAll('.field-' + group).forEach(cb => cb.checked = checked);
-    updateGroupCheckboxState(group);
-    saveDisplayOptionsPart();
-}
-
-function updateGroupCheckboxState(group) {
-
-    const boxes = document.querySelectorAll('.field-' + group);
-    const master = document.getElementById('toggle-' + group);
-
-    if (!master || boxes.length === 0) return;
-
-    const total = boxes.length;
-    const checkedCount = Array.from(boxes).filter(cb => cb.checked).length;
-
-    if (checkedCount === 0) {
-        master.checked = false;
-        master.indeterminate = false;
-    }
-    else if (checkedCount === total) {
-        master.checked = true;
-        master.indeterminate = false;
-    }
-    else {
-        master.checked = false;
-        master.indeterminate = true;
-    }
-}
-
-// ===============================
-// 📌 TRI
-// ===============================
-const SORT_KEY_PART = "partenaires_sort_state";
-
-let currentSortPart = JSON.parse(localStorage.getItem(SORT_KEY_PART)) || {
-    column: null,
-    asc: true
-};
-
-function applySortPart(column, updateStorage = true) {
-    const table = document.getElementById("partenaire-table");
-    if (!table) return;
-
-    const tbody = table.querySelector("tbody");
-    const rows = Array.from(tbody.querySelectorAll("tr"));
-    const colIndex = column === "id" ? 1 : 2;
-
-    rows.sort((a, b) => {
-        let va = a.children[colIndex].innerText.trim();
-        let vb = b.children[colIndex].innerText.trim();
-
-        if (column === "id") {
-            return currentSortPart.asc
-                ? Number(va) - Number(vb)
-                : Number(vb) - Number(va);
-        }
-        return currentSortPart.asc
-            ? va.localeCompare(vb, "fr", { sensitivity: "base" })
-            : vb.localeCompare(va, "fr", { sensitivity: "base" });
-    });
-
-    rows.forEach(tr => tbody.appendChild(tr));
-
-    document.querySelectorAll("th.sortable").forEach(th => {
-        th.classList.remove("active");
-        th.querySelector(".arrow").textContent = "▲▼";
-    });
-
-    const active = document.querySelector(`th.sortable[data-sort="${column}"]`);
-    if (active) {
-        active.classList.add("active");
-        active.querySelector(".arrow").textContent = currentSortPart.asc ? "▲" : "▼";
-    }
-
-    if (updateStorage) {
-        localStorage.setItem(SORT_KEY_PART, JSON.stringify(currentSortPart));
-    }
-}
-
-document.querySelectorAll("th.sortable").forEach(th => {
-    th.addEventListener("click", () => {
-        const col = th.dataset.sort;
-        currentSortPart.asc = currentSortPart.column === col ? !currentSortPart.asc : true;
-        currentSortPart.column = col;
-        applySortPart(col);
-    });
-});
-
-
-// ===============================
-// 🔎 FILTRE CLIENT
-// ===============================
-
-const filtreInput = document.getElementById("filtre-association");
-
-// Cache
-let partnerRows = [];
-
-function initFiltreCache() {
-
-    const rows = document.querySelectorAll("#partenaire-table tbody tr");
-
-    partnerRows = Array.from(rows).map(row => ({
-        element: row,
-        text: row.innerText.toLowerCase()
-    }));
-}
-
-function applyFiltrePart() {
-
-    const filtre = filtreInput.value.toLowerCase();
-    let visibleCount = 0;
-
-    partnerRows.forEach(obj => {
-
-        const match = obj.text.includes(filtre);
-        obj.element.style.display = match ? "" : "none";
-
-        if (match) visibleCount++;
-    });
-
-    const info = document.getElementById("filtre-info");
-
-    info.textContent = filtre
-        ? visibleCount + " résultat" + (visibleCount > 1 ? "s" : "")
-        : "";
-}
-
-// Debounce
-let filtreTimeout;
-
-filtreInput.addEventListener("input", function() {
-
-    clearTimeout(filtreTimeout);
-
-    filtreTimeout = setTimeout(() => {
-        applyFiltrePart();
-    }, 150);
-});
-
-// Escape
-filtreInput.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") {
-
-        this.value = "";
-        applyFiltrePart();
-        e.preventDefault();
-    }
-});
-function toggleNonValides() {
-
-    const url = new URL(window.location.href);
-    const params = url.searchParams;
-
-    if (params.get("voir_non_valides") === "1") {
-        params.delete("voir_non_valides");
-    } else {
-        params.set("voir_non_valides", "1");
-    }
-
-    window.location.href = url.toString();
-}
-
-function updatePublipostageFile() {
-
-    if (!confirm("Lancer la génération complète des fichiers publipostage ?")) {
-        return;
-    }
-
-    fetch("/export_publipostage/trigger", { method: "POST" })
-    .then(response => response.json())
-    .then(data => {
-
-        alert(data.message);
-
-        // Attendre 10 secondes puis récupérer le rapport
-        setTimeout(() => {
-
-            fetch("/export_publipostage/last_summary")
-            .then(r => r.json())
-            .then(d => {
-                alert("📊 Rapport d'export :\n\n" + d.summary);
+    /* =====================================================
+       🚀 Initialisation complète page partenaires
+    ===================================================== */
+    function initPartenairesPage() {
+
+        /* ===============================
+           🔐 PERSISTANCE OPTIONS
+        =============================== */
+        const saved = localStorage.getItem(OPTIONS_KEY_PART);
+        const isPost = "{{ request.method }}" === "POST";
+
+        if (!isPost && saved) {
+
+            const options = JSON.parse(saved);
+            const form = document.getElementById("form-options");
+
+            options.columns.forEach(col => {
+                const input = document.createElement("input");
+                input.type = "hidden";
+                input.name = "columns";
+                input.value = col;
+                form.appendChild(input);
             });
 
-        }, 10000);
+            options.groups.forEach(grp => {
+                const input = document.createElement("input");
+                input.type = "hidden";
+                input.name = "selected_groups";
+                input.value = grp;
+                form.appendChild(input);
+            });
 
+            form.submit();
+            return; // stop ici
+        }
+
+        /* ===============================
+           🔘 Recalcul états groupes
+        =============================== */
+        document.querySelectorAll(".toggle-master-checkbox").forEach(master => {
+            const group = master.id.replace("toggle-", "");
+            updateGroupCheckboxState(group);
+        });
+
+        /* ===============================
+           📌 Restauration tri
+        =============================== */
+        if (currentSortPart.column) {
+            applySortPart(currentSortPart.column, false);
+        }
+
+        /* ===============================
+        🔁 Synchronisation scroll horizontal
+        =============================== */
+
+        const scrollTop = document.getElementById("scroll-top");
+        const scrollBottom = document.getElementById("scroll-bottom");
+        const syncScroll = document.getElementById("sync-scroll");
+
+        if (scrollTop && scrollBottom && syncScroll) {
+
+            // largeur virtuelle
+            syncScroll.style.width = scrollBottom.scrollWidth + "px";
+
+            // sync haut → bas
+            scrollTop.addEventListener("scroll", () => {
+                scrollBottom.scrollLeft = scrollTop.scrollLeft;
+            });
+
+            // sync bas → haut
+            scrollBottom.addEventListener("scroll", () => {
+                scrollTop.scrollLeft = scrollBottom.scrollLeft;
+            });
+
+            // cacher barre du haut si inutile
+            if (scrollBottom.scrollWidth <= scrollBottom.clientWidth) {
+                scrollTop.style.display = "none";
+            }
+
+        }
+        initFiltreCache();
+    }
+
+
+    /* =====================================================
+       🎬 Lancement au chargement DOM
+    ===================================================== */
+    document.addEventListener("DOMContentLoaded", initPartenairesPage);
+
+
+
+    // ===============================
+    // ♻️ RESET COMPLET
+    // ===============================
+    function resetFiltersPart() {
+
+        if (!confirm("Réinitialiser tous les filtres et options d'affichage ?")) {
+            return;
+        }
+
+        localStorage.removeItem(OPTIONS_KEY_PART);
+        localStorage.removeItem(SORT_KEY_PART);
+
+        window.location.href = "{{ url_for('partenaires.partenaires') }}";
+    }
+
+    // ===============================
+    // 🔘 GROUPES
+    // ===============================
+    function toggleGroup(groupName, titreElement) {
+        const container = document.getElementById(`container-${groupName}`);
+        if (container) container.classList.toggle('expanded');
+
+        const chevron = titreElement.querySelector('.chevron');
+        if (chevron) {
+            chevron.textContent = container.classList.contains('expanded') ? '▼' : '➤';
+        }
+    }
+
+    function toggleAll(group, checked) {
+        document.querySelectorAll('.field-' + group).forEach(cb => cb.checked = checked);
+        updateGroupCheckboxState(group);
+        saveDisplayOptionsPart();
+    }
+
+    function updateGroupCheckboxState(group) {
+
+        const boxes = document.querySelectorAll('.field-' + group);
+        const master = document.getElementById('toggle-' + group);
+
+        if (!master || boxes.length === 0) return;
+
+        const total = boxes.length;
+        const checkedCount = Array.from(boxes).filter(cb => cb.checked).length;
+
+        if (checkedCount === 0) {
+            master.checked = false;
+            master.indeterminate = false;
+        }
+        else if (checkedCount === total) {
+            master.checked = true;
+            master.indeterminate = false;
+        }
+        else {
+            master.checked = false;
+            master.indeterminate = true;
+        }
+    }
+
+    // ===============================
+    // 📌 TRI
+    // ===============================
+    const SORT_KEY_PART = "partenaires_sort_state";
+
+    let currentSortPart = JSON.parse(localStorage.getItem(SORT_KEY_PART)) || {
+        column: null,
+        asc: true
+    };
+
+    function applySortPart(column, updateStorage = true) {
+        const table = document.getElementById("partenaire-table");
+        if (!table) return;
+
+        const tbody = table.querySelector("tbody");
+        const rows = Array.from(tbody.querySelectorAll("tr"));
+        const colIndex = column === "id" ? 1 : 2;
+
+        rows.sort((a, b) => {
+            let va = a.children[colIndex].innerText.trim();
+            let vb = b.children[colIndex].innerText.trim();
+
+            if (column === "id") {
+                return currentSortPart.asc
+                    ? Number(va) - Number(vb)
+                    : Number(vb) - Number(va);
+            }
+            return currentSortPart.asc
+                ? va.localeCompare(vb, "fr", { sensitivity: "base" })
+                : vb.localeCompare(va, "fr", { sensitivity: "base" });
+        });
+
+        rows.forEach(tr => tbody.appendChild(tr));
+
+        document.querySelectorAll("th.sortable").forEach(th => {
+            th.classList.remove("active");
+            th.querySelector(".arrow").textContent = "▲▼";
+        });
+
+        const active = document.querySelector(`th.sortable[data-sort="${column}"]`);
+        if (active) {
+            active.classList.add("active");
+            active.querySelector(".arrow").textContent = currentSortPart.asc ? "▲" : "▼";
+        }
+
+        if (updateStorage) {
+            localStorage.setItem(SORT_KEY_PART, JSON.stringify(currentSortPart));
+        }
+    }
+
+    document.querySelectorAll("th.sortable").forEach(th => {
+        th.addEventListener("click", () => {
+            const col = th.dataset.sort;
+            currentSortPart.asc = currentSortPart.column === col ? !currentSortPart.asc : true;
+            currentSortPart.column = col;
+            applySortPart(col);
+        });
     });
-}
 
+
+    // ===============================
+    // 🔎 FILTRE CLIENT
+    // ===============================
+
+    const filtreInput = document.getElementById("filtre-association");
+
+    // Cache
+    let partnerRows = [];
+
+    function initFiltreCache() {
+
+        const rows = document.querySelectorAll("#partenaire-table tbody tr");
+
+        partnerRows = Array.from(rows).map(row => ({
+            element: row,
+            text: (row.dataset.search || "").toLowerCase(),
+            originalHTML: row.innerHTML
+        }));
+    }
+    function applyFiltrePart() {
+
+        const filtre = filtreInput.value.toLowerCase();
+        let visibleCount = 0;
+
+        partnerRows.forEach(obj => {
+
+            const match = obj.text.includes(filtre);
+            obj.element.style.display = match ? "" : "none";
+
+            if (match) visibleCount++;
+        });
+
+        const info = document.getElementById("filtre-info");
+
+        info.textContent = filtre
+            ? visibleCount + " résultat" + (visibleCount > 1 ? "s" : "")
+            : "";
+
+        highlightPart(filtre);
+    }
+    // Debounce
+    let filtreTimeout;
+
+    filtreInput.addEventListener("input", function () {
+
+        clearTimeout(filtreTimeout);
+
+        filtreTimeout = setTimeout(() => {
+            applyFiltrePart();
+        }, 150);
+    });
+
+    // Escape
+    filtreInput.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") {
+
+            this.value = "";
+            applyFiltrePart();
+            e.preventDefault();
+        }
+    });
+    function toggleNonValides() {
+
+        const url = new URL(window.location.href);
+        const params = url.searchParams;
+
+        if (params.get("voir_non_valides") === "1") {
+            params.delete("voir_non_valides");
+        } else {
+            params.set("voir_non_valides", "1");
+        }
+
+        window.location.href = url.toString();
+    }
+
+    function updatePublipostageFile() {
+
+        if (!confirm("Lancer la génération complète des fichiers publipostage ?")) {
+            return;
+        }
+
+        fetch("/export_publipostage/trigger", { method: "POST" })
+            .then(response => response.json())
+            .then(data => {
+
+                alert(data.message);
+
+                // Attendre 10 secondes puis récupérer le rapport
+                setTimeout(() => {
+
+                    fetch("/export_publipostage/last_summary")
+                        .then(r => r.json())
+                        .then(d => {
+                            alert("📊 Rapport d'export :\n\n" + d.summary);
+                        });
+
+                }, 10000);
+
+            });
+    }
+
+    function highlightPart(term) {
+
+        if (!term) {
+            partnerRows.forEach(obj => {
+                obj.element.innerHTML = obj.originalHTML;
+            });
+            return;
+        }
+
+        const regex = new RegExp(`(${term})`, "gi");
+
+        partnerRows.forEach(obj => {
+
+            obj.element.innerHTML = obj.originalHTML;
+
+            obj.element.querySelectorAll("td").forEach(td => {
+
+                // On ne touche pas aux boutons (colonne action)
+                if (td.querySelector("button")) return;
+
+                td.innerHTML = td.innerHTML.replace(
+                    regex,
+                    '<span class="highlight-search">$1</span>'
+                );
+            });
+        });
+    }
 
 </script>
 {% endblock %}

@@ -109,6 +109,9 @@ def export_all_publipostage_job():
     Utilise exclusivement la base PROD forcée.
     Retourne une liste de messages (summary).
     """
+
+    import json
+
     write_log("🚀 Export complet publipostage lancé (job)")
 
     client, drive_service, _ = get_google_services()
@@ -340,6 +343,101 @@ def export_all_publipostage_job():
             )
         )
 
+
+        # ============================================================
+        # ASSOCIATIONS — MÉTROPOLE (filtrage codes JSON)
+        # ============================================================
+
+        import json
+        import unicodedata
+
+        nom_fichier_metropole = "Publipostage_Assos_Metropole"
+
+        json_path = "/srv/ba38/data/codes_postaux_metropole.json"
+
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                codes_metropole = set(json.load(f)["codes_postaux"])
+        except Exception as e:
+            write_log(f"❌ Erreur lecture JSON métropole : {e}")
+            codes_metropole = set()
+
+        df_metro = pd.read_sql_query(
+            """
+            SELECT nom_association,
+                   CP,
+                   courriel_resp_operationnel,
+                   courriel_president
+            FROM associations
+            WHERE validite = 'oui'
+            """,
+            conn
+        )
+
+        rows_metro = []
+        emails_uniques_metro = set()
+
+        for _, row in df_metro.iterrows():
+
+            cp = str(row["CP"]).strip()[:5]
+
+            if cp not in codes_metropole:
+                continue
+
+            nom = str(row["nom_association"])
+
+            for champ in [
+                "courriel_resp_operationnel",
+                "courriel_president"
+            ]:
+
+                email = row[champ]
+
+                if is_valid_email(email):
+                    email_clean = str(email).strip().lower()
+
+                    if email_clean not in emails_uniques_metro:
+                        emails_uniques_metro.add(email_clean)
+
+                        rows_metro.append({
+                            "nom_association": nom,
+                            "email": email_clean
+                        })
+
+                elif email and str(email).strip().lower() != "none":
+                    emails_invalides.setdefault(
+                        nom_fichier_metropole, []
+                    ).append(f"{nom} → {email}")
+
+        df_metro_final = pd.DataFrame(rows_metro)
+
+        # 🔤 Tri alphabétique sans accents
+        if not df_metro_final.empty:
+
+            df_metro_final["_sort"] = (
+                df_metro_final["nom_association"]
+                .astype(str)
+                .apply(lambda x: unicodedata.normalize("NFKD", x)
+                       .encode("ascii", "ignore")
+                       .decode("ascii")
+                       .lower())
+            )
+
+            df_metro_final = df_metro_final.sort_values("_sort")
+            df_metro_final = df_metro_final.drop(columns=["_sort"])
+
+        summary.append(
+            export_dataframe_to_drive(
+                df_metro_final,
+                nom_fichier_metropole,
+                client,
+                drive_service,
+                FOLDER_ID_ASSOCIATIONS
+            )
+        )
+
+
+
         # ===============================
         # EMAIL DE SYNTHÈSE
         # ===============================
@@ -497,3 +595,4 @@ def last_summary():
         return jsonify({"summary": content})
     except:
         return jsonify({"summary": "Aucun rapport disponible."})
+

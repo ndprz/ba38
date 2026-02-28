@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Gestion des pôles{% endblock %}
+{% block content %}
+
+<h2>👥 Gestion des pôles d’activité</h2>
+
+<a href="{{ url_for('engagements.engagements_parametres_main') }}" class="btn btn-secondary mb-3">
+    ⬅ Retour
+</a>
+
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
+        <tr>
+            <th>Pôle</th>
+            <th>Responsable</th>
+            <th>Suppléant 1</th>
+            <th>Suppléant 2</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+
+        {% for p in poles %}
+        <form method="POST">
+            <tr>
+                <td>
+                    <input type="hidden" name="pole_id" value="{{ p.id }}">
+                    <input type="text" name="nom_affiche" class="form-control" value="{{ p.nom_affiche }}">
+                </td>
+
+                <td>
+                    <select name="responsable_id" class="form-select select2">
+                        <option value="">-- Aucun --</option>
+                        {% for u in users %}
+                        <option value="{{ u.id }}" {% if u.id==p.responsable_id %}selected{% endif %}>
+                            {{ u.email }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </td>
+
+                <td>
+                    <select name="suppleant1_id" class="form-select select2">
+                        <option value="">-- Aucun --</option>
+                        {% for u in users %}
+                        <option value="{{ u.id }}" {% if u.id==p.suppleant1_id %}selected{% endif %}>
+                            {{ u.email }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </td>
+
+                <td>
+                    <select name="suppleant2_id" class="form-select select2">
+                        <option value="">-- Aucun --</option>
+                        {% for u in users %}
+                        <option value="{{ u.id }}" {% if u.id==p.suppleant2_id %}selected{% endif %}>
+                            {{ u.email }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </td>
+
+                <td>
+                    {% if has_access('engagement_parametres','ecriture') %}
+                    <button type="submit" onclick="formChanged=false" class="btn btn-success btn-sm">
+                        💾 Enregistrer
+                    </button> {% endif %}
+                </td>
+            </tr>
+        </form>
+        {% endfor %}
+
+    </tbody>
+</table>
+
+<script>
+    let formChanged = false;
+
+    document.querySelectorAll("input, select").forEach(el => {
+        el.addEventListener("change", function () {
+            formChanged = true;
+        });
+    });
+
+    window.addEventListener("beforeunload", function (e) {
+        if (formChanged) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+
+</script>
+
+{% endblock %}

@@ -28,10 +28,10 @@
     {% if not lecture_seule %}
     <form method="GET" action="{{ url_for('benevoles.edition_tableau_benevoles') }}" style="display:inline;">
         {% for col in selected_columns %}
-            <input type="hidden" name="columns" value="{{ col }}">
+        <input type="hidden" name="columns" value="{{ col }}">
         {% endfor %}
         {% for grp in selected_groups %}
-            <input type="hidden" name="selected_groups" value="{{ grp }}">
+        <input type="hidden" name="selected_groups" value="{{ grp }}">
         {% endfor %}
         <input type="hidden" name="has_interacted" value="1">
         <button type="submit" class="btn btn-warning">📝 Mise à jour en tableau</button>
@@ -48,15 +48,13 @@
         📧 Mail groupé bénévoles
     </a>
 
-    <button type="button" class="btn btn-outline-danger"
-            onclick="resetFilters()">
+    <button type="button" class="btn btn-outline-danger" onclick="resetFilters()">
         ♻️ Réinitialiser les filtres
     </button>
 
 
     <!-- 🔄 Bouton Actualiser (soumet form-options) -->
-    <button type="button" class="btn btn-secondary"
-            onclick="document.getElementById('form-options').submit();">
+    <button type="button" class="btn btn-secondary" onclick="document.getElementById('form-options').submit();">
         🔄 Actualiser
     </button>
 </div>
@@ -78,10 +76,9 @@
 
                     <label style="margin: 0;">
                         <input type="checkbox" class="toggle-master-checkbox" id="toggle-{{ safe_group_name }}"
-                            name="selected_groups"
-                            value="{{ group_name }}"
-                            onclick="toggleAll('{{ safe_group_name }}', this.checked); saveDisplayOptions();"
-                            {% if group_name in selected_groups %}checked{% endif %}>
+                            name="selected_groups" value="{{ group_name }}"
+                            onclick="toggleAll('{{ safe_group_name }}', this.checked); saveDisplayOptions();" {% if
+                            group_name in selected_groups %}checked{% endif %}>
                         Tout sélectionner
                     </label>
                 </div>
@@ -89,12 +86,9 @@
                     {% for field in fields %}
                     {% if field.field_name not in ['id', 'nom'] %}
                     <label>
-                        <input type="checkbox"
-                            class="field-{{ safe_group_name }} green-checkbox"
-                            name="columns"
-                            value="{{ field.field_name }}"
-                            {% if field.field_name in selected_columns %}checked{% endif %}
-                            onchange="updateGroupCheckboxState('{{ safe_group_name }}'); saveDisplayOptions();">
+                        <input type="checkbox" class="field-{{ safe_group_name }} green-checkbox" name="columns"
+                            value="{{ field.field_name }}" {% if field.field_name in selected_columns %}checked{% endif
+                            %} onchange="updateGroupCheckboxState('{{ safe_group_name }}'); saveDisplayOptions();">
                         {{ field.field_name | format_label }}
                     </label><br>
                     {% endif %}
@@ -104,24 +98,23 @@
             {% endfor %}
         </div>
 
-            <div style="display: flex; gap: 15px; align-items: center; margin-top: 10px;">
-                <input type="text" id="filtre-benevole" class="form-control"
-                    placeholder="🔍 Rechercher un bénévole...">
-            </div>
-        </fieldset>
-    </form>
-    <hr>
+        <div style="display: flex; gap: 15px; align-items: center; margin-top: 10px;">
+            <input type="text" id="filtre-benevole" class="form-control" placeholder="🔍 Rechercher un bénévole...">
+        </div>
+    </fieldset>
+</form>
+<hr>
 
 {% if benevoles %}
 <div id="scroll-top" style="overflow-x: auto; height: 20px; margin-bottom: 5px;">
     <div id="sync-scroll" style="height: 1px;"></div>
 </div>
 
-<div id="scroll-bottom"
-     style="overflow-x: auto;
+<div id="scroll-bottom" style="overflow-x: auto;
             overflow-y: auto;
             height: 65vh;
-            white-space: nowrap;">    <table class="table table-striped table-bordered table-sticky" id="benevole-table">
+            white-space: nowrap;">
+    <table class="table table-striped table-bordered table-sticky" id="benevole-table">
         <thead>
             <tr>
                 <th class="sticky-col sticky-col-1">Action</th>
@@ -137,43 +130,46 @@
             </tr>
         </thead>
         <tbody>
-            {% for row in benevoles %}
-            <tr>
+            {% for item in benevoles %}
+            <tr data-search="{{ item.search_blob }}">
                 <td class="sticky-col sticky-col-1">
-                    {% if row['id'] %}
-                    <form method="GET" action="{{ url_for('benevoles.update_benevole', benevole_id=row['id']) }}" style="display:inline;">
+                    {% if item.display['id'] %}
+                    <form method="GET"
+                        action="{{ url_for('benevoles.update_benevole', benevole_id=item.display['id']) }}"
+                        style="display:inline;">
                         <input type="hidden" name="has_interacted" value="1">
                         <button type="submit" class="btn btn-primary btn-sm">Modifier</button>
                     </form>
-                    <a href="{{ url_for('benevoles.desactiver_benevole', benevole_id=row['id']) }}"
-                    class="btn btn-sm btn-outline-warning" title="Archiver ce bénévole">
-                    💤 Désactiver
+                    <a href="{{ url_for('benevoles.desactiver_benevole', benevole_id=item.display['id']) }}"
+                        class="btn btn-sm btn-outline-warning" title="Archiver ce bénévole">
+                        💤 Désactiver
                     </a>
                     {% else %}
                     <span class="text-muted">ID manquant</span>
                     {% endif %}
                 </td>
-                <td class="sticky-col sticky-col-2">{{ row['id'] }}</td>
+                <td class="sticky-col sticky-col-2">{{ item.display['id'] }}</td>
                 <td class="sticky-col sticky-col-3">
-                    {% if row['id'] in photo_ids %}
-                    <span class="photo-hover-container" data-img="{{ url_for('static', filename='photos_benevoles/' ~ row['id'] ~ '.jpg') }}">
-                    {% else %}
-                    <span>
-                    {% endif %}
-                        {{ row['nom'] }}
-                    </span>
+                    {% if item.display['id'] in photo_ids %}
+                    <span class="photo-hover-container"
+                        data-img="{{ url_for('static', filename='photos_benevoles/' ~ item.display['id'] ~ '.jpg') }}">
+                        {% else %}
+                        <span>
+                            {% endif %}
+                            {{ item.display['nom'] }}
+                        </span>
                 </td>
                 {% for column in selected_columns %}
-                <td {% if column == 'user_modif' %}class="col-user-modif"{% endif %}>
-                {% if row[column] %}
+                <td {% if column=='user_modif' %}class="col-user-modif" {% endif %}>
+                    {% if item.display[column] %}
                     {% if column.lower().startswith('tel') or 'téléphone' in column.lower() %}
-                    {{ row[column] | format_tel }}
+                    {{ item.display[column] | format_tel }}
                     {% else %}
-                    {{ row[column] }}
+                    {{ item.display[column] }}
                     {% endif %}
-                {% else %}
+                    {% else %}
                     -
-                {% endif %}
+                    {% endif %}
                 </td>
                 {% endfor %}
             </tr>
@@ -187,317 +183,389 @@
 
 <script>
 
-const OPTIONS_KEY = "benevoles_display_options";
+    const OPTIONS_KEY = "benevoles_display_options";
 
-function saveDisplayOptions() {
+    function saveDisplayOptions() {
 
-    const selectedColumns = Array.from(
-        document.querySelectorAll("input[name='columns']:checked")
-    ).map(cb => cb.value);
+        const selectedColumns = Array.from(
+            document.querySelectorAll("input[name='columns']:checked")
+        ).map(cb => cb.value);
 
-    const selectedGroups = Array.from(
-        document.querySelectorAll("input[name='selected_groups']:checked")
-    ).map(cb => cb.value);
+        const selectedGroups = Array.from(
+            document.querySelectorAll("input[name='selected_groups']:checked")
+        ).map(cb => cb.value);
 
-    localStorage.setItem(OPTIONS_KEY, JSON.stringify({
-        columns: selectedColumns,
-        groups: selectedGroups
-    }));
-}
-
-
-function toggleGroup(groupName, titreElement) {
-  const container = document.getElementById(`container-${groupName}`);
-  if (container) container.classList.toggle('expanded');
-  const chevron = titreElement.querySelector('.chevron');
-  if (chevron) {
-    chevron.textContent = container.classList.contains('expanded') ? '▼' : '➤';
-  }
-}
-
-function toggleAll(group, checked) {
-    document.querySelectorAll('.field-' + group).forEach(cb => cb.checked = checked);
-
-    const master = document.getElementById('toggle-' + group);
-    if (master) {
-        master.indeterminate = false;
-        master.checked = checked;
+        localStorage.setItem(OPTIONS_KEY, JSON.stringify({
+            columns: selectedColumns,
+            groups: selectedGroups
+        }));
     }
 
-    updateGroupCheckboxState(group);
-}
 
-function updateGroupCheckboxState(group) {
-
-    const boxes = document.querySelectorAll('.field-' + group);
-    const master = document.getElementById('toggle-' + group);
-
-    if (!master || boxes.length === 0) return;
-
-    const total = boxes.length;
-    const checkedCount = Array.from(boxes).filter(cb => cb.checked).length;
-
-    if (checkedCount === 0) {
-        master.checked = false;
-        master.indeterminate = false;
-    }
-    else if (checkedCount === total) {
-        master.checked = true;
-        master.indeterminate = false;
-    }
-    else {
-        master.checked = false;
-        master.indeterminate = true;
-    }
-}
-
-function updatePublipostageFile() {
-    if (confirm("Voulez-vous vraiment mettre à jour le fichier de publipostage sur Google Drive ?")) {
-        fetch("{{ url_for('export.trigger_publipostage_cron') }}", { method: "POST" })
-            .then(response => response.json())
-            .then(data => alert(data.message))
-            .catch(error => alert("❌ Erreur lors de la mise à jour : " + error));
-    }
-}
-
-// ===============================
-// 🔎 FILTRE RAPIDE OPTIMISÉ
-// ===============================
-
-const filtreInput = document.getElementById("filtre-benevole");
-
-let benevoleRows = [];
-
-function initFiltreCacheBene() {
-
-    const rows = document.querySelectorAll("#benevole-table tbody tr");
-
-    benevoleRows = Array.from(rows).map(row => {
-
-        const cellules = Array.from(row.querySelectorAll("td"));
-
-        const texte = cellules
-            .filter(td => !td.classList.contains("col-user-modif"))
-            .map(td => td.innerText)
-            .join(" ")
-            .toLowerCase();
-
-        return {
-            element: row,
-            text: texte
-        };
-    });
-}
-
-function applyFiltreBene() {
-
-    const filtre = filtreInput.value.toLowerCase();
-    let visibleCount = 0;
-
-    benevoleRows.forEach(obj => {
-
-        const match = obj.text.includes(filtre);
-        obj.element.style.display = match ? "" : "none";
-
-        if (match) visibleCount++;
-    });
-
-    localStorage.setItem("benevole_search_filter", filtre);
-}
-
-/* Debounce */
-let filtreTimeout;
-
-filtreInput.addEventListener("input", function() {
-
-    clearTimeout(filtreTimeout);
-
-    filtreTimeout = setTimeout(() => {
-        applyFiltreBene();
-    }, 120);
-});
-
-/* Échap */
-filtreInput.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") {
-        this.value = "";
-        applyFiltreBene();
-        e.preventDefault();
-    }
-});
-
-// Scroll synchronisé
-const topScroll = document.getElementById("scroll-top");
-const bottomScroll = document.getElementById("scroll-bottom");
-const syncDiv = document.getElementById("sync-scroll");
-const table = document.getElementById("benevole-table");
-if (syncDiv && table) syncDiv.style.width = table.scrollWidth + "px";
-topScroll.addEventListener("scroll", () => bottomScroll.scrollLeft = topScroll.scrollLeft);
-bottomScroll.addEventListener("scroll", () => topScroll.scrollLeft = bottomScroll.scrollLeft);
-
-// Photos au survol
-document.querySelectorAll(".photo-hover-container").forEach(container => {
-    const imgPath = container.dataset.img;
-    let floating = null;
-    container.addEventListener("mouseenter", () => {
-        floating = document.createElement("img");
-        floating.src = imgPath;
-        floating.style.position = "fixed";
-        floating.style.zIndex = "9999";
-        floating.style.maxWidth = "150px";
-        floating.style.maxHeight = "150px";
-        floating.style.border = "1px solid #ccc";
-        floating.style.background = "white";
-        floating.style.boxShadow = "2px 2px 8px rgba(0,0,0,0.2)";
-        floating.style.pointerEvents = "none";
-        const rect = container.getBoundingClientRect();
-        floating.style.left = `${rect.right + 10}px`;
-        const spaceBelow = window.innerHeight - rect.bottom;
-        const spaceAbove = rect.top;
-        floating.style.top = spaceBelow < 160 && spaceAbove > 160 ? `${rect.top - 160}px` : `${rect.top}px`;
-        document.body.appendChild(floating);
-    });
-    container.addEventListener("mouseleave", () => {
-        if (floating) {
-            document.body.removeChild(floating);
-            floating = null;
+    function toggleGroup(groupName, titreElement) {
+        const container = document.getElementById(`container-${groupName}`);
+        if (container) container.classList.toggle('expanded');
+        const chevron = titreElement.querySelector('.chevron');
+        if (chevron) {
+            chevron.textContent = container.classList.contains('expanded') ? '▼' : '➤';
         }
-    });
-});
-
-
-const SORT_KEY = "benevoles_sort_state";
-
-let currentSort = JSON.parse(localStorage.getItem(SORT_KEY)) || {
-    column: null,
-    asc: true
-};
-
-function applySort(column, updateStorage = true) {
-    const table = document.getElementById("benevole-table");
-    const tbody = table.querySelector("tbody");
-    const rows = Array.from(tbody.querySelectorAll("tr"));
-
-    const colIndex = column === "id" ? 1 : 2;
-
-    rows.sort((a, b) => {
-        let va = a.children[colIndex].innerText.trim();
-        let vb = b.children[colIndex].innerText.trim();
-
-        if (column === "id") {
-            va = parseInt(va, 10);
-            vb = parseInt(vb, 10);
-            return currentSort.asc ? va - vb : vb - va;
-        } else {
-            return currentSort.asc
-                ? va.localeCompare(vb, "fr", { sensitivity: "base" })
-                : vb.localeCompare(va, "fr", { sensitivity: "base" });
-        }
-    });
-
-    rows.forEach(tr => tbody.appendChild(tr));
-
-    // UI : flèches et état actif
-    document.querySelectorAll("th.sortable").forEach(th => {
-        th.classList.remove("active");
-        th.querySelector(".arrow").textContent = "▲▼";
-    });
-
-    const activeTh = document.querySelector(`th.sortable[data-sort="${column}"]`);
-    if (activeTh) {
-        activeTh.classList.add("active");
-        activeTh.querySelector(".arrow").textContent = currentSort.asc ? "▲" : "▼";
     }
 
-    if (updateStorage) {
-        localStorage.setItem(SORT_KEY, JSON.stringify(currentSort));
-    }
-}
+    function toggleAll(group, checked) {
+        document.querySelectorAll('.field-' + group).forEach(cb => cb.checked = checked);
 
-document.querySelectorAll("th.sortable").forEach(th => {
-    th.addEventListener("click", () => {
-        const column = th.dataset.sort;
-
-        if (currentSort.column === column) {
-            currentSort.asc = !currentSort.asc;
-        } else {
-            currentSort.column = column;
-            currentSort.asc = true;
+        const master = document.getElementById('toggle-' + group);
+        if (master) {
+            master.indeterminate = false;
+            master.checked = checked;
         }
 
-        applySort(column);
-    });
-});
-
-// 🔁 Appliquer le tri mémorisé au chargement
-window.addEventListener("DOMContentLoaded", () => {
-    if (currentSort.column) {
-        applySort(currentSort.column, false);
-    }
-});
-
-window.addEventListener("DOMContentLoaded", () => {
-
-    const saved = localStorage.getItem(OPTIONS_KEY);
-    if (!saved) return;
-
-    const options = JSON.parse(saved);
-
-    const urlParams = new URLSearchParams(window.location.search);
-
-    if (!urlParams.getAll("columns").length && options.columns.length > 0) {
-
-        options.columns.forEach(col => {
-            const input = document.createElement("input");
-            input.type = "hidden";
-            input.name = "columns";
-            input.value = col;
-            document.getElementById("form-options").appendChild(input);
-        });
-
-        options.groups.forEach(grp => {
-            const input = document.createElement("input");
-            input.type = "hidden";
-            input.name = "selected_groups";
-            input.value = grp;
-            document.getElementById("form-options").appendChild(input);
-        });
-
-        document.getElementById("form-options").submit();
-    }
-    // Recalculer état des masters
-    document.querySelectorAll(".toggle-master-checkbox").forEach(master => {
-        const group = master.id.replace("toggle-", "");
         updateGroupCheckboxState(group);
+    }
+
+    function updateGroupCheckboxState(group) {
+
+        const boxes = document.querySelectorAll('.field-' + group);
+        const master = document.getElementById('toggle-' + group);
+
+        if (!master || boxes.length === 0) return;
+
+        const total = boxes.length;
+        const checkedCount = Array.from(boxes).filter(cb => cb.checked).length;
+
+        if (checkedCount === 0) {
+            master.checked = false;
+            master.indeterminate = false;
+        }
+        else if (checkedCount === total) {
+            master.checked = true;
+            master.indeterminate = false;
+        }
+        else {
+            master.checked = false;
+            master.indeterminate = true;
+        }
+    }
+
+    function updatePublipostageFile() {
+        if (confirm("Voulez-vous vraiment mettre à jour le fichier de publipostage sur Google Drive ?")) {
+            fetch("{{ url_for('export.trigger_publipostage_cron') }}", { method: "POST" })
+                .then(response => response.json())
+                .then(data => alert(data.message))
+                .catch(error => alert("❌ Erreur lors de la mise à jour : " + error));
+        }
+    }
+
+    // ===============================
+    // 🔎 FILTRE RAPIDE OPTIMISÉ
+    // ===============================
+
+    let filtreInput = null;
+    let benevoleRows = [];
+
+    function initFiltreCacheBene() {
+
+        const rows = document.querySelectorAll("#benevole-table tbody tr");
+
+        benevoleRows = Array.from(rows).map(row => {
+
+            const texte = (row.getAttribute("data-search") || "");
+
+            return {
+                element: row,
+                text: texte
+            };
+        });
+    }
+    function applyFiltreBene() {
+
+        if (!filtreInput) return;
+
+        const filtre = filtreInput.value
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "");
+
+        benevoleRows.forEach(obj => {
+
+            const visible = obj.text.includes(filtre);
+            obj.element.style.display = visible ? "" : "none";
+
+            if (visible) {
+                const cells = obj.element.querySelectorAll("td:not(.sticky-col-1)");
+                cells.forEach(cell => highlightText(cell, filtreInput.value));
+            }
+        });
+
+        localStorage.setItem("benevole_search_filter", filtreInput.value);
+    }
+    /* Debounce */
+    let filtreTimeout;
+
+
+    // Scroll synchronisé
+    const topScroll = document.getElementById("scroll-top");
+    const bottomScroll = document.getElementById("scroll-bottom");
+    const syncDiv = document.getElementById("sync-scroll");
+    const table = document.getElementById("benevole-table");
+    if (syncDiv && table) syncDiv.style.width = table.scrollWidth + "px";
+    topScroll.addEventListener("scroll", () => bottomScroll.scrollLeft = topScroll.scrollLeft);
+    bottomScroll.addEventListener("scroll", () => topScroll.scrollLeft = bottomScroll.scrollLeft);
+
+    // Photos au survol
+    document.querySelectorAll(".photo-hover-container").forEach(container => {
+        const imgPath = container.dataset.img;
+        let floating = null;
+        container.addEventListener("mouseenter", () => {
+            floating = document.createElement("img");
+            floating.src = imgPath;
+            floating.style.position = "fixed";
+            floating.style.zIndex = "9999";
+            floating.style.maxWidth = "150px";
+            floating.style.maxHeight = "150px";
+            floating.style.border = "1px solid #ccc";
+            floating.style.background = "white";
+            floating.style.boxShadow = "2px 2px 8px rgba(0,0,0,0.2)";
+            floating.style.pointerEvents = "none";
+            const rect = container.getBoundingClientRect();
+            floating.style.left = `${rect.right + 10}px`;
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const spaceAbove = rect.top;
+            floating.style.top = spaceBelow < 160 && spaceAbove > 160 ? `${rect.top - 160}px` : `${rect.top}px`;
+            document.body.appendChild(floating);
+        });
+        container.addEventListener("mouseleave", () => {
+            if (floating) {
+                document.body.removeChild(floating);
+                floating = null;
+            }
+        });
     });
-    initFiltreCacheBene();
 
-    const savedFilter = localStorage.getItem("benevole_search_filter");
-    if (savedFilter) {
-        filtreInput.value = savedFilter;
-        applyFiltreBene();
+
+    const SORT_KEY = "benevoles_sort_state";
+
+    let currentSort = JSON.parse(localStorage.getItem(SORT_KEY)) || {
+        column: null,
+        asc: true
+    };
+
+    function applySort(column, updateStorage = true) {
+        const table = document.getElementById("benevole-table");
+        const tbody = table.querySelector("tbody");
+        const rows = Array.from(tbody.querySelectorAll("tr"));
+
+        const colIndex = column === "id" ? 1 : 2;
+
+        rows.sort((a, b) => {
+            let va = a.children[colIndex].innerText.trim();
+            let vb = b.children[colIndex].innerText.trim();
+
+            if (column === "id") {
+                va = parseInt(va, 10);
+                vb = parseInt(vb, 10);
+                return currentSort.asc ? va - vb : vb - va;
+            } else {
+                return currentSort.asc
+                    ? va.localeCompare(vb, "fr", { sensitivity: "base" })
+                    : vb.localeCompare(va, "fr", { sensitivity: "base" });
+            }
+        });
+
+        rows.forEach(tr => tbody.appendChild(tr));
+
+        // UI : flèches et état actif
+        document.querySelectorAll("th.sortable").forEach(th => {
+            th.classList.remove("active");
+            th.querySelector(".arrow").textContent = "▲▼";
+        });
+
+        const activeTh = document.querySelector(`th.sortable[data-sort="${column}"]`);
+        if (activeTh) {
+            activeTh.classList.add("active");
+            activeTh.querySelector(".arrow").textContent = currentSort.asc ? "▲" : "▼";
+        }
+
+        if (updateStorage) {
+            localStorage.setItem(SORT_KEY, JSON.stringify(currentSort));
+        }
     }
-});
 
-function resetFilters() {
 
-    if (!confirm("Réinitialiser tous les filtres et options d'affichage ?")) {
-        return;
+    // ==========================================================
+    // INITIALISATION GENERALE
+    // ==========================================================
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initPage);
+    } else {
+        initPage();
     }
 
-    // Supprimer filtres sauvegardés
-    localStorage.removeItem("benevole_search_filter");
-    localStorage.removeItem("benevoles_sort_state");
-    localStorage.removeItem(OPTIONS_KEY);   // ← AJOUT ICI
+    function initPage() {
+        initSort();
+        initFilter();
+        initDisplayOptions();
+        initMasterCheckboxes();
+    }
 
-    // Vider champ recherche
-    const searchInput = document.getElementById("filtre-benevole");
-    if (searchInput) searchInput.value = "";
+    // ==========================================================
+    // 🔹 TRI
+    // ==========================================================
 
-    // Recharger la page sans paramètres
-    window.location.href = "{{ url_for('benevoles.benevoles') }}";
-}
+    function initSort() {
+        if (currentSort.column) {
+            applySort(currentSort.column, false);
+        }
 
+        document.querySelectorAll("th.sortable").forEach(th => {
+            th.addEventListener("click", () => {
+                const column = th.dataset.sort;
+
+                if (currentSort.column === column) {
+                    currentSort.asc = !currentSort.asc;
+                } else {
+                    currentSort.column = column;
+                    currentSort.asc = true;
+                }
+
+                applySort(column);
+            });
+        });
+    }
+
+    // ==========================================================
+    // 🔹 FILTRE
+    // ==========================================================
+
+    function initFilter() {
+
+        console.log("Rows:", benevoleRows.length);
+
+        filtreInput = document.getElementById("filtre-benevole");
+        if (!filtreInput) return;
+
+        initFiltreCacheBene();
+
+        filtreInput.addEventListener("input", function () {
+            clearTimeout(filtreTimeout);
+            filtreTimeout = setTimeout(() => {
+                applyFiltreBene();
+            }, 120);
+        });
+
+        filtreInput.addEventListener("keydown", function (e) {
+            if (e.key === "Escape") {
+                this.value = "";
+                applyFiltreBene();
+                e.preventDefault();
+            }
+        });
+
+        const savedFilter = localStorage.getItem("benevole_search_filter");
+        if (savedFilter) {
+            filtreInput.value = savedFilter;
+            applyFiltreBene();
+        }
+    }
+
+    // ==========================================================
+    // 🔹 OPTIONS AFFICHAGE
+    // ==========================================================
+
+    function initDisplayOptions() {
+
+        const saved = localStorage.getItem(OPTIONS_KEY);
+        if (!saved) return;
+
+        const options = JSON.parse(saved);
+        const urlParams = new URLSearchParams(window.location.search);
+
+        if (!urlParams.getAll("columns").length && options.columns?.length > 0) {
+
+            options.columns.forEach(col => {
+                const input = document.createElement("input");
+                input.type = "hidden";
+                input.name = "columns";
+                input.value = col;
+                document.getElementById("form-options").appendChild(input);
+            });
+
+            options.groups?.forEach(grp => {
+                const input = document.createElement("input");
+                input.type = "hidden";
+                input.name = "selected_groups";
+                input.value = grp;
+                document.getElementById("form-options").appendChild(input);
+            });
+
+            document.getElementById("form-options").submit();
+        }
+    }
+
+    // ==========================================================
+    // 🔹 CHECKBOX MASTER
+    // ==========================================================
+
+    function initMasterCheckboxes() {
+        document.querySelectorAll(".toggle-master-checkbox").forEach(master => {
+            const group = master.id.replace("toggle-", "");
+            updateGroupCheckboxState(group);
+        });
+    }
+
+    function resetFilters() {
+
+        if (!confirm("Réinitialiser tous les filtres et options d'affichage ?")) {
+            return;
+        }
+
+        // Supprimer filtres sauvegardés
+        localStorage.removeItem("benevole_search_filter");
+        localStorage.removeItem("benevoles_sort_state");
+        localStorage.removeItem(OPTIONS_KEY);   // ← AJOUT ICI
+
+        // Vider champ recherche
+        const searchInput = document.getElementById("filtre-benevole");
+        if (searchInput) searchInput.value = "";
+
+        // Recharger la page sans paramètres
+        window.location.href = "{{ url_for('benevoles.benevoles') }}";
+    }
+
+    function highlightText(element, searchTerm) {
+
+        // Nettoyage ancien highlight
+        element.querySelectorAll(".highlight-search").forEach(mark => {
+            const parent = mark.parentNode;
+            parent.replaceChild(document.createTextNode(mark.textContent), mark);
+            parent.normalize();
+        });
+
+        if (!searchTerm) return;
+
+        const text = element.textContent;
+        const normalizedText = text
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "");
+
+        const normalizedSearch = searchTerm
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "");
+
+        const index = normalizedText.indexOf(normalizedSearch);
+
+        if (index === -1) return;
+
+        const original = text;
+        const before = original.slice(0, index);
+        const match = original.slice(index, index + searchTerm.length);
+        const after = original.slice(index + searchTerm.length);
+
+        element.innerHTML = `${before}<span class="highlight-search">${match}</span>${after}`;
+    }
 
 </script>
 {% endblock %}

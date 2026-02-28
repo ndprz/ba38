@@ -22,6 +22,14 @@ APPLICATIONS = {
     "distribution": "Distribution",   # ← doit être ici
     "fournisseurs": "Fournisseurs",
     "evenements": "Événements",
+    "facturation": "Facturation",
+    "comptabilite": "Comptabilité",
+    "reporting": "Reporting",
+    "parametres": "Paramètres",
+    "utilisateurs": "Utilisateurs",
+    "logs": "Logs",
+    "engagements": "Engagements",
+    "engagement_parametres": "Engagement Paramètres",
 }
 
 @admin_bp.route("/roles/<email>", methods=["GET", "POST"])
@@ -83,7 +91,7 @@ def gestion_roles_matrice(email):
             (email,),
         )
         rows = cur.fetchall()
-        
+
         droits_existants = {
             row["appli"]: row["droit"]
             for row in rows

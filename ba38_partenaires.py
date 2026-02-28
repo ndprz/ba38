@@ -169,31 +169,86 @@ def partenaires():
 
     voir_non_valides = request.args.get("voir_non_valides") == "1"
 
-    # 🔎 Construction de la requête
+    # 🔎 Construction de la requête (display)
     if is_car:
-        # Cas CAR : restreint au CAR courant
         query = f"""
             SELECT {columns_clause}
             FROM associations
             WHERE LOWER(car) = LOWER(?)
         """
         params = [car_value]
+
         if voir_non_valides:
             query += " AND LOWER(validite) = 'non'"
         else:
             query += " AND (validite IS NULL OR LOWER(validite) != 'non')"
+
         query += " ORDER BY nom_association COLLATE NOCASE"
-        rows = cursor.execute(query, params).fetchall()
+
+        rows_display = cursor.execute(query, params).fetchall()
+
+        # ⚠️ même filtre pour rows_full
+        query_full = """
+            SELECT * FROM associations
+            WHERE LOWER(car) = LOWER(?)
+        """
+        params_full = [car_value]
+
+        if voir_non_valides:
+            query_full += " AND LOWER(validite) = 'non'"
+        else:
+            query_full += " AND (validite IS NULL OR LOWER(validite) != 'non')"
+
+        query_full += " ORDER BY nom_association COLLATE NOCASE"
+
+        rows_full = cursor.execute(query_full, params_full).fetchall()
+
     else:
-        # Cas non-CAR : toutes (avec filtre validité)
-        query = f"SELECT {columns_clause} FROM associations"
+        query = f"""
+            SELECT {columns_clause}
+            FROM associations
+        """
+
         if voir_non_valides:
             query += " WHERE LOWER(validite) = 'non'"
         else:
             query += " WHERE validite IS NULL OR LOWER(validite) != 'non'"
-        query += " ORDER BY nom_association COLLATE NOCASE"
-        rows = cursor.execute(query).fetchall()
 
+        query += " ORDER BY nom_association COLLATE NOCASE"
+
+        rows_display = cursor.execute(query).fetchall()
+
+        query_full = """
+            SELECT * FROM associations
+        """
+
+        if voir_non_valides:
+            query_full += " WHERE LOWER(validite) = 'non'"
+        else:
+            query_full += " WHERE validite IS NULL OR LOWER(validite) != 'non'"
+
+        query_full += " ORDER BY nom_association COLLATE NOCASE"
+
+        rows_full = cursor.execute(query_full).fetchall()
+
+
+    # 🔎 Construction des blobs de recherche
+    rows = []
+
+    for row_disp, row_full in zip(rows_display, rows_full):
+
+        excluded = ["user_modif"]
+
+        search_blob = " ".join(
+            str(row_full[k] or "")
+            for k in row_full.keys()
+            if k not in excluded
+        )
+
+        rows.append({
+            "display": row_disp,
+            "search_blob": search_blob
+        })
     conn.close()
 
     # 🎨 Rendu
@@ -1052,7 +1107,7 @@ def generate_pdf_annexe1bis(partner_id, groups=None, title="Annexe 1 bis : Infor
         backColor=colors.beige,
         fontName='Helvetica-Bold'
     )
-    
+
     elements = []
 
 
@@ -1066,7 +1121,7 @@ def generate_pdf_annexe1bis(partner_id, groups=None, title="Annexe 1 bis : Infor
     # ==============================================================================================================
     # === 1. Informations principales ===
     # ==============================================================================================================
-    
+
     elements.append(Spacer(1, 0.5 * cm))
     elements.append(Paragraph("1. Informations sur le partenaire", style_h2))
     elements.append(Paragraph(f"Numéro de SIRET : {safe_paragraph_value(data.get('code_SIRET'))}", style_n_left))
@@ -1355,7 +1410,7 @@ def generate_pdf_annexe1bis(partner_id, groups=None, title="Annexe 1 bis : Infor
     elements.append(Paragraph("Rappel : ", style_n_left))
     elements.append(Paragraph("- Les partenaires dits de catégorie 1 sont les autres associations et les CCAS.", style_n_left))
     elements.append(Paragraph("- Les partenaires dits de catégorie 2 sont : les unités locales Croix-Rouge française, les comités du Secours Populaire, les Restaurants du Cœur.", style_n_left))
-    
+
 
 
 
@@ -1536,12 +1591,12 @@ def generate_pdf_annexe1bis(partner_id, groups=None, title="Annexe 1 bis : Infor
     elements.append(Spacer(1, 0.2 * cm))
 
 
-    # Si non, période de fermeture 
+    # Si non, période de fermeture
     periode_fermeture = safe_paragraph_value(data.get('periode_de_fermeture', ''))
     if periode_fermeture:
         elements.append(Paragraph(f"Sinon, période de fermeture : {periode_fermeture}", style_n_left))
 
-    # Alternative à la fermeture 
+    # Alternative à la fermeture
     alternative_fermeture = safe_paragraph_value(data.get('alternative_fermeture', ''))
     if alternative_fermeture:
         elements.append(Paragraph(f"Alternative à la fermeture : {alternative_fermeture}", style_n_left))

@@ -105,6 +105,7 @@ from ba38_factures import factures_bp
 from ba38_mail_benevoles import mail_bene_bp
 from ba38_planning_report import planning_report_bp
 from ba38_aide import aide_bp
+from ba38_engagements import engagements_bp
 
 
 
@@ -310,6 +311,7 @@ app.register_blueprint(factures_bp)
 app.register_blueprint(mail_bene_bp)
 app.register_blueprint(planning_report_bp)
 app.register_blueprint(aide_bp)
+app.register_blueprint(engagements_bp)
 
 
 
@@ -418,8 +420,8 @@ password = PasswordField('Mot de passe', validators=[Optional(), Length(min=6)])
 confirm_password = PasswordField('Confirmer le mot de passe', validators=[Optional(), EqualTo('password')])
 
 role = SelectField('Rôle', choices=[
-    ('Gestionnaire', 'Gestionnaire'), 
-    ('car', 'Car'), ('user', 'Utilisateur'), 
+    ('Gestionnaire', 'Gestionnaire'),
+    ('car', 'Car'), ('user', 'Utilisateur'),
     ('admin', 'Administrateur')
 ], validators=[DataRequired()])
 actif = SelectField('Actif', choices=[('Oui','Oui'), ('Non','Non')], default='Oui', validators=[DataRequired()])
@@ -822,7 +824,7 @@ def get_user_role():
 #     table = "<table class='table table-bordered'><tr><th>Session</th><th>User ID</th><th>Nom</th><th>Rôle</th></tr>" + "\n".join(rows) + "</table>"
 #     return f"<h3>📋 Sessions utilisateur actives :</h3>{table}"
 
-# # temporaire a supprimer : 
+# # temporaire a supprimer :
 # @app.route("/debug_session_dir")
 # def debug_session_dir():
 #     return f"Session file dir utilisé : {app.config['SESSION_FILE_DIR']}"
@@ -1553,6 +1555,7 @@ def test_flash():
     from flask import flash, redirect, url_for
     flash("✅ Test de message Flash réussi", "success")
     return redirect(url_for("index"))
+
 
 
 if __name__ == "__main__":

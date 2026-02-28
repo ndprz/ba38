@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Paramétrage des engagements{% endblock %}
+
+{% block content %}
+
+<h2>⚙️ Paramétrage des engagements</h2>
+
+<div class="mb-4">
+
+    {% if has_access('engagement_parametres', 'lecture') %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">👥 Pôles d’activité</h5>
+            <p class="card-text">
+                Gérer les responsables et suppléants des pôles.
+            </p>
+            <a href="{{ url_for('engagements.gestion_poles') }}" class="btn btn-primary">
+                Gérer les pôles
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+{% endblock %}

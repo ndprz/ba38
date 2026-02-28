@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Nouvelle demande d'engagement{% endblock %}
+
+{% block content %}
+
+<h2>Nouvelle demande d'engagement de dépense</h2>
+
+<form method="POST">
+
+    <div class="mb-3">
+        <label class="form-label">Dépense demandée par</label>
+        <input type="text" class="form-control" value="{{ current_user.username }} {{ current_user.email }}" disabled>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Pôle d'activité *</label>
+        <select name="pole_id" class="form-select" required>
+            <option value="">-- Sélectionner un pôle --</option>
+            {% for p in poles %}
+            <option value="{{ p.id }}">{{ p.nom_affiche }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Objet *</label>
+        <input type="text" name="objet" class="form-control" required>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Description</label>
+        <textarea name="description" class="form-control" rows="3"></textarea>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Projet subventionné</label>
+        <input type="text" name="projet_subventionne" class="form-control">
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Convention partenariale</label>
+        <input type="text" name="convention_partenariale" class="form-control">
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Rubrique</label>
+        <select name="rubrique" class="form-select">
+            <option value="">-- Choisir --</option>
+            <option value="fonctionnement">Fonctionnement</option>
+            <option value="fournitures_entretien">Fournitures entretien & petit matériel</option>
+            <option value="fournitures_administratives">Fournitures administratives</option>
+            <option value="vie_associative">Vie associative</option>
+            <option value="collecte_annuelle">Collecte annuelle</option>
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Précision rubrique</label>
+        <input type="text" name="precision_rubrique" class="form-control">
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">
+            Montant total des dépenses prévues (€) *
+        </label>
+        <input type="number" step="0.01" name="montant_total" id="montant_total" class="form-control" required>
+    </div>
+
+    <!-- Bloc 200-500 -->
+    <div id="bloc_200_500" class="alert alert-warning d-none">
+        <input type="checkbox" name="attestation_comparaison" id="attestation_comparaison" value="1">
+        <label for="attestation_comparaison">
+            J’atteste avoir comparé les prix pour garantir la meilleure offre
+            (dépenses entre 200 € et 500 €)
+        </label>
+    </div>
+
+    <!-- Bloc > 500 -->
+    <div id="bloc_500_plus" class="alert alert-danger d-none">
+        <strong>
+            Les engagements supérieurs à 500 € doivent être accompagnés
+            d’un comparatif de prix (3 devis).
+        </strong>
+
+        <div class="mt-2">
+            <label>Nombre de devis joints :</label>
+            <input type="number" name="nb_devis" min="0" max="10" class="form-control">
+        </div>
+
+        <div class="mt-2">
+            <label>Commentaire / résumé du comparatif :</label>
+            <textarea name="commentaire_devis" class="form-control" rows="2"></textarea>
+        </div>
+    </div>
+    <hr>
+
+    <div class="mb-3">
+        <input type="checkbox" name="signature" value="1" required>
+        Je confirme cette demande (signature numérique)
+    </div>
+
+    <button type="submit" class="btn btn-success">
+        💾 Enregistrer la demande
+    </button>
+
+    <a href="{{ url_for('engagements.engagements_main') }}" class="btn btn-secondary">
+        ⬅ Retour
+    </a>
+
+</form>
+
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+
+        console.log("JS chargé");
+
+        const input = document.getElementById("montant_total");
+        if (!input) return;
+
+        input.addEventListener("input", function () {
+
+            const montant = parseFloat(this.value) || 0;
+
+            const bloc200 = document.getElementById("bloc_200_500");
+            const bloc500 = document.getElementById("bloc_500_plus");
+
+            if (bloc200) bloc200.classList.add("d-none");
+            if (bloc500) bloc500.classList.add("d-none");
+
+            if (montant > 200 && montant <= 500 && bloc200) {
+                bloc200.classList.remove("d-none");
+            }
+
+            if (montant > 500 && bloc500) {
+                bloc500.classList.remove("d-none");
+            }
+        });
+
+    });
+</script>
+
+{% endblock %}

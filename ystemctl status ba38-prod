@@ -1,0 +1,22 @@
+[0;1;32m●[0m nginx.service - A high performance web server and a reverse proxy server
+     Loaded: loaded (]8;;file://bai-web-1/usr/lib/systemd/system/nginx.service\/usr/lib/systemd/system/nginx.service]8;;\; [0;1;32menabled[0m; preset: [0;1;32menabled[0m)
+     Active: [0;1;32mactive (running)[0m since Mon 2026-02-23 11:25:52 CET; 1min 45s ago
+ Invocation: 186d83cd60c24ec59899f3736aa0300c
+       Docs: ]8;;man:nginx(8)\man:nginx(8)]8;;\
+    Process: 801 ExecStartPre=/usr/sbin/nginx -t -q -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+    Process: 887 ExecStart=/usr/sbin/nginx -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+   Main PID: 900 (nginx)
+      Tasks: 5[0;38;5;245m (limit: 4637)[0m
+     Memory: 36.1M (peak: 36.6M)
+        CPU: 170ms
+     CGroup: /system.slice/nginx.service
+             ├─[0;38;5;245m900 "nginx: master process /usr/sbin/nginx -g daemon on; master_process on;"[0m
+             ├─[0;38;5;245m902 "nginx: worker process"[0m
+             ├─[0;38;5;245m903 "nginx: worker process"[0m
+             ├─[0;38;5;245m904 "nginx: worker process"[0m
+             └─[0;38;5;245m905 "nginx: worker process"[0m
+
+Feb 23 11:25:52 bai-web-1 systemd[1]: Starting nginx.service - A high performance web server and a reverse proxy server...
+Feb 23 11:25:52 bai-web-1 nginx[801]: 2026/02/23 11:25:52 [info] 801#801: Using 116KiB of shared memory for nchan in /etc/nginx/nginx.conf:62
+Feb 23 11:25:52 bai-web-1 nginx[801]: 2026/02/23 11:25:52 [info] 801#801: Using 131072KiB of shared memory for nchan in /etc/nginx/nginx.conf:62
+Feb 23 11:25:52 bai-web-1 systemd[1]: Started nginx.service - A high performance web server and a reverse proxy server.

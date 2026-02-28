@@ -1,14 +1,17 @@
+import os
+import re
+import sqlite3
+import unicodedata
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, current_app
 from flask_login import login_required, current_user
 from utils import get_db_connection, upload_database, write_log, has_access, is_valid_email, is_valid_phone
 from werkzeug.security import generate_password_hash
 from PIL import Image, ExifTags
-import os
-import re
-import sqlite3
 from urllib.parse import urlencode
 from dotenv import load_dotenv
 from datetime import datetime
+
 
 load_dotenv()
 
@@ -27,7 +30,7 @@ def get_type_benevole_options(conn):
     return [str(r[0]).strip() for r in rows if r and str(r[0]).strip()]
 
 
-    
+
 def coerce_type_benevole(value, options):
     """
     Nettoie la saisie et la fait correspondre (sans casse/espaces) à une valeur canonique d'options.
@@ -203,13 +206,55 @@ def benevoles():
     escaped_columns = [f"`{col}`" for col in selected_columns if col not in ['id', 'nom']]
     columns_clause = ", ".join(["id", "`nom`"] + escaped_columns)
 
-    query = f"""
-        SELECT {columns_clause}
+    # 🔎 Une seule requête complète
+    rows_full = cursor.execute("""
+        SELECT *
         FROM benevoles
         ORDER BY nom COLLATE NOCASE
-    """
-    rows = cursor.execute(query).fetchall()
+    """).fetchall()
+
     conn.close()
+
+    EXCLUDED_SEARCH_FIELDS = {
+        "user_modif",
+        "date_modif",
+        "id"
+    }
+
+    def normalize_text(text: str) -> str:
+        if not text:
+            return ""
+        text = str(text).lower()
+        text = unicodedata.normalize("NFD", text)
+        text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+        return text
+
+    rows = []
+
+    for row in rows_full:
+        row_dict = dict(row)
+
+        search_blob_raw = " ".join(
+            str(value or "")
+            for key, value in row_dict.items()
+            if key not in EXCLUDED_SEARCH_FIELDS
+        )
+
+        search_blob = normalize_text(search_blob_raw)
+
+        display_dict = {
+            "id": row_dict.get("id"),
+            "nom": row_dict.get("nom")
+        }
+
+        for col in selected_columns:
+            if col not in ["id", "nom"]:
+                display_dict[col] = row_dict.get(col)
+
+        rows.append({
+            "display": display_dict,
+            "search_blob": search_blob
+        })
 
     # Photos disponibles
     photo_dir = os.path.join(os.path.dirname(__file__), "static", "photos_benevoles")
@@ -249,10 +294,12 @@ def benevoles():
         search_term=search_term  # ✅ pour préremplir le champ de recherche
     )
 
+
+
 @benevoles_bp.route("/edition_tableau_benevoles")
 @login_required
 def edition_tableau_benevoles():
-    
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -282,7 +329,7 @@ def edition_tableau_benevoles():
     rows = cursor.execute(f"SELECT {columns_clause} FROM benevoles ORDER BY nom COLLATE NOCASE").fetchall()
 
     type_benevole_options = get_type_benevole_options(conn)
-        
+
     conn.close()
 
     return render_template("edition_tableau_benevoles.html",
@@ -420,7 +467,7 @@ def create_benevole():
             type_benevole_options = get_type_benevole_options(conn)
 
             conn.close()
-            
+
             return render_template("create_benevole.html",
                                 grouped_fields=grouped_fields_ordered,
                                 champs_invalides=champs_invalides,
@@ -462,7 +509,7 @@ def create_benevole():
     type_benevole_options = get_type_benevole_options(conn)
 
     conn.close()
-    
+
     return render_template("create_benevole.html",
                         grouped_fields=grouped_fields_ordered,
                         champs_invalides=champs_invalides,
@@ -660,7 +707,7 @@ def update_benevole(benevole_id):
             type_benevole_options = get_type_benevole_options(conn)
 
             conn.close()
-            
+
             return render_template(
                 "update_benevole.html",
                 previous_id=previous_id,
@@ -739,7 +786,7 @@ def update_benevole(benevole_id):
 
 
     conn.close()
-    
+
     return render_template(
         "update_benevole.html",
         previous_id=previous_id,
@@ -895,7 +942,7 @@ def update_benevoles_table():
         """).fetchall()
 
         type_benevole_options = get_type_benevole_options(conn)
-        
+
         conn.close()
 
         oui_non_fields = [row["field_name"] for row in field_config if row["type_champ"] == "oui_non"]
@@ -1034,7 +1081,7 @@ def desactiver_benevole(benevole_id):
         if not motif:
             flash("⛔ Le motif est obligatoire.", "danger")
             return render_template("desactiver_benevole.html", benevole=benevole)
-    
+
         now = datetime.now().strftime("%Y-%m-%d")
 
         try:
