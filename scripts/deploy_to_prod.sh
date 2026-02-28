@@ -54,6 +54,45 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "🚀 Déploiement BA38 DEV → PROD : $(date '+%Y-%m-%d %H:%M:%S')"
 
 # ============================================================================
+# 🔐 Auto commit Git + tag + push avant déploiement
+# ============================================================================
+
+echo "🔎 Synchronisation Git automatique (DEV → GitHub)"
+
+cd "$DEV_DIR"
+
+# Vérifie que DEV est un repo Git
+if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+  echo "❌ DEV_DIR n’est pas un dépôt Git"
+  exit 1
+fi
+
+git add .
+
+# Vérifie s'il y a réellement quelque chose à commit
+if ! git diff --cached --quiet; then
+  COMMIT_MSG="v$VERSION - $VERSION_MSG"
+  echo "📝 Commit automatique : $COMMIT_MSG"
+  git commit -m "$COMMIT_MSG"
+else
+  echo "ℹ️ Aucun changement à commit"
+fi
+
+# Création du tag seulement s'il n'existe pas déjà
+if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+  echo "ℹ️ Tag v$VERSION déjà existant"
+else
+  echo "🏷️ Création du tag v$VERSION"
+  git tag -a "v$VERSION" -m "Release $VERSION - $VERSION_MSG"
+fi
+
+echo "⬆️ Push GitHub (code + tags)"
+git push
+git push --tags
+
+echo "✅ GitHub synchronisé"
+
+# ============================================================================
 # 🌍 Chargement de l’environnement DEV
 # ============================================================================
 if [ ! -f "$DEV_ENV" ]; then
