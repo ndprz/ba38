@@ -456,7 +456,8 @@ def restaurer_version():
         return redirect(url_for("index"))
 
     # 📁 Emplacement des sauvegardes
-    dossier_backups = "/home/ndprz/backups"
+    BASE_DIR = os.getenv("BA38_BASE_DIR", "/srv/ba38")
+    dossier_backups = os.path.join(BASE_DIR, "backups")
 
     try:
         fichiers = sorted(
@@ -673,6 +674,7 @@ def admin_scripts():
 
     scripts_dir = os.path.join(os.getenv("BA38_BASE_DIR"), "scripts")
 
+
     allowed_scripts = {
         "status_site.sh": "status_site.sh",
         "backup_prod.sh": "backup_prod.sh",
@@ -823,7 +825,7 @@ def debug_console_stream():
             return jsonify({
                 "cron_jobs": jobs,
                 "count": len(jobs)
-            })            
+            })
         # 🟢 CAS FICHIERS CLASSIQUES
         else:
             path = log_files.get(selected)

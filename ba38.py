@@ -384,9 +384,6 @@ for noisy_logger in ['oauth2client', 'googleapiclient.discovery']:
 
 
 
-# Capture les erreurs non gérées de Flask dans app.log
-# logger = logging.getLogger()
-
 
 
 # Lecture des noms de fichiers de base de données
@@ -452,44 +449,6 @@ class User(UserMixin):
 
     def is_admin(self):
         return self.role == 'admin'
-
-
-
-# @app.route("/debug_env_session")
-# def debug_env_session():
-#     return f"ENV={ENVIRONMENT} — Dossier de session : {app.config['SESSION_FILE_DIR']}"
-
-
-# # ------------------------------------------------------------------
-# # Séparation stricte des sessions DEV / PROD
-# # ------------------------------------------------------------------
-
-# ENVIRONMENT = os.getenv("ENVIRONMENT", "prod").lower()
-
-# if ENVIRONMENT == "prod":
-#     SESSION_DIR = "/srv/ba38/prod/sessions"
-#     SESSION_COOKIE_NAME = "ba38_prod_session"
-#     SESSION_KEY_PREFIX = "ba38_prod_"
-# else:
-#     SESSION_DIR = "/srv/ba38/dev/sessions"
-#     SESSION_COOKIE_NAME = "ba38_dev_session"
-#     SESSION_KEY_PREFIX = "ba38_dev_"
-
-# os.makedirs(SESSION_DIR, exist_ok=True)
-
-# app.config.update(
-#     SESSION_TYPE="filesystem",
-#     SESSION_FILE_DIR=SESSION_DIR,
-#     SESSION_PERMANENT=False,
-#     SESSION_USE_SIGNER=True,
-
-#     SESSION_COOKIE_NAME=SESSION_COOKIE_NAME,
-#     SESSION_KEY_PREFIX=SESSION_KEY_PREFIX,
-# )
-
-# Session(app)
-
-
 
 
 @app.route('/test_tri')
@@ -667,20 +626,6 @@ def set_user_roles():
     if current_user.is_authenticated:
         session["roles_utilisateurs"] = get_user_roles(current_user.email)
 
-# @app.before_request
-# def sync_user_role():
-#     if current_user.is_authenticated:
-#         g.user_role = session.get("user_role", "").lower()
-#     else:
-#         g.user_role = None
-
-
-
-
-
-
-
-
 
 @app.route('/check_login_status')
 def check_login_status():
@@ -772,118 +717,6 @@ def get_user_role():
         g.user_role = "admin"
     else:
         g.user_role = "utilisateur"
-
-
-
-
-
-
-
-# @app.route('/active_sessions')
-# @login_required
-# def active_sessions():
-#     if g.user_role != 'admin':
-#         return "⛔ Accès refusé", 403
-
-#     session_dir = app.config['SESSION_FILE_DIR']
-#     users = []
-
-#     for filename in os.listdir(session_dir):
-#         path = os.path.join(session_dir, filename)
-#         try:
-#             with open(path, 'rb') as f:
-#                 data = f.read()
-#                 # Flask commence souvent par b'\x80' → pickle
-#                 try:
-#                     raw = data.decode()
-#                     session_data = serializer.loads(raw)
-#                 except Exception:
-#                     continue
-#                     user_id = session_data.get('user_id')
-#                     username = session_data.get('username')
-#                     role = session_data.get('user_role')
-
-#                     if user_id:
-#                         users.append({
-#                             "session": filename,
-#                             "user_id": user_id,
-#                             "username": username,
-#                             "role": role
-#                         })
-#         except Exception as e:
-#             continue
-
-#     if not users:
-#         return "Aucune session utilisateur actuellement active."
-
-#     # Générer un petit tableau HTML
-#     rows = [
-#         f"<tr><td>{u['session']}</td><td>{u['user_id']}</td><td>{u['username']}</td><td>{u['role']}</td></tr>"
-#         for u in users
-#     ]
-#     table = "<table class='table table-bordered'><tr><th>Session</th><th>User ID</th><th>Nom</th><th>Rôle</th></tr>" + "\n".join(rows) + "</table>"
-#     return f"<h3>📋 Sessions utilisateur actives :</h3>{table}"
-
-# # temporaire a supprimer :
-# @app.route("/debug_session_dir")
-# def debug_session_dir():
-#     return f"Session file dir utilisé : {app.config['SESSION_FILE_DIR']}"
-
-# @app.route('/sessions_globales')
-# @login_required
-# def sessions_globales():
-#     if g.user_role != 'admin':
-#         return "⛔ Accès refusé", 403
-
-#     import pickle
-
-#     base_dirs = {
-#         "DEV": "/home/ndprz/dev/flask_sessions",
-#         "PROD": "/home/ndprz/ba380/flask_sessions"
-#     }
-
-#     all_sessions = []
-
-#     for env, session_dir in base_dirs.items():
-#         if not os.path.exists(session_dir):
-#             continue
-
-#         for filename in os.listdir(session_dir):
-#             path = os.path.join(session_dir, filename)
-#             try:
-#                 with open(path, "rb") as f:
-#                     data = f.read()
-#                     if not data.startswith(b'\x80'):
-#                         continue  # ignorer les formats non pickle
-#                     session_data = pickle.loads(data)
-
-#                     user_id = session_data.get('user_id')
-#                     username = session_data.get('username')
-#                     role = session_data.get('user_role')
-
-#                     if user_id:
-#                         all_sessions.append({
-#                             "env": env,
-#                             "session": filename,
-#                             "user_id": user_id,
-#                             "username": username,
-#                             "role": role
-#                         })
-#             except Exception as e:
-#                 continue
-
-#     if not all_sessions:
-#         return "Aucune session utilisateur active trouvée en DEV ou PROD."
-
-#     # Affichage HTML
-#     html = "<h3>🧾 Sessions actives (DEV + PROD)</h3>"
-#     html += "<table class='table table-striped'><thead><tr><th>ENV</th><th>Session</th><th>User ID</th><th>Nom</th><th>Rôle</th></tr></thead><tbody>"
-#     for s in all_sessions:
-#         html += f"<tr><td>{s['env']}</td><td>{s['session']}</td><td>{s['user_id']}</td><td>{s['username']}</td><td>{s['role']}</td></tr>"
-#     html += "</tbody></table>"
-
-#     return html
-
 
 
 

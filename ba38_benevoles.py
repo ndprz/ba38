@@ -762,7 +762,7 @@ def update_benevole(benevole_id):
 
     photo_filename = None
     photo_folder = os.path.join(os.path.dirname(__file__), "static", "photos_benevoles")
-    photo_path = os.path.join(photo_folder, f"{benevole_id}.jpg")
+    photo_path = os.path.join(BASE_DIR, "static", "photos_benevoles", f"{benevole_id}.jpg")
     if os.path.exists(photo_path):
         photo_filename = f"{benevole_id}.jpg"
     else:
@@ -1038,9 +1038,8 @@ def upload_photo_benevole(benevole_id):
         img.thumbnail((400, 400))
 
         # ✅ Détermine le bon répertoire
-        environment = os.getenv("ENVIRONMENT", "dev")
-        base_dir = "/home/ndprz/ba380" if environment == "prod" else "/home/ndprz/dev"
-        static_dir = os.path.join(base_dir, "static", "photos_benevoles")
+        BASE_DIR = os.getenv("BA38_BASE_DIR", "/srv/ba38/dev")
+        static_dir = os.path.join(BASE_DIR, "static", "photos_benevoles")
         os.makedirs(static_dir, exist_ok=True)
 
         # ✅ Sauvegarde du fichier
@@ -1231,8 +1230,9 @@ def supprimer_photo_benevole(benevole_id):
     """Supprime la photo du bénévole (fichier et enregistrement DB)"""
     try:
         environment = os.getenv("ENVIRONMENT", "dev")
-        base_dir = "/home/ndprz/ba380" if environment == "prod" else "/home/ndprz/dev"
-        photo_path = os.path.join(base_dir, "static", "photos_benevoles", f"{benevole_id}.jpg")
+        BASE_DIR = os.getenv("BA38_BASE_DIR", "/srv/ba38")
+        base_dir = os.path.join(BASE_DIR, "prod" if environment == "prod" else "dev")
+        photo_path = os.path.join(BASE_DIR, "static", "photos_benevoles", f"{benevole_id}.jpg")
 
         # Supprimer le fichier s'il existe
         if os.path.exists(photo_path):
