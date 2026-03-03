@@ -5,8 +5,8 @@
 <div class="container-fluid mt-4">
 
   <!-- ================= HEADER FIXE ================= -->
-  <div class="sticky-top bg-white pb-3 shadow-sm" style="z-index:1020;">
-
+  <div class="sticky-top bg-white pb-3 shadow-sm"
+     style="z-index:1050;">
     <h2>💳 Saisie des paiements de cotisations</h2>
 
     <!-- Sélecteur année -->
@@ -113,33 +113,27 @@
         </thead>
         <tbody>
           {% for r in resultats %}
-          <tr class="{% if r.statut != 'paye' %}table-danger{% endif %}">
+          <tr class="{% if r.statut_calcule != 'paye' %}table-danger{% endif %}">
             <td>{{ r.numero_facture }}</td>
             <td>{{ r.nom_association }}</td>
             <td>{{ r.code_vif }}</td>
             <td>{{ r.compte_comptable or "" }}</td>
             <td class="text-end">{{ "%.2f"|format(r.montant) }}</td>
             <td>
-              {% if r.statut == "paye" %}
+              {% if r.statut_calcule == "paye" %}
                 <span class="badge bg-success">Payé</span>
-              {% elif r.statut == "envoyee" %}
+              {% elif r.statut_calcule == "envoyee" %}
                 <span class="badge bg-primary">Envoyé</span>
               {% else %}
-                <span class="badge bg-secondary">{{ r.statut }}</span>
+                <span class="badge bg-secondary">Calculé</span>
               {% endif %}
             </td>
             <td>
-              {% if r.statut != "paye" %}
               <input type="text"
-                     name="date_paiement_{{ r.id }}"
-                     class="form-control form-control-sm date-fr"
-                     placeholder="jj/mm/aaaa"
-                     maxlength="10">
-              {% else %}
-                {% if r.date_paiement %}
-                  {{ r.date_paiement[8:10] }}/{{ r.date_paiement[5:7] }}/{{ r.date_paiement[0:4] }}
-                {% endif %}
-              {% endif %}
+                    name="date_paiement_{{ r.id }}"
+                    value="{% if r.date_paiement %}{{ r.date_paiement[8:10] }}/{{ r.date_paiement[5:7] }}/{{ r.date_paiement[0:4] }}{% endif %}"
+                    class="form-control form-control-sm date-fr"
+                    placeholder="jj/mm/aaaa">
             </td>
           </tr>
           {% endfor %}
@@ -168,8 +162,8 @@
 .table thead th {
     position: sticky;
     top: 0;
-    background: #f8f9fa;
     z-index: 1000;
+    background: #f8f9fa;
 }
 </style>
 
@@ -220,38 +214,38 @@ document.addEventListener("DOMContentLoaded", function () {
         return champAnnee ? champAnnee.value : "";
     }
 
-    document.addEventListener("blur", function(e){
+    document.querySelectorAll(".date-fr").forEach(function(input){
 
-        if(!e.target.classList.contains("date-fr")) return;
+        input.addEventListener("blur", function(){
 
-        let input = e.target;
-        let val = input.value.replace(/\D/g, "");
-        let annee = getAnnee();
+            let val = this.value.replace(/\D/g, "");
+            let annee = getAnnee();
+            if(!annee) return;
 
-        if(!annee) return;
+            if(val.length === 4){
+                this.value =
+                    val.substring(0,2) + "/" +
+                    val.substring(2,4) + "/" +
+                    annee;
+            }
 
-        if(val.length === 4){
-            input.value =
-                val.substring(0,2) + "/" +
-                val.substring(2,4) + "/" +
-                annee;
-        }
+            else if(val.length === 6){
+                this.value =
+                    val.substring(0,2) + "/" +
+                    val.substring(2,4) + "/20" +
+                    val.substring(4,6);
+            }
 
-        if(val.length === 6){
-            input.value =
-                val.substring(0,2) + "/" +
-                val.substring(2,4) + "/20" +
-                val.substring(4,6);
-        }
+            else if(val.length === 8){
+                this.value =
+                    val.substring(0,2) + "/" +
+                    val.substring(2,4) + "/" +
+                    val.substring(4,8);
+            }
 
-        if(val.length === 8){
-            input.value =
-                val.substring(0,2) + "/" +
-                val.substring(2,4) + "/" +
-                val.substring(4,8);
-        }
+        });
 
-    }, true);
+    });
 
 });
 </script>

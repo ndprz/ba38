@@ -1315,16 +1315,14 @@ def cotisations_envoyer_mails():
 
         cursor.execute("""
             UPDATE cotisations
-            SET date_envoi_mail = ?,
-                statut = 'envoye',
-                mode_test = ?
+            SET date_envoi_facture = ?,
+                mode_test_envoi_facture = ?
             WHERE id = ?
         """, (
             datetime.now().isoformat(),
             mode_test_flag,
             ligne["id"]
         ))
-
         nb_mails += 1
 
     conn.commit()
@@ -1791,8 +1789,21 @@ def cotisations_relance_start():
 @traitements_bp.route("/cotisations/relance", methods=["POST"])
 @login_required
 def cotisations_relance():
+    """
+    Génération des relances de cotisations.
 
-    mode_relance=True
+    Fonctionnement :
+    - Lecture du fichier PARSOL annuel
+    - Recalcul des montants théoriques
+    - Filtrage des associations à relancer selon relance_niveau
+    - Envoi des mails (mode TEST ou PROD)
+    - Mise à jour en base :
+        * relance_niveau (+1)
+        * date_derniere_relance
+        * mode_test_relance
+    """
+
+    from datetime import datetime
 
     mail_mode = session.get(
         "MAIL_MODE",
@@ -1804,7 +1815,6 @@ def cotisations_relance():
         "ba380.informatique2@banquealimentaire.org"
     )
 
-
     try:
         annee = int(request.form.get("annee"))
         numero_relance = int(request.form.get("numero_relance"))
@@ -1813,71 +1823,132 @@ def cotisations_relance():
         if not fichier:
             raise ValueError("Fichier PARSOL manquant")
 
+        # ==========================
+        # Parse PARSOL
+        # ==========================
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             fichier.save(tmp.name)
             parsol_path = tmp.name
 
         benefs = parse_parsol2l_annuel(parsol_path)
-
         data = calculer_cotisations_par_annee(get_db_path(), benefs)
         resultats = data["facturables"]
 
-        current_app.logger.info(
-            f"NB FACTURABLES = {len(resultats)}"
-        )
-
-        # 🔎 Charger relance depuis DB
         conn = sqlite3.connect(get_db_path())
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        cursor.execute("SELECT Id, relance FROM associations")
-        relances = {row["Id"]: row["relance"] for row in cursor.fetchall()}
-        conn.close()
+        # ==========================
+        # Charger niveau relance actuel
+        # ==========================
+        cursor.execute("""
+            SELECT id, relance_niveau
+            FROM cotisations
+            WHERE annee = ?
+        """, (annee,))
 
-        write_log(f"EXEMPLE RESULTAT : {resultats[0]}")
+        relances_db = {
+            row["id"]: row["relance_niveau"] or 0
+            for row in cursor.fetchall()
+        }
 
-        # 🔹 Filtrer uniquement celles à relancer
-        resultats = [
-            r for r in resultats
-            if int(relances.get(r["id_association"], 0)) == numero_relance
-        ]
-        write_log(f"NB RELANCES TROUVÉES : {len(resultats)}")
+        # ==========================
+        # Filtrer celles à relancer
+        # ==========================
+        cotisations_a_relancer = []
 
         for r in resultats:
-            r["mode_relance"] = True
-            r["numero_relance"] = numero_relance
+            cot_id = r["id_association"]
 
-        session["RELANCE_DATA"] = resultats
-        session["RELANCE_ANNEE"] = annee
-        session["RELANCE_NUMERO"] = numero_relance
+            cursor.execute("""
+                SELECT id
+                FROM cotisations
+                WHERE annee = ?
+                AND id_association = ?
+            """, (annee, cot_id))
 
-        return render_template(
-            "cotisations.html",
-            resultats=resultats,
-            orphelines=None,
-            annee=annee,
-            mail_mode=mail_mode,
-            mail_test_to=mail_test_to,
-            job_done=True,
-            mode_relance=True,         # ← ICI
-            numero_relance=numero_relance
-        )
+            row = cursor.fetchone()
+            if not row:
+                continue
+
+            cotisation_id = row["id"]
+
+            if relances_db.get(cotisation_id, 0) == numero_relance:
+                r["cotisation_id"] = cotisation_id
+                cotisations_a_relancer.append(r)
+
+        # ==========================
+        # Envoi des mails
+        # ==========================
+        nb_mails = 0
+
+        for ligne in cotisations_a_relancer:
+
+            mode_test_flag = 1 if mail_mode == "TEST" else 0
+
+            destinataire = (
+                [mail_test_to]
+                if mail_mode == "TEST"
+                else [ligne.get("email")]
+            )
+
+            sujet = (
+                f"[TEST] Relance {numero_relance} – Cotisation {annee}"
+                if mail_mode == "TEST"
+                else f"Relance {numero_relance} – Cotisation {annee}"
+            )
+
+            envoyer_mail(
+                sujet=sujet,
+                destinataires=destinataire,
+                texte=f"Relance niveau {numero_relance}",
+                sender_override=None
+            )
+
+            # ==========================
+            # Mise à jour base
+            # ==========================
+            cursor.execute("""
+                UPDATE cotisations
+                SET relance_niveau = COALESCE(relance_niveau, 0) + 1,
+                    date_derniere_relance = ?,
+                    mode_test_relance = ?
+                WHERE id = ?
+            """, (
+                datetime.now().isoformat(),
+                mode_test_flag,
+                ligne["cotisation_id"]
+            ))
+
+            nb_mails += 1
+
+        conn.commit()
+        conn.close()
+
+        flash(f"{nb_mails} relances envoyées.", "success")
+        return redirect(url_for("traitements.cotisations", annee=annee))
 
     except Exception:
         current_app.logger.exception("Erreur relance cotisations")
-        flash("Erreur lors du traitement des relances", "danger")
+        flash("Erreur lors des relances.", "danger")
         return redirect(url_for("traitements.cotisations"))
+
 
 
 @traitements_bp.route("/cotisations/saisie-paiements", methods=["GET", "POST"])
 @login_required
 def saisie_paiements_cotisations():
     """
-    Écran de saisie des paiements des cotisations.
+    Saisie et modification des paiements des cotisations.
 
-    - GET  : affiche les cotisations d’une année
-    - POST : enregistre une date de paiement
+    Logique :
+    - Le statut est calculé dynamiquement :
+        * date_paiement -> "paye"
+        * date_envoi_facture -> "envoyee"
+        * sinon -> "calcule"
+    - POST :
+        * Si date renseignée -> enregistrement paiement
+        * Si date vidée -> annulation paiement
     """
 
     from datetime import datetime
@@ -1896,6 +1967,7 @@ def saisie_paiements_cotisations():
             total_restant=0,
             taux_recouvrement=0
         )
+
     annee = int(annee)
 
     conn = sqlite3.connect(get_db_path())
@@ -1903,32 +1975,41 @@ def saisie_paiements_cotisations():
     cursor = conn.cursor()
 
     # ==========================================================
-    # POST → ENREGISTRER PAIEMENT
+    # POST → ENREGISTREMENT
     # ==========================================================
     if request.method == "POST":
 
         for key, value in request.form.items():
 
-            if key.startswith("date_paiement_") and value.strip():
+            if key.startswith("date_paiement_"):
 
                 cotisation_id = key.replace("date_paiement_", "")
+                value = value.strip()
 
-                try:
-                    date_obj = datetime.strptime(value, "%d/%m/%Y")
-                    date_sql = date_obj.strftime("%Y-%m-%d")
+                if value:
+                    try:
+                        date_obj = datetime.strptime(value, "%d/%m/%Y")
+                        date_sql = date_obj.strftime("%Y-%m-%d")
 
+                        cursor.execute("""
+                            UPDATE cotisations
+                            SET date_paiement = ?
+                            WHERE id = ?
+                        """, (date_sql, cotisation_id))
+
+                    except ValueError:
+                        flash(f"Date invalide pour ID {cotisation_id}", "danger")
+
+                else:
                     cursor.execute("""
                         UPDATE cotisations
-                        SET date_paiement = ?,
-                            statut = 'paye'
+                        SET date_paiement = NULL
                         WHERE id = ?
-                    """, (date_sql, cotisation_id))
-
-                except ValueError:
-                    flash(f"Date invalide pour ID {cotisation_id}", "danger")
+                    """, (cotisation_id,))
 
         conn.commit()
-        flash("Paiements enregistrés.", "success")
+        flash("Modifications enregistrées.", "success")
+
     # ==========================================================
     # GET → AFFICHAGE
     # ==========================================================
@@ -1946,13 +2027,11 @@ def saisie_paiements_cotisations():
     params = [annee]
 
     if impayes_only:
-        sql += " AND c.statut != 'paye'"
+        sql += " AND c.date_paiement IS NULL"
 
     sql += " ORDER BY c.numero_facture"
 
     cursor.execute(sql, params)
-
-    # 🔹 ICI on récupère les lignes
     lignes = cursor.fetchall()
 
     total_facture = 0
@@ -1960,20 +2039,32 @@ def saisie_paiements_cotisations():
     resultats = []
 
     for l in lignes:
-        montant = l["montant"] or 0
 
+        montant = l["montant"] or 0
         total_facture += montant
 
-        if l["statut"] == "paye":
+        # ==========================
+        # Statut calculé dynamiquement
+        # ==========================
+        if l["date_paiement"]:
+            statut_calcule = "paye"
             total_paye += montant
+        elif l["date_envoi_facture"]:
+            statut_calcule = "envoyee"
+        else:
+            statut_calcule = "calcule"
 
-        resultats.append(dict(l))
+        ligne_dict = dict(l)
+        ligne_dict["statut_calcule"] = statut_calcule
+
+        resultats.append(ligne_dict)
 
     total_restant = total_facture - total_paye
-
-    taux_recouvrement = 0
-    if total_facture > 0:
-        taux_recouvrement = round((total_paye / total_facture) * 100, 2)
+    taux_recouvrement = (
+        round((total_paye / total_facture) * 100, 2)
+        if total_facture > 0
+        else 0
+    )
 
     conn.close()
 
@@ -1986,6 +2077,8 @@ def saisie_paiements_cotisations():
         total_restant=total_restant,
         taux_recouvrement=taux_recouvrement
     )
+
+
 
 @traitements_bp.route("/cotisations/export/<int:annee>")
 @login_required
