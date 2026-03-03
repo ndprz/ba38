@@ -2,140 +2,258 @@
 {% block title %}Saisie des paiements{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container-fluid mt-4">
 
-  <h2>💳 Saisie des paiements de cotisations</h2>
+  <!-- ================= HEADER FIXE ================= -->
+  <div class="sticky-top bg-white pb-3 shadow-sm" style="z-index:1020;">
 
-  <!-- Sélecteur année -->
-  <form method="get" class="mb-4">
-    <div class="row g-3 align-items-end">
-      <div class="col-md-3">
-        <label class="form-label">Année</label>
-        <input type="number" name="annee"
-               class="form-control"
-               value="{{ annee or '' }}"
-               required>
-      </div>
-      <div class="col-md-3">
-        <button class="btn btn-primary w-100">
-          Afficher
-        </button>
-      </div>
-    </div>
-  </form>
+    <h2>💳 Saisie des paiements de cotisations</h2>
 
-    <a href="{{ url_for('traitements.saisie_paiements_cotisations', annee=annee, impayes=1) }}"
-        class="btn btn-outline-danger btn-sm">
-        🔎 Impayés uniquement
-    </a>
-
-    <a href="{{ url_for('traitements.saisie_paiements_cotisations', annee=annee) }}"
-        class="btn btn-outline-secondary btn-sm">
-        📄 Tous
-    </a>
-
-    {% if annee %}
-    <a href="{{ url_for('traitements.export_cotisations_excel', annee=annee) }}"
-      class="btn btn-success btn-sm">
-      📊 Export Excel
-    </a>
-    {% endif %}
-    
-    <div class="card mb-3">
-        <div class="card-body">
-
-            <h6>📊 Recouvrement {{ annee }}</h6>
-
-            <div class="progress" style="height: 25px;">
-                <div class="progress-bar bg-success"
-                    role="progressbar"
-                    style="width: {{ taux_recouvrement }}%;">
-                    {{ taux_recouvrement }} %
-                </div>
-            </div>
-
-            <div class="mt-2">
-                💰 {{ total_paye }} € encaissés sur {{ total_facture }} €
-            </div>
-
+    <!-- Sélecteur année -->
+    <form method="get" class="mb-3">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label">Année</label>
+          <input type="number" name="annee"
+                 class="form-control"
+                 value="{{ annee or '' }}"
+                 required>
         </div>
+        <div class="col-md-2">
+          <button class="btn btn-primary w-100">
+            Afficher
+          </button>
+        </div>
+      </div>
+    </form>
+
+    <!-- Boutons outils -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+
+      <div class="d-flex gap-2">
+
+        <a href="{{ url_for('traitements.saisie_paiements_cotisations', annee=annee, impayes=1) }}"
+           class="btn btn-outline-danger btn-sm">
+           🔎 Impayés uniquement
+        </a>
+
+        <a href="{{ url_for('traitements.saisie_paiements_cotisations', annee=annee) }}"
+           class="btn btn-outline-secondary btn-sm">
+           📄 Tous
+        </a>
+
+        {% if annee %}
+        <a href="{{ url_for('traitements.export_cotisations_excel', annee=annee) }}"
+           class="btn btn-success btn-sm">
+           📊 Export Excel
+        </a>
+        {% endif %}
+
+        <a href="{{ url_for('traitements.utilitaires') }}"
+           class="btn btn-outline-dark btn-sm"
+           id="btnRetour">
+           ↩️ Retour menu
+        </a>
+
+      </div>
+
+      {% if resultats %}
+      <button type="submit"
+              form="formPaiements"
+              class="btn btn-success">
+        💾 Enregistrer
+      </button>
+      {% endif %}
+
     </div>
+
+    <!-- Recouvrement -->
+    {% if resultats %}
+    <div class="card mb-3">
+      <div class="card-body">
+
+        <h6>📊 Recouvrement {{ annee }}</h6>
+
+        <div class="progress" style="height: 25px;">
+          <div class="progress-bar bg-success"
+               style="width: {{ taux_recouvrement }}%;">
+            {{ taux_recouvrement }} %
+          </div>
+        </div>
+
+        <div class="mt-2">
+          💰 {{ total_paye }} € encaissés sur {{ total_facture }} €
+        </div>
+
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+  <!-- ================= FIN HEADER FIXE ================= -->
 
   {% if resultats %}
 
-  <table class="table table-sm table-striped">
-    <thead>
-      <tr>
-        <th>Facture</th>
-        <th>Association</th>
-        <th>Code VIF</th>
-        <th>Compte comptable</th>
-        <th class="text-end">Montant (€)</th>
-        <th>Statut</th>
-        <th>Date paiement</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for r in resultats %}
-      <tr class="{% if r.statut == 'envoyee' and not r.date_paiement %}table-danger{% endif %}">
-        <td>{{ r.numero_facture }}</td>
-        <td>{{ r.nom_association }}</td>
-        <td class="text-monospace">{{ r.code_vif }}</td>
-        <td class="text-monospace">{{ r.compte_comptable or "" }}</td>
-        <td class="text-end">{{ "%.2f"|format(r.montant) }}</td>
-        <td>
-            {% if r.statut == "paye" %}
+  <form method="post" id="formPaiements">
+
+    <input type="hidden" name="annee" value="{{ annee }}">
+
+    <div class="table-responsive">
+      <table class="table table-sm table-striped">
+        <thead>
+          <tr>
+            <th>Facture</th>
+            <th>Association</th>
+            <th>Code VIF</th>
+            <th>Compte</th>
+            <th class="text-end">Montant</th>
+            <th>Statut</th>
+            <th>Date paiement</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in resultats %}
+          <tr class="{% if r.statut != 'paye' %}table-danger{% endif %}">
+            <td>{{ r.numero_facture }}</td>
+            <td>{{ r.nom_association }}</td>
+            <td>{{ r.code_vif }}</td>
+            <td>{{ r.compte_comptable or "" }}</td>
+            <td class="text-end">{{ "%.2f"|format(r.montant) }}</td>
+            <td>
+              {% if r.statut == "paye" %}
                 <span class="badge bg-success">Payé</span>
-
-            {% elif r.statut == "envoyee" %}
+              {% elif r.statut == "envoyee" %}
                 <span class="badge bg-primary">Envoyé</span>
+              {% else %}
+                <span class="badge bg-secondary">{{ r.statut }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if r.statut != "paye" %}
+              <input type="text"
+                     name="date_paiement_{{ r.id }}"
+                     class="form-control form-control-sm date-fr"
+                     placeholder="jj/mm/aaaa"
+                     maxlength="10">
+              {% else %}
+                {% if r.date_paiement %}
+                  {{ r.date_paiement[8:10] }}/{{ r.date_paiement[5:7] }}/{{ r.date_paiement[0:4] }}
+                {% endif %}
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
 
-            {% elif r.statut == "calcule" %}
-                <span class="badge bg-secondary">Calculé</span>
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td colspan="4" class="text-end">TOTAL :</td>
+            <td>{{ total_facture }} €</td>
+            <td>{{ total_paye }} € encaissés</td>
+            <td>{{ total_restant }} € restant</td>
+          </tr>
+        </tfoot>
 
-            {% else %}
-                <span class="badge bg-light text-dark">
-                    {{ r.statut }}
-                </span>
-            {% endif %}
-        </td>
-        <td>{{ r.date_paiement or "" }}</td>
-        <td>
-          {% if r.statut != "paye" %}
-          <form method="post" class="d-flex gap-2">
-            <input type="hidden"
-                   name="annee"
-                   value="{{ annee }}">
-            <input type="hidden"
-                   name="cotisation_id"
-                   value="{{ r.id }}">
-            <input type="date"
-                   name="date_paiement"
-                   class="form-control"
-                   required>
-            <button class="btn btn-success btn-sm">
-              Valider
-            </button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+      </table>
+    </div>
 
-  <!-- Totaux -->
-  <tfoot class="table-light fw-bold">
-  <tr>
-    <td colspan="4" class="text-end">TOTAL :</td>
-    <td>{{ total_facture }} €</td>
-    <td>{{ total_paye }} € encaissés</td>
-    <td>{{ total_restant }} € restant</td>
-  </tr>
-  </tfoot>
+  </form>
 
   {% endif %}
 
 </div>
+
+
+<style>
+.table thead th {
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    z-index: 1000;
+}
+</style>
+
+<script>
+let formChanged = false;
+
+// Détection modification sur tous les champs date
+document.addEventListener("input", function(e){
+    if(e.target.matches(".date-fr")){
+        formChanged = true;
+    }
+});
+
+// Interception bouton Retour
+const btnRetour = document.getElementById("btnRetour");
+if (btnRetour) {
+    btnRetour.addEventListener("click", function(e){
+        if(formChanged){
+            if(!confirm("Des modifications non enregistrées existent.\n\nQuitter sans enregistrer ?")){
+                e.preventDefault();
+            }
+        }
+    });
+}
+
+// Protection navigation globale (F5, fermeture onglet, menu)
+window.addEventListener("beforeunload", function (e) {
+    if (formChanged) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});
+
+// Si on enregistre → on désactive le blocage
+const form = document.getElementById("formPaiements");
+if (form) {
+    form.addEventListener("submit", function(){
+        formChanged = false;
+    });
+}
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+    function getAnnee() {
+        let champAnnee = document.querySelector("input[name='annee']");
+        return champAnnee ? champAnnee.value : "";
+    }
+
+    document.addEventListener("blur", function(e){
+
+        if(!e.target.classList.contains("date-fr")) return;
+
+        let input = e.target;
+        let val = input.value.replace(/\D/g, "");
+        let annee = getAnnee();
+
+        if(!annee) return;
+
+        if(val.length === 4){
+            input.value =
+                val.substring(0,2) + "/" +
+                val.substring(2,4) + "/" +
+                annee;
+        }
+
+        if(val.length === 6){
+            input.value =
+                val.substring(0,2) + "/" +
+                val.substring(2,4) + "/20" +
+                val.substring(4,6);
+        }
+
+        if(val.length === 8){
+            input.value =
+                val.substring(0,2) + "/" +
+                val.substring(2,4) + "/" +
+                val.substring(4,8);
+        }
+
+    }, true);
+
+});
+</script>
+
 {% endblock %}

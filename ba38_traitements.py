@@ -1907,27 +1907,28 @@ def saisie_paiements_cotisations():
     # ==========================================================
     if request.method == "POST":
 
-        cotisation_id = request.form.get("cotisation_id")
-        date_paiement = request.form.get("date_paiement")
+        for key, value in request.form.items():
 
-        if cotisation_id and date_paiement:
-            cursor.execute("""
-                UPDATE cotisations
-                SET date_paiement = ?,
-                    statut = 'paye'
-                WHERE id = ?
-            """, (date_paiement, cotisation_id))
+            if key.startswith("date_paiement_") and value.strip():
 
-            conn.commit()
-            flash("Paiement enregistré.", "success")
+                cotisation_id = key.replace("date_paiement_", "")
 
-        return redirect(
-            url_for(
-                "traitements.saisie_paiements_cotisations",
-                annee=annee
-            )
-        )
+                try:
+                    date_obj = datetime.strptime(value, "%d/%m/%Y")
+                    date_sql = date_obj.strftime("%Y-%m-%d")
 
+                    cursor.execute("""
+                        UPDATE cotisations
+                        SET date_paiement = ?,
+                            statut = 'paye'
+                        WHERE id = ?
+                    """, (date_sql, cotisation_id))
+
+                except ValueError:
+                    flash(f"Date invalide pour ID {cotisation_id}", "danger")
+
+        conn.commit()
+        flash("Paiements enregistrés.", "success")
     # ==========================================================
     # GET → AFFICHAGE
     # ==========================================================

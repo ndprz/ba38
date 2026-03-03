@@ -388,7 +388,8 @@ def export_all_publipostage_job():
 
             for champ in [
                 "courriel_resp_operationnel",
-                "courriel_president"
+                "courriel_president",
+                "couriel_distribution"
             ]:
 
                 email = row[champ]
