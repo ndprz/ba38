@@ -34,11 +34,13 @@
         📄 Tous
     </a>
 
+    {% if annee %}
     <a href="{{ url_for('traitements.export_cotisations_excel', annee=annee) }}"
-        class="btn btn-success btn-sm">
-        📊 Export Excel
+      class="btn btn-success btn-sm">
+      📊 Export Excel
     </a>
-
+    {% endif %}
+    
     <div class="card mb-3">
         <div class="card-body">
 

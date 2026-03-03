@@ -1889,9 +1889,13 @@ def saisie_paiements_cotisations():
         flash("Sélectionner une année.", "warning")
         return render_template(
             "saisie_paiements_cotisations.html",
-            resultats=None
+            resultats=None,
+            annee=None,
+            total_facture=0,
+            total_paye=0,
+            total_restant=0,
+            taux_recouvrement=0
         )
-
     annee = int(annee)
 
     conn = sqlite3.connect(get_db_path())
