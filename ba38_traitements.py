@@ -46,6 +46,31 @@ traitements_bp = Blueprint("traitements", __name__)
 # Ancien dossier générique (pour tests)
 FOLDER_ID_TRAITEMENTS = "1_RiRtqyjwxcgCo9csqL8ckjePmaFwviy"
 
+def get_pdf_by_code_vif(service, folder_id, code_vif_8):
+    """
+    Recherche un PDF FACTURE_<code_vif_8>_*.pdf
+    Compatible Shared Drive
+    """
+
+    query = (
+        f"'{folder_id}' in parents "
+        f"and name contains 'FACTURE_{code_vif_8}_' "
+        f"and trashed = false"
+    )
+
+    results = service.files().list(
+        q=query,
+        fields="files(id,name)",
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True
+    ).execute()
+
+    files = results.get("files", [])
+
+    if not files:
+        return None, None
+
+    return files[0]["id"], files[0]["name"]
 
 # ===============================
 # 🛠️ Menu utilitaires (accessible à tous les utilisateurs connectés)
@@ -258,7 +283,7 @@ def traitement_participation():
     if not DOSSIER_PARTICIPATION:
         flash("❌ Variable d’environnement DOSSIER_PARTICIPATION manquante.", "danger")
         return redirect(url_for("traitements.utilitaires"))
-    
+
     client, service, creds = get_google_services()
     if service is None:
         flash("❌ Connexion Google Drive impossible", "danger")
@@ -570,7 +595,7 @@ def traiter_parsol(contenu):
 
 
 @traitements_bp.route("/aide/ba38_traitements")
-def aide_traitements():    
+def aide_traitements():
     """
     Sert le fichier Markdown d'aide pour le module ba38_traitements.
     - En DEV : /home/ndprz/dev/docstech/ba38_traitements.md
@@ -806,8 +831,8 @@ def cotisations():
                 SELECT COUNT(*)
                 FROM cotisations
                 WHERE annee = ?
-                AND date_envoi_mail IS NOT NULL
-                AND mode_test = 0
+                AND date_envoi_facture IS NOT NULL
+                AND mode_test_envoi_facture = 0
             """, (annee,))
 
             if cursor.fetchone()[0] > 0:
@@ -916,25 +941,26 @@ def cotisations():
     # ==========================================================
     if annee:
         cursor.execute("""
-            SELECT *
-            FROM cotisations
-            WHERE annee = ?
-            ORDER BY numero_facture
+            SELECT
+                c.*,
+                a.nom_association,
+                a.compte_comptable
+            FROM cotisations c
+            JOIN associations a
+                ON a.Id = c.id_association
+            WHERE c.annee = ?
+            ORDER BY c.numero_facture
         """, (annee,))
 
         lignes = cursor.fetchall()
 
         if lignes:
             resultats = []
+
             for l in lignes:
-                resultats.append({
-                    "id_association": l["id_association"],
-                    "code_vif_facture": l["code_vif"],
-                    "numero_facture": l["numero_facture"],
-                    "beneficiaires": l["beneficiaires"],
-                    "cotisation": l["montant"],
-                    "statut": l["statut"]
-                })
+                ligne_dict = dict(l)   # ← ICI EXACTEMENT
+
+                resultats.append(ligne_dict)
 
     conn.close()
 
@@ -1462,11 +1488,11 @@ def generer_facture_pdf(data, output_path):
             height=logo_height,
             preserveAspectRatio=True,
             mask="auto"
-        )    
+        )
     else:
         # optionnel mais TRÈS utile
         print(f"LOGO INTROUVABLE : {logo_path}")
-        
+
     # ============================
     # Décalage global sous le logo
     # ============================
@@ -1624,7 +1650,7 @@ def generer_facture_pdf(data, output_path):
         )
 
         w, h = p.wrap(largeur_bloc, 60 * mm)
-        p.drawOn(c, x_bloc, y_bloc)    
+        p.drawOn(c, x_bloc, y_bloc)
     # ============================
     # FINALISATION
     # ============================
@@ -1778,10 +1804,37 @@ def cotisations_relance_start():
         "ba380.informatique2@banquealimentaire.org"
     )
 
+    annee = request.args.get("annee")
+    lignes = None
+
+    if annee:
+        conn = sqlite3.connect(get_db_path())
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                c.*,
+                a.nom_association,
+                a.compte_comptable
+            FROM cotisations c
+            JOIN associations a
+                ON a.Id = c.id_association
+            WHERE c.annee = ?
+            AND c.date_paiement IS NULL
+            AND c.date_envoi_facture IS NOT NULL
+            ORDER BY c.numero_facture
+        """, (annee,))
+
+        lignes = cursor.fetchall()
+        conn.close()
+
     return render_template(
         "cotisations_relance.html",
         mail_mode=mail_mode,
-        mail_test_to=mail_test_to
+        mail_test_to=mail_test_to,
+        annee=annee,
+        lignes=lignes
     )
 
 
@@ -1790,124 +1843,200 @@ def cotisations_relance_start():
 @login_required
 def cotisations_relance():
     """
-    Génération des relances de cotisations.
+    Relance des cotisations (basée uniquement sur la table cotisations).
 
-    Fonctionnement :
-    - Lecture du fichier PARSOL annuel
-    - Recalcul des montants théoriques
-    - Filtrage des associations à relancer selon relance_niveau
-    - Envoi des mails (mode TEST ou PROD)
-    - Mise à jour en base :
-        * relance_niveau (+1)
-        * date_derniere_relance
-        * mode_test_relance
+    Logique :
+    1. Sélectionne les cotisations :
+        - année demandée
+        - non payées
+        - facture déjà envoyée
+        - relance_niveau correspondant
+    2. Étape preview (affichage avant envoi)
+    3. Confirmation obligatoire (et double confirmation en PROD)
+    4. Recherche du PDF sur Drive (Shared Drive compatible)
+    5. Envoi d’un mail avec lien Drive (PAS de pièce jointe)
+    6. Mise à jour relance_niveau + date_derniere_relance
     """
 
     from datetime import datetime
 
-    mail_mode = session.get(
-        "MAIL_MODE",
-        os.getenv("MAIL_MODE", "PROD").upper()
-    )
-
-    mail_test_to = os.getenv(
-        "MAIL_TEST_TO",
-        "ba380.informatique2@banquealimentaire.org"
-    )
-
     try:
+        # ======================================================
+        # Paramètres formulaire
+        # ======================================================
         annee = int(request.form.get("annee"))
         numero_relance = int(request.form.get("numero_relance"))
 
-        fichier = request.files.get("parsol_file")
-        if not fichier:
-            raise ValueError("Fichier PARSOL manquant")
+        confirm_envoi = request.form.get("confirm_envoi")
+        confirm_production = request.form.get("confirm_production")
 
-        # ==========================
-        # Parse PARSOL
-        # ==========================
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            fichier.save(tmp.name)
-            parsol_path = tmp.name
+        mail_mode = session.get(
+            "MAIL_MODE",
+            os.getenv("MAIL_MODE", "PROD").upper()
+        )
 
-        benefs = parse_parsol2l_annuel(parsol_path)
-        data = calculer_cotisations_par_annee(get_db_path(), benefs)
-        resultats = data["facturables"]
+        mail_test_to = os.getenv(
+            "MAIL_TEST_TO",
+            "ba380.informatique2@banquealimentaire.org"
+        )
 
+        # ID du dossier Drive "Factures PDF"
+        FOLDER_ID_FACTURES = os.getenv(
+            "GDRIVE_FACTURES_PDF_FOLDER_ID"
+        )
+
+        # ======================================================
+        # Connexion base
+        # ======================================================
         conn = sqlite3.connect(get_db_path())
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        # ==========================
-        # Charger niveau relance actuel
-        # ==========================
+        # ======================================================
+        # Lecture cotisations relançables
+        # ======================================================
         cursor.execute("""
-            SELECT id, relance_niveau
-            FROM cotisations
-            WHERE annee = ?
+            SELECT c.*, a.nom_association, a.courriel_association
+            FROM cotisations c
+            JOIN associations a ON a.Id = c.id_association
+            WHERE c.annee = ?
+            AND c.date_paiement IS NULL
+            AND c.date_envoi_facture IS NOT NULL
+            ORDER BY c.numero_facture
         """, (annee,))
 
-        relances_db = {
-            row["id"]: row["relance_niveau"] or 0
-            for row in cursor.fetchall()
-        }
+        lignes = cursor.fetchall()
 
-        # ==========================
-        # Filtrer celles à relancer
-        # ==========================
         cotisations_a_relancer = []
 
-        for r in resultats:
-            cot_id = r["id_association"]
+        for l in lignes:
+            niveau_actuel = l["relance_niveau"] or 0
+            if niveau_actuel == numero_relance:
+                cotisations_a_relancer.append(l)
 
-            cursor.execute("""
-                SELECT id
-                FROM cotisations
-                WHERE annee = ?
-                AND id_association = ?
-            """, (annee, cot_id))
+        # ======================================================
+        # Aucun résultat
+        # ======================================================
+        if not cotisations_a_relancer:
+            conn.close()
+            return render_template(
+                "cotisations_relance.html",
+                mail_mode=mail_mode,
+                mail_test_to=mail_test_to,
+                annee=annee,
+                lignes=[],
+                preview=False
+            )
 
-            row = cursor.fetchone()
-            if not row:
-                continue
+        # ======================================================
+        # ÉTAPE 1 → PREVIEW
+        # ======================================================
+        if not confirm_envoi:
+            conn.close()
+            return render_template(
+                "cotisations_relance.html",
+                mail_mode=mail_mode,
+                mail_test_to=mail_test_to,
+                annee=annee,
+                lignes=cotisations_a_relancer,
+                preview=True,
+                numero_relance=numero_relance
+            )
 
-            cotisation_id = row["id"]
+        # ======================================================
+        # Sécurité supplémentaire en PROD
+        # ======================================================
+        if mail_mode == "PROD" and not confirm_production:
+            conn.close()
+            flash("⚠ Confirmation obligatoire en PRODUCTION.", "danger")
+            return redirect(
+                url_for("traitements.cotisations_relance_start", annee=annee)
+            )
 
-            if relances_db.get(cotisation_id, 0) == numero_relance:
-                r["cotisation_id"] = cotisation_id
-                cotisations_a_relancer.append(r)
+        # ======================================================
+        # Connexion Google Drive
+        # ======================================================
+        client, drive_service, creds = get_google_services()
 
-        # ==========================
-        # Envoi des mails
-        # ==========================
+        if not drive_service:
+            conn.close()
+            flash("❌ Impossible de se connecter à Google Drive.", "danger")
+            return redirect(
+                url_for("traitements.cotisations_relance_start", annee=annee)
+            )
+
+        service = drive_service
+
+        # ======================================================
+        # ENVOI RÉEL DES RELANCES
+        # ======================================================
         nb_mails = 0
+        nb_pdf_introuvables = 0
 
         for ligne in cotisations_a_relancer:
 
-            mode_test_flag = 1 if mail_mode == "TEST" else 0
+            code_vif_8 = str(ligne["code_vif"]).zfill(8)
 
-            destinataire = (
-                [mail_test_to]
-                if mail_mode == "TEST"
-                else [ligne.get("email")]
+            file_id, nom_pdf = get_pdf_by_code_vif(
+                service,
+                FOLDER_ID_FACTURES,
+                code_vif_8
             )
 
-            sujet = (
-                f"[TEST] Relance {numero_relance} – Cotisation {annee}"
-                if mail_mode == "TEST"
-                else f"Relance {numero_relance} – Cotisation {annee}"
+            if not file_id:
+                nb_pdf_introuvables += 1
+                continue
+
+            # Lien direct vers Drive
+            lien_drive = (
+                f"https://drive.google.com/file/d/"
+                f"{file_id}/view"
             )
+
+            # Gestion destinataires
+            if mail_mode == "TEST":
+                destinataires = [mail_test_to]
+                sujet = (
+                    f"[TEST] Relance {numero_relance + 1} "
+                    f"– Cotisation {annee}"
+                )
+                mode_test_flag = 1
+            else:
+                destinataires = [ligne["courriel_association"]]
+                sujet = (
+                    f"Relance {numero_relance + 1} "
+                    f"– Cotisation {annee}"
+                )
+                mode_test_flag = 0
+
+            # ==============================
+            # Texte mail (indenté proprement)
+            # ==============================
+            texte_mail = f"""
+            Madame, Monsieur,
+
+                Sauf erreur de notre part, la cotisation {annee}
+                reste impayée.
+
+                Vous pouvez télécharger la facture ici :
+                {lien_drive}
+
+                Nous vous remercions de bien vouloir procéder
+                à son règlement dans les meilleurs délais.
+
+            Cordialement,
+            Banque Alimentaire de l'Isère
+            """
+            write_log(f"RELANCE TEST → destinataires = {destinataires}")
 
             envoyer_mail(
                 sujet=sujet,
-                destinataires=destinataire,
-                texte=f"Relance niveau {numero_relance}",
+                destinataires=destinataires,
+                texte=texte_mail,
                 sender_override=None
             )
 
-            # ==========================
             # Mise à jour base
-            # ==========================
             cursor.execute("""
                 UPDATE cotisations
                 SET relance_niveau = COALESCE(relance_niveau, 0) + 1,
@@ -1917,7 +2046,7 @@ def cotisations_relance():
             """, (
                 datetime.now().isoformat(),
                 mode_test_flag,
-                ligne["cotisation_id"]
+                ligne["id"]
             ))
 
             nb_mails += 1
@@ -1925,14 +2054,30 @@ def cotisations_relance():
         conn.commit()
         conn.close()
 
-        flash(f"{nb_mails} relances envoyées.", "success")
-        return redirect(url_for("traitements.cotisations", annee=annee))
+        # ======================================================
+        # Messages récapitulatifs
+        # ======================================================
+        if nb_pdf_introuvables > 0:
+            flash(
+                f"⚠ {nb_pdf_introuvables} PDF introuvables sur Drive.",
+                "warning"
+            )
+
+        flash(
+            f"✅ {nb_mails} relances envoyées.",
+            "success"
+        )
+
+        return redirect(
+            url_for("traitements.cotisations_relance_start", annee=annee)
+        )
 
     except Exception:
         current_app.logger.exception("Erreur relance cotisations")
         flash("Erreur lors des relances.", "danger")
-        return redirect(url_for("traitements.cotisations"))
-
+        return redirect(
+            url_for("traitements.cotisations_relance_start")
+        )
 
 
 @traitements_bp.route("/cotisations/saisie-paiements", methods=["GET", "POST"])
@@ -2115,3 +2260,52 @@ def export_cotisations_excel(annee):
         download_name=f"cotisations_{annee}.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+
+
+@traitements_bp.route("/cotisations/relance/reset", methods=["POST"])
+@login_required
+def cotisations_relance_reset():
+
+    mail_mode = session.get(
+        "MAIL_MODE",
+        os.getenv("MAIL_MODE", "PROD").upper()
+    )
+
+    # 🔒 Sécurité absolue
+    if mail_mode != "TEST":
+        flash("⛔ Réinitialisation autorisée uniquement en MODE TEST.", "danger")
+        return redirect(url_for("traitements.cotisations_relance_start"))
+
+    annee = request.form.get("annee")
+
+    if not annee:
+        flash("Année manquante.", "danger")
+        return redirect(url_for("traitements.cotisations_relance_start"))
+
+    conn = sqlite3.connect(get_db_path())
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        UPDATE cotisations
+        SET
+            relance_niveau = 0,
+            date_derniere_relance = NULL,
+            mode_test_relance = 0
+        WHERE annee = ?
+    """, (annee,))
+
+    nb = cursor.rowcount
+
+    conn.commit()
+    conn.close()
+
+    flash(f"🔄 {nb} relances réinitialisées (MODE TEST).", "warning")
+
+    return redirect(
+        url_for("traitements.cotisations_relance_start", annee=annee)
+    )
+
+
+
+

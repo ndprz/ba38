@@ -30,6 +30,7 @@ APPLICATIONS = {
     "logs": "Logs",
     "engagements": "Engagements",
     "engagement_parametres": "Engagement Paramètres",
+    "tresorerie": "Trésorerie",
 }
 
 @admin_bp.route("/roles/<email>", methods=["GET", "POST"])

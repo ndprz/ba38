@@ -3,22 +3,32 @@
    Fichier JS global chargé sur toutes les pages
    ============================================================ */
 
+
+/* ============================================================
+    AUTO-FERMETURE DES MESSAGES FLASH
+============================================================ */
+
 document.addEventListener("DOMContentLoaded", function () {
 
-    /* ============================================================
-       AUTO-FERMETURE DES MESSAGES FLASH
-       ============================================================ */
     setTimeout(function () {
+
         document.querySelectorAll('.alert').forEach(function (alert) {
-            if (typeof bootstrap !== "undefined" && bootstrap.Alert) {
-                try {
-                    new bootstrap.Alert(alert).close();
-                } catch (e) {
-                    console.warn("Erreur fermeture alert :", e);
-                }
+
+            // On ne ferme PAS les erreurs importantes
+            if (alert.classList.contains('alert-danger') ||
+                alert.classList.contains('alert-warning')) {
+                return;
             }
+
+            if (bootstrap.Alert) {
+                new bootstrap.Alert(alert).close();
+            }
+
         });
+
     }, 5000);
+
+});
 
 
     /* ============================================================

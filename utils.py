@@ -20,7 +20,7 @@ from flask import current_app, session, url_for, request
 from google.oauth2.service_account import Credentials
 
 # =========================
-# Google API 
+# Google API
 # =========================
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -164,7 +164,7 @@ def get_db_path_by_env(env: str, *, force_base_dir: str | None = None) -> str:
         filename = os.getenv("SQLITE_DB_PROD_TEST")
     else:
         filename = os.getenv("SQLITE_DB_PROD")
-    
+
     base_dir = force_base_dir or os.getenv("BA38_BASE_DIR")
 
 
@@ -597,6 +597,7 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
 
     write_log(f"📧 Mail envoyé (status={response.status_code})")
     response.raise_for_status()
+    write_log(f"📧 Mailjet response: {response.text}")
 
 def send_reset_email(email, token):
     """
