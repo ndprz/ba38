@@ -37,11 +37,9 @@ BA380_SHARED_DRIVE_ID = os.getenv("BA380_SHARED_DRIVE_ID")
 if not BA380_SHARED_DRIVE_ID:
     raise RuntimeError("BA380_SHARED_DRIVE_ID non défini dans l'environnement")
 
-
-# ===============================
-# 📌 Blueprint
-# ===============================
 traitements_bp = Blueprint("traitements", __name__)
+
+
 
 # Ancien dossier générique (pour tests)
 FOLDER_ID_TRAITEMENTS = "1_RiRtqyjwxcgCo9csqL8ckjePmaFwviy"
@@ -809,7 +807,14 @@ def cotisations():
 
     resultats = None
     orphelines = None
+    from datetime import datetime
+
     annee = request.args.get("annee")
+
+    if not annee:
+        annee = datetime.now().year
+    else:
+        annee = int(annee)
 
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
@@ -819,7 +824,6 @@ def cotisations():
     # POST → CALCUL NOUVELLE ANNÉE
     # ==========================================================
     if request.method == "POST":
-        write_log("DEBUG POST COTISATIONS")
 
         try:
             annee = int(request.form.get("annee"))
@@ -998,7 +1002,7 @@ def cotisations_toggle_test_mode():
         session["MAIL_MODE"] = "PROD"
         flash("✅ Mode PROD réactivé", "success")
 
-    return redirect(url_for("traitements.cotisations"))
+    return redirect(request.referrer or url_for("traitements.cotisations"))
 
 
 
@@ -1061,7 +1065,7 @@ def cotisations_generer_pdfs():
         conn.close()
         return redirect(url_for("traitements.cotisations", annee=annee))
 
-    write_log(f"📄 PDF {offset+1} à {end} / {total}")
+    # write_log(f"📄 PDF {offset+1} à {end} / {total}")
 
     base_drive = f"COTISATIONS/Cotisations {annee}/Factures PDF"
 
@@ -1804,7 +1808,15 @@ def cotisations_relance_start():
         "ba380.informatique2@banquealimentaire.org"
     )
 
+    from datetime import datetime
+
     annee = request.args.get("annee")
+
+    if not annee:
+        annee = datetime.now().year
+    else:
+        annee = int(annee)
+
     lignes = None
 
     if annee:
@@ -1842,25 +1854,12 @@ def cotisations_relance_start():
 @traitements_bp.route("/cotisations/relance", methods=["POST"])
 @login_required
 def cotisations_relance():
-    """
-    Relance des cotisations (basée uniquement sur la table cotisations).
-
-    Logique :
-    1. Sélectionne les cotisations :
-        - année demandée
-        - non payées
-        - facture déjà envoyée
-        - relance_niveau correspondant
-    2. Étape preview (affichage avant envoi)
-    3. Confirmation obligatoire (et double confirmation en PROD)
-    4. Recherche du PDF sur Drive (Shared Drive compatible)
-    5. Envoi d’un mail avec lien Drive (PAS de pièce jointe)
-    6. Mise à jour relance_niveau + date_derniere_relance
-    """
+    # write_log("🔍🔍 Début de cotisations_relance")
 
     from datetime import datetime
 
     try:
+
         # ======================================================
         # Paramètres formulaire
         # ======================================================
@@ -1880,10 +1879,7 @@ def cotisations_relance():
             "ba380.informatique2@banquealimentaire.org"
         )
 
-        # ID du dossier Drive "Factures PDF"
-        FOLDER_ID_FACTURES = os.getenv(
-            "GDRIVE_FACTURES_PDF_FOLDER_ID"
-        )
+        FOLDER_ID_FACTURES = os.getenv("GDRIVE_FACTURES_PDF_FOLDER_ID")
 
         # ======================================================
         # Connexion base
@@ -1893,12 +1889,20 @@ def cotisations_relance():
         cursor = conn.cursor()
 
         # ======================================================
-        # Lecture cotisations relançables
+        # Lecture cotisations
         # ======================================================
         cursor.execute("""
-            SELECT c.*, a.nom_association, a.courriel_association
+            SELECT
+                c.id,
+                c.numero_facture,
+                c.code_vif,
+                c.montant,
+                c.relance_niveau,
+                a.nom_association,
+                a.courriel_association
             FROM cotisations c
-            JOIN associations a ON a.Id = c.id_association
+            JOIN associations a
+                ON a.Id = c.id_association
             WHERE c.annee = ?
             AND c.date_paiement IS NULL
             AND c.date_envoi_facture IS NOT NULL
@@ -1907,32 +1911,42 @@ def cotisations_relance():
 
         lignes = cursor.fetchall()
 
-        cotisations_a_relancer = []
+        # ======================================================
+        # Filtrage relances
+        # ======================================================
+        cotisations_a_relancer = [
+            l for l in lignes
+            if (l["relance_niveau"] or 0) == numero_relance
+        ]
 
-        for l in lignes:
-            niveau_actuel = l["relance_niveau"] or 0
-            if niveau_actuel == numero_relance:
-                cotisations_a_relancer.append(l)
+        total_relances = sum(float(l["montant"] or 0)
+                             for l in cotisations_a_relancer)
 
         # ======================================================
         # Aucun résultat
         # ======================================================
         if not cotisations_a_relancer:
+
             conn.close()
+
             return render_template(
                 "cotisations_relance.html",
                 mail_mode=mail_mode,
                 mail_test_to=mail_test_to,
                 annee=annee,
                 lignes=[],
-                preview=False
+                preview=False,
+                total_relances=0,
+                numero_relance=numero_relance
             )
 
         # ======================================================
-        # ÉTAPE 1 → PREVIEW
+        # PREVIEW
         # ======================================================
         if not confirm_envoi:
+
             conn.close()
+
             return render_template(
                 "cotisations_relance.html",
                 mail_mode=mail_mode,
@@ -1940,17 +1954,22 @@ def cotisations_relance():
                 annee=annee,
                 lignes=cotisations_a_relancer,
                 preview=True,
-                numero_relance=numero_relance
+                numero_relance=numero_relance,
+                total_relances=total_relances
             )
 
         # ======================================================
-        # Sécurité supplémentaire en PROD
+        # Sécurité production
         # ======================================================
         if mail_mode == "PROD" and not confirm_production:
+
             conn.close()
+
             flash("⚠ Confirmation obligatoire en PRODUCTION.", "danger")
+
             return redirect(
-                url_for("traitements.cotisations_relance_start", annee=annee)
+                url_for("traitements.cotisations_relance_start",
+                        annee=annee)
             )
 
         # ======================================================
@@ -1959,16 +1978,20 @@ def cotisations_relance():
         client, drive_service, creds = get_google_services()
 
         if not drive_service:
+
             conn.close()
+
             flash("❌ Impossible de se connecter à Google Drive.", "danger")
+
             return redirect(
-                url_for("traitements.cotisations_relance_start", annee=annee)
+                url_for("traitements.cotisations_relance_start",
+                        annee=annee)
             )
 
         service = drive_service
 
         # ======================================================
-        # ENVOI RÉEL DES RELANCES
+        # Envoi des mails
         # ======================================================
         nb_mails = 0
         nb_pdf_introuvables = 0
@@ -1987,59 +2010,41 @@ def cotisations_relance():
                 nb_pdf_introuvables += 1
                 continue
 
-            # Lien direct vers Drive
-            lien_drive = (
-                f"https://drive.google.com/file/d/"
-                f"{file_id}/view"
-            )
+            lien_drive = f"https://drive.google.com/file/d/{file_id}/view"
 
-            # Gestion destinataires
             if mail_mode == "TEST":
                 destinataires = [mail_test_to]
-                sujet = (
-                    f"[TEST] Relance {numero_relance + 1} "
-                    f"– Cotisation {annee}"
-                )
+                sujet = f"[TEST] Relance {numero_relance + 1} – Cotisation {annee}"
                 mode_test_flag = 1
             else:
                 destinataires = [ligne["courriel_association"]]
-                sujet = (
-                    f"Relance {numero_relance + 1} "
-                    f"– Cotisation {annee}"
-                )
+                sujet = f"Relance {numero_relance + 1} – Cotisation {annee}"
                 mode_test_flag = 0
 
-            # ==============================
-            # Texte mail (indenté proprement)
-            # ==============================
+            lien_drive = f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
             texte_mail = f"""
-            Madame, Monsieur,
-
-                Sauf erreur de notre part, la cotisation {annee}
-                reste impayée.
-
-                Vous pouvez télécharger la facture ici :
-                {lien_drive}
-
-                Nous vous remercions de bien vouloir procéder
-                à son règlement dans les meilleurs délais.
-
-            Cordialement,
-            Banque Alimentaire de l'Isère
+            <p>Madame, Monsieur,</p>
+            <p>Nous avons noté que vous ne vous êtes pas encore acquitté de la cotisation {annee} de votre Association ou CCAS à la Banque Alimentaire de l'Isère. Nous vous remercions de procéder rapidement à son règlement.</p>
+            <p><a href="{lien_drive}" style="color: #0066cc; text-decoration: none; font-weight: bold;">➡ Consulter la facture en ligne</a></p>
+            <p>Cordialement,<br>Christian Graff<br>Trésorerie Banque Alimentaire de l'Isère</p>
             """
-            write_log(f"RELANCE TEST → destinataires = {destinataires}")
 
             envoyer_mail(
                 sujet=sujet,
                 destinataires=destinataires,
                 texte=texte_mail,
-                sender_override=None
+                is_html=True
             )
 
-            # Mise à jour base
+
+
+            # write_log(f"📧 Envoi d'un email de relance à {destinataires} (sans pièce jointe)")
+            # write_log("✅ Fin de cotisations_relance")
+
+
             cursor.execute("""
                 UPDATE cotisations
-                SET relance_niveau = COALESCE(relance_niveau, 0) + 1,
+                SET relance_niveau = COALESCE(relance_niveau,0)+1,
                     date_derniere_relance = ?,
                     mode_test_relance = ?
                 WHERE id = ?
@@ -2055,34 +2060,36 @@ def cotisations_relance():
         conn.close()
 
         # ======================================================
-        # Messages récapitulatifs
+        # Résumé
         # ======================================================
-        if nb_pdf_introuvables > 0:
+        if nb_pdf_introuvables:
             flash(
                 f"⚠ {nb_pdf_introuvables} PDF introuvables sur Drive.",
                 "warning"
             )
 
-        flash(
-            f"✅ {nb_mails} relances envoyées.",
-            "success"
-        )
+        flash(f"✅ {nb_mails} relances envoyées.", "success")
 
         return redirect(
-            url_for("traitements.cotisations_relance_start", annee=annee)
+            url_for("traitements.cotisations_relance_start",
+                    annee=annee)
         )
 
     except Exception:
+
         current_app.logger.exception("Erreur relance cotisations")
+
         flash("Erreur lors des relances.", "danger")
+
         return redirect(
             url_for("traitements.cotisations_relance_start")
         )
 
 
+
 @traitements_bp.route("/cotisations/saisie-paiements", methods=["GET", "POST"])
 @login_required
-def saisie_paiements_cotisations():
+def cotisations_saisie_paiements():
     """
     Saisie et modification des paiements des cotisations.
 
@@ -2102,18 +2109,9 @@ def saisie_paiements_cotisations():
     impayes_only = request.args.get("impayes") == "1"
 
     if not annee:
-        flash("Sélectionner une année.", "warning")
-        return render_template(
-            "saisie_paiements_cotisations.html",
-            resultats=None,
-            annee=None,
-            total_facture=0,
-            total_paye=0,
-            total_restant=0,
-            taux_recouvrement=0
-        )
-
-    annee = int(annee)
+        annee = datetime.now().year
+    else:
+        annee = int(annee)
 
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
@@ -2214,13 +2212,14 @@ def saisie_paiements_cotisations():
     conn.close()
 
     return render_template(
-        "saisie_paiements_cotisations.html",
+        "cotisations_saisie_paiements.html",
         resultats=resultats,
         annee=annee,
         total_facture=total_facture,
         total_paye=total_paye,
         total_restant=total_restant,
-        taux_recouvrement=taux_recouvrement
+        taux_recouvrement=taux_recouvrement,
+        impayes_only=impayes_only
     )
 
 

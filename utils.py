@@ -553,7 +553,14 @@ def get_drive_folder_id_from_path(drive_path, shared_drive_id):
 # 📧 MAILJET
 # ============================================================================
 
-def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None):
+def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None, is_html=False):
+    # write_log(f"route utils/envoyer_mail utilisée")
+    # write_log(f"📧📧📧 Appel à envoyer_mail : sujet={sujet}, destinataires={destinataires}, attachment_path={attachment_path}, is_html={is_html}")
+    # if attachment_path:
+    #     write_log(f"⚠️ Pièce jointe détectée : {attachment_path}")
+    # else:
+    #     write_log("⚠️ Aucun fichier joint")
+
     api_key = os.getenv("MAILJET_API_KEY")
     api_secret = os.getenv("MAILJET_API_SECRET")
     sender = sender_override or os.getenv("MAILJET_SENDER")
@@ -569,24 +576,33 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
     if attachment_path and os.path.exists(attachment_path):
         with open(attachment_path, "rb") as f:
             encoded = base64.b64encode(f.read()).decode("utf-8")
-
         attachments.append({
             "ContentType": "application/pdf",
             "Filename": os.path.basename(attachment_path),
             "Base64Content": encoded
         })
 
-    data = {
-        "Messages": [{
-            "From": {"Email": sender, "Name": "BA380"},
-            "To": [{"Email": d} for d in destinataires],
-            "Subject": sujet,
-            "TextPart": texte,
-            "Attachments": attachments or None
-        }]
+    # Construction du message
+    message = {
+        "From": {"Email": sender, "Name": "BA380"},
+        "To": [{"Email": d} for d in destinataires],
+        "Subject": sujet,
     }
 
-    data["Messages"][0].pop("Attachments", None)
+    # Ajout du contenu (HTML ou texte)
+    if is_html:
+        message["HTMLPart"] = texte
+    else:
+        message["TextPart"] = texte
+
+    # Ajout des pièces jointes si nécessaire
+    if attachments:
+        message["Attachments"] = attachments
+
+    # Construction finale de data
+    data = {"Messages": [message]}
+
+    # write_log(f"📎 Attachments avant envoi : {attachments}")
 
     response = requests.post(
         "https://api.mailjet.com/v3.1/send",
@@ -595,9 +611,10 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
         timeout=15
     )
 
-    write_log(f"📧 Mail envoyé (status={response.status_code})")
+    # write_log(f"📧 Mail envoyé (status={response.status_code})")
     response.raise_for_status()
-    write_log(f"📧 Mailjet response: {response.text}")
+    # write_log(f"📧 Mailjet response: {response.text}")
+
 
 def send_reset_email(email, token):
     """

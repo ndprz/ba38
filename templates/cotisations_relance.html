@@ -1,6 +1,7 @@
 {% extends "base_assos.html" %}
 {% block title %}Relance des cotisations{% endblock %}
 
+
 {% block content %}
 <div class="container mt-4">
 
@@ -45,9 +46,24 @@
       </div>
 
       <div class="col-md-3">
+        <label class="form-label">Expéditeur du mail</label>
+        <select name="mail_sender" class="form-select" required>
+          <option value="ba380@banquealimentaire.org">ba380@banquealimentaire.org</option>
+          <option value="ba380.tresorier@banquealimentaire.org">ba380.tresorier@banquealimentaire.org</option>
+          <option value="ba380.comptable@banquealimentaire.org">ba380.comptable@banquealimentaire.org</option>
+        </select>
+      </div>
+
+      <div class="col-md-2">
         <button class="btn btn-warning w-100">
-          🔎 Prévisualiser les relances
+          🔎 Prévisualiser
         </button>
+      </div>
+
+      <div class="col-md-2">
+        <a href="{{ url_for('traitements.utilitaires') }}" class="btn btn-outline-dark w-100">
+          ↩️ Retour
+        </a>
       </div>
 
     </div>
@@ -61,6 +77,13 @@
   <div class="alert alert-danger">
     ⚠ {{ lignes|length }} relances vont être envoyées.
   </div>
+
+  {% if preview %}
+  <div class="alert alert-secondary">
+    💰 Montant total des cotisations concernées :
+    <strong>{{ "%.2f"|format(total_relances or 0) }} €</strong>
+  </div>
+  {% endif %}
 
   <div class="table-responsive">
     <table class="table table-striped table-sm">
