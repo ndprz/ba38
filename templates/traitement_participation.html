@@ -9,19 +9,20 @@
   </div>
 
   <p class="mb-3">
-    Dans VIF lancer PARSOL2L, et enregistrez le fichier <code>parsol2l.txt</code> dans le dossier \\tsclient\G:\Drive partagés\BA380 - TRESORERIE\PARTICIPATION\parsol2l.txt,
+    Dans VIF lancer PARSOL2L, et enregistrez le fichier <code>parsol2l.txt</code> dans le dossier \\tsclient\G:\Drive
+    partagés\BA380 - TRESORERIE\PARTICIPATION\parsol2l.txt,
     puis sélectionnez-le ci-dessous.
   </p>
 
   <form method="POST">
     <div class="mb-3">
       <label for="file_id" class="form-label">Choisir un fichier :</label>
-        <select name="file_id" id="file_id" class="form-select">
-          <option value="">— Sélectionner un fichier —</option>
-          {% for f in fichiers %}
-            <option value="{{ f.id }}">{{ f.name }}</option>
-          {% endfor %}
-        </select>
+      <select name="file_id" id="file_id" class="form-select">
+        <option value="">— Sélectionner un fichier —</option>
+        {% for f in fichiers %}
+        <option value="{{ f.id }}">{{ f.name }}</option>
+        {% endfor %}
+      </select>
     </div>
     <button type="submit" class="btn btn-primary">Lancer le traitement</button>
   </form>
@@ -44,10 +45,10 @@
 {% endblock %}
 
 {% block scripts %}
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
   document.getElementById("btnAide").addEventListener("click", function () {
-    fetch("{{ url_for('traitements.aide_traitements') }}")
+    fetch("{{ url_for('tresorerie.aide_traitements') }}")
       .then(r => r.text())
       .then(md => {
         document.getElementById("aide-content").innerHTML = marked.parse(md);
@@ -61,5 +62,5 @@
         modal.show();
       });
   });
-  </script>
+</script>
 {% endblock %}

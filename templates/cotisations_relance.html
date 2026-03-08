@@ -7,7 +7,7 @@
 
   <h2>🔔 Relance des cotisations</h2>
 
-  <form method="post" action="{{ url_for('traitements.cotisations_toggle_test_mode') }}" class="mb-3">
+  <form method="post" action="{{ url_for('tresorerie.cotisations_toggle_test_mode') }}" class="mb-3">
 
     {% if mail_mode == "TEST" %}
     <button class="btn btn-warning w-100">
@@ -28,7 +28,7 @@
   {% endif %}
 
   <!-- ================= FORMULAIRE ================= -->
-  <form method="post" action="{{ url_for('traitements.cotisations_relance') }}">
+  <form method="post" action="{{ url_for('tresorerie.cotisations_relance') }}">
     <div class="row g-3 align-items-end">
 
       <div class="col-md-2">
@@ -61,7 +61,7 @@
       </div>
 
       <div class="col-md-2">
-        <a href="{{ url_for('traitements.utilitaires') }}" class="btn btn-outline-dark w-100">
+        <a href="{{ url_for('tresorerie.tresorerie') }}" class="btn btn-outline-dark w-100">
           ↩️ Retour
         </a>
       </div>
@@ -136,7 +136,7 @@
   {% if mail_mode == "TEST" and annee %}
   <hr>
 
-  <form method="post" action="{{ url_for('traitements.cotisations_relance_reset') }}"
+  <form method="post" action="{{ url_for('tresorerie.cotisations_relance_reset') }}"
     onsubmit="return confirm('⚠ Réinitialiser toutes les relances pour cette année ?');">
 
     <input type="hidden" name="annee" value="{{ annee }}">

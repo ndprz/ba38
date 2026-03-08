@@ -28,7 +28,7 @@
 <div style="margin-bottom: 12px;">
   <p style="margin: 0;"><strong>Explorez et gérez vos données d'associations.</strong></p>
   {% if has_access('associations', 'lecture') %}
-  <a href="{{ url_for('partenaires.partenaires') }}" class="big-link">Voir les associations</a>
+  <a href="{{ url_for('partenaires.partenaires') }}" class="big-link">Associations</a>
   {% else %}
   <span class="text-muted">Accès aux associations désactivé pour votre compte</span>
   {% endif %}
@@ -37,7 +37,7 @@
 <div style="margin-bottom: 12px;">
   <p style="margin: 0;"><strong>Explorez et gérez vos données Bénévoles.</strong></p>
   {% if has_access('benevoles', 'lecture') %}
-  <a href="{{ url_for('benevoles.benevoles') }}" class="big-link">Voir les bénévoles</a>
+  <a href="{{ url_for('benevoles.benevoles') }}" class="big-link">Bénévoles</a>
   {% else %}
   <span class="text-muted">Accès aux bénévoles désactivé pour votre compte</span>
   {% endif %}
@@ -46,7 +46,7 @@
 <div style="margin-bottom: 12px;">
   <p style="margin: 0;"><strong>Explorez et gérez vos données Fournisseurs.</strong></p>
   {% if has_access('fournisseurs', 'lecture') %}
-  <a href="{{ url_for('fournisseurs.liste_fournisseurs') }}" class="big-link">Voir les fournisseurs</a>
+  <a href="{{ url_for('fournisseurs.liste_fournisseurs') }}" class="big-link">Fournisseurs</a>
   {% else %}
   <span class="text-muted">Accès aux fournisseurs désactivé pour votre compte</span>
   {% endif %}
@@ -59,7 +59,7 @@
 
   {% if has_access('distribution', 'lecture') %}
   <a href="{{ url_for('distribution.distribution_main') }}" class="big-link">
-    Voir la distribution
+    Distribution
   </a>
   {% else %}
   <span class="text-muted">
@@ -75,11 +75,27 @@
 
   {% if has_access('engagements', 'lecture') %}
   <a href="{{ url_for('engagements.engagements_main') }}" class="big-link">
-    Voir la gestion des engagements
+    Engagements de dépenses
   </a>
   {% else %}
   <span class="text-muted">
     Accès à la gestion des engagements désactivé
+  </span>
+  {% endif %}
+</div>
+
+<div style="margin-bottom: 12px;">
+  <p style="margin: 0;">
+    <strong>Gérez la trésorerie.</strong>
+  </p>
+
+  {% if has_access('tresorerie', 'lecture') %}
+  <a href="{{ url_for('tresorerie.tresorerie') }}" class="big-link">
+    Trésorerie
+  </a>
+  {% else %}
+  <span class="text-muted">
+    Accès à la Trésorerie désactivé
   </span>
   {% endif %}
 </div>

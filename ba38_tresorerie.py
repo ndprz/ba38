@@ -37,7 +37,7 @@ BA380_SHARED_DRIVE_ID = os.getenv("BA380_SHARED_DRIVE_ID")
 if not BA380_SHARED_DRIVE_ID:
     raise RuntimeError("BA380_SHARED_DRIVE_ID non défini dans l'environnement")
 
-traitements_bp = Blueprint("traitements", __name__)
+tresorerie_bp = Blueprint("tresorerie", __name__)
 
 
 
@@ -73,17 +73,17 @@ def get_pdf_by_code_vif(service, folder_id, code_vif_8):
 # ===============================
 # 🛠️ Menu utilitaires (accessible à tous les utilisateurs connectés)
 # ===============================
-@traitements_bp.route("/utilitaires")
+@tresorerie_bp.route("/utilitaires")
 @login_required
-def utilitaires():
-    return render_template("utilitaires.html")
+def tresorerie  ():
+    return render_template("tresorerie.html")
 
 
 
 # ===============================
 # 📂 Traitement simple Drive (Excel / CSV)
 # ===============================
-@traitements_bp.route("/traitement_drive", methods=["GET", "POST"])
+@tresorerie_bp.route("/traitement_drive", methods=["GET", "POST"])
 @login_required
 def traitement_drive():
     """
@@ -257,10 +257,11 @@ def delete_drive_folder_contents(drive_path, wait_until_empty=True, timeout=30):
     except Exception as e:
         write_log(f"❌ Erreur delete_drive_folder_contents : {e}")
 
+
 # ===============================
 # 📂 Traitement fichier participation
 # ===============================
-@traitements_bp.route("/traitement_participation", methods=["GET", "POST"])
+@tresorerie_bp.route("/traitement_participation", methods=["GET", "POST"])
 @login_required
 def traitement_participation():
     """
@@ -280,23 +281,23 @@ def traitement_participation():
 
     if not DOSSIER_PARTICIPATION:
         flash("❌ Variable d’environnement DOSSIER_PARTICIPATION manquante.", "danger")
-        return redirect(url_for("traitements.utilitaires"))
+        return redirect(url_for("tresorerie.tresorerie"))
 
     client, service, creds = get_google_services()
     if service is None:
         flash("❌ Connexion Google Drive impossible", "danger")
-        return redirect(url_for("traitements.utilitaires"))
+        return redirect(url_for("tresorerie.tresorerie"))
 
     DOSSIER_PARTICIPATION = os.getenv("DOSSIER_PARTICIPATION")
     if not DOSSIER_PARTICIPATION:
         flash("❌ Variable d’environnement DOSSIER_PARTICIPATION manquante.", "danger")
-        return redirect(url_for("traitements.utilitaires"))
+        return redirect(url_for("tresorerie.tresorerie"))
 
     # ✅ AJOUT ICI
     client, service, creds = get_google_services()
     if service is None:
         flash("❌ Connexion Google Drive impossible", "danger")
-        return redirect(url_for("traitements.utilitaires"))
+        return redirect(url_for("tresorerie.tresorerie"))
 
     # -------- Helpers Drive --------
     def ensure_clean_trim_folder(parent_id: str, folder_name: str) -> str:
@@ -383,7 +384,7 @@ def traitement_participation():
         file_id = request.form.get("file_id")
         if not file_id:
             flash("❌ Aucun fichier sélectionné", "danger")
-            return redirect(url_for("traitements.traitement_participation"))
+            return redirect(url_for("tresorerie.traitement_participation"))
 
         # -------- 2) Télécharger le fichier source --------
         request_dl = service.files().get_media(fileId=file_id, supportsAllDrives=True)
@@ -538,7 +539,7 @@ def traitement_participation():
             f"Fichiers déposés dans « {folder_name} ».",
             "success"
         )
-        return redirect(url_for("traitements.traitement_participation"))
+        return redirect(url_for("tresorerie.traitement_participation"))
 
     return render_template("traitement_participation.html", fichiers=fichiers)
 
@@ -592,7 +593,7 @@ def traiter_parsol(contenu):
 
 
 
-@traitements_bp.route("/aide/ba38_traitements")
+@tresorerie_bp.route("/aide/ba38_traitements")
 def aide_traitements():
     """
     Sert le fichier Markdown d'aide pour le module ba38_traitements.
@@ -608,7 +609,7 @@ def aide_traitements():
 
     return send_file(file_path, mimetype="text/markdown")
 
-@traitements_bp.route("/aide/<page>")
+@tresorerie_bp.route("/aide/<page>")
 def aide_page(page):
     mapping = {
         "traitement_participation": "ba38_traitements.md",
@@ -775,7 +776,7 @@ def calculer_cotisations_par_annee(db_path, benef_par_vif):
 
 
 
-@traitements_bp.route("/cotisations", methods=["GET", "POST"])
+@tresorerie_bp.route("/cotisations", methods=["GET", "POST"])
 @login_required
 def cotisations():
     """
@@ -847,7 +848,7 @@ def cotisations():
                     "danger"
                 )
                 conn.close()
-                return redirect(url_for("traitements.cotisations"))
+                return redirect(url_for("tresorerie.cotisations"))
 
             # --------------------------------------------------
             # SUPPRESSION DES CALCULS PRÉCÉDENTS
@@ -926,7 +927,7 @@ def cotisations():
             )
 
             return redirect(
-                url_for("traitements.cotisations", annee=annee)
+                url_for("tresorerie.cotisations", annee=annee)
             )
 
         except Exception:
@@ -938,7 +939,7 @@ def cotisations():
                 "danger"
             )
             conn.close()
-            return redirect(url_for("traitements.cotisations"))
+            return redirect(url_for("tresorerie.cotisations"))
 
     # ==========================================================
     # GET → AFFICHAGE ANNÉE
@@ -986,7 +987,7 @@ def cotisations():
 
 
 
-@traitements_bp.route("/cotisations/toggle_test_mode", methods=["POST"])
+@tresorerie_bp.route("/cotisations/toggle_test_mode", methods=["POST"])
 @login_required
 def cotisations_toggle_test_mode():
 
@@ -1002,11 +1003,11 @@ def cotisations_toggle_test_mode():
         session["MAIL_MODE"] = "PROD"
         flash("✅ Mode PROD réactivé", "success")
 
-    return redirect(request.referrer or url_for("traitements.cotisations"))
+    return redirect(request.referrer or url_for("tresorerie.cotisations"))
 
 
 
-@traitements_bp.route("/cotisations/generer_pdfs", methods=["GET"])
+@tresorerie_bp.route("/cotisations/generer_pdfs", methods=["GET"])
 @login_required
 def cotisations_generer_pdfs():
     """
@@ -1028,7 +1029,7 @@ def cotisations_generer_pdfs():
 
     if not annee:
         flash("Année manquante", "danger")
-        return redirect(url_for("traitements.cotisations"))
+        return redirect(url_for("tresorerie.cotisations"))
 
     annee = int(annee)
 
@@ -1063,7 +1064,7 @@ def cotisations_generer_pdfs():
     if total == 0:
         flash("Aucune cotisation trouvée", "warning")
         conn.close()
-        return redirect(url_for("traitements.cotisations", annee=annee))
+        return redirect(url_for("tresorerie.cotisations", annee=annee))
 
     # write_log(f"📄 PDF {offset+1} à {end} / {total}")
 
@@ -1147,7 +1148,7 @@ def cotisations_generer_pdfs():
         conn.close()
         return redirect(
             url_for(
-                "traitements.cotisations_generer_pdfs",
+                "tresorerie.cotisations_generer_pdfs",
                 annee=annee,
                 offset=end
             )
@@ -1158,13 +1159,13 @@ def cotisations_generer_pdfs():
     flash(f"✅ {total} factures PDF générées.", "success")
 
     return redirect(
-        url_for("traitements.cotisations", annee=annee)
+        url_for("tresorerie.cotisations", annee=annee)
     )
 
 
 
 
-@traitements_bp.route("/cotisations/envoyer_mails", methods=["POST"])
+@tresorerie_bp.route("/cotisations/envoyer_mails", methods=["POST"])
 @login_required
 def cotisations_envoyer_mails():
     """
@@ -1183,11 +1184,11 @@ def cotisations_envoyer_mails():
 
     if not annee:
         flash("Année manquante", "danger")
-        return redirect(url_for("traitements.cotisations"))
+        return redirect(url_for("tresorerie.cotisations"))
 
     if not mail_sender:
         flash("Expéditeur manquant", "danger")
-        return redirect(url_for("traitements.cotisations", annee=annee))
+        return redirect(url_for("tresorerie.cotisations", annee=annee))
 
     annee = int(annee)
 
@@ -1209,7 +1210,7 @@ def cotisations_envoyer_mails():
             "⚠️ Envoi bloqué : confirmation PROD requise.",
             "danger"
         )
-        return redirect(url_for("traitements.cotisations", annee=annee))
+        return redirect(url_for("tresorerie.cotisations", annee=annee))
 
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
@@ -1240,7 +1241,7 @@ def cotisations_envoyer_mails():
     if not lignes:
         flash("Aucune facture prête à être envoyée.", "warning")
         conn.close()
-        return redirect(url_for("traitements.cotisations", annee=annee))
+        return redirect(url_for("tresorerie.cotisations", annee=annee))
 
     nb_mails = 0
 
@@ -1370,7 +1371,7 @@ def cotisations_envoyer_mails():
         )
 
     return redirect(
-        url_for("traitements.cotisations", annee=annee)
+        url_for("tresorerie.cotisations", annee=annee)
     )
 
 
@@ -1663,7 +1664,7 @@ def generer_facture_pdf(data, output_path):
     c.save()
 
 
-@traitements_bp.route("/cotisations/export_excel", methods=["POST"])
+@tresorerie_bp.route("/cotisations/export_excel", methods=["POST"])
 @login_required
 def cotisations_export_excel():
     import json
@@ -1676,7 +1677,7 @@ def cotisations_export_excel():
 
     if not raw:
         flash("Aucune donnée à exporter", "danger")
-        return redirect(url_for("traitements.cotisations"))
+        return redirect(url_for("tresorerie.cotisations"))
 
     lignes = json.loads(raw)
 
@@ -1761,7 +1762,7 @@ def wait_until_drive_folder_empty(service, folder_id, drive_id, timeout=30):
 
         time.sleep(1)
 
-@traitements_bp.route("/cotisations/start")
+@tresorerie_bp.route("/cotisations/start")
 @login_required
 def cotisations_start():
     # Reset systématique
@@ -1772,11 +1773,11 @@ def cotisations_start():
     session.pop("COTISATIONS_JOB_ID", None)
     session.pop("COTISATIONS_ANNEE", None)
 
-    return redirect(url_for("traitements.cotisations"))
+    return redirect(url_for("tresorerie.cotisations"))
 
 
 
-@traitements_bp.route("/cotisations/quit")
+@tresorerie_bp.route("/cotisations/quit")
 @login_required
 def cotisations_quit():
     job_id = session.get("COTISATIONS_JOB_ID")
@@ -1787,14 +1788,14 @@ def cotisations_quit():
     session.pop("COTISATIONS_ANNEE", None)
 
     flash("Calcul des cotisations fermé", "info")
-    return redirect(url_for("traitements.utilitaires"))
+    return redirect(url_for("tresorerie.tresorerie"))
 
 
 # ============================
 # RELANCES
 # ============================
 
-@traitements_bp.route("/cotisations/relance", methods=["GET"])
+@tresorerie_bp.route("/cotisations/relance", methods=["GET"])
 @login_required
 def cotisations_relance_start():
 
@@ -1851,7 +1852,7 @@ def cotisations_relance_start():
 
 
 
-@traitements_bp.route("/cotisations/relance", methods=["POST"])
+@tresorerie_bp.route("/cotisations/relance", methods=["POST"])
 @login_required
 def cotisations_relance():
     # write_log("🔍🔍 Début de cotisations_relance")
@@ -1968,7 +1969,7 @@ def cotisations_relance():
             flash("⚠ Confirmation obligatoire en PRODUCTION.", "danger")
 
             return redirect(
-                url_for("traitements.cotisations_relance_start",
+                url_for("tresorerie.cotisations_relance_start",
                         annee=annee)
             )
 
@@ -1984,7 +1985,7 @@ def cotisations_relance():
             flash("❌ Impossible de se connecter à Google Drive.", "danger")
 
             return redirect(
-                url_for("traitements.cotisations_relance_start",
+                url_for("tresorerie.cotisations_relance_start",
                         annee=annee)
             )
 
@@ -2071,7 +2072,7 @@ def cotisations_relance():
         flash(f"✅ {nb_mails} relances envoyées.", "success")
 
         return redirect(
-            url_for("traitements.cotisations_relance_start",
+            url_for("tresorerie.cotisations_relance_start",
                     annee=annee)
         )
 
@@ -2082,12 +2083,12 @@ def cotisations_relance():
         flash("Erreur lors des relances.", "danger")
 
         return redirect(
-            url_for("traitements.cotisations_relance_start")
+            url_for("tresorerie.cotisations_relance_start")
         )
 
 
 
-@traitements_bp.route("/cotisations/saisie-paiements", methods=["GET", "POST"])
+@tresorerie_bp.route("/cotisations/saisie-paiements", methods=["GET", "POST"])
 @login_required
 def cotisations_saisie_paiements():
     """
@@ -2224,7 +2225,7 @@ def cotisations_saisie_paiements():
 
 
 
-@traitements_bp.route("/cotisations/export/<int:annee>")
+@tresorerie_bp.route("/cotisations/export/<int:annee>")
 @login_required
 def export_cotisations_excel(annee):
 
@@ -2262,7 +2263,7 @@ def export_cotisations_excel(annee):
 
 
 
-@traitements_bp.route("/cotisations/relance/reset", methods=["POST"])
+@tresorerie_bp.route("/cotisations/relance/reset", methods=["POST"])
 @login_required
 def cotisations_relance_reset():
 
@@ -2274,13 +2275,13 @@ def cotisations_relance_reset():
     # 🔒 Sécurité absolue
     if mail_mode != "TEST":
         flash("⛔ Réinitialisation autorisée uniquement en MODE TEST.", "danger")
-        return redirect(url_for("traitements.cotisations_relance_start"))
+        return redirect(url_for("tresorerie.cotisations_relance_start"))
 
     annee = request.form.get("annee")
 
     if not annee:
         flash("Année manquante.", "danger")
-        return redirect(url_for("traitements.cotisations_relance_start"))
+        return redirect(url_for("tresorerie.cotisations_relance_start"))
 
     conn = sqlite3.connect(get_db_path())
     cursor = conn.cursor()
@@ -2302,7 +2303,7 @@ def cotisations_relance_reset():
     flash(f"🔄 {nb} relances réinitialisées (MODE TEST).", "warning")
 
     return redirect(
-        url_for("traitements.cotisations_relance_start", annee=annee)
+        url_for("tresorerie.cotisations_relance_start", annee=annee)
     )
 
 

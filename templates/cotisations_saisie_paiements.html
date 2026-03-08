@@ -29,23 +29,23 @@
 
       <div class="d-flex gap-2">
 
-        <a href="{{ url_for('traitements.cotisations_saisie_paiements', annee=annee, impayes=1) }}"
+        <a href="{{ url_for('tresorerie.cotisations_saisie_paiements', annee=annee, impayes=1) }}"
           class="btn btn-outline-danger btn-sm">
           🔎 Impayés uniquement
         </a>
 
-        <a href="{{ url_for('traitements.cotisations_saisie_paiements', annee=annee) }}"
+        <a href="{{ url_for('tresorerie.cotisations_saisie_paiements', annee=annee) }}"
           class="btn btn-outline-secondary btn-sm">
           📄 Tous
         </a>
 
         {% if annee %}
-        <a href="{{ url_for('traitements.export_cotisations_excel', annee=annee) }}" class="btn btn-success btn-sm">
+        <a href="{{ url_for('tresorerie.export_cotisations_excel', annee=annee) }}" class="btn btn-success btn-sm">
           📊 Export Excel
         </a>
         {% endif %}
 
-        <a href="{{ url_for('traitements.utilitaires') }}" class="btn btn-outline-dark btn-sm" id="btnRetour">
+        <a href="{{ url_for('tresorerie.tresorerie') }}" class="btn btn-outline-dark btn-sm" id="btnRetour">
           ↩️ Retour menu
         </a>
 

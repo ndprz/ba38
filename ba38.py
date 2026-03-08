@@ -97,7 +97,7 @@ from scripts.rename_field import rename_bp
 from ba38_admin import admin_bp
 from ba38_export import export_data_bp
 from ba38_fournisseurs import fournisseurs_bp
-from ba38_traitements import traitements_bp
+from ba38_tresorerie import tresorerie_bp
 from ba38_fiches_visite import fiches_visite_bp
 from ba38_mail import mail_bp
 from ba38_evenements import evenements_bp
@@ -303,7 +303,7 @@ app.register_blueprint(distribution_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(export_data_bp)
 app.register_blueprint(fournisseurs_bp)
-app.register_blueprint(traitements_bp)
+app.register_blueprint(tresorerie_bp)
 app.register_blueprint(fiches_visite_bp)
 app.register_blueprint(mail_bp)
 app.register_blueprint(evenements_bp)
