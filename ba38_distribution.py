@@ -189,7 +189,7 @@ def export_stocks_excel():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-#   SAISIE DE MOUVEMENTS DE STOCKS DEPOT 
+#   SAISIE DE MOUVEMENTS DE STOCKS DEPOT
 
 def generate_num_mvt():
     today = datetime.now().strftime("%Y%m%d")
@@ -198,8 +198,8 @@ def generate_num_mvt():
         cur = conn.cursor()
 
         cur.execute("""
-            SELECT COUNT(*) 
-            FROM mvtstocks 
+            SELECT COUNT(*)
+            FROM mvtstocks
             WHERE num_mvt LIKE ?
         """, (f"MVT-{today}-%",))
 
@@ -226,7 +226,7 @@ def save_mvt():
         cur = conn.cursor()
 
         cur.execute("""
-            SELECT COUNT(*) 
+            SELECT COUNT(*)
             FROM mvtstocks
             WHERE date_mvt = ?
         """, (date_mvt,))
@@ -451,7 +451,7 @@ def afficher_mvt(num_mvt):
 @distribution_bp.route("/visualisation_stock")
 @login_required
 def visualisation_stock():
-        
+
     if not has_access("distribution", "lecture"):
         flash("⛔ Accès non autorisé.", "danger")
         return redirect(url_for("index"))
@@ -521,7 +521,7 @@ def export_visualisation_stock_excel():
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT 
+        SELECT
             s.article,
             a.libelle,
             a.sous_famille,
@@ -584,3 +584,4 @@ def export_visualisation_stock_excel():
         download_name=filename,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+

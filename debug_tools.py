@@ -867,3 +867,19 @@ def get_available_logs():
     })
 
     return logs
+
+
+
+# ============================================================================
+# 🛠️ CONVERSATIONS CHATGPT
+# ============================================================================
+@debug_bp.route('/admin/conv_chatgpt')
+def admin_conv_chatgpt():
+    # Chemin vers le fichier JSON des conversations (à adapter selon votre structure)
+    conv_file = os.path.join(current_app.root_path, 'data', 'conversations.json')
+    try:
+        with open(conv_file, 'r') as f:
+            conversations = json.load(f)
+    except FileNotFoundError:
+        conversations = []
+    return render_template('admin_conv_chatgpt.html', conversations=conversations)

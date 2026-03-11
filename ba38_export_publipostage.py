@@ -367,7 +367,8 @@ def export_all_publipostage_job():
             SELECT nom_association,
                    CP,
                    courriel_resp_operationnel,
-                   courriel_president
+                   courriel_president,
+                   courriel_distribution
             FROM associations
             WHERE validite = 'oui'
             """,
@@ -389,7 +390,7 @@ def export_all_publipostage_job():
             for champ in [
                 "courriel_resp_operationnel",
                 "courriel_president",
-                "couriel_distribution"
+                "courriel_distribution"
             ]:
 
                 email = row[champ]

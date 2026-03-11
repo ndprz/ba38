@@ -949,10 +949,11 @@ def cotisations():
             SELECT
                 c.*,
                 a.nom_association,
-                a.compte_comptable
+                a.compte_comptable,
+                c.code_vif AS code_vif_facture,
+                c.montant AS cotisation
             FROM cotisations c
-            JOIN associations a
-                ON a.Id = c.id_association
+            JOIN associations a ON a.Id = c.id_association
             WHERE c.annee = ?
             ORDER BY c.numero_facture
         """, (annee,))
@@ -964,7 +965,10 @@ def cotisations():
 
             for l in lignes:
                 ligne_dict = dict(l)   # ← ICI EXACTEMENT
-
+                # Si vous avez des regroupements, recalculez nom_association_affichage ici
+                # Exemple simplifié (à adapter selon votre logique métier) :
+                ligne_dict["nom_association_affichage"] = ligne_dict["nom_association"]
+                # Si vous avez des regroupements, ajoutez-les ici
                 resultats.append(ligne_dict)
 
     conn.close()
@@ -1296,7 +1300,7 @@ def cotisations_envoyer_mails():
                 f"{ligne['nom_association']}"
             )
         else:
-            destinataires = [ligne["courriel_association"]]
+            destinataires = [ligne["courriel_association","courriel_resp_tresorerie"]]
             sujet = (
                 f"Appel de cotisation {annee} – "
                 f"{ligne['nom_association']}"

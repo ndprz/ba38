@@ -10,6 +10,7 @@
 # - API /affichage_evenement + /api/evenements_actifs pour le front
 # - Logs via write_log(), chemins dynamiques DEV/PROD via get_static_event_dir()
 
+
 import os
 import re
 import glob
@@ -25,8 +26,7 @@ from flask_login import login_required
 from werkzeug.utils import secure_filename
 from pdf2image import convert_from_path
 
-
-
+import subprocess
 
 # Utils maison
 from utils import (
@@ -36,6 +36,24 @@ from utils import (
 
 
 evenements_bp = Blueprint("evenements", __name__, template_folder="templates")
+
+# =====================================================
+# Récupérer la durée de la vidéo
+# =====================================================
+def get_video_duration(video_path):
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        return float(result.stdout.strip())
+        write_log(result.stdout.strip)
+    except Exception as e:
+        print(f"Erreur lors de la récupération de la durée : {e}")
+        return None
+
 
 # =====================================================
 # 🔐 Vérification du rôle autorisé pour accéder au module
@@ -664,6 +682,31 @@ def save_srt(eid):
 # 🖥️ Page d’affichage public
 # ============================================================
 
-@evenements_bp.route("/affichage_evenement")
-def affichage_evenement():
-    return render_template("affichage_evenement.html")
+@evenements_bp.route("/affichage_evenement/<int:evenement_id>")
+def affichage_evenement(evenement_id):
+    conn = get_db_connection()
+    evenement = conn.execute("SELECT * FROM evenements WHERE id = ?", (evenement_id,)).fetchone()
+    conn.close()
+
+    if not evenement:
+        flash("Événement non trouvé. Affichage du premier événement actif.", "warning")
+        conn = get_db_connection()
+        evenement = conn.execute("SELECT * FROM evenements WHERE actif = 1 ORDER BY id ASC LIMIT 1").fetchone()
+        conn.close()
+        if not evenement:
+            flash("Aucun événement actif disponible.", "danger")
+            return redirect(url_for("evenements.gestion_evenements"))
+
+    evenement = dict(evenement)
+
+    # Si l'événement est une vidéo, calculer la durée réelle
+    if evenement["type"] == "video" and evenement["fichier_path"]:
+        duree_reelle = get_video_duration(f"/srv/ba38/dev{evenement['fichier_path']}")
+        write_log(duree_reelle)
+        if duree_reelle:
+            evenement["duree"] = duree_reelle  # Écraser la durée saisie par la durée réelle
+        else:
+            evenement["duree"] = evenement["duree_affichage"]  # Utiliser la durée saisie si la durée réelle n'est pas disponible
+
+    return render_template("affichage_evenement.html", evenement=evenement)
+
