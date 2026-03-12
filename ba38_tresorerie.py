@@ -2016,14 +2016,16 @@ def cotisations_relance():
 
                 if file_id:
                     lien_drive = f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
-                    sujet = f"[TEST] Relance {numero_relance + 1} – Cotisation {annee} – {ligne['nom_association']}"
+                    sujet = f"Relance {numero_relance + 1} – Cotisation {annee} – {ligne['nom_association']}"
                     texte_mail = f"""
                     <p>Madame, Monsieur,</p>
-                    <p>Nous avons noté que vous (Association : <strong>{ligne['nom_association']}</strong>) ne vous êtes pas encore acquitté de la cotisation {annee} de votre Association ou CCAS à la Banque Alimentaire de l'Isère. Nous vous remercions de procéder rapidement à son règlement.</p>
+                    <p>Nous vous remercions d'avance pour un règlement rapide de la cotisation {annee} de votre association ou CCAS à la Banque Alimentaire de l'Isère.</p>
+                    <p> A noter que pour les CCAS, la facture est déjà à disposition sur la plateforme CHORUS PRO.</p>
+
+                    <p>Ci-dessous le lien pour télécharger votre facture :</p>
                     <p><a href="{lien_drive}" style="color: #0066cc; text-decoration: none; font-weight: bold;">➡ Consulter la facture en ligne</a></p>
+
                     <p>Cordialement,<br>Christian Graff<br>Trésorerie Banque Alimentaire de l'Isère</p>
-                    <hr>
-                    <p><small>⚠ Ce mail est un exemple de relance pour l'association <strong>{ligne['nom_association']}</strong> (email réel : {ligne['courriel_association']}). En production, {len(cotisations_a_relancer)} relances seraient envoyées.</small></p>
                     """
 
                     envoyer_mail(
@@ -2051,8 +2053,12 @@ def cotisations_relance():
                 sujet = f"Relance {numero_relance + 1} – Cotisation {annee} – {ligne['nom_association']}"
                 texte_mail = f"""
                 <p>Madame, Monsieur,</p>
-                <p>Nous avons noté que vous ne vous êtes pas encore acquitté de la cotisation {annee} de votre Association ou CCAS à la Banque Alimentaire de l'Isère. Nous vous remercions de procéder rapidement à son règlement.</p>
+                <p>Nous vous remercions d'avance pour un règlement rapide de la cotisation {annee} de votre association ou CCAS à la Banque Alimentaire de l'Isère.</p>
+                <p> A noter que pour les CCAS, la facture est déjà à disposition sur la plateforme CHORUS PRO.</p>
+
+                <p>Ci-dessous le lien pour télécharger votre facture :</p>
                 <p><a href="{lien_drive}" style="color: #0066cc; text-decoration: none; font-weight: bold;">➡ Consulter la facture en ligne</a></p>
+
                 <p>Cordialement,<br>Christian Graff<br>Trésorerie Banque Alimentaire de l'Isère</p>
                 """
 
