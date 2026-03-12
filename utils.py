@@ -549,17 +549,12 @@ def get_drive_folder_id_from_path(drive_path, shared_drive_id):
         shared_drive_id=shared_drive_id
     )
 
+
 # ============================================================================
 # 📧 MAILJET
 # ============================================================================
 
-def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None, is_html=False):
-    # write_log(f"route utils/envoyer_mail utilisée")
-    # write_log(f"📧📧📧 Appel à envoyer_mail : sujet={sujet}, destinataires={destinataires}, attachment_path={attachment_path}, is_html={is_html}")
-    # if attachment_path:
-    #     write_log(f"⚠️ Pièce jointe détectée : {attachment_path}")
-    # else:
-    #     write_log("⚠️ Aucun fichier joint")
+def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None, is_html=False, bcc=None):
 
     api_key = os.getenv("MAILJET_API_KEY")
     api_secret = os.getenv("MAILJET_API_SECRET")
@@ -568,41 +563,88 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
     mail_mode = os.getenv("MAIL_MODE", "PROD").upper()
     mail_test_to = os.getenv("MAIL_TEST_TO")
 
+    # -----------------------------
+    # Mode TEST
+    # -----------------------------
     if mail_mode == "TEST":
         sujet = f"[TEST] {sujet}"
+
+        # on redirige seulement les destinataires
         destinataires = [mail_test_to]
 
+    # -----------------------------
+    # LOG DEBUG
+    # -----------------------------
+    write_log(f"📧 Mailjet : FROM={sender} TO={destinataires} BCC={bcc} SUBJECT={sujet}")
     attachments = []
     if attachment_path and os.path.exists(attachment_path):
         with open(attachment_path, "rb") as f:
             encoded = base64.b64encode(f.read()).decode("utf-8")
+
         attachments.append({
             "ContentType": "application/pdf",
             "Filename": os.path.basename(attachment_path),
             "Base64Content": encoded
         })
 
-    # Construction du message
+    destinataires = [d for d in destinataires if d and "@" in d]
+
+    # -----------------------------
+    # Construction BCC
+    # -----------------------------
+    bcc_list = []
+    if bcc:
+        bcc_list = [{"Email": m} for m in bcc if m and "@" in m]
+
+    # Vérification destinataires
+    destinataires = [d for d in destinataires if d and "@" in d]
+
+    if not destinataires:
+        write_log("⚠️ Aucun destinataire valide.")
+        return    
+        
+    if not sender:
+        raise ValueError("MAILJET_SENDER non défini")
+
+    write_log(
+        f"📧 Mailjet : FROM={sender} TO={destinataires} "
+        f"BCC={bcc_list if bcc_list else 'none'} SUBJECT={sujet}"
+    )
+
+
+
+    # -----------------------------
+    # Construction message
+    # -----------------------------
     message = {
-        "From": {"Email": sender, "Name": "BA380"},
+        "From": {
+            "Email": sender,
+            "Name": sender
+        },
         "To": [{"Email": d} for d in destinataires],
-        "Subject": sujet,
+        "Subject": sujet
     }
 
-    # Ajout du contenu (HTML ou texte)
+    # Contenu
     if is_html:
         message["HTMLPart"] = texte
     else:
         message["TextPart"] = texte
 
-    # Ajout des pièces jointes si nécessaire
+    # BCC
+    if bcc_list:
+        message["Bcc"] = bcc_list
+
+    # Pièces jointes
     if attachments:
         message["Attachments"] = attachments
 
-    # Construction finale de data
+    # -----------------------------
+    # Payload Mailjet
+    # -----------------------------
     data = {"Messages": [message]}
 
-    # write_log(f"📎 Attachments avant envoi : {attachments}")
+    write_log(f"MAILJET DATA: {data}")
 
     response = requests.post(
         "https://api.mailjet.com/v3.1/send",
@@ -611,9 +653,7 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
         timeout=15
     )
 
-    # write_log(f"📧 Mail envoyé (status={response.status_code})")
     response.raise_for_status()
-    # write_log(f"📧 Mailjet response: {response.text}")
 
 
 def send_reset_email(email, token):

@@ -48,7 +48,21 @@
       <div class="col-md-3">
         <label class="form-label">Expéditeur du mail</label>
         <select name="mail_sender" class="form-select" required>
-          <option value="ba380@banquealimentaire.org">ba380@banquealimentaire.org</option>
+          <option value="ba380@banquealimentaire.org"
+            {% if mail_sender=="ba380@banquealimentaire.org" %}selected{% endif %}>
+            ba380@banquealimentaire.org
+          </option>
+
+          <option value="ba380.tresorier@banquealimentaire.org"
+            {% if mail_sender=="ba380.tresorier@banquealimentaire.org" %}selected{% endif %}>
+            ba380.tresorier@banquealimentaire.org
+          </option>
+
+          <option value="ba380.comptable@banquealimentaire.org"
+            {% if mail_sender=="ba380.comptable@banquealimentaire.org" %}selected{% endif %}>
+            ba380.comptable@banquealimentaire.org
+          </option>
+        </select>          <option value="ba380@banquealimentaire.org">ba380@banquealimentaire.org</option>
           <option value="ba380.tresorier@banquealimentaire.org">ba380.tresorier@banquealimentaire.org</option>
           <option value="ba380.comptable@banquealimentaire.org">ba380.comptable@banquealimentaire.org</option>
         </select>
@@ -114,9 +128,10 @@
 
   {% if preview %}
   <form method="post" class="mt-3">
-    <input type="hidden" name="annee" value="{{ annee }}">
-    <input type="hidden" name="numero_relance" value="{{ numero_relance }}">
-    <input type="hidden" name="confirm_envoi" value="1">
+      <input type="hidden" name="annee" value="{{ annee }}">
+      <input type="hidden" name="numero_relance" value="{{ numero_relance }}">
+      <input type="hidden" name="mail_sender" value="{{ mail_sender }}">
+      <input type="hidden" name="confirm_envoi" value="1">
 
     {% if mail_mode == "PROD" %}
     <div class="form-check mb-3">

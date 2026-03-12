@@ -939,7 +939,7 @@ def cotisations():
                 "danger"
             )
             conn.close()
-            return redirect(url_for("tresorerie.cotisations"))
+            return redirect(url_for("tresorerie.cotisations", annee=annee))
 
     # ==========================================================
     # GET → AFFICHAGE ANNÉE
@@ -1340,7 +1340,8 @@ def cotisations_envoyer_mails():
                 destinataires=destinataires,
                 texte=texte_mail,
                 sender_override=mail_sender,
-                attachment_path=str(pdf_path)
+                attachment_path=str(pdf_path),
+                bcc=mail_sender
             )
 
         # --------------------------------------------------
@@ -1817,6 +1818,8 @@ def cotisations_relance_start():
 
     annee = request.args.get("annee")
 
+    write_log(f"🔍 Année sélectionnée dans cotisations_relance_start: {annee}")
+
     if not annee:
         annee = datetime.now().year
     else:
@@ -1870,9 +1873,9 @@ def cotisations_relance():
         # ======================================================
         annee = int(request.form.get("annee"))
         numero_relance = int(request.form.get("numero_relance"))
-
         confirm_envoi = request.form.get("confirm_envoi")
         confirm_production = request.form.get("confirm_production")
+        mail_sender = request.form.get("mail_sender")
 
         mail_mode = session.get(
             "MAIL_MODE",
@@ -1960,9 +1963,9 @@ def cotisations_relance():
                 lignes=cotisations_a_relancer,
                 preview=True,
                 numero_relance=numero_relance,
-                total_relances=total_relances
+                total_relances=total_relances,
+                mail_sender=mail_sender
             )
-
         # ======================================================
         # Sécurité production
         # ======================================================
@@ -1995,71 +1998,86 @@ def cotisations_relance():
 
         service = drive_service
 
+        write_log(f"MAIL SENDER = {mail_sender}")
+
         # ======================================================
         # Envoi des mails
         # ======================================================
         nb_mails = 0
         nb_pdf_introuvables = 0
 
-        for ligne in cotisations_a_relancer:
+        if mail_mode == "TEST":
+            mode_test_flag = 1
+            # En mode TEST, envoyer un seul email avec la première association à relancer
+            if cotisations_a_relancer:
+                ligne = cotisations_a_relancer[0]  # Prendre la première ligne comme exemple
+                code_vif_8 = str(ligne["code_vif"]).zfill(8)
+                file_id, nom_pdf = get_pdf_by_code_vif(service, FOLDER_ID_FACTURES, code_vif_8)
 
-            code_vif_8 = str(ligne["code_vif"]).zfill(8)
+                if file_id:
+                    lien_drive = f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
+                    sujet = f"[TEST] Relance {numero_relance + 1} – Cotisation {annee} – {ligne['nom_association']}"
+                    texte_mail = f"""
+                    <p>Madame, Monsieur,</p>
+                    <p>Nous avons noté que vous (Association : <strong>{ligne['nom_association']}</strong>) ne vous êtes pas encore acquitté de la cotisation {annee} de votre Association ou CCAS à la Banque Alimentaire de l'Isère. Nous vous remercions de procéder rapidement à son règlement.</p>
+                    <p><a href="{lien_drive}" style="color: #0066cc; text-decoration: none; font-weight: bold;">➡ Consulter la facture en ligne</a></p>
+                    <p>Cordialement,<br>Christian Graff<br>Trésorerie Banque Alimentaire de l'Isère</p>
+                    <hr>
+                    <p><small>⚠ Ce mail est un exemple de relance pour l'association <strong>{ligne['nom_association']}</strong> (email réel : {ligne['courriel_association']}). En production, {len(cotisations_a_relancer)} relances seraient envoyées.</small></p>
+                    """
 
-            file_id, nom_pdf = get_pdf_by_code_vif(
-                service,
-                FOLDER_ID_FACTURES,
-                code_vif_8
-            )
+                    envoyer_mail(
+                        sujet=sujet,
+                        destinataires=[mail_test_to],
+                        texte=texte_mail,
+                        sender_override=mail_sender,
+                        is_html=True,
+                        bcc=[mail_sender]
+                    )                    
+                    
+                    nb_mails = 1  # Un seul email envoyé en mode TEST
+        else:
+            mode_test_flag = 0
+            # En mode PROD, envoyer un email pour chaque relance
+            for ligne in cotisations_a_relancer:
+                code_vif_8 = str(ligne["code_vif"]).zfill(8)
+                file_id, nom_pdf = get_pdf_by_code_vif(service, FOLDER_ID_FACTURES, code_vif_8)
 
-            if not file_id:
-                nb_pdf_introuvables += 1
-                continue
+                if not file_id:
+                    nb_pdf_introuvables += 1
+                    continue
 
-            lien_drive = f"https://drive.google.com/file/d/{file_id}/view"
+                lien_drive = f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
+                sujet = f"Relance {numero_relance + 1} – Cotisation {annee} – {ligne['nom_association']}"
+                texte_mail = f"""
+                <p>Madame, Monsieur,</p>
+                <p>Nous avons noté que vous ne vous êtes pas encore acquitté de la cotisation {annee} de votre Association ou CCAS à la Banque Alimentaire de l'Isère. Nous vous remercions de procéder rapidement à son règlement.</p>
+                <p><a href="{lien_drive}" style="color: #0066cc; text-decoration: none; font-weight: bold;">➡ Consulter la facture en ligne</a></p>
+                <p>Cordialement,<br>Christian Graff<br>Trésorerie Banque Alimentaire de l'Isère</p>
+                """
 
-            if mail_mode == "TEST":
-                destinataires = [mail_test_to]
-                sujet = f"[TEST] Relance {numero_relance + 1} – Cotisation {annee}"
-                mode_test_flag = 1
-            else:
-                destinataires = [ligne["courriel_association"]]
-                sujet = f"Relance {numero_relance + 1} – Cotisation {annee}"
-                mode_test_flag = 0
+                envoyer_mail(
+                    sujet=sujet,
+                    destinataires=[ligne["courriel_association"]],
+                    texte=texte_mail,
+                    sender_override=mail_sender,
+                    is_html=True,
+                    bcc=[mail_sender]
+                )
 
-            lien_drive = f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
-            texte_mail = f"""
-            <p>Madame, Monsieur,</p>
-            <p>Nous avons noté que vous ne vous êtes pas encore acquitté de la cotisation {annee} de votre Association ou CCAS à la Banque Alimentaire de l'Isère. Nous vous remercions de procéder rapidement à son règlement.</p>
-            <p><a href="{lien_drive}" style="color: #0066cc; text-decoration: none; font-weight: bold;">➡ Consulter la facture en ligne</a></p>
-            <p>Cordialement,<br>Christian Graff<br>Trésorerie Banque Alimentaire de l'Isère</p>
-            """
-
-            envoyer_mail(
-                sujet=sujet,
-                destinataires=destinataires,
-                texte=texte_mail,
-                is_html=True
-            )
-
-
-
-            # write_log(f"📧 Envoi d'un email de relance à {destinataires} (sans pièce jointe)")
-            # write_log("✅ Fin de cotisations_relance")
-
-
-            cursor.execute("""
-                UPDATE cotisations
-                SET relance_niveau = COALESCE(relance_niveau,0)+1,
-                    date_derniere_relance = ?,
-                    mode_test_relance = ?
-                WHERE id = ?
-            """, (
-                datetime.now().isoformat(),
-                mode_test_flag,
-                ligne["id"]
-            ))
-
-            nb_mails += 1
+                # Mettre à jour la base de données pour chaque ligne
+                cursor.execute("""
+                    UPDATE cotisations
+                    SET relance_niveau = COALESCE(relance_niveau,0)+1,
+                        date_derniere_relance = ?,
+                        mode_test_relance = ?
+                    WHERE id = ?
+                """, (
+                    datetime.now().isoformat(),
+                    mode_test_flag,
+                    ligne["id"]
+                ))
+                nb_mails += 1
 
         conn.commit()
         conn.close()
@@ -2087,7 +2105,7 @@ def cotisations_relance():
         flash("Erreur lors des relances.", "danger")
 
         return redirect(
-            url_for("tresorerie.cotisations_relance_start")
+            url_for("tresorerie.cotisations_relance_start", annee=annee)
         )
 
 
@@ -2279,7 +2297,7 @@ def cotisations_relance_reset():
     # 🔒 Sécurité absolue
     if mail_mode != "TEST":
         flash("⛔ Réinitialisation autorisée uniquement en MODE TEST.", "danger")
-        return redirect(url_for("tresorerie.cotisations_relance_start"))
+        return redirect(url_for("tresorerie.cotisations_relance_start", annee=annee))
 
     annee = request.form.get("annee")
 
