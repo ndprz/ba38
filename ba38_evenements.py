@@ -49,7 +49,6 @@ def get_video_duration(video_path):
             text=True
         )
         return float(result.stdout.strip())
-        write_log(result.stdout.strip)
     except Exception as e:
         print(f"Erreur lors de la récupération de la durée : {e}")
         return None
@@ -313,12 +312,18 @@ def gestion_evenements():
     - Création : sauvegarde du fichier, aucune suppression.
     - Modification avec nouveau fichier : suppression de l’ancien média AVANT remplacement.
     - Suppression événement : suppression complète (vidéo, image, dérivés, sous-titres).
+
+    Fonctionnement :
+    - POST  → traitement des actions (ajout, modification, suppression, activation).
+    - GET   → affichage de la liste des événements et bénévoles.
     """
 
-    # Debug upload (à garder tant que nécessaire)
+    # Debug upload (utile pour diagnostiquer les problèmes d’upload)
     write_log(f"DEBUG files keys = {list(request.files.keys())}")
 
+    # ----------------------------------------------------------------------
     # Sécurité : contrôle des droits
+    # ----------------------------------------------------------------------
     if not role_autorise_evenements():
         flash("⛔ Accès refusé au module Événements.", "danger")
         return redirect(url_for("index"))
@@ -331,29 +336,36 @@ def gestion_evenements():
     # POST : actions
     # ======================================================================
     if request.method == "POST":
+
         action = request.form.get("action", "ajouter")
 
         # ------------------------------------------------------------------
         # 🗑️ SUPPRESSION D’UN ÉVÉNEMENT (nettoyage COMPLET)
         # ------------------------------------------------------------------
         if action == "supprimer":
+
             eid = request.form.get("id")
+
             if eid:
+
                 row = cur.execute(
                     "SELECT fichier_path, image_path FROM evenements WHERE id = ?",
                     (eid,)
                 ).fetchone()
 
                 if row:
-                    # Base commune pour suppression complète
+
                     paths = []
+
                     if row["fichier_path"]:
                         paths.append(to_abs_path(row["fichier_path"]))
+
                     if row["image_path"]:
                         paths.append(to_abs_path(row["image_path"]))
 
-                    # Suppression complète des fichiers liés
+                    # suppression des fichiers
                     for p in paths:
+
                         if p and os.path.exists(p):
                             try:
                                 os.remove(p)
@@ -361,68 +373,94 @@ def gestion_evenements():
                             except Exception as e:
                                 write_log(f"❌ Erreur suppression fichier {p} : {e}")
 
-                        # Suppression des dérivés + sous-titres
+                        # suppression dérivés + sous-titres
                         if p:
                             base = base_noext(p)
                             remove_all_files_for_base(base)
 
-                # Suppression BDD
-                cur.execute("DELETE FROM evenements WHERE id = ?", (eid,))
+                # suppression BDD
+                cur.execute(
+                    "DELETE FROM evenements WHERE id = ?",
+                    (eid,)
+                )
+
                 conn.commit()
                 upload_database()
+
                 flash("🗑️ Événement supprimé (fichiers nettoyés).", "info")
 
             return redirect(url_for("evenements.gestion_evenements"))
 
         # ------------------------------------------------------------------
-        # 🔁 Bascule actif / inactif
+        # 🔁 BASCULE ACTIF / INACTIF
         # ------------------------------------------------------------------
         if action == "basculer_actif":
+
             eid = request.form.get("id")
+
             if eid:
+
                 cur.execute(
                     "UPDATE evenements SET actif = 1 - actif WHERE id = ?",
                     (eid,)
                 )
+
                 conn.commit()
                 upload_database()
+
                 flash("🔁 Statut mis à jour.", "info")
+
             return redirect(url_for("evenements.gestion_evenements"))
 
         # ------------------------------------------------------------------
-        # Champs communs (ajout / modification)
+        # CHAMPS COMMUNS (ajout / modification)
         # ------------------------------------------------------------------
         type_ev = request.form.get("type")
         titre = (request.form.get("titre") or "").strip()
         contenu = (request.form.get("contenu") or "").strip()
+
         benevole_id = request.form.get("benevole_id") or None
         image_path = (request.form.get("image_path") or "").strip() or None
+
         date_debut = parse_dt_local(request.form.get("date_debut"))
         date_fin = parse_dt_local(request.form.get("date_fin"))
+
         recurrence = request.form.get("recurrence") or "aucune"
         duree = int(request.form.get("duree_affichage") or 15)
 
         # ------------------------------------------------------------------
-        # 📸 Image automatique depuis photo bénévole si applicable
+        # 📸 IMAGE AUTOMATIQUE depuis photo bénévole
         # ------------------------------------------------------------------
         if not image_path and benevole_id:
+
             try:
+
                 bid = int(benevole_id)
+
                 src_dir = os.path.join(
                     os.path.dirname(get_static_event_dir()),
                     "photos_benevoles"
                 )
+
                 for ext in (".jpg", ".jpeg", ".png"):
+
                     src = os.path.join(src_dir, f"{bid}{ext}")
+
                     if os.path.exists(src):
+
                         dest = os.path.join(
                             get_static_event_dir(),
                             f"benevole_{bid}{ext}"
                         )
+
                         shutil.copy2(src, dest)
+
                         image_path = f"/static/evenements/benevole_{bid}{ext}"
+
                         write_log(f"📸 Photo bénévole copiée : {image_path}")
+
                         break
+
             except Exception as e:
                 write_log(f"❌ Erreur copie photo bénévole : {e}")
 
@@ -431,11 +469,14 @@ def gestion_evenements():
         )
 
         # ------------------------------------------------------------------
-        # 📎 Upload fichier (vidéo / PDF / etc.)
+        # 📎 UPLOAD FICHIER
         # ------------------------------------------------------------------
         new_file_web = None
+
         if "fichier" in request.files and request.files["fichier"].filename:
+
             f = request.files["fichier"]
+
             if not allowed_file(f.filename):
                 flash("❌ Extension non autorisée.", "danger")
                 return redirect(url_for("evenements.gestion_evenements"))
@@ -443,48 +484,76 @@ def gestion_evenements():
             new_file_web = save_uploaded_file(f)
 
         # ------------------------------------------------------------------
-        # 🔁 MODIFICATION (remplacement contrôlé)
+        # 🔁 MODIFICATION
         # ------------------------------------------------------------------
         if action == "modifier":
+
             eid = request.form.get("id")
+
             if not eid:
                 flash("❌ Identifiant manquant.", "danger")
                 return redirect(url_for("evenements.gestion_evenements"))
 
-            # Si nouveau fichier : suppression de l’ancien média AVANT remplacement
+            # suppression ancien média si nouveau fichier
             if new_file_web:
+
                 old = cur.execute(
                     "SELECT fichier_path FROM evenements WHERE id = ?",
                     (eid,)
                 ).fetchone()
+
                 if old and old["fichier_path"]:
-                    base = base_noext(to_abs_path(old["fichier_path"]))
+
+                    base = base_noext(
+                        to_abs_path(old["fichier_path"])
+                    )
+
                     remove_all_files_for_base(base)
 
             champs = [
-                "type", "titre", "contenu", "benevole_id", "image_path",
-                "date_debut", "date_fin", "recurrence", "duree_affichage"
+                "type",
+                "titre",
+                "contenu",
+                "benevole_id",
+                "image_path",
+                "date_debut",
+                "date_fin",
+                "recurrence",
+                "duree_affichage"
             ]
+
             params = [
-                type_ev, titre, contenu, benevole_id, image_path,
-                date_debut, date_fin, recurrence, duree
+                type_ev,
+                titre,
+                contenu,
+                benevole_id,
+                image_path,
+                date_debut,
+                date_fin,
+                recurrence,
+                duree
             ]
 
             sql = f"UPDATE evenements SET {', '.join(c + '=?' for c in champs)}"
+
             if new_file_web:
                 sql += ", fichier_path=?"
                 params.append(new_file_web)
+
             sql += " WHERE id=?"
             params.append(eid)
 
             cur.execute(sql, params)
+
             conn.commit()
             upload_database()
+
             flash("💾 Événement modifié.", "success")
+
             return redirect(url_for("evenements.gestion_evenements"))
 
         # ------------------------------------------------------------------
-        # ➕ CRÉATION (aucune suppression)
+        # ➕ CRÉATION
         # ------------------------------------------------------------------
         cur.execute(
             """
@@ -494,31 +563,57 @@ def gestion_evenements():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             """,
             (
-                type_ev, titre, contenu, new_file_web, benevole_id, image_path,
-                date_debut, date_fin, recurrence, duree
+                type_ev,
+                titre,
+                contenu,
+                new_file_web,
+                benevole_id,
+                image_path,
+                date_debut,
+                date_fin,
+                recurrence,
+                duree
             )
         )
+
         conn.commit()
         upload_database()
+
         flash("✅ Événement ajouté.", "success")
+
         return redirect(url_for("evenements.gestion_evenements"))
 
     # ======================================================================
     # GET : affichage
     # ======================================================================
+
     ev_rows = cur.execute(
         "SELECT * FROM evenements ORDER BY date_debut DESC, id DESC"
     ).fetchall()
+
     ben_rows = cur.execute(
         "SELECT id, nom, prenom FROM benevoles ORDER BY nom, prenom"
     ).fetchall()
+
     conn.close()
+
+    # conversion Row → dict
+    evenements = [dict(r) for r in ev_rows]
+    benevoles = [dict(r) for r in ben_rows]
+
+    # premier événement actif
+    evenement_actif = next(
+        (e for e in evenements if e.get("actif")),
+        None
+    )
 
     return render_template(
         "gestion_evenements.html",
-        evenements=[dict(r) for r in ev_rows],
-        benevoles=[dict(r) for r in ben_rows],
+        evenements=evenements,
+        evenement_actif=evenement_actif,
+        benevoles=benevoles
     )
+
 
 # ============================================================
 # 🌍 API : événements actifs
@@ -584,7 +679,7 @@ def generer_sous_titres(event_id):
     if not api_key:
         write_log("❌ OPENAI_API_KEY absente – génération sous-titres impossible")
         return jsonify({"error": "Service de sous-titres indisponible"}), 503
-    
+
     write_log(f"🔑 OPENAI_API_KEY chargée ? {'OUI' if api_key else 'NON'}")
 
     client = OpenAI(api_key=api_key)
@@ -684,29 +779,37 @@ def save_srt(eid):
 
 @evenements_bp.route("/affichage_evenement/<int:evenement_id>")
 def affichage_evenement(evenement_id):
+
     conn = get_db_connection()
-    evenement = conn.execute("SELECT * FROM evenements WHERE id = ?", (evenement_id,)).fetchone()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    evenement = cur.execute(
+        "SELECT * FROM evenements WHERE id = ?",
+        (evenement_id,)
+    ).fetchone()
+
+    evenements_rows = cur.execute(
+        "SELECT * FROM evenements WHERE actif = 1 ORDER BY date_debut"
+    ).fetchall()
+
     conn.close()
 
-    if not evenement:
-        flash("Événement non trouvé. Affichage du premier événement actif.", "warning")
-        conn = get_db_connection()
-        evenement = conn.execute("SELECT * FROM evenements WHERE actif = 1 ORDER BY id ASC LIMIT 1").fetchone()
-        conn.close()
-        if not evenement:
-            flash("Aucun événement actif disponible.", "danger")
-            return redirect(url_for("evenements.gestion_evenements"))
+    evenements = [dict(r) for r in evenements_rows]
 
-    evenement = dict(evenement)
+    return render_template(
+        "affichage_evenement.html",
+        evenement=dict(evenement) if evenement else None,
+        evenements=evenements
+    )
 
-    # Si l'événement est une vidéo, calculer la durée réelle
-    if evenement["type"] == "video" and evenement["fichier_path"]:
-        duree_reelle = get_video_duration(f"/srv/ba38/dev{evenement['fichier_path']}")
-        write_log(duree_reelle)
-        if duree_reelle:
-            evenement["duree"] = duree_reelle  # Écraser la durée saisie par la durée réelle
-        else:
-            evenement["duree"] = evenement["duree_affichage"]  # Utiliser la durée saisie si la durée réelle n'est pas disponible
 
-    return render_template("affichage_evenement.html", evenement=evenement)
-
+def to_abs_path(web_path: str) -> str:
+    """Convertit un chemin web /static/evenements/... en chemin absolu."""
+    if not web_path:
+        return ""
+    upload_dir = get_static_event_dir()
+    if web_path.startswith(WEB_PREFIX):
+        rel = web_path[len(WEB_PREFIX):].lstrip("/")
+        return os.path.join(upload_dir, rel)
+    return os.path.join(upload_dir, os.path.basename(web_path))

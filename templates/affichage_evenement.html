@@ -1,17 +1,16 @@
 <!doctype html>
 <html lang="fr">
+
 <head>
   <meta charset="utf-8">
   <title>Affichage Événements</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  
+
 
   <style>
-
-
-
-    html, body {
+    html,
+    body {
       margin: 0;
       padding: 0;
       width: 100%;
@@ -22,6 +21,9 @@
       overflow: hidden;
     }
 
+    body {
+      cursor: none;
+    }
 
     .duree-badge {
       position: absolute;
@@ -49,7 +51,9 @@
       transition: opacity 0.8s ease-in-out;
     }
 
-    .hidden { opacity: 0; }
+    .hidden {
+      opacity: 0;
+    }
 
     .fullscreen {
       position: absolute;
@@ -76,6 +80,7 @@
       background: #000;
       transition: opacity 0.8s ease-in-out;
     }
+
     .docSlide.active {
       display: flex;
       opacity: 1;
@@ -117,10 +122,15 @@
       opacity: .25;
       font-size: .8rem;
     }
+
+    html {
+      cursor: none;
+    }
   </style>
 </head>
 
-<body>
+<body onclick="startFullscreen()">
+
   <div id="zone">
     <div class="msg">
       <h1>Chargement…</h1>
@@ -131,19 +141,80 @@
   <div class="badge">BA380 • Écran événements</div>
 
   <script>
+
+    document.body.style.cursor = "none";
+
+    let prochainHTML = null;
+
+    function startFullscreen() {
+
+      if (document.fullscreenElement) return;
+
+      const el = document.documentElement;
+
+      if (el.requestFullscreen) {
+        el.requestFullscreen();
+      } else if (el.webkitRequestFullscreen) {
+        el.webkitRequestFullscreen();
+      } else if (el.msRequestFullscreen) {
+        el.msRequestFullscreen();
+      }
+    }
+
+    // interaction utilisateur
+    document.addEventListener("click", startFullscreen);
+    document.addEventListener("keydown", startFullscreen);
+
+    // tentative automatique
+    setTimeout(() => {
+      document.body.click();
+    }, 1500);
+    // clic
+    document.addEventListener("click", startFullscreen);
+
+    // touche clavier
+    document.addEventListener("keydown", startFullscreen);
+
+    // tentative automatique (certains navigateurs l’acceptent)
+    window.addEventListener("load", () => {
+      setTimeout(startFullscreen, 1000);
+    });
+    setInterval(function () {
+      location.reload();
+    }, 300000);
+
+
+    document.addEventListener("fullscreenchange", () => {
+      if (!document.fullscreenElement) {
+        setTimeout(startFullscreen, 1000);
+      }
+    });
+
+    const evenements = JSON.parse('{{ evenements | default([]) | tojson | safe }}');
+
     let playlist = [];
     let index = 0;
     let timer = null;
 
+    function prechargerSuivant() {
+
+      if (playlist.length === 0) return;
+
+      const nextIndex = (index + 1) % playlist.length;
+      const nextEvent = playlist[nextIndex];
+
+      prochainHTML = htmlPour(nextEvent);
+    }
+
     function sortImagesByPage(images) {
-    // Ex: "..._page_12.jpg" → 12
-    const pageNum = (p) => {
-      const m = String(p).match(/_page_(\d+)\.(?:jpe?g|png|webp)$/i);
-      return m ? parseInt(m[1], 10) : Number.MAX_SAFE_INTEGER; // sans numéro → à la fin
-    };
-    // Tri numérique stable
-    return [...images].sort((a, b) => pageNum(a) - pageNum(b));
-  }
+      // Ex: "..._page_12.jpg" → 12
+      const pageNum = (p) => {
+        const m = String(p).match(/_page_(\d+)\.(?:jpe?g|png|webp)$/i);
+        return m ? parseInt(m[1], 10) : Number.MAX_SAFE_INTEGER; // sans numéro → à la fin
+      };
+      // Tri numérique stable
+      return [...images].sort((a, b) => pageNum(a) - pageNum(b));
+    }
 
 
     // =========================================================
@@ -157,10 +228,10 @@
         if (!src.startsWith("/static/")) src = "/static/evenements/" + src.split("/").pop();
         const base = src.replace(/\.[^/.]+$/, "");
         const trackPath = base + ".vtt";
-        const dureeAffichage = e.duree ? `<div class="duree-badge">${Math.round(e.duree)} secondes</div>` : "";
+        const dureeAffichage = e.duree_affichage ? `<div class="duree-badge">${Math.round(e.duree)} secondes</div>` : "";
         return `
           <div style="position: relative; width: 100vw; height: 100vh;">
-            <video class="fullscreen" autoplay playsinline loop muted>
+            <video class="fullscreen" autoplay playsinline muted>
               <source src="${src}" type="video/mp4">
               <track src="${trackPath}" kind="subtitles" srclang="fr" label="Français" default>
             </video>
@@ -173,15 +244,15 @@
         const src = (e.fichier_path && e.fichier_path.trim()) || e.contenu || "";
         const srcStr = String(src || "").toLowerCase();
 
-      // 🖼️ PRIORITÉ : si des images sont fournies, diaporama
-      if (e.images && e.images.length > 0) {
-        const ordered = sortImagesByPage(e.images);
-        const slides = ordered.map((img, i) => `
+        // 🖼️ PRIORITÉ : si des images sont fournies, diaporama
+        if (e.images && e.images.length > 0) {
+          const ordered = sortImagesByPage(e.images);
+          const slides = ordered.map((img, i) => `
           <div class="docSlide${i === 0 ? ' active' : ''}">
             <img src="${img}" class="fullscreen">
           </div>`).join("");
-        return `<div id="diaporama" style="position:relative; width:100vw; height:100vh;">${slides}</div>`;
-      }
+          return `<div id="diaporama" style="position:relative; width:100vw; height:100vh;">${slides}</div>`;
+        }
 
 
         // 🧾 PDF brut
@@ -225,7 +296,8 @@
       zone.classList.add("hidden");
 
       setTimeout(() => {
-        zone.innerHTML = htmlPour(ev);
+        zone.innerHTML = prochainHTML || htmlPour(ev);
+        prechargerSuivant();
         zone.classList.remove("hidden");
 
         // 🖼️ Diaporama (si plusieurs images)
@@ -249,9 +321,25 @@
             clearInterval(loop);
             nextEvent();
           }, totalDuration + 500);
-        } else {
-          // 📄 Pas de diaporama : affichage normal
-          setTimeout(nextEvent, (ev.duree_affichage || 10) * 1000);
+        }
+        else {
+
+          const video = zone.querySelector("video");
+
+          if (video) {
+
+            // 🎥 attendre la fin de la vidéo
+            video.onended = () => {
+              nextEvent();
+            };
+
+          } else {
+
+            // 🖼 image / pdf / message
+            setTimeout(nextEvent, (ev.duree_affichage || 10) * 1000);
+
+          }
+
         }
       }, 400);
 
@@ -286,4 +374,5 @@
     })();
   </script>
 </body>
+
 </html>
