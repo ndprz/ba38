@@ -1038,7 +1038,6 @@ def upload_photo_benevole(benevole_id):
         return redirect(url_for('benevoles.update_benevole', benevole_id=benevole_id))
 
     file = request.files['photo']
-    write_log("FILES:", request.files)
     if file.filename == '':
         flash("❌ Nom de fichier vide", "danger")
         return redirect(url_for('benevoles.update_benevole', benevole_id=benevole_id))
@@ -1075,6 +1074,24 @@ def upload_photo_benevole(benevole_id):
         save_path = os.path.join(static_dir, f"{benevole_id}.jpg")
         img.info.pop('exif', None)
         img.save(save_path, "JPEG", quality=85)
+
+        conn = get_db_connection()
+
+        now = datetime.now()
+
+        conn.execute("""
+            UPDATE benevoles
+            SET date_modif = ?, heure_modif = ?, user_modif = ?
+            WHERE id = ?
+        """, (
+            now.strftime("%Y-%m-%d"),
+            now.strftime("%H:%M:%S"),
+            current_user.username,
+            benevole_id
+        ))
+
+        conn.commit()
+        conn.close()
 
         flash("✅ Photo enregistrée avec succès", "success")
 
