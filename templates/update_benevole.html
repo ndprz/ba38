@@ -139,6 +139,7 @@
     </form>
 
 
+
 {% if not lecture_seule %}
 <hr class="my-4">
 <h5>📸 Photo du bénévole (voir dans le drive partagé BA380 - TROMBINOSCOPE)</h5>
@@ -147,25 +148,58 @@
 <form method="POST" enctype="multipart/form-data"
       action="{{ url_for('benevoles.upload_photo_benevole', benevole_id=benevole_id) }}"
       class="border rounded p-3 bg-light mb-3">
+
   <div class="row align-items-center">
+
+    <!-- Colonne gauche : sélection photo -->
     <div class="col-md-6">
-      <input type="file" name="photo" id="photo"
-             accept="image/*" capture="environment" class="form-control mb-2">
-      <button type="submit" class="btn btn-primary">Importer / Mettre à jour</button>
+
+      <input type="file"
+             name="photo"
+             id="photo"
+             accept="image/*"
+             capture="environment"
+             class="form-control mb-2">
+
+      <!-- Message avertissement -->
+      <div id="photo-warning"
+           class="text-danger small mb-2"
+           style="display:none;">
+        ⚠️ Photo sélectionnée mais non importée.
+        Cliquez sur « Importer / Mettre à jour ».
+      </div>
+
+      <button type="submit" class="btn btn-primary">
+        📸 Importer / Mettre à jour
+      </button>
+
     </div>
+
+    <!-- Colonne droite : photo actuelle -->
     <div class="col-md-6 text-center">
+
       {% if photo_filename %}
         <img src="{{ url_for('static', filename='photos_benevoles/' ~ photo_filename) }}"
              alt="Photo bénévole"
              class="img-thumbnail shadow-sm"
-             style="max-width: 180px; border-radius: 10px;">
-        <div class="text-muted small mt-1">Fichier : {{ photo_filename }}</div>
+             style="max-width:180px; border-radius:10px;">
+
+        <div class="text-muted small mt-1">
+          Fichier : {{ photo_filename }}
+        </div>
+
       {% else %}
-        <div class="text-muted small fst-italic">Aucune photo enregistrée</div>
+        <div class="text-muted small fst-italic">
+          Aucune photo enregistrée
+        </div>
       {% endif %}
+
     </div>
+
   </div>
+
 </form>
+
 
 <!-- 🔴 Ligne d’actions : suppression photo + suppression bénévole -->
 <div class="d-flex justify-content-end align-items-center gap-2 mb-4">
@@ -258,10 +292,24 @@ function handleSave() {
 }
 
 function handleNav(targetUrl) {
+
+    if (photoSelectedNotImported) {
+
+        if (!confirm(
+            "⚠️ Une photo a été sélectionnée mais non importée.\n\n" +
+            "Si vous changez de bénévole maintenant, la photo sera perdue.\n\n" +
+            "Voulez-vous continuer sans importer la photo ?"
+        )) {
+            return;
+        }
+
+    }
+
     if (!formModified) {
         window.location.href = targetUrl;
         return;
     }
+
     if (confirm("⚠️ Vous avez modifié le formulaire.\nSouhaitez-vous enregistrer vos modifications avant de continuer ?")) {
         document.getElementById("go_to").value = targetUrl;
         document.getElementById("do_upload").value = "0";
@@ -269,10 +317,24 @@ function handleNav(targetUrl) {
     } else if (confirm("❗ Les modifications non enregistrées seront perdues.\nVoulez-vous vraiment continuer sans enregistrer ?")) {
         window.location.href = targetUrl;
     }
-}
 
+}
 function handleReturn(targetUrl) {
+
+    if (photoSelectedNotImported) {
+
+        if (!confirm(
+            "⚠️ Une photo a été sélectionnée mais non importée.\n\n" +
+            "Si vous quittez cette page maintenant, la photo sera perdue.\n\n" +
+            "Voulez-vous continuer sans importer la photo ?"
+        )) {
+            return;
+        }
+
+    }
+
     if (formModified) {
+
         if (confirm("⚠️ Vous avez modifié ce bénévole.\nSouhaitez-vous enregistrer les modifications avant de revenir à la liste ?")) {
             document.getElementById("go_to").value = targetUrl;
             document.getElementById("do_upload").value = "1";
@@ -280,9 +342,74 @@ function handleReturn(targetUrl) {
         } else {
             window.location.href = targetUrl;
         }
+
     } else {
         window.location.href = targetUrl;
     }
+
 }
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    const photoInput = document.getElementById("photo");
+
+    document.getElementById("updateForm").addEventListener("submit", function(e) {
+
+        if (photoInput && photoInput.files.length > 0) {
+
+            const confirmation = confirm(
+                "⚠️ Une photo a été sélectionnée mais pas importée.\n\n" +
+                "Cliquez sur « Importer / Mettre à jour » pour enregistrer la photo.\n\n" +
+                "Voulez-vous continuer sans importer la photo ?"
+            );
+
+            if (!confirmation) {
+                e.preventDefault();
+                return false;
+            }
+        }
+
+    });
+
+});
+
+const photoInput = document.getElementById("photo");
+const photoWarning = document.getElementById("photo-warning");
+
+if (photoInput && photoWarning) {
+    photoInput.addEventListener("change", function() {
+        if (photoInput.files.length > 0) {
+            photoWarning.style.display = "block";
+        } else {
+            photoWarning.style.display = "none";
+        }
+    });
+}
+
+let photoSelectedNotImported = false;
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    const photoInput = document.getElementById("photo");
+    const photoWarning = document.getElementById("photo-warning");
+
+    if (photoInput && photoWarning) {
+
+        photoInput.addEventListener("change", function () {
+
+            if (photoInput.files.length > 0) {
+                photoWarning.style.display = "block";
+                photoSelectedNotImported = true;
+            } else {
+                photoWarning.style.display = "none";
+                photoSelectedNotImported = false;
+            }
+
+        });
+
+    }
+
+});
+
 </script>
 {% endblock %}

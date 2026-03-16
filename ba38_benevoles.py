@@ -1038,6 +1038,7 @@ def upload_photo_benevole(benevole_id):
         return redirect(url_for('benevoles.update_benevole', benevole_id=benevole_id))
 
     file = request.files['photo']
+    write_log("FILES:", request.files)
     if file.filename == '':
         flash("❌ Nom de fichier vide", "danger")
         return redirect(url_for('benevoles.update_benevole', benevole_id=benevole_id))
