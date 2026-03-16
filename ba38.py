@@ -106,6 +106,7 @@ from ba38_mail_benevoles import mail_bene_bp
 from ba38_planning_report import planning_report_bp
 from ba38_aide import aide_bp
 from ba38_engagements import engagements_bp
+from ba38_droit_image import droit_image_bp
 
 
 
@@ -312,6 +313,7 @@ app.register_blueprint(mail_bene_bp)
 app.register_blueprint(planning_report_bp)
 app.register_blueprint(aide_bp)
 app.register_blueprint(engagements_bp)
+app.register_blueprint(droit_image_bp)
 
 
 

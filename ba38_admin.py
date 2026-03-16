@@ -28,6 +28,7 @@ APPLICATIONS = {
     "engagements": "Engagements",
     "engagement_parametres": "Engagement Paramètres",
     "tresorerie": "Trésorerie",
+    "droit_image": "Droit à l'image",
 }
 
 @admin_bp.route("/roles/<email>", methods=["GET", "POST"])

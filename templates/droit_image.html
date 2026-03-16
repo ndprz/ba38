@@ -1,0 +1,161 @@
+{% extends "base_bene.html" %}
+{% block title %}Droit à l'image{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid mt-4">
+
+<h2>📸 Droit à l'image</h2>
+
+<div class="mb-3" style="display:flex; gap:10px; flex-wrap:wrap">
+
+<form method="get">
+
+<select name="acceptation" class="form-select" style="width:220px">
+
+<option value="tous">Tous les accords</option>
+
+<option value="Accord Total"
+{% if filtre=="Accord Total" %}selected{% endif %}>
+Accord Total
+</option>
+
+<option value="Accord Entrepot"
+{% if filtre=="Accord Entrepot" %}selected{% endif %}>
+Accord Entrepot
+</option>
+
+<option value="Refus"
+{% if filtre=="Refus" %}selected{% endif %}>
+Refus
+</option>
+
+</select>
+
+<button class="btn btn-primary">Filtrer</button>
+
+</form>
+
+
+<a href="{{ url_for('droit_image.export_droit_image', acceptation=filtre) }}"
+class="btn btn-success">
+📊 Export Excel
+</a>
+
+
+<input type="text"
+id="search"
+class="form-control"
+placeholder="🔎 Rechercher..."
+style="max-width:300px">
+
+</div>
+
+
+<form method="post" action="{{ url_for('droit_image.update_droit_image') }}">
+
+<table class="table table-striped table-bordered" id="table">
+
+<thead>
+
+<tr>
+<th>ID</th>
+<th>Nom</th>
+<th>Prénom</th>
+<th>Acceptation</th>
+<th>Lien PDF</th>
+</tr>
+
+</thead>
+
+<tbody>
+
+{% for p in personnes %}
+
+<tr data-search="{{ (p.nom ~ ' ' ~ p.prenom ~ ' ' ~ (p.acceptation or '') ) | lower }}">
+
+<td>{{ p.id }}</td>
+
+<td>{{ p.nom }}</td>
+
+<td>{{ p.prenom }}</td>
+
+<td>
+
+<select name="accept_{{p.id}}" class="form-select">
+
+<option value=""></option>
+
+<option value="Accord Total"
+{% if p.acceptation=="Accord Total" %}selected{% endif %}>
+Accord Total
+</option>
+
+<option value="Accord Entrepot"
+{% if p.acceptation=="Accord Entrepot" %}selected{% endif %}>
+Accord Entrepot
+</option>
+
+<option value="Refus"
+{% if p.acceptation=="Refus" %}selected{% endif %}>
+Refus
+</option>
+
+</select>
+
+</td>
+
+<td>
+
+<input type="text"
+class="form-control"
+name="lien_{{p.id}}"
+value="{{p.lien_drive or ''}}">
+
+</td>
+
+</tr>
+
+{% endfor %}
+
+</tbody>
+
+</table>
+
+<button class="btn btn-primary">
+💾 Enregistrer
+</button>
+
+</form>
+
+</div>
+
+
+<script>
+
+// ============================
+// RECHERCHE TEMPS REEL
+// ============================
+
+const input = document.getElementById("search")
+
+const rows = document.querySelectorAll("#table tbody tr")
+
+input.addEventListener("input", function(){
+
+    const filtre = this.value.toLowerCase()
+
+    rows.forEach(row => {
+
+        const text = row.dataset.search
+
+        row.style.display =
+            text.includes(filtre) ? "" : "none"
+
+    })
+
+})
+
+</script>
+
+{% endblock %}

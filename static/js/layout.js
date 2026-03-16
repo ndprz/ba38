@@ -58,7 +58,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     initSelect2();
 
-});
+
 
 
 /* ============================
@@ -98,3 +98,14 @@ if (btn) {
 }
 
 
+document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+    new bootstrap.Tooltip(el);
+});
+
+function initTooltips() {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+        new bootstrap.Tooltip(el);
+    });
+}
+
+document.addEventListener("DOMContentLoaded", initTooltips);

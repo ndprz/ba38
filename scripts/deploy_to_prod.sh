@@ -204,6 +204,7 @@ rsync -av --delete \
   --exclude "*.sqlite" \
   --exclude "static/uploads/" \
   --exclude "static/factures/archives/" \
+  --exclude "static/evenements/" \
   --exclude "__pycache__/" \
   --exclude "venv/" \
   "$DEV_DIR/" "$PROD_DIR/"

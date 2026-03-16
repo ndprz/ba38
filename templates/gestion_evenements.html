@@ -85,6 +85,9 @@
                         evenement_id=evenement_actif.id) }}" class="btn btn-outline-dark" target="_blank">
         🖥️ Ouvrir l’affichage (nouvelle fenêtre)
       </a>
+      <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
+        ↩️ Retour à l'accueil
+      </a>
       {% else %}
       <span class="text-danger">⚠️ Aucun événement actif</span>
       {% endif %}

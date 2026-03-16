@@ -127,10 +127,10 @@ btn.disabled {
     /* Empêche les colonnes d'être masquées */
 }
 
-<style>summary {
+/* <style>summary {
     cursor: pointer;
     font-weight: bold;
-}
+} */
 
 details summary::marker {
     color: #007bff;
@@ -140,14 +140,14 @@ pre {
     white-space: pre-wrap;
 }
 
-</style><style>.fields-container {
+/* </style><style>.fields-container {
     display: block !important;
     /* Force l'affichage */
     visibility: visible !important;
     /* Force la visibilité */
     opacity: 1 !important;
     /* Assure que l'élément est opaque */
-}
+} */
 
 .fields-container table {
     width: 100%;
@@ -1278,4 +1278,24 @@ body:not(.layout-assos) .user-info {
     background-color: #fff3cd;
     padding: 0 2px;
     border-radius: 3px;
+}
+
+
+.droit-image-icon {
+    cursor: help;
+    user-select: none;
+    overflow: visible !important;
+    display: inline-block;
+}
+
+td.sticky-col-3 {
+    overflow: visible !important;
+}
+
+.nom-benevole{
+margin-right:4px;
+}
+
+.droit-image-wrapper{
+display:inline-block;
 }

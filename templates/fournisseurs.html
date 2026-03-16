@@ -14,22 +14,26 @@
   </div>
 
   <!-- Boutons -->
-  <div class="d-flex" style="gap: 10px;">
-    {% if rows %}
-    <a href="{{ url_for('fournisseurs.export_fournisseurs_excel') }}" class="btn btn-outline-primary">
-      📊 Exporter
-    </a>
-    {% endif %}
+       <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
+        ↩️ Retour à l'accueil
+        </a>
 
-    {% if not lecture_seule %}
-    <a href="{{ url_for('fournisseurs.create_fournisseur') }}" class="btn btn-success">
-      ➕ Créer
-    </a>
-    {% else %}
-    <button class="btn btn-success" disabled title="Vous n'avez pas les droits pour créer un fournisseur.">
-      ➕ Créer
-    </button>
-    {% endif %}
+    <div class="d-flex" style="gap: 10px;">
+        {% if rows %}
+        <a href="{{ url_for('fournisseurs.export_fournisseurs_excel') }}" class="btn btn-outline-primary">
+        📊 Exporter
+        </a>
+        {% endif %}
+
+        {% if not lecture_seule %}
+        <a href="{{ url_for('fournisseurs.create_fournisseur') }}" class="btn btn-success">
+        ➕ Créer
+        </a>
+        {% else %}
+        <button class="btn btn-success" disabled title="Vous n'avez pas les droits pour créer un fournisseur.">
+        ➕ Créer
+        </button>
+        {% endif %}
   </div>
 </div>
 

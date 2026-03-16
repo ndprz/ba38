@@ -52,11 +52,21 @@
         ♻️ Réinitialiser les filtres
     </button>
 
+    <a href="{{ url_for('droit_image.droit_image') }}"
+        class="btn btn-outline-dark">
+        📸 Droit à l'image
+    </a>
+
 
     <!-- 🔄 Bouton Actualiser (soumet form-options) -->
     <button type="button" class="btn btn-secondary" onclick="document.getElementById('form-options').submit();">
         🔄 Actualiser
     </button>
+    
+    <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
+        ↩️ Retour à l'accueil
+    </a>
+    
 </div>
 
 <form method="GET" id="form-options">
@@ -124,14 +134,18 @@
                 <th class="sticky-col sticky-col-3 sortable" data-sort="nom">
                     Nom <span class="arrow">▲▼</span>
                 </th>
-                {% for column in selected_columns %}
+
+                <th class="sticky-col sticky-col-4">
+                    📸
+                </th>                {% for column in selected_columns %}
                 <th>{{ column | format_label }}</th>
                 {% endfor %}
             </tr>
         </thead>
         <tbody>
             {% for item in benevoles %}
-            <tr data-search="{{ item.search_blob }}">
+                <tr data-search="{{ item.search_blob }}">
+
                 <td class="sticky-col sticky-col-1">
                     {% if item.display['id'] %}
                     <form method="GET"
@@ -148,17 +162,56 @@
                     <span class="text-muted">ID manquant</span>
                     {% endif %}
                 </td>
-                <td class="sticky-col sticky-col-2">{{ item.display['id'] }}</td>
+
+                <td class="sticky-col sticky-col-2">
+                    {{ item.display['id'] }}
+                </td>
+
                 <td class="sticky-col sticky-col-3">
+
                     {% if item.display['id'] in photo_ids %}
                     <span class="photo-hover-container"
                         data-img="{{ url_for('static', filename='photos_benevoles/' ~ item.display['id'] ~ '.jpg') }}">
-                        {% else %}
-                        <span>
-                            {% endif %}
-                            {{ item.display['nom'] }}
-                        </span>
+                    {% endif %}
+
+                    <span class="nom-benevole">
+                        {{ item.display['nom'] }}
+                    </span>
+
+                    {% if item.display['id'] in photo_ids %}
+                    </span>
+                    {% endif %}
+
                 </td>
+
+                <td class="sticky-col sticky-col-4">
+
+
+                    {% set statut = droit_image_map.get(item.display['id']) %}
+
+                    {% if statut == "Accord Total" %}
+                    <span class="droit-image-icon"
+                        data-bs-toggle="tooltip"
+                        title="Accord total droit à l'image">🟢</span>
+
+                    {% elif statut == "Accord Entrepot" %}
+                    <span class="droit-image-icon"
+                        data-bs-toggle="tooltip"
+                        title="Accord droit à l'image uniquement dans l'entrepôt">🟠</span>
+
+                    {% elif statut == "Refus" %}
+                    <span class="droit-image-icon"
+                        data-bs-toggle="tooltip"
+                        title="Refus du droit à l'image">🔴</span>
+
+                    {% else %}
+                    <span class="droit-image-icon"
+                        data-bs-toggle="tooltip"
+                        title="Droit à l'image non renseigné">⚪</span>
+                    {% endif %}
+
+                    </td>
+
                 {% for column in selected_columns %}
                 <td {% if column=='user_modif' %}class="col-user-modif" {% endif %}>
                     {% if item.display[column] %}
@@ -292,7 +345,7 @@
             obj.element.style.display = visible ? "" : "none";
 
             if (visible) {
-                const cells = obj.element.querySelectorAll("td:not(.sticky-col-1)");
+                const cells = obj.element.querySelectorAll("td:not(.sticky-col-1):not(.sticky-col-3)");
                 cells.forEach(cell => highlightText(cell, filtreInput.value));
             }
         });
@@ -566,6 +619,7 @@
 
         element.innerHTML = `${before}<span class="highlight-search">${match}</span>${after}`;
     }
+
 
 </script>
 {% endblock %}

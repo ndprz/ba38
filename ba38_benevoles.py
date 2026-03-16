@@ -213,13 +213,33 @@ def benevoles():
         ORDER BY nom COLLATE NOCASE
     """).fetchall()
 
-    conn.close()
+    # -----------------------------------------
+    # Chargement des statuts droit image
+    # -----------------------------------------
+    droit_image_map = {}
 
+    try:
+        rows_droit = cursor.execute("""
+            SELECT id, acceptation
+            FROM droit_image
+        """).fetchall()
+
+        droit_image_map = {
+            row["id"]: row["acceptation"]
+            for row in rows_droit
+        }
+
+    except Exception:
+        droit_image_map = {}
     EXCLUDED_SEARCH_FIELDS = {
         "user_modif",
         "date_modif",
         "id"
     }
+
+    conn.close()
+
+
 
     def normalize_text(text: str) -> str:
         if not text:
@@ -282,6 +302,7 @@ def benevoles():
     else:
         grouped_fields_ordered = grouped_fields
 
+
     return render_template(
         "benevoles.html",
         benevoles=rows,
@@ -291,7 +312,8 @@ def benevoles():
         user_role=user_role,
         lecture_seule=lecture_seule,
         photo_ids=photo_ids,
-        search_term=search_term  # ✅ pour préremplir le champ de recherche
+        search_term=search_term,  # ✅ pour préremplir le champ de recherche
+        droit_image_map=droit_image_map
     )
 
 
