@@ -10,6 +10,15 @@
       <input type="file" name="pdf_file" accept=".pdf" class="form-control" required>
     </div>
     <button type="submit" class="btn btn-primary">🚀 Lancer la découpe</button>
+
+    <a href="{{ url_for('tresorerie.tresorerie') }}" class="btn btn-outline-dark">
+      ↩️ Retour Trésorerie
+    </a>
+
+    <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
+      ↩️ Retour à l'accueil
+    </a>
+
   </form>
 </div>
 {% endblock %}

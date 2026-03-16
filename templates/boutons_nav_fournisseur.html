@@ -22,11 +22,16 @@
     <button type="button"
             class="btn btn-outline-secondary"
             onclick="handleReturn('{{ url_for('fournisseurs.liste_fournisseurs') }}?{{ next_url|replace('&', '&amp;') }}')">
-        🗂️ Retour
+        🗂️ Retour Fournisseurs
     </button>
+
 
     <!-- ✅ Enregistrer -->
     <button type="submit" class="btn btn-warning">
         ✅ Enregistrer les modifications
     </button>
+
+    <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
+      ↩️ Retour à l'accueil
+    </a>
 </div>

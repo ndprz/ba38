@@ -73,7 +73,7 @@ def get_pdf_by_code_vif(service, folder_id, code_vif_8):
 # ===============================
 # 🛠️ Menu utilitaires (accessible à tous les utilisateurs connectés)
 # ===============================
-@tresorerie_bp.route("/utilitaires")
+@tresorerie_bp.route("/tresorerie")
 @login_required
 def tresorerie  ():
     return render_template("tresorerie.html")

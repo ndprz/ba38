@@ -37,10 +37,7 @@ Refus
 </form>
 
 
-<a href="{{ url_for('droit_image.export_droit_image', acceptation=filtre) }}"
-class="btn btn-success">
-📊 Export Excel
-</a>
+
 
 
 <input type="text"
@@ -48,6 +45,19 @@ id="search"
 class="form-control"
 placeholder="🔎 Rechercher..."
 style="max-width:300px">
+
+<a href="{{ url_for('droit_image.export_droit_image', acceptation=filtre) }}"
+class="btn btn-success">
+📊 Export Excel
+</a>
+
+<a href="{{ url_for('benevoles.benevoles') }}" class="btn btn-outline-dark">
+↩️ Retour Bénévoles
+</a>
+
+<a href="{{ url_for('index') }}" class="btn btn-outline-dark">
+↩️ Retour à l'accueil
+</a>
 
 </div>
 
