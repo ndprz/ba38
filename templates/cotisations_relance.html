@@ -48,26 +48,24 @@
       <div class="col-md-3">
         <label class="form-label">Expéditeur du mail</label>
         <select name="mail_sender" class="form-select" required>
+
+          <option value="ba380.comptable@banquealimentaire.org"
+            {% if mail_sender == "ba380.comptable@banquealimentaire.org" %}selected{% endif %}>
+            ba380.comptable@banquealimentaire.org
+          </option>
+
           <option value="ba380@banquealimentaire.org"
-            {% if mail_sender=="ba380@banquealimentaire.org" %}selected{% endif %}>
+            {% if mail_sender == "ba380@banquealimentaire.org" %}selected{% endif %}>
             ba380@banquealimentaire.org
           </option>
 
           <option value="ba380.tresorier@banquealimentaire.org"
-            {% if mail_sender=="ba380.tresorier@banquealimentaire.org" %}selected{% endif %}>
+            {% if mail_sender == "ba380.tresorier@banquealimentaire.org" %}selected{% endif %}>
             ba380.tresorier@banquealimentaire.org
           </option>
 
-          <option value="ba380.comptable@banquealimentaire.org"
-            {% if mail_sender=="ba380.comptable@banquealimentaire.org" %}selected{% endif %}>
-            ba380.comptable@banquealimentaire.org
-          </option>
-        </select>          <option value="ba380@banquealimentaire.org">ba380@banquealimentaire.org</option>
-          <option value="ba380.tresorier@banquealimentaire.org">ba380.tresorier@banquealimentaire.org</option>
-          <option value="ba380.comptable@banquealimentaire.org">ba380.comptable@banquealimentaire.org</option>
         </select>
       </div>
-
       <div class="col-md-2">
         <button class="btn btn-warning w-100">
           🔎 Prévisualiser

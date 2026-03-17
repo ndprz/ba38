@@ -1814,6 +1814,11 @@ def cotisations_relance_start():
         "ba380.informatique2@banquealimentaire.org"
     )
 
+    mail_sender = request.args.get(
+        "mail_sender",
+        "ba380.comptable@banquealimentaire.org"
+    )
+    
     from datetime import datetime
 
     annee = request.args.get("annee")
@@ -1853,6 +1858,7 @@ def cotisations_relance_start():
         "cotisations_relance.html",
         mail_mode=mail_mode,
         mail_test_to=mail_test_to,
+        mail_sender=mail_sender,
         annee=annee,
         lignes=lignes
     )
@@ -1875,8 +1881,11 @@ def cotisations_relance():
         numero_relance = int(request.form.get("numero_relance"))
         confirm_envoi = request.form.get("confirm_envoi")
         confirm_production = request.form.get("confirm_production")
-        mail_sender = request.form.get("mail_sender")
-
+        mail_sender = request.form.get(
+            "mail_sender",
+            "ba380.comptable@banquealimentaire.org"
+        )
+        
         mail_mode = session.get(
             "MAIL_MODE",
             os.getenv("MAIL_MODE", "PROD").upper()

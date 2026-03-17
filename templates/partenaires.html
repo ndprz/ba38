@@ -278,7 +278,7 @@
 
         const hasNonValides = new URLSearchParams(window.location.search).get("voir_non_valides") === "1";
 
-        if (!hasInteracted && saved && !hasNonValides) {
+        if (!hasInteracted && saved && !hasNonValides && window.location.search === "") { 
             const options = JSON.parse(saved);
             const form = document.getElementById("form-options");
 
