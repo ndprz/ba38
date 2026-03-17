@@ -76,7 +76,7 @@ class CSRFForm(FlaskForm):
 
 partenaires_bp = Blueprint("partenaires", __name__)
 
-@partenaires_bp.route("/partenaires", methods=["GET", "POST"])
+@partenaires_bp.route("/partenaires", methods=["GET"])
 @login_required
 def partenaires():
     """
@@ -167,7 +167,7 @@ def partenaires():
     is_car = (user_role == "car") and not voir_toutes
     car_value = (current_user.username if is_car else None)
 
-    voir_non_valides = request.args.get("voir_non_valides") == "1"
+    voir_non_valides = request.values.get("voir_non_valides") == "1"
 
     # 🔎 Construction de la requête (display)
     if is_car:

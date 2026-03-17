@@ -69,7 +69,7 @@
 
 
 <!-- 🔧 Formulaire de configuration -->
-<form method="POST" action="{{ url_for('partenaires.partenaires') }}" id="form-options">
+<form method="GET" action="{{ url_for('partenaires.partenaires') }}" id="form-options">
     <fieldset>
         <legend>Options d'affichage</legend>
         <input type="hidden" name="has_interacted" value="1">
@@ -274,11 +274,11 @@
            🔐 PERSISTANCE OPTIONS
         =============================== */
         const saved = localStorage.getItem(OPTIONS_KEY_PART);
-        const isPost = "{{ request.method }}" === "POST";
+        const hasInteracted = new URLSearchParams(window.location.search).get("has_interacted") === "1";
 
         const hasNonValides = new URLSearchParams(window.location.search).get("voir_non_valides") === "1";
 
-        if (!isPost && saved && !hasNonValides) {
+        if (!hasInteracted && saved && !hasNonValides) {
             const options = JSON.parse(saved);
             const form = document.getElementById("form-options");
 
