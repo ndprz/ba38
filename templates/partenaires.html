@@ -74,6 +74,7 @@
         <legend>Options d'affichage</legend>
         <input type="hidden" name="has_interacted" value="1">
         <input type="hidden" id="selected_groups" name="selected_groups" value="{{ selected_groups|join(',') }}">
+        <input type="hidden" name="voir_non_valides" value="{{ '1' if voir_non_valides else '' }}">
 
         <!-- 📦 Liste des groupes de champs, "Coordonnées principales" en tête -->
         <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start;">
@@ -275,8 +276,9 @@
         const saved = localStorage.getItem(OPTIONS_KEY_PART);
         const isPost = "{{ request.method }}" === "POST";
 
-        if (!isPost && saved) {
+        const hasNonValides = new URLSearchParams(window.location.search).get("voir_non_valides") === "1";
 
+        if (!isPost && saved && !hasNonValides) {
             const options = JSON.parse(saved);
             const form = document.getElementById("form-options");
 

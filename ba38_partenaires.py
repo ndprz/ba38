@@ -1807,6 +1807,7 @@ def generate_pdf_annexe1bis(partner_id, groups=None, title="Annexe 1 bis : Infor
     return send_file(buffer, as_attachment=True, download_name=f"annexe1bis_{partner_id}.pdf", mimetype='application/pdf')
 
 
+
 from flask import flash
 
 @partenaires_bp.route("/test_flash")
