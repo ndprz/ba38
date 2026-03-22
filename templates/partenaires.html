@@ -277,7 +277,7 @@
         const hasInteracted = new URLSearchParams(window.location.search).get("has_interacted") === "1";
         const hasNonValides = new URLSearchParams(window.location.search).get("voir_non_valides") === "1";
 
-        const hasColumns = document.querySelectorAll("input[name='columns']").length > 0;
+        const hasColumns = document.querySelectorAll("input[name='columns']:checked").length > 0;
 
         if (!hasInteracted && saved && !hasNonValides && !hasColumns) {
 
@@ -303,6 +303,8 @@
             form.submit();
             return;
         }
+
+
         /* ===============================
            🔘 Recalcul états groupes
         =============================== */
