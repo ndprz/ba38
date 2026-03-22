@@ -1,0 +1,14 @@
+<form method="post">
+  <div class="mb-3">
+    <label>Sujet</label>
+    <input type="text" name="sujet" class="form-control"
+           value="{{ modele.sujet }}">
+  </div>
+
+  <div class="mb-3">
+    <label>Corps du mail</label>
+    <textarea name="corps" rows="12" class="form-control">{{ modele.corps }}</textarea>
+  </div>
+
+  <button class="btn btn-primary">Enregistrer</button>
+</form>

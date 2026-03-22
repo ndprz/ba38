@@ -1832,6 +1832,8 @@ def cotisations_relance_start():
 
     lignes = None
 
+    numero_relance = 0
+
     if annee:
         conn = sqlite3.connect(get_db_path())
         conn.row_factory = sqlite3.Row
@@ -1854,21 +1856,29 @@ def cotisations_relance_start():
         lignes = cursor.fetchall()
         conn.close()
 
+
+
     return render_template(
         "cotisations_relance.html",
         mail_mode=mail_mode,
         mail_test_to=mail_test_to,
         mail_sender=mail_sender,
+        numero_relance=numero_relance,
         annee=annee,
-        lignes=lignes
+        lignes=lignes,
+        preview=False   # ✅ AJOUT
     )
-
-
 
 @tresorerie_bp.route("/cotisations/relance", methods=["POST"])
 @login_required
 def cotisations_relance():
-    # write_log("🔍🔍 Début de cotisations_relance")
+    """
+    Relance des cotisations.
+
+    - Utilise le modèle 'relance_cotisation' dans modeles_emails
+    - Injecte dynamiquement les variables via .format()
+    - Ne modifie pas le système d’envoi existant
+    """
 
     from datetime import datetime
 
@@ -1881,11 +1891,12 @@ def cotisations_relance():
         numero_relance = int(request.form.get("numero_relance"))
         confirm_envoi = request.form.get("confirm_envoi")
         confirm_production = request.form.get("confirm_production")
+
         mail_sender = request.form.get(
             "mail_sender",
             "ba380.comptable@banquealimentaire.org"
         )
-        
+
         mail_mode = session.get(
             "MAIL_MODE",
             os.getenv("MAIL_MODE", "PROD").upper()
@@ -1906,6 +1917,29 @@ def cotisations_relance():
         cursor = conn.cursor()
 
         # ======================================================
+        # Chargement modèle email
+        # ======================================================
+        code_modele = f"relance_cotisation_{numero_relance + 1}"
+
+        cursor.execute("""
+            SELECT sujet, corps
+            FROM modeles_emails
+            WHERE code_modele = ?
+            LIMIT 1
+        """, (code_modele,))
+        modele = cursor.fetchone()
+
+        if not modele:
+            conn.close()
+            flash(f"❌ Modèle '{code_modele}' introuvable.", "danger")
+            return redirect(
+                url_for("tresorerie.cotisations_relance_start", annee=annee)
+            )
+
+        sujet_modele = modele["sujet"]
+        corps_modele = modele["corps"]
+
+        # ======================================================
         # Lecture cotisations
         # ======================================================
         cursor.execute("""
@@ -1916,7 +1950,8 @@ def cotisations_relance():
                 c.montant,
                 c.relance_niveau,
                 a.nom_association,
-                a.courriel_association
+                a.courriel_association,
+                a.courriel_resp_tresorerie
             FROM cotisations c
             JOIN associations a
                 ON a.Id = c.id_association
@@ -1928,24 +1963,21 @@ def cotisations_relance():
 
         lignes = cursor.fetchall()
 
-        # ======================================================
-        # Filtrage relances
-        # ======================================================
         cotisations_a_relancer = [
             l for l in lignes
             if (l["relance_niveau"] or 0) == numero_relance
         ]
 
-        total_relances = sum(float(l["montant"] or 0)
-                             for l in cotisations_a_relancer)
+        total_relances = sum(
+            float(l["montant"] or 0)
+            for l in cotisations_a_relancer
+        )
 
         # ======================================================
         # Aucun résultat
         # ======================================================
         if not cotisations_a_relancer:
-
             conn.close()
-
             return render_template(
                 "cotisations_relance.html",
                 mail_mode=mail_mode,
@@ -1961,9 +1993,7 @@ def cotisations_relance():
         # PREVIEW
         # ======================================================
         if not confirm_envoi:
-
             conn.close()
-
             return render_template(
                 "cotisations_relance.html",
                 mail_mode=mail_mode,
@@ -1975,15 +2005,13 @@ def cotisations_relance():
                 total_relances=total_relances,
                 mail_sender=mail_sender
             )
+
         # ======================================================
         # Sécurité production
         # ======================================================
         if mail_mode == "PROD" and not confirm_production:
-
             conn.close()
-
             flash("⚠ Confirmation obligatoire en PRODUCTION.", "danger")
-
             return redirect(
                 url_for("tresorerie.cotisations_relance_start",
                         annee=annee)
@@ -1995,11 +2023,8 @@ def cotisations_relance():
         client, drive_service, creds = get_google_services()
 
         if not drive_service:
-
             conn.close()
-
             flash("❌ Impossible de se connecter à Google Drive.", "danger")
-
             return redirect(
                 url_for("tresorerie.cotisations_relance_start",
                         annee=annee)
@@ -2007,80 +2032,82 @@ def cotisations_relance():
 
         service = drive_service
 
-        write_log(f"MAIL SENDER = {mail_sender}")
-
-        # ======================================================
-        # Envoi des mails
-        # ======================================================
         nb_mails = 0
         nb_pdf_introuvables = 0
 
+        # ======================================================
+        # Détermination lignes à traiter
+        # ======================================================
         if mail_mode == "TEST":
             mode_test_flag = 1
-            # En mode TEST, envoyer un seul email avec la première association à relancer
-            if cotisations_a_relancer:
-                ligne = cotisations_a_relancer[0]  # Prendre la première ligne comme exemple
-                code_vif_8 = str(ligne["code_vif"]).zfill(8)
-                file_id, nom_pdf = get_pdf_by_code_vif(service, FOLDER_ID_FACTURES, code_vif_8)
-
-                if file_id:
-                    lien_drive = f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
-                    sujet = f"Relance {numero_relance + 1} – Cotisation {annee} – {ligne['nom_association']}"
-                    texte_mail = f"""
-                    <p>Madame, Monsieur,</p>
-                    <p>Nous vous remercions d'avance pour un règlement rapide de la cotisation {annee} de votre association ou CCAS à la Banque Alimentaire de l'Isère.</p>
-                    <p> A noter que pour les CCAS, la facture est déjà à disposition sur la plateforme CHORUS PRO.</p>
-
-                    <p>Ci-dessous le lien pour télécharger votre facture :</p>
-                    <p><a href="{lien_drive}" style="color: #0066cc; text-decoration: none; font-weight: bold;">➡ Consulter la facture en ligne</a></p>
-
-                    <p>Cordialement,<br>Christian Graff<br>Trésorerie Banque Alimentaire de l'Isère</p>
-                    """
-
-                    envoyer_mail(
-                        sujet=sujet,
-                        destinataires=[mail_test_to],
-                        texte=texte_mail,
-                        sender_override=mail_sender,
-                        is_html=True,
-                        bcc=[mail_sender]
-                    )                    
-                    
-                    nb_mails = 1  # Un seul email envoyé en mode TEST
+            lignes_traitement = [cotisations_a_relancer[0]]
         else:
             mode_test_flag = 0
-            # En mode PROD, envoyer un email pour chaque relance
-            for ligne in cotisations_a_relancer:
-                code_vif_8 = str(ligne["code_vif"]).zfill(8)
-                file_id, nom_pdf = get_pdf_by_code_vif(service, FOLDER_ID_FACTURES, code_vif_8)
+            lignes_traitement = cotisations_a_relancer
 
-                if not file_id:
-                    nb_pdf_introuvables += 1
-                    continue
+        # ======================================================
+        # Envoi
+        # ======================================================
+        for ligne in lignes_traitement:
 
-                lien_drive = f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
-                sujet = f"Relance {numero_relance + 1} – Cotisation {annee} – {ligne['nom_association']}"
-                texte_mail = f"""
-                <p>Madame, Monsieur,</p>
-                <p>Nous vous remercions d'avance pour un règlement rapide de la cotisation {annee} de votre association ou CCAS à la Banque Alimentaire de l'Isère.</p>
-                <p> A noter que pour les CCAS, la facture est déjà à disposition sur la plateforme CHORUS PRO.</p>
+            code_vif_8 = str(ligne["code_vif"]).zfill(8)
 
-                <p>Ci-dessous le lien pour télécharger votre facture :</p>
-                <p><a href="{lien_drive}" style="color: #0066cc; text-decoration: none; font-weight: bold;">➡ Consulter la facture en ligne</a></p>
+            file_id, nom_pdf = get_pdf_by_code_vif(
+                service,
+                FOLDER_ID_FACTURES,
+                code_vif_8
+            )
 
-                <p>Cordialement,<br>Christian Graff<br>Trésorerie Banque Alimentaire de l'Isère</p>
-                """
+            if not file_id:
+                nb_pdf_introuvables += 1
+                continue
 
-                envoyer_mail(
-                    sujet=sujet,
-                    destinataires=[ligne["courriel_association"]],
-                    texte=texte_mail,
-                    sender_override=mail_sender,
-                    is_html=True,
-                    bcc=[mail_sender]
-                )
+            lien_drive = f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
 
-                # Mettre à jour la base de données pour chaque ligne
+            # ==================================================
+            # Construction dynamique
+            # ==================================================
+            sujet = sujet_modele.format(
+                numero_relance=numero_relance + 1,
+                annee=annee
+            )
+
+            texte_mail = corps_modele.format(
+                numero_relance=numero_relance + 1,
+                annee=annee,
+                nom_association=ligne["nom_association"],
+                lien_drive=lien_drive,
+                montant="{:.2f}".format(ligne["montant"] or 0)
+            )
+
+            # ==============================
+            # Détermination destinataire
+            # ==============================
+            email = (
+                ligne["courriel_resp_tresorerie"]
+                or ligne["courriel_association"]
+            )
+
+            if not email:
+                write_log(f"❌ Aucun email pour {ligne['nom_association']}")
+                continue
+
+            destinataire = (
+                [mail_test_to]
+                if mail_mode == "TEST"
+                else [email]
+            )
+
+            envoyer_mail(
+                sujet=sujet,
+                destinataires=destinataire,
+                texte=texte_mail,
+                sender_override=mail_sender,
+                is_html=True,
+                bcc=[mail_sender]
+            )
+
+            if mail_mode != "TEST":
                 cursor.execute("""
                     UPDATE cotisations
                     SET relance_niveau = COALESCE(relance_niveau,0)+1,
@@ -2092,14 +2119,12 @@ def cotisations_relance():
                     mode_test_flag,
                     ligne["id"]
                 ))
-                nb_mails += 1
+
+            nb_mails += 1
 
         conn.commit()
         conn.close()
 
-        # ======================================================
-        # Résumé
-        # ======================================================
         if nb_pdf_introuvables:
             flash(
                 f"⚠ {nb_pdf_introuvables} PDF introuvables sur Drive.",
@@ -2114,16 +2139,45 @@ def cotisations_relance():
         )
 
     except Exception:
-
         current_app.logger.exception("Erreur relance cotisations")
-
         flash("Erreur lors des relances.", "danger")
-
         return redirect(
-            url_for("tresorerie.cotisations_relance_start", annee=annee)
+            url_for("tresorerie.cotisations_relance_start",
+                    annee=annee)
         )
 
 
+@tresorerie_bp.route("/parametres/modele-relance", methods=["GET", "POST"])
+@login_required
+def modele_relance():
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    if request.method == "POST":
+        sujet = request.form.get("sujet")
+        corps = request.form.get("corps")
+
+        cursor.execute("""
+            UPDATE modeles_emails
+            SET sujet = ?, corps = ?, date_modification = ?
+            WHERE code_modele = 'relance_cotisation'
+        """, (sujet, corps, datetime.now().isoformat()))
+        conn.commit()
+        flash("Modèle mis à jour.", "success")
+
+    cursor.execute("""
+        SELECT sujet, corps
+        FROM modeles_emails
+        WHERE code_modele = 'relance_cotisation'
+    """)
+    modele = cursor.fetchone()
+    conn.close()
+
+    return render_template(
+        "modele_relance.html",
+        modele=modele
+    )
 
 @tresorerie_bp.route("/cotisations/saisie-paiements", methods=["GET", "POST"])
 @login_required
@@ -2344,5 +2398,68 @@ def cotisations_relance_reset():
     )
 
 
+@tresorerie_bp.route("/cotisations/modele/<code_modele>", methods=["GET", "POST"])
+@login_required
+def edit_modele_email(code_modele):
+    """
+    Edition d'un modèle email stocké dans modeles_emails.
+    """
 
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    # ===========================
+    # POST → Enregistrement
+    # ===========================
+    if request.method == "POST":
+
+        sujet = request.form.get("sujet", "").strip()
+        corps = request.form.get("corps", "").strip()
+
+        cursor.execute("""
+            UPDATE modeles_emails
+            SET sujet = ?,
+                corps = ?,
+                date_modification = ?
+            WHERE code_modele = ?
+        """, (
+            sujet,
+            corps,
+            datetime.now().isoformat(),
+            code_modele
+        ))
+
+        conn.commit()
+        conn.close()
+
+        flash("✅ Modèle mis à jour.", "success")
+
+        return redirect(
+            url_for("tresorerie.edit_modele_email",
+                    code_modele=code_modele)
+        )
+
+    # ===========================
+    # GET → Affichage
+    # ===========================
+    cursor.execute("""
+        SELECT *
+        FROM modeles_emails
+        WHERE code_modele = ?
+        LIMIT 1
+    """, (code_modele,))
+
+    modele = cursor.fetchone()
+
+    conn.close()
+
+    if not modele:
+        flash("❌ Modèle introuvable.", "danger")
+        return redirect(url_for("tresorerie.tresorerie"))
+
+    return render_template(
+        "edit_modele_email.html",
+        modele=modele
+    )
 

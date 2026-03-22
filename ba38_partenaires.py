@@ -76,7 +76,7 @@ class CSRFForm(FlaskForm):
 
 partenaires_bp = Blueprint("partenaires", __name__)
 
-@partenaires_bp.route("/partenaires", methods=["GET"])
+@partenaires_bp.route("/partenaires", methods=["GET","POST"])
 @login_required
 def partenaires():
     """

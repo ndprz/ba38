@@ -61,15 +61,15 @@
     <button class="btn btn-secondary" onclick="document.getElementById('form-options').submit();">
         🔄 Actualiser
     </button>
-        <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
-            ↩️ Retour à l'accueil
-        </a>
+    <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
+        ↩️ Retour à l'accueil
+    </a>
 
 </div>
 
 
 <!-- 🔧 Formulaire de configuration -->
-<form method="GET" action="{{ url_for('partenaires.partenaires') }}" id="form-options">
+<form method="post" action="{{ url_for('partenaires.partenaires') }}" id="form-options">
     <fieldset>
         <legend>Options d'affichage</legend>
         <input type="hidden" name="has_interacted" value="1">
@@ -275,10 +275,12 @@
         =============================== */
         const saved = localStorage.getItem(OPTIONS_KEY_PART);
         const hasInteracted = new URLSearchParams(window.location.search).get("has_interacted") === "1";
-
         const hasNonValides = new URLSearchParams(window.location.search).get("voir_non_valides") === "1";
 
-        if (!hasInteracted && saved && !hasNonValides && window.location.search === "") { 
+        const hasColumns = document.querySelectorAll("input[name='columns']").length > 0;
+
+        if (!hasInteracted && saved && !hasNonValides && !hasColumns) {
+
             const options = JSON.parse(saved);
             const form = document.getElementById("form-options");
 
@@ -299,9 +301,8 @@
             });
 
             form.submit();
-            return; // stop ici
+            return;
         }
-
         /* ===============================
            🔘 Recalcul états groupes
         =============================== */
