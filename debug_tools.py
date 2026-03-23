@@ -855,6 +855,10 @@ def get_available_logs():
         "app.log": get_log_path("app.log"),
         "connexions.log": get_log_path("connexions.log"),
         "deploy.log": get_log_path("deploy.log"),
+
+        # 👉 AJOUT ICI
+        "import_stocks.log": os.path.join("/srv/ba38/logs", "import_stocks.log"),
+
         "cron (journalctl)": "journalctl",
     }
 
@@ -864,10 +868,10 @@ def get_available_logs():
     logs.update({
         "cron_backup_db.log (PROD)": os.path.join(prod_logs_dir, "cron_backup_db.log"),
         "cron_publipostage.log (PROD)": os.path.join(prod_logs_dir, "cron_publipostage.log"),
+        "cron_import_stocks.log (PROD)": os.path.join(prod_logs_dir, "cron_import_stocks.log"),
     })
 
     return logs
-
 
 
 # ============================================================================
