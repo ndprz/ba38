@@ -186,12 +186,6 @@
                         action="{{ url_for('partenaires.update_partner', partner_id=row.display['id']) }}"
                         style="display:inline;">
                         <input type="hidden" name="has_interacted" value="1">
-                        {% for col in selected_columns %}
-                        <input type="hidden" name="columns" value="{{ col }}">
-                        {% endfor %}
-                        {% for grp in selected_groups %}
-                        <input type="hidden" name="selected_groups" value="{{ grp }}">
-                        {% endfor %}
                         <button type="submit" class="btn btn-primary btn-sm">Modifier</button>
                     </form>
                 </td>
@@ -261,6 +255,7 @@
         }));
         updateVisibleColumns();
     }
+
 
 
     function prepareColumnsForSubmit(event) {

@@ -605,7 +605,7 @@ def update_partner(partner_id):
         if go_to:
             return redirect(go_to)
         else:
-            return redirect(url_for("partenaires.update_partner", partner_id=partner_id, **request.args))
+            return redirect(url_for("partenaires.update_partner", partner_id=partner_id))
 
     # 🧮 Calcul du form_hash initial (GET)
     inputs_for_hash = [
