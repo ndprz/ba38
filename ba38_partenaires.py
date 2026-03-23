@@ -76,103 +76,74 @@ class CSRFForm(FlaskForm):
 
 partenaires_bp = Blueprint("partenaires", __name__)
 
-@partenaires_bp.route("/partenaires", methods=["GET","POST"])
+@partenaires_bp.route("/partenaires", methods=["GET", "POST"])
 @login_required
 def partenaires():
-    """
-    Liste des partenaires (associations) avec colonnes dynamiques basées sur `field_groups`.
 
-    Points clés :
-    - Vérifie les droits : lecture obligatoire, l'écriture pilote `lecture_seule`.
-    - Charge la configuration d’affichage dans `field_groups` (appli='associations'), triée par `display_order`.
-    - Filtre les champs dont `display_order` est vide / nul / 0.
-    - Regroupe par `group_name` pour l’UI (sélecteur de groupes/colonnes).
-    - Gère la sélection de colonnes par l’utilisateur (GET ?columns=...).
-      * Première visite (pas d’interaction) : pré-sélection « coordonnées ».
-      * Déduplique et exclut toujours `id` et `nom_association` (gérés à part).
-      * Compat CSV pour les champs cachés (si une seule valeur contient des virgules).
-    - Force l’alias SQL **Id → id** afin d’utiliser `row['id']` partout côté templates.
-    - Filtre selon rôle CAR :
-      * rôle = 'car' (sauf si "voir_toutes=1") : WHERE car = <username> (case-insensitive)
-      * filtre validité via ?voir_non_valides=1 (sinon on masque les invalides)
-    - Trie par nom_association (COLLATE NOCASE).
-    """
-
-    selected_columns = request.values.getlist("columns")
-    selected_groups = request.values.getlist("selected_groups")
-    has_interacted = request.values.get("has_interacted") == "1"
-
-    selected_groups = selected_groups or []
-    selected_columns = selected_columns or []
-
+    # ======================================================
     # 🔐 Accès
+    # ======================================================
     if not has_access("associations", "lecture"):
         flash("⛔ Accès refusé à la gestion des associations", "danger")
         return redirect(url_for("index"))
 
     lecture_seule = not has_access("associations", "ecriture")
 
+    # ======================================================
     # 🔌 DB
+    # ======================================================
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    # 🧩 Champs configurés pour les associations
+    # ======================================================
+    # 🧩 Champs configurés
+    # ======================================================
     fields_data = cursor.execute("""
-        SELECT * FROM field_groups
+        SELECT *
+        FROM field_groups
         WHERE appli = 'associations'
         ORDER BY display_order
     """).fetchall()
 
-    # ❎ Ne garder que les champs avec display_order > 0
+    # filtrer display_order > 0
     def _ok_display_order(row):
         try:
             return row["display_order"] and int(row["display_order"]) > 0
-        except Exception:
+        except:
             return False
 
     fields_data = [f for f in fields_data if _ok_display_order(f)]
 
-    # 🗃️ Regrouper par famille (pour l’UI)
+    # ======================================================
+    # 🗂️ Groupes (UI)
+    # ======================================================
     grouped_fields = {}
     for row in fields_data:
         group = row["group_name"] or "Autres"
         grouped_fields.setdefault(group, []).append(row)
 
-    has_interacted = request.values.get("has_interacted") == "1"
+    # 👉 IMPORTANT : toutes les colonnes sont envoyées
+    selected_columns = [row["field_name"] for row in fields_data]
+    selected_groups = list(grouped_fields.keys())
 
-    # 🧩 Compat : parfois les colonnes arrivent en CSV dans un seul champ caché
-    if len(selected_columns) == 1 and ',' in selected_columns[0]:
-        selected_columns = [c.strip() for c in selected_columns[0].split(',') if c.strip()]
-
-    # 🧠 Par défaut (première visite) : groupes « coordonnées »
-    # Aucun forçage côté serveur
-    selected_groups = selected_groups or []
-    selected_columns = selected_columns or []
-
-    # ↔️ Groupes « cochés » (pour l’UI)
-    selected_groups = []
-    for group_name, fields in grouped_fields.items():
-        if any(field["field_name"] in selected_columns for field in fields):
-            selected_groups.append(group_name)
-
-    # 🧱 Protection SQL + alias sur la clé primaire
-    # On force "Id AS id" pour homogénéiser l’accès dans les templates (row['id'])
-    escaped_columns = [f"`{col}`" for col in selected_columns]
-    columns_clause = ", ".join(["Id AS id", "`nom_association`"] + escaped_columns)
-
-    # 👤 Rôle / filtres
+    # ======================================================
+    # 👤 Gestion rôle CAR
+    # ======================================================
     user_role = current_user.role.lower()
     voir_toutes = request.values.get("voir_toutes") == "1"
+
     is_car = (user_role == "car") and not voir_toutes
-    car_value = (current_user.username if is_car else None)
+    car_value = current_user.username if is_car else None
 
     voir_non_valides = request.values.get("voir_non_valides") == "1"
 
-    # 🔎 Construction de la requête (display)
+    # ======================================================
+    # 🔎 Requête principale (TOUT)
+    # ======================================================
     if is_car:
-        query = f"""
-            SELECT {columns_clause}
+        query = """
+            SELECT *
             FROM associations
             WHERE LOWER(car) = LOWER(?)
         """
@@ -185,27 +156,11 @@ def partenaires():
 
         query += " ORDER BY nom_association COLLATE NOCASE"
 
-        rows_display = cursor.execute(query, params).fetchall()
-
-        # ⚠️ même filtre pour rows_full
-        query_full = """
-            SELECT * FROM associations
-            WHERE LOWER(car) = LOWER(?)
-        """
-        params_full = [car_value]
-
-        if voir_non_valides:
-            query_full += " AND LOWER(validite) = 'non'"
-        else:
-            query_full += " AND (validite IS NULL OR LOWER(validite) != 'non')"
-
-        query_full += " ORDER BY nom_association COLLATE NOCASE"
-
-        rows_full = cursor.execute(query_full, params_full).fetchall()
+        rows_full = cursor.execute(query, params).fetchall()
 
     else:
-        query = f"""
-            SELECT {columns_clause}
+        query = """
+            SELECT *
             FROM associations
         """
 
@@ -216,42 +171,33 @@ def partenaires():
 
         query += " ORDER BY nom_association COLLATE NOCASE"
 
-        rows_display = cursor.execute(query).fetchall()
+        rows_full = cursor.execute(query).fetchall()
 
-        query_full = """
-            SELECT * FROM associations
-        """
-
-        if voir_non_valides:
-            query_full += " WHERE LOWER(validite) = 'non'"
-        else:
-            query_full += " WHERE validite IS NULL OR LOWER(validite) != 'non'"
-
-        query_full += " ORDER BY nom_association COLLATE NOCASE"
-
-        rows_full = cursor.execute(query_full).fetchall()
-
-
-    # 🔎 Construction des blobs de recherche
+    # ======================================================
+    # 🔎 Construction affichage + search_blob
+    # ======================================================
     rows = []
 
-    for row_disp, row_full in zip(rows_display, rows_full):
+    for row in rows_full:
 
         excluded = ["user_modif"]
 
         search_blob = " ".join(
-            str(row_full[k] or "")
-            for k in row_full.keys()
+            str(row[k] or "")
+            for k in row.keys()
             if k not in excluded
         )
 
         rows.append({
-            "display": row_disp,
+            "display": row,
             "search_blob": search_blob
         })
+
     conn.close()
 
+    # ======================================================
     # 🎨 Rendu
+    # ======================================================
     return render_template(
         "partenaires.html",
         rows=rows,
@@ -261,10 +207,8 @@ def partenaires():
         voir_toutes=voir_toutes,
         user_role=user_role,
         lecture_seule=lecture_seule,
-        voir_non_valides=voir_non_valides  # transmis au template
+        voir_non_valides=voir_non_valides
     )
-
-
 
 @partenaires_bp.route("/create_partner", methods=["GET", "POST"])
 @login_required
@@ -758,7 +702,7 @@ def edition_tableau_associations():
     # ✅ Détection des champs de type oui/non
     oui_non_fields = [row["field_name"] for row in fields_data if row["type_champ"] == "oui_non"]
 
-    selected_columns = request.args.getlist("columns")
+    selected_columns = request.values.getlist("columns")
     voir_toutes = request.args.get("voir_toutes") == "1"
     user_role = current_user.role.lower()
     is_car = user_role == "car" and not voir_toutes

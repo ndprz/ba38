@@ -4,7 +4,6 @@
 
 {% block content %}
 
-
 <h2>Liste des Bénévoles</h2>
 
 <div class="mb-3" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
@@ -26,18 +25,20 @@
     {% endif %}
 
     {% if not lecture_seule %}
-    <form method="GET" action="{{ url_for('benevoles.edition_tableau_benevoles') }}" style="display:inline;">
-        {% for col in selected_columns %}
-        <input type="hidden" name="columns" value="{{ col }}">
-        {% endfor %}
-        {% for grp in selected_groups %}
-        <input type="hidden" name="selected_groups" value="{{ grp }}">
-        {% endfor %}
+    <form method="GET" action="{{ url_for('benevoles.edition_tableau_benevoles') }}" style="display:inline;"
+        onsubmit="syncHiddenColumnsBeforeSubmit(this)">
+
+        <!-- flag interaction -->
         <input type="hidden" name="has_interacted" value="1">
-        <button type="submit" class="btn btn-warning">📝 Mise à jour en tableau</button>
+
+        <button type="submit" class="btn btn-warning">
+            📝 Mise à jour en tableau
+        </button>
     </form>
     {% else %}
-    <button class="btn btn-warning" disabled>📝 Mise à jour en tableau</button>
+    <button class="btn btn-warning" disabled>
+        📝 Mise à jour en tableau
+    </button>
     {% endif %}
 
     <a href="{{ url_for('benevoles.benevoles_archives') }}" class="btn btn-outline-secondary">
@@ -52,21 +53,20 @@
         ♻️ Réinitialiser les filtres
     </button>
 
-    <a href="{{ url_for('droit_image.droit_image') }}"
-        class="btn btn-outline-dark">
+    <a href="{{ url_for('droit_image.droit_image') }}" class="btn btn-outline-dark">
         📸 Droit à l'image
     </a>
 
 
-    <!-- 🔄 Bouton Actualiser (soumet form-options) -->
+    <!-- 🔄 Bouton Actualiser (soumet form-options)
     <button type="button" class="btn btn-secondary" onclick="document.getElementById('form-options').submit();">
         🔄 Actualiser
-    </button>
-    
+    </button> -->
+
     <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
         ↩️ Retour à l'accueil
     </a>
-    
+
 </div>
 
 <form method="GET" id="form-options">
@@ -86,9 +86,9 @@
 
                     <label style="margin: 0;">
                         <input type="checkbox" class="toggle-master-checkbox" id="toggle-{{ safe_group_name }}"
-                            name="selected_groups" value="{{ group_name }}"
+                            name="selected_groups" value="{{ safe_group_name }}"
                             onclick="toggleAll('{{ safe_group_name }}', this.checked); saveDisplayOptions();" {% if
-                            group_name in selected_groups %}checked{% endif %}>
+                            safe_group_name in selected_groups %}checked{% endif %}>
                         Tout sélectionner
                     </label>
                 </div>
@@ -98,7 +98,9 @@
                     <label>
                         <input type="checkbox" class="field-{{ safe_group_name }} green-checkbox" name="columns"
                             value="{{ field.field_name }}" {% if field.field_name in selected_columns %}checked{% endif
-                            %} onchange="updateGroupCheckboxState('{{ safe_group_name }}'); saveDisplayOptions();">
+                            %}
+                            onchange="updateGroupCheckboxState('{{ safe_group_name }}'); saveDisplayOptions(); updateVisibleColumnsBene();">
+
                         {{ field.field_name | format_label }}
                     </label><br>
                     {% endif %}
@@ -128,23 +130,31 @@
         <thead>
             <tr>
                 <th class="sticky-col sticky-col-1">Action</th>
+
                 <th class="sticky-col sticky-col-2 sortable" data-sort="id">
                     ID <span class="arrow">▲▼</span>
                 </th>
+
                 <th class="sticky-col sticky-col-3 sortable" data-sort="nom">
                     Nom <span class="arrow">▲▼</span>
                 </th>
 
-                <th class="sticky-col sticky-col-4">
-                    📸
-                </th>                {% for column in selected_columns %}
-                <th>{{ column | format_label }}</th>
+                <th class="sticky-col sticky-col-4">📸</th>
+
+                {% for group_name, fields in grouped_fields.items() %}
+                {% for field in fields %}
+                {% if field.field_name not in ['id', 'nom'] %}
+                <th data-col="{{ field.field_name }}">
+                    {{ field.field_name | format_label }}
+                </th>
+                {% endif %}
+                {% endfor %}
                 {% endfor %}
             </tr>
         </thead>
         <tbody>
             {% for item in benevoles %}
-                <tr data-search="{{ item.search_blob }}">
+            <tr data-search="{{ item.search_blob }}">
 
                 <td class="sticky-col sticky-col-1">
                     {% if item.display['id'] %}
@@ -172,13 +182,13 @@
                     {% if item.display['id'] in photo_ids %}
                     <span class="photo-hover-container"
                         data-img="{{ url_for('static', filename='photos_benevoles/' ~ item.display['id'] ~ '.jpg') }}">
-                    {% endif %}
+                        {% endif %}
 
-                    <span class="nom-benevole">
-                        {{ item.display['nom'] }}
-                    </span>
+                        <span class="nom-benevole">
+                            {{ item.display['nom'] }}
+                        </span>
 
-                    {% if item.display['id'] in photo_ids %}
+                        {% if item.display['id'] in photo_ids %}
                     </span>
                     {% endif %}
 
@@ -190,40 +200,40 @@
                     {% set statut = droit_image_map.get(item.display['id']) %}
 
                     {% if statut == "Accord Total" %}
-                    <span class="droit-image-icon"
-                        data-bs-toggle="tooltip"
+                    <span class="droit-image-icon" data-bs-toggle="tooltip"
                         title="Accord total droit à l'image">🟢</span>
 
                     {% elif statut == "Accord Entrepot" %}
-                    <span class="droit-image-icon"
-                        data-bs-toggle="tooltip"
+                    <span class="droit-image-icon" data-bs-toggle="tooltip"
                         title="Accord droit à l'image uniquement dans l'entrepôt">🟠</span>
 
                     {% elif statut == "Refus" %}
-                    <span class="droit-image-icon"
-                        data-bs-toggle="tooltip"
-                        title="Refus du droit à l'image">🔴</span>
+                    <span class="droit-image-icon" data-bs-toggle="tooltip" title="Refus du droit à l'image">🔴</span>
 
                     {% else %}
-                    <span class="droit-image-icon"
-                        data-bs-toggle="tooltip"
+                    <span class="droit-image-icon" data-bs-toggle="tooltip"
                         title="Droit à l'image non renseigné">⚪</span>
                     {% endif %}
 
-                    </td>
+                </td>
 
-                {% for column in selected_columns %}
-                <td {% if column=='user_modif' %}class="col-user-modif" {% endif %}>
-                    {% if item.display[column] %}
-                    {% if column.lower().startswith('tel') or 'téléphone' in column.lower() %}
-                    {{ item.display[column] | format_tel }}
+                {% for group_name, fields in grouped_fields.items() %}
+                {% for field in fields %}
+                {% set col = field.field_name %}
+                {% if col not in ['id', 'nom'] %}
+                <td data-col="{{ col }}">
+                    {% if item.display[col] %}
+                    {% if col.lower().startswith('tel') or 'téléphone' in col.lower() %}
+                    {{ item.display[col] | format_tel }}
                     {% else %}
-                    {{ item.display[column] }}
+                    {{ item.display[col] }}
                     {% endif %}
                     {% else %}
                     -
                     {% endif %}
                 </td>
+                {% endif %}
+                {% endfor %}
                 {% endfor %}
             </tr>
             {% endfor %}
@@ -252,6 +262,8 @@
             columns: selectedColumns,
             groups: selectedGroups
         }));
+
+        updateVisibleColumnsBene(); // 🔥 AJOUT
     }
 
 
@@ -274,6 +286,8 @@
         }
 
         updateGroupCheckboxState(group);
+
+        updateVisibleColumnsBene(); // 🔥 FIX
     }
 
     function updateGroupCheckboxState(group) {
@@ -456,6 +470,7 @@
     }
 
     function initPage() {
+        updateVisibleColumnsBene();
         initSort();
         initFilter();
         initDisplayOptions();
@@ -527,6 +542,8 @@
     // ==========================================================
 
     function initDisplayOptions() {
+
+        updateVisibleColumnsBene();
 
         const saved = localStorage.getItem(OPTIONS_KEY);
         if (!saved) return;
@@ -618,6 +635,61 @@
         const after = original.slice(index + searchTerm.length);
 
         element.innerHTML = `${before}<span class="highlight-search">${match}</span>${after}`;
+    }
+
+    function updateVisibleColumnsBene() {
+
+        const selectedSet = new Set(
+            Array.from(document.querySelectorAll("input[name='columns']:checked"))
+                .map(cb => cb.value)
+        );
+
+        document.querySelectorAll("#benevole-table th[data-col]").forEach(th => {
+            th.style.display = selectedSet.has(th.dataset.col) ? "" : "none";
+        });
+
+        document.querySelectorAll("#benevole-table td[data-col]").forEach(td => {
+            td.style.display = selectedSet.has(td.dataset.col) ? "" : "none";
+        });
+    }
+
+    // ============================================
+    // 🔥 SYNCHRO AVANT ENVOI (clé du problème)
+    // ============================================
+    function syncHiddenColumnsBeforeSubmit() {
+
+        const form = document.querySelector("form[action*='edition_tableau_benevoles']");
+        if (!form) return;
+
+        // supprimer anciens inputs
+        form.querySelectorAll("input[name='columns']").forEach(el => el.remove());
+        form.querySelectorAll("input[name='selected_groups']").forEach(el => el.remove());
+
+        // récupérer état actuel UI
+        const selectedColumns = Array.from(
+            document.querySelectorAll("input[name='columns']:checked")
+        ).map(cb => cb.value);
+
+        const selectedGroups = Array.from(
+            document.querySelectorAll("input[name='selected_groups']:checked")
+        ).map(cb => cb.value);
+
+        // recréer inputs propres
+        selectedColumns.forEach(col => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "columns";
+            input.value = col;
+            form.appendChild(input);
+        });
+
+        selectedGroups.forEach(grp => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "selected_groups";
+            input.value = grp;
+            form.appendChild(input);
+        });
     }
 
 

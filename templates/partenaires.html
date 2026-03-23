@@ -30,14 +30,13 @@
     <!-- 📝 Mise à jour en tableau -->
     {% if not lecture_seule %}
     <form method="POST" action="{{ url_for('partenaires.edition_tableau_associations') }}" style="display: inline;">
-        {% for col in selected_columns %}
-        <input type="hidden" name="columns" value="{{ col }}">
-        {% endfor %}
         <input type="hidden" name="has_interacted" value="1">
         {% if voir_toutes %}
         <input type="hidden" name="voir_toutes" value="1">
         {% endif %}
-        <button type="submit" class="btn btn-warning">📝 Mise à jour en tableau</button>
+        <button type="button" class="btn btn-warning" onclick="prepareColumnsForSubmit(event)">
+            📝 Mise à jour en tableau
+        </button>
     </form>
     {% else %}
     <button class="btn btn-warning" disabled title="Vous n'avez pas les droits pour modifier les données.">
@@ -58,9 +57,6 @@
         ♻️ Réinitialiser les filtres
     </button>
 
-    <button class="btn btn-secondary" onclick="document.getElementById('form-options').submit();">
-        🔄 Actualiser
-    </button>
     <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
         ↩️ Retour à l'accueil
     </a>
@@ -170,7 +166,7 @@
                 </th>
                 {% for column in selected_columns %}
                 {% if column != 'nom_association' %}
-                <th>{{ column | format_label }}</th>
+                <th data-col="{{ column }}">{{ column | format_label }}</th>
                 {% endif %}
                 {% endfor %}
             </tr>
@@ -203,7 +199,7 @@
                 <td class="sticky-col sticky-col-3">{{ row.display['nom_association'] }}</td>
                 {% for column in selected_columns %}
                 {% if column != 'nom_association' %}
-                <td>
+                <td data-col="{{ column }}">
                     {% if row.display[column] %}
                     {% if column in date_columns %}
                     {{ row.display[column][:10].split('-')[2] }}/{{ row.display[column][:10].split('-')[1] }}/{{
@@ -263,6 +259,91 @@
             columns: selectedColumns,
             groups: selectedGroups
         }));
+        updateVisibleColumns();
+    }
+
+
+    function prepareColumnsForSubmit(event) {
+
+        console.log("CLICK OK");
+
+        const form = document.querySelector('form[action*="edition_tableau_associations"]');
+        if (!form) {
+            console.log("FORM NOT FOUND");
+            return;
+        }
+
+        // nettoyage
+        form.querySelectorAll('input[name="columns"]').forEach(e => e.remove());
+
+        // récupérer colonnes
+        const selectedColumns = Array.from(
+            document.querySelectorAll("input[name='columns']:checked")
+        ).map(cb => cb.value);
+
+        console.log("Colonnes envoyées :", selectedColumns);
+
+        if (selectedColumns.length === 0) {
+            alert("⚠️ Aucune colonne sélectionnée");
+            return;
+        }
+
+        // injecter
+        selectedColumns.forEach(col => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "columns";
+            input.value = col;
+            form.appendChild(input);
+        });
+
+        form.submit();
+    }
+
+
+    function restoreDisplayOptionsPart() {
+
+        const saved = localStorage.getItem(OPTIONS_KEY_PART);
+
+        if (!saved) {
+            // sélection par défaut = groupe "coordonnées principales"
+            document.querySelectorAll("input[name='columns']").forEach(cb => {
+
+                const parent = cb.closest('[class^="field-"]'); // récupère la classe du groupe
+
+                if (parent && parent.className.includes("coordonnees") || parent.className.includes("coordonnées")) {
+                    cb.checked = true;
+                }
+            });
+            return;
+        }
+
+        const options = JSON.parse(saved);
+
+        document.querySelectorAll("input[name='columns']").forEach(cb => {
+            cb.checked = options.columns.includes(cb.value);
+        });
+
+        document.querySelectorAll("input[name='selected_groups']").forEach(cb => {
+            cb.checked = options.groups.includes(cb.value);
+        });
+    }
+
+
+    function updateVisibleColumns() {
+
+        const selectedSet = new Set(
+            Array.from(document.querySelectorAll("input[name='columns']:checked"))
+                .map(cb => cb.value)
+        );
+
+        document.querySelectorAll("#partenaire-table th[data-col]").forEach(th => {
+            th.style.display = selectedSet.has(th.dataset.col) ? "" : "none";
+        });
+
+        document.querySelectorAll("#partenaire-table td[data-col]").forEach(td => {
+            td.style.display = selectedSet.has(td.dataset.col) ? "" : "none";
+        });
     }
 
     /* =====================================================
@@ -273,38 +354,46 @@
         /* ===============================
            🔐 PERSISTANCE OPTIONS
         =============================== */
-        const saved = localStorage.getItem(OPTIONS_KEY_PART);
-        const hasInteracted = new URLSearchParams(window.location.search).get("has_interacted") === "1";
-        const hasNonValides = new URLSearchParams(window.location.search).get("voir_non_valides") === "1";
 
-        const hasColumns = document.querySelectorAll("input[name='columns']:checked").length > 0;
+        restoreDisplayOptionsPart();
+        updateVisibleColumns();
+        initFiltreEvents();
 
-        if (!hasInteracted && saved && !hasNonValides && !hasColumns) {
+        const btn = document.getElementById("btn-update-table");
 
-            const options = JSON.parse(saved);
-            const form = document.getElementById("form-options");
+        if (btn) {
+            btn.addEventListener("click", function (event) {
 
-            options.columns.forEach(col => {
-                const input = document.createElement("input");
-                input.type = "hidden";
-                input.name = "columns";
-                input.value = col;
-                form.appendChild(input);
+                console.log("CLICK OK");  // 👈 debug
+
+                event.preventDefault();
+
+                const form = document.querySelector('form[action*="edition_tableau_associations"]');
+                if (!form) return;
+
+                // nettoyage
+                form.querySelectorAll('input[name="columns"]').forEach(e => e.remove());
+
+                // récupérer colonnes
+                const selectedColumns = Array.from(
+                    document.querySelectorAll("input[name='columns']:checked")
+                ).map(cb => cb.value);
+
+                console.log("Colonnes envoyées :", selectedColumns);
+
+                // injecter
+                selectedColumns.forEach(col => {
+                    const input = document.createElement("input");
+                    input.type = "hidden";
+                    input.name = "columns";
+                    input.value = col;
+                    form.appendChild(input);
+                });
+
+                // submit manuel
+                form.submit();
             });
-
-            options.groups.forEach(grp => {
-                const input = document.createElement("input");
-                input.type = "hidden";
-                input.name = "selected_groups";
-                input.value = grp;
-                form.appendChild(input);
-            });
-
-            form.submit();
-            return;
         }
-
-
         /* ===============================
            🔘 Recalcul états groupes
         =============================== */
@@ -372,7 +461,7 @@
         localStorage.removeItem(OPTIONS_KEY_PART);
         localStorage.removeItem(SORT_KEY_PART);
 
-        window.location.href = "{{ url_for('partenaires.partenaires') }}";
+        location.reload();
     }
 
     // ===============================
@@ -521,24 +610,31 @@
     // Debounce
     let filtreTimeout;
 
-    filtreInput.addEventListener("input", function () {
+    function initFiltreEvents() {
 
-        clearTimeout(filtreTimeout);
+        if (!filtreInput) return;
 
-        filtreTimeout = setTimeout(() => {
-            applyFiltrePart();
-        }, 150);
-    });
+        // 🔒 éviter double binding
+        if (filtreInput.dataset.initialized === "1") return;
 
-    // Escape
-    filtreInput.addEventListener("keydown", function (e) {
-        if (e.key === "Escape") {
+        filtreInput.dataset.initialized = "1";
 
-            this.value = "";
-            applyFiltrePart();
-            e.preventDefault();
-        }
-    });
+        filtreInput.addEventListener("input", function () {
+            clearTimeout(filtreTimeout);
+            filtreTimeout = setTimeout(() => {
+                applyFiltrePart();
+            }, 150);
+        });
+
+        filtreInput.addEventListener("keydown", function (e) {
+            if (e.key === "Escape") {
+                this.value = "";
+                applyFiltrePart();
+                e.preventDefault();
+            }
+        });
+    }
+
     function toggleNonValides() {
 
         const url = new URL(window.location.href);

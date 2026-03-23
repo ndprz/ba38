@@ -9,9 +9,11 @@
     overflow-y: hidden;
     height: 20px;
   }
+
   .scroll-sync div {
     height: 1px;
   }
+
   .scroll-zone {
     position: relative;
     max-height: 60vh;
@@ -19,6 +21,7 @@
     overflow-x: hidden;
     border: 1px solid #ddd;
   }
+
   .scroll-sync-top {
     position: sticky;
     top: 0;
@@ -26,6 +29,7 @@
     z-index: 20;
     border-bottom: 1px solid #ddd;
   }
+
   .scroll-sync-bottom {
     position: sticky;
     bottom: 0;
@@ -33,12 +37,14 @@
     z-index: 20;
     border-top: 1px solid #ddd;
   }
+
   .sticky-col {
     position: sticky;
     left: 0;
     background: white;
     z-index: 5;
   }
+
   .sticky-header {
     z-index: 10 !important;
   }
@@ -71,58 +77,57 @@
           <th>ID</th>
           <th class="sticky-col sticky-header">Nom</th>
           {% for column in selected_columns %}
-            {% if column != 'nom_association' %}
-              <th>{{ column }}</th>
-            {% endif %}
+          {% if column != 'nom_association' %}
+          <th>{{ column }}</th>
+          {% endif %}
           {% endfor %}
         </tr>
       </thead>
       <tbody>
         {% for association in rows %}
-          {% set row_index = loop.index0 %}
+        {% set row_index = loop.index0 %}
 
-          {% if association.valeurs is defined %}
-            {% set valeurs = association.valeurs %}
-            {% set champs_invalides = association.champs_invalides %}
-            {% set nom = association.nom %}
-            {% set id_asso = association.id %}
-          {% else %}
-            {% set valeurs = association %}
-            {% set champs_invalides = [] %}
-            {% set nom = association['nom_association'] %}
-            {% set id_asso = association['ID'] %}
+        {% if association.valeurs is defined %}
+        {% set valeurs = association.valeurs %}
+        {% set champs_invalides = association.champs_invalides %}
+        {% set nom = association.nom %}
+        {% set id_asso = association.id %}
+        {% else %}
+        {% set valeurs = association %}
+        {% set champs_invalides = [] %}
+        {% set nom = association['nom_association'] %}
+        {% set id_asso = association['ID'] %}
+        {% endif %}
+
+        <tr>
+          <td>
+            <input type="hidden" name="id_{{ row_index }}" value="{{ id_asso }}">
+            {{ id_asso }}
+          </td>
+          <td class="sticky-col">{{ nom }}</td>
+
+          {% for column in selected_columns %}
+          {% if column != 'nom_association' %}
+          {% set valeur = valeurs[column] %}
+          {% set v = valeur if valeur is not none and valeur != 'None' else '' %}
+          <td>
+            {% if column in oui_non_fields %}
+            <select name="{{ column }}_{{ row_index }}"
+              class="form-select form-select-sm {% if column in champs_invalides %}is-invalid{% endif %}">
+              <option value=""></option>
+              <option value="oui" {% if v=='oui' %}selected{% endif %}>Oui</option>
+              <option value="non" {% if v=='non' %}selected{% endif %}>Non</option>
+            </select>
+            {% else %}
+            <input type="text" name="{{ column }}_{{ row_index }}"
+              class="form-control form-control-sm {% if column in champs_invalides %}is-invalid{% endif %}"
+              value="{% if column.lower().startswith('tel') or 'téléphone' in column.lower() %}{{ v | format_tel }}{% else %}{{ v }}{% endif %}"
+              size="{{ v|length + 2 }}" style="width: auto; min-width: 60px; max-width: 100%;">
+            {% endif %}
+          </td>
           {% endif %}
-
-          <tr>
-            <td>
-              <input type="hidden" name="id_{{ row_index }}" value="{{ id_asso }}">
-              {{ id_asso }}
-            </td>
-            <td class="sticky-col">{{ nom }}</td>
-
-            {% for column in selected_columns %}
-              {% if column != 'nom_association' %}
-                {% set valeur = valeurs[column] %}
-                {% set v = valeur if valeur is not none and valeur != 'None' else '' %}
-                <td>
-                  {% if column in oui_non_fields %}
-                    <select name="{{ column }}_{{ row_index }}"
-                            class="form-select form-select-sm {% if column in champs_invalides %}is-invalid{% endif %}">
-                      <option value=""></option>
-                      <option value="oui" {% if v == 'oui' %}selected{% endif %}>Oui</option>
-                      <option value="non" {% if v == 'non' %}selected{% endif %}>Non</option>
-                    </select>
-                  {% else %}
-                    <input type="text" name="{{ column }}_{{ row_index }}"
-                           class="form-control form-control-sm {% if column in champs_invalides %}is-invalid{% endif %}"
-                           value="{% if column.lower().startswith('tel') or 'téléphone' in column.lower() %}{{ v | format_tel }}{% else %}{{ v }}{% endif %}"
-                           size="{{ v|length + 2 }}"
-                           style="width: auto; min-width: 60px; max-width: 100%;">
-                  {% endif %}
-                </td>
-              {% endif %}
-            {% endfor %}
-          </tr>
+          {% endfor %}
+        </tr>
         {% endfor %}
       </tbody>
     </table>
@@ -135,7 +140,7 @@
 
   <input type="hidden" name="total_rows" value="{{ rows|length }}">
   {% for col in selected_columns %}
-    <input type="hidden" name="columns" value="{{ col }}">
+  <input type="hidden" name="columns" value="{{ col }}">
   {% endfor %}
 
   <div class="d-flex justify-content-end gap-2 mt-3">
@@ -167,5 +172,54 @@
       bottomScroll.firstElementChild.style.width = fullWidth + 'px';
     }
   });
+
+
+  let formDirty = false;
+
+  // ===============================
+  // 🔍 Détection modification
+  // ===============================
+  document.querySelectorAll("input, select, textarea").forEach(el => {
+    el.addEventListener("change", () => {
+      formDirty = true;
+    });
+  });
+
+  // ===============================
+  // 🚫 Alerte sortie page
+  // ===============================
+  window.addEventListener("beforeunload", function (e) {
+    if (!formDirty) return;
+
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
+  // ===============================
+  // 🔘 Boutons internes (Retour)
+  // ===============================
+  document.querySelectorAll("a, button").forEach(el => {
+
+    // ignorer bouton submit (sinon bloque l'enregistrement)
+    if (el.type === "submit") return;
+
+    el.addEventListener("click", function (e) {
+
+      if (!formDirty) return;
+
+      const ok = confirm("⚠️ Vous avez des modifications non enregistrées. Continuer sans enregistrer ?");
+      if (!ok) {
+        e.preventDefault();
+      }
+    });
+  });
+
+  // ===============================
+  // ✅ Reset flag après submit
+  // ===============================
+  document.querySelector("form").addEventListener("submit", () => {
+    formDirty = false;
+  });
+
 </script>
 {% endblock %}
