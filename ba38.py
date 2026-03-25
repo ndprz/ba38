@@ -99,10 +99,8 @@ from ba38_export import export_data_bp
 from ba38_fournisseurs import fournisseurs_bp
 from ba38_tresorerie import tresorerie_bp
 from ba38_fiches_visite import fiches_visite_bp
-from ba38_mail import mail_bp
 from ba38_evenements import evenements_bp
 from ba38_factures import factures_bp
-from ba38_mail_benevoles import mail_bene_bp
 from ba38_planning_report import planning_report_bp
 from ba38_aide import aide_bp
 from ba38_engagements import engagements_bp
@@ -306,10 +304,8 @@ app.register_blueprint(export_data_bp)
 app.register_blueprint(fournisseurs_bp)
 app.register_blueprint(tresorerie_bp)
 app.register_blueprint(fiches_visite_bp)
-app.register_blueprint(mail_bp)
 app.register_blueprint(evenements_bp)
 app.register_blueprint(factures_bp)
-app.register_blueprint(mail_bene_bp)
 app.register_blueprint(planning_report_bp)
 app.register_blueprint(aide_bp)
 app.register_blueprint(engagements_bp)
@@ -836,37 +832,42 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     form = LoginForm()
-    write_log(f"🧪 Tentative login pour {form.email.data}")
+
+    write_log(f"DEBUG method={request.method} form={request.form}")
 
     if form.validate_on_submit():
         username = form.email.data.strip().lower()
         password = form.password.data
 
+        write_log(f"🧪 Tentative login pour {username}")
         write_log(f"🔐 Tentative de connexion pour l'utilisateur : {username} depuis IP {request.remote_addr}")
+
         conn = get_db_connection()
-        user = conn.execute("SELECT * FROM users WHERE LOWER(email) = ?", (username,)).fetchone()
+        user = conn.execute(
+            "SELECT * FROM users WHERE LOWER(email) = ?",
+            (username,)
+        ).fetchone()
         conn.close()
 
         if user and check_password_hash(user["password_hash"], password):
+
             if str(user["actif"]).strip().lower() not in ("1", "oui", "true"):
                 flash("Votre compte n'est pas actif. Veuillez contacter l'administration.", "danger")
-                write_log(f"❌ Tentative de connexion refusée pour {user['email']} : compte inactif")
+                write_log(f"❌ Compte inactif : {user['email']}")
                 return redirect(url_for("login"))
 
             user_obj = User(user["id"], user["username"], user["email"], user["password_hash"], user["role"])
             login_user(user_obj)
 
-            # 🧩 Initialisation session
+            # session
             email = user["email"]
             role = user["role"]
+
             session["user_id"] = str(user["id"])
             session["username"] = user["username"]
             session["roles_utilisateurs"] = get_user_roles(email)
 
-
-            # 👑 Si superadmin : ajoute accès complet + indicateur clair
             if role == "admin":
-                # Accès complet
                 session["roles_utilisateurs"] = [
                     ("benevoles", "ecriture"),
                     ("associations", "ecriture"),
@@ -874,39 +875,26 @@ def login():
                     ("distribution", "ecriture"),
                     ("evenements", "ecriture"),
                 ]
-
-                # Indicateur rôle simple (facultatif)
                 session["user_role"] = "admin"
 
             session.modified = True
 
-            # ✅ Logs : fichier + base de données
             from utils import write_connexion_log
             write_connexion_log(user["id"], user["username"])
             log_connexion(user_obj, action="login")
 
             write_log(
-                f"✅ Connexion réussie ! Utilisateur : {session.get('username')} "
+                f"✅ Connexion réussie : {session.get('username')} "
                 f"(Rôle: {session.get('user_role', 'utilisateur')})"
             )
+
             return redirect(url_for("index"))
 
-        # 🔴 Erreurs de login
-        if user:
-            if not check_password_hash(user["password_hash"], password):
-                write_log("❌ Mot de passe incorrect")
-            else:
-                write_log("✅ Mot de passe correct")
-        else:
-            write_log("❌ Utilisateur non trouvé")
-
-        flash("Email ou mot de passe incorrect.", "danger")
+        # erreur login
         write_log(f"❌ Échec de connexion pour {username}")
+        flash("Email ou mot de passe incorrect.", "danger")
 
     return render_template("login.html", form=form)
-
-
-
 @app.route('/logout')
 @login_required
 def logout():
@@ -915,14 +903,6 @@ def logout():
     flash("Déconnexion réussie.", "info")
     return redirect(url_for('login'))
 
-
-# Route protégée
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    return render_template(
-'dashboard.html',username=current_user.username,role=current_user.role
-    )
 
 
 

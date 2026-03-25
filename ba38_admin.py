@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, g,current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, g,current_app, abort
 from flask_login import login_required
 from utils import (
     get_db_connection, upload_database, write_log, get_version,
@@ -8,8 +8,12 @@ from forms import RegistrationForm, RegistrationForm
 from werkzeug.security import generate_password_hash
 
 import sqlite3
+import markdown
+import os
 
 admin_bp = Blueprint("admin", __name__)
+
+DOC_BASE_PATH = "/srv/ba38/documentation_technique"
 
 # ============================================================
 # GESTION DES DROITS UTILISATEUR – MATRICE (OPTION B)
@@ -97,7 +101,7 @@ def gestion_roles_matrice(email):
         }
 
     return render_template(
-        "gestion_roles_matrice.html",
+        "admin/gestion_roles_matrice.html",
         user=user,
         applications=APPLICATIONS,
         roles=droits_existants
@@ -198,7 +202,7 @@ def gestion_roles():
 
         users = cursor.execute("SELECT email FROM users ORDER BY email").fetchall()
 
-    return render_template("gestion_roles.html", roles=roles, users=[u["email"] for u in users], filtre=filtre)
+    return render_template("admin/gestion_roles.html", roles=roles, users=[u["email"] for u in users], filtre=filtre)
 
 # ============================================================
 # GESTION DES UTILISATEURS – LISTE + RÉSUMÉ DES DROITS
@@ -329,7 +333,7 @@ def gestion_utilisateurs():
     # 5️⃣ Rendu
     # --------------------------------------------------
     return render_template(
-        "gestion_utilisateurs.html",
+        "admin/gestion_utilisateurs.html",
         users=users_enrichis,
         form=form
     )
@@ -533,3 +537,164 @@ def update_users_batch():
 
     flash("✅ Modifications enregistrées.", "success")
     return redirect(url_for("admin.gestion_utilisateurs"))
+
+
+@admin_bp.route("/documentation")
+@login_required
+def documentation():
+
+    modules = {}
+    root_docs = []
+
+    for root, dirs, files in os.walk(DOC_BASE_PATH):
+        rel_root = os.path.relpath(root, DOC_BASE_PATH)
+
+        for file in files:
+            if not file.endswith(".md"):
+                continue
+
+            full_path = os.path.join(root, file)
+            rel_path = os.path.relpath(full_path, DOC_BASE_PATH)  # ✅ AJOUT ICI
+
+            if rel_root == ".":
+                root_docs.append(rel_path)
+            else:
+                module = rel_root.split(os.sep)[0]
+
+                if module not in modules:
+                    modules[module] = []
+
+                modules[module].append(rel_path)
+
+    # tri propre
+    modules = dict(sorted(modules.items()))
+    for m in modules:
+        modules[m].sort()
+
+    root_docs.sort()
+
+    return render_template(
+        "admin/documentation.html",
+        modules=modules,
+        root_docs=root_docs
+    )
+
+# ==========================================================
+# AFFICHAGE D'UN DOCUMENT
+# ==========================================================
+@admin_bp.route("/documentation/view")
+@login_required
+def documentation_view():
+
+    file = request.args.get("file")
+
+    if not file:
+        abort(400)
+
+    # 🔒 Sécurité : empêcher ../
+    safe_path = os.path.normpath(file)
+
+    if safe_path.startswith(".."):
+        abort(403)
+
+    full_path = os.path.join(DOC_BASE_PATH, safe_path)
+
+    if not os.path.isfile(full_path):
+        abort(404)
+
+    with open(full_path, "r", encoding="utf-8") as f:
+        content_md = f.read()
+
+    # Conversion Markdown → HTML
+    html = markdown.markdown(
+        content_md,
+        extensions=["fenced_code", "tables"]
+    )
+
+    return render_template(
+        "admin/documentation_view.html",
+        content=html,
+        file=file
+    )
+
+@admin_bp.route("/documentation/ajax")
+@login_required
+def documentation_ajax():
+    import markdown
+
+    file = request.args.get("file")
+    if not file:
+        return {"error": "missing file"}, 400
+
+    safe_path = os.path.normpath(file)
+    if safe_path.startswith(".."):
+        return {"error": "forbidden"}, 403
+
+    full_path = os.path.join(DOC_BASE_PATH, safe_path)
+
+    if not os.path.isfile(full_path):
+        return {"error": "not found"}, 404
+
+    with open(full_path, "r", encoding="utf-8") as f:
+        content_md = f.read()
+
+    html = markdown.markdown(
+        content_md,
+        extensions=["fenced_code", "tables"]
+    )
+
+    return {"html": html}
+
+
+
+@admin_bp.route("/documentation/search")
+@login_required
+def documentation_search():
+
+    query = request.args.get("q", "").lower().strip()
+    if not query:
+        return {"results": []}
+
+    mots = query.split()
+
+    results = []
+
+    for root, dirs, files in os.walk(DOC_BASE_PATH):
+        rel_root = os.path.relpath(root, DOC_BASE_PATH)
+        module = rel_root.split(os.sep)[0] if rel_root != "." else "racine"
+
+        for file in files:
+            if not file.endswith(".md"):
+                continue
+
+            full_path = os.path.join(root, file)
+            rel_path = os.path.relpath(full_path, DOC_BASE_PATH)
+
+            with open(full_path, "r", encoding="utf-8") as f:
+                content = f.read().lower()
+
+            name = file.replace(".md", "").lower()
+
+            score = 0
+
+            for mot in mots:
+                if mot in name:
+                    score += 5
+                if mot in module:
+                    score += 3
+                if mot in content:
+                    score += 1
+
+            if score > 0:
+                results.append({
+                    "path": rel_path,
+                    "name": name,
+                    "module": module,
+                    "content": content[:300],
+                    "score": score
+                })
+
+    # tri par pertinence
+    results.sort(key=lambda x: x["score"], reverse=True)
+
+    return {"results": results[:20]}

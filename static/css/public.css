@@ -143,13 +143,13 @@ pre {
 /* </style><style>.fields-container {
     display: block !important;
     /* Force l'affichage */
-    visibility: visible !important;
-    /* Force la visibilité */
-    opacity: 1 !important;
-    /* Assure que l'élément est opaque */
-} */
+visibility: visible !important;
+/* Force la visibilité */
+opacity: 1 !important;
+/* Assure que l'élément est opaque */
+}
 
-.fields-container table {
+*/ .fields-container table {
     width: 100%;
     border: 1px solid #ccc;
 }
@@ -1292,10 +1292,43 @@ td.sticky-col-3 {
     overflow: visible !important;
 }
 
-.nom-benevole{
-margin-right:4px;
+.nom-benevole {
+    margin-right: 4px;
 }
 
-.droit-image-wrapper{
-display:inline-block;
+.droit-image-wrapper {
+    display: inline-block;
+}
+
+
+.list-group-item {
+    border: none;
+    border-radius: 5px;
+}
+
+.list-group-item:hover {
+    background-color: #f1f3f5;
+}
+
+.border-end {
+    background-color: #f8f9fa;
+}
+
+
+.doc-result {
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.doc-result:hover {
+    background-color: #f1f3f5;
+}
+
+
+#toc a {
+    color: #555;
+}
+
+#toc a:hover {
+    color: #0d6efd;
 }

@@ -64,7 +64,7 @@ def liste_fournisseurs():
         rows = conn.execute(sql, params).fetchall()
 
     return render_template(
-        "fournisseurs.html",
+        "fournisseurs/fournisseurs.html",
         columns=columns,  # ⬅️ plus besoin de COLUMNS fixe
         rows=rows,
         q=q
@@ -216,7 +216,7 @@ def update_fournisseur(fournisseur_id):
 
     # ✅ Affichage du template
     return render_template(
-        "update_fournisseur.html",
+        "fournisseurs/update_fournisseur.html",
         fournisseur=fournisseur_dict,
         grouped_fields=grouped_fields,
         fournisseur_id=fournisseur_id,
@@ -252,7 +252,7 @@ def create_fournisseur():
         nom = request.form.get("nom", "").strip()
         if not nom:
             flash("⚠️ Le nom du fournisseur est obligatoire.", "danger")
-            return render_template("create_fournisseur.html", parametres=param_dict)
+            return render_template("fournisseurs/create_fournisseur.html", parametres=param_dict)
 
         enseigne = request.form.get("enseigne", "")
         type_frs = request.form.get("type_frs", "")
@@ -276,7 +276,7 @@ def create_fournisseur():
         return redirect(url_for("fournisseurs.liste_fournisseurs"))
 
     conn.close()
-    return render_template("create_fournisseur.html", parametres=param_dict)
+    return render_template("fournisseurs/create_fournisseur.html", parametres=param_dict)
 
 
 @fournisseurs_bp.route('/fournisseurs/<int:fournisseur_id>/delete', methods=['POST'])
@@ -324,7 +324,7 @@ def liste_contacts_fournisseur(fournisseur_id):
     conn.close()
 
     return render_template(
-        "contacts_fournisseur.html",
+        "fournisseurs/contacts_fournisseur.html",
         fournisseur=fournisseur,
         contacts=contacts,
         lecture_seule=not has_access("fournisseurs", "ecriture")
@@ -384,7 +384,7 @@ def create_contact_fournisseur(fournisseur_id):
 
     conn.close()
     return render_template(
-        "create_contact_fournisseur.html",
+        "fournisseurs/create_contact_fournisseur.html",
         fournisseur_id=fournisseur_id,
         fournisseur=fournisseur
     )
@@ -446,7 +446,7 @@ def update_contact_fournisseur(fournisseur_id, contact_id):
 
     conn.close()
     return render_template(
-        "update_contact_fournisseur.html",
+        "fournisseurs/update_contact_fournisseur.html",
         contact=contact,
         fournisseur_id=fournisseur_id,
         fournisseur=fournisseur  # ✅ ajouté

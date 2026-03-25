@@ -28,7 +28,7 @@ planning_dist_bp = Blueprint('planning_dist', __name__)
 @planning_dist_bp.route("/planning_main")
 @login_required
 def planning_main():
-    return render_template("planning_main.html")
+    return render_template("planning/planning_main.html")
 
 
 @planning_dist_bp.route("/maj_modele_planning_distribution", methods=["GET", "POST"])
@@ -82,7 +82,7 @@ def maj_modele_planning_distribution():
     frais_sec = sorted(benevoles, key=lambda b: (b["distrib_frais_sec"] != 'oui', b["nom"], b["prenom"]))
 
     return render_template(
-        "maj_modele_planning_distribution.html",
+        "planning/distribution/maj_modele_planning_distribution.html",
         planning=planning,
         froid=froid,
         frais_sec=frais_sec
@@ -124,7 +124,7 @@ def creation_planning_distribution():
     if not semaine:
         conn.close()
         return render_template(
-            "creation_planning_distribution.html",
+            "planning/distribution/creation_planning_distribution.html",
             semaine="",
             planning=None,
             planning_existe=False,
@@ -156,7 +156,7 @@ def creation_planning_distribution():
     if existe > 0 and request.form.get("action") != "forcer_generation":
         conn.close()
         return render_template(
-            "creation_planning_distribution.html",
+            "planning/distribution/creation_planning_distribution.html",
             semaine=semaine,
             planning=None,
             planning_existe=True,
@@ -321,7 +321,7 @@ def creation_planning_distribution():
     # 8️⃣ Rendu final
     # --------------------------------------------------
     return render_template(
-        "creation_planning_distribution.html",
+        "planning/distribution/creation_planning_distribution.html",
         semaine=semaine,
         planning=planning,
         planning_existe=False,
@@ -353,7 +353,7 @@ def gestion_planning_distribution():
     lignes = cursor.execute("""
         SELECT * FROM plannings_distribution
         WHERE annee = ? AND semaine = ?
-        ORDER BY 
+        ORDER BY
             CASE LOWER(jour)
                 WHEN 'lundi' THEN 1
                 WHEN 'mardi' THEN 2
@@ -543,7 +543,7 @@ def gestion_planning_distribution():
         planning_auto_modified = True
 
     return render_template(
-        "gestion_planning_distribution.html",
+        "planning/distribution/gestion_planning_distribution.html",
         semaine=semaine,
         lignes=lignes,
         froid=froid,
@@ -600,7 +600,7 @@ def apercu_planning_distribution():
         l["date_jour"] = jours_dates[jour].strftime("%d/%m/%Y")
 
     conn.close()
-    return render_template("apercu_planning_distribution.html", semaine=semaine, lignes=lignes)
+    return render_template("planning/distribution/apercu_planning_distribution.html", semaine=semaine, lignes=lignes)
 
 
 

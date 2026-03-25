@@ -14,14 +14,14 @@ def creation_planning_palettes():
     # 📥 Lecture de la semaine au format ISO
     semaine_iso = request.form.get("semaine") or request.args.get("semaine")
     if not semaine_iso:
-        return render_template("creation_planning_palettes.html", semaine="")
+        return render_template("planning/palettes/creation_planning_palettes.html", semaine="")
 
     # 🔢 Conversion "2025-W23" → (2025, 23)
     try:
         annee, numero_semaine = map(int, semaine_iso.split("-W"))
     except Exception:
         flash("❌ Format de semaine invalide", "danger")
-        return render_template("creation_planning_palettes.html", semaine=semaine_iso)
+        return render_template("planning/palettes/creation_planning_palettes.html", semaine=semaine_iso)
 
     action = request.form.get("action")
     lundi = get_lundi_de_la_semaine(semaine_iso)
@@ -47,7 +47,7 @@ def creation_planning_palettes():
     # 🚫 Si planning existe et qu’on n’a pas demandé explicitement de régénérer
     if planning_existe and action != "forcer_generation":
         conn.close()
-        return render_template("creation_planning_palettes.html",
+        return render_template("planning/palettes/creation_planning_palettes.html",
                                semaine=semaine_iso,
                                planning_existe=True,
                                planning=[])
@@ -61,7 +61,7 @@ def creation_planning_palettes():
     if not modeles:
         conn.close()
         flash("⚠️ Aucun modèle de planning trouvé. Veuillez d’abord définir le modèle avant de générer un planning.", "warning")
-        return render_template("creation_planning_palette.html", semaine=semaine_iso, planning_existe=False)
+        return render_template("planning/palettes/creation_planning_palettes.html", semaine=semaine_iso, planning_existe=False)
 
 
     # 📦 Lire les absences connues
@@ -125,7 +125,7 @@ def creation_planning_palettes():
     ordre_jours = {j: i for i, j in enumerate(["lundi", "mardi", "mercredi", "jeudi", "vendredi"])}
     planning.sort(key=lambda l: ordre_jours.get(l["jour"], 99))
 
-    return render_template("creation_planning_palettes.html",
+    return render_template("planning/palettes/creation_planning_palettes.html",
                            semaine=semaine_iso,
                            planning=planning,
                            jours=jours,
@@ -150,14 +150,14 @@ def apercu_planning_palettes():
     lundi = get_lundi_de_la_semaine(semaine_iso)
 
     conn = get_db_connection()
-    
+
     cursor = conn.cursor()
 
     # 📦 Lecture des lignes du planning
     lignes_raw = cursor.execute("""
         SELECT * FROM plannings_pal
         WHERE annee = ? AND semaine = ?
-        ORDER BY 
+        ORDER BY
             CASE LOWER(jour)
                 WHEN 'lundi' THEN 1
                 WHEN 'mardi' THEN 2
@@ -192,7 +192,7 @@ def apercu_planning_palettes():
         l["date_jour"] = jours_dates.get(jour, lundi).strftime("%d/%m/%Y")
 
     conn.close()
-    return render_template("apercu_planning_palettes.html",
+    return render_template("planning/palettes/apercu_planning_palettes.html",
                            lignes=lignes,
                            semaine=semaine_iso)
 
@@ -254,7 +254,7 @@ def maj_modele_planning_palettes():
 
     conn.close()
     return render_template(
-        "maj_modele_planning_palettes.html",
+        "planning/palettes/maj_modele_planning_palettes.html",
         model=model,
         benevoles=benevoles,
         jours=jours,
@@ -324,7 +324,7 @@ def gestion_planning_palettes():
     # ------------------------------------------------------------
     lignes = cursor.execute("""
         SELECT * FROM plannings_pal
-        WHERE annee = ? AND semaine = ?        ORDER BY 
+        WHERE annee = ? AND semaine = ?        ORDER BY
             CASE LOWER(jour)
                 WHEN 'lundi' THEN 1
                 WHEN 'mardi' THEN 2
@@ -338,24 +338,6 @@ def gestion_planning_palettes():
 
     lignes = [dict(l) for l in lignes]
 
-    # # Fallback si la semaine a été stockée en texte
-    # if not lignes:
-    #     lignes = cursor.execute("""
-    #         SELECT * FROM plannings_pal
-    #         WHERE annee, semaine = ?
-    #         ORDER BY 
-    #             CASE LOWER(jour)
-    #                 WHEN 'lundi' THEN 1
-    #                 WHEN 'mardi' THEN 2
-    #                 WHEN 'mercredi' THEN 3
-    #                 WHEN 'jeudi' THEN 4
-    #                 WHEN 'vendredi' THEN 5
-    #                 ELSE 6
-    #             END,
-    #             id ASC
-    #     """, (annee, numero_semaine)).fetchall()
-
-    # lignes = [dict(l) for l in lignes]
 
     # ------------------------------------------------------------
     # 🔁 Relecture des absences
@@ -502,7 +484,7 @@ def gestion_planning_palettes():
     conn.close()
 
     return render_template(
-        "gestion_planning_palettes.html",
+        "planning/palettes/gestion_planning_palettes.html",
         lignes=lignes,
         semaine=semaine_iso,
         benevoles=benevoles,

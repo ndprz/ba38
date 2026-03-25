@@ -61,7 +61,7 @@ def droit_image():
         personnes = cur.fetchall()
 
     return render_template(
-        "droit_image.html",
+        "benevoles/droit_image.html",
         personnes=personnes,
         filtre=filtre
     )

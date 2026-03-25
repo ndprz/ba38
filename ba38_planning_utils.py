@@ -112,7 +112,7 @@ def etat_plannings():
     conn.close()
 
     return render_template(
-        "etat_plannings.html",
+        "planning/utils_planning/etat_plannings.html",
         plannings=data
     )
 
@@ -376,7 +376,7 @@ def planning_absences():
     """).fetchall()
 
     conn.close()
-    return render_template("planning_absences.html", absences=absences, benevoles=benevoles)
+    return render_template("planning/utils_planning/planning_absences.html", absences=absences, benevoles=benevoles)
 
 
 

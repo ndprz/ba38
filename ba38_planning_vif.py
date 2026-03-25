@@ -104,7 +104,7 @@ def maj_modele_planning_vif():
     conn.close()
 
     return render_template(
-        "maj_modele_planning_vif.html",
+        "planning/vif/maj_modele_planning_vif.html",
         lignes=lignes,
         benevoles=benevoles,
         jours_semaine=jours_semaine,
@@ -118,12 +118,12 @@ def creation_planning_vif():
     semaine = request.form.get("semaine") or request.args.get("semaine")
     action = request.form.get("action")
     if not semaine:
-        return render_template("creation_planning_vif.html", semaine="")
+        return render_template("planning/vif/creation_planning_vif.html", semaine="")
 
     try:
         annee, numero_semaine = map(int, semaine.split("-W"))
         numero_semaine = str(numero_semaine)
-        
+
     except Exception:
         flash("❌ Format de semaine invalide", "danger")
         return redirect(url_for("planning_vif.creation_planning_vif"))
@@ -138,7 +138,7 @@ def creation_planning_vif():
     existing = cursor.execute("SELECT COUNT(*) as n FROM plannings_vif WHERE annee = ? AND semaine = ?", (annee, numero_semaine)).fetchone()
     if existing["n"] > 0 and action != "forcer_generation":
         conn.close()
-        return render_template("creation_planning_vif.html", semaine=semaine, planning_existe=True)
+        return render_template("planning/vif/creation_planning_vif.html", semaine=semaine, planning_existe=True)
 
     travail_vendredi = cursor.execute("SELECT param_value FROM parametres WHERE param_name = 'travail_vendredi'").fetchone()
     if travail_vendredi and travail_vendredi["param_value"] == "non":
@@ -244,7 +244,7 @@ def creation_planning_vif():
     conn.close()
 
     return render_template(
-        "creation_planning_vif.html",
+        "planning/vif/creation_planning_vif.html",
         semaine=semaine,
         planning=lignes,
         planning_existe=False,
@@ -466,7 +466,7 @@ def gestion_planning_vif():
 
     conn.close()
     return render_template(
-        "gestion_planning_vif.html",
+        "planning/vif/gestion_planning_vif.html",
         semaine=semaine,
         lignes=lignes,
         benevoles=benevoles,
@@ -510,4 +510,4 @@ def apercu_planning_vif():
 
     conn.close()
     lignes.sort(key=lambda l: jours.index(l["jour"].lower()))
-    return render_template("apercu_planning_vif.html", semaine=semaine, planning=lignes)
+    return render_template("planning/vif/apercu_planning_vif.html", semaine=semaine, planning=lignes)

@@ -19,7 +19,7 @@ def distribution_main():
         flash("⛔ Accès non autorisé au module Distribution.", "danger")
         return redirect(url_for("index"))
 
-    return render_template("distribution_main.html")
+    return render_template("distribution/distribution_main.html")
 
 @distribution_bp.route("/mouvements-stocks-depot")
 @login_required
@@ -96,7 +96,7 @@ def mouvements_stocks_depot():
 
 
     return render_template(
-        "distribution_mouvements_stocks.html",
+        "distribution/distribution_mouvements_stocks.html",
         articles=rows,
         date_stock=date_stock
     )
@@ -442,7 +442,7 @@ def afficher_mvt(num_mvt):
         return "Mouvement introuvable", 404
 
     return render_template(
-        "distribution_mvt_bordereau.html",
+        "distribution/mvt_bordereau.html",
         lignes=lignes,
         num_mvt=num_mvt
     )
@@ -498,7 +498,7 @@ def visualisation_stock():
 
 
     return render_template(
-        "distribution_visualisation_stock.html",
+        "distribution/distribution_visualisation_stock.html",
         articles=articles,
         date_stock=date_stock
     )

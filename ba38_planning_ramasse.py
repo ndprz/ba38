@@ -28,7 +28,7 @@ planning_bp = Blueprint('planning', __name__)
 @planning_bp.route('/planning_main')
 @login_required
 def planning_main():
-    return render_template('planning_main.html')
+    return render_template('planning/planning_main.html')
 
 def safe(row, key):
     return row[key] if key in row.keys() and row[key] else "-"
@@ -65,7 +65,7 @@ def creation_planning_ramasse():
         planning_existe = nb > 0
 
         if planning_existe and action != "forcer_generation":
-            return render_template("creation_planning_ramasse.html", semaine=semaine, planning_existe=True)
+            return render_template("planning/ramasse/creation_planning_ramasse.html", semaine=semaine, planning_existe=True)
 
         # Récupération du paramètre "travail_vendredi"
         param = cursor.execute("SELECT param_value FROM parametres WHERE param_name = 'travail_vendredi'").fetchone()
@@ -85,7 +85,7 @@ def creation_planning_ramasse():
         if not lignes:
             conn.close()
             flash("⚠️ Aucun modèle de planning trouvé. Veuillez d’abord définir le modèle avant de générer un planning.", "warning")
-            return render_template("creation_planning_ramasse.html", semaine=semaine_iso, planning_existe=False)
+            return render_template("planning/ramasse/creation_planning_ramasse.html", semaine=semaine_iso, planning_existe=False)
 
 
         for ligne in lignes:
@@ -161,7 +161,7 @@ def creation_planning_ramasse():
         conn.commit()
         conn.close()
 
-    return render_template("creation_planning_ramasse.html", semaine=semaine, planning=planning, jours=jours, planning_existe=planning_existe)
+    return render_template("planning/ramasse/creation_planning_ramasse.html", semaine=semaine, planning=planning, jours=jours, planning_existe=planning_existe)
 
 
 
@@ -463,7 +463,7 @@ def gestion_planning_ramasse():
     conn.close()
 
     return render_template(
-        "gestion_planning_ramasse.html",
+        "planning/ramasse/gestion_planning_ramasse.html",
         semaine=raw_semaine,
         lignes=lignes,
         chauffeurs=filtrer("chauffeur", benevoles),
@@ -599,7 +599,7 @@ def print_planning_ramasse():
         SELECT jour, tournee, chauffeur_id, responsable_id, equipier_id, camion_id
         FROM plannings_ramasse
         WHERE annee = ? AND semaine = ?
-        ORDER BY 
+        ORDER BY
             CASE LOWER(jour)
                 WHEN 'lundi' THEN 1
                 WHEN 'mardi' THEN 2
@@ -633,7 +633,7 @@ def print_planning_ramasse():
     if not impression_partielle:
         pdf.drawString(x + 13*cm, y, "Responsable")
         pdf.drawString(x + 18*cm, y, "Équipier")
-        pdf.drawString(x + 23*cm, y, "Camion")    
+        pdf.drawString(x + 23*cm, y, "Camion")
         y -= line_height
 
     pdf.setFont("Helvetica", 10)
@@ -679,7 +679,7 @@ def apercu_planning_ramasse():
     lignes = cursor.execute("""
         SELECT * FROM plannings_ramasse
         WHERE annee = ? AND semaine = ?
-        ORDER BY 
+        ORDER BY
             CASE LOWER(jour)
                 WHEN 'lundi' THEN 1
                 WHEN 'mardi' THEN 2
@@ -808,7 +808,7 @@ def apercu_planning_ramasse():
 
     conn.close()
     return render_template(
-        "apercu_planning_ramasse.html",
+        "planning/ramasse/apercu_planning_ramasse.html",
         lignes=lignes,
         semaine=semaine,
         date_debut=date_debut,
@@ -874,7 +874,7 @@ def apercu_modele_planning_ramasse():
 
     conn.close()
 
-    return render_template("apercu_modele_planning_ramasse.html",
+    return render_template("planning/ramasse/apercu_modele_planning_ramasse.html",
                            model=model,
                            tournees_dict=tournees_dict,
                            bene_dict=bene_dict,
@@ -995,7 +995,7 @@ def maj_modele_planning_ramasse():
     conn.close()
     upload_database()
 
-    return render_template("maj_modele_planning_ramasse.html", model=model, tournees=tournees, benevoles=benevoles, benevoles_externes=benevoles_externes, camions=camions, travail_vendredi=travail_vendredi)
+    return render_template("planning/ramasse/maj_modele_planning_ramasse.html", model=model, tournees=tournees, benevoles=benevoles, benevoles_externes=benevoles_externes, camions=camions, travail_vendredi=travail_vendredi)
 
 
 @planning_bp.route('/ajouter_fournisseur', methods=['POST'])

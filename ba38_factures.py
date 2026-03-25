@@ -151,13 +151,13 @@ def decouper_factures():
 
         flash(f"{len(fichiers_crees)} factures extraites avec succès.", "success")
         return render_template(
-            "factures_result.html",
+            "tresorerie/factures_result.html",
             fichiers=fichiers_crees,
             horodatage=horodatage,
             zipfile=zip_name
         )
 
-    return render_template("decouper_factures.html")
+    return render_template("tresorerie/decouper_factures.html")
 
 # =====================================================
 # 📦 Téléchargement direct du ZIP + suppression immédiate

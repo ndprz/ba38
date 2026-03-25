@@ -398,7 +398,7 @@ def planning_report_run():
 
     # ---------- GET : afficher page avec choix période --------------
     if request.method == "GET":
-        return render_template("planning_report.html")
+        return render_template("planning/report/planning_report.html")
 
     # ---------- POST : calculer le rapport --------------------------
     mode = request.form.get("periode")
@@ -426,14 +426,14 @@ def planning_report_run():
 
         if not d1 or not d2:
             flash("❌ Merci de sélectionner une période valide", "danger")
-            return render_template("planning_report.html")
+            return render_template("planning/report/planning_report.html")
 
         first = parse_date(d1)
         last = parse_date(d2)
 
     else:
         flash("❌ Période invalide", "danger")
-        return render_template("planning_report.html")
+        return render_template("planning/report/planning_report.html")
 
     # Label générique utilisé pour l’Excel
     periode_label = f"{first.strftime('%d/%m/%Y')} → {last.strftime('%d/%m/%Y')}"
@@ -607,7 +607,7 @@ def planning_report_run():
 
     # ----------- AFFICHAGE RESULTAT ----------
     return render_template(
-        "planning_report_result.html",
+        "planning/report/planning_report_result.html",
         first=first,
         last=last,
         total_ram=resultats["ramasse"],

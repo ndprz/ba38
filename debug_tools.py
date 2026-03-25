@@ -311,7 +311,7 @@ def debug_console():
         error = True
 
     return render_template(
-        "debug_console.html",
+        "admin/debug_console.html",
         output=output,
         error=error,
         log_files=log_files,
@@ -379,7 +379,7 @@ def where_are_my_logs():
     write_log("📍 Diagnostic des chemins et logs")
 
     return render_template(
-        "debug_where_logs.html",
+        "admin/debug_where_logs.html",
         infos=infos,
     )
 
@@ -503,7 +503,7 @@ def restaurer_version():
 
         return redirect(url_for("debug_bp.admin_scripts"))
 
-    return render_template("restaurer_version.html", fichiers=fichiers)
+    return render_template("admin/restaurer_version.html", fichiers=fichiers)
 
 
 # ============================================================================
@@ -609,7 +609,7 @@ def check_drive_ids():
     """
 
     return render_template(
-        "admin_scripts.html",
+        "admin/admin_scripts.html",
         output=html,
         script_name="Vérification Google Drive",
         error=False,
@@ -739,7 +739,7 @@ def admin_scripts():
     connexions_prod = [{"label": f"{nb_sessions} session(s) active(s)"}] if nb_sessions else []
 
     return render_template(
-        "admin_scripts.html",
+        "admin/admin_scripts.html",
         output=output,
         error=error,
         script_name=script_name,
@@ -886,4 +886,4 @@ def admin_conv_chatgpt():
             conversations = json.load(f)
     except FileNotFoundError:
         conversations = []
-    return render_template('admin_conv_chatgpt.html', conversations=conversations)
+    return render_template('admin/admin_conv_chatgpt.html', conversations=conversations)

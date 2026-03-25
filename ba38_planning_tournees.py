@@ -161,7 +161,7 @@ def planning_tournees():
     upload_database()
 
     return render_template(
-        "planning_tournees.html",
+        "planning/tournees/planning_tournees.html",
         tournees=tournee_ids,
         fournisseurs=fournisseurs,
         mapping=mapping,
@@ -303,7 +303,7 @@ def print_tournees():
 
     conn.close()
 
-    return render_template("print_tournees.html", tournees=tournees)
+    return render_template("planning/tournees/print_tournees.html", tournees=tournees)
 
 
 @planning_tournees_bp.route("/maj_fournisseurs", methods=["GET", "POST"])
@@ -373,7 +373,7 @@ def maj_fournisseurs():
     fournisseurs = cursor.execute(
         "SELECT * FROM fournisseurs ORDER BY nom COLLATE NOCASE"
     ).fetchall()
-    return render_template("maj_fournisseurs.html", fournisseurs=fournisseurs)
+    return render_template("planning/tournees/maj_fournisseurs.html", fournisseurs=fournisseurs)
 
 
 @planning_tournees_bp.route('/maj_camions', methods=['GET', 'POST'])
@@ -412,7 +412,7 @@ def maj_camions():
     ).fetchall()
     conn.close()
     upload_database()
-    return render_template("maj_camions.html", camions=camions)
+    return render_template("planning/tournees/maj_camions.html", camions=camions)
 
 @planning_tournees_bp.route("/save_all", methods=["POST"])
 @login_required

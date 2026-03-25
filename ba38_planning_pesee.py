@@ -80,7 +80,7 @@ def maj_modele_planning_pesee():
 
         conn.close()
         return render_template(
-            "maj_modele_planning_pesee.html",
+            "planning/pesee/maj_modele_planning_pesee.html",
             model=model,
             benevoles=benevoles,
             jours=jours,
@@ -101,14 +101,14 @@ def creation_planning_pesee():
     planning_existe = False
 
     if not semaine:
-        return render_template("creation_planning_pesee.html", semaine="")
+        return render_template("planning/pesee/creation_planning_pesee.html", semaine="")
 
     try:
         annee, num_semaine = map(int, semaine.split("-W"))
     except Exception:
         flash("❌ Format de semaine invalide", "danger")
         return redirect(url_for("planning_pesee.creation_planning_pesee"))
-    
+
     lundi = get_lundi_de_la_semaine(semaine)
     jours = ["lundi", "mardi", "mercredi", "jeudi", "vendredi"]
 
@@ -120,7 +120,7 @@ def creation_planning_pesee():
 
     if planning_existe and action != "forcer_generation":
         conn.close()
-        return render_template("creation_planning_pesee.html", semaine=semaine, planning_existe=True)
+        return render_template("planning/pesee/creation_planning_pesee.html", semaine=semaine, planning_existe=True)
 
     row = cursor.execute("SELECT param_value FROM parametres WHERE param_name = 'travail_vendredi'").fetchone()
     travail_vendredi = row["param_value"] if row else "oui"
@@ -181,7 +181,7 @@ def creation_planning_pesee():
     conn.commit()
     conn.close()
     flash("✅ Planning pesée généré et enregistré avec succès.", "success")
-    return render_template("creation_planning_pesee.html", semaine=semaine, planning=planning)
+    return render_template("planning/pesee/creation_planning_pesee.html", semaine=semaine, planning=planning)
 
 
 
@@ -198,7 +198,7 @@ def apercu_planning_pesee():
     except Exception:
         flash("❌ Format de semaine invalide", "danger")
         return redirect(url_for("planning_pesee.creation_planning_pesee"))
-    
+
     lundi = get_lundi_de_la_semaine(semaine)
 
     conn = get_db_connection()
@@ -244,7 +244,7 @@ def apercu_planning_pesee():
     ordre_jours = ["lundi", "mardi", "mercredi", "jeudi", "vendredi"]
     lignes.sort(key=lambda l: ordre_jours.index(l["jour"].lower()))
 
-    return render_template("apercu_planning_pesee.html", semaine=semaine, planning=lignes)
+    return render_template("planning/pesee/apercu_planning_pesee.html", semaine=semaine, planning=lignes)
 
 
 
@@ -491,7 +491,7 @@ def gestion_planning_pesee():
 
     conn.close()
     return render_template(
-        "gestion_planning_pesee.html",
+        "planning/pesee/gestion_planning_pesee.html",
         semaine=semaine,
         lignes=lignes,
         benevoles=benevoles,

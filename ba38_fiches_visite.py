@@ -14,7 +14,7 @@ from utils import get_db_connection, write_log, get_db_path
 from weasyprint import HTML
 import io
 import os
-        
+
 fiches_visite_bp = Blueprint("fiches_visite", __name__)
 
 @fiches_visite_bp.route("/fiches_visite/<int:partner_id>")
@@ -44,7 +44,7 @@ def liste(partner_id):
         return redirect(url_for("partenaires.update_partner", partner_id=partner_id))
 
     return render_template(
-        "fiches_visite.html",
+        "fiches_visite/fiches_visite.html",
         partenaire=clean_row(partenaire),
         fiches=[clean_row(f) for f in fiches],
         partner_id=partner_id
@@ -96,7 +96,7 @@ def nouvelle(partner_id):
 
         upload_database()
         flash("✅ Nouvelle fiche de visite enregistrée.", "success")
-        return redirect(url_for("fiches_visite.liste", partner_id=partner_id))
+        return redirect(url_for("fiches_visite.fiches_visite.liste", partner_id=partner_id))
 
     # 🚗 Liste des CAR (depuis parametres)
     cars = [row["param_value"] for row in cur.execute(
@@ -121,7 +121,7 @@ def nouvelle(partner_id):
     conn.close()
 
     return render_template(
-        "fiche_visite_form.html",
+        "fiches_visite/fiche_visite_form.html",
         partenaire=clean_row(partenaire),
         fiche=fiche_data,
         cars=cars,
@@ -154,7 +154,7 @@ def view(fiche_id):
     partenaire_dict = clean_row(partenaire)
 
     return render_template(
-        "fiche_visite_form.html",
+        "fiches_visite/fiche_visite_form.html",
         partenaire=partenaire_dict,
         fiche=fiche_dict,
         cars=cars,
@@ -198,7 +198,7 @@ def modifier(fiche_id):
 
         upload_database()
         flash("✅ Fiche de visite mise à jour avec succès.", "success")
-        return redirect(url_for("fiches_visite.modifier", fiche_id=fiche_id))
+        return redirect(url_for("fiches_visite.fiches_visite.modifier", fiche_id=fiche_id))
 
     # 🔽 GET → Affichage du formulaire
     partenaire = cur.execute("SELECT * FROM associations WHERE id = ?", (fiche["partenaire_id"],)).fetchone()
@@ -211,7 +211,7 @@ def modifier(fiche_id):
     partenaire_dict = clean_row(partenaire)
 
     return render_template(
-        "fiche_visite_form.html",
+        "fiches_visite/fiche_visite_form.html",
         partenaire=partenaire_dict,
         fiche=fiche_dict,
         cars=cars,
@@ -244,11 +244,15 @@ def pdf(fiche_id):
         if not fiche:
             return "❌ Fiche non trouvée", 404
 
+        static_path = os.path.join(os.getcwd(), "static")
+        logo_path = os.path.join(static_path, "images/logo.png")
+
         rendered_html = render_template(
-            "fiche_visite_pdf.html",
+            "fiches_visite/fiche_visite_pdf.html",
             fiche=fiche,
             partenaire=partenaire,
-            lecture_seule=True
+            lecture_seule=True,
+            logo_path=logo_path
         )
 
         pdf_io = io.BytesIO()
@@ -288,7 +292,7 @@ def fiche_visite_html(fiche_id):
             return "❌ Fiche non trouvée", 404
 
         # Retourne le rendu HTML du template
-        return render_template("fiche_visite_pdf.html", fiche=dict(fiche))
+        return render_template("fiches_visite/fiche_visite_pdf.html", fiche=dict(fiche), logo_path=logo_path)
 
     except Exception as e:
         write_log(f"❌ Erreur debug HTML fiche_visite {fiche_id} : {e}")
@@ -315,32 +319,32 @@ def datetimeformat(value, format='%d/%m/%Y'):
             return datetime.strptime(value, '%Y-%m-%d %H:%M:%S').strftime(format)
         except ValueError:
             return value
-        
 
 
-def header_footer_fiche_visite(canvas, doc):
-    """En-tête et pied de page spécifique aux PDF Fiches Visite"""
-    canvas.saveState()
 
-    # Logo gauche
-    logo_path = "static/images/logo.png"
-    if os.path.exists(logo_path):
-        canvas.drawImage(logo_path, x=40, y=A4[1] - 60,
-                         width=1.5*cm, height=1.5*cm, preserveAspectRatio=True)
+# def header_footer_fiche_visite(canvas, doc):
+#     """En-tête et pied de page spécifique aux PDF Fiches Visite"""
+#     canvas.saveState()
 
-    # Titre centré
-    canvas.setFont("Helvetica-Bold", 14)
-    canvas.setFillColorRGB(1, 0.5, 0)  # Orange
-    canvas.drawCentredString(A4[0] / 2, A4[1] - 40, "Fiche de visite")
-    canvas.setFillColorRGB(0, 0, 0)
+#     # Logo gauche
+#     logo_path = "static/images/logo.png"
+#     if os.path.exists(logo_path):
+#         canvas.drawImage(logo_path, x=40, y=A4[1] - 60,
+#                          width=1.5*cm, height=1.5*cm, preserveAspectRatio=True)
 
-    # Texte à droite
-    canvas.setFont("Helvetica", 10)
-    canvas.drawRightString(A4[0] - 40, A4[1] - 40, "Version ISÈRE 2025")
+#     # Titre centré
+#     canvas.setFont("Helvetica-Bold", 14)
+#     canvas.setFillColorRGB(1, 0.5, 0)  # Orange
+#     canvas.drawCentredString(A4[0] / 2, A4[1] - 40, "Fiche de visite")
+#     canvas.setFillColorRGB(0, 0, 0)
 
-    # Pied de page
-    page_num = canvas.getPageNumber()
-    canvas.setFont("Helvetica", 8)
-    canvas.drawRightString(A4[0] - 40, 20, f"Page {page_num}")
+#     # Texte à droite
+#     canvas.setFont("Helvetica", 10)
+#     canvas.drawRightString(A4[0] - 40, A4[1] - 40, "Version ISÈRE 2025")
 
-    canvas.restoreState()
+#     # Pied de page
+#     page_num = canvas.getPageNumber()
+#     canvas.setFont("Helvetica", 8)
+#     canvas.drawRightString(A4[0] - 40, 20, f"Page {page_num}")
+
+#     canvas.restoreState()

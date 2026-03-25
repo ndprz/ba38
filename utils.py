@@ -63,8 +63,8 @@ def write_log(message: str):
     try:
         current_app.logger.info(message)
     except RuntimeError:
-        # Cas script standalone (cron)
-        logging.getLogger("BA38").info(message)
+        pass
+
 
 
 def write_connexion_log(user_id, username, action="login"):

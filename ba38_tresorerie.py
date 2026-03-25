@@ -81,63 +81,8 @@ def get_pdf_by_code_vif(service, folder_id, code_vif_8):
 @tresorerie_bp.route("/tresorerie")
 @login_required
 def tresorerie  ():
-    return render_template("tresorerie.html")
+    return render_template("tresorerie/tresorerie.html")
 
-
-
-# ===============================
-# 📂 Traitement simple Drive (Excel / CSV)
-# ===============================
-@tresorerie_bp.route("/traitement_drive", methods=["GET", "POST"])
-@login_required
-def traitement_drive():
-    """
-    📂 Liste les fichiers d’un dossier Google Drive et affiche un aperçu avec pandas.
-    """
-    client, drive_service, creds = get_google_services()
-    if drive_service is None:
-        flash("❌ Connexion Google Drive impossible", "danger")
-        return "Erreur Drive"
-
-    try:
-        results = drive_service.files().list(
-            q=f"'{FOLDER_ID_TRAITEMENTS}' in parents and trashed=false",
-            fields="files(id, name)",
-        ).execute()
-        fichiers = results.get("files", [])
-    except Exception as e:
-        write_log(f"❌ Erreur accès Drive : {e}")
-        flash("Erreur d’accès au dossier Google Drive", "danger")
-        return "Erreur Drive"
-
-    if request.method == "POST":
-        file_id = request.form.get("file_id")
-        if not file_id:
-            flash("❌ Aucun fichier sélectionné", "danger")
-        else:
-            try:
-                request_dl = drive_service.files().get_media(fileId=file_id)
-                fh = io.BytesIO()
-                downloader = MediaIoBaseDownload(fh, request_dl)
-                done = False
-                while not done:
-                    status, done = downloader.next_chunk()
-
-                fh.seek(0)
-                try:
-                    df = pd.read_excel(fh)
-                except Exception:
-                    fh.seek(0)
-                    df = pd.read_csv(fh, sep=";")
-
-                flash(f"✅ {len(df)} lignes lues dans {df.shape[1]} colonnes", "success")
-                return render_template("traitement_drive.html", fichiers=fichiers, apercu=df.head().to_html())
-
-            except Exception as e:
-                write_log(f"❌ Erreur traitement fichier Drive : {e}")
-                flash(f"Erreur traitement fichier : {e}", "danger")
-
-    return render_template("traitement_drive.html", fichiers=fichiers)
 
 
 # ===============================
@@ -440,6 +385,7 @@ def traitement_participation():
         else:
             folder_name = "(SansDate)"  # info pour le flash
 
+
         # -------- 5) Découper en factures --------
         factures, facture = [], []
         for ligne in lignes:
@@ -546,7 +492,7 @@ def traitement_participation():
         )
         return redirect(url_for("tresorerie.traitement_participation"))
 
-    return render_template("traitement_participation.html", fichiers=fichiers)
+    return render_template("tresorerie/traitement_participation.html", fichiers=fichiers)
 
 # ===============================
 # 🗑️ Ancienne fonction simple (conservée pour tests)
@@ -982,7 +928,7 @@ def cotisations():
     # RENDU TEMPLATE
     # ==========================================================
     return render_template(
-        "cotisations.html",
+        "tresorerie/cotisations.html",
         resultats=resultats,
         orphelines=orphelines,
         annee=annee,
@@ -1823,7 +1769,7 @@ def cotisations_relance_start():
         "mail_sender",
         "ba380.comptable@banquealimentaire.org"
     )
-    
+
     from datetime import datetime
 
     annee = request.args.get("annee")
@@ -1864,7 +1810,7 @@ def cotisations_relance_start():
 
 
     return render_template(
-        "cotisations_relance.html",
+        "tresorerie/cotisations_relance.html",
         mail_mode=mail_mode,
         mail_test_to=mail_test_to,
         mail_sender=mail_sender,
@@ -1984,7 +1930,7 @@ def cotisations_relance():
         if not cotisations_a_relancer:
             conn.close()
             return render_template(
-                "cotisations_relance.html",
+                "tresorerie/cotisations_relance.html",
                 mail_mode=mail_mode,
                 mail_test_to=mail_test_to,
                 annee=annee,
@@ -2000,7 +1946,7 @@ def cotisations_relance():
         if not confirm_envoi:
             conn.close()
             return render_template(
-                "cotisations_relance.html",
+                "tresorerie/cotisations_relance.html",
                 mail_mode=mail_mode,
                 mail_test_to=mail_test_to,
                 annee=annee,
@@ -2180,7 +2126,7 @@ def modele_relance():
     conn.close()
 
     return render_template(
-        "modele_relance.html",
+        "tresorerie/modele_relance.html",
         modele=modele
     )
 
@@ -2309,7 +2255,7 @@ def cotisations_saisie_paiements():
     conn.close()
 
     return render_template(
-        "cotisations_saisie_paiements.html",
+        "tresorerie/cotisations_saisie_paiements.html",
         resultats=resultats,
         annee=annee,
         total_facture=total_facture,
@@ -2464,7 +2410,7 @@ def edit_modele_email(code_modele):
         return redirect(url_for("tresorerie.tresorerie"))
 
     return render_template(
-        "edit_modele_email.html",
+        "tresorerie/edit_modele_email.html",
         modele=modele
     )
 
@@ -2515,7 +2461,7 @@ def cerfa():
                 return redirect(url_for("tresorerie.cerfa"))
 
             tmp_dir = "/srv/ba38/tmp"
-            
+
             filename = f"cerfa_{int(time.time())}.pdf"
             tmp_path = os.path.join(tmp_dir, filename)
 
@@ -2556,7 +2502,7 @@ def cerfa():
                 "nom": p["nom"],
                 "email": email,
                 "pdf": pdf_page
-            })            
+            })
 
         # ============================
         # ENVOI
@@ -2619,14 +2565,14 @@ def cerfa():
             return redirect(url_for("tresorerie.cerfa"))
 
         return render_template(
-            "cerfa_preview.html",
+            "tresorerie/cerfa_preview.html",
             preview=preview,
             mail_mode=mail_mode,
             mail_test_to=mail_test_to
         )
 
     return render_template(
-        "cerfa_upload.html",
+        "tresorerie/cerfa_upload.html",
         mail_mode=mail_mode,
         mail_test_to=mail_test_to
     )

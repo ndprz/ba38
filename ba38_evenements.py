@@ -608,11 +608,12 @@ def gestion_evenements():
     )
 
     return render_template(
-        "gestion_evenements.html",
+        "evenements/gestion_evenements.html",
         evenements=evenements,
         evenement_actif=evenement_actif,
         benevoles=benevoles
     )
+
 
 
 # ============================================================
@@ -798,7 +799,7 @@ def affichage_evenement(evenement_id):
     evenements = [dict(r) for r in evenements_rows]
 
     return render_template(
-        "affichage_evenement.html",
+        "evenements/affichage_evenement.html",
         evenement=dict(evenement) if evenement else None,
         evenements=evenements
     )

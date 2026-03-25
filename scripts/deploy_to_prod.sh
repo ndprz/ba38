@@ -54,6 +54,15 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "🚀 Déploiement BA38 DEV → PROD : $(date '+%Y-%m-%d %H:%M:%S')"
 
 # ============================================================================
+# Copier requirements
+# ============================================================================
+cp /srv/ba38/dev/requirements.txt /srv/ba38/prod/
+
+# Installer
+source /srv/ba38/prod/venv/bin/activate
+pip install -r /srv/ba38/prod/requirements.txt
+
+# ============================================================================
 # 🔐 Auto commit Git + tag + push avant déploiement
 # ============================================================================
 
