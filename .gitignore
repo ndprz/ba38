@@ -48,3 +48,6 @@ exports/
 
 # instance Flask
 instance/
+
+#Photos bénévoles
+static/photos_benevoles/
