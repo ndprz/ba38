@@ -115,11 +115,19 @@ echo "📝 VERSION : $VERSION"
 echo "📝 MESSAGE : $VERSION_MSG"
 
 
-read -p "Confirmer le déploiement ? (o/N) : " CONFIRM
+# ============================================================================
+# ✅ Confirmation uniquement si mode interactif
+# ============================================================================
 
-if [[ "$CONFIRM" != "o" && "$CONFIRM" != "O" ]]; then
-  echo "❌ Déploiement annulé"
-  exit 1
+if [ -t 0 ]; then
+  read -p "Confirmer le déploiement ? (o/N) : " CONFIRM
+
+  if [[ "$CONFIRM" != "o" && "$CONFIRM" != "O" ]]; then
+    echo "❌ Déploiement annulé"
+    exit 1
+  fi
+else
+  echo "⚠️ Mode non interactif → déploiement automatique"
 fi
 
 : "${VERSION:?VERSION non défini dans DEV/VERSION}"
