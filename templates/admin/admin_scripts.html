@@ -122,7 +122,7 @@
         🔄 Synchroniser les bases TEST (schéma + données)
       </a>
       <form method="POST" action="{{ url_for('debug_bp.restaurer_version') }}">
-        <button onclick="return confirm('⚠️ Restaurer cette version ? Cela va écraser la PROD.')" "type=" submit"
+        <button onclick="return confirm('⚠️ Restaurer cette version ? Cela va écraser la PROD.')" type="submit"
           class="btn btn-outline-danger mb-2 w-100">
           🔁 Restaurer une version précédente de la PROD
         </button>
