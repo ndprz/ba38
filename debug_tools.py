@@ -761,6 +761,7 @@ def admin_scripts():
                     if not version:
                         output = "❌ Version obligatoire"
                         error = True
+
                     else:
                         result = subprocess.run(
                             ["bash", path, version, message or ""],
