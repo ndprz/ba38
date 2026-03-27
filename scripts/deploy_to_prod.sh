@@ -82,8 +82,44 @@ set -a
 source "$DEV_ENV"
 set +a
 
-: "${VERSION:?VERSION non définie dans .env DEV}"
-: "${VERSION_MSG:?VERSION_MSG non défini dans .env DEV}"
+# ============================================================================
+# 📝 Saisie VERSION manuelle
+# ============================================================================
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "📝 Saisie de la version à déployer"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+read -p "➡️ Version (ex: 1.3.39) : " VERSION
+read -p "➡️ Message (ex: correction bug) : " VERSION_MSG
+
+if [ -z "$VERSION" ]; then
+  echo "❌ Version obligatoire"
+  exit 1
+fi
+
+echo ""
+echo "👉 Version choisie : $VERSION"
+echo "👉 Message : $VERSION_MSG"
+echo ""
+
+read -p "Confirmer le déploiement ? (o/N) : " CONFIRM
+
+if [[ "$CONFIRM" != "o" && "$CONFIRM" != "O" ]]; then
+  echo "❌ Déploiement annulé"
+  exit 1
+fi
+
+: "${VERSION:?VERSION non défini dans DEV/VERSION}"
+: "${MESSAGE:?MESSAGE non défini dans DEV/VERSION}"
+
+VERSION_MSG="$MESSAGE"
+
+echo "📝 VERSION : $VERSION"
+echo "📝 MESSAGE : $VERSION_MSG"
+
+
+
 : "${SQLITE_DB_DEV:?SQLITE_DB_DEV non défini}"
 : "${SQLITE_DB:?SQLITE_DB non défini}"
 
@@ -229,6 +265,14 @@ sed -i '/^VERSION_MSG=/d' "$PROD_ENV"
   echo "VERSION=\"$VERSION\""
   echo "VERSION_MSG=\"$VERSION_MSG\""
 } >> "$PROD_ENV"
+
+VERSION_FILE="/srv/ba38/prod/VERSION"
+
+echo "VERSION=$VERSION" > "$VERSION_FILE"
+echo "MESSAGE=$VERSION_MSG" >> "$VERSION_FILE"
+echo "DATE=$(date '+%Y-%m-%d %H:%M')" >> "$VERSION_FILE"
+
+echo "✅ VERSION mise à jour"
 
 # ============================================================================
 # 🔄 5) Restart service

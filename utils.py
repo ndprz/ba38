@@ -255,12 +255,71 @@ def get_db_info_display():
         write_log(f"❌ get_db_info_display : {e}")
         return "Base inconnue"
 
+def get_version_file_path():
+    import os
 
+    base_dir = os.getenv("BA38_BASE_DIR")
+
+    write_log(f"DEBUG base_dir = {base_dir}")
+
+    if base_dir:
+        path = os.path.join(base_dir, "VERSION")
+        write_log(f"DEBUG path (env) = {path}")
+        return path
+
+    if os.path.exists("/srv/ba38/dev/VERSION"):
+        write_log("DEBUG fallback DEV utilisé")
+        return "/srv/ba38/dev/VERSION"
+
+    write_log("DEBUG fallback PROD utilisé")
+    return "/srv/ba38/prod/VERSION"
 def get_version():
-    """
-    Retourne la version applicative courante.
-    """
-    return os.getenv("VERSION", "0.0.0")
+    version_file = get_version_file_path()
+
+    try:
+        with open(version_file, "r") as f:
+            for line in f:
+                if line.startswith("VERSION="):
+                    return line.split("=", 1)[1].strip()
+    except Exception as e:
+        write_log(f"❌ get_version erreur : {e}")
+
+    return "unknown"
+    version = "unknown"
+
+    try:
+        with open(version_file, "r") as f:
+            for line in f:
+                if line.startswith("VERSION="):
+                    version = line.split("=", 1)[1].strip()
+                    break
+    except Exception as e:
+        write_log(f"❌ get_version erreur : {e}")
+
+    return version
+
+def get_version_full():
+    version_file = get_version_file_path()
+
+    data = {
+        "version": "unknown",
+        "message": "",
+        "date": ""
+    }
+
+    try:
+        with open(version_file, "r") as f:
+            for line in f:
+                if line.startswith("VERSION="):
+                    data["version"] = line.split("=", 1)[1].strip()
+                elif line.startswith("MESSAGE="):
+                    data["message"] = line.split("=", 1)[1].strip()
+                elif line.startswith("DATE="):
+                    data["date"] = line.split("=", 1)[1].strip()
+    except Exception as e:
+        write_log(f"❌ get_version_full erreur : {e}")
+
+    return data
 
 def get_all_users():
     """

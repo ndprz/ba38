@@ -3,7 +3,7 @@ from flask_login import login_required
 from utils import (
     get_db_connection, upload_database, write_log, get_version,
     get_db_info, get_all_users, has_access, get_db_info_display,
-    require_admin_global
+    require_admin_global, get_version_full
 )
 from forms import RegistrationForm
 from werkzeug.security import generate_password_hash
@@ -132,12 +132,15 @@ def test_session():
 # ===========================
 @admin_bp.app_context_processor
 def inject_globals():
-    return {
-        "version": get_version(),
-        "db_info": get_db_info_display(),   # affichage UI
-        "db_info_full": get_db_info(),       # debug/admin si besoin
-    }
+    v = get_version_full()
 
+    return {
+        "version": v["version"],
+        "version_message": v["message"],
+        "version_date": v["date"],
+        "db_info": get_db_info_display(),
+        "db_info_full": get_db_info(),
+    }
 
 
 def compute_user_role():
