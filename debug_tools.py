@@ -443,63 +443,99 @@ def trigger_error_log():
 @login_required
 def restaurer_version():
     """
-    Route pour restaurer une version précédente de la PROD à partir d’une archive .tar.gz
-    située dans le dossier /home/ndprz/backups.
-    - En GET : affiche un formulaire avec une liste déroulante des archives disponibles.
-    - En POST : restaure l’archive sélectionnée dans /home/ndprz/ba380 (remplace tous les fichiers).
+    Restauration sécurisée d'une version PROD à partir d’un backup.
     """
-    write_log("📥 [restaurer_version] Affichage de la page de restauration")
 
-    # Vérification des droits administrateur
+    write_log("📥 [restaurer_version] Accès à la restauration")
+
     if session.get("user_role") != "admin":
         flash("⛔ Accès réservé aux administrateurs", "danger")
         return redirect(url_for("index"))
 
-    # 📁 Emplacement des sauvegardes
     BASE_DIR = os.getenv("BA38_BASE_DIR", "/srv/ba38")
-    dossier_backups = os.path.join(BASE_DIR, "backups")
+    PROD_DIR = os.path.join(BASE_DIR, "prod")
+    BACKUP_DIR = os.path.join(BASE_DIR, "backups")
 
     try:
         fichiers = sorted(
-            [
-                f for f in os.listdir(dossier_backups)
-                if f.startswith("ba380-v") and f.endswith(".tar.gz")
-            ],
+            [f for f in os.listdir(BACKUP_DIR)
+             if f.startswith("ba380-v") and f.endswith(".tar.gz")],
             reverse=True
         )
     except Exception as e:
-        flash(f"❌ Erreur lecture du dossier des backups : {e}", "danger")
+        flash(f"❌ Erreur lecture backups : {e}", "danger")
         write_log(f"❌ Erreur lecture backups : {e}")
         fichiers = []
 
-    # ▶️ Si l'utilisateur a soumis le formulaire
     if request.method == "POST":
         nom_fichier = request.form.get("backup_file")
+
         if not nom_fichier:
             flash("❌ Aucun fichier sélectionné", "warning")
             return redirect(url_for("debug_bp.restaurer_version"))
 
-        backup_path = os.path.join(dossier_backups, nom_fichier)
+        backup_path = os.path.join(BACKUP_DIR, nom_fichier)
 
         if not os.path.isfile(backup_path):
-            flash(f"❌ Le fichier sélectionné n'existe pas : {nom_fichier}", "danger")
-            write_log(f"❌ Fichier introuvable : {backup_path}")
+            flash(f"❌ Fichier introuvable : {nom_fichier}", "danger")
             return redirect(url_for("debug_bp.restaurer_version"))
 
         try:
-            write_log(f"🔄 Début restauration depuis : {backup_path}")
+            write_log(f"🔄 Début rollback depuis : {backup_path}")
+
+            # =========================================================================
+            # 1. Sauvegarde de sécurité AVANT rollback
+            # =========================================================================
+            write_log("💾 Backup de sécurité avant rollback")
             subprocess.run(
-                ["tar", "-xzf", backup_path, "-C", "/srv/ba38/prod"],
+                ["/srv/ba38/dev/scripts/backup_prod.sh"],
                 check=True
             )
-            write_log(f"✅ Restauration terminée depuis : {backup_path}")
-            flash(f"✅ Version restaurée depuis : {nom_fichier}", "success")
-        except subprocess.CalledProcessError as e:
-            flash(f"❌ Erreur lors de la restauration : {e}", "danger")
-            write_log(f"❌ Erreur tar : {e}")
+
+            # =========================================================================
+            # 2. Arrêt du service
+            # =========================================================================
+            write_log("⛔ Arrêt du service ba38-prod")
+            subprocess.run(["sudo", "systemctl", "stop", "ba38-prod"], check=True)
+
+            # =========================================================================
+            # 3. Nettoyage du dossier PROD (SAUF éléments critiques)
+            # =========================================================================
+            write_log("🧹 Nettoyage du dossier PROD")
+
+            for item in os.listdir(PROD_DIR):
+                if item in ["venv", "instance", "logs"]:
+                    continue
+
+                path = os.path.join(PROD_DIR, item)
+
+                if os.path.isdir(path):
+                    subprocess.run(["rm", "-rf", path], check=True)
+                else:
+                    os.remove(path)
+
+            # =========================================================================
+            # 4. Extraction archive
+            # =========================================================================
+            write_log("📦 Extraction archive")
+
+            subprocess.run(
+                ["tar", "-xzf", backup_path, "-C", PROD_DIR],
+                check=True
+            )
+
+            # =========================================================================
+            # 5. Redémarrage service
+            # =========================================================================
+            write_log("🔄 Redémarrage service")
+            subprocess.run(["sudo", "systemctl", "start", "ba38-prod"], check=True)
+
+            write_log(f"✅ Rollback terminé : {nom_fichier}")
+            flash(f"✅ Version restaurée : {nom_fichier}", "success")
+
         except Exception as e:
-            flash(f"❌ Exception inattendue : {e}", "danger")
-            write_log(f"❌ Exception restauration : {e}")
+            write_log(f"❌ Erreur rollback : {e}")
+            flash(f"❌ Erreur rollback : {e}", "danger")
 
         return redirect(url_for("debug_bp.admin_scripts"))
 
