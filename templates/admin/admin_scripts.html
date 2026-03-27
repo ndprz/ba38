@@ -94,9 +94,23 @@
       <a href="{{ url_for('rename.rename_field') }}" class="btn btn-outline-warning mb-2 w-100">
         ✏️ Renommer un champ dans les bases SQLite
       </a>
-      <form method="POST"><input type="hidden" name="script_name" value="deploy_to_prod.sh">
-        <button class="btn btn-success mb-2 w-100">🚀 Lancer deploy_to_prod.sh</button>
+
+      <form method="POST">
+        <input type="hidden" name="script_name" value="deploy_to_prod.sh">
+
+        <div class="mb-2">
+          <input type="text" name="version" class="form-control" placeholder="Version (ex: 1.3.40)" required>
+        </div>
+
+        <div class="mb-2">
+          <input type="text" name="message" class="form-control" placeholder="Message (ex: correction bug)">
+        </div>
+
+        <button class="btn btn-success mb-2 w-100">
+          🚀 Lancer deploy_to_prod.sh
+        </button>
       </form>
+
       <form method="POST"><input type="hidden" name="script_name" value="enable_maintenance.sh">
         <button class="btn btn-danger mb-2 w-100">🔒 Activer le mode maintenance</button>
       </form>

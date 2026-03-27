@@ -753,11 +753,45 @@ def admin_scripts():
                         [sys.executable, path],
                         capture_output=True, text=True, timeout=300
                     )
+
+                elif script_name == "deploy_to_prod.sh":
+                    version = request.form.get("version")
+                    message = request.form.get("message")
+
+                    if not version:
+                        output = "❌ Version obligatoire"
+                        error = True
+                    else:
+                        result = subprocess.run(
+                            ["bash", path, version, message or ""],
+                            capture_output=True, text=True, timeout=300
+                        )
+
+                        output = result.stdout or ""
+                        if result.stderr:
+                            output += "\n⚠️ STDERR :\n" + result.stderr
+
+                        if not output.strip():
+                            output = "ℹ️ Script exécuté avec succès, aucune sortie."
+
+                        error = result.returncode != 0
+                        write_log(f"{'❌' if error else '✅'} Script {script_name} exécuté")
+
                 else:
                     result = subprocess.run(
                         ["bash", path],
                         capture_output=True, text=True, timeout=300
                     )
+
+                    output = result.stdout or ""
+                    if result.stderr:
+                        output += "\n⚠️ STDERR :\n" + result.stderr
+
+                    if not output.strip():
+                        output = "ℹ️ Script exécuté avec succès, aucune sortie."
+
+                    error = result.returncode != 0
+                    write_log(f"{'❌' if error else '✅'} Script {script_name} exécuté")
 
                 output = result.stdout or ""
                 if result.stderr:
@@ -774,7 +808,9 @@ def admin_scripts():
                 error = True
                 write_log(f"❌ Exception script {script_name} : {e}")
 
-    version_msg = os.getenv("VERSION_MSG", "Version inconnue")
+    from utils import get_version_full
+    v = get_version_full()
+    version_msg = v["message"]
 
     nb_sessions = count_active_sessions()
 
