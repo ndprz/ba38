@@ -446,6 +446,8 @@ def restaurer_version():
     Restauration sécurisée d'une version PROD à partir d’un backup.
     """
 
+    import re
+
     write_log("📥 [restaurer_version] Accès à la restauration")
 
     if session.get("user_role") != "admin":
@@ -456,49 +458,50 @@ def restaurer_version():
     PROD_DIR = os.path.join(BASE_DIR, "prod")
     BACKUP_DIR = "/srv/ba38/backups"
 
+    # =========================================================================
+    # 🧠 Parser nom backup
+    # =========================================================================
+    def parse_backup_name(filename):
+        match = re.match(r"ba380-v(.+)-(\d{8})-(\d{6})\.tar\.gz", filename)
+        if not match:
+            return filename
+
+        version = match.group(1)
+        date = match.group(2)
+        heure = match.group(3)
+
+        date_fmt = f"{date[6:8]}/{date[4:6]}"
+        heure_fmt = f"{heure[0:2]}:{heure[2:4]}"
+
+        return f"Version {version} — {date_fmt} {heure_fmt}"
+
+    # =========================================================================
+    # 📦 Liste backups
+    # =========================================================================
     try:
         fichiers_bruts = sorted(
             [
-                f for f in os.listdir(dossier_backups)
+                f for f in os.listdir(BACKUP_DIR)
                 if f.startswith("ba380-v") and f.endswith(".tar.gz")
             ],
             reverse=True
         )
 
         fichiers = [
-            {
-                "file": f,
-                "label": parse_backup_name(f)
-            }
+            {"file": f, "label": parse_backup_name(f)}
             for f in fichiers_bruts
         ]
-        import re
-
-        def parse_backup_name(filename):
-            """
-            Extrait version + date depuis :
-            ba380-v1.3.33-20260327-114215.tar.gz
-            """
-            match = re.match(r"ba380-v(.+)-(\d{8})-(\d{6})\.tar\.gz", filename)
-            if not match:
-                return filename  # fallback
-
-            version = match.group(1)
-            date = match.group(2)
-            heure = match.group(3)
-
-            # format lisible
-            date_fmt = f"{date[6:8]}/{date[4:6]}"
-            heure_fmt = f"{heure[0:2]}:{heure[2:4]}"
-
-            return f"Version {version} — {date_fmt} {heure_fmt}"
 
     except Exception as e:
         flash(f"❌ Erreur lecture backups : {e}", "danger")
         write_log(f"❌ Erreur lecture backups : {e}")
         fichiers = []
 
+    # =========================================================================
+    # ▶️ POST = lancer rollback
+    # =========================================================================
     if request.method == "POST":
+
         nom_fichier = request.form.get("backup_file")
 
         if not nom_fichier:
@@ -512,66 +515,22 @@ def restaurer_version():
             return redirect(url_for("debug_bp.restaurer_version"))
 
         try:
-            write_log(f"🔄 Début rollback depuis : {backup_path}")
+            write_log(f"🔄 Lancement rollback via script externe : {backup_path}")
 
-            # =========================================================================
-            # 1. Sauvegarde de sécurité AVANT rollback
-            # =========================================================================
-            write_log("💾 Backup de sécurité avant rollback")
-            subprocess.run(
-                ["/srv/ba38/dev/scripts/backup_prod.sh"],
-                check=True
+            # ✅ Lancement du script EXTERNE (IMPORTANT)
+            subprocess.Popen(
+                ["/srv/ba38/scripts_taches/rollback_prod.sh", backup_path]
             )
 
-            # =========================================================================
-            # 2. Arrêt du service
-            # =========================================================================
-            write_log("⛔ Arrêt du service ba38-prod")
-            subprocess.run(["sudo", "systemctl", "stop", "ba38-prod"], check=True)
-
-            # =========================================================================
-            # 3. Nettoyage du dossier PROD (SAUF éléments critiques)
-            # =========================================================================
-            write_log("🧹 Nettoyage du dossier PROD")
-
-            for item in os.listdir(PROD_DIR):
-                if item in ["venv", "instance", "logs"]:
-                    continue
-
-                path = os.path.join(PROD_DIR, item)
-
-                if os.path.isdir(path):
-                    subprocess.run(["rm", "-rf", path], check=True)
-                else:
-                    os.remove(path)
-
-            # =========================================================================
-            # 4. Extraction archive
-            # =========================================================================
-            write_log("📦 Extraction archive")
-
-            subprocess.run(
-                ["tar", "-xzf", backup_path, "-C", PROD_DIR],
-                check=True
-            )
-
-            # =========================================================================
-            # 5. Redémarrage service
-            # =========================================================================
-            write_log("🔄 Redémarrage service")
-            subprocess.run(["sudo", "systemctl", "start", "ba38-prod"], check=True)
-
-            write_log(f"✅ Rollback terminé : {nom_fichier}")
-            flash(f"✅ Version restaurée : {nom_fichier}", "success")
+            flash("🔄 Rollback lancé (le service redémarre automatiquement)", "info")
 
         except Exception as e:
-            write_log(f"❌ Erreur rollback : {e}")
-            flash(f"❌ Erreur rollback : {e}", "danger")
+            write_log(f"❌ Erreur lancement rollback : {e}")
+            flash(f"❌ Erreur : {e}", "danger")
 
         return redirect(url_for("debug_bp.admin_scripts"))
 
     return render_template("admin/restaurer_version.html", fichiers=fichiers)
-
 
 # ============================================================================
 # 🔍 Vérification des IDs Google Drive (DEV / PROD)
