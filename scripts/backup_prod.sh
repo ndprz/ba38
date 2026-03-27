@@ -5,6 +5,8 @@ set -euo pipefail
 # 📦 BACKUP PROD — VERSION PRO
 # ============================================================================
 
+
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 BASE_DIR="/srv/ba38"
@@ -27,13 +29,28 @@ echo "📦 BACKUP PROD — $(date '+%Y-%m-%d %H:%M:%S')"
 [ -d "$PROD_DIR" ] || { echo "❌ PROD introuvable"; exit 1; }
 
 # ============================================================================
-# 📁 Nom archive
+# 📁 Nom archive avec VERSION
 # ============================================================================
 
-VERSION="$(date '+%Y%m%d-%H%M%S')"
-ARCHIVE="$BACKUP_DIR/ba380-v$VERSION.tar.gz"
+ENV_FILE="/srv/ba38/prod/.env"
 
-echo "📁 Source : $PROD_DIR"
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  source "$ENV_FILE"
+  set +a
+else
+  echo "⚠️ .env introuvable"
+  VERSION="unknown"
+fi
+
+VERSION="${VERSION:-unknown}"
+TIMESTAMP="$(date '+%Y%m%d-%H%M%S')"
+
+ARCHIVE="$BACKUP_DIR/ba380-v${VERSION}-${TIMESTAMP}.tar.gz"
+
+# 👉 ICI 👇
+echo "📦 Version détectée : $VERSION"
+echo "📦 Backup VERSION=$VERSION"
 echo "📦 Archive : $ARCHIVE"
 
 # ============================================================================

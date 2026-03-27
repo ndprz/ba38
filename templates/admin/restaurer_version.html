@@ -11,7 +11,7 @@
       <label for="backup_file" class="form-label">Choisir une version à restaurer :</label>
       <select name="backup_file" id="backup_file" class="form-select" required>
         {% for f in fichiers %}
-          <option value="{{ f }}">{{ f }}</option>
+        <option value="{{ f.file }}">{{ f.label }}</option>
         {% endfor %}
       </select>
     </div>

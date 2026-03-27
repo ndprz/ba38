@@ -457,11 +457,42 @@ def restaurer_version():
     BACKUP_DIR = "/srv/ba38/backups"
 
     try:
-        fichiers = sorted(
-            [f for f in os.listdir(BACKUP_DIR)
-             if f.startswith("ba380-v") and f.endswith(".tar.gz")],
+        fichiers_bruts = sorted(
+            [
+                f for f in os.listdir(dossier_backups)
+                if f.startswith("ba380-v") and f.endswith(".tar.gz")
+            ],
             reverse=True
         )
+
+        fichiers = [
+            {
+                "file": f,
+                "label": parse_backup_name(f)
+            }
+            for f in fichiers_bruts
+        ]
+        import re
+
+        def parse_backup_name(filename):
+            """
+            Extrait version + date depuis :
+            ba380-v1.3.33-20260327-114215.tar.gz
+            """
+            match = re.match(r"ba380-v(.+)-(\d{8})-(\d{6})\.tar\.gz", filename)
+            if not match:
+                return filename  # fallback
+
+            version = match.group(1)
+            date = match.group(2)
+            heure = match.group(3)
+
+            # format lisible
+            date_fmt = f"{date[6:8]}/{date[4:6]}"
+            heure_fmt = f"{heure[0:2]}:{heure[2:4]}"
+
+            return f"Version {version} — {date_fmt} {heure_fmt}"
+
     except Exception as e:
         flash(f"❌ Erreur lecture backups : {e}", "danger")
         write_log(f"❌ Erreur lecture backups : {e}")
