@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
 # ============================================================================
-# 🚀 Déploiement DEV → PROD pour BA38 (serveur Debian)
+# 🚀 Déploiement DEV → PROD pour BA38 (serveur Debian) — VERSION SÉCURISÉE
 # ============================================================================
 #
-# Objectifs :
+# 🎯 Objectifs :
 # - Déployer le code DEV vers PROD
 # - Sauvegarder la base PROD avant toute modification
 # - Migrer automatiquement schéma + données si nécessaire
 # - Synchroniser le code via rsync (exclusions strictes)
 # - Mettre à jour VERSION / VERSION_MSG en PROD
 # - Recharger le service systemd
-# - Journaliser l’intégralité du déploiement dans un log global
+# - Journaliser l’intégralité du déploiement
+#
+# ⚠️ IMPORTANT :
+# - Aucun commit Git n’est effectué ici
+# - Le code DOIT être push AVANT le déploiement
 #
 # Logs :
 #   /srv/ba38/logs/deploy.log
-#
-# ⚠️ Ce script DOIT être lancé depuis DEV uniquement
 # ============================================================================
 
 set -euo pipefail
@@ -54,52 +56,19 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "🚀 Déploiement BA38 DEV → PROD : $(date '+%Y-%m-%d %H:%M:%S')"
 
 # ============================================================================
-# Copier requirements
+# 🔎 Vérification état Git (sécurité)
 # ============================================================================
-cp /srv/ba38/dev/requirements.txt /srv/ba38/prod/
-
-# Installer
-source /srv/ba38/prod/venv/bin/activate
-pip install -r /srv/ba38/prod/requirements.txt
-
-# ============================================================================
-# 🔐 Auto commit Git + tag + push avant déploiement
-# ============================================================================
-
-echo "🔎 Synchronisation Git automatique (DEV → GitHub)"
+echo "🔎 Vérification état Git (doit être clean)"
 
 cd "$DEV_DIR"
 
-# Vérifie que DEV est un repo Git
-if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
-  echo "❌ DEV_DIR n’est pas un dépôt Git"
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "❌ Des modifications non commitées existent"
+  echo "👉 Faites un git commit + push AVANT le déploiement"
   exit 1
 fi
 
-git add .
-
-# Vérifie s'il y a réellement quelque chose à commit
-if ! git diff --cached --quiet; then
-  COMMIT_MSG="v$VERSION - $VERSION_MSG"
-  echo "📝 Commit automatique : $COMMIT_MSG"
-  git commit -m "$COMMIT_MSG"
-else
-  echo "ℹ️ Aucun changement à commit"
-fi
-
-# Création du tag seulement s'il n'existe pas déjà
-if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-  echo "ℹ️ Tag v$VERSION déjà existant"
-else
-  echo "🏷️ Création du tag v$VERSION"
-  git tag -a "v$VERSION" -m "Release $VERSION - $VERSION_MSG"
-fi
-
-echo "⬆️ Push GitHub (code + tags)"
-git push
-git push --tags
-
-echo "✅ GitHub synchronisé"
+echo "✅ Repo Git propre"
 
 # ============================================================================
 # 🌍 Chargement de l’environnement DEV
@@ -118,9 +87,22 @@ set +a
 : "${SQLITE_DB_DEV:?SQLITE_DB_DEV non défini}"
 : "${SQLITE_DB:?SQLITE_DB non défini}"
 
-echo "📝 VERSION détectée : $VERSION"
-echo "📝 MESSAGE associé : $VERSION_MSG"
+echo "📝 VERSION : $VERSION"
+echo "📝 MESSAGE : $VERSION_MSG"
 
+# ============================================================================
+# 📦 Installation dépendances (option sécurisée)
+# ============================================================================
+echo "📦 Vérification des dépendances Python"
+
+if [ -f "$DEV_DIR/requirements.txt" ]; then
+  cp "$DEV_DIR/requirements.txt" "$PROD_DIR/"
+
+  source "$PROD_DIR/venv/bin/activate"
+  pip install --upgrade --no-cache-dir -r "$PROD_DIR/requirements.txt"
+else
+  echo "⚠️ requirements.txt absent"
+fi
 
 # ============================================================================
 # 🗄️ Bases SQLite
@@ -159,7 +141,6 @@ compare_schemas() {
     "$(get_tables "$PROD_DB" 2>/dev/null || true)" | sort -u)
 
   for table in $all_tables; do
-    # Vérifie existence réelle de la table en PROD
     exists=$(sqlite3 "$PROD_DB" \
       "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='$table';")
 
@@ -180,25 +161,24 @@ compare_schemas() {
 # 💾 1) Sauvegarde de la base PROD
 # ============================================================================
 if [ -f "$PROD_DB" ]; then
-  echo "💾 Sauvegarde de la base PROD…"
+  echo "💾 Sauvegarde de la base PROD"
   "$SCRIPTS_DIR/backup_prod.sh"
 fi
 
 # ============================================================================
-# 🔧 2) Migration schéma / données si nécessaire
+# 🔧 2) Migration schéma / données
 # ============================================================================
 if [ -f "$PROD_DB" ] && compare_schemas; then
-  echo "✅ Schémas DEV / PROD identiques"
+  echo "✅ Schémas identiques"
 else
-  echo "🔧 Migration schéma et données DEV → PROD"
+  echo "🔧 Migration DEV → PROD"
   "$DEV_DIR/venv/bin/python" "$SCRIPTS_DIR/migrate_schema_and_data_dev_to_prod.py"
-  echo "✅ Migration validée (script Python terminé sans erreur)"
 fi
 
 # ============================================================================
-# 📁 3) Synchronisation du code (rsync)
+# 📁 3) Synchronisation code (rsync sécurisé)
 # ============================================================================
-echo "📁 Synchronisation du code DEV → PROD"
+echo "📁 Synchronisation DEV → PROD"
 
 rsync -av --delete \
   --exclude ".env" \
@@ -214,14 +194,16 @@ rsync -av --delete \
   --exclude "static/uploads/" \
   --exclude "static/factures/archives/" \
   --exclude "static/evenements/" \
+  --exclude "static/photos_benevoles/" \
+  --exclude "exports/" \
   --exclude "__pycache__/" \
   --exclude "venv/" \
   "$DEV_DIR/" "$PROD_DIR/"
 
 # ============================================================================
-# 📝 4) Mise à jour VERSION et VERSION_MSG en PROD
+# 📝 4) Mise à jour VERSION en PROD
 # ============================================================================
-echo "📝 Mise à jour VERSION et VERSION_MSG dans .env PROD"
+echo "📝 Mise à jour VERSION dans PROD"
 
 touch "$PROD_ENV"
 sed -i '/^VERSION=/d' "$PROD_ENV"
@@ -233,10 +215,10 @@ sed -i '/^VERSION_MSG=/d' "$PROD_ENV"
 } >> "$PROD_ENV"
 
 # ============================================================================
-# 🔄 5) Restart du service systemd
+# 🔄 5) Restart service
 # ============================================================================
-echo "🔄 Redémarrage du service ba38-prod"
+echo "🔄 Redémarrage ba38-prod"
 sudo systemctl restart ba38-prod.service
 
-echo "🎉 DÉPLOIEMENT PROD TERMINÉ AVEC SUCCÈS"
+echo "🎉 Déploiement terminé avec succès"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
