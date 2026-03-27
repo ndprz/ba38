@@ -83,25 +83,37 @@ source "$DEV_ENV"
 set +a
 
 # ============================================================================
-# 📝 Saisie VERSION manuelle
+# 📝 VERSION : argument ou interactif
 # ============================================================================
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "📝 Saisie de la version à déployer"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-read -p "➡️ Version (ex: 1.3.39) : " VERSION
-read -p "➡️ Message (ex: correction bug) : " VERSION_MSG
+VERSION="${1:-}"
+VERSION_MSG="${2:-}"
 
 if [ -z "$VERSION" ]; then
-  echo "❌ Version obligatoire"
-  exit 1
+  # Mode interactif uniquement si terminal
+  if [ -t 0 ]; then
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "📝 Saisie de la version"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    read -p "➡️ Version (ex: 1.3.39) : " VERSION
+    read -p "➡️ Message : " VERSION_MSG
+
+    if [ -z "$VERSION" ]; then
+      echo "❌ Version obligatoire"
+      exit 1
+    fi
+
+  else
+    echo "❌ VERSION non fournie (mode non interactif)"
+    exit 1
+  fi
 fi
 
-echo ""
-echo "👉 Version choisie : $VERSION"
-echo "👉 Message : $VERSION_MSG"
-echo ""
+echo "📝 VERSION : $VERSION"
+echo "📝 MESSAGE : $VERSION_MSG"
+
 
 read -p "Confirmer le déploiement ? (o/N) : " CONFIRM
 
