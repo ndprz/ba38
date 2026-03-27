@@ -6,7 +6,7 @@ import unicodedata
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, current_app
 from flask_login import login_required, current_user
-from utils import get_db_connection, upload_database, write_log, has_access, is_valid_email, is_valid_phone
+from utils import get_db_connection, upload_database, write_log, has_access, is_valid_email, is_valid_phone, require_access
 from werkzeug.security import generate_password_hash
 from PIL import Image, ExifTags
 from urllib.parse import urlencode, quote_plus, quote
@@ -71,6 +71,7 @@ benevoles_bp = Blueprint("benevoles", __name__)
 
 @benevoles_bp.route("/api/quick_create_benevole", methods=["POST"])
 @login_required
+@require_access("benevoles", "ecriture")
 def api_quick_create_benevole():
 
     current_app.logger.info(
@@ -126,14 +127,8 @@ def api_quick_create_benevole():
 
 @benevoles_bp.route('/benevoles', methods=['GET'])
 @login_required
+@require_access("benevoles", "lecture")
 def benevoles():
-    """
-    Affiche la liste des bénévoles avec sélection dynamique des colonnes
-    et persistance du champ de recherche (comme partenaires).
-    """
-    if not has_access("benevoles", "lecture"):
-        flash("⛔ Accès refusé à la gestion des bénévoles", "danger")
-        return redirect(url_for("index"))
 
     # 📌 Redirection si mobile vers la prise de photo
     user_agent = request.headers.get('User-Agent', '').lower()
@@ -321,6 +316,7 @@ def benevoles():
 
 @benevoles_bp.route("/edition_tableau_benevoles")
 @login_required
+@require_access("benevoles", "ecriture")
 def edition_tableau_benevoles():
 
     conn = get_db_connection()
@@ -369,10 +365,8 @@ def edition_tableau_benevoles():
 
 @benevoles_bp.route("/create_benevole", methods=["GET", "POST"])
 @login_required
+@require_access("benevoles", "ecriture")
 def create_benevole():
-    if not has_access("benevoles", "ecriture"):
-        flash("⛔ Accès refusé : modification non autorisée.", "danger")
-        return redirect(url_for("benevoles.benevoles"))
 
 
     conn = get_db_connection()
@@ -542,10 +536,8 @@ def create_benevole():
 
 @benevoles_bp.route('/delete_benevole/<int:benevole_id>', methods=['POST'])
 @login_required
+@require_access("benevoles", "ecriture")
 def delete_benevole(benevole_id):
-    if not has_access("benevoles", "ecriture"):
-        flash("⛔ Accès refusé : modification non autorisée.", "danger")
-        return redirect(url_for("benevoles.benevoles"))
 
     confirm = request.form.get("confirm_final")
     if confirm != "supprimer":
@@ -592,12 +584,12 @@ def get_neighbor_benevole_ids_alphabetically(conn, current_id):
 
 @benevoles_bp.route('/update_benevole/<int:benevole_id>', methods=['GET', 'POST'])
 @login_required
+@require_access("benevoles", "lecture")
 def update_benevole(benevole_id):
-
-    lecture_seule = not has_access("benevoles", "ecriture")  # Ajouté
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    lecture_seule = not has_access("benevoles", "ecriture")
 
     benevole = cursor.execute("SELECT * FROM benevoles WHERE id = ?", (benevole_id,)).fetchone()
     if not benevole:
@@ -636,6 +628,11 @@ def update_benevole(benevole_id):
     next_url = url_for("benevoles.benevoles") + "?" + urlencode(query_params, doseq=True)
 
     if request.method == 'POST':
+
+        if not has_access("benevoles", "ecriture"):
+            flash("⛔ Modification non autorisée (lecture seule).", "danger")
+            return redirect(url_for("benevoles.update_benevole", benevole_id=benevole_id))
+
         opts_type_bene = get_type_benevole_options(conn)
         do_upload = request.form.get("do_upload", "1")
         PHOTO_DIR = os.path.join(os.path.dirname(__file__), "static", "photos_benevoles")
@@ -837,6 +834,7 @@ def update_benevole(benevole_id):
 
 @benevoles_bp.route("/update_benevoles_table", methods=["POST"])
 @login_required
+@require_access("benevoles", "ecriture")
 def update_benevoles_table():
     """
     Met à jour plusieurs bénévoles via un tableau modifiable.
@@ -1000,6 +998,7 @@ def update_benevoles_table():
 
 @benevoles_bp.route('/photo_benevole_mobile', methods=['GET', 'POST'])
 @login_required
+@require_access("benevoles", "ecriture")
 def photo_benevole_mobile():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1028,6 +1027,7 @@ def photo_benevole_mobile():
 
 @benevoles_bp.route('/upload_photo_benevole/<int:benevole_id>', methods=['POST'])
 @login_required
+@require_access("benevoles", "ecriture")
 def upload_photo_benevole(benevole_id):
     """
     Upload ou remplace la photo d’un bénévole.
@@ -1113,6 +1113,7 @@ def upload_photo_benevole(benevole_id):
 
 @benevoles_bp.route("/desactiver_benevole/<int:benevole_id>", methods=["GET", "POST"])
 @login_required
+@require_access("benevoles", "ecriture")
 def desactiver_benevole(benevole_id):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1186,6 +1187,7 @@ def desactiver_benevole(benevole_id):
 
 @benevoles_bp.route("/benevoles/inactifs")
 @login_required
+@require_access("benevoles", "lecture")
 def benevoles_archives():
     conn = get_db_connection()
     benevoles = conn.execute("SELECT * FROM benevoles_inactifs ORDER BY nom, prenom").fetchall()
@@ -1195,6 +1197,7 @@ def benevoles_archives():
 
 @benevoles_bp.route("/restaurer_benevole/<int:benevole_id>", methods=["POST"])
 @login_required
+@require_access("benevoles", "ecriture")
 def restaurer_benevole(benevole_id):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1251,10 +1254,8 @@ def restaurer_benevole(benevole_id):
 
 @benevoles_bp.route("/supprimer_definitivement_benevole/<int:benevole_id>", methods=["POST"])
 @login_required
+@require_access("benevoles", "ecriture")
 def supprimer_definitivement_benevole(benevole_id):
-    if not has_access("benevoles", "ecriture"):
-        flash("⛔ Accès refusé : suppression non autorisée.", "danger")
-        return redirect(url_for("benevoles.benevoles_archives"))
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1273,6 +1274,7 @@ def supprimer_definitivement_benevole(benevole_id):
 
 @benevoles_bp.route('/supprimer_photo_benevole/<int:benevole_id>', methods=['POST'])
 @login_required
+@require_access("benevoles", "ecriture")
 def supprimer_photo_benevole(benevole_id):
     """Supprime la photo du bénévole (fichier et enregistrement DB)"""
     try:
@@ -1386,6 +1388,7 @@ def _build_gmail_url(to_emails, sujet, corps):
 
 @benevoles_bp.route("/envoi_mail_benevoles", methods=["GET", "POST"])
 @login_required
+@require_access("benevoles", "lecture")
 def envoi_mail_benevoles():
     from flask_login import current_user
     from flask import flash
@@ -1449,6 +1452,7 @@ def envoi_mail_benevoles():
 
 @benevoles_bp.route("/messages_predefinis_benevoles", methods=["GET", "POST"])
 @login_required
+@require_access("benevoles", "lecture")
 def messages_predefinis_benevoles():
     """
     Gestion des modèles de message (communs). Identique aux associations mais avec
@@ -1478,6 +1482,7 @@ def messages_predefinis_benevoles():
 
 @benevoles_bp.route("/edit_message_bene/<int:mid>", methods=["GET", "POST"])
 @login_required
+@require_access("benevoles", "lecture")
 def edit_message_bene(mid):
     """Édition d’un modèle bénévole (titre + contenu)."""
     conn = get_db_connection()
@@ -1523,6 +1528,7 @@ def edit_message_bene(mid):
 
 @benevoles_bp.route("/delete_message_bene/<int:mid>", methods=["POST"])
 @login_required
+@require_access("benevoles", "ecriture")
 def delete_message_bene(mid):
     """Suppression d’un modèle bénévole."""
     conn = get_db_connection()

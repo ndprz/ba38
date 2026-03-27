@@ -2,9 +2,10 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required
 from utils import (
     get_db_connection, upload_database, write_log, get_version,
-    get_db_info, get_all_users, has_access, get_db_info_display
+    get_db_info, get_all_users, has_access, get_db_info_display,
+    require_admin_global
 )
-from forms import RegistrationForm, RegistrationForm
+from forms import RegistrationForm
 from werkzeug.security import generate_password_hash
 
 import sqlite3
@@ -23,7 +24,7 @@ APPLICATIONS = {
     "planning": "Plannings",
     "benevoles": "Bénévoles",
     "associations": "Associations",
-    "distribution": "Distribution",   # ← doit être ici
+    "distribution": "Distribution",
     "fournisseurs": "Fournisseurs",
     "evenements": "Événements",
     "facturation": "Facturation",
@@ -37,13 +38,14 @@ APPLICATIONS = {
 
 @admin_bp.route("/roles/<email>", methods=["GET", "POST"])
 @login_required
+@require_admin_global
 def gestion_roles_matrice(email):
     """
     Gestion matricielle des droits pour un utilisateur.
     """
-    if g.user_role != "admin":
-        flash("Accès réservé aux administrateurs.", "danger")
-        return redirect(url_for("index"))
+    # if g.user_role != "admin":
+    #     flash("Accès réservé aux administrateurs.", "danger")
+    #     return redirect(url_for("index"))
 
     with get_db_connection() as conn:
         conn.row_factory = sqlite3.Row
@@ -114,10 +116,14 @@ def gestion_roles_matrice(email):
 #
 # ===========================
 @admin_bp.route('/test_role')
+@login_required
+@require_admin_global
 def test_role():
     return f"Session user_role: {session.get('user_role')} | g.user_role: {getattr(g, 'user_role', 'Non défini')}"
 
 @admin_bp.route('/test_session')
+@login_required
+@require_admin_global
 def test_session():
     return f"Session Flask : {session} | Rôle dans session : {session.get('user_role')}"
 
@@ -153,10 +159,11 @@ def compute_user_role():
 # ===========================
 @admin_bp.route("/gestion_roles", methods=["GET", "POST"])
 @login_required
+@require_admin_global
 def gestion_roles():
-    if g.get("user_role") != "admin":
-        flash("Accès refusé", "danger")
-        return redirect(url_for("index"))
+    # if g.get("user_role") != "admin":
+    #     flash("Accès refusé", "danger")
+    #     return redirect(url_for("index"))
 
     filtre = request.args.get("filtre", "").strip().lower()
 
@@ -217,6 +224,7 @@ import sqlite3
 
 @admin_bp.route("/gestion_utilisateurs", methods=["GET"])
 @login_required
+@require_admin_global
 def gestion_utilisateurs():
     """
     Page d'administration des utilisateurs.
@@ -234,12 +242,12 @@ def gestion_utilisateurs():
     - roles_utilisateurs est la seule source de vérité métier
     """
 
-    # --------------------------------------------------
-    # Sécurité : admin global uniquement
-    # --------------------------------------------------
-    if g.user_role != "admin":
-        flash("⛔ Accès réservé aux administrateurs.", "danger")
-        return redirect(url_for("index"))
+    # # --------------------------------------------------
+    # # Sécurité : admin global uniquement
+    # # --------------------------------------------------
+    # if g.user_role != "admin":
+    #     flash("⛔ Accès réservé aux administrateurs.", "danger")
+    #     return redirect(url_for("index"))
 
     def normalize_email(email: str) -> str:
         return email.strip().lower() if email else ""
@@ -344,10 +352,11 @@ def gestion_utilisateurs():
 # --- Mise à jour utilisateur ---
 @admin_bp.route("/update_user", methods=["POST"])
 @login_required
+@require_admin_global
 def update_user():
-    if g.user_role != "admin":
-        flash("⛔ Accès interdit.", "danger")
-        return redirect(url_for("index"))
+    # if g.user_role != "admin":
+    #     flash("⛔ Accès interdit.", "danger")
+    #     return redirect(url_for("index"))
 
     email = request.form.get("email")
     username = request.form.get("username")
@@ -383,10 +392,11 @@ def update_user():
 # --- Suppression utilisateur (avec rôles) ---
 @admin_bp.route('/supprimer_utilisateur/<int:user_id>', methods=['POST'])
 @login_required
+@require_admin_global
 def supprimer_utilisateur(user_id):
-    if g.user_role != "admin":
-        flash("⛔ Accès interdit.", "danger")
-        return redirect(url_for("index"))
+    # if g.user_role != "admin":
+    #     flash("⛔ Accès interdit.", "danger")
+    #     return redirect(url_for("index"))
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -428,11 +438,12 @@ def supprimer_utilisateur(user_id):
 
 @admin_bp.route('/ajouter_utilisateur', methods=['POST'])
 @login_required
+@require_admin_global
 def ajouter_utilisateur():
 
-    if g.user_role != "admin":
-        flash("⛔ Accès interdit.", "danger")
-        return redirect(url_for("index"))
+    # if g.user_role != "admin":
+    #     flash("⛔ Accès interdit.", "danger")
+    #     return redirect(url_for("index"))
 
     email = request.form.get("email", "").strip().lower()
     username = request.form.get("username", "").strip()
@@ -483,14 +494,15 @@ def ajouter_utilisateur():
 
 @admin_bp.route("/update_users_batch", methods=["POST"])
 @login_required
+@require_admin_global
 def update_users_batch():
     """
     Enregistrement en masse des utilisateurs depuis la page de gestion.
     """
 
-    if g.user_role != "admin":
-        flash("⛔ Accès interdit.", "danger")
-        return redirect(url_for("index"))
+    # if g.user_role != "admin":
+    #     flash("⛔ Accès interdit.", "danger")
+    #     return redirect(url_for("index"))
 
     users_data = request.form.to_dict(flat=False)
 
@@ -541,6 +553,7 @@ def update_users_batch():
 
 @admin_bp.route("/documentation")
 @login_required
+@require_admin_global
 def documentation():
 
     modules = {}

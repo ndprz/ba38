@@ -16,7 +16,7 @@ from pathlib import Path
 from flask import Blueprint, request, render_template, flash, redirect, url_for, send_file,abort,current_app, session
 from flask_login import login_required
 from utils import get_google_services, write_log, envoyer_mail,get_db_path,upload_file_to_drive_path,slugify_filename
-from utils import get_drive_folder_id_from_path
+from utils import get_drive_folder_id_from_path, require_access
 from openpyxl.utils import get_column_letter
 
 
@@ -80,6 +80,7 @@ def get_pdf_by_code_vif(service, folder_id, code_vif_8):
 # ===============================
 @tresorerie_bp.route("/tresorerie")
 @login_required
+@require_access("tresorerie", "lecture")
 def tresorerie  ():
     return render_template("tresorerie/tresorerie.html")
 
@@ -213,6 +214,7 @@ def delete_drive_folder_contents(drive_path, wait_until_empty=True, timeout=30):
 # ===============================
 @tresorerie_bp.route("/traitement_participation", methods=["GET", "POST"])
 @login_required
+@require_access("tresorerie", "ecriture")
 def traitement_participation():
     """
     - Lit les .txt dans le dossier Drive défini par DOSSIER_PARTICIPATION (.env)
@@ -545,6 +547,8 @@ def traiter_parsol(contenu):
 
 
 @tresorerie_bp.route("/aide/ba38_traitements")
+@login_required
+@require_access("tresorerie", "lecture")
 def aide_traitements():
     """
     Sert le fichier Markdown d'aide pour le module ba38_traitements.
@@ -561,6 +565,8 @@ def aide_traitements():
     return send_file(file_path, mimetype="text/markdown")
 
 @tresorerie_bp.route("/aide/<page>")
+@login_required
+@require_access("tresorerie", "lecture")
 def aide_page(page):
     mapping = {
         "traitement_participation": "ba38_traitements.md",
@@ -729,6 +735,7 @@ def calculer_cotisations_par_annee(db_path, benef_par_vif):
 
 @tresorerie_bp.route("/cotisations", methods=["GET", "POST"])
 @login_required
+@require_access("tresorerie", "ecriture")
 def cotisations():
     """
     Module principal de facturation des cotisations.
@@ -944,6 +951,7 @@ def cotisations():
 
 @tresorerie_bp.route("/cotisations/toggle_test_mode", methods=["POST"])
 @login_required
+@require_access("tresorerie", "ecriture")
 def cotisations_toggle_test_mode():
 
     current = session.get(
@@ -964,6 +972,7 @@ def cotisations_toggle_test_mode():
 
 @tresorerie_bp.route("/cotisations/generer_pdfs", methods=["GET"])
 @login_required
+@require_access("tresorerie", "ecriture")
 def cotisations_generer_pdfs():
     """
     Génère les PDF des cotisations pour une année donnée.
@@ -1122,6 +1131,7 @@ def cotisations_generer_pdfs():
 
 @tresorerie_bp.route("/cotisations/envoyer_mails", methods=["POST"])
 @login_required
+@require_access("tresorerie", "ecriture")
 def cotisations_envoyer_mails():
     """
     Envoi des mails de cotisation pour une année.
@@ -1622,6 +1632,7 @@ def generer_facture_pdf(data, output_path):
 
 @tresorerie_bp.route("/cotisations/export_excel", methods=["POST"])
 @login_required
+@require_access("tresorerie", "ecriture")
 def cotisations_export_excel():
     import json
     from io import BytesIO
@@ -1720,6 +1731,7 @@ def wait_until_drive_folder_empty(service, folder_id, drive_id, timeout=30):
 
 @tresorerie_bp.route("/cotisations/start")
 @login_required
+@require_access("tresorerie", "ecriture")
 def cotisations_start():
     # Reset systématique
     job_id = session.get("COTISATIONS_JOB_ID")
@@ -1735,6 +1747,7 @@ def cotisations_start():
 
 @tresorerie_bp.route("/cotisations/quit")
 @login_required
+@require_access("tresorerie", "ecriture")
 def cotisations_quit():
     job_id = session.get("COTISATIONS_JOB_ID")
     if job_id:
@@ -1753,6 +1766,7 @@ def cotisations_quit():
 
 @tresorerie_bp.route("/cotisations/relance", methods=["GET"])
 @login_required
+@require_access("tresorerie", "ecriture")
 def cotisations_relance_start():
 
     mail_mode = session.get(
@@ -1822,6 +1836,7 @@ def cotisations_relance_start():
 
 @tresorerie_bp.route("/cotisations/relance", methods=["POST"])
 @login_required
+@require_access("tresorerie", "ecriture")
 def cotisations_relance():
     """
     Relance des cotisations.
@@ -2100,6 +2115,7 @@ def cotisations_relance():
 
 @tresorerie_bp.route("/parametres/modele-relance", methods=["GET", "POST"])
 @login_required
+@require_access("tresorerie", "ecriture")
 def modele_relance():
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
@@ -2132,6 +2148,7 @@ def modele_relance():
 
 @tresorerie_bp.route("/cotisations/saisie-paiements", methods=["GET", "POST"])
 @login_required
+@require_access("tresorerie", "ecriture")
 def cotisations_saisie_paiements():
     """
     Saisie et modification des paiements des cotisations.
@@ -2269,6 +2286,7 @@ def cotisations_saisie_paiements():
 
 @tresorerie_bp.route("/cotisations/export/<int:annee>")
 @login_required
+@require_access("tresorerie", "ecriture")
 def export_cotisations_excel(annee):
 
     import pandas as pd
@@ -2307,6 +2325,7 @@ def export_cotisations_excel(annee):
 
 @tresorerie_bp.route("/cotisations/relance/reset", methods=["POST"])
 @login_required
+@require_access("tresorerie", "ecriture")
 def cotisations_relance_reset():
 
     mail_mode = session.get(
@@ -2351,6 +2370,7 @@ def cotisations_relance_reset():
 
 @tresorerie_bp.route("/cotisations/modele/<code_modele>", methods=["GET", "POST"])
 @login_required
+@require_access("tresorerie", "ecriture")
 def edit_modele_email(code_modele):
     """
     Edition d'un modèle email stocké dans modeles_emails.
@@ -2417,6 +2437,7 @@ def edit_modele_email(code_modele):
 
 @tresorerie_bp.route("/cerfa", methods=["GET", "POST"])
 @login_required
+@require_access("tresorerie", "ecriture")
 def cerfa():
 
     os.makedirs("/srv/ba38/tmp", exist_ok=True)
@@ -2726,6 +2747,7 @@ def cerfa_extract_pdf_page(reader, page_index):
 
 @tresorerie_bp.route("/cerfa/toggle_mode", methods=["POST"])
 @login_required
+@require_access("tresorerie", "ecriture")
 def cerfa_toggle_mode():
 
     current = session.get("MAIL_MODE", "TEST")

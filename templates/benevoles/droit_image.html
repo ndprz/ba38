@@ -5,166 +5,162 @@
 
 <div class="container-fluid mt-4">
 
-<h2>📸 Droit à l'image</h2>
+    <h2>📸 Droit à l'image</h2>
 
-<div class="mb-3" style="display:flex; gap:10px; flex-wrap:wrap">
+    {% set lecture_seule = not has_access("image", "ecriture") %}
 
-<form method="get">
+    <div class="mb-3" style="display:flex; gap:10px; flex-wrap:wrap">
 
-<select name="acceptation" class="form-select" style="width:220px">
+        <form method="get">
 
-<option value="tous">Tous les accords</option>
+            <select name="acceptation" class="form-select" style="width:220px">
 
-<option value="Accord Total"
-{% if filtre=="Accord Total" %}selected{% endif %}>
-Accord Total
-</option>
+                <option value="tous">Tous les accords</option>
 
-<option value="Accord Entrepot"
-{% if filtre=="Accord Entrepot" %}selected{% endif %}>
-Accord Entrepot
-</option>
+                <option value="Accord Total" {% if filtre=="Accord Total" %}selected{% endif %}>
+                    Accord Total
+                </option>
 
-<option value="Refus"
-{% if filtre=="Refus" %}selected{% endif %}>
-Refus
-</option>
+                <option value="Accord Entrepot" {% if filtre=="Accord Entrepot" %}selected{% endif %}>
+                    Accord Entrepot
+                </option>
 
-</select>
+                <option value="Refus" {% if filtre=="Refus" %}selected{% endif %}>
+                    Refus
+                </option>
 
-<button class="btn btn-primary">Filtrer</button>
+            </select>
 
-</form>
+            <button class="btn btn-primary">Filtrer</button>
 
+            {% if lecture_seule %}
+            <div class="alert alert-warning">
+                🔒 Mode lecture seule – modifications non autorisées
+            </div>
+            {% endif %}
 
-
-
-
-<input type="text"
-id="search"
-class="form-control"
-placeholder="🔎 Rechercher..."
-style="max-width:300px">
-
-<a href="{{ url_for('droit_image.export_droit_image', acceptation=filtre) }}"
-class="btn btn-success">
-📊 Export Excel
-</a>
-
-<a href="{{ url_for('benevoles.benevoles') }}" class="btn btn-outline-dark">
-↩️ Retour Bénévoles
-</a>
-
-<a href="{{ url_for('index') }}" class="btn btn-outline-dark">
-↩️ Retour à l'accueil
-</a>
-
-</div>
+        </form>
 
 
-<form method="post" action="{{ url_for('droit_image.update_droit_image') }}">
 
-<table class="table table-striped table-bordered" id="table">
 
-<thead>
 
-<tr>
-<th>ID</th>
-<th>Nom</th>
-<th>Prénom</th>
-<th>Acceptation</th>
-<th>Lien PDF</th>
-</tr>
+        <input type="text" id="search" class="form-control" placeholder="🔎 Rechercher..." style="max-width:300px">
 
-</thead>
+        <a href="{{ url_for('droit_image.export_droit_image', acceptation=filtre) }}" class="btn btn-success">
+            📊 Export Excel
+        </a>
 
-<tbody>
+        <a href="{{ url_for('benevoles.benevoles') }}" class="btn btn-outline-dark">
+            ↩️ Retour Bénévoles
+        </a>
 
-{% for p in personnes %}
+        <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
+            ↩️ Retour à l'accueil
+        </a>
 
-<tr data-search="{{ (p.nom ~ ' ' ~ p.prenom ~ ' ' ~ (p.acceptation or '') ) | lower }}">
+    </div>
 
-<td>{{ p.id }}</td>
 
-<td>{{ p.nom }}</td>
+    <form method="post" action="{{ url_for('droit_image.update_droit_image') }}">
 
-<td>{{ p.prenom }}</td>
+        <table class="table table-striped table-bordered" id="table">
 
-<td>
+            <thead>
 
-<select name="accept_{{p.id}}" class="form-select">
+                <tr>
+                    <th>ID</th>
+                    <th>Nom</th>
+                    <th>Prénom</th>
+                    <th>Acceptation</th>
+                    <th>Lien PDF</th>
+                </tr>
 
-<option value=""></option>
+            </thead>
 
-<option value="Accord Total"
-{% if p.acceptation=="Accord Total" %}selected{% endif %}>
-Accord Total
-</option>
+            <tbody>
 
-<option value="Accord Entrepot"
-{% if p.acceptation=="Accord Entrepot" %}selected{% endif %}>
-Accord Entrepot
-</option>
+                {% for p in personnes %}
 
-<option value="Refus"
-{% if p.acceptation=="Refus" %}selected{% endif %}>
-Refus
-</option>
+                <tr data-search="{{ (p.nom ~ ' ' ~ p.prenom ~ ' ' ~ (p.acceptation or '') ) | lower }}">
 
-</select>
+                    <td>{{ p.id }}</td>
 
-</td>
+                    <td>{{ p.nom }}</td>
 
-<td>
+                    <td>{{ p.prenom }}</td>
 
-<input type="text"
-class="form-control"
-name="lien_{{p.id}}"
-value="{{p.lien_drive or ''}}">
+                    <td>
 
-</td>
+                        <select name="accept_{{p.id}}" class="form-select" {% if lecture_seule %}disabled{% endif %}>
 
-</tr>
+                            <option value=""></option>
 
-{% endfor %}
+                            <option value="Accord Total" {% if p.acceptation=="Accord Total" %}selected{% endif %}>
+                                Accord Total
+                            </option>
 
-</tbody>
+                            <option value="Accord Entrepot" {% if p.acceptation=="Accord Entrepot" %}selected{% endif
+                                %}>
+                                Accord Entrepot
+                            </option>
 
-</table>
+                            <option value="Refus" {% if p.acceptation=="Refus" %}selected{% endif %}>
+                                Refus
+                            </option>
 
-<button class="btn btn-primary">
-💾 Enregistrer
-</button>
+                        </select>
 
-</form>
+                    </td>
+
+                    <td>
+
+                        <input type="text" class="form-control" name="lien_{{p.id}}" value="{{p.lien_drive or ''}}" {%
+                            if lecture_seule %}readonly{% endif %}>
+
+                    </td>
+
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+        <button class="btn btn-primary" {% if lecture_seule %}disabled{% endif %}>
+            💾 Enregistrer
+        </button>
+
+    </form>
 
 </div>
 
 
 <script>
 
-// ============================
-// RECHERCHE TEMPS REEL
-// ============================
+    // ============================
+    // RECHERCHE TEMPS REEL
+    // ============================
 
-const input = document.getElementById("search")
+    const input = document.getElementById("search")
 
-const rows = document.querySelectorAll("#table tbody tr")
+    const rows = document.querySelectorAll("#table tbody tr")
 
-input.addEventListener("input", function(){
+    input.addEventListener("input", function () {
 
-    const filtre = this.value.toLowerCase()
+        const filtre = this.value.toLowerCase()
 
-    rows.forEach(row => {
+        rows.forEach(row => {
 
-        const text = row.dataset.search
+            const text = row.dataset.search
 
-        row.style.display =
-            text.includes(filtre) ? "" : "none"
+            row.style.display =
+                text.includes(filtre) ? "" : "none"
+
+        })
 
     })
-
-})
 
 </script>
 

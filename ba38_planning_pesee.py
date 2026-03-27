@@ -1,8 +1,8 @@
 # ba38_planning_pesee.py
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
-from flask_login import login_required
-from utils import get_db_connection, upload_database, write_log
+from flask_login import login_required, current_user
+from utils import get_db_connection, upload_database, write_log, require_access
 from ba38_planning_utils import get_lundi_de_la_semaine, get_benevole_infos, get_nom, get_absents_par_jour, parse_numero_semaine, get_type_benevole_options
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -14,6 +14,7 @@ planning_pesee_bp = Blueprint("planning_pesee", __name__)
 
 @planning_pesee_bp.route("/maj_modele_planning_pesee", methods=["GET", "POST"])
 @login_required
+@require_access("planning", "ecriture")
 def maj_modele_planning_pesee():
     try:
         conn = get_db_connection()
@@ -95,6 +96,7 @@ def maj_modele_planning_pesee():
 
 @planning_pesee_bp.route("/creation_planning_pesee", methods=["GET", "POST"])
 @login_required
+@require_access("planning", "ecriture")
 def creation_planning_pesee():
     semaine = request.form.get("semaine") or request.args.get("semaine")
     action = request.form.get("action")
@@ -150,9 +152,21 @@ def creation_planning_pesee():
             bloc[f"{champ_final}_nom"] = get_nom(bene_id, "benevoles", ["prenom", "nom"]) if bene_id else ""
         planning.append(bloc)
 
+    # 🔎 Log création ou régénération
     if planning_existe:
-        cursor.execute("DELETE FROM plannings_pesee WHERE annee = ? AND semaine = ?", (annee, num_semaine))
-
+        write_log(
+            f"🔄 Régénération planning pesée "
+            f"S{num_semaine}/{annee} par {current_user.username}"
+        )
+        cursor.execute(
+            "DELETE FROM plannings_pesee WHERE annee = ? AND semaine = ?",
+            (annee, num_semaine)
+        )
+    else:
+        write_log(
+            f"🆕 Création planning pesée "
+            f"S{num_semaine}/{annee} par {current_user.username}"
+        )
     for bloc in planning:
         values = [annee, num_semaine, bloc["jour"]]
         for i in range(1, 10):
@@ -187,6 +201,7 @@ def creation_planning_pesee():
 
 @planning_pesee_bp.route("/apercu_planning_pesee")
 @login_required
+@require_access("planning", "lecture")
 def apercu_planning_pesee():
     # 🔢 Récupération de la semaine choisie (ex: '2025-W23')
     semaine = request.args.get("semaine")
@@ -250,6 +265,7 @@ def apercu_planning_pesee():
 
 @planning_pesee_bp.route("/gestion_planning_pesee", methods=["GET", "POST"])
 @login_required
+@require_access("planning", "ecriture")
 def gestion_planning_pesee():
     """
     Gestion (modification) du planning Pesée.

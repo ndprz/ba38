@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 from flask_login import login_required
-from utils import get_db_connection, upload_database, write_log  # get_db_connection déjà importé ici
+from utils import get_db_connection, upload_database, write_log, require_access
 from ba38_planning_utils import get_nom_tournee, get_fournisseurs_par_tournee_id
 
 import sqlite3
@@ -10,6 +10,7 @@ planning_tournees_bp = Blueprint("planning_tournees", __name__)
 
 @planning_tournees_bp.route('/planning_tournees', methods=['GET', 'POST'])
 @login_required
+@require_access("planning", "ecriture")
 def planning_tournees():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -173,6 +174,7 @@ def planning_tournees():
 
 @planning_tournees_bp.route('/modifier_tournee/<int:tournee_id>', methods=['POST'])
 @login_required
+@require_access("planning", "ecriture")
 def modifier_tournee(tournee_id):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -224,6 +226,7 @@ def modifier_tournee(tournee_id):
 
 @planning_tournees_bp.route('/supprimer_tournee/<int:tournee_id>', methods=['POST'])
 @login_required
+@require_access("planning", "ecriture")
 def supprimer_tournee(tournee_id):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -243,6 +246,7 @@ def supprimer_tournee(tournee_id):
 
 @planning_tournees_bp.route('/ajouter_fournisseur', methods=['POST'])
 @login_required
+@require_access("planning", "ecriture")
 def ajouter_fournisseur():
     nom = request.form.get('nom', '').strip()
     if nom:
@@ -263,6 +267,7 @@ def ajouter_fournisseur():
 
 @planning_tournees_bp.route('/print_tournees')
 @login_required
+@require_access("planning", "lecture")
 def print_tournees():
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row   # ✅ permet row["colonne"]
@@ -308,6 +313,7 @@ def print_tournees():
 
 @planning_tournees_bp.route("/maj_fournisseurs", methods=["GET", "POST"])
 @login_required
+@require_access("planning", "ecriture")
 def maj_fournisseurs():
 
     if g.user_role not in ['admin', 'gestionnaire']:
@@ -378,6 +384,7 @@ def maj_fournisseurs():
 
 @planning_tournees_bp.route('/maj_camions', methods=['GET', 'POST'])
 @login_required
+@require_access("planning", "ecriture")
 def maj_camions():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -416,6 +423,7 @@ def maj_camions():
 
 @planning_tournees_bp.route("/save_all", methods=["POST"])
 @login_required
+@require_access("planning", "ecriture")
 def save_all():
     conn = get_db_connection()
     cursor = conn.cursor()

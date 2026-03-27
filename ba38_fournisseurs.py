@@ -5,7 +5,7 @@ import sqlite3
 import pytz
 import base64
 from datetime import datetime
-from utils import get_db_path, get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_phone, row_get
+from utils import get_db_path, get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_phone, row_get, require_access
 
 
 fournisseurs_bp = Blueprint('fournisseurs', __name__)
@@ -38,6 +38,7 @@ def _connect():
 
 @fournisseurs_bp.route('/fournisseurs')
 @login_required
+@require_access("fournisseurs", "lecture")
 def liste_fournisseurs():
     q = request.args.get('q', '').strip()
 
@@ -73,6 +74,7 @@ def liste_fournisseurs():
 
 @fournisseurs_bp.route('/fournisseurs/<int:fournisseur_id>/update', methods=['GET', 'POST'])
 @login_required
+@require_access("fournisseurs", "ecriture")
 def update_fournisseur(fournisseur_id):
     """
     Page de mise à jour d’un fournisseur.
@@ -83,11 +85,6 @@ def update_fournisseur(fournisseur_id):
     - Affiche date/heure de dernière modification en heure française + utilisateur modificateur.
     - Navigation Suivant / Précédent / Retour : sauvegarde (si do_upload=1) puis redirige.
     """
-
-    # 🔒 Vérification des droits
-    if not has_access("fournisseurs", "lecture"):
-        flash("⛔ Accès refusé à la gestion des fournisseurs", "danger")
-        return redirect(url_for("index"))
 
     lecture_seule = not has_access("fournisseurs", "ecriture")
     conn = get_db_connection()
@@ -233,58 +230,86 @@ def update_fournisseur(fournisseur_id):
 
 @fournisseurs_bp.route('/fournisseurs/create', methods=['GET', 'POST'])
 @login_required
+@require_access("fournisseurs", "ecriture")
 def create_fournisseur():
     """Création d’un fournisseur avec enseigne et type_frs liés aux paramètres."""
-    if not has_access("fournisseurs", "ecriture"):
-        flash("⛔ Vous n’avez pas les droits pour créer un fournisseur.", "danger")
-        return redirect(url_for("fournisseurs.liste_fournisseurs"))
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Charger les paramètres (enseigne, type_frs)
-    params = cursor.execute("SELECT param_name, param_value FROM parametres").fetchall()
+    # Charger les paramètres
+    params = cursor.execute(
+        "SELECT param_name, param_value FROM parametres"
+    ).fetchall()
+
     param_dict = {}
     for row in params:
         param_dict.setdefault(row["param_name"], []).append(row["param_value"])
 
     if request.method == "POST":
+
         nom = request.form.get("nom", "").strip()
         if not nom:
             flash("⚠️ Le nom du fournisseur est obligatoire.", "danger")
-            return render_template("fournisseurs/create_fournisseur.html", parametres=param_dict)
+            conn.close()
+            return render_template(
+                "fournisseurs/create_fournisseur.html",
+                parametres=param_dict
+            )
 
-        enseigne = request.form.get("enseigne", "")
-        type_frs = request.form.get("type_frs", "")
-        tel = request.form.get("tel", "")
-        mail = request.form.get("mail", "")
-        adresse = request.form.get("adresse", "")
-        ville = request.form.get("ville", "")
-        notes = request.form.get("notes", "")
+        enseigne = request.form.get("enseigne", "").strip()
+        type_frs = request.form.get("type_frs", "").strip()
+        tel = request.form.get("tel", "").strip()
+        mail = request.form.get("mail", "").strip()
+        adresse = request.form.get("adresse", "").strip()
+        ville = request.form.get("ville", "").strip()
+        notes = request.form.get("notes", "").strip()
 
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-        cursor.execute("""
-            INSERT INTO fournisseurs (nom, enseigne, type_frs, tel, mail, adresse, ville, notes, date_creation, date_modif, user_modif)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (nom, enseigne, type_frs, tel, mail, adresse, ville, notes, now, now, current_user.username))
+        try:
+            cursor.execute("""
+                INSERT INTO fournisseurs
+                (nom, enseigne, type_frs, tel, mail, adresse, ville, notes,
+                 date_creation, date_modif, user_modif)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                nom, enseigne, type_frs, tel, mail,
+                adresse, ville, notes,
+                now, now,
+                current_user.username or current_user.email
+            ))
 
-        conn.commit()
-        conn.close()
-        flash("✅ Fournisseur créé avec succès.", "success")
-        upload_database()
-        return redirect(url_for("fournisseurs.liste_fournisseurs"))
+            conn.commit()
+            upload_database()
+            flash("✅ Fournisseur créé avec succès.", "success")
+
+            return redirect(url_for("fournisseurs.liste_fournisseurs"))
+
+        except Exception as e:
+            conn.rollback()
+            write_log(f"❌ Erreur création fournisseur : {e}")
+            flash("Erreur lors de la création.", "danger")
+
+            return render_template(
+                "fournisseurs/create_fournisseur.html",
+                parametres=param_dict
+            )
+
+        finally:
+            conn.close()
 
     conn.close()
-    return render_template("fournisseurs/create_fournisseur.html", parametres=param_dict)
+    return render_template(
+        "fournisseurs/create_fournisseur.html",
+        parametres=param_dict
+    )
 
 
 @fournisseurs_bp.route('/fournisseurs/<int:fournisseur_id>/delete', methods=['POST'])
 @login_required
+@require_access("fournisseurs", "ecriture")
 def delete_fournisseur(fournisseur_id):
-    if not has_access("fournisseurs", "ecriture"):
-        flash("⛔ Accès refusé : vous n'avez pas les droits de suppression.", "danger")
-        return redirect(url_for('fournisseurs.update_fournisseur', fournisseur_id=fournisseur_id))
 
     confirm = request.form.get("confirm")
     confirm_final = request.form.get("confirm_final")
@@ -306,6 +331,7 @@ def delete_fournisseur(fournisseur_id):
 
 @fournisseurs_bp.route("/fournisseurs/<int:fournisseur_id>/contacts")
 @login_required
+@require_access("fournisseurs", "lecture")
 def liste_contacts_fournisseur(fournisseur_id):
     """Affiche tous les contacts liés à un fournisseur."""
     conn = get_db_connection()
@@ -333,10 +359,8 @@ def liste_contacts_fournisseur(fournisseur_id):
 
 @fournisseurs_bp.route('/fournisseurs/<int:fournisseur_id>/contacts/create', methods=['GET', 'POST'])
 @login_required
+@require_access("fournisseurs", "ecriture")
 def create_contact_fournisseur(fournisseur_id):
-    if not has_access("fournisseurs", "ecriture"):
-        flash("⛔ Vous n’avez pas les droits pour créer un contact fournisseur.", "danger")
-        return redirect(url_for("fournisseurs.liste_contacts_fournisseur", fournisseur_id=fournisseur_id))
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -391,10 +415,8 @@ def create_contact_fournisseur(fournisseur_id):
 
 @fournisseurs_bp.route('/fournisseurs/<int:fournisseur_id>/contacts/<int:contact_id>/update', methods=['GET', 'POST'])
 @login_required
+@require_access("fournisseurs", "ecriture")
 def update_contact_fournisseur(fournisseur_id, contact_id):
-    if not has_access("fournisseurs", "ecriture"):
-        flash("⛔ Vous n’avez pas les droits pour modifier un contact fournisseur.", "danger")
-        return redirect(url_for("fournisseurs.liste_contacts_fournisseur", fournisseur_id=fournisseur_id))
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -455,6 +477,7 @@ def update_contact_fournisseur(fournisseur_id, contact_id):
 
 @fournisseurs_bp.route("/contacts/<int:contact_id>/delete", methods=["POST"])
 @login_required
+@require_access("fournisseurs", "ecriture")
 def delete_contact_fournisseur(contact_id):
     """Supprime un contact fournisseur."""
     conn = get_db_connection()
@@ -476,6 +499,7 @@ def delete_contact_fournisseur(contact_id):
 
 @fournisseurs_bp.route("/fournisseurs/export_excel")
 @login_required
+@require_access("fournisseurs", "lecture")
 def export_fournisseurs_excel():
     """
     Exporte les fournisseurs + leurs contacts dans un fichier Excel multi-onglets.
@@ -528,6 +552,7 @@ from datetime import datetime
 
 @fournisseurs_bp.route("/fournisseurs/<int:fournisseur_id>/export_fiche", methods=["GET"])
 @login_required
+@require_access("fournisseurs", "lecture")
 def export_fiche_fournisseur(fournisseur_id):
     """
     Génère une fiche PDF pour un fournisseur :

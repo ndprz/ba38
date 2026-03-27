@@ -27,30 +27,30 @@ import logging
 # LOGGING UNIFIÉ BA38 (DEV / PROD)
 # --------------------------------------------------
 
-LOG_FILE = os.getenv(
-    "LOG_FILE",
-    os.path.join(BASE_DIR, "app.log")
-)
+# LOG_FILE = os.getenv(
+#     "LOG_FILE",
+#     os.path.join(BASE_DIR, "app.log")
+# )
 
-logger = logging.getLogger("BA38")
+# logger = logging.getLogger("BA38")
 
-logger.setLevel(logging.INFO)
+# logger.setLevel(logging.INFO)
 
-# éviter les handlers multiples (reload gunicorn)
-if not logger.handlers:
-    file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
-    stream_handler = logging.StreamHandler()  # stdout → journald
+# # éviter les handlers multiples (reload gunicorn)
+# if not logger.handlers:
+#     file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
+#     stream_handler = logging.StreamHandler()  # stdout → journald
 
-    formatter = logging.Formatter(
-        "[%(asctime)s] %(levelname)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
+#     formatter = logging.Formatter(
+#         "[%(asctime)s] %(levelname)s: %(message)s",
+#         datefmt="%Y-%m-%d %H:%M:%S"
+#     )
 
-    file_handler.setFormatter(formatter)
-    stream_handler.setFormatter(formatter)
+#     file_handler.setFormatter(formatter)
+#     stream_handler.setFormatter(formatter)
 
-    logger.addHandler(file_handler)
-    logger.addHandler(stream_handler)
+#     logger.addHandler(file_handler)
+#     logger.addHandler(stream_handler)
 
 
 
@@ -136,8 +136,11 @@ formatter = logging.Formatter(
 
 file_handler.setFormatter(formatter)
 
+app.logger.handlers = []
 app.logger.setLevel(logging.INFO)
+app.logger.propagate = False
 app.logger.addHandler(file_handler)
+
 
 app.secret_key = os.getenv("FLASK_SECRET_KEY")
 app.jinja_env.filters['format_tel'] = format_tel
@@ -367,7 +370,7 @@ def log_connexion(user, action="login"):
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (user.email, user.username, env, ip, user_agent, now, action))
     except Exception as e:
-        print(f"⚠️ Erreur log_connexion : {e}")
+        write_log(f"⚠️ Erreur log_connexion : {e}")
 
 
 
@@ -828,19 +831,31 @@ def register():
 
     return render_template("register.html", form=form)
 
+def get_real_ip():
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        # cas avec plusieurs IP (proxy chain)
+        return forwarded.split(",")[0].strip()
+    return request.remote_addr
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     form = LoginForm()
 
-    write_log(f"DEBUG method={request.method} form={request.form}")
-
     if form.validate_on_submit():
         username = form.email.data.strip().lower()
         password = form.password.data
 
-        write_log(f"🧪 Tentative login pour {username}")
-        write_log(f"🔐 Tentative de connexion pour l'utilisateur : {username} depuis IP {request.remote_addr}")
+        ip = get_real_ip()
+
+        write_log(
+            f"🔐 LOGIN {username} | "
+            f"IP={ip} | "
+            f"UA={request.headers.get('User-Agent')}"
+        )
+
+        # write_log(f"🔐 Tentative de connexion pour l'utilisateur : {username} depuis IP {request.remote_addr}")
 
         conn = get_db_connection()
         user = conn.execute(
@@ -884,17 +899,24 @@ def login():
             log_connexion(user_obj, action="login")
 
             write_log(
-                f"✅ Connexion réussie : {session.get('username')} "
-                f"(Rôle: {session.get('user_role', 'utilisateur')})"
+                f"✅ Login OK {session.get('username')} | "
+                f"IP={ip} | "
+                f"UA={request.headers.get('User-Agent')} | "
+                f"ROLE={session.get('user_role', 'utilisateur')}"
             )
 
             return redirect(url_for("index"))
 
         # erreur login
-        write_log(f"❌ Échec de connexion pour {username}")
+        write_log(
+            f"❌ Échec login {username} | "
+            f"IP={request.remote_addr} | "
+            f"UA={request.headers.get('User-Agent')}"
+        )
         flash("Email ou mot de passe incorrect.", "danger")
 
     return render_template("login.html", form=form)
+
 @app.route('/logout')
 @login_required
 def logout():

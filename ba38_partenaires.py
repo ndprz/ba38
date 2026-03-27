@@ -6,7 +6,7 @@ import unicodedata
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
-from utils import get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_phone
+from utils import get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_phone, require_access
 from urllib.parse import urlencode
 from flask_wtf import FlaskForm
 from wtforms import HiddenField
@@ -78,6 +78,7 @@ partenaires_bp = Blueprint("partenaires", __name__)
 
 @partenaires_bp.route("/partenaires", methods=["GET", "POST"])
 @login_required
+@require_access("associations", "lecture")
 def partenaires():
 
     # ======================================================
@@ -212,10 +213,8 @@ def partenaires():
 
 @partenaires_bp.route("/create_partner", methods=["GET", "POST"])
 @login_required
+@require_access("associations", "ecriture")
 def create_partner():
-    if not has_access("associations", "ecriture"):
-        flash("⛔ Accès refusé : vous n’avez pas les droits pour ajouter une association.", "danger")
-        return redirect(url_for("partenaires.partenaires"))
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -289,7 +288,7 @@ def create_partner():
 
             conn.close()
             return render_template(
-                "partenaires/create_partenaires.html",
+                "partenaires/create_partenaire.html",
                 fields_config=fields_config,
                 grouped_fields=grouped_fields,
                 car_options=car_options,
@@ -317,7 +316,7 @@ def create_partner():
 
     conn.close()
     return render_template(
-        "partenaires/create_partenaires.html",
+        "partenaires/create_partenaire.html",
         fields_config=fields_config,
         grouped_fields=grouped_fields,
         car_options=car_options,
@@ -327,10 +326,8 @@ def create_partner():
 
 @partenaires_bp.route("/duplicate_partner/<int:partner_id>", methods=["POST"])
 @login_required
+@require_access("associations", "ecriture")
 def duplicate_partner(partner_id):
-    if not has_access("associations", "ecriture"):
-        flash("⛔ Accès refusé : duplication non autorisée.", "danger")
-        return redirect(url_for("partenaires.update_partner", partner_id=partner_id))
 
     new_name_raw = (request.form.get("new_nom_association") or "").strip()
     if not new_name_raw:
@@ -416,6 +413,7 @@ def duplicate_partner(partner_id):
 
 @partenaires_bp.route("/update_partner/<int:partner_id>", methods=["GET", "POST"])
 @login_required
+@require_access("associations", "lecture")
 def update_partner(partner_id):
     """
     Page de mise à jour d’un partenaire (association).
@@ -653,15 +651,8 @@ def update_partner(partner_id):
 
 @partenaires_bp.route("/delete_partner/<int:partner_id>", methods=["POST"])
 @login_required
+@require_access("associations", "ecriture")
 def delete_partner(partner_id):
-    if not has_access("associations", "lecture"):
-        flash("⛔ Accès refusé à la gestion des associations", "danger")
-        return redirect(url_for("index"))
-    """
-    Supprime un partenaire après une double validation.
-    """
-    confirmation = request.form.get("confirm")
-    second_confirmation = request.form.get("confirm_final")
 
     if confirmation == "oui" and second_confirmation == "supprimer":
         conn = get_db_connection()
@@ -681,12 +672,8 @@ def delete_partner(partner_id):
 
 @partenaires_bp.route("/edition_tableau_associations", methods=["GET", "POST"])
 @login_required
+@require_access("associations", "lecture")
 def edition_tableau_associations():
-    if not has_access("associations", "lecture"):
-        flash("⛔ Accès refusé à la gestion des associations", "danger")
-        return redirect(url_for("index"))
-    conn = get_db_connection()
-    cursor = conn.cursor()
 
     fields_data = cursor.execute("""
         SELECT * FROM field_groups
@@ -741,6 +728,7 @@ def edition_tableau_associations():
 
 @partenaires_bp.route('/generate_annexe1/<int:partner_id>', methods=['POST'])
 @login_required
+@require_access("associations", "lecture")
 def generate_annexe1(partner_id):
     """ Génère un PDF pour Annexe 1 avec mise en page, logos et entêtes de groupes. """
     return generate_pdf_annexe1bis(partner_id, ['coordonnées principales', 'annexe 1 bis'], "ANNEXE 1 BIS")
@@ -748,10 +736,8 @@ def generate_annexe1(partner_id):
 
 @partenaires_bp.route("/update_associations_table", methods=["POST"])
 @login_required
+@require_access("associations", "ecriture")
 def update_associations_table():
-    if not has_access("associations", "ecriture"):
-        flash("⛔ Accès refusé : modification non autorisée.", "danger")
-        return redirect(url_for("partenaires.partenaires"))
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1782,6 +1768,7 @@ def render_message_with_data(template, data):
 
 @partenaires_bp.route("/envoi_mail", methods=["GET", "POST"])
 @login_required
+@require_access("associations", "lecture")
 def envoi_mail():
     assoc_id = request.args.get("assoc_id", type=int)
     if not assoc_id:
@@ -1897,6 +1884,7 @@ def envoi_mail():
 # ➕ CRUD messages préenregistrés
 @partenaires_bp.route("/messages_predefinis", methods=["GET", "POST"])
 @login_required
+@require_access("associations", "lecture")
 def messages_predefinis():
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
@@ -1937,6 +1925,7 @@ def messages_predefinis():
 
 @partenaires_bp.route("/messages_predefinis/delete/<int:mid>", methods=["POST"])
 @login_required
+@require_access("associations", "ecriture")
 def delete_message(mid):
     conn = get_db_connection()
     cur = conn.cursor()
@@ -1953,6 +1942,7 @@ def delete_message(mid):
 
 @partenaires_bp.route("/messages_predefinis/edit/<int:mid>", methods=["GET", "POST"])
 @login_required
+@require_access("associations", "ecriture")
 def edit_message(mid):
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row

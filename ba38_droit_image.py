@@ -2,23 +2,19 @@ import sqlite3
 import sqlite3
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
 from flask_login import login_required
-from utils import get_db_path, has_access
+from utils import get_db_path, has_access, require_access
 import pandas as pd
 import io
 
 droit_image_bp = Blueprint("droit_image", __name__)
-
 
 # ==========================================
 # PAGE PRINCIPALE
 # ==========================================
 @droit_image_bp.route("/droit_image")
 @login_required
+@require_access("image", "lecture")
 def droit_image():
-
-    if not has_access("image", "lecture"):
-        flash("⛔ Accès interdit.", "danger")
-        return redirect(url_for("index"))
 
     filtre = request.args.get("acceptation")
 
@@ -70,13 +66,10 @@ def droit_image():
 # ==========================================
 # EXPORT EXCEL
 # ==========================================
-@droit_image_bp.route("/droit_image/export")
+@droit_image_bp.route("/export_droit_image")
 @login_required
+@require_access("image", "lecture")
 def export_droit_image():
-
-    if not has_access("image", "lecture"):
-        flash("⛔ Accès interdit.", "danger")
-        return redirect(url_for("index"))
 
     filtre = request.args.get("acceptation")
 
@@ -121,13 +114,11 @@ def export_droit_image():
 # ---------------------------------------------------------
 # MISE A JOUR
 # ---------------------------------------------------------
-@droit_image_bp.route("/droit_image/update", methods=["POST"])
-@login_required
-def update_droit_image():
 
-    if not has_access("image", "ecriture"):
-        flash("⛔ Accès interdit.", "danger")
-        return redirect(url_for("droit_image.droit_image"))
+@droit_image_bp.route("/update_droit_image")
+@login_required
+@require_access("image", "ecriture")
+def update_droit_image():
 
     db_path = get_db_path()
 

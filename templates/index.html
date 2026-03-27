@@ -13,7 +13,10 @@
 
 <p>DEBUG rôle détecté : {{ user_role }}</p> -->
 
-
+<!-- <pre>
+roles_utilisateurs session :
+{{ session.get("roles_utilisateurs") }}
+</pre> -->
 
 {% if session.get('test_user') %}
 <form action="{{ url_for('unset_test_user') }}" method="post" style="display: inline;">

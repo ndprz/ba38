@@ -49,15 +49,8 @@ def compare_and_update_benevoles_structure():
     table_name = "benevoles"
 
     # --- Résolution EXPLICITE des bases ---
-    dev_path = get_db_path_by_env(
-        "dev",
-        force_base_dir="/srv/ba38/dev"
-    )
-
-    prod_path = get_db_path_by_env(
-        "prod",
-        force_base_dir="/srv/ba38/prod"
-    )
+    dev_path = "/srv/ba38/dev/instance/ba380dev.sqlite"
+    prod_path = "/srv/ba38/prod/instance/ba380.sqlite"
 
     # --------------------------------------------------------
     # 🛡️ GARDE-FOU CRITIQUE

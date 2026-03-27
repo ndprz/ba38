@@ -55,6 +55,25 @@ SCOPES = [
 SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
 VERSION = os.getenv("VERSION", "0.0.0")
 
+
+from functools import wraps
+from flask import g, redirect, url_for, flash
+# ============================================================================
+# 🪵 ACCES ADMINISTRATEURS
+# ============================================================================
+def require_admin_global(view_func):
+    """
+    Décorateur : accès réservé aux administrateurs globaux
+    (users.role == "admin")
+    """
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        if getattr(g, "user_role", None) != "admin":
+            flash("⛔ Accès réservé aux administrateurs.", "danger")
+            return redirect(url_for("index"))
+        return view_func(*args, **kwargs)
+    return wrapper
+
 # ============================================================================
 # 🪵 LOGGING
 # ============================================================================
@@ -63,7 +82,7 @@ def write_log(message: str):
     try:
         current_app.logger.info(message)
     except RuntimeError:
-        pass
+        print(message)
 
 
 
@@ -601,8 +620,8 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
 
     if not destinataires:
         write_log("⚠️ Aucun destinataire valide.")
-        return    
-        
+        return
+
     if not sender:
         raise ValueError("MAILJET_SENDER non défini")
 
@@ -949,6 +968,44 @@ def has_access(appli: str, niveau_requis: str) -> bool:
         return hierarchy.index(droit) >= hierarchy.index(niveau_requis)
 
     return False
+
+from functools import wraps
+from flask import abort, session
+
+def require_access(appli: str, niveau: str, redirect_if_denied=True):
+    """
+    Décorateur de contrôle d'accès centralisé BA38.
+
+    - appli : ex "benevoles"
+    - niveau : "lecture" | "ecriture" | "admin"
+    - redirect_if_denied :
+        True → redirect + flash
+        False → abort(403)
+    """
+
+    def decorator(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+
+            if not has_access(appli, niveau):
+
+                write_log(
+                    f"⛔ Accès refusé : appli={appli}, niveau={niveau}, "
+                    f"user={session.get('user_email')}"
+                )
+
+                if redirect_if_denied:
+                    from flask import flash, redirect, url_for
+                    flash("⛔ Accès refusé", "danger")
+                    return redirect(url_for("index"))
+
+                abort(403)
+
+            return f(*args, **kwargs)
+
+        return wrapped
+
+    return decorator
 
 def is_admin_global():
     return session.get("user_role") == "admin"

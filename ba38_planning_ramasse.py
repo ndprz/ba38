@@ -2,9 +2,9 @@
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, flash
 from ba38_planning_utils import get_type_benevole_options
-from flask_login import login_required
+from flask_login import login_required, current_user
 from datetime import datetime, timedelta
-from utils import get_db_connection, write_log, upload_database
+from utils import get_db_connection, write_log, upload_database, require_access
 
 from ba38_planning_utils import (
     get_lundi_de_la_semaine,
@@ -27,6 +27,7 @@ planning_bp = Blueprint('planning', __name__)
 
 @planning_bp.route('/planning_main')
 @login_required
+@require_access("planning", "lecture")
 def planning_main():
     return render_template('planning/planning_main.html')
 
@@ -45,6 +46,7 @@ def purge_plannings_ramasse():
 
 @planning_bp.route('/creation_planning_ramasse', methods=['GET', 'POST'])
 @login_required
+@require_access("planning", "ecriture")
 def creation_planning_ramasse():
     semaine = ""
     planning = []
@@ -61,11 +63,31 @@ def creation_planning_ramasse():
         cursor = conn.cursor()
 
         # Vérifie si un planning existe déjà
-        nb = cursor.execute("SELECT COUNT(*) FROM plannings_ramasse WHERE annee = ? AND semaine = ?", (annee, num_semaine,)).fetchone()[0]
-        planning_existe = nb > 0
+        count = cursor.execute(
+            "SELECT COUNT(*) FROM plannings_ramasse WHERE annee=? AND semaine=?",
+            (annee, num_semaine)
+        ).fetchone()[0]
+
+        planning_existe = count > 0
 
         if planning_existe and action != "forcer_generation":
-            return render_template("planning/ramasse/creation_planning_ramasse.html", semaine=semaine, planning_existe=True)
+            return render_template(
+                "planning/ramasse/creation_planning_ramasse.html",
+                semaine=semaine,
+                planning_existe=True
+            )
+
+        # 🔎 LOG création / régénération
+        if planning_existe and action == "forcer_generation":
+            write_log(
+                f"🔄 Régénération planning ramasse "
+                f"S{num_semaine}/{annee} par {current_user.username}"
+            )
+        else:
+            write_log(
+                f"🆕 Création planning ramasse "
+                f"S{num_semaine}/{annee} par {current_user.username}"
+            )
 
         # Récupération du paramètre "travail_vendredi"
         param = cursor.execute("SELECT param_value FROM parametres WHERE param_name = 'travail_vendredi'").fetchone()
@@ -130,7 +152,6 @@ def creation_planning_ramasse():
                 l[champ] = str(l.get(champ)).strip().lower() == "oui"
 
         conn.close()
-        upload_database()
 
         # Enregistrement en base (si action == forcer_generation)
         conn = get_db_connection()
@@ -160,6 +181,8 @@ def creation_planning_ramasse():
             ))
         conn.commit()
         conn.close()
+        upload_database()
+
 
     return render_template("planning/ramasse/creation_planning_ramasse.html", semaine=semaine, planning=planning, jours=jours, planning_existe=planning_existe)
 
@@ -167,6 +190,7 @@ def creation_planning_ramasse():
 
 @planning_bp.route('/gestion_planning_ramasse', methods=['GET', 'POST'])
 @login_required
+@require_access("planning", "ecriture")
 def gestion_planning_ramasse():
     """
     Gestion du planning ramasse existant.
@@ -481,8 +505,8 @@ def gestion_planning_ramasse():
 
 @planning_bp.route('/enregistrer_planning_ramasse', methods=['POST'])  # ✅ pas d'espace
 @login_required
+@require_access("planning", "ecriture")
 def enregistrer_planning_ramasse():
-    from utils import get_db_connection, write_log, upload_database
 
     def to_int(val):
         """Convertit proprement en int. Gère '', None, 'None', 'null'."""
@@ -576,6 +600,7 @@ def enregistrer_planning_ramasse():
 
 @planning_bp.route('/print_planning_ramasse', methods=['POST'])
 @login_required
+@require_access("planning", "lecture")
 def print_planning_ramasse():
     from utils import get_db_connection
     from reportlab.pdfgen import canvas
@@ -661,9 +686,8 @@ def print_planning_ramasse():
 
 @planning_bp.route('/apercu_planning_ramasse', methods=['GET'], endpoint='apercu_planning_ramasse')
 @login_required
+@require_access("planning", "lecture")
 def apercu_planning_ramasse():
-    from datetime import datetime, timedelta
-    from utils import get_db_connection, write_log
 
     semaine = request.args.get("semaine")
     if not semaine or "-W" not in semaine:
@@ -818,6 +842,7 @@ def apercu_planning_ramasse():
 
 @planning_bp.route('/apercu_modele_planning_ramasse')
 @login_required
+@require_access("planning", "lecture")
 def apercu_modele_planning_ramasse():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -886,6 +911,7 @@ def apercu_modele_planning_ramasse():
 
 @planning_bp.route('/maj_modele_planning_ramasse', methods=['GET', 'POST'])
 @login_required
+@require_access("planning", "ecriture")
 def maj_modele_planning_ramasse():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1000,6 +1026,7 @@ def maj_modele_planning_ramasse():
 
 @planning_bp.route('/ajouter_fournisseur', methods=['POST'])
 @login_required
+@require_access("planning", "ecriture")
 def ajouter_fournisseur():
     nom = request.form.get('nom', '').strip()
     if nom:

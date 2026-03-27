@@ -2,7 +2,7 @@
 
 from flask import Blueprint, render_template, send_file, request, jsonify, session, redirect, url_for, flash
 from flask_login import login_required, current_user
-from utils import get_db_path, get_db_connection, has_access
+from utils import get_db_path, get_db_connection, has_access, require_access
 from openpyxl import Workbook
 from io import BytesIO
 from datetime import datetime
@@ -13,16 +13,14 @@ distribution_bp = Blueprint("distribution", __name__)
 
 @distribution_bp.route("/distribution_main")
 @login_required
+@require_access("distribution", "lecture")
 def distribution_main():
-
-    if not has_access("distribution", "lecture"):
-        flash("⛔ Accès non autorisé au module Distribution.", "danger")
-        return redirect(url_for("index"))
 
     return render_template("distribution/distribution_main.html")
 
 @distribution_bp.route("/mouvements-stocks-depot")
 @login_required
+@require_access("distribution", "lecture")
 def mouvements_stocks_depot():
 
     db_path = get_db_path()
@@ -107,6 +105,7 @@ def mouvements_stocks_depot():
 
 @distribution_bp.route("/export-stocks-excel")
 @login_required
+@require_access("distribution", "lecture")
 def export_stocks_excel():
     db_path = get_db_path()
 
@@ -209,11 +208,8 @@ def generate_num_mvt():
 
 @distribution_bp.route("/save_mvt", methods=["POST"])
 @login_required
+@require_access("distribution", "ecriture")
 def save_mvt():
-
-    if not has_access("distribution", "lecture"):
-        flash("⛔ Accès non autorisé.", "danger")
-        return redirect(url_for("index"))
 
     db_path = get_db_path()
     now = datetime.now()
@@ -329,11 +325,8 @@ def save_mvt():
 
 @distribution_bp.route("/save_mvt_brouillon", methods=["POST"])
 @login_required
+@require_access("distribution", "ecriture")
 def save_mvt_brouillon():
-
-    if not has_access("distribution", "lecture"):
-        flash("⛔ Accès non autorisé.", "danger")
-        return redirect(url_for("index"))
 
     lignes = request.json.get("lignes", [])
 
@@ -390,11 +383,8 @@ def save_mvt_brouillon():
 
 @distribution_bp.route("/valider_mvt", methods=["POST"])
 @login_required
+@require_access("distribution", "ecriture")
 def valider_mvt():
-
-    if not has_access("distribution", "lecture"):
-        flash("⛔ Accès non autorisé.", "danger")
-        return redirect(url_for("index"))
 
     data = request.get_json()
     num_mvt = data.get("num_mvt")
@@ -424,6 +414,7 @@ def valider_mvt():
 
 @distribution_bp.route("/mvt/<num_mvt>")
 @login_required
+@require_access("distribution", "lecture")
 def afficher_mvt(num_mvt):
 
     conn = get_db_connection()
@@ -450,11 +441,8 @@ def afficher_mvt(num_mvt):
 
 @distribution_bp.route("/visualisation_stock")
 @login_required
+@require_access("distribution", "lecture")
 def visualisation_stock():
-
-    if not has_access("distribution", "lecture"):
-        flash("⛔ Accès non autorisé.", "danger")
-        return redirect(url_for("index"))
 
 
     db_path = get_db_path()
@@ -506,11 +494,8 @@ def visualisation_stock():
 
 @distribution_bp.route("/export_visualisation_stock_excel")
 @login_required
+@require_access("distribution", "lecture")
 def export_visualisation_stock_excel():
-
-    if not has_access("distribution", "lecture"):
-        flash("⛔ Accès non autorisé.", "danger")
-        return redirect(url_for("index"))
 
     import io
     import pandas as pd

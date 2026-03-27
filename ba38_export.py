@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, session
 from flask_login import login_required, current_user
-from utils import get_db_connection, get_db_path, write_log
+from utils import get_db_connection, get_db_path, write_log, require_access, has_access
 from weasyprint import HTML
 from docx import Document
 import pandas as pd
@@ -51,6 +51,10 @@ def generateur_excel():
     data_type = request.form.get("data_type", "benevoles")
     action = request.form.get("action")
     # write_log(f"➡️ Action demandée = {action}, data_type = {data_type}")
+
+    if not has_access(data_type, "lecture"):
+        flash("⛔ Accès non autorisé.", "danger")
+        return redirect(url_for("index"))
 
     # Lecture des métadonnées
     fields_data = cursor.execute(
@@ -145,7 +149,7 @@ def generateur_excel():
     search = request.form.get("search", "")
     use_or = bool(request.form.get("mode_or"))
     # write_log(f"🧱 Requête : just_switching={just_switching}, use_or={use_or}")
- 
+
     where_clauses, params = [], []
     oui_non_clauses = []
 
@@ -334,6 +338,15 @@ def generation_fichiers():
 
     source = request.args.get("source", "assos")
     base_template = "base_assos.html" if source == "assos" else "base_bene.html"
+
+    if source == "assos":
+        if not has_access("associations", "lecture"):
+            flash("⛔ Accès non autorisé.", "danger")
+            return redirect(url_for("index"))
+    else:
+        if not has_access("benevoles", "lecture"):
+            flash("⛔ Accès non autorisé.", "danger")
+            return redirect(url_for("index"))
 
     if request.method == "POST":
         data_type = request.form.get("data_type", "all")

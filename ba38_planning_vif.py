@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required
-from utils import get_db_connection, write_log, upload_database
+from utils import get_db_connection, write_log, upload_database, require_access
 from ba38_planning_utils import get_lundi_de_la_semaine, get_nom, get_absents_par_jour
 from datetime import timedelta
 from datetime import datetime, timedelta
@@ -13,6 +13,7 @@ planning_vif_bp = Blueprint("planning_vif", __name__)
 
 @planning_vif_bp.route("/maj_modele_planning_vif", methods=["GET", "POST"])
 @login_required
+@require_access("planning", "ecriture")
 def maj_modele_planning_vif():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -114,6 +115,7 @@ def maj_modele_planning_vif():
 
 @planning_vif_bp.route("/creation_planning_vif", methods=["GET", "POST"])
 @login_required
+@require_access("planning", "ecriture")
 def creation_planning_vif():
     semaine = request.form.get("semaine") or request.args.get("semaine")
     action = request.form.get("action")
@@ -253,6 +255,7 @@ def creation_planning_vif():
 
 @planning_vif_bp.route("/gestion_planning_vif", methods=["GET", "POST"])
 @login_required
+@require_access("planning", "ecriture")
 def gestion_planning_vif():
     """
     Gestion du planning VIF.
@@ -477,6 +480,7 @@ def gestion_planning_vif():
 
 @planning_vif_bp.route("/apercu_planning_vif")
 @login_required
+@require_access("planning", "lecture")
 def apercu_planning_vif():
     semaine = request.args.get("semaine")
     try:

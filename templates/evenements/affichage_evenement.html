@@ -244,7 +244,7 @@
         const src = (e.fichier_path && e.fichier_path.trim()) || e.contenu || "";
         const srcStr = String(src || "").toLowerCase();
 
-        // 🖼️ PRIORITÉ : si des images sont fournies, diaporama
+        // 🖼️ PRIORITÉ ABSOLUE : images si disponibles
         if (e.images && e.images.length > 0) {
           const ordered = sortImagesByPage(e.images);
           const slides = ordered.map((img, i) => `
@@ -256,7 +256,7 @@
 
 
         // 🧾 PDF brut
-        if (srcStr.endsWith(".pdf")) {
+        if ((!e.images || e.images.length === 0) && srcStr.endsWith(".pdf")) {
           return `<iframe class="fullscreen" src="${src}#view=FitH" allow="fullscreen"></iframe>`;
         }
 
@@ -302,25 +302,29 @@
 
         // 🖼️ Diaporama (si plusieurs images)
         const slides = zone.querySelectorAll(".docSlide");
+
         if (slides.length > 1) {
+
           let i = 0;
           const interval = (ev.duree_affichage || 8) * 1000;
 
-          // durée totale = nb_pages × duree_affichage
-          const totalDuration = slides.length * interval;
-
+          // affichage initial
           slides.forEach((s, idx) => s.classList.toggle("active", idx === 0));
 
           const loop = setInterval(() => {
+
+            i++;
+
+            if (i >= slides.length) {
+              clearInterval(loop);
+              nextEvent();
+              return;
+            }
+
             slides.forEach((s, idx) => s.classList.toggle("active", idx === i));
-            i = (i + 1) % slides.length;
+
           }, interval);
 
-          // ⏱ après la dernière page, on passe à l'événement suivant
-          setTimeout(() => {
-            clearInterval(loop);
-            nextEvent();
-          }, totalDuration + 500);
         }
         else {
 
@@ -376,4 +380,3 @@
 </body>
 
 </html>
-

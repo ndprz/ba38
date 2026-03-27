@@ -2,7 +2,7 @@
 
 from flask import Blueprint, render_template, send_file, request, jsonify, session, redirect, url_for, flash
 from flask_login import login_required, current_user
-from utils import get_db_path, get_db_connection, has_access, write_log
+from utils import get_db_path, get_db_connection, has_access, write_log, require_access
 from openpyxl import Workbook
 from io import BytesIO
 from datetime import datetime
@@ -18,11 +18,8 @@ engagements_bp = Blueprint("engagements", __name__)
 
 @engagements_bp.route("/engagements")
 @login_required
+@require_access("engagements", "lecture")
 def engagements_main():
-
-    if not has_access("engagements", "lecture"):
-        flash("⛔ Accès interdit.", "danger")
-        return redirect(url_for("index"))
 
     db_path = get_db_path()
 
@@ -56,11 +53,8 @@ def engagements_main():
 
 @engagements_bp.route("/engagements/parametres")
 @login_required
+@require_access("engagement_parametres", "lecture")
 def engagements_parametres_main():
-
-    if not has_access("engagement_parametres", "lecture"):
-        flash("⛔ Accès interdit.", "danger")
-        return redirect(url_for("index"))
 
     return render_template("engagements/parametres.html")
 
@@ -71,11 +65,8 @@ def engagements_parametres_main():
 
 @engagements_bp.route("/engagements/parametres/poles", methods=["GET", "POST"])
 @login_required
+@require_access("engagement_parametres", "lecture")
 def gestion_poles():
-
-    if not has_access("engagement_parametres", "lecture"):
-        flash("⛔ Accès interdit.", "danger")
-        return redirect(url_for("index"))
 
     db_path = get_db_path()
 
@@ -143,35 +134,31 @@ def gestion_poles():
 # ============================================================
 
 @engagements_bp.route("/engagements/nouvelle")
+@require_access("engagements", "ecriture")
 @login_required
 def nouvelle_demande():
-
-    if not has_access("engagements", "ecriture"):
-        flash("⛔ Accès interdit.", "danger")
-        return redirect(url_for("engagements.engagements_main"))
 
     return render_template("engagements/nouvelle_demande.html")
 
 
 @engagements_bp.route("/engagements/deplacement/nouveau")
+@require_access("engagements", "ecriture")
 @login_required
 def nouveau_deplacement():
     return render_template("engagements/nouveau_deplacement.html")
 
 
 @engagements_bp.route("/engagements/note-frais/nouvelle")
+@require_access("engagements", "ecriture")
 @login_required
 def nouvelle_note_frais():
     return render_template("engagements/nouvelle_note_frais.html")
 
 
 @engagements_bp.route("/engagements/depense/nouvelle", methods=["GET", "POST"])
+@require_access("engagements", "ecriture")
 @login_required
 def nouvelle_depense():
-
-    if not has_access("engagements", "ecriture"):
-        flash("⛔ Accès interdit.", "danger")
-        return redirect(url_for("engagements.engagements_main"))
 
     db_path = get_db_path()
 

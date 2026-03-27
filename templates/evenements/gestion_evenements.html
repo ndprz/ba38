@@ -6,6 +6,14 @@
 <div class="container-fluid mt-4 px-5">
   <h2>🎬 Gestion des événements écran</h2>
 
+  {% set lecture_seule = not has_access("evenements", "ecriture") %}
+
+  {% if lecture_seule %}
+  <div class="alert alert-warning">
+    🔒 Mode lecture seule – modifications non autorisées
+  </div>
+  {% endif %}
+
   <!-- ============================================= -->
   <!-- 🧾 FORMULAIRE D'AJOUT D'UN NOUVEL ÉVÉNEMENT -->
   <!-- ============================================= -->
@@ -77,7 +85,9 @@
     </div>
 
     <div class="mt-3 d-flex justify-content-end" style="gap: .5rem;">
-      <button class="btn btn-primary" type="submit">➕ Ajouter</button>
+      <button class="btn btn-primary" type="submit" {% if lecture_seule %}disabled{% endif %}>
+        ➕ Ajouter
+      </button>
       {% set ev = evenements|selectattr('actif')|list|first %}
 
       {% if evenement_actif %}
@@ -93,7 +103,7 @@
       {% endif %}
     </div>
   </form>
-  
+
 
   <hr class="my-4">
 
@@ -126,7 +136,8 @@
             <form method="post" class="d-inline">
               <input type="hidden" name="id" value="{{ e.id }}">
               <input type="hidden" name="action" value="basculer_actif">
-              <button class="btn btn-sm {% if e.actif %}btn-success{% else %}btn-outline-secondary{% endif %}">
+              <button class="btn btn-sm {% if e.actif %}btn-success{% else %}btn-outline-secondary{% endif %}" {% if
+                lecture_seule %}disabled{% endif %}>
                 {% if e.actif %}ON{% else %}OFF{% endif %}
               </button>
             </form>
@@ -162,12 +173,12 @@
             <form method="post" class="d-inline" onsubmit="return confirm('Supprimer cet événement ?');">
               <input type="hidden" name="id" value="{{ e.id }}">
               <input type="hidden" name="action" value="supprimer">
-              <button class="btn btn-sm btn-outline-danger">🗑️</button>
+              <button class="btn btn-sm btn-outline-danger" {% if lecture_seule %}disabled{% endif %}>🗑️</button>
             </form>
 
             <!-- ✏️ Modification -->
             <button type="button" class="btn btn-sm btn-outline-primary" data-evenement='{{ e|tojson }}'
-              onclick="ouvrirModale(JSON.parse(this.dataset.evenement))">
+              onclick="ouvrirModale(JSON.parse(this.dataset.evenement))" {% if lecture_seule %}disabled{% endif %}>
               ✏️
             </button>
 
@@ -176,10 +187,11 @@
             {% if e.type == "video" %}
             <div class="d-flex flex-wrap gap-2 mt-2">
               <button id="btnSousTitres_{{ e.id }}" class="btn btn-outline-secondary btn-sm"
-                onclick="genererSousTitres({{ e.id }})">
+                onclick="genererSousTitres({{ e.id }})" {% if lecture_seule %}disabled{% endif %}>
                 🎙 Générer les sous-titres automatiques
               </button>
-              <button class="btn btn-outline-warning btn-sm" onclick="ouvrirModaleSousTitres({{ e.id }})">
+              <button class="btn btn-outline-warning btn-sm" onclick="ouvrirModaleSousTitres({{ e.id }})" {% if
+                lecture_seule %}disabled{% endif %}>
                 ✏️ Corriger les sous-titres
               </button>
             </div>
@@ -202,7 +214,8 @@
 <!-- ============================================== -->
 <div class="modal fade" id="modalEdit" tabindex="-1">
   <div class="modal-dialog modal-lg">
-    <form class="modal-content" method="post" enctype="multipart/form-data">
+    <form class="modal-content" method="post" enctype="multipart/form-data" {% if lecture_seule
+      %}onsubmit="return false;" {% endif %}>
       <!-- Champs cachés -->
       <input type="hidden" name="action" value="modifier">
       <input type="hidden" name="id" id="edit_id">
@@ -316,18 +329,34 @@
 <!-- ======================= -->
 <script>
 
+  const LECTURE_SEULE = {{ lecture_seule | tojson }};
+
   function gererDuree() {
 
     const type = document.getElementById("type").value;
     const champ = document.getElementById("duree_affichage");
 
     if (type === "video") {
-      champ.disabled = true;
-    } else {
-      champ.disabled = false;
-    }
 
+      if (!LECTURE_SEULE) {
+        champ.disabled = true;
+        champ.value = "";  // vide la valeur
+      }
+
+      champ.placeholder = "Auto (durée vidéo)";  // 👉 ICI
+
+    } else {
+
+      champ.disabled = false;
+
+      if (!champ.value) {
+        champ.value = 15;
+      }
+
+      champ.placeholder = "";  // 👉 ICI
+    }
   }
+
 
   document.getElementById("type").addEventListener("change", gererDuree);
 
@@ -381,6 +410,12 @@
 
 
   async function genererSousTitres(eventId) {
+
+    if (LECTURE_SEULE) {
+      alert("⛔ Mode lecture seule");
+      return;
+    }
+
     const btn = document.getElementById(`btnSousTitres_${eventId}`);
     const loader = document.getElementById(`loader_${eventId}`);
 
@@ -443,7 +478,9 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
-        <button class="btn btn-success" onclick="sauverSousTitres()">💾 Enregistrer</button>
+        <button class="btn btn-success" onclick="sauverSousTitres()" {% if lecture_seule %}disabled{% endif %}>
+          💾 Enregistrer
+        </button>
       </div>
     </div>
   </div>
@@ -468,6 +505,12 @@
 
   // 💾 Enregistre les corrections dans le fichier .srt
   function sauverSousTitres() {
+
+    if (LECTURE_SEULE) {
+      alert("⛔ Mode lecture seule");
+      return;
+    }
+
     const contenu = document.getElementById("contenu_srt").value;
     fetch(`/evenements/save_srt/${currentSrtId}`, {
       method: "POST",
@@ -479,12 +522,19 @@
         alert("✅ Sous-titres enregistrés !");
         const el = document.getElementById("modalSousTitres");
 
-        let modal = bootstrap.Modal.getInstance(el);
-        if (!modal) {
-          modal = new bootstrap.Modal(el);
-        }
+        let modal;
 
-        modal.hide();
+        if (typeof bootstrap !== "undefined" && bootstrap.Modal) {
+          modal = bootstrap.Modal.getInstance(el) || new bootstrap.Modal(el);
+          modal.hide();
+        } else {
+          // fallback Bootstrap 4 (jQuery)
+          if (window.$) {
+            $(el).modal('hide');
+          } else {
+            console.error("Bootstrap non disponible");
+          }
+        }
       })
       .catch(err => alert("❌ Erreur : " + err));
   }

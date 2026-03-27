@@ -5,10 +5,11 @@ et gère automatiquement le nettoyage (auto et immédiat).
 """
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_from_directory
+from flask_login import login_required
 from pypdf import PdfReader, PdfWriter
 from pathlib import Path
 import re, os, unicodedata, zipfile, datetime, shutil
-from utils import get_static_factures_dir, write_log
+from utils import get_static_factures_dir, write_log, require_access
 
 factures_bp = Blueprint('factures', __name__)
 
@@ -78,6 +79,8 @@ def delete_batch(horodatage):
 # =====================================================
 
 @factures_bp.route("/decouper_factures", methods=["GET", "POST"])
+@login_required
+@require_access("tresorerie", "ecriture")
 def decouper_factures():
     if request.method == "POST":
         file = request.files.get("pdf_file")
@@ -164,6 +167,8 @@ def decouper_factures():
 # =====================================================
 
 @factures_bp.route("/telecharger_zip/<nom_fichier>")
+@login_required
+@require_access("tresorerie", "ecriture")
 def telecharger_zip(nom_fichier):
     """
     Envoie le ZIP au navigateur et supprime immédiatement
@@ -198,6 +203,8 @@ def telecharger_zip(nom_fichier):
 # =====================================================
 
 @factures_bp.route("/nettoyer_factures", methods=["POST"])
+@login_required
+@require_access("tresorerie", "ecriture")
 def nettoyer_factures():
     """Route pour supprimer tous les anciens fichiers et archives."""
     try:

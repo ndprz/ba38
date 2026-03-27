@@ -1,11 +1,13 @@
 # ba38_planning_distribution.py
-from flask import Blueprint, render_template, request, flash, redirect, url_for
-from flask_login import login_required
-from utils import upload_database, write_log, get_db_connection
-from ba38_planning_utils import get_parametre_valeur
 
 import sqlite3
 from datetime import datetime, timedelta
+
+from flask import Blueprint, render_template, request, flash, redirect, url_for
+from flask_login import login_required, current_user
+from utils import upload_database, write_log, get_db_connection, require_access
+
+
 from ba38_planning_utils import (
     get_lundi_de_la_semaine,
     get_benevole_infos,
@@ -18,7 +20,8 @@ from ba38_planning_utils import (
     get_fournisseurs_pour_tournee,
     get_nom_tournee,
     get_absents_par_jour,
-    filtrer
+    filtrer,
+    get_parametre_valeur
 )
 
 
@@ -27,12 +30,14 @@ planning_dist_bp = Blueprint('planning_dist', __name__)
 
 @planning_dist_bp.route("/planning_main")
 @login_required
+@require_access("planning", "lecture")
 def planning_main():
     return render_template("planning/planning_main.html")
 
 
 @planning_dist_bp.route("/maj_modele_planning_distribution", methods=["GET", "POST"])
 @login_required
+@require_access("planning", "ecriture")
 def maj_modele_planning_distribution():
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
@@ -91,32 +96,32 @@ def maj_modele_planning_distribution():
 
 @planning_dist_bp.route("/creation_planning_distribution", methods=["GET", "POST"])
 @login_required
+@require_access("planning", "ecriture")
 def creation_planning_distribution():
     """
     Création du planning de distribution à partir du modèle standard.
 
     Fonctionnement :
-    - Choix d’une semaine
-    - Si un planning existe déjà :
+    1. Choix d’une semaine (format ISO : YYYY-Wxx)
+    2. Si un planning existe déjà :
         -> proposer régénération ou modification
-    - Sinon :
+    3. Sinon :
         -> générer le planning depuis planning_standard_distribution_ids
         -> détecter les absences
         -> enrichir avec les noms des bénévoles
+        -> enregistrer le planning en base
         -> afficher un pré-planning
-        -> permettre l’enregistrement silencieux
     """
 
-    from utils import get_db_connection
     from ba38_planning_utils import get_lundi_de_la_semaine
     from datetime import datetime, timedelta
 
     conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
     semaine = request.form.get("semaine") or request.args.get("semaine")
     planning = []
-    planning_existe = False
 
     # --------------------------------------------------
     # 1️⃣ Aucune semaine sélectionnée → simple affichage
@@ -131,7 +136,7 @@ def creation_planning_distribution():
         )
 
     # --------------------------------------------------
-    # 2️⃣ Extraction du numéro de semaine
+    # 2️⃣ Extraction année / numéro semaine
     # --------------------------------------------------
     try:
         annee, numero_semaine = map(int, semaine.split("-W"))
@@ -146,7 +151,7 @@ def creation_planning_distribution():
     jours = ["lundi", "mardi", "mercredi", "jeudi", "vendredi"]
 
     # --------------------------------------------------
-    # 3️⃣ Vérifier si un planning existe déjà
+    # 3️⃣ Vérifier si planning déjà existant
     # --------------------------------------------------
     existe = cursor.execute(
         "SELECT COUNT(*) FROM plannings_distribution WHERE annee = ? AND semaine = ?",
@@ -163,7 +168,7 @@ def creation_planning_distribution():
         )
 
     # --------------------------------------------------
-    # 4️⃣ Charger le modèle standard
+    # 4️⃣ Charger modèle standard
     # --------------------------------------------------
     modele = cursor.execute(
         """
@@ -181,11 +186,10 @@ def creation_planning_distribution():
         """
     ).fetchall()
 
-    # 🔧 IMPORTANT : convertir sqlite3.Row → dict
     modele = [dict(l) for l in modele]
 
     # --------------------------------------------------
-    # 5️⃣ Charger les bénévoles (ID → Nom Prénom)
+    # 5️⃣ Charger bénévoles (ID → Nom Prénom)
     # --------------------------------------------------
     benevoles_map = {
         b["id"]: f"{b['prenom']} {b['nom']}"
@@ -195,33 +199,36 @@ def creation_planning_distribution():
     }
 
     # --------------------------------------------------
-    # 6️⃣ Charger les absences
+    # 6️⃣ Charger absences
     # --------------------------------------------------
-    absences = cursor.execute(
+    absences_db = cursor.execute(
         "SELECT benevole_id, date_debut, date_fin FROM absences"
     ).fetchall()
 
-    absences = [
-        {
-            "benevole_id": a["benevole_id"],
-            "debut": datetime.strptime(a["date_debut"], "%d/%m/%Y").date(),
-            "fin": datetime.strptime(a["date_fin"], "%d/%m/%Y").date(),
-        }
-        for a in absences
-    ]
+    absences = []
+    for a in absences_db:
+        try:
+            absences.append({
+                "benevole_id": a["benevole_id"],
+                "debut": datetime.strptime(a["date_debut"], "%d/%m/%Y").date(),
+                "fin": datetime.strptime(a["date_fin"], "%d/%m/%Y").date(),
+            })
+        except Exception:
+            continue
 
     # --------------------------------------------------
-    # 7️⃣ Génération du pré-planning
+    # 7️⃣ Génération du pré-planning (SANS écriture DB ici)
     # --------------------------------------------------
     for ligne in modele:
+
         jour = ligne["jour"].lower()
-        date_jour = lundi + timedelta(jours.index(jour))
+        date_jour = lundi + timedelta(days=jours.index(jour))
 
         row = {
             "jour": ligne["jour"],
         }
 
-        # ----------- FROID ----------- #
+        # -------- FROID --------
         for i in range(1, 5):
             bid = ligne.get(f"froid{i}_id")
 
@@ -237,7 +244,7 @@ def creation_planning_distribution():
             row[f"froid{i}_nom"] = benevoles_map.get(bid, "") if bid else ""
             row[f"froid{i}_remplacant_nom"] = ""
 
-        # ----------- FRAIS SEC ----------- #
+        # -------- FRAIS SEC --------
         for i in range(1, 5):
             bid = ligne.get(f"frais_sec{i}_id")
 
@@ -255,70 +262,80 @@ def creation_planning_distribution():
 
         planning.append(row)
 
-        # --------------------------------------------------
-        # 7bis️⃣ Enregistrement en base du planning généré
-        # --------------------------------------------------
+    # --------------------------------------------------
+    # 8️⃣ Enregistrement en base (UNE SEULE FOIS)
+    # --------------------------------------------------
 
-        # Suppression préalable si régénération
-        cursor.execute(
-            "DELETE FROM plannings_distribution WHERE annee = ? AND semaine = ?",
-            (annee, numero_semaine)
+    # 🔎 Log création ou régénération
+    if existe > 0:
+        write_log(
+            f"🔄 Régénération planning distribution "
+            f"S{numero_semaine}/{annee} par {current_user.username}"
+        )
+    else:
+        write_log(
+            f"🆕 Création planning distribution "
+            f"S{numero_semaine}/{annee} par {current_user.username}"
         )
 
-        insert_sql = """
-            INSERT INTO plannings_distribution (
-                annee, semaine, jour,
+    # Suppression préalable si régénération
+    cursor.execute(
+        "DELETE FROM plannings_distribution WHERE annee = ? AND semaine = ?",
+        (annee, numero_semaine)
+    )
 
-                froid1_id, froid1_absent, froid1_remplacant,
-                froid2_id, froid2_absent, froid2_remplacant,
-                froid3_id, froid3_absent, froid3_remplacant,
-                froid4_id, froid4_absent, froid4_remplacant,
+    insert_sql = """
+        INSERT INTO plannings_distribution (
+            annee, semaine, jour,
 
-                frais_sec1_id, frais_sec1_absent, frais_sec1_remplacant,
-                frais_sec2_id, frais_sec2_absent, frais_sec2_remplacant,
-                frais_sec3_id, frais_sec3_absent, frais_sec3_remplacant,
-                frais_sec4_id, frais_sec4_absent, frais_sec4_remplacant
-            )
-            VALUES (
-                ?, ?, ?,
+            froid1_id, froid1_absent, froid1_remplacant,
+            froid2_id, froid2_absent, froid2_remplacant,
+            froid3_id, froid3_absent, froid3_remplacant,
+            froid4_id, froid4_absent, froid4_remplacant,
 
-                ?, ?, ?,
-                ?, ?, ?,
-                ?, ?, ?,
-                ?, ?, ?,
+            frais_sec1_id, frais_sec1_absent, frais_sec1_remplacant,
+            frais_sec2_id, frais_sec2_absent, frais_sec2_remplacant,
+            frais_sec3_id, frais_sec3_absent, frais_sec3_remplacant,
+            frais_sec4_id, frais_sec4_absent, frais_sec4_remplacant
+        )
+        VALUES (
+            ?, ?, ?,
 
-                ?, ?, ?,
-                ?, ?, ?,
-                ?, ?, ?,
-                ?, ?, ?
-            )
-        """
+            ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?,
 
-        for row in planning:
-            cursor.execute(insert_sql, (
-                annee,
-                numero_semaine,
-                row["jour"],
+            ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?
+        )
+    """
 
-                row["froid1_id"], row["froid1_absent"], None,
-                row["froid2_id"], row["froid2_absent"], None,
-                row["froid3_id"], row["froid3_absent"], None,
-                row["froid4_id"], row["froid4_absent"], None,
+    for row in planning:
+        cursor.execute(insert_sql, (
+            annee,
+            numero_semaine,
+            row["jour"],
 
-                row["frais_sec1_id"], row["frais_sec1_absent"], None,
-                row["frais_sec2_id"], row["frais_sec2_absent"], None,
-                row["frais_sec3_id"], row["frais_sec3_absent"], None,
-                row["frais_sec4_id"], row["frais_sec4_absent"], None,
-            ))
+            row["froid1_id"], row["froid1_absent"], None,
+            row["froid2_id"], row["froid2_absent"], None,
+            row["froid3_id"], row["froid3_absent"], None,
+            row["froid4_id"], row["froid4_absent"], None,
 
-        conn.commit()
-        upload_database()
+            row["frais_sec1_id"], row["frais_sec1_absent"], None,
+            row["frais_sec2_id"], row["frais_sec2_absent"], None,
+            row["frais_sec3_id"], row["frais_sec3_absent"], None,
+            row["frais_sec4_id"], row["frais_sec4_absent"], None,
+        ))
 
-
+    conn.commit()
+    upload_database()
     conn.close()
 
     # --------------------------------------------------
-    # 8️⃣ Rendu final
+    # 9️⃣ Rendu final
     # --------------------------------------------------
     return render_template(
         "planning/distribution/creation_planning_distribution.html",
@@ -328,12 +345,10 @@ def creation_planning_distribution():
     )
 
 
-
 @planning_dist_bp.route('/gestion_planning_distribution', methods=['GET', 'POST'])
 @login_required
+@require_access("planning", "ecriture")
 def gestion_planning_distribution():
-    from utils import get_db_connection, upload_database, get_db_connection
-    from ba38_planning_utils import get_lundi_de_la_semaine
 
     semaine = request.args.get("semaine")
     try:
@@ -558,6 +573,7 @@ def gestion_planning_distribution():
 
 @planning_dist_bp.route('/apercu_planning_distribution')
 @login_required
+@require_access("planning", "lecture")
 def apercu_planning_distribution():
     semaine = request.args.get("semaine")
     if not semaine:
@@ -589,10 +605,10 @@ def apercu_planning_distribution():
     for ligne in lignes:
         for role in ['froid1', 'froid2', 'froid3', 'froid4', 'frais_sec1', 'frais_sec2', 'frais_sec3', 'frais_sec4']:
             titulaire_id = ligne.get(f"{role}_id")
-            remplaçant_id = ligne.get(f"{role}_remplacant")
+            remplacant_id = ligne.get(f"{role}_remplacant")
 
             ligne[f"{role}_nom"] = bene_dict.get(titulaire_id, "") if titulaire_id else ""
-            ligne[f"remplacant_{role}_nom"] = bene_dict.get(remplaçant_id, "") if remplaçant_id else ""
+            ligne[f"remplacant_{role}_nom"] = bene_dict.get(remplaçant_id, "") if remplacant_id else ""
 
     jours_dates = {j: (lundi + timedelta(days=i)) for i, j in enumerate(["lundi", "mardi", "mercredi", "jeudi", "vendredi"])}
     for l in lignes:

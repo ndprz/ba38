@@ -1,8 +1,8 @@
 # ba38_planning_palettes.py
 from flask import Blueprint, render_template, request, redirect, url_for, flash
-from flask_login import login_required
+from flask_login import login_required, current_user
 from datetime import datetime, timedelta
-from utils import get_db_connection, write_log, upload_database, get_db_connection
+from utils import get_db_connection, write_log, upload_database, get_db_connection, require_access
 from ba38_planning_utils import get_lundi_de_la_semaine, parse_id, get_nom, get_type_benevole_options
 
 planning_palettes_bp = Blueprint('planning_palettes', __name__)
@@ -10,6 +10,7 @@ planning_palettes_bp = Blueprint('planning_palettes', __name__)
 
 @planning_palettes_bp.route("/creation_planning_palettes", methods=["GET", "POST"])
 @login_required
+@require_access("planning","ecriture")
 def creation_planning_palettes():
     # 📥 Lecture de la semaine au format ISO
     semaine_iso = request.form.get("semaine") or request.args.get("semaine")
@@ -53,9 +54,21 @@ def creation_planning_palettes():
                                planning=[])
 
     # 🧹 Supprimer les anciennes lignes si on force la génération
+    # 🔎 Log création ou régénération
     if planning_existe:
-        cursor.execute("DELETE FROM plannings_pal WHERE annee = ? AND semaine = ?", (annee, numero_semaine))
-
+        write_log(
+            f"🔄 Régénération planning palettes "
+            f"S{numero_semaine}/{annee} par {current_user.username}"
+        )
+        cursor.execute(
+            "DELETE FROM plannings_pal WHERE annee = ? AND semaine = ?",
+            (annee, numero_semaine)
+        )
+    else:
+        write_log(
+            f"🆕 Création planning palettes "
+            f"S{numero_semaine}/{annee} par {current_user.username}"
+        )
     # 📋 Lire le modèle de planning standard
     modeles = cursor.execute("SELECT * FROM planning_standard_pal_ids").fetchall()
     if not modeles:
@@ -134,6 +147,7 @@ def creation_planning_palettes():
 
 @planning_palettes_bp.route("/apercu_planning_palettes")
 @login_required
+@require_access("planning","lecture")
 def apercu_planning_palettes():
     semaine_iso = request.args.get("semaine")  # ex: "2025-W23"
     if not semaine_iso:
@@ -199,6 +213,7 @@ def apercu_planning_palettes():
 
 @planning_palettes_bp.route("/maj_modele_planning_palettes", methods=["GET", "POST"])
 @login_required
+@require_access("planning","ecriture")
 def maj_modele_planning_palettes():
     jours = ["lundi", "mardi", "mercredi", "jeudi", "vendredi"]
 
@@ -263,6 +278,7 @@ def maj_modele_planning_palettes():
 
 @planning_palettes_bp.route("/gestion_planning_palettes", methods=["GET", "POST"])
 @login_required
+@require_access("planning","ecriture")
 def gestion_planning_palettes():
     """
     Gestion et modification du planning palettes.

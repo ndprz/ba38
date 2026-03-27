@@ -103,7 +103,13 @@ def load_planning(cursor, table_name, postes, start_date, end_date):
     if debug:
         write_log(f"{prefix} ----- Chargement planning {table_name} -----")
 
-    rows = cursor.execute(f"SELECT * FROM {table_name}").fetchall()
+    rows = cursor.execute(
+        f"""
+        SELECT * FROM {table_name}
+        WHERE annee BETWEEN ? AND ?
+        """,
+        (start_date.year - 1, end_date.year + 1)
+    ).fetchall()
     resultat = []
 
     jours_iso = ["lundi", "mardi", "mercredi", "jeudi", "vendredi"]

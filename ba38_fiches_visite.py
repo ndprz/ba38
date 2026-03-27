@@ -1,24 +1,30 @@
 # ba38_fiches_visite.py
 import sqlite3
 import os
-from flask import Blueprint, render_template, request, redirect, url_for, flash
-from flask_login import login_required
-from utils import get_db_connection, write_log, get_db_path, has_access, upload_database
-from datetime import date
-annee = date.today().year
-
-from datetime import datetime
-from flask import send_file, render_template, request
-from flask_login import login_required
-from utils import get_db_connection, write_log, get_db_path
-from weasyprint import HTML
 import io
-import os
+from datetime import date, datetime
+
+from flask import (
+    Blueprint, render_template, request,
+    redirect, url_for, flash, send_file
+)
+from flask_login import login_required
+from weasyprint import HTML
+
+from utils import (
+    get_db_connection,
+    write_log,
+    get_db_path,
+    has_access,
+    upload_database,
+    require_access
+)
 
 fiches_visite_bp = Blueprint("fiches_visite", __name__)
 
 @fiches_visite_bp.route("/fiches_visite/<int:partner_id>")
 @login_required
+@require_access("associations", "lecture")
 def liste(partner_id):
     """
     Liste des fiches de visite pour un partenaire donné.
@@ -57,11 +63,8 @@ def liste(partner_id):
 # ========================================
 @fiches_visite_bp.route("/fiches_visite/<int:partner_id>/nouvelle", methods=["GET", "POST"])
 @login_required
+@require_access("associations", "ecriture")
 def nouvelle(partner_id):
-    # 🔒 Vérification des droits
-    if not has_access("associations", "ecriture"):
-        flash("⛔ Vous n’avez pas les droits pour créer une fiche visite.", "danger")
-        return redirect(url_for("partenaires.partenaires"))
 
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
@@ -96,7 +99,7 @@ def nouvelle(partner_id):
 
         upload_database()
         flash("✅ Nouvelle fiche de visite enregistrée.", "success")
-        return redirect(url_for("fiches_visite.fiches_visite.liste", partner_id=partner_id))
+        return redirect(url_for("fiches_visite.liste", partner_id=partner_id))
 
     # 🚗 Liste des CAR (depuis parametres)
     cars = [row["param_value"] for row in cur.execute(
@@ -136,6 +139,7 @@ def nouvelle(partner_id):
 # ========================================
 @fiches_visite_bp.route("/fiches_visite/view/<int:fiche_id>")
 @login_required
+@require_access("associations", "lecture")
 def view(fiche_id):
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
@@ -169,6 +173,7 @@ def view(fiche_id):
 # ========================================
 @fiches_visite_bp.route("/fiches_visite/modifier/<int:fiche_id>", methods=["GET", "POST"])
 @login_required
+@require_access("associations", "ecriture")
 def modifier(fiche_id):
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
@@ -198,7 +203,7 @@ def modifier(fiche_id):
 
         upload_database()
         flash("✅ Fiche de visite mise à jour avec succès.", "success")
-        return redirect(url_for("fiches_visite.fiches_visite.modifier", fiche_id=fiche_id))
+        return redirect(url_for("fiches_visite.modifier", fiche_id=fiche_id))
 
     # 🔽 GET → Affichage du formulaire
     partenaire = cur.execute("SELECT * FROM associations WHERE id = ?", (fiche["partenaire_id"],)).fetchone()
@@ -223,6 +228,7 @@ def modifier(fiche_id):
 
 @fiches_visite_bp.route("/fiches_visite/pdf/<int:fiche_id>")
 @login_required
+@require_access("associations", "lecture")
 def pdf(fiche_id):
     try:
         db_path = get_db_path()
@@ -277,6 +283,7 @@ def pdf(fiche_id):
 # ============================
 @fiches_visite_bp.route("/fiches_visite/html/<int:fiche_id>")
 @login_required
+@require_access("associations", "lecture")
 def fiche_visite_html(fiche_id):
     """🔍 Affiche directement le template fiche_visite_pdf.html dans le navigateur (sans PDF).
        Utile pour vérifier le rendu avant export PDF."""
@@ -290,6 +297,9 @@ def fiche_visite_html(fiche_id):
 
         if not fiche:
             return "❌ Fiche non trouvée", 404
+
+        static_path = os.path.join(os.getcwd(), "static")
+        logo_path = os.path.join(static_path, "images/logo.png")
 
         # Retourne le rendu HTML du template
         return render_template("fiches_visite/fiche_visite_pdf.html", fiche=dict(fiche), logo_path=logo_path)
@@ -320,31 +330,3 @@ def datetimeformat(value, format='%d/%m/%Y'):
         except ValueError:
             return value
 
-
-
-# def header_footer_fiche_visite(canvas, doc):
-#     """En-tête et pied de page spécifique aux PDF Fiches Visite"""
-#     canvas.saveState()
-
-#     # Logo gauche
-#     logo_path = "static/images/logo.png"
-#     if os.path.exists(logo_path):
-#         canvas.drawImage(logo_path, x=40, y=A4[1] - 60,
-#                          width=1.5*cm, height=1.5*cm, preserveAspectRatio=True)
-
-#     # Titre centré
-#     canvas.setFont("Helvetica-Bold", 14)
-#     canvas.setFillColorRGB(1, 0.5, 0)  # Orange
-#     canvas.drawCentredString(A4[0] / 2, A4[1] - 40, "Fiche de visite")
-#     canvas.setFillColorRGB(0, 0, 0)
-
-#     # Texte à droite
-#     canvas.setFont("Helvetica", 10)
-#     canvas.drawRightString(A4[0] - 40, A4[1] - 40, "Version ISÈRE 2025")
-
-#     # Pied de page
-#     page_num = canvas.getPageNumber()
-#     canvas.setFont("Helvetica", 8)
-#     canvas.drawRightString(A4[0] - 40, 20, f"Page {page_num}")
-
-#     canvas.restoreState()
