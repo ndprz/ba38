@@ -32,3 +32,19 @@ service_account.json
 
 # Parasites
 C:*
+
+# static/evenements
+static/evenements/
+
+# uploads utilisateurs
+static/uploads/
+
+# fichiers temporaires
+tmp/
+*.tmp
+
+# export
+exports/
+
+# instance Flask
+instance/
