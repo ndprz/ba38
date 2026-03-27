@@ -518,10 +518,7 @@ def restaurer_version():
             write_log(f"🔄 Lancement rollback via script externe : {backup_path}")
 
             # ✅ Lancement du script EXTERNE (IMPORTANT)
-            subprocess.Popen(
-                ["/srv/ba38/scripts_taches/rollback_prod.sh", backup_path]
-            )
-
+            subprocess.Popen(["/srv/ba38/scripts_taches/rollback_prod.sh", backup_path])
             flash("🔄 Rollback lancé (le service redémarre automatiquement)", "info")
 
         except Exception as e:
