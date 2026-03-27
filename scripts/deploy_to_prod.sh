@@ -96,13 +96,29 @@ echo "📝 MESSAGE : $VERSION_MSG"
 echo "📦 Vérification des dépendances Python"
 
 if [ -f "$DEV_DIR/requirements.txt" ]; then
-  cp "$DEV_DIR/requirements.txt" "$PROD_DIR/"
 
   source "$PROD_DIR/venv/bin/activate"
-  pip install --upgrade --no-cache-dir -r "$PROD_DIR/requirements.txt"
+
+  if ! cmp -s "$DEV_DIR/requirements.txt" "$PROD_DIR/requirements.txt"; then
+    echo "📦 Mise à jour dépendances"
+
+    cp "$DEV_DIR/requirements.txt" "$PROD_DIR/"
+
+    if ! pip install --upgrade --no-cache-dir -r "$PROD_DIR/requirements.txt" > /dev/null 2> /tmp/pip_error.log; then
+      echo "❌ ERREUR pip install"
+      cat /tmp/pip_error.log
+      exit 1
+    fi
+
+  else
+    echo "📦 Dépendances déjà à jour"
+  fi
+
 else
   echo "⚠️ requirements.txt absent"
 fi
+
+
 
 # ============================================================================
 # 🗄️ Bases SQLite

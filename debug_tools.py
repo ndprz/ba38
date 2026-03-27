@@ -454,7 +454,7 @@ def restaurer_version():
 
     BASE_DIR = os.getenv("BA38_BASE_DIR", "/srv/ba38")
     PROD_DIR = os.path.join(BASE_DIR, "prod")
-    BACKUP_DIR = os.path.join(BASE_DIR, "backups")
+    BACKUP_DIR = "/srv/ba38/backups"
 
     try:
         fichiers = sorted(
