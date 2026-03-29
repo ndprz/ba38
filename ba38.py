@@ -60,7 +60,7 @@ import logging
 
 from datetime import datetime, timedelta
 from utils import get_db_connection, write_log, send_reset_email, get_user_roles, get_db_path, get_db_info, upload_database, get_version, get_all_users, format_tel, get_param_value
-from utils import get_user_info,has_access
+from utils import get_user_info,has_access, is_admin_global
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, g, current_app
 from flask_login import current_user, LoginManager, UserMixin, login_user, logout_user, login_required
 from flask_session import Session
@@ -198,8 +198,6 @@ def handle_405(e):
 # =========================
 # Injection globale Jinja
 # =========================
-from utils import has_access, is_admin_global
-
 @app.context_processor
 def inject_access_helpers():
     return dict(

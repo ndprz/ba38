@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, session
 from flask_login import login_required, current_user
-from utils import get_db_connection, get_db_path, write_log, require_access, has_access
+from utils import get_db_connection, get_db_path, write_log, has_access
 from weasyprint import HTML
 from docx import Document
 import pandas as pd

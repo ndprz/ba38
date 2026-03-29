@@ -518,16 +518,19 @@ def restaurer_version():
         try:
             write_log(f"🔄 Lancement rollback via script externe : {backup_path}")
 
-            # ✅ Lancement du script EXTERNE (IMPORTANT)
             result = subprocess.run(
                 ["/srv/ba38/scripts_taches/rollback_prod.sh", backup_path],
                 capture_output=True,
                 text=True
             )
 
-            output = result.stdout
+            output = result.stdout or ""
+
             if result.stderr:
                 output += "\n⚠️ STDERR:\n" + result.stderr
+
+            # 🔥 AJOUT CRITIQUE
+            output += f"\n\n🔎 CODE RETOUR = {result.returncode}"
 
             session["admin_output"] = output
             session["admin_script_name"] = "Rollback PROD"
@@ -539,11 +542,10 @@ def restaurer_version():
 
             return redirect(url_for("debug_bp.admin_scripts"))
 
-            flash("🔄 Rollback lancé (le service redémarre automatiquement)", "info")
-
         except Exception as e:
             write_log(f"❌ Erreur lancement rollback : {e}")
             flash(f"❌ Erreur : {e}", "danger")
+
 
         return redirect(url_for("debug_bp.admin_scripts"))
 

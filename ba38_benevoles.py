@@ -4,7 +4,7 @@ import sqlite3
 import unicodedata
 
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, current_app, abort
 from flask_login import login_required, current_user
 from utils import get_db_connection, upload_database, write_log, has_access, is_valid_email, is_valid_phone, require_access
 from werkzeug.security import generate_password_hash
@@ -630,8 +630,7 @@ def update_benevole(benevole_id):
     if request.method == 'POST':
 
         if not has_access("benevoles", "ecriture"):
-            flash("⛔ Modification non autorisée (lecture seule).", "danger")
-            return redirect(url_for("benevoles.update_benevole", benevole_id=benevole_id))
+            abort(403)
 
         opts_type_bene = get_type_benevole_options(conn)
         do_upload = request.form.get("do_upload", "1")
@@ -850,8 +849,7 @@ def update_benevoles_table():
 
 
     if not has_access("benevoles", "ecriture"):
-        flash("⛔ Accès refusé : modification non autorisée.", "danger")
-        return redirect(url_for("benevoles.benevoles"))
+        abort(403)
 
     conn = get_db_connection()
     cursor = conn.cursor()

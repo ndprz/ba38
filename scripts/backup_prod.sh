@@ -32,14 +32,11 @@ echo "📦 BACKUP PROD — $(date '+%Y-%m-%d %H:%M:%S')"
 # 📁 Nom archive avec VERSION
 # ============================================================================
 
-ENV_FILE="/srv/ba38/prod/.env"
+VERSION_FILE="/srv/ba38/prod/VERSION"
 
-if [ -f "$ENV_FILE" ]; then
-  set -a
-  source "$ENV_FILE"
-  set +a
+if [ -f "$VERSION_FILE" ]; then
+  VERSION=$(grep "^VERSION=" "$VERSION_FILE" | cut -d'=' -f2)
 else
-  echo "⚠️ .env introuvable"
   VERSION="unknown"
 fi
 
@@ -48,10 +45,10 @@ TIMESTAMP="$(date '+%Y%m%d-%H%M%S')"
 
 ARCHIVE="$BACKUP_DIR/ba380-v${VERSION}-${TIMESTAMP}.tar.gz"
 
-# 👉 ICI 👇
 echo "📦 Version détectée : $VERSION"
 echo "📦 Backup VERSION=$VERSION"
 echo "📦 Archive : $ARCHIVE"
+
 
 # ============================================================================
 # 📦 Création archive PROPRE (structure OK)

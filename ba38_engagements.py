@@ -1,6 +1,6 @@
 # ba38_engagements.py
 
-from flask import Blueprint, render_template, send_file, request, jsonify, session, redirect, url_for, flash
+from flask import Blueprint, render_template, send_file, request, jsonify, session, redirect, url_for, flash, abort
 from flask_login import login_required, current_user
 from utils import get_db_path, get_db_connection, has_access, write_log, require_access
 from openpyxl import Workbook
@@ -76,8 +76,7 @@ def gestion_poles():
         if request.method == "POST":
 
             if not has_access("engagement_parametres", "ecriture"):
-                flash("⛔ Modification non autorisée.", "danger")
-                return redirect(url_for("engagements.gestion_poles"))
+                abort(403)
 
             pole_id = request.form.get("pole_id")
             nom_affiche = request.form.get("nom_affiche")

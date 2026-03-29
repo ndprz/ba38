@@ -84,9 +84,6 @@ def partenaires():
     # ======================================================
     # 🔐 Accès
     # ======================================================
-    if not has_access("associations", "lecture"):
-        flash("⛔ Accès refusé à la gestion des associations", "danger")
-        return redirect(url_for("index"))
 
     lecture_seule = not has_access("associations", "ecriture")
 
@@ -429,11 +426,9 @@ def update_partner(partner_id):
     """
 
     # 🔒 Vérification des droits
-    if not has_access("associations", "lecture"):
-        flash("⛔ Vous n’avez pas les droits pour consulter cette association.", "danger")
-        return redirect(url_for("index"))
 
     lecture_seule = not has_access("associations", "ecriture")
+
     conn = get_db_connection()
     cursor = conn.cursor()
 

@@ -15,7 +15,6 @@ from utils import (
     get_db_connection,
     write_log,
     get_db_path,
-    has_access,
     upload_database,
     require_access
 )

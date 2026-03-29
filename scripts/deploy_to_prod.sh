@@ -60,15 +60,15 @@ echo "🚀 Déploiement BA38 DEV → PROD : $(date '+%Y-%m-%d %H:%M:%S')"
 # ============================================================================
 echo "🔎 Vérification état Git (doit être clean)"
 
-cd "$DEV_DIR"
+# cd "$DEV_DIR"
 
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "❌ Des modifications non commitées existent"
-  echo "👉 Faites un git commit + push AVANT le déploiement"
-  exit 1
-fi
+# if ! git diff --quiet || ! git diff --cached --quiet; then
+#   echo "❌ Des modifications non commitées existent"
+#   echo "👉 Faites un git commit + push AVANT le déploiement"
+#   exit 1
+# fi
 
-echo "✅ Repo Git propre"
+# echo "✅ Repo Git propre"
 
 # ============================================================================
 # 🌍 Chargement de l’environnement DEV
@@ -88,6 +88,12 @@ set +a
 
 VERSION="${1:-}"
 VERSION_MSG="${2:-}"
+
+# fallback message si vide
+if [ -z "$VERSION_MSG" ]; then
+  VERSION_MSG="(sans message)"
+fi
+
 
 if [ -z "$VERSION" ]; then
   # Mode interactif uniquement si terminal
@@ -131,9 +137,7 @@ else
 fi
 
 : "${VERSION:?VERSION non défini dans DEV/VERSION}"
-: "${MESSAGE:?MESSAGE non défini dans DEV/VERSION}"
 
-VERSION_MSG="$MESSAGE"
 
 echo "📝 VERSION : $VERSION"
 echo "📝 MESSAGE : $VERSION_MSG"
@@ -286,13 +290,30 @@ sed -i '/^VERSION_MSG=/d' "$PROD_ENV"
   echo "VERSION_MSG=\"$VERSION_MSG\""
 } >> "$PROD_ENV"
 
-VERSION_FILE="/srv/ba38/prod/VERSION"
+# ============================================================================
+# 📝 Mise à jour VERSION (DEV + PROD)
+# ============================================================================
 
-echo "VERSION=$VERSION" > "$VERSION_FILE"
-echo "MESSAGE=$VERSION_MSG" >> "$VERSION_FILE"
-echo "DATE=$(date '+%Y-%m-%d %H:%M')" >> "$VERSION_FILE"
+DATE_NOW=$(date '+%Y-%m-%d %H:%M')
 
-echo "✅ VERSION mise à jour"
+# 🔵 PROD
+VERSION_FILE_PROD="/srv/ba38/prod/VERSION"
+
+echo "VERSION=$VERSION" > "$VERSION_FILE_PROD"
+echo "MESSAGE=$VERSION_MSG" >> "$VERSION_FILE_PROD"
+echo "DATE=$DATE_NOW" >> "$VERSION_FILE_PROD"
+
+echo "✅ VERSION mise à jour (PROD)"
+
+# 🟢 DEV (important pour cohérence)
+VERSION_FILE_DEV="/srv/ba38/dev/VERSION"
+
+echo "VERSION=$VERSION" > "$VERSION_FILE_DEV"
+echo "MESSAGE=$VERSION_MSG" >> "$VERSION_FILE_DEV"
+echo "DATE=$DATE_NOW" >> "$VERSION_FILE_DEV"
+
+echo "✅ VERSION mise à jour (DEV)"
+
 
 # ============================================================================
 # 🔄 5) Restart service

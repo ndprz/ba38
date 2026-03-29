@@ -1068,3 +1068,4 @@ def require_access(appli: str, niveau: str, redirect_if_denied=True):
 
 def is_admin_global():
     return session.get("user_role") == "admin"
+

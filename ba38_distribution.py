@@ -2,7 +2,7 @@
 
 from flask import Blueprint, render_template, send_file, request, jsonify, session, redirect, url_for, flash
 from flask_login import login_required, current_user
-from utils import get_db_path, get_db_connection, has_access, require_access
+from utils import get_db_path, get_db_connection, require_access
 from openpyxl import Workbook
 from io import BytesIO
 from datetime import datetime

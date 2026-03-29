@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 import shutil
 
 from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, jsonify, session
+    Blueprint, render_template, request, redirect, url_for, flash, jsonify, session, abort
 )
 from flask_login import login_required
 from werkzeug.utils import secure_filename
@@ -71,8 +71,7 @@ def gestion_evenements():
     if request.method == "POST":
 
         if not has_access("evenements", "ecriture"):
-            flash("⛔ Modification non autorisée.", "danger")
-            return redirect(url_for("evenements.gestion_evenements"))
+            abort(403)
 
         action = request.form.get("action", "ajouter")
 
