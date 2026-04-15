@@ -3,7 +3,7 @@
 
 
 {% block content %}
-<div class="container-fluid mt-4 px-5">
+<div class="table-responsive" style="overflow-x:auto;">
   <h2>🎬 Gestion des événements écran</h2>
 
   {% set lecture_seule = not has_access("evenements", "ecriture") %}
@@ -111,7 +111,7 @@
   <!-- 📋 TABLEAU DES ÉVÉNEMENTS -->
   <!-- ============================= -->
   <h5 class="mb-3">Événements planifiés</h5>
-  <div class="table-responsive">
+  <div style="overflow-x: auto; width: 100%;">
     <table class="table table-evenements table-striped align-middle">
       <thead>
         <tr>
@@ -160,28 +160,54 @@
           <td class="text-center">{{ e.duree_affichage or 15 }}</td>
           <td class="small">
             {% if e.fichier_path %}
-            {% if e.fichier_path.startswith('http') %}
-            <a href="{{ e.fichier_path }}" target="_blank">lien</a>
-            {% else %}
-            <code>{{ e.fichier_path }}</code>
-            {% endif %}
+            
+              {% set nom_fichier = e.fichier_path.split('/')[-1] %}
+              
+              <a href="{{ e.fichier_path }}" target="_blank"
+                class="text-truncate d-inline-block"
+                style="max-width:120px;">
+                {{ nom_fichier }}
+              </a>
+
             {% endif %}
           </td>
-
-          <td class="text-nowrap">
+          <td>
             <!-- 🗑️ Suppression -->
-            <form method="post" class="d-inline" onsubmit="return confirm('Supprimer cet événement ?');">
-              <input type="hidden" name="id" value="{{ e.id }}">
-              <input type="hidden" name="action" value="supprimer">
-              <button class="btn btn-sm btn-outline-danger" {% if lecture_seule %}disabled{% endif %}>🗑️</button>
-            </form>
+            <div class="d-flex flex-wrap gap-1">
 
-            <!-- ✏️ Modification -->
-            <button type="button" class="btn btn-sm btn-outline-primary" data-evenement='{{ e|tojson }}'
-              onclick="ouvrirModale(JSON.parse(this.dataset.evenement))" {% if lecture_seule %}disabled{% endif %}>
-              ✏️
-            </button>
+              <!-- 🗑️ -->
+              <form method="post" onsubmit="return confirm('Supprimer cet événement ?');">
+                <input type="hidden" name="id" value="{{ e.id }}">
+                <input type="hidden" name="action" value="supprimer">
+                <button class="btn btn-sm btn-outline-danger px-1 py-0" {% if lecture_seule %}disabled{% endif %}>
+                  🗑️
+                </button>
+              </form>
 
+              <!-- ✏️ -->
+              <button type="button"
+                class="btn btn-sm btn-outline-primary px-1 py-0"
+                data-evenement='{{ e|tojson }}'
+                onclick="ouvrirModale(JSON.parse(this.dataset.evenement))"
+                {% if lecture_seule %}disabled{% endif %}>
+                ✏️
+              </button>
+
+              {% if e.type == "video" %}
+              <button class="btn btn-sm btn-outline-secondary px-1 py-0"
+                onclick="genererSousTitres({{ e.id }})"
+                {% if lecture_seule %}disabled{% endif %}>
+                🎙
+              </button>
+
+              <button class="btn btn-sm btn-outline-warning px-1 py-0"
+                onclick="ouvrirModaleSousTitres({{ e.id }})"
+                {% if lecture_seule %}disabled{% endif %}>
+                ✏️
+              </button>
+              {% endif %}
+
+            </div>
             <!-- 🎙 Whisper -->
 
             {% if e.type == "video" %}
@@ -309,19 +335,26 @@
 </div>
 
 
+
 <style>
-  table.table-evenements {
-    width: 100%;
-    table-layout: auto;
-    font-size: 0.95rem;
+.table-evenements td:last-child {
+  max-width: 120px;
+}
+
+  td, th {
+    white-space: normal;
+    vertical-align: middle;
+    word-break: break-word;
+    padding: 0.3rem 0.4rem;
   }
 
-  td,
-  th {
-    white-space: nowrap;
-    vertical-align: middle;
-  }
-</style>
+  /* 📏 Largeurs colonnes */
+  .table-evenements th:nth-child(1) { width: 50px; }   /* ID */
+  .table-evenements th:nth-child(2) { width: 70px; }   /* Actif */
+  .table-evenements th:nth-child(3) { width: 90px; }   /* Type */
+  .table-evenements th:nth-child(7) { width: 80px; }   /* Durée */
+  .table-evenements th:nth-child(9) { width: 120px; }  /* Actions */
+</style>  
 
 
 <!-- ======================= -->

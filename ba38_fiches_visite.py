@@ -329,3 +329,45 @@ def datetimeformat(value, format='%d/%m/%Y'):
         except ValueError:
             return value
 
+# ========================================
+# 🗑️ Supprimer fiche de visite
+# ========================================
+@fiches_visite_bp.route("/fiches_visite/supprimer/<int:fiche_id>", methods=["POST"])
+@login_required
+@require_access("associations", "ecriture")
+def supprimer(fiche_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 🔍 récupérer partner_id pour redirection
+        fiche = cursor.execute(
+            "SELECT partenaire_id FROM fiches_visite WHERE id = ?",
+            (fiche_id,)
+        ).fetchone()
+
+        if not fiche:
+            conn.close()
+            flash("❌ Fiche introuvable.", "danger")
+            return redirect(url_for("partenaires.partenaires"))
+
+        partner_id = fiche["partenaire_id"]
+
+        # 🗑️ suppression
+        cursor.execute(
+            "DELETE FROM fiches_visite WHERE id = ?",
+            (fiche_id,)
+        )
+
+        conn.commit()
+        conn.close()
+
+        upload_database()
+
+        flash("✅ Fiche de visite supprimée.", "success")
+        return redirect(url_for("fiches_visite.liste", partner_id=partner_id))
+
+    except Exception as e:
+        write_log(f"❌ Erreur suppression fiche_visite {fiche_id} : {e}")
+        flash("Erreur lors de la suppression.", "danger")
+        return redirect(url_for("partenaires.partenaires"))

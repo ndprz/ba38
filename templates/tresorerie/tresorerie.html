@@ -7,10 +7,29 @@
   <hr>
 
 
-  <div class="list-group">
-    <a href="{{ url_for('tresorerie.traitement_participation') }}" class="list-group-item list-group-item-action">
-      📂 Traitement fichier de participation
-    </a>
+  <!-- ================= Participation ================= -->
+  <div class="list-group-item active mt-3">
+    📂 Participation
+  </div>
+
+    <div class="list-group">
+      <a href="{{ url_for('tresorerie.traitement_participation') }}" class="list-group-item list-group-item-action">
+        📂 Traitement fichier de participation
+      </a>
+
+      <a href="{{ url_for('tresorerie.factures_pdf') }}" class="list-group-item list-group-item-action">
+        📄 Envoi factures participation (PDF)
+      </a>
+
+      <a href="{{ url_for('factures.decouper_factures') }}" class="list-group-item list-group-item-action">
+        🧾 Découpe de factures PDF
+      </a>
+
+
+  <!-- ================= Cotisations ================= -->
+  <div class="list-group-item active mt-3">
+    📂 Cotisations
+  </div>
 
     <a href="{{ url_for('tresorerie.cotisations_start') }}" class="list-group-item list-group-item-action">
       💰 Facturation des cotisations (assos)
@@ -24,9 +43,11 @@
       🔔 Relance des cotisations (assos)
     </a>
 
-    <a href="{{ url_for('factures.decouper_factures') }}" class="list-group-item list-group-item-action">
-      🧾 Découpe de factures PDF
-    </a>
+
+  <!-- ================= CERFA bénévoles ================= -->
+  <div class="list-group-item active mt-3">
+    📂 Cotisations
+  </div>
 
     <a href="{{ url_for('tresorerie.cerfa') }}" class="list-group-item list-group-item-action">
       📄 Découpe et envoi du fichier CERFA

@@ -170,6 +170,9 @@ if [ -f "$DEV_DIR/requirements.txt" ]; then
       exit 1
     fi
 
+    echo "📦 Packages installés (requirements)"
+    pip freeze | grep -f "$PROD_DIR/requirements.txt"
+
   else
     echo "📦 Dépendances déjà à jour"
   fi

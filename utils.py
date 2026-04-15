@@ -7,8 +7,10 @@ import sqlite3
 import logging
 import subprocess
 import base64
+import time
 from datetime import datetime
 from pathlib import Path
+from collections import defaultdict
 
 # =========================
 # Third-party
@@ -30,6 +32,95 @@ from googleapiclient.discovery_cache.base import Cache
 
 # SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
 
+# =====================================================
+# 🔹 Mapping appli -> menu (routes Flask)
+# =====================================================
+
+
+
+from flask_login import current_user
+
+def get_user_apps():
+    conn = get_db_connection()
+
+    rows = conn.execute("""
+        SELECT DISTINCT appli
+        FROM roles_utilisateurs
+        WHERE user_email = ?
+    """, (current_user.email,)).fetchall()
+
+    conn.close()
+
+    return [r["appli"] for r in rows]
+
+
+from flask_login import current_user
+
+from collections import OrderedDict
+
+def build_menu():
+    from flask_login import current_user
+
+    if not current_user.is_authenticated:
+        return {}
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # 🔹 ADMIN → tout
+    if getattr(current_user, "role", None) == "admin":
+        rows = cursor.execute("""
+            SELECT *
+            FROM applications
+            ORDER BY ordre_groupe, ordre
+        """).fetchall()
+    else:
+        rows = cursor.execute("""
+            SELECT a.*
+            FROM applications a
+            JOIN roles_utilisateurs r
+                ON r.appli = a.appli
+            WHERE r.user_email = ?
+              AND r.droit IN ('lecture', 'ecriture')
+            ORDER BY a.ordre_groupe, a.ordre
+        """, (current_user.email,)).fetchall()
+
+    conn.close()
+
+    # 🔹 Construction temporaire
+    menu_temp = {}
+
+    for row in rows:
+        groupe = row["groupe"] or "Autres"
+
+        item = {
+            "label": row["label"],
+            "endpoint": row["endpoint"],
+            "icon": row["icon"] or ""
+        }
+
+        if groupe not in menu_temp:
+            menu_temp[groupe] = {
+                "ordre_groupe": row["ordre_groupe"] or 999,
+                "items": []
+            }
+
+        menu_temp[groupe]["items"].append(item)
+
+    # 🔥 TRI + FILTRAGE
+    menu = OrderedDict()
+
+    for groupe, data in sorted(menu_temp.items(), key=lambda x: x[1]["ordre_groupe"]):
+
+        # ✅ NE GARDE QUE SI AU MOINS 1 ITEM
+        if not data["items"]:
+            continue
+
+        menu[groupe] = data["items"]
+
+    return menu
+
+    
 
 # ---------------------------------------------------------------------------
 # Chargement robuste du .env (CLI + Flask + gunicorn)
@@ -58,6 +149,97 @@ VERSION = os.getenv("VERSION", "0.0.0")
 
 from functools import wraps
 from flask import g, redirect, url_for, flash
+
+
+
+
+
+# ============================================================================
+# 🪵 SECURISATION TENTATIVES LOGIN FRAUDULEUSES
+# ============================================================================
+
+
+login_attempts = defaultdict(list)
+
+MAX_ATTEMPTS = 5
+BLOCK_DURATION = 300
+WINDOW = 300
+
+def get_real_ip():
+    if "X-Forwarded-For" in request.headers:
+        return request.headers.get("X-Forwarded-For").split(",")[0].strip()
+    return request.remote_addr
+
+def is_blocked(ip, login):
+    now = time.time()
+
+    conn = get_db_connection()
+    rows = conn.execute("""
+        SELECT timestamp FROM login_attempts
+        WHERE ip=? AND login=? AND timestamp > ?
+        ORDER BY timestamp
+    """, (ip, login, now - WINDOW)).fetchall()
+    conn.close()
+
+    if len(rows) >= MAX_ATTEMPTS:
+        last_attempt = rows[-1]["timestamp"]
+        if now - last_attempt < BLOCK_DURATION:
+            return True
+
+    return False
+
+
+def reset_attempts(ip, login):
+    conn = get_db_connection()
+    conn.execute(
+        "DELETE FROM login_attempts WHERE ip=? AND login=?",
+        (ip, login)
+    )
+    conn.commit()
+    conn.close()
+
+SUSPICIOUS_UA = [
+    "curl", "wget", "python", "requests",
+    "bot", "scanner", "sqlmap", "nikto", "nmap"
+]
+
+def is_suspicious_ua(ua: str) -> bool:
+    if not ua:
+        return True
+    ua_lower = ua.lower()
+    return any(k in ua_lower for k in SUSPICIOUS_UA)
+
+import time
+
+MAX_ATTEMPTS = 5
+WINDOW = 300
+BLOCK_DURATION = 300
+
+
+def record_attempt(ip, login):
+    conn = get_db_connection()
+    conn.execute(
+        "INSERT INTO login_attempts (ip, login, timestamp) VALUES (?, ?, ?)",
+        (ip, login, time.time())
+    )
+    conn.commit()
+    conn.close()
+
+
+
+
+ip_activity = defaultdict(list)
+
+IP_WINDOW = 60
+IP_MAX_REQUESTS = 30
+
+def is_suspicious_ip(ip):
+    now = time.time()
+    ip_activity[ip] = [t for t in ip_activity[ip] if now - t < IP_WINDOW]
+    ip_activity[ip].append(now)
+    return len(ip_activity[ip]) > IP_MAX_REQUESTS
+
+
 # ============================================================================
 # 🪵 ACCES ADMINISTRATEURS
 # ============================================================================
@@ -260,15 +442,15 @@ def get_version_file_path():
 
     base_dir = os.getenv("BA38_BASE_DIR")
 
-    write_log(f"DEBUG base_dir = {base_dir}")
+    # write_log(f"DEBUG base_dir = {base_dir}")
 
     if base_dir:
         path = os.path.join(base_dir, "VERSION")
-        write_log(f"DEBUG path (env) = {path}")
+        # write_log(f"DEBUG path (env) = {path}")
         return path
 
     if os.path.exists("/srv/ba38/dev/VERSION"):
-        write_log("DEBUG fallback DEV utilisé")
+        # write_log("DEBUG fallback DEV utilisé")
         return "/srv/ba38/dev/VERSION"
 
     write_log("DEBUG fallback PROD utilisé")
@@ -722,7 +904,7 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
     # -----------------------------
     data = {"Messages": [message]}
 
-    write_log(f"MAILJET DATA: {data}")
+    # write_log(f"MAILJET DATA: {data}")
 
     response = requests.post(
         "https://api.mailjet.com/v3.1/send",
@@ -1026,6 +1208,9 @@ def has_access(appli: str, niveau_requis: str) -> bool:
 
         return hierarchy.index(droit) >= hierarchy.index(niveau_requis)
 
+    write_log(f"ROLES SESSION = {session.get('roles_utilisateurs')}")
+    write_log(f"USER ROLE = {session.get('user_role')}")
+
     return False
 
 from functools import wraps
@@ -1068,4 +1253,96 @@ def require_access(appli: str, niveau: str, redirect_if_denied=True):
 
 def is_admin_global():
     return session.get("user_role") == "admin"
+
+
+# -------------------------------------------------------------
+#  FORMATAGE DATE EN FRANCAIS JJ/MM/AAAA
+#--------------------------------------------------------------
+def format_date_fr(value):
+    if not value:
+        return ""
+
+    try:
+        return datetime.strptime(value[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+    except:
+        return value
+
+
+
+# ============================================================================
+# 🔐 Sécurité login — anti brute force
+# ============================================================================
+
+import time
+from collections import defaultdict
+from flask import request
+
+# 📌 stockage en mémoire (OK pour ton usage actuel)
+login_attempts = defaultdict(list)
+
+# ⚙️ paramètres
+MAX_ATTEMPTS = 5       # tentatives autorisées
+WINDOW_SECONDS = 300   # fenêtre (5 minutes)
+BLOCK_DURATION = 600   # blocage (10 minutes)
+
+blocked_ips = {}
+
+
+def get_real_ip():
+    """Récupère la vraie IP (compatible proxy / nginx)"""
+    if request.headers.get("X-Forwarded-For"):
+        return request.headers.get("X-Forwarded-For").split(",")[0].strip()
+    return request.remote_addr
+
+
+def is_bad_user_agent():
+    """Détecte les bots évidents"""
+    ua = request.headers.get("User-Agent", "").lower()
+    bad_ua = ["python-requests", "curl", "wget", "bot"]
+
+    return any(b in ua for b in bad_ua)
+
+
+def is_ip_blocked(ip):
+    """Vérifie si IP bloquée temporairement"""
+    now = time.time()
+
+    if ip in blocked_ips:
+        if now < blocked_ips[ip]:
+            return True
+        else:
+            del blocked_ips[ip]
+
+    return False
+
+
+def record_login_attempt(ip):
+    """Enregistre tentative et déclenche blocage si nécessaire"""
+    now = time.time()
+
+    # nettoyer anciennes tentatives
+    login_attempts[ip] = [
+        t for t in login_attempts[ip]
+        if now - t < WINDOW_SECONDS
+    ]
+
+    login_attempts[ip].append(now)
+
+    if len(login_attempts[ip]) > MAX_ATTEMPTS:
+        blocked_ips[ip] = now + BLOCK_DURATION
+        return True
+
+    return False
+
+
+
+def get_attempt_count(ip, username):
+    conn = get_db_connection()
+    count = conn.execute("""
+        SELECT COUNT(*) as c FROM login_attempts
+        WHERE ip=? AND login=? AND timestamp > ?
+    """, (ip, username, time.time() - WINDOW)).fetchone()["c"]
+    conn.close()
+    return count
+
 

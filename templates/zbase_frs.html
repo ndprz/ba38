@@ -19,17 +19,9 @@
             background-color: #f5f5f5;
         }
 
-        header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px 20px;
-            background-color: #fff;
-            border-bottom: 2px solid #ddd;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
 
-        header img {
+
+        img {
             height: 50px;
         }
 
@@ -84,72 +76,10 @@
 </head>
 
 <body>
-    <header>
 
-
-
-        {% if session.get('test_user') %}
-        <div style="background-color: red; color: white; text-align: center; padding: 10px; font-weight: bold;">
-            ⚠️ MODE TEST ⚠️
-        </div>
-        {% endif %}
-
-        <!-- Bloc gauche -->
-        <div class="header-left">
-            <img src="{{ url_for('static', filename='images/logo-circle-orange.svg') }}" alt="Logo BA38"
-                class="header-logo">
-
-            <div class="header-text">
-                <strong>BA38</strong>
-                <span class="header-subtitle">
-                    Plateforme fournisseurs
-                </span>
-            </div>
-
-            {% if env_name == "dev" %}
-            <span class="badge bg-danger ms-2">Développement</span>
-            {% endif %}
-        </div>
-
-        <!-- Navigation centrale -->
-        <nav class="main-nav">
-            <a href="/">Accueil</a>
-            {% if has_access('fournisseurs', 'lecture') %}
-            <a href="/fournisseurs">Fournisseurs</a>
-            {% endif %}
-
-            {% if has_access('fournisseurs', 'ecriture') %}
-            <a href="{{ url_for('maj_champs', source='fournisseurs') }}">Ordre d'édition</a>
-            {% endif %}
-
-
-
-
-
-            {% if session.get('roles') and 'admin' in session.roles %}
-            <li class="nav-item dropdown">
-                <ul class="dropdown-menu" aria-labelledby="adminMenu">
-                    <li><a class="dropdown-item" href="{{ url_for('debug_bp.debug_console') }}">🪵 Console de logs</a>
-                    </li>
-                    <li><a class="dropdown-item" href="{{ url_for('debug_bp.export_logs') }}">📥 Exporter les logs</a>
-                    </li>
-                    <li><a class="dropdown-item" href="{{ url_for('debug_bp.where_are_my_logs') }}">📂 Diagnostic
-                            logs</a></li>
-                    <li><a class="dropdown-item" href="{{ url_for('debug_bp.debug_env') }}">🔍 Variables
-                            d'environnement</a></li>
-                </ul>
-            </li>
-            {% endif %}
-
-        </nav>
-
-        {% if current_user.is_authenticated %}
-        <div class="user-info">
-            <span>Connecté : {{ current_user.email }}</span>
-            <a href="{{ url_for('logout') }}" class="btn btn-danger">Déconnexion</a>
-        </div>
-        {% endif %}
-    </header>
+    {% set header_subtitle = "Plateforme fournisseurs" %}
+    {% set header_menu = "fournisseurs" %}
+    {% include "partials/_header.html" with context %}
 
     {% include "_flash.html" %}
 

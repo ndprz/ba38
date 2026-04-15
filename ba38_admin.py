@@ -34,6 +34,7 @@ APPLICATIONS = {
     "engagement_parametres": "Engagement Paramètres",
     "tresorerie": "Trésorerie",
     "droit_image": "Droit à l'image",
+    "photos_benevoles": "Photos bénévoles",
 }
 
 @admin_bp.route("/roles/<email>", methods=["GET", "POST"])
@@ -268,7 +269,8 @@ def gestion_utilisateurs():
                 email,
                 username,
                 role,
-                actif
+                actif,
+                force_2fa
             FROM users
             ORDER BY email
         """)
@@ -418,26 +420,6 @@ def supprimer_utilisateur(user_id):
     flash("🗑️ Utilisateur et rôles associés supprimés.", "success")
     return redirect(url_for('admin.gestion_utilisateurs'))
 
-# --- Ajout utilisateur ---
-# @admin_bp.route('/ajouter_utilisateur', methods=['POST'])
-# @login_required
-# def ajouter_utilisateur():
-#     form = RegistrationForm()
-#     if form.validate_on_submit():
-#         with get_db_connection() as conn:
-#             hashed_password = generate_password_hash(form.password.data)
-#             conn.execute(
-#                 "INSERT INTO users (username, email, password_hash, role, actif) VALUES (?, ?, ?, ?, ?)",
-#                 (form.username.data, form.email.data, hashed_password, form.role.data, form.actif.data)
-#             )
-#             conn.commit()
-
-#         upload_database()
-#         flash("Utilisateur ajouté avec succès.", "success")
-#         return redirect(url_for('admin.gestion_utilisateurs'))
-
-#     flash("Erreur lors de l'ajout de l'utilisateur.", "danger")
-#     return redirect(url_for('admin.gestion_utilisateurs'))
 
 @admin_bp.route('/ajouter_utilisateur', methods=['POST'])
 @login_required
@@ -503,6 +485,7 @@ def update_users_batch():
     Enregistrement en masse des utilisateurs depuis la page de gestion.
     """
 
+
     # if g.user_role != "admin":
     #     flash("⛔ Accès interdit.", "danger")
     #     return redirect(url_for("index"))
@@ -525,6 +508,8 @@ def update_users_batch():
             role = request.form.get(f"users[{idx}][role]", "user")
             actif = request.form.get(f"users[{idx}][actif]", "Oui")
             new_password = request.form.get(f"users[{idx}][new_password]", "").strip()
+            force_2fa = request.form.get(f"users[{idx}][force_2fa]") == "1"
+
 
             if not user_id:
                 continue
@@ -535,9 +520,9 @@ def update_users_batch():
             # Mise à jour des champs standards
             cur.execute("""
                 UPDATE users
-                SET username = ?, role = ?, actif = ?
+                SET username = ?, role = ?, actif = ?, force_2fa = ?
                 WHERE id = ?
-            """, (username, role, actif_db, user_id))
+            """, (username, role, actif_db, force_2fa, user_id))
 
             # Mot de passe (si fourni)
             if new_password:
@@ -714,3 +699,267 @@ def documentation_search():
     results.sort(key=lambda x: x["score"], reverse=True)
 
     return {"results": results[:20]}
+
+
+@admin_bp.route("/reset_2fa_user/<int:user_id>", methods=["POST"])
+@login_required
+@require_admin_global
+def reset_2fa_user(user_id):
+
+    from utils import envoyer_mail
+
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+
+        user = cur.execute(
+            "SELECT email, username FROM users WHERE id=?",
+            (user_id,)
+        ).fetchone()
+
+        if not user:
+            flash("Utilisateur introuvable.", "danger")
+            return redirect(url_for("admin.gestion_utilisateurs"))
+
+        # 🔄 Reset 2FA
+        cur.execute("""
+            UPDATE users
+            SET totp_enabled = 0,
+                totp_secret = NULL
+            WHERE id = ?
+        """, (user_id,))
+
+        conn.commit()
+
+    write_log(f"🔄 RESET 2FA user_id={user_id} ({user['email']})")
+
+    # 📧 Envoi mail
+    try:
+        envoyer_mail(
+            sujet="Réinitialisation de votre authentification 2FA",
+            destinataires=[user["email"]],
+            texte=f"""
+Bonjour,
+
+Votre authentification à double facteur (2FA) a été réinitialisée par un administrateur.
+
+👉 Lors de votre prochaine connexion, vous devrez la reconfigurer.
+
+Si vous n’êtes pas à l’origine de cette demande, contactez immédiatement un administrateur.
+
+Cordialement,
+BA380
+"""
+        )
+    except Exception as e:
+        write_log(f"❌ Erreur envoi mail 2FA : {e}")
+
+    flash("🔄 2FA réinitialisé et utilisateur notifié.", "warning")
+
+    return redirect(url_for("admin.gestion_utilisateurs"))
+
+
+
+import pandas as pd
+from flask import send_file
+from io import BytesIO
+
+@admin_bp.route("/export_utilisateurs_excel")
+@login_required
+@require_admin_global
+def export_utilisateurs_excel():
+    """
+    Export Excel des utilisateurs avec leurs droits.
+    """
+
+    def normalize_email(email: str) -> str:
+        return email.strip().lower() if email else ""
+
+    with get_db_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+
+        # ---- Utilisateurs
+        cur.execute("""
+            SELECT id, email, username, role, actif, force_2fa
+            FROM users
+            ORDER BY email
+        """)
+        users = cur.fetchall()
+
+        # ---- Rôles
+        cur.execute("""
+            SELECT user_email, appli, droit
+            FROM roles_utilisateurs
+        """)
+        roles = cur.fetchall()
+
+    # ---- Regroupement des rôles
+    roles_par_user = {}
+    for r in roles:
+        email = normalize_email(r["user_email"])
+        roles_par_user.setdefault(email, []).append(
+            f"{r['appli']} ({r['droit']})"
+        )
+
+    # ---- Construction des données
+    data = []
+    for u in users:
+        email = normalize_email(u["email"])
+
+        droits = roles_par_user.get(email, [])
+        droits_str = "\n".join(droits) if droits else ""    
+        data.append({
+            "ID": u["id"],
+            "Email": u["email"],
+            "Nom": u["username"],
+            "Rôle": u["role"],
+            "Actif": u["actif"],  # déjà "Oui" / "Non"
+            "2FA": "Oui" if u["force_2fa"] == 1 else "Non",
+            "Droits": droits_str
+        })
+
+    # ---- DataFrame
+    df = pd.DataFrame(data)
+
+    # ---- Export Excel en mémoire
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name="Utilisateurs")
+
+    output.seek(0)
+
+    return send_file(
+        output,
+        download_name="utilisateurs.xlsx",
+        as_attachment=True
+    )
+
+
+@admin_bp.route("/maintenance_applications", methods=["GET", "POST"])
+@login_required
+@require_admin_global
+def maintenance_applications():
+
+    with get_db_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+
+        # 🔍 Applications utilisées dans les rôles
+        used_rows = cur.execute("""
+            SELECT DISTINCT appli FROM roles_utilisateurs
+        """).fetchall()
+
+        used_codes = {row["appli"] for row in used_rows}
+
+        if request.method == "POST":
+
+            action = request.form.get("action")
+
+            # ➕ AJOUT
+            if action == "add":
+                code = clean_code(request.form.get("code", "")).strip().lower()
+                label = request.form.get("label", "").strip()
+                ordre = request.form.get("ordre", 0)
+
+                if code:
+                    cur.execute("""
+                        INSERT INTO applications (code, label, ordre)
+                        VALUES (?, ?, ?)
+                    """, (code, label, ordre))
+
+            # ✏️ UPDATE
+            elif action == "update":
+
+                for key in request.form:
+                    if key.startswith("code_"):
+
+                        id_ = key.split("_")[1]
+
+                        new_code = request.form.get(f"code_{id_}").strip().lower()
+                        label = request.form.get(f"label_{id_}").strip()
+                        ordre = request.form.get(f"ordre_{id_}")
+
+                        # 🔍 récupérer ancien code
+                        row = cur.execute(
+                            "SELECT code FROM applications WHERE id = ?",
+                            (id_,)
+                        ).fetchone()
+
+                        if not row:
+                            continue
+
+                        old_code = row["code"]
+
+                        # 🔒 SI le code change → vérifier usage
+                        if new_code != old_code:
+
+                            count = cur.execute("""
+                                SELECT COUNT(*) FROM roles_utilisateurs
+                                WHERE appli = ?
+                            """, (old_code,)).fetchone()[0]
+
+                            if count > 0:
+                                flash(
+                                    f"❌ Impossible de modifier '{old_code}' : utilisé dans {count} rôle(s)",
+                                    "danger"
+                                )
+                                return redirect(url_for("admin.maintenance_applications"))
+
+                        # ✅ update autorisé
+                        cur.execute("""
+                            UPDATE applications
+                            SET code = ?, label = ?, ordre = ?
+                            WHERE id = ?
+                        """, (new_code, label, ordre, id_))
+
+                conn.commit()
+
+            # 🗑️ DELETE
+            elif action == "delete":
+
+                id_ = request.form.get("id")
+
+                # 🔍 récupérer le code de l'application
+                row = cur.execute(
+                    "SELECT code FROM applications WHERE id = ?",
+                    (id_,)
+                ).fetchone()
+
+                if not row:
+                    flash("❌ Application introuvable", "danger")
+                    return redirect(url_for("admin.maintenance_applications"))
+
+                code = row["code"]
+
+                # 🚫 vérifier utilisation dans les rôles
+                count = cur.execute("""
+                    SELECT COUNT(*) FROM roles_utilisateurs
+                    WHERE appli = ?
+                """, (code,)).fetchone()[0]
+
+                if count > 0:
+                    flash("❌ Impossible : application utilisée dans les rôles", "danger")
+                    return redirect(url_for("admin.maintenance_applications"))
+
+                # ✅ suppression autorisée
+                cur.execute("DELETE FROM applications WHERE id = ?", (id_,))
+                conn.commit()
+
+                flash("🗑️ Application supprimée", "success")
+
+            conn.commit()
+
+        rows = cur.execute("""
+            SELECT * FROM applications ORDER BY ordre, code
+        """).fetchall()
+
+    return render_template("admin/maintenance_applications.html", rows=rows, used_codes=used_codes)
+
+
+import unicodedata
+
+def clean_code(code):
+    code = code.strip().lower()
+    code = unicodedata.normalize("NFD", code)
+    code = "".join(c for c in code if unicodedata.category(c) != "Mn")
+    return code

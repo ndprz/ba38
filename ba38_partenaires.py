@@ -6,7 +6,7 @@ import unicodedata
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
-from utils import get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_phone, require_access
+from utils import get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_phone, require_access, get_db_path
 from urllib.parse import urlencode
 from flask_wtf import FlaskForm
 from wtforms import HiddenField
@@ -670,55 +670,70 @@ def delete_partner(partner_id):
 @require_access("associations", "lecture")
 def edition_tableau_associations():
 
-    fields_data = cursor.execute("""
-        SELECT * FROM field_groups
-        WHERE appli = 'associations'
-        ORDER BY display_order
-    """).fetchall()
+    db_path = get_db_path()
 
-    grouped_fields = {}
-    for row in fields_data:
-        group = row["group_name"] or "Autres"
-        grouped_fields.setdefault(group, []).append(row)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
 
-    # ✅ Détection des champs de type oui/non
-    oui_non_fields = [row["field_name"] for row in fields_data if row["type_champ"] == "oui_non"]
+        # 🔹 Récupération des champs
+        fields_data = conn.execute("""
+            SELECT * FROM field_groups
+            WHERE appli = 'associations'
+            ORDER BY display_order
+        """).fetchall()
 
-    selected_columns = request.values.getlist("columns")
-    voir_toutes = request.args.get("voir_toutes") == "1"
-    user_role = current_user.role.lower()
-    is_car = user_role == "car" and not voir_toutes
-    car_value = current_user.username if is_car else None
+        grouped_fields = {}
+        for row in fields_data:
+            group = row["group_name"] or "Autres"
+            grouped_fields.setdefault(group, []).append(row)
 
-    escaped_columns = [f"`{col}`" for col in selected_columns if col != "nom_association"]
-    columns_clause = ", ".join(["ID", "`nom_association`"] + escaped_columns)
+        # ✅ Détection des champs oui/non
+        oui_non_fields = [
+            row["field_name"] for row in fields_data
+            if row["type_champ"] == "oui_non"
+        ]
 
-    if is_car:
-        query = f"""
-            SELECT {columns_clause}
-            FROM associations
-            WHERE LOWER(car) = LOWER(?)
-              AND (validite IS NULL OR LOWER(validite) != 'non')
-            ORDER BY nom_association COLLATE NOCASE
-        """
-        rows = cursor.execute(query, (car_value,)).fetchall()
-    else:
-        query = f"""
-            SELECT {columns_clause}
-            FROM associations
-            WHERE validite IS NULL OR LOWER(validite) != 'non'
-            ORDER BY nom_association COLLATE NOCASE
-        """
-        rows = cursor.execute(query).fetchall()
+        selected_columns = request.values.getlist("columns")
+        voir_toutes = request.args.get("voir_toutes") == "1"
+        user_role = current_user.role.lower()
+        is_car = user_role == "car" and not voir_toutes
+        car_value = current_user.username if is_car else None
 
-    conn.close()
+        escaped_columns = [
+            f"`{col}`" for col in selected_columns
+            if col != "nom_association"
+        ]
 
-    return render_template("partenaires/edition_tableau_associations.html",
-                           rows=rows,
-                           selected_columns=selected_columns,
-                           user_role=user_role,
-                           oui_non_fields=oui_non_fields)
+        columns_clause = ", ".join(
+            ["ID", "`nom_association`"] + escaped_columns
+        )
 
+        if is_car:
+            query = f"""
+                SELECT {columns_clause}
+                FROM associations
+                WHERE LOWER(car) = LOWER(?)
+                  AND (validite IS NULL OR LOWER(validite) != 'non')
+                ORDER BY nom_association COLLATE NOCASE
+            """
+            rows = conn.execute(query, (car_value,)).fetchall()
+
+        else:
+            query = f"""
+                SELECT {columns_clause}
+                FROM associations
+                WHERE validite IS NULL OR LOWER(validite) != 'non'
+                ORDER BY nom_association COLLATE NOCASE
+            """
+            rows = conn.execute(query).fetchall()
+
+    return render_template(
+        "partenaires/edition_tableau_associations.html",
+        rows=rows,
+        selected_columns=selected_columns,
+        user_role=user_role,
+        oui_non_fields=oui_non_fields
+    )
 
 
 @partenaires_bp.route('/generate_annexe1/<int:partner_id>', methods=['POST'])

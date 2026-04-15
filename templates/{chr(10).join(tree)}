@@ -1,0 +1,19 @@
+"""
+    path = os.path.join(DOC_DIR, "structure_templates.md")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    print("✅ structure_templates.md généré")
+
+
+def generate_code_doc():
+    files = sorted(
+        f for f in os.listdir(BASE_DIR)
+        if f.endswith(".py") and not f.startswith("__")
+    )
+
+    lines = [f"├── {f}" for f in files]
+
+    content = f"""# 🧩 Structure du code Python
+
+Répertoire : `{BASE_DIR}`

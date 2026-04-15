@@ -74,7 +74,7 @@ def liste_fournisseurs():
 
 @fournisseurs_bp.route('/fournisseurs/<int:fournisseur_id>/update', methods=['GET', 'POST'])
 @login_required
-@require_access("fournisseurs", "ecriture")
+@require_access("fournisseurs", "lecture")
 def update_fournisseur(fournisseur_id):
     """
     Page de mise à jour d’un fournisseur.

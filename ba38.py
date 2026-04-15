@@ -23,36 +23,6 @@ import pandas as pd
 import sqlite3
 import logging
 
-# --------------------------------------------------
-# LOGGING UNIFIÉ BA38 (DEV / PROD)
-# --------------------------------------------------
-
-# LOG_FILE = os.getenv(
-#     "LOG_FILE",
-#     os.path.join(BASE_DIR, "app.log")
-# )
-
-# logger = logging.getLogger("BA38")
-
-# logger.setLevel(logging.INFO)
-
-# # éviter les handlers multiples (reload gunicorn)
-# if not logger.handlers:
-#     file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
-#     stream_handler = logging.StreamHandler()  # stdout → journald
-
-#     formatter = logging.Formatter(
-#         "[%(asctime)s] %(levelname)s: %(message)s",
-#         datefmt="%Y-%m-%d %H:%M:%S"
-#     )
-
-#     file_handler.setFormatter(formatter)
-#     stream_handler.setFormatter(formatter)
-
-#     logger.addHandler(file_handler)
-#     logger.addHandler(stream_handler)
-
-
 
 # --------------------------------------------------
 # Flask
@@ -60,8 +30,9 @@ import logging
 
 from datetime import datetime, timedelta
 from utils import get_db_connection, write_log, send_reset_email, get_user_roles, get_db_path, get_db_info, upload_database, get_version, get_all_users, format_tel, get_param_value
-from utils import get_user_info,has_access, is_admin_global
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, g, current_app
+from utils import get_user_info,has_access, is_admin_global, format_date_fr, build_menu, require_admin_global
+from utils import is_blocked, record_attempt, reset_attempts, is_suspicious_ip, is_suspicious_ua, get_attempt_count
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, g, current_app, send_from_directory, abort
 from flask_login import current_user, LoginManager, UserMixin, login_user, logout_user, login_required
 from flask_session import Session
 from wtforms import StringField, PasswordField, SubmitField, SelectField
@@ -78,6 +49,7 @@ from google.oauth2 import service_account
 from pathlib import Path
 import jwt
 import re
+
 
 
 
@@ -114,6 +86,17 @@ from ba38_droit_image import droit_image_bp
 # Initialisation Flask
 app = Flask(__name__)
 
+# =====================================================
+# 🔹 Injection menu global
+# =====================================================
+
+from utils import build_menu
+
+@app.context_processor
+def inject_menu():
+    return dict(main_menu=build_menu())
+
+
 import logging
 from logging.handlers import RotatingFileHandler
 import os
@@ -144,6 +127,7 @@ app.logger.addHandler(file_handler)
 
 app.secret_key = os.getenv("FLASK_SECRET_KEY")
 app.jinja_env.filters['format_tel'] = format_tel
+app.jinja_env.filters['format_date_fr'] = format_date_fr
 
 # ==================================================
 # 🔴 Sessions Flask via Redis
@@ -168,6 +152,16 @@ Session(app)
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024
 app.config["LOG_FILE"] = LOG_FILE
 
+
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(
+        os.path.join(app.root_path, 'static/images'),
+        'favicon.ico',
+        mimetype='image/vnd.microsoft.icon'
+    )
+
 @app.route("/__ping")
 def __ping():
     return "PING OK"
@@ -187,10 +181,13 @@ def page_not_found(e):
 
 @app.errorhandler(MethodNotAllowed)
 def handle_405(e):
+
+    ip = get_real_ip()
+
     current_app.logger.warning(
         f"405 {request.method} {request.path} "
         f"user={getattr(current_user,'id','anon')} "
-        f"ip={request.remote_addr}"
+        f"IP={ip}"
     )
     return e
 
@@ -262,22 +259,48 @@ EXCLUDED_LOG_PATHS = [
 @app.before_request
 def log_requests():
 
+    if not current_app.debug:
+        return
+
+    try:
+        ip = get_real_ip()
+    except Exception:
+        ip = request.remote_addr
+
+    ua = request.headers.get("User-Agent", "unknown")[:120]
+
     if request.method == "GET":
         return
 
     if any(request.path.startswith(p) for p in EXCLUDED_LOG_PATHS):
         return
 
-    user = (
-        current_user.id
-        if hasattr(current_user, "is_authenticated") and current_user.is_authenticated
-        else "anonymous"
-    )
+    try:
+        if current_user and getattr(current_user, "is_authenticated", False):
+            user = current_user.id
+        else:
+            user = "anonymous"
+    except Exception:
+        user = "unknown"
 
-    current_app.logger.debug(
-        f"REQ {request.method} {request.path} "
-        f"user={user} ip={request.remote_addr}"
-    )
+    # 🔍 détection
+    ua_suspect = is_suspicious_ua(ua)
+    ip_suspect = is_suspicious_ip(ip)
+
+    flags = []
+    if ua_suspect:
+        flags.append("UA")
+    if ip_suspect:
+        flags.append("IP")
+
+    flag_str = f"⚠️[{','.join(flags)}]" if flags else ""
+
+    # write_log(
+    #     f"➡️ REQ {request.method} {request.path} | "
+    #     f"user={user} | IP={ip} | UA={ua} {flag_str}"
+    # )
+
+
 
 # Authentification Flask-Login
 login_manager = LoginManager()
@@ -837,24 +860,84 @@ def get_real_ip():
     return request.remote_addr
 
 
+from utils import (
+    get_real_ip,
+    is_bad_user_agent,
+    is_ip_blocked,
+    record_login_attempt
+)
+
+import time
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    """
+    ============================================================================
+    🔐 ROUTE LOGIN SÉCURISÉE
+    ============================================================================
+    Protection mise en place :
+    - blocage IP temporaire (Flask)
+    - blocage bots simples (User-Agent)
+    - ralentissement anti brute force
+    - comptage des échecs uniquement
+    - compatibilité Fail2ban via logs "❌ LOGIN KO"
+    - gestion 2FA existante conservée
+    ============================================================================
+    """
+
+    start = time.time()
+
+    # 🔍 Infos requête
+    ip = get_real_ip()
+    ua = request.headers.get("User-Agent", "")
+
+    # ============================================================================
+    # 🚫 1. Blocage IP temporaire (niveau Flask)
+    # ============================================================================
+    if is_ip_blocked(ip):
+        write_log(f"🚫 IP bloquée (Flask) : {ip}")
+        abort(429)
+
+    # ============================================================================
+    # 🤖 2. Blocage bots évidents (python-requests, curl, etc.)
+    # ============================================================================
+    if is_bad_user_agent():
+        write_log(f"🤖 Bot bloqué : IP={ip} UA={ua}")
+        abort(403)
+
+    # ============================================================================
+    # 🐢 3. Ralentissement global anti brute force
+    # ============================================================================
+
+    time.sleep(0.5)
+
+    # ============================================================================
+    # 🔐 Formulaire
+    # ============================================================================
     form = LoginForm()
 
+    # 🔒 Si déjà connecté → redirection
+    from flask_login import current_user
+    if current_user.is_authenticated:
+        return redirect(url_for("index"))
+
+    # ============================================================================
+    # 📩 Traitement POST (tentative de login)
+    # ============================================================================
+    if request.method == "POST" and not form.validate():
+        write_log(f"❌ LOGIN FORM INVALID | IP={ip} | errors={form.errors}")
+        flash("Email ou mot de passe invalide.", "danger")
+        return render_template("login.html", form=form)
+
     if form.validate_on_submit():
+
         username = form.email.data.strip().lower()
         password = form.password.data
 
-        ip = get_real_ip()
+        write_log(f"🔐 LOGIN tentative {username} | IP={ip}")
 
-        write_log(
-            f"🔐 LOGIN {username} | "
-            f"IP={ip} | "
-            f"UA={request.headers.get('User-Agent')}"
-        )
-
-        # write_log(f"🔐 Tentative de connexion pour l'utilisateur : {username} depuis IP {request.remote_addr}")
-
+        # 🔎 Recherche utilisateur
         conn = get_db_connection()
         user = conn.execute(
             "SELECT * FROM users WHERE LOWER(email) = ?",
@@ -862,17 +945,55 @@ def login():
         ).fetchone()
         conn.close()
 
+        # ============================================================================
+        # ✅ CAS 1 : LOGIN OK
+        # ============================================================================
         if user and check_password_hash(user["password_hash"], password):
 
+            # 🔁 Reset compteur brute force
+            reset_attempts(ip, username)
+
+            # ============================================================================
+            # 🔐 Gestion 2FA
+            # ============================================================================
+            if user["force_2fa"] == 1:
+
+                session["pre_2fa_user"] = user["id"]
+                session.modified = True
+
+                # Activation initiale
+                if not user["totp_enabled"]:
+                    return redirect(url_for("setup_2fa"))
+
+                # Vérification code
+                return redirect(url_for("login_2fa"))
+
+            # ============================================================================
+            # 🔓 Vérification compte actif
+            # ============================================================================
             if str(user["actif"]).strip().lower() not in ("1", "oui", "true"):
+                write_log(f"❌ Compte inactif : {user['email']} | IP={ip}")
                 flash("Votre compte n'est pas actif. Veuillez contacter l'administration.", "danger")
-                write_log(f"❌ Compte inactif : {user['email']}")
                 return redirect(url_for("login"))
 
-            user_obj = User(user["id"], user["username"], user["email"], user["password_hash"], user["role"])
+            # ============================================================================
+            # 🔐 Création session utilisateur
+            # ============================================================================
+            user_obj = User(
+                user["id"],
+                user["username"],
+                user["email"],
+                user["password_hash"],
+                user["role"]
+            )
+
             login_user(user_obj)
 
-            # session
+            # 🔴 IMPORTANT : session persistante
+            session.permanent = True
+            session.modified = True
+
+            # session métier
             email = user["email"]
             role = user["role"]
 
@@ -880,6 +1001,7 @@ def login():
             session["username"] = user["username"]
             session["roles_utilisateurs"] = get_user_roles(email)
 
+            # 🔑 Admin → droits complets
             if role == "admin":
                 session["roles_utilisateurs"] = [
                     ("benevoles", "ecriture"),
@@ -890,30 +1012,129 @@ def login():
                 ]
                 session["user_role"] = "admin"
 
-            session.modified = True
+            # nettoyage sécurité
+            session.pop("pre_2fa_user", None)
 
+            # logs
             from utils import write_connexion_log
             write_connexion_log(user["id"], user["username"])
             log_connexion(user_obj, action="login")
 
-            write_log(
-                f"✅ Login OK {session.get('username')} | "
-                f"IP={ip} | "
-                f"UA={request.headers.get('User-Agent')} | "
-                f"ROLE={session.get('user_role', 'utilisateur')}"
-            )
+            write_log(f"✅ LOGIN OKername | IP={ip} | {round(time.time()-start,2)}s")
 
             return redirect(url_for("index"))
 
-        # erreur login
-        write_log(
-            f"❌ Échec login {username} | "
-            f"IP={request.remote_addr} | "
-            f"UA={request.headers.get('User-Agent')}"
-        )
+        # ============================================================================
+        # ❌ CAS 2 : LOGIN KO
+        # ============================================================================
+        # 👉 on enregistre uniquement ici (important)
+        record_attempt(ip, username)
+
+        write_log(f"❌ LOGIN KO {username} | IP={ip} | COUNT={get_attempt_count(ip, username)}")
+
+        # 🚫 Blocage temporaire Flask si trop d’échecs
+        if is_blocked(ip, username):
+            write_log(f"🚫 Blocage brute force {username} | IP={ip}")
+            flash("⛔ Trop de tentatives. Réessayez dans 5 minutes.", "danger")
+            return render_template("login.html", form=form)
+
+        # 🐢 ralentissement supplémentaire si user inexistant (anti enumeration)
+        if not user:
+            time.sleep(1)
+
         flash("Email ou mot de passe incorrect.", "danger")
 
+    # ============================================================================
+    # 📄 Affichage page login
+    # ============================================================================
     return render_template("login.html", form=form)
+
+
+
+
+
+# ============================================================================
+# 🪵 LOGIN 2FA (pour admins dans un premier temps   )
+# ============================================================================
+import pyotp
+import qrcode
+import io
+import base64
+
+import pyotp
+import qrcode
+import io
+import base64
+
+@app.route("/login_2fa", methods=["GET", "POST"])
+def login_2fa():
+
+    start = time.time()
+
+    from flask_login import current_user
+
+    ip = get_real_ip()
+    ua = request.headers.get("User-Agent", "")
+
+    if current_user.is_authenticated:
+        from flask import make_response
+
+        response = make_response(redirect(url_for("index")))
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    user_id = session.get("pre_2fa_user")
+    if not user_id:
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    user = conn.execute(
+        "SELECT * FROM users WHERE id=?",
+        (user_id,)
+    ).fetchone()
+    conn.close()
+
+    if not user or not user["totp_secret"]:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+
+        write_log(f"🔐 LOGIN_2FA user_id={user_id} {user['email']} | IP{ip}")
+
+        code = request.form.get("code")
+        totp = pyotp.TOTP(user["totp_secret"])
+
+        if totp.verify(code):
+
+            user_obj = User(
+                user["id"],
+                user["username"],
+                user["email"],
+                user["password_hash"],
+                user["role"]
+            )
+
+            login_user(user_obj)
+
+            session.permanent = True
+            session.modified = True
+
+            session["user_role"] = user["role"]
+            session["roles_utilisateurs"] = get_user_roles(user["email"])
+
+            session.pop("pre_2fa_user", None)
+
+            write_log(f"✅ LOGIN 2FA OK user_id={user_id} {user['email']} | IP={ip} | {round(time.time()-start,2)}s")
+
+            return redirect(url_for("index"))
+
+        write_log(f"❌ LOGIN 2FA KO user_id={user_id} {user['email']} | IP={ip}")
+        flash("❌ Code invalide", "danger")
+
+    return render_template("login_2fa.html")
+
+
+
 
 @app.route('/logout')
 @login_required
@@ -933,6 +1154,7 @@ from flask_login import login_required
 # ✅ Route pour la page maj_parametres
 @app.route('/maj_parametres', methods=['GET', 'POST'])
 @login_required
+@require_admin_global
 def maj_parametres():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -970,6 +1192,7 @@ def maj_parametres():
 
 @app.route('/ajouter_parametre', methods=['POST'])
 @login_required
+@require_admin_global
 def ajouter_parametre():
     param_name = request.form.get('param_name', '').strip()
     param_value = request.form.get('param_value', '').strip()
@@ -1402,4 +1625,133 @@ if __name__ == "__main__":
 
 
 
+
+@app.route("/setup_2fa", methods=["GET", "POST"])
+def setup_2fa():
+
+    user_id = session.get("pre_2fa_user")
+    if not user_id:
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    user = conn.execute(
+        "SELECT * FROM users WHERE id=?",
+        (user_id,)
+    ).fetchone()
+
+    if not user or user["role"] != "admin":
+        conn.close()
+        return redirect(url_for("login"))
+
+    # 🔐 déjà activé
+    if user["totp_enabled"]:
+        conn.close()
+        return redirect(url_for("login_2fa"), code=303)
+
+    # 🔐 secret
+    if not user["totp_secret"]:
+        secret = pyotp.random_base32()
+        conn.execute(
+            "UPDATE users SET totp_secret=? WHERE id=?",
+            (secret, user_id)
+        )
+        conn.commit()
+    else:
+        secret = user["totp_secret"]
+
+    if request.method == "POST":
+        code = request.form.get("code")
+
+        totp = pyotp.TOTP(secret)
+
+        if totp.verify(code):
+            conn.execute(
+                "UPDATE users SET totp_enabled=1 WHERE id=?",
+                (user_id,)
+            )
+            conn.commit()
+            conn.close()
+
+            flash("✅ 2FA activé", "success")
+            return redirect(url_for("login_2fa"), code=303)
+
+        flash("❌ Code invalide", "danger")
+
+
+
+    conn.close()
+
+    # après récupération du secret
+
+    totp = pyotp.TOTP(secret)
+
+    uri = totp.provisioning_uri(
+        name=user["email"].split("@")[0],
+        issuer_name="BA380"
+    )
+
+    write_log(f"DEBUG URI = {uri}")
+
+
+    qr_obj = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_Q,
+        box_size=10,
+        border=4,
+    )
+
+    qr_obj.add_data(uri)
+    qr_obj.make(fit=True)
+
+    img = qr_obj.make_image(fill_color="black", back_color="white")
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    qr = base64.b64encode(buf.getvalue()).decode()
+
+    return render_template("setup_2fa.html", qr=qr, uri=uri, secret=secret)
+
+
+
+
+
+
+
+@app.route("/verify_2fa", methods=["GET", "POST"])
+@login_required
+def verify_2fa():
+
+    if request.method == "POST":
+        code = request.form.get("code")
+
+        conn = get_db_connection()
+        user = conn.execute(
+            "SELECT totp_secret FROM users WHERE id=?",
+            (current_user.id,)
+        ).fetchone()
+        conn.close()
+
+        totp = pyotp.TOTP(user["totp_secret"])
+
+        if totp.verify(code):
+            conn = get_db_connection()
+            conn.execute(
+                "UPDATE users SET totp_enabled=1 WHERE id=?",
+                (current_user.id,)
+            )
+            conn.commit()
+            conn.close()
+
+            flash("✅ 2FA activé", "success")
+            return redirect(url_for("index"))
+
+        flash("❌ Code invalide", "danger")
+
+    return render_template("verify_2fa.html")
+
+
+
+
 # app = app
+
+

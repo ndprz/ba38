@@ -5,12 +5,21 @@
 {% block content %}
 <h2 class="mb-4">👥 Gestion des utilisateurs</h2>
 
+<div class="d-flex gap-2 mb-3">
+    <a href="{{ url_for('admin.export_utilisateurs_excel') }}"
+       class="btn btn-success">
+        📥 Export Excel
+    </a>
+</div>
+
 <form method="post" action="{{ url_for('admin.update_users_batch') }}">
 
     <input type="text"
        id="userFilter"
        class="form-control mb-3"
        placeholder="🔍 Filtrer par email, nom ou rôle...">
+
+
 
 
 <table class="table table-bordered table-sm" id="usersTable">
@@ -22,6 +31,8 @@
             <th>Rôle (UI)</th>
             <th>Actif</th>
             <th>Nouveau mot de passe</th>
+            <th>Droits actifs</th>
+            <th>2FA</th>
             <th>Droits</th>
         </tr>
     </thead>
@@ -92,6 +103,28 @@
                     —
                 {% endif %}
             </td>
+
+            <td class="text-center">
+
+                <!-- Activation obligatoire -->
+                <input type="checkbox"
+                    name="users[{{ loop.index0 }}][force_2fa]"
+                    value="1"
+                    {% if user.force_2fa %}checked{% endif %}>
+
+                <!-- Bouton reset -->
+                <form method="post"
+                    action="{{ url_for('admin.reset_2fa_user', user_id=user.id) }}"
+                    style="display:inline;"
+                    onsubmit="return confirm('Réinitialiser le 2FA ?');">
+
+                    <button class="btn btn-sm btn-warning mt-1">
+                        🔄 Reset
+                    </button>
+                </form>
+
+            </td>
+
 
             <td>
                 <a href="{{ url_for('admin.gestion_roles_matrice', email=user.email) }}"

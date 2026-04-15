@@ -608,7 +608,7 @@ def apercu_planning_distribution():
             remplacant_id = ligne.get(f"{role}_remplacant")
 
             ligne[f"{role}_nom"] = bene_dict.get(titulaire_id, "") if titulaire_id else ""
-            ligne[f"remplacant_{role}_nom"] = bene_dict.get(remplaçant_id, "") if remplacant_id else ""
+            ligne[f"remplacant_{role}_nom"] = bene_dict.get(remplacant_id, "") if remplacant_id else ""
 
     jours_dates = {j: (lundi + timedelta(days=i)) for i, j in enumerate(["lundi", "mardi", "mercredi", "jeudi", "vendredi"])}
     for l in lignes:

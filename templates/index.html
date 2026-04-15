@@ -2,135 +2,101 @@
 
 {% block title %}Accueil{% endblock %}
 
-
 {% block content %}
 
-
-<!-- <div class="alert alert-secondary">
-  <strong>Rôle global :</strong> {{ g.user_role }}<br>
-  <strong>Droits :</strong> {{ session.get("roles_utilisateurs") }}
-</div>
-
-<p>DEBUG rôle détecté : {{ user_role }}</p> -->
-
-<!-- <pre>
-Test ROLLBACK version 43
-</pre> -->
-
+<!-- =====================================================
+     MODE TEST
+====================================================== -->
 {% if session.get('test_user') %}
 <form action="{{ url_for('unset_test_user') }}" method="post" style="display: inline;">
-  <button type="submit" class="btn btn-danger" style="margin-bottom: 20px;">🔴 Désactiver le Mode Test</button>
+  <button type="submit" class="btn btn-danger mb-3">🔴 Désactiver le Mode Test</button>
 </form>
 {% else %}
 <form action="{{ url_for('set_test_user') }}" method="post" style="display: inline;">
-  <button type="submit" class="btn btn-success" style="margin-bottom: 20px;">🟢 Activer le Mode Test</button>
+  <button type="submit" class="btn btn-success mb-3">🟢 Activer le Mode Test</button>
 </form>
 {% endif %}
 
-<div style="margin-bottom: 12px;">
-  <p style="margin: 0;"><strong>Explorez et gérez vos données d'associations.</strong></p>
-  {% if has_access('associations', 'lecture') %}
-  <a href="{{ url_for('partenaires.partenaires') }}" class="big-link">Associations</a>
-  {% else %}
-  <span class="text-muted">Accès aux associations désactivé pour votre compte</span>
-  {% endif %}
+
+<!-- =====================================================
+     MENU DYNAMIQUE BASE SUR applications
+====================================================== -->
+
+{% for groupe, items in main_menu.items() %}
+
+<div class="mb-4">
+
+    <!-- ================= TITRE DU GROUPE ================= -->
+    <h5 class="mb-2">
+        {{ groupe }}
+    </h5>
+
+    <!-- ================= LISTE DES MODULES ================= -->
+    <div class="d-flex flex-wrap gap-3">
+
+        {% for item in items %}
+
+        <!-- 🔹 CARTE MODULE -->
+        <div class="card shadow-sm" style="min-width: 220px;">
+            <div class="card-body">
+
+                <!-- 🔹 TITRE -->
+                <h6 class="card-title mb-2">
+                    {{ item.icon }} {{ item.label }}
+                </h6>
+
+                <!-- 🔹 BOUTON ACCES -->
+                {% if item.endpoint %}
+                <a href="{{ url_for(item.endpoint) }}"
+                   class="btn btn-primary btn-sm">
+                   Ouvrir
+                </a>
+                {% else %}
+                <span class="text-muted">Non disponible</span>
+                {% endif %}
+
+            </div>
+        </div>
+
+        {% endfor %}
+
+    </div>
+
 </div>
 
-<div style="margin-bottom: 12px;">
-  <p style="margin: 0;"><strong>Explorez et gérez vos données Bénévoles.</strong></p>
-  {% if has_access('benevoles', 'lecture') %}
-  <a href="{{ url_for('benevoles.benevoles') }}" class="big-link">Bénévoles</a>
-  {% else %}
-  <span class="text-muted">Accès aux bénévoles désactivé pour votre compte</span>
-  {% endif %}
-</div>
+{% endfor %}
 
-<div style="margin-bottom: 12px;">
-  <p style="margin: 0;"><strong>Explorez et gérez vos données Fournisseurs.</strong></p>
-  {% if has_access('fournisseurs', 'lecture') %}
-  <a href="{{ url_for('fournisseurs.liste_fournisseurs') }}" class="big-link">Fournisseurs</a>
-  {% else %}
-  <span class="text-muted">Accès aux fournisseurs désactivé pour votre compte</span>
-  {% endif %}
-</div>
 
-<div style="margin-bottom: 12px;">
-  <p style="margin: 0;">
-    <strong>Explorez et gérez vos données Distribution.</strong>
-  </p>
-
-  {% if has_access('distribution', 'lecture') %}
-  <a href="{{ url_for('distribution.distribution_main') }}" class="big-link">
-    Distribution
-  </a>
-  {% else %}
-  <span class="text-muted">
-    Accès à la distribution désactivé pour votre compte
-  </span>
-  {% endif %}
-</div>
-
-<div style="margin-bottom: 12px;">
-  <p style="margin: 0;">
-    <strong>Gérez les engagements de dépenses.</strong>
-  </p>
-
-  {% if has_access('engagements', 'lecture') %}
-  <a href="{{ url_for('engagements.engagements_main') }}" class="big-link">
-    Engagements de dépenses
-  </a>
-  {% else %}
-  <span class="text-muted">
-    Accès à la gestion des engagements désactivé
-  </span>
-  {% endif %}
-</div>
-
-<div style="margin-bottom: 12px;">
-  <p style="margin: 0;">
-    <strong>Gérez la trésorerie.</strong>
-  </p>
-
-  {% if has_access('tresorerie', 'lecture') %}
-  <a href="{{ url_for('tresorerie.tresorerie') }}" class="big-link">
-    Trésorerie
-  </a>
-  {% else %}
-  <span class="text-muted">
-    Accès à la Trésorerie désactivé
-  </span>
-  {% endif %}
-</div>
-
-{% if has_access('evenements', 'lecture') %}
-<div style="margin-bottom: 12px;">
-  <p style="margin: 0;"><strong>Gérez l'affichage des événements.</strong></p>
-  <a href="{{ url_for('evenements.gestion_evenements') }}" class="big-link">
-    🎬 Événements écran
-  </a>
-</div>
-{% endif %}
-
+<!-- =====================================================
+     ADMIN
+====================================================== -->
 
 {% if g.user_role == 'admin' %}
 <div class="mt-4">
+
   <h5>⚙️ Administration</h5>
-  <ul class="list-group">
-    <li class="list-group-item">
-      <a href="{{ url_for('debug_bp.admin_scripts') }}" class="btn btn-info btn-sm">📊 Admin_Scripts</a>
-      <!-- </li>
-    <li class="list-group-item"> -->
-      <a href="{{ url_for('debug_bp.admin_conv_chatgpt') }}" class="btn btn-info btn-sm">Conversations ChatGPT</a>
-    </li>
-  </ul>
+
+  <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('debug_bp.admin_scripts') }}"
+         class="btn btn-info btn-sm">
+         📊 Admin Scripts
+      </a>
+
+      <a href="{{ url_for('debug_bp.admin_conv_chatgpt') }}"
+         class="btn btn-info btn-sm">
+         💬 Conversations ChatGPT
+      </a>
+  </div>
+
 </div>
 {% endif %}
 
 
+<!-- =====================================================
+     INFOS USER
+====================================================== -->
 
-<p></p>
-<p></p>
-<p></p>
+<div class="mt-4 small text-muted">
 
 {% if current_user.is_authenticated %}
 <p>Email : {{ current_user.email }}</p>
@@ -138,5 +104,7 @@ Test ROLLBACK version 43
 {% else %}
 <p>Vous n'êtes pas connecté.</p>
 {% endif %}
+
+</div>
 
 {% endblock %}

@@ -14,9 +14,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         document.querySelectorAll('.alert').forEach(function (alert) {
 
-            // On ne ferme PAS les erreurs importantes
-            if (alert.classList.contains('alert-danger') ||
-                alert.classList.contains('alert-warning')) {
+            if (!alert.classList.contains('alert-success')) {
                 return;
             }
 
@@ -26,37 +24,36 @@ document.addEventListener("DOMContentLoaded", function () {
 
         });
 
-    }, 5000);
+    }, 12000);
 
-});
+}); 
 
+/* ============================================================
+   INITIALISATION SELECT2 (si présent sur la page)
+   ============================================================ */
+function initSelect2() {
 
-    /* ============================================================
-       INITIALISATION SELECT2 (si présent sur la page)
-       ============================================================ */
-    function initSelect2() {
+    if (
+        window.jQuery &&
+        window.jQuery.fn &&
+        typeof window.jQuery.fn.select2 === "function"
+    ) {
 
-        if (
-            window.jQuery &&
-            window.jQuery.fn &&
-            typeof window.jQuery.fn.select2 === "function"
-        ) {
-
-            window.jQuery('.select2').each(function () {
-                window.jQuery(this).select2({
-                    placeholder: "Rechercher un email",
-                    allowClear: true,
-                    width: '100%'
-                });
+        window.jQuery('.select2').each(function () {
+            window.jQuery(this).select2({
+                placeholder: "Rechercher un email",
+                allowClear: true,
+                width: '100%'
             });
+        });
 
-        } else {
-            // Si Select2 pas encore chargé, on réessaie
-            setTimeout(initSelect2, 100);
-        }
+    } else {
+        // Si Select2 pas encore chargé, on réessaie
+        setTimeout(initSelect2, 100);
     }
+}
 
-    initSelect2();
+initSelect2();
 
 
 
@@ -109,3 +106,27 @@ function initTooltips() {
 }
 
 document.addEventListener("DOMContentLoaded", initTooltips);
+
+
+function initPopovers() {
+    document.querySelectorAll('[data-bs-toggle="popover"]').forEach(function (el) {
+        new bootstrap.Popover(el);
+    });
+}
+
+
+
+// fermeture clic
+document.addEventListener("click", function (e) {
+    if (e.target.matches('[data-bs-dismiss="alert"]')) {
+        const alert = e.target.closest('.alert');
+        if (alert) alert.remove();
+    }
+});
+
+// fermeture ESC
+document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+        document.querySelectorAll('.alert').forEach(a => a.remove());
+    }
+});

@@ -181,17 +181,12 @@
 
                     {% if item.display['id'] in photo_ids %}
                     <span class="photo-hover-container"
-                        data-img="{{ url_for('static', filename='photos_benevoles/' ~ item.display['id'] ~ '.jpg') }}">
-                        {% endif %}
-
-                        <span class="nom-benevole">
-                            {{ item.display['nom'] }}
-                        </span>
-
-                        {% if item.display['id'] in photo_ids %}
+                        data-img="{{ url_for('benevoles.serve_photo_benevole', filename=item.display['id'] ~ '.jpg') }}">
+                        {{ item.display['nom'] }}
                     </span>
+                    {% else %}
+                    {{ item.display['nom'] }}
                     {% endif %}
-
                 </td>
 
                 <td class="sticky-col sticky-col-4">
@@ -380,36 +375,52 @@
     bottomScroll.addEventListener("scroll", () => topScroll.scrollLeft = bottomScroll.scrollLeft);
 
     // Photos au survol
-    document.querySelectorAll(".photo-hover-container").forEach(container => {
+    let floating = null;
+
+    document.addEventListener("mouseover", function (e) {
+
+        const container = e.target.closest(".photo-hover-container");
+        if (!container) return;
+
         const imgPath = container.dataset.img;
-        let floating = null;
-        container.addEventListener("mouseenter", () => {
-            floating = document.createElement("img");
-            floating.src = imgPath;
-            floating.style.position = "fixed";
-            floating.style.zIndex = "9999";
-            floating.style.maxWidth = "150px";
-            floating.style.maxHeight = "150px";
-            floating.style.border = "1px solid #ccc";
-            floating.style.background = "white";
-            floating.style.boxShadow = "2px 2px 8px rgba(0,0,0,0.2)";
-            floating.style.pointerEvents = "none";
-            const rect = container.getBoundingClientRect();
-            floating.style.left = `${rect.right + 10}px`;
-            const spaceBelow = window.innerHeight - rect.bottom;
-            const spaceAbove = rect.top;
-            floating.style.top = spaceBelow < 160 && spaceAbove > 160 ? `${rect.top - 160}px` : `${rect.top}px`;
-            document.body.appendChild(floating);
-        });
-        container.addEventListener("mouseleave", () => {
-            if (floating) {
-                document.body.removeChild(floating);
-                floating = null;
-            }
-        });
+
+        floating = document.createElement("img");
+        floating.src = imgPath;
+
+        floating.style.position = "fixed";
+        floating.style.zIndex = "9999";
+        floating.style.maxWidth = "150px";
+        floating.style.maxHeight = "150px";
+        floating.style.border = "1px solid #ccc";
+        floating.style.background = "white";
+        floating.style.boxShadow = "2px 2px 8px rgba(0,0,0,0.2)";
+        floating.style.pointerEvents = "none";
+
+        const rect = container.getBoundingClientRect();
+
+        floating.style.left = `${rect.right + 10}px`;
+
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+
+        floating.style.top = (spaceBelow < 160 && spaceAbove > 160)
+            ? `${rect.top - 160}px`
+            : `${rect.top}px`;
+
+        document.body.appendChild(floating);
     });
 
 
+    document.addEventListener("mouseout", function (e) {
+
+        if (!floating) return;
+
+        const container = e.target.closest(".photo-hover-container");
+        if (!container) return;
+
+        document.body.removeChild(floating);
+        floating = null;
+    });
     const SORT_KEY = "benevoles_sort_state";
 
     let currentSort = JSON.parse(localStorage.getItem(SORT_KEY)) || {

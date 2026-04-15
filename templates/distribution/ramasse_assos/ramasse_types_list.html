@@ -1,0 +1,63 @@
+{% extends "base_distribution.html" %}
+{% block content %}
+
+<h2>⚙️ Modèles de ramasse</h2>
+
+<div class="d-flex justify-content-end">
+
+    <div style="display:flex; gap:15px;">
+
+        <a href="{{ url_for('distribution.ramasse_type_form') }}"
+           class="btn btn-success btn-sm">
+           ➕ Nouveau modèle
+        </a>
+
+        <a href="{{ url_for('distribution.distribution_main') }}"
+           class="btn btn-secondary btn-sm">
+           ↩️ Retour
+        </a>
+
+    </div>
+
+</div>
+
+
+<table class="table table-bordered">
+    <thead class="table-light">
+        <tr>
+            <th>Nom</th>
+            <th>Association</th>
+            <th>Magasin</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for t in types %}
+        <tr>
+            <td>{{ t.nom_type }}</td>
+            <td>{{ t.nom_association }}</td>
+            <td>{{ t.nom_magasin }}</td>
+            <td>
+                <a href="{{ url_for('distribution.ramasse_type_form', id=t.id) }}" class="btn btn-sm btn-primary">✏️</a>
+
+                <a href="{{ url_for('distribution.ramasse_type_delete', id=t.id) }}" class="btn btn-sm btn-danger"
+                    onclick="return confirm('Supprimer ?')">🗑️</a>
+
+                <a href="{{ url_for('distribution.saisie_ramasse', id_modele=t.id) }}" class="btn btn-sm btn-success">
+                    📝 Saisir
+                </a>
+
+                <a href="{{ url_for('distribution.ramasse_type_duplicate', id=t.id) }}"
+                    class="btn btn-sm btn-outline-primary">
+                    📄 Dupliquer
+                </a>
+
+            </td>
+
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% endblock %}

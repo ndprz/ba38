@@ -8,13 +8,13 @@
 
   <!-- ================= MODE ================= -->
   {% if mail_mode == "TEST" %}
-    <div class="alert alert-warning">
-      🧪 MODE TEST — aucun mail réel ne sera envoyé
-    </div>
+  <div class="alert alert-warning">
+    🧪 MODE TEST — aucun mail réel ne sera envoyé
+  </div>
   {% else %}
-    <div class="alert alert-danger">
-      🚨 MODE PRODUCTION — envoi réel
-    </div>
+  <div class="alert alert-danger">
+    🚨 MODE PRODUCTION — envoi réel
+  </div>
   {% endif %}
 
   <!-- ================= STATS ================= -->
@@ -47,15 +47,29 @@
           </td>
 
           <td>
-            {{ p.email }}
+            {% if p.email %}
+              {{ p.email }}
+              {% if p.email_reel and p.email != p.email_reel %}
+                <br><small class="text-muted">(réel : {{ p.email_reel }})</small>
+              {% endif %}
+            {% else %}
+              <span class="text-danger">❌ Aucun</span>
+            {% endif %}
           </td>
 
           <td>
-            {% if not p.nom %}
-              <span class="text-warning">Nom manquant</span>
+
+            {% if p.erreur %}
+              <span class="text-danger">❌ {{ p.erreur }}</span>
+
+            {% elif not p.nom %}
+              <span class="text-warning">⚠️ Nom manquant</span>
+
             {% else %}
-              <span class="text-success">OK</span>
+              <span class="text-success">✔ OK</span>
+
             {% endif %}
+
           </td>
 
         </tr>
@@ -81,10 +95,10 @@
     </div>
     {% endif %}
 
+
     <div class="d-flex justify-content-between">
 
-      <a href="{{ url_for('tresorerie.cerfa') }}"
-         class="btn btn-secondary">
+      <a href="{{ url_for('tresorerie.cerfa') }}" class="btn btn-secondary">
         ⬅ Retour
       </a>
 

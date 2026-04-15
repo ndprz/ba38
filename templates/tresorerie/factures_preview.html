@@ -1,0 +1,98 @@
+{% extends "base_assos.html" %}
+{% block title %}Preview factures{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+    <h2>📄 Vérification avant envoi</h2>
+
+    <!-- MODE -->
+    <form method="post" action="{{ url_for('tresorerie.factures_toggle_mode') }}" class="mb-3">
+
+        {% if mail_mode == "TEST" %}
+        <button class="btn btn-warning w-100">
+            🧪 Mode TEST actif – Passer en PROD
+        </button>
+        {% else %}
+        <button class="btn btn-danger w-100">
+            🚀 Mode PROD actif – Repasser en TEST
+        </button>
+        {% endif %}
+
+    </form>
+
+    {% if mail_mode == "TEST" %}
+    <div class="alert alert-warning">
+        🧪 MODE TEST : seuls 2 mails seront envoyés à {{ mail_test_to }}
+    </div>
+    {% else %}
+    <div class="alert alert-danger">
+        🚨 MODE PROD
+    </div>
+    {% endif %}
+
+
+    <div class="mb-3">
+        <label>Expéditeur</label>
+        <select name="mail_sender" class="form-select">
+            <option value="ba380.comptable@banquealimentaire.org"
+                {% if mail_sender == "ba380.comptable@banquealimentaire.org" %}selected{% endif %}>
+                ba380.comptable@banquealimentaire.org
+            </option>
+            <option value="ba380@banquealimentaire.org"
+                {% if mail_sender == "ba380@banquealimentaire.org" %}selected{% endif %}>
+                ba380@banquealimentaire.org
+            </option>
+            <option value="ba380.tresorier@banquealimentaire.org"
+                {% if mail_sender == "ba380.tresorier@banquealimentaire.org" %}selected{% endif %}>
+                ba380.tresorier@banquealimentaire.org
+            </option>
+        </select>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Nom</th>
+                    <th>Email</th>
+                    <th>PDF</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in preview %}
+                <tr>
+                    <td>{{ p.nom }}</td>
+                    <td>
+                        {{ p.email_reel }}
+                        {% if mail_mode == "TEST" %}
+                        <br>
+                        <small class="text-warning">
+                            → envoyé à {{ p.email_envoi }}
+                        </small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('tresorerie.factures_preview_pdf', path=p.pdf) }}" target="_blank">
+                            Voir
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex justify-content-between mt-3">
+
+        <a href="{{ url_for('tresorerie.factures_pdf') }}" class="btn btn-secondary">
+            ⬅ Retour
+        </a>
+
+        <form method="post">
+            <input type="hidden" name="confirm" value="1">
+            <button class="btn btn-success">📧 Envoyer</button>
+        </form>
+
+    </div>
+    {% endblock %}

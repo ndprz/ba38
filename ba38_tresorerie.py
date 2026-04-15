@@ -18,7 +18,7 @@ from flask_login import login_required
 from utils import get_google_services, write_log, envoyer_mail,get_db_path,upload_file_to_drive_path,slugify_filename
 from utils import get_drive_folder_id_from_path, require_access
 from openpyxl.utils import get_column_letter
-
+from threading import Thread
 
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from googleapiclient.discovery_cache.base import Cache
@@ -41,9 +41,9 @@ if not BA380_SHARED_DRIVE_ID:
 
 tresorerie_bp = Blueprint("tresorerie", __name__)
 
-MAX_TEST_PREVIEW = 10
+MAX_TEST_PREVIEW = 9999
 MAX_TEST_SEND = 1
-DATE_X = 350
+DATE_X = 360
 DATE_Y = 100
 
 # Ancien dossier générique (pour tests)
@@ -2469,13 +2469,17 @@ def cerfa():
             reader = PdfReader(pdf_path)
             pages = cerfa_extract_pages(pdf_path)
 
-            sender = request.form.get("mail_sender")
+            sender = session.get("cerfa_sender")
+
+            if not sender:
+                sender = "ba380.informatique2@banquealimentaire.org"
 
         # 📂 CAS 2 : upload normal
         else:
 
             file = request.files.get("pdf_file")
             sender = request.form.get("mail_sender")
+            session["cerfa_sender"] = sender
 
             if not file:
                 flash("❌ Fichier manquant", "danger")
@@ -2503,16 +2507,32 @@ def cerfa():
         # Construction preview
         # ============================
         count_test = 0
+        nb_sans_email = 0
 
         for p in pages:
 
-            if not p["email"]:
+            email_detecte = p.get("email")
+
+            # ❌ CAS SANS EMAIL
+            if not email_detecte:
+                nb_sans_email += 1
+
+                write_log(f"⚠️ CERFA sans email détecté : {p.get('nom')}")
+
+                preview.append({
+                    "nom": p.get("nom"),
+                    "email": None,
+                    "pdf": None,
+                    "erreur": "Aucun email détecté dans le PDF"
+                })
+
                 continue
 
-            email = p["email"]
+            # 🧪 MODE TEST
+            email_envoi = email_detecte
 
             if mail_mode == "TEST":
-                email = mail_test_to
+                email_envoi = mail_test_to
                 count_test += 1
                 if count_test > MAX_TEST_PREVIEW:
                     break
@@ -2521,8 +2541,10 @@ def cerfa():
 
             preview.append({
                 "nom": p["nom"],
-                "email": email,
-                "pdf": pdf_page
+                "email": email_envoi,
+                "email_reel": email_detecte,
+                "pdf": pdf_page,
+                "erreur": None
             })
 
         # ============================
@@ -2536,8 +2558,14 @@ def cerfa():
                 return redirect(url_for("tresorerie.cerfa"))
 
             count = 0
+            nb_ignores = 0
 
             for i, p in enumerate(preview):
+
+                # ❌ IGNORER si pas d’email
+                if not p["email"]:
+                    nb_ignores += 1
+                    continue
 
                 # 🧪 MODE TEST → 1 seul envoi
                 if mail_mode == "TEST" and i >= 1:
@@ -2553,19 +2581,20 @@ def cerfa():
                 envoyer_mail(
                     sujet="Votre reçu fiscal CERFA",
                     destinataires=[p["email"]],
-                    texte=f"""Bonjour,
+                    texte="""Bonjour,
 
-                Veuillez trouver votre reçu fiscal CERFA en pièce jointe.
+            Chers Collègues Bénévoles,
 
-                Informations détectées :
-                - Nom : {p["nom"]}
-                - Email : {p["email"]}
+            Suite à votre déclaration d'abandons de frais kilométriques dans le cadre de vos activités régulières au sein de la BA38,
+            pour l'année 2025,
 
-                Si ces informations sont incorrectes, merci de nous contacter.
+            je vous prie de trouver en pièce jointe le Cerfa vous permettant de renseigner votre prochaine déclaration de revenus.
 
-                Cordialement,
-                La Banque Alimentaire
-                """,
+            Restant à votre disposition pour toute information complémentaire, bien cordialement.
+
+            Dominique MELQUIOND
+            Banque Alimentaire de l'Isère
+            """,
                     sender_override=sender,
                     attachment_path=signed_pdf,
                     bcc=[sender]
@@ -2574,8 +2603,13 @@ def cerfa():
                 count += 1
 
             write_log(f"CERFA envoyés : {count}")
+            write_log(f"CERFA ignorés (sans email) : {nb_ignores}")
 
-            flash(f"✅ {count} CERFA envoyés", "success")
+            flash(
+                f"✅ {count} CERFA envoyés — ⚠️ {nb_ignores} sans email ignorés",
+                "warning" if nb_ignores else "success"
+            )
+
             # 🧹 nettoyage fichier temporaire
             pdf_path = session.get("cerfa_pdf_path")
             if pdf_path and os.path.exists(pdf_path):
@@ -2667,39 +2701,6 @@ def ajouter_signature_pdf(input_pdf, signature_png):
 
     return output.name
 
-    reader = PdfReader(input_pdf)
-    writer = PdfWriter()
-
-    page = reader.pages[0]
-
-    # taille page
-    width = float(page.mediabox.width)
-    height = float(page.mediabox.height)
-
-    # créer un PDF temporaire avec la signature
-    tmp_overlay = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-
-    c = canvas.Canvas(tmp_overlay.name, pagesize=(width, height))
-
-    # 📍 POSITION SIGNATURE (à ajuster)
-    x = width - 200     # à droite
-    y = 50              # bas de page
-
-    c.drawImage(signature_png, x, y, width=150, height=50, mask='auto')
-
-    c.save()
-
-    # fusion
-    overlay_reader = PdfReader(tmp_overlay.name)
-    page.merge_page(overlay_reader.pages[0])
-
-    writer.add_page(page)
-
-    output = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-    with open(output.name, "wb") as f:
-        writer.write(f)
-
-    return output.name
 
 def cerfa_extract_pages(pdf_path):
 
@@ -2760,3 +2761,498 @@ def cerfa_toggle_mode():
     write_log(f"CERFA - Changement mode → {session['MAIL_MODE']}")
 
     return redirect(url_for("tresorerie.cerfa"))
+
+
+# ==========================================================
+# 🔧 EXTRACTION PDF
+# ==========================================================
+def extract_pages(pdf_path):
+
+    import pdfplumber
+
+    result = []
+    current = None
+
+    with pdfplumber.open(pdf_path) as pdf:
+
+        for i, page in enumerate(pdf.pages, start=1):
+
+            text = page.extract_text() or ""
+
+            write_log(f"PAGE {i+1} / LEN={len(text)} / FIRST100={text[:100]}")
+
+            # ❌ IGNORER pages parasites
+            if "EBP FFBA" in text:
+                continue
+
+            nom, email = extract_infos_facture(text)
+
+            if nom:
+                current = {
+                    "nom": nom,
+                    "email": email,
+                    "pages": [i]
+                }
+                result.append(current)
+
+            elif current:
+                current["pages"].append(i)
+
+    return result
+
+# ==========================================================
+# 🔧 EXTRACTION NOM + EMAIL
+# ==========================================================
+def extract_infos_facture(text):
+
+    lignes = text.split("\n")
+
+    nom = None
+
+    if len(lignes) > 6:
+        candidat = lignes[6].strip()
+
+        if (
+            "siret" not in candidat.lower()
+            and "rna" not in candidat.lower()
+            and not candidat.isdigit()
+            and len(candidat) > 5
+        ):
+            nom = candidat
+
+    EMAIL_REGEX = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+
+    emails = []
+    for l in lignes:
+        emails.extend(EMAIL_REGEX.findall(l))
+
+    emails_valides = [
+        e for e in emails
+        if "banquealimentaire" not in e.lower()
+        and not e.lower().startswith("ba380")
+    ]
+
+    email = emails_valides[-1] if emails_valides else None
+
+    return nom, email
+
+
+
+# ============================
+# ENVOI PARTICIPATION PAR MAIL
+# ============================
+@tresorerie_bp.route('/factures_pdf', methods=['GET', 'POST'])
+@login_required
+@require_access("tresorerie", "ecriture")
+def factures_pdf():
+
+    import os
+    import time
+    import tempfile
+    from threading import Thread
+    from PyPDF2 import PdfReader, PdfWriter
+
+    os.makedirs("/srv/ba38/tmp", exist_ok=True)
+
+    # ==========================================================
+    # 🔧 CONFIG MAIL
+    # ==========================================================
+    mail_mode = session.get(
+        "MAIL_MODE",
+        os.getenv("MAIL_MODE", "TEST").upper()
+    )
+
+    mail_test_to = os.getenv(
+        "MAIL_TEST_TO",
+        "ba380.informatique2@banquealimentaire.org"
+    )
+
+    mail_sender = session.get(
+        "factures_sender",
+        "ba380.comptable@banquealimentaire.org"
+    )
+
+    preview = []
+
+
+
+    # ==========================================================
+    # 🔧 BUILD PDF
+    # ==========================================================
+    def build_pdf(reader, pages):
+
+        writer = PdfWriter()
+
+        for p in pages:
+            writer.add_page(reader.pages[p - 1])
+
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+
+        with open(tmp.name, "wb") as f:
+            writer.write(f)
+
+        return tmp.name
+
+    # ==========================================================
+    # 🚀 ENVOI BACKGROUND
+    # ==========================================================
+    def envoyer_background(pages, pdf_path, mail_mode, mail_test_to, mail_sender):
+
+        reader = PdfReader(pdf_path)
+
+        count = 0
+        count_test = 0
+        MAX_ENVOI = 9999
+
+        for p in pages:
+
+            if not p["email"]:
+                continue
+
+            # ----------------------------
+            # TEST
+            # ----------------------------
+            if mail_mode == "TEST":
+                if count_test >= 2:
+                    break
+                count_test += 1
+                email = mail_test_to
+            else:
+                email = p["email"]
+
+            if count >= MAX_ENVOI:
+                break
+
+            fichier = build_pdf(reader, p["pages"])
+
+            envoyer_mail(
+                sujet=f"Participation de solidarité du 1er trimestre 2026 – {p['nom']} 2eme envoi",
+                destinataires=[email],
+                texte="""Bonjour,
+
+Suite à un probleme technique, un certain nombre d'emails de factures ne sont pas partis.
+Nous faisons un deuxième envoi aujourd'hui, veuillez nous excuser pour ce désagrément si vous aviez déjà reçu la facture.
+
+
+Vous trouverez ci-joint, en fichier attaché, votre facture de participation de solidarité du 1er  trimestre 2026.
+
+Pour les C.C.A.S. : Votre Participation de Solidarité est déposée sur le site ChorusPro. Vous recevez ce mail à titre d’information.
+
+Bonne réception
+La Trésorerie de la Banque Alimentaire de l’Isère
+""",
+                sender_override=mail_sender,
+                attachment_path=fichier,
+                bcc=[mail_sender]
+            )
+
+            count += 1
+
+        write_log(f"FACTURES TOTAL détectées : {len(pages)}")
+        write_log(f"FACTURES envoyées (background) : {count}")
+
+    # ==========================================================
+    # POST
+    # ==========================================================
+    if request.method == "POST":
+
+        # 🔧 récupération expéditeur
+        sender = request.form.get("mail_sender")
+
+        if sender:
+            session["factures_sender"] = sender
+            mail_sender = sender
+
+        # ======================================================
+        # ENVOI
+        # ======================================================
+        if request.form.get("confirm") == "1":
+
+            pdf_path = session.get("factures_pdf_path")
+
+            if not pdf_path or not os.path.exists(pdf_path):
+                flash("❌ Fichier introuvable", "danger")
+                return redirect(url_for("tresorerie.factures_pdf"))
+
+            pages = extract_pages(pdf_path)
+
+            Thread(
+                target=envoyer_background,
+                args=(pages, pdf_path, mail_mode, mail_test_to, mail_sender)
+            ).start()
+
+            flash(f"📧 Envoi lancé en arrière-plan (expéditeur : {mail_sender})", "info")
+
+            return redirect(url_for("tresorerie.factures_pdf"))
+
+        # ======================================================
+        # ANALYSE PDF
+        # ======================================================
+        else:
+
+            file = request.files.get("pdf_file")
+
+            if not file:
+                flash("❌ Fichier manquant", "danger")
+                return redirect(url_for("tresorerie.factures_pdf"))
+
+            tmp_path = f"/srv/ba38/tmp/factures_{int(time.time())}.pdf"
+            file.save(tmp_path)
+
+            session["factures_pdf_path"] = tmp_path
+
+            reader = PdfReader(tmp_path)
+            pages = extract_pages(tmp_path)
+
+            count_test = 0
+
+            for p in pages:
+
+                if not p["email"]:
+                    continue
+
+                if mail_mode == "TEST":
+                    if count_test >= 2:
+                        break
+                    count_test += 1
+                    email = mail_test_to
+                else:
+                    email = p["email"]
+
+                pdf_file = build_pdf(reader, p["pages"])
+
+                preview.append({
+                    "nom": p["nom"],
+                    "email_reel": p["email"],
+                    "email_envoi": email,
+                    "pdf": pdf_file
+                })
+
+            return render_template(
+                "tresorerie/factures_preview.html",
+                preview=preview,
+                mail_mode=mail_mode,
+                mail_test_to=mail_test_to,
+                mail_sender=mail_sender
+            )
+
+    return render_template(
+        "tresorerie/factures_upload.html",
+        mail_mode=mail_mode,
+        mail_test_to=mail_test_to,
+        mail_sender=mail_sender
+    )
+
+
+
+
+@tresorerie_bp.route('/factures_preview_pdf')
+def factures_preview_pdf():
+
+    path = request.args.get("path")
+
+    if not path or not os.path.exists(path):
+        return "Fichier introuvable", 404
+
+    return send_file(path, mimetype="application/pdf")
+
+@tresorerie_bp.route('/factures_toggle_mode', methods=['POST'])
+@login_required
+@require_access("tresorerie", "ecriture")
+def factures_toggle_mode():
+
+    current = session.get(
+        "MAIL_MODE",
+        os.getenv("MAIL_MODE", "TEST").upper()
+    )
+
+    if current == "TEST":
+        session["MAIL_MODE"] = "PROD"
+        flash("🚀 Mode PROD activé", "success")
+    else:
+        session["MAIL_MODE"] = "TEST"
+        flash("🧪 Mode TEST activé", "warning")
+
+    return redirect(url_for("tresorerie.factures_pdf"))
+
+
+def envoyer_factures_background(pages, pdf_path, mail_mode, mail_test_to):
+
+    reader = PdfReader(pdf_path)
+
+    count = 0
+    count_test = 0
+
+    for p in pages:
+
+        if not p["email"]:
+            continue
+
+        email = p["email"]
+
+        # 🧪 TEST
+        if mail_mode == "TEST":
+            if count_test >= 2:
+                break
+            count_test += 1
+            email = mail_test_to
+
+        fichier = build_pdf(reader, p["pages"])
+
+        envoyer_mail(
+            sujet=f"Facture participation – {p['nom']}",
+            destinataires=[email],
+            texte="""Bonjour,
+
+Veuillez trouver votre facture en pièce jointe.
+
+BA38""",
+            attachment_path=fichier
+        )
+
+        count += 1
+
+    write_log(f"FACTURES envoyées (background) : {count}")
+
+
+
+@tresorerie_bp.route("/telecharger_factures")
+@login_required
+@require_access("tresorerie", "ecriture")
+def telecharger_factures():
+
+    zip_path = session.get("zip_path")
+
+    if not zip_path or not os.path.exists(zip_path):
+        flash("❌ Fichier introuvable", "danger")
+        return redirect(url_for("tresorerie.factures_decoupage"))
+
+    return render_template(
+        "tresorerie/telechargement_factures.html",
+        zip_path=zip_path
+    )
+
+
+@tresorerie_bp.route('/factures_decoupage', methods=['GET', 'POST'])
+@login_required
+@require_access("tresorerie", "ecriture")
+def factures_decoupage():
+
+    import os
+    import time
+    import tempfile
+    import zipfile
+    from flask import send_file
+    from PyPDF2 import PdfReader, PdfWriter
+
+    if request.method == "POST":
+
+        file = request.files.get("pdf_file")
+
+        if not file:
+            flash("❌ Fichier manquant", "danger")
+            return redirect(url_for("tresorerie.factures_decoupage"))
+
+        # ============================
+        # Sauvegarde temporaire
+        # ============================
+        tmp_dir = tempfile.mkdtemp(prefix="decoupage_")
+        input_pdf_path = os.path.join(tmp_dir, "input.pdf")
+        file.save(input_pdf_path)
+
+        reader = PdfReader(input_pdf_path)
+
+        # ============================
+        # 🔧 Extraction logique (reuse existant)
+        # ============================
+        pages = extract_pages(input_pdf_path)   # ⚠️ ta fonction existante
+
+        fichiers_generes = []
+
+        # ============================
+        # Génération PDF individuels
+        # ============================
+        for i, p in enumerate(pages):
+
+            if not p["pages"]:
+                continue
+
+            writer = PdfWriter()
+
+            for page_num in p["pages"]:
+
+                page = reader.pages[page_num - 1]
+
+                try:
+                    text = page.extract_text() or ""
+                except:
+                    text = ""
+
+                # garder uniquement les vraies factures
+                if "NET À PAYER" not in text:
+                    continue
+
+                writer.add_page(page)
+
+            nom = p.get("nom") or f"facture_{i+1}"
+            nom_clean = re.sub(r"[^A-Za-z0-9_\-]", "_", nom)
+
+            output_path = os.path.join(tmp_dir, f"{nom_clean}.pdf")
+
+            with open(output_path, "wb") as f:
+                writer.write(f)
+
+            fichiers_generes.append(output_path)
+
+        if not fichiers_generes:
+            flash("❌ Aucune facture détectée", "danger")
+            return redirect(url_for("tresorerie.factures_decoupage"))
+
+        # ============================
+        # Création ZIP
+        # ============================
+        zip_path = os.path.join(tmp_dir, "factures.zip")
+
+        with zipfile.ZipFile(zip_path, 'w') as z:
+            for f in fichiers_generes:
+                z.write(f, os.path.basename(f))
+
+        # ============================
+        # Préparation téléchargement via redirect
+        # ============================
+        session["zip_path"] = zip_path
+
+        flash("✅ Découpe terminée – téléchargement en cours...", "success")
+
+        return redirect(url_for("tresorerie.telecharger_factures"))
+
+    return render_template("tresorerie/decouper_factures.html")
+
+
+
+@tresorerie_bp.route("/download_zip")
+@login_required
+@require_access("tresorerie", "ecriture")
+def download_zip():
+
+    zip_path = session.get("zip_path")
+
+    if not zip_path or not os.path.exists(zip_path):
+        return "Fichier introuvable", 404
+
+    response = send_file(
+        zip_path,
+        as_attachment=True,
+        download_name="factures_decoupees.zip"
+    )
+
+    # 🧹 nettoyage
+    try:
+        os.remove(zip_path)
+        os.rmdir(os.path.dirname(zip_path))  # supprime tmp_dir
+    except Exception as e:
+        write_log(f"⚠️ nettoyage ZIP impossible : {e}")
+
+    session.pop("zip_path", None)
+
+    return response

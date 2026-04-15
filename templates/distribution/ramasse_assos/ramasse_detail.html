@@ -1,0 +1,42 @@
+{% extends "base_distribution.html" %}
+{% block content %}
+
+<h2 class="mb-3">📄 Détail ramasse</h2>
+
+<div class="card p-3 mb-3">
+
+    <div><strong>Date :</strong> {{ entete.date_ramasse }}</div>
+    <div><strong>Fournisseur :</strong> {{ entete.nom_fournisseur }}</div>
+    <div><strong>Association :</strong> {{ entete.nom_association }}</div>
+
+</div>
+
+<table class="table table-sm table-bordered">
+
+    <thead class="table-light">
+        <tr>
+            <th>Code</th>
+            <th>Article</th>
+            <th class="text-end">Kg</th>
+        </tr>
+    </thead>
+
+    <tbody>
+
+        {% for l in lignes %}
+        <tr>
+            <td>{{ l.code_vif }}</td>
+            <td>{{ l.libelle }}</td>
+            <td class="text-end">{{ "%.1f"|format(l.quantite_kg) }}</td>
+        </tr>
+        {% endfor %}
+
+    </tbody>
+
+</table>
+
+<a href="{{ url_for('distribution.liste_ramasses') }}" class="btn btn-secondary">
+    ⬅ Retour
+</a>
+
+{% endblock %}

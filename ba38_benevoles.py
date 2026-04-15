@@ -4,7 +4,7 @@ import sqlite3
 import unicodedata
 
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, current_app, abort
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, current_app, abort, send_from_directory
 from flask_login import login_required, current_user
 from utils import get_db_connection, upload_database, write_log, has_access, is_valid_email, is_valid_phone, require_access
 from werkzeug.security import generate_password_hash
@@ -65,6 +65,8 @@ def coerce_civilite(value):
 
 
 benevoles_bp = Blueprint("benevoles", __name__)
+
+
 
 
 
@@ -273,7 +275,7 @@ def benevoles():
         })
 
     # Photos disponibles
-    photo_dir = os.path.join(os.path.dirname(__file__), "static", "photos_benevoles")
+    photo_dir = "/srv/ba38/photos_benevoles"
     photo_ids = set()
     if os.path.isdir(photo_dir):
         for filename in os.listdir(photo_dir):
@@ -589,9 +591,16 @@ def update_benevole(benevole_id):
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    lecture_seule = not has_access("benevoles", "ecriture")
 
-    benevole = cursor.execute("SELECT * FROM benevoles WHERE id = ?", (benevole_id,)).fetchone()
+    can_edit = has_access("benevoles", "ecriture")
+    can_upload_photo = has_access("photos_benevoles", "ecriture")
+    lecture_seule = not can_edit
+
+    benevole = cursor.execute(
+        "SELECT * FROM benevoles WHERE id = ?",
+        (benevole_id,)
+    ).fetchone()
+
     if not benevole:
         conn.close()
         flash("Bénévole introuvable.", "danger")
@@ -600,12 +609,15 @@ def update_benevole(benevole_id):
     benevole_dict = dict(benevole)
     previous_id, next_id = get_neighbor_benevole_ids_alphabetically(conn, benevole_id)
 
+    # 🔹 Champs dynamiques
     rows = cursor.execute("""
         SELECT * FROM field_groups
         WHERE appli = 'benevoles'
         ORDER BY display_order
     """).fetchall()
+
     fields_data = [dict(row) for row in rows]
+
     for field in fields_data:
         field["value"] = benevole_dict.get(field["field_name"], "")
 
@@ -614,6 +626,7 @@ def update_benevole(benevole_id):
         group = field.get("group_name") or "Autres"
         grouped_fields.setdefault(group, []).append(field)
 
+    # 🔹 Navigation
     search_term = request.values.get("search", "")
     limit = request.values.get("limit", "10")
     selected_columns = request.values.getlist("columns")
@@ -625,190 +638,164 @@ def update_benevole(benevole_id):
         "columns": selected_columns,
         "selected_groups": selected_groups
     }
+
     next_url = url_for("benevoles.benevoles") + "?" + urlencode(query_params, doseq=True)
 
+    # =========================================================
+    # 🔁 POST
+    # =========================================================
     if request.method == 'POST':
 
-        if not has_access("benevoles", "ecriture"):
+        if not can_edit and not can_upload_photo:
             abort(403)
 
         opts_type_bene = get_type_benevole_options(conn)
         do_upload = request.form.get("do_upload", "1")
-        PHOTO_DIR = os.path.join(os.path.dirname(__file__), "static", "photos_benevoles")
-        os.makedirs(PHOTO_DIR, exist_ok=True)
 
-        # 📸 Photo
-        photo = request.files.get('photo')
-        if photo and photo.filename:
-            try:
-                filename = f"{benevole_id}.jpg"
-                full_path = os.path.join(PHOTO_DIR, filename)
-                image = Image.open(photo)
-                image.thumbnail((300, 300))
-                image.save(full_path, format="JPEG", quality=80)
-                cursor.execute("""
-                    INSERT INTO photos_benevoles (benevole_id, filename)
-                    VALUES (?, ?)
-                    ON CONFLICT(benevole_id) DO UPDATE SET filename=excluded.filename
-                """, (benevole_id, filename))
-            except Exception as e:
-                flash(f"❌ Erreur lors du traitement de la photo : {e}", "danger")
+        photo_dir = "/srv/ba38/photos_benevoles"
+        os.makedirs(photo_dir, exist_ok=True)
 
-        updates = {}
-        for field in fields_data:
-            field_name = field["field_name"]
-            if field_name == "id":
-                continue
-            value = request.form.get(field_name, "").strip()
+        # =====================================================
+        # 📸 PHOTO (indépendant du droit édition)
+        # =====================================================
+        if can_upload_photo:
+            photo = request.files.get('photo')
+            if photo and photo.filename:
+                try:
+                    filename = f"{benevole_id}.jpg"
+                    full_path = os.path.join(photo_dir, filename)
 
-            # 🔽 Spécifique: type_benevole -> normalisation liste
-            if field_name == "type_benevole":
-                coerced = coerce_type_benevole(value, opts_type_bene)
-                if value and coerced is None:
-                    # on marque l'erreur maintenant (plus fiable que plus bas)
-                    flash(f"Type de bénévole invalide « {value} ». "
-                        f"Valeurs possibles : {', '.join(opts_type_bene)}.", "danger")
-                    # réaffichage du formulaire avec erreurs géré plus bas
-                value = coerced
+                    image = Image.open(photo)
+                    image.thumbnail((300, 300))
+                    image.save(full_path, format="JPEG", quality=80)
 
-            if field_name == "civilite":
-                coerced = coerce_civilite(value)
-                if value and coerced is None:
-                    flash(
-                        f"Civilité invalide « {value} ». Valeurs possibles : {', '.join(CIVILITE_OPTIONS)}.",
-                        "danger"
-                    )
-                value = coerced
+                    cursor.execute("""
+                        INSERT INTO photos_benevoles (benevole_id, filename)
+                        VALUES (?, ?)
+                        ON CONFLICT(benevole_id)
+                        DO UPDATE SET filename=excluded.filename
+                    """, (benevole_id, filename))
 
+                    conn.commit()
 
-            updates[field_name] = None if value == "" or value is None else value
+                    flash("✅ Photo mise à jour", "success")
 
-        if not updates.get("nom"):
-            flash("❌ Le nom du bénévole est obligatoire.", "danger")
-        if not updates.get("prenom"):
-            flash("❌ Le prénom du bénévole est obligatoire.", "danger")
+                except Exception as e:
+                    flash(f"❌ Erreur photo : {e}", "danger")
 
-        erreurs = []
-        champs_invalides = []
-        for field in fields_data:
-            fname = field["field_name"]
-            val = updates.get(fname)
-            group = field.get("group_name") or "Autres"
-            label = fname.replace("_", " ").capitalize()
+        # =====================================================
+        # ✏️ UPDATE DONNÉES (uniquement si droit)
+        # =====================================================
+        if can_edit:
 
-            if val:
-                if "email" in fname.lower() and not is_valid_email(val):
-                    erreurs.append(f"Champ invalide dans {group} : {label} ➜ « {val} » n’est pas un email valide.")
-                    champs_invalides.append(fname)
-                if "tel" in fname.lower() and not is_valid_phone(val):
-                    erreurs.append(f"Champ invalide dans {group} : {label} ➜ « {val} » n’est pas un numéro de téléphone valide.")
-                    champs_invalides.append(fname)
-                if fname == "type_benevole" and (val is not None) and (val not in opts_type_bene):
-                    erreurs.append(f"Champ invalide dans {group} : Type de bénévole ➜ « {val} ». "
-                                f"Valeurs possibles : {', '.join(opts_type_bene)}.")
-                    champs_invalides.append(fname)
+            updates = {}
 
-
-        if not updates.get("nom") or not updates.get("prenom") or erreurs:
-            for msg in erreurs:
-                flash(msg, "danger")
-
-            # 🔁 Réinjecter les valeurs saisies dans field["value"]
             for field in fields_data:
-                field["value"] = request.form.get(field["field_name"], "")
+                field_name = field["field_name"]
+                if field_name == "id":
+                    continue
 
-            # 🔁 Reconstruire grouped_fields
-            grouped_fields = {}
+                value = request.form.get(field_name, "").strip()
+
+                # type_benevole
+                if field_name == "type_benevole":
+                    coerced = coerce_type_benevole(value, opts_type_bene)
+                    if value and coerced is None:
+                        flash(
+                            f"Type invalide « {value} » ({', '.join(opts_type_bene)})",
+                            "danger"
+                        )
+                    value = coerced
+
+                # civilité
+                if field_name == "civilite":
+                    coerced = coerce_civilite(value)
+                    if value and coerced is None:
+                        flash("Civilité invalide", "danger")
+                    value = coerced
+
+                updates[field_name] = None if value == "" else value
+
+            # 🔹 validations
+            erreurs = []
+
+            if not updates.get("nom"):
+                erreurs.append("Nom obligatoire")
+
+            if not updates.get("prenom"):
+                erreurs.append("Prénom obligatoire")
+
             for field in fields_data:
-                group = field.get("group_name") or "Autres"
-                grouped_fields.setdefault(group, []).append(field)
+                fname = field["field_name"]
+                val = updates.get(fname)
 
-            type_benevole_options = get_type_benevole_options(conn)
+                if val:
+                    if "email" in fname.lower() and not is_valid_email(val):
+                        erreurs.append(f"{fname} invalide")
 
-            conn.close()
+                    if "tel" in fname.lower() and not is_valid_phone(val):
+                        erreurs.append(f"{fname} invalide")
 
-            return render_template(
-                "benevoles/update_benevole.html",
-                previous_id=previous_id,
-                next_id=next_id,
-                benevole_id=benevole_id,
-                grouped_fields=grouped_fields,
-                next_url=next_url,
-                benevole_nom=updates.get("nom", ""),
-                benevole_prenom=updates.get("prenom", ""),
-                photo_filename=None,
-                benevole=benevole_dict,
-                champs_invalides=champs_invalides,
-                type_benevole_options=type_benevole_options,
-                lecture_seule=lecture_seule
+            # 🔹 erreurs → retour formulaire
+            if erreurs:
+                for e in erreurs:
+                    flash(e, "danger")
+
+                conn.close()
+
+                return render_template(
+                    "benevoles/update_benevole.html",
+                    previous_id=previous_id,
+                    next_id=next_id,
+                    benevole_id=benevole_id,
+                    grouped_fields=grouped_fields,
+                    next_url=next_url,
+                    benevole=benevole_dict,
+                    lecture_seule=lecture_seule,
+                    can_upload_photo=can_upload_photo
+                )
+
+            # 🔹 sauvegarde
+            now = datetime.now()
+
+            updates["date_modif"] = now.strftime("%Y-%m-%d")
+            updates["heure_modif"] = now.strftime("%H:%M:%S")
+            updates["user_modif"] = current_user.username
+
+            set_clause = ", ".join([f"`{k}`=?" for k in updates])
+            values = list(updates.values()) + [benevole_id]
+
+            cursor.execute(
+                f"UPDATE benevoles SET {set_clause} WHERE id=?",
+                values
             )
 
-        # Détection des modifications
-        modif_detectee = any(
-            (benevole_dict.get(k) or "").strip() != (v or "").strip()
-            for k, v in updates.items()
-        )
+            conn.commit()
 
-        if modif_detectee:
             if do_upload == "1":
-                now = datetime.now()
-                updates["date_modif"] = now.strftime("%Y-%m-%d")
-                updates["heure_modif"] = now.strftime("%H:%M:%S")
-                updates["user_modif"] = current_user.username
+                upload_database()
 
-            set_clause = ", ".join([f"`{k}` = ?" for k in updates])
-            values = list(updates.values()) + [benevole_id]
-            try:
-                cursor.execute(f"UPDATE benevoles SET {set_clause} WHERE id = ?", values)
-                conn.commit()
-                if do_upload == "1":
-                    upload_database()
-                flash("✅ Bénévole mis à jour avec succès.", "success")
-            except Exception as e:
-                flash(f"❌ Erreur lors de la mise à jour : {e}", "danger")
-        else:
-            flash("ℹ️ Aucune modification détectée. Rien n’a été enregistré.", "info")
+            flash("✅ Bénévole mis à jour", "success")
 
         conn.close()
-        go_to = request.form.get("go_to")
-        if go_to:
-            return redirect(go_to)
 
-        return redirect(url_for("benevoles.update_benevole", benevole_id=benevole_id, **request.args))
+        return redirect(
+            url_for("benevoles.update_benevole", benevole_id=benevole_id)
+        )
 
-    benevole_nom = benevole_dict.get("nom", "")
-    benevole_prenom = benevole_dict.get("prenom", "")
+    # =========================================================
+    # 🔹 GET
+    # =========================================================
 
     photo_filename = None
-    photo_folder = os.path.join(os.path.dirname(__file__), "static", "photos_benevoles")
-    base_dir = current_app.config.get("BA38_BASE_DIR")
+
     photo_path = os.path.join(
-        current_app.root_path,
-        "static",
-        "photos_benevoles",
+        "/srv/ba38/photos_benevoles",
         f"{benevole_id}.jpg"
     )
+
     if os.path.exists(photo_path):
         photo_filename = f"{benevole_id}.jpg"
-    else:
-        row = conn.execute("SELECT filename FROM photos_benevoles WHERE benevole_id = ?", (benevole_id,)).fetchone()
-        if row:
-            photo_filename = row["filename"]
-
-    type_benevole_options = get_type_benevole_options(conn)
-
-    # 🕒 Conversion date_modif en heure FR
-    date_modif = benevole_dict.get("date_modif")
-    heure_fr = None
-    if date_modif:
-        try:
-            dt = datetime.strptime(date_modif, "%Y-%m-%d %H:%M:%S")
-            import pytz
-            dt = pytz.utc.localize(dt).astimezone(pytz.timezone("Europe/Paris"))
-            heure_fr = dt.strftime("%d/%m/%Y %H:%M")
-        except Exception:
-            heure_fr = date_modif
-
 
     conn.close()
 
@@ -819,17 +806,11 @@ def update_benevole(benevole_id):
         benevole_id=benevole_id,
         grouped_fields=grouped_fields,
         next_url=next_url,
-        benevole_nom=benevole_nom,
-        benevole_prenom=benevole_prenom,
-        photo_filename=photo_filename,
         benevole=benevole_dict,
-        date_modif=heure_fr,
-        user_modif=benevole_dict.get("user_modif", ""),
-        champs_invalides=[],
-        type_benevole_options=type_benevole_options,
-        lecture_seule=lecture_seule
+        photo_filename=photo_filename,
+        lecture_seule=lecture_seule,
+        can_upload_photo=can_upload_photo
     )
-
 
 @benevoles_bp.route("/update_benevoles_table", methods=["POST"])
 @login_required
@@ -1022,11 +1003,24 @@ def photo_benevole_mobile():
     return render_template("benevoles/photo_benevole_mobile.html", benevole=benevole, benevoles=tous_les_benevoles, selected_id=selected_id)
 
 
+@benevoles_bp.route('/photos_benevoles/<filename>')
+@login_required
+def serve_photo_benevole(filename):
+
+    photo_dir = "/srv/ba38/photos_benevoles"
+
+    return send_from_directory(photo_dir, filename)
 
 @benevoles_bp.route('/upload_photo_benevole/<int:benevole_id>', methods=['POST'])
 @login_required
-@require_access("benevoles", "ecriture")
 def upload_photo_benevole(benevole_id):
+
+    if not (
+        has_access("benevoles", "ecriture")
+        or has_access("photos_benevoles", "ecriture")
+    ):
+        abort(403)
+
     """
     Upload ou remplace la photo d’un bénévole.
     - Sur mobile : reste sur /photo_benevole_mobile
@@ -1065,12 +1059,11 @@ def upload_photo_benevole(benevole_id):
         img.thumbnail((400, 400))
 
         # ✅ Détermine le bon répertoire
-        BASE_DIR = os.getenv("BA38_BASE_DIR", "/srv/ba38/dev")
-        static_dir = os.path.join(BASE_DIR, "static", "photos_benevoles")
-        os.makedirs(static_dir, exist_ok=True)
+        photo_dir = "/srv/ba38/photos_benevoles"
+        os.makedirs(photo_dir, exist_ok=True)
 
         # ✅ Sauvegarde du fichier
-        save_path = os.path.join(static_dir, f"{benevole_id}.jpg")
+        save_path = os.path.join(photo_dir, f"{benevole_id}.jpg")
         img.info.pop('exif', None)
         img.save(save_path, "JPEG", quality=85)
 
@@ -1279,12 +1272,7 @@ def supprimer_photo_benevole(benevole_id):
         environment = os.getenv("ENVIRONMENT", "dev")
         BASE_DIR = os.getenv("BA38_BASE_DIR", "/srv/ba38")
         base_dir = os.path.join(BASE_DIR, "prod" if environment == "prod" else "dev")
-        photo_path = os.path.join(
-            current_app.root_path,
-            "static",
-            "photos_benevoles",
-            f"{benevole_id}.jpg"
-        )
+        photo_path = os.path.join("/srv/ba38/photos_benevoles", f"{benevole_id}.jpg")
 
         # Supprimer le fichier s'il existe
         if os.path.exists(photo_path):

@@ -1,4 +1,4 @@
-{% extends "base_assos.html" %}
+{% extends "base.html" %}
 
 {% block title %}Mise à jour des Paramètres{% endblock %}
 
@@ -58,8 +58,10 @@
                 <td><input type="text" name="phone" value="{{ param['phone'] }}" class="form-control"></td>
                 <td><input type="email" name="mail" value="{{ param['mail'] }}" class="form-control"></td>
                 <td class="text-nowrap">
-                    <button type="submit" name="action" value="modifier" class="btn btn-warning btn-sm">Modifier</button>
-                    <button type="submit" name="action" value="supprimer" class="btn btn-danger btn-sm" onclick="return confirm('Supprimer ce paramètre ?')">Supprimer</button>
+                    <button type="submit" name="action" value="modifier"
+                        class="btn btn-warning btn-sm">Modifier</button>
+                    <button type="submit" name="action" value="supprimer" class="btn btn-danger btn-sm"
+                        onclick="return confirm('Supprimer ce paramètre ?')">Supprimer</button>
                 </td>
             </form>
         </tr>
