@@ -3,7 +3,7 @@
 from flask import Blueprint, render_template, send_file, request, jsonify, session, redirect, url_for, flash
 from flask import Response
 from flask_login import login_required, current_user
-from utils import get_db_path, get_db_connection, require_access
+from utils import get_db_path, get_db_connection, require_access, write_log
 from openpyxl import Workbook
 from io import BytesIO
 from datetime import datetime, timedelta
@@ -506,7 +506,7 @@ def export_ramasses_vif_mensuel():
 
     mois = request.form.get("mois")  # format YYYY-MM
     force = request.form.get("force")  # pour forcer même si export déjà fait
-    
+
     date_du_jour_plus_2 = (datetime.now() + timedelta(days=2)).strftime("%d/%m/%Y")
 
     if not mois:
@@ -581,13 +581,13 @@ def export_ramasses_vif_mensuel():
             "03",                       #6 DEPOT
             r["article_code_vif"],      #7 ARTICLE
             int(r["total_kg"]),         #8 QUANTITE
-            "KG",                       #9 UNITE    
+            "KG",                       #9 UNITE
             lot,                        #10 LOT
             date_du_jour_plus_2,        #11 DLUO
             date_du_jour_plus_2,        #12 DLC
             "",                         #13 Lartlibel artic
             "RA"                        #14 ORIGINE
-                      
+
         ]
 
         lignes_csv.append(";".join(map(str, ligne)))
@@ -733,7 +733,7 @@ def export_bl_vif():
     # 🔹 DATA
     # ==============================
     rows = cur.execute("""
-        SELECT 
+        SELECT
             r.id_association,
             a.code_vif,
             a.nom_association,
@@ -744,8 +744,10 @@ def export_bl_vif():
         LEFT JOIN associations a ON a.id = r.id_association
         WHERE strftime('%Y-%m', r.date_ramasse) = ?
         GROUP BY r.id_association, l.code_vif
-        ORDER BY a.nom_association, l.code_vif
+        ORDER BY a.code_vif, l.code_vif
     """, (mois,)).fetchall()
+
+    rows = sorted(rows, key=lambda x: (x["code_vif"], x["article"]))
 
     # 🔴 contrôle VIF
     erreurs = []
@@ -759,41 +761,46 @@ def export_bl_vif():
         conn.close()
         return redirect(url_for("distribution.liste_ramasses"))
 
-    # 🔹 date BL = aujourd’hui
-    date_bl = datetime.now().strftime("%d/%m/%Y")
+    # 🔹 date BL = dernier jour du mois
+    annee, mois_num = mois.split("-")
+    dernier_jour = monthrange(int(annee), int(mois_num))[1]
+    date_bl = f"{dernier_jour:02d}/{mois_num}/{annee[-2:]}"
 
     lignes_csv = []
 
-    # # 🔹 entête
-    # lignes_csv.append("Societe;BA;Type BL;Association;BL orig;Date BL;Article;NO LOT;Qte;Unite;Depot sorite;Commentaire")  
 
     # 🔹 génération lignes
     for r in rows:
 
-        article = r["article"].strip()
+        article = (r["article"] or "").strip()
         annee, mois_num = mois.split("-")
 
         # 🔹 LOT (13 caractères OK)
         lot = f"RP{annee[-2:]}{mois_num}{article}"
 
         ligne = [
-            "01",                                               # 1 Société
-            "38",                                               # 2 BA
-            "NORM",                                             # 3 Type BL
-            r["code_vif"],                                      # 4 Association
-            date_bl,                                            # 5 Date BL
-            article,                                            # 6 Article
-            lot,                                                # 8 NO LOT
-            f"{float(r['total_kg']):.3f}".replace(".", ","),    # 9 Qte
-            "KG",                                               # 10 Unité
-            "06",                                               # 11 Dépôt de sortie
-            f"Ramasse Partenaires {annee}"                      # 12 Commentaire
-
+            "01",                                                   # 1 Société
+            "38",                                                   # 2 BA
+            "01",                                                   # 3 Société
+            "38",                                                   # 4 BA
+            "NORM",                                                 # 5 Type BL
+            r["code_vif"],                                          # 6 Association
+            f"Ramasse partenaire {mois}",                           # 7 ref cde client
+            f"Ramasse partenaire {mois}",                           # 8 commentaire ENTETE
+            date_bl,                                                # 9 Date BL
+            date_bl,                                                # 10 date livraison
+            article,                                                # 11 Article
+            lot,                                                    # 12 NO LOT
+            f"{float(r['total_kg'] or 0):.3f}".replace(".", ","),   # 13 Qte
+            "KG",                                                   # 14 Unité
+            "06",                                                   # 15 Dépôt de sortie
+            "1",                                                    # 16 Gratuit
+            "0"                                                     # 17 Prix
         ]
 
         lignes_csv.append(";".join(ligne))
 
-    output = "\n".join(lignes_csv)
+    output = "\r\n".join(lignes_csv) + "\r\n"
 
     # 🔹 trace export
     cur.execute("""
@@ -807,7 +814,7 @@ def export_bl_vif():
     return Response(
         output,
         mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=BL38.CSV"}
+        headers={"Content-Disposition": "attachment; filename=BL_38.CSV"}
     )
 
 
@@ -829,7 +836,7 @@ def controle_ramasses():
     # 🔵 TOTAL PAR FOURNISSEUR
     # ==============================
     fournisseurs = cur.execute("""
-        SELECT 
+        SELECT
             f.nom AS fournisseur,
             f.code_vif,
             SUM(l.quantite_kg) AS total_kg
@@ -845,7 +852,7 @@ def controle_ramasses():
     # 🟠 TOTAL PAR ASSOCIATION
     # ==============================
     associations = cur.execute("""
-        SELECT 
+        SELECT
             a.nom_association,
             a.code_vif,
             SUM(l.quantite_kg) AS total_kg
@@ -917,7 +924,7 @@ def controle_ramasses_get():
     # 🔵 FOURNISSEURS
     # ==============================
     fournisseurs = cur.execute("""
-        SELECT 
+        SELECT
             f.nom AS fournisseur,
             f.code_vif,
             SUM(l.quantite_kg) AS total_kg
@@ -933,7 +940,7 @@ def controle_ramasses_get():
     # 🟠 ASSOCIATIONS
     # ==============================
     associations = cur.execute("""
-        SELECT 
+        SELECT
             a.nom_association,
             a.code_vif,
             SUM(l.quantite_kg) AS total_kg

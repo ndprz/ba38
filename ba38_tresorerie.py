@@ -1518,7 +1518,7 @@ def generer_facture_pdf(data, output_path):
         c.drawRightString(
             largeur - 20 * mm,
             y_fact,
-            f"RELANCE n°{data.get('numero_relance')}"
+            f"RAPPEL n°{data.get('numero_relance')}"
         )
         c.setFont("Helvetica", 9)
 

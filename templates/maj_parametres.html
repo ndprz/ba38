@@ -3,74 +3,265 @@
 {% block title %}Mise à jour des Paramètres{% endblock %}
 
 {% block content %}
-<h2>Gestion des Paramètres</h2>
+<div class="container-fluid mt-4">
 
+    <h2>⚙️ Gestion des Paramètres</h2>
 
-<!-- Formulaire d'ajout -->
-<h4>Ajouter un paramètre</h4>
-<form method="POST" action="{{ url_for('ajouter_parametre') }}">
-    <div class="form-row">
-        <div class="form-group col-md-3">
-            <label for="param_name">Nom</label>
-            <input type="text" name="param_name" class="form-control" required>
-        </div>
-        <div class="form-group col-md-3">
-            <label for="param_value">Valeur</label>
-            <input type="text" name="param_value" class="form-control">
-        </div>
-        <div class="form-group col-md-2">
-            <label for="phone">Téléphone</label>
-            <input type="text" name="phone" class="form-control">
-        </div>
-        <div class="form-group col-md-3">
-            <label for="mail">Email</label>
-            <input type="email" name="mail" class="form-control">
-        </div>
-        <div class="form-group col-md-1 align-self-end">
-            <button type="submit" class="btn btn-primary btn-block">Ajouter</button>
-        </div>
+    <!-- ========================================================= -->
+    <!-- 🔍 RECHERCHE -->
+    <!-- ========================================================= -->
+
+    <div class="mb-3">
+        <input type="text" id="searchInput" class="form-control" placeholder="🔍 Rechercher (nom, valeur, email...)">
     </div>
-</form>
 
-<hr>
+    <!-- ========================================================= -->
+    <!-- ➕ AJOUT -->
+    <!-- ========================================================= -->
 
-<!-- Liste des paramètres -->
-<h4>Liste des paramètres</h4>
-<table class="table table-bordered table-sm">
-    <thead class="thead-light">
-        <tr>
-            <th>ID</th>
-            <th>Nom</th>
-            <th>Valeur</th>
-            <th>Téléphone</th>
-            <th>Email</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for param in parametres %}
-        <tr>
+    <h4>Ajouter un paramètre</h4>
+
+    <form method="POST" action="{{ url_for('ajouter_parametre') }}">
+        <div class="form-row">
+
+            <div class="form-group col-md-3">
+                <label>Nom</label>
+                <select name="param_name" class="form-control" required>
+                    <option value="">-- Choisir --</option>
+                    <option value="type_champ">type_champ</option>
+                    <option value="type_benevole">type_benevole</option>
+                    <option value="enseigne">enseigne</option>
+                    <option value="type_frs">type_frs</option>
+                    <option value="RESEAUX_NATIONAUX">RESEAUX_NATIONAUX</option>
+                    <option value="car">car</option>
+                    <option value="travail_vendredi">travail_vendredi</option>
+                    <option value="applis_autorisees">applis_autorisees</option>
+                    <option value="roles_autorises">roles_autorises</option>
+                </select>
+            </div>
+
+            <div class="form-group col-md-3">
+                <label>Valeur</label>
+                <input type="text" name="param_value" class="form-control">
+            </div>
+
+            <div class="form-group col-md-2">
+                <label>Téléphone</label>
+                <input type="text" name="phone" class="form-control">
+            </div>
+
+            <div class="form-group col-md-3">
+                <label>Email</label>
+                <input type="email" name="mail" class="form-control">
+            </div>
+
+            <div class="form-group col-md-1 align-self-end">
+                <button type="submit" class="btn btn-success btn-block">Ajouter</button>
+            </div>
+
+        </div>
+    </form>
+
+    <hr>
+
+    <!-- ========================================================= -->
+    <!-- 📋 TABLE -->
+    <!-- ========================================================= -->
+
+    <table id="paramTable" class="table table-bordered table-sm table-hover">
+        <thead class="thead-light">
+            <tr>
+                <th>ID</th>
+                <th>Nom</th>
+                <th>Valeur</th>
+                <th>Téléphone</th>
+                <th>Email</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+            {% set ns = namespace(current_cat=None) %}
+
+            {% for param in parametres %}
+
+            <!-- 🔴 LIGNE CATEGORIE -->
+            {% if param['categorie'] != ns.current_cat %}
+            {% set ns.current_cat = param['categorie'] %}
+            <tr class="table-dark category-row">
+                <td colspan="6">📂 {{ ns.current_cat | upper }}</td>
+            </tr>
+            {% endif %}
+
+            <!-- 🟢 LIGNE DONNEE -->
             <form method="POST" action="{{ url_for('maj_parametres') }}">
-                <input type="hidden" name="id" value="{{ param['id'] }}">
-                <td>{{ param['id'] }}</td>
-                <td><input type="text" name="param_name" value="{{ param['param_name'] }}" class="form-control"></td>
-                <td><input type="text" name="param_value" value="{{ param['param_value'] }}" class="form-control"></td>
-                <td><input type="text" name="phone" value="{{ param['phone'] }}" class="form-control"></td>
-                <td><input type="email" name="mail" value="{{ param['mail'] }}" class="form-control"></td>
-                <td class="text-nowrap">
-                    <button type="submit" name="action" value="modifier"
-                        class="btn btn-warning btn-sm">Modifier</button>
-                    <button type="submit" name="action" value="supprimer" class="btn btn-danger btn-sm"
-                        onclick="return confirm('Supprimer ce paramètre ?')">Supprimer</button>
-                </td>
-            </form>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
 
-<div class="d-flex justify-content-end mt-3">
-    <a href="{{ url_for('index') }}" class="btn btn-secondary">Retour</a>
+                <tr class="param-row">
+
+                    <td>{{ param['id'] }}</td>
+
+                    <td>
+                        <input type="text" name="param_name" value="{{ param['param_name'] }}" class="form-control">
+                    </td>
+
+                    <td>
+                        <input type="text" name="param_value" value="{{ param['param_value'] }}" class="form-control">
+                    </td>
+
+                    <td>
+                        <input type="text" name="phone" value="{{ param['phone'] }}" class="form-control">
+                    </td>
+
+                    <td>
+                        <input type="email" name="mail" value="{{ param['mail'] }}" class="form-control">
+                    </td>
+
+                    <td class="text-nowrap">
+
+                        <!-- MODIFIER -->
+                        <button type="button" class="btn btn-warning btn-sm btn-save">
+                            ✏️
+                        </button>
+
+                        <!-- SUPPRIMER -->
+                        <form method="POST" action="{{ url_for('maj_parametres') }}" style="display:inline;">
+                            <input type="hidden" name="id" value="{{ param['id'] }}">
+                            <button type="submit" name="action" value="supprimer" class="btn btn-danger btn-sm"
+                                onclick="return confirm('Supprimer ?')">🗑️</button>
+                        </form>
+
+                    </td>
+
+                </tr>
+
+            </form>
+
+            </tr>
+
+            {% endfor %}
+
+        </tbody>
+    </table>
+
+    <div class="d-flex justify-content-end mt-3">
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">↩️ Retour</a>
+    </div>
+
 </div>
+
+<!-- ========================================================= -->
+<!-- 🔥 SCRIPT RECHERCHE -->
+<!-- ========================================================= -->
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+
+        const input = document.getElementById("searchInput");
+
+        input.addEventListener("keyup", function () {
+
+            const filter = this.value.toLowerCase();
+            const rows = document.querySelectorAll("#paramTable tbody tr");
+
+            let currentCategory = null;
+            let showCategory = false;
+
+            rows.forEach(row => {
+
+                if (row.classList.contains("category-row")) {
+                    currentCategory = row;
+                    showCategory = false;
+                    row.style.display = "none";
+                    return;
+                }
+
+                const text = row.textContent.toLowerCase();
+
+                if (text.includes(filter)) {
+                    row.style.display = "";
+                    showCategory = true;
+
+                    if (currentCategory) {
+                        currentCategory.style.display = "";
+                    }
+
+                } else {
+                    row.style.display = "none";
+                }
+
+            });
+
+            // si champ vide → tout afficher
+            if (filter === "") {
+                rows.forEach(row => row.style.display = "");
+            }
+
+        });
+
+    });
+</script>
+
+<script>
+
+    document.querySelectorAll(".btn-save").forEach(btn => {
+
+        btn.addEventListener("click", function () {
+
+            let row = this.closest("tr");
+
+            let id = row.children[0].innerText.trim();
+            let param_name = row.querySelector("input[name='param_name']").value;
+            let param_value = row.querySelector("input[name='param_value']").value;
+            let phone = row.querySelector("input[name='phone']").value;
+            let mail = row.querySelector("input[name='mail']").value;
+
+            // 🔥 création formulaire dynamique
+            let form = document.createElement("form");
+            form.method = "POST";
+            form.action = "{{ url_for('maj_parametres') }}";
+
+            form.innerHTML = `
+            <input type="hidden" name="id" value="${id}">
+            <input type="hidden" name="param_name" value="${param_name}">
+            <input type="hidden" name="param_value" value="${param_value}">
+            <input type="hidden" name="phone" value="${phone}">
+            <input type="hidden" name="mail" value="${mail}">
+            <input type="hidden" name="action" value="modifier">
+        `;
+
+            document.body.appendChild(form);
+            form.submit();
+
+        });
+
+    });
+
+</script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+
+        document.querySelectorAll("#paramTable input").forEach(input => {
+
+            input.addEventListener("keydown", function (e) {
+
+                if (e.key === "Enter") {
+                    e.preventDefault();
+
+                    let row = this.closest("tr");
+                    let btn = row.querySelector(".btn-save");
+
+                    if (btn) {
+                        btn.click(); // 🔥 lance la sauvegarde
+                    }
+                }
+
+            });
+
+        });
+
+    });
+</script>
 
 {% endblock %}

@@ -94,7 +94,10 @@ from utils import build_menu
 
 @app.context_processor
 def inject_menu():
-    return dict(main_menu=build_menu())
+    try:
+        return dict(main_menu=build_menu() or {})
+    except:
+        return dict(main_menu={})
 
 
 import logging
@@ -645,9 +648,27 @@ def check_maintenance_mode():
 
 @app.before_request
 def set_user_roles():
-    if current_user.is_authenticated:
-        session["roles_utilisateurs"] = get_user_roles(current_user.email)
+    if not current_user.is_authenticated:
+        return
 
+    # =====================================================
+    # 🧪 MODE TEST → bypass des droits DB anonymisée
+    # =====================================================
+    if session.get("test_user"):
+        session["roles_utilisateurs"] = [
+            ("benevoles", "ecriture"),
+            ("associations", "ecriture"),
+            ("fournisseurs", "ecriture"),
+            ("distribution", "ecriture"),
+            ("evenements", "ecriture"),
+            ("planning", "ecriture"),
+        ]
+        return
+
+    # =====================================================
+    # 🔐 MODE NORMAL
+    # =====================================================
+    session["roles_utilisateurs"] = get_user_roles(current_user.email)
 
 @app.route('/check_login_status')
 def check_login_status():
@@ -1183,7 +1204,10 @@ def maj_parametres():
             upload_database()  # Sauvegarde automatique sur Google Drive
             flash(f"🗑️ Paramètre supprimé (ID = {param_id})", "warning")
 
-    parametres = cursor.execute("SELECT * FROM parametres ORDER BY id").fetchall()
+    parametres = cursor.execute("""
+        SELECT * FROM parametres
+        ORDER BY categorie, param_name, param_value
+    """).fetchall()
     conn.close()
     return render_template(
 "maj_parametres.html",parametres=parametres
@@ -1284,22 +1308,24 @@ class PDF(FPDF):
 
 @app.route('/maj_champs', methods=['GET', 'POST'])
 def maj_champs():
+
     provenance = request.args.get("source", "index")
 
     if provenance == "benevoles":
         table = "benevoles"
-        base_template = "base_bene.html"
+        header_subtitle = "Plateforme bénévoles"
+
     elif provenance in ("assos", "associations"):
         table = "associations"
-        base_template = "base_assos.html"
+        header_subtitle = "Plateforme partenaires"
+
     elif provenance in ("fournisseurs", "frs"):
         table = "fournisseurs"
-        base_template = "base_frs.html"
-    else:
-        # fallback sûr
-        table = "associations"
-        base_template = "base_assos.html"
+        header_subtitle = "Plateforme fournisseurs"
 
+    else:
+        table = "associations"
+        header_subtitle = "Plateforme partenaires"
 
     try:
         with get_db_connection() as conn:
@@ -1382,14 +1408,15 @@ def maj_champs():
             """).fetchall()
             available_types = [r["param_value"] for r in types]
 
-        return render_template("maj_champs.html",
+        return render_template(
+            "maj_champs.html",
             grouped_fields=grouped_fields,
             available_groups=available_groups,
             available_types=available_types,
             champs_disponibles=champs_disponibles,
-            base_template=base_template,
             provenance=provenance,
-            form=None  # 🔧 évite l'erreur dans {{ form.hidden_tag() }}
+            header_subtitle=header_subtitle,
+            form=None
         )
 
     except Exception as e:

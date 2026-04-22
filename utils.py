@@ -120,7 +120,7 @@ def build_menu():
 
     return menu
 
-    
+
 
 # ---------------------------------------------------------------------------
 # Chargement robuste du .env (CLI + Flask + gunicorn)
@@ -455,6 +455,7 @@ def get_version_file_path():
 
     write_log("DEBUG fallback PROD utilisé")
     return "/srv/ba38/prod/VERSION"
+
 def get_version():
     version_file = get_version_file_path()
 
@@ -1346,3 +1347,37 @@ def get_attempt_count(ip, username):
     return count
 
 
+
+def get_param_values(param_name):
+    db_path = get_db_path()
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT param_value
+            FROM parametres
+            WHERE param_name = ?
+            ORDER BY param_value
+        """, (param_name,)).fetchall()
+        return [r["param_value"] for r in rows]
+
+def get_param_single(param_name):
+    db_path = get_db_path()
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute("""
+            SELECT param_value
+            FROM parametres
+            WHERE param_name = ?
+            LIMIT 1
+        """, (param_name,)).fetchone()
+        return row["param_value"] if row else None
+
+def get_contacts(param_name):
+    db_path = get_db_path()
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        return conn.execute("""
+            SELECT param_value, phone, mail
+            FROM parametres
+            WHERE param_name = ?
+            ORDER BY param_value
+        """, (param_name,)).fetchall()

@@ -20,7 +20,7 @@ from flask import (
     request, abort, redirect, url_for, flash, Response,
     session, g, current_app, jsonify
 )
-from flask_login import login_required
+from flask_login import login_required, current_user
 from redis import Redis
 
 import os
@@ -178,34 +178,43 @@ def deploy_log():
 @login_required
 def clear_logs():
 
-    if session.get("user_role") != "admin":
+    from flask_login import current_user
+
+    if not current_user.is_authenticated or current_user.role != "admin":
         flash("⛔ Accès interdit.", "danger")
         return redirect(url_for("index"))
 
     log_files = get_available_logs()
     selected = request.form.get("log_file")
 
-    # Sécurité : ne pas autoriser journalctl
+    # ❌ journalctl non vidable
     if not selected or selected == "cron (journalctl)":
         flash("⚠️ Log non vidable.", "warning")
         return redirect(url_for("debug_bp.debug_console"))
 
     path = log_files.get(selected)
 
-    if not path:
+    if not path or not os.path.exists(path):
         flash("❌ Log introuvable.", "danger")
+        return redirect(url_for("debug_bp.debug_console"))
+
+    # 🔒 protection app.log
+    if "app.log" in selected:
+        flash("⚠️ Vidage de app.log déconseillé.", "warning")
         return redirect(url_for("debug_bp.debug_console"))
 
     try:
         open(path, "w").close()
+
+        # log uniquement si pas app.log
         write_log(f"🗑️ Log vidé : {selected}")
+
         flash(f"🗑️ {selected} vidé.", "success")
+
     except Exception as e:
         flash(f"❌ Erreur : {e}", "danger")
 
     return redirect(url_for("debug_bp.debug_console", log_file=selected))
-
-
 # ============================================================================
 # 🧮 COMPARAISON COMPLÈTE DES BASES DEV / PROD
 # ============================================================================
@@ -291,16 +300,20 @@ def debug_console():
         flash("⛔ Accès interdit.", "danger")
         return redirect(url_for("index"))
 
-    base_template = "base_assos.html"
+    header_subtitle = "Console debug"
+
     ref = request.referrer or ""
+
+    # 🔥 CORRECTION : bloc obligatoire
     if "benevoles" in ref or request.args.get("source") == "benevoles":
-        base_template = "base_bene.html"
+        pass
 
     log_files = get_available_logs()
 
     selected = request.form.get("log_file") or request.args.get("log_file") or "app.log"
 
     path = log_files.get(selected)
+
 
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -317,9 +330,8 @@ def debug_console():
         error=error,
         log_files=log_files,
         selected_log=selected,
-        base_template=base_template
+        header_subtitle=header_subtitle,
     )
-
 
 # ============================================================================
 # 📥 EXPORT app.log
@@ -389,8 +401,23 @@ def where_are_my_logs():
 @login_required
 def run_sync_test_schemas():
     """
-    🔁 Synchronise les schémas et données DEV vers les bases TEST
+    🔁 Synchronise DEV → TEST avec contrôle fin
+    - Schéma complet
+    - Données critiques uniquement
+    ⚠️ IMPORTANT :
+        - copy_data=False → ne touche pas aux données anonymisées
+        - seules les tables listées ci-dessous sont remplacées volontairement
     """
+    from dotenv import load_dotenv
+    import os
+
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ENV_PATH = os.path.join(BASE_DIR, ".env")
+
+    load_dotenv(ENV_PATH)
+
+    write_log("🔁 Lancement synchronisation DEV → TEST (schéma + données critiques)"    )
+
     try:
         from scripts.sync_test_schemas import (
             sync_test_databases,
@@ -398,7 +425,11 @@ def run_sync_test_schemas():
             PROD_TEST_DB,
         )
 
-        # 🔍 Précondition : bases TEST existantes
+        import sqlite3
+
+        # =========================================================
+        # 🔍 Vérification existence bases TEST
+        # =========================================================
         missing = []
         if not DEV_TEST_DB.exists():
             missing.append("DEV_TEST")
@@ -413,14 +444,74 @@ def run_sync_test_schemas():
             )
             return redirect(url_for("debug_bp.admin_scripts"))
 
-        # ✅ Synchronisation
-        sync_test_databases(copy_data=True)
-        flash("✅ Synchronisation DEV → TEST réussie.", "success")
+        # =========================================================
+        # 🔁 1. Synchronisation du schéma UNIQUEMENT
+        # =========================================================
+        sync_test_databases(copy_data=False)
+
+        # =========================================================
+        # 🔁 2. Copie ciblée des tables critiques
+        # =========================================================
+
+        from utils import get_db_connection, get_db_path
+
+        dev_db_path = get_db_path()  # base DEV réelle
+        test_dbs = [
+            str(DEV_TEST_DB),
+            str(PROD_TEST_DB),
+        ]
+
+        tables_critique = [
+            "roles_utilisateurs",
+            "users",
+            "parametres",
+            "applications",
+        ]
+
+        for test_db_path in test_dbs:
+
+            with sqlite3.connect(dev_db_path) as dev_conn, sqlite3.connect(test_db_path) as test_conn:
+
+                dev_conn.row_factory = sqlite3.Row
+                test_conn.row_factory = sqlite3.Row
+
+                dev_cur = dev_conn.cursor()
+                test_cur = test_conn.cursor()
+
+                for table in tables_critique:
+
+                    test_cur.execute(f"DELETE FROM {table}")
+
+                    rows = dev_cur.execute(f"SELECT * FROM {table}").fetchall()
+
+                    if not rows:
+                        continue
+
+                    cols = rows[0].keys()
+                    cols_str = ",".join(cols)
+                    placeholders = ",".join(["?"] * len(cols))
+
+                    for row in rows:
+                        test_cur.execute(
+                            f"INSERT INTO {table} ({cols_str}) VALUES ({placeholders})",
+                            tuple(row)
+                        )
+
+                    write_log(f"✅ {test_db_path} → {table} : {len(rows)} lignes")
+
+                test_conn.commit()
+
+        # =========================================================
+        # ✅ FIN
+        # =========================================================
+        flash("✅ Synchronisation DEV → TEST (schéma + données critiques) réussie.", "success")
 
     except Exception as e:
+        write_log(f"❌ Erreur sync TEST : {e}")
         flash(f"❌ Erreur pendant la synchronisation : {e}", "danger")
 
     return redirect(url_for("debug_bp.admin_scripts"))
+
 
 @debug_bp.route("/trigger_error_log", methods=["GET", "POST"])
 @login_required
@@ -740,6 +831,7 @@ def admin_scripts():
         "cleanup_backups.py": "cleanup_backups.py",
         "recreer_table_benevoles_inactifs.py": "recreer_table_benevoles_inactifs.py",
         "create_test_databases.py": "create_test_databases.py",
+        "git_commit_push.sh": "git_commit_push.sh",
     }
     if request.method == "POST":
         script_name = request.form.get("script_name")
@@ -757,17 +849,28 @@ def admin_scripts():
                     )
 
                 elif script_name == "deploy_to_prod.sh":
-                    version = request.form.get("version")
-                    message = request.form.get("message")
 
+                    version = request.form.get("version", "").strip()
+                    message = request.form.get("message", "").strip()
+
+                    # 🔴 contrôle obligatoire
                     if not version:
                         output = "❌ Version obligatoire"
                         error = True
 
                     else:
+                        # 🔥 message par défaut
+                        if not message:
+                            message = "Update"
+
+                        # 🔥 message final propre
+                        full_message = f"v{version} - {message}"
+
                         result = subprocess.run(
-                            ["bash", path, version, message or ""],
-                            capture_output=True, text=True, timeout=300
+                            ["bash", path, version, message],   # ⚠️ IMPORTANT
+                            capture_output=True,
+                            text=True,
+                            timeout=300
                         )
 
                         output = result.stdout or ""
@@ -779,6 +882,52 @@ def admin_scripts():
 
                         error = result.returncode != 0
                         write_log(f"{'❌' if error else '✅'} Script {script_name} exécuté")
+
+                elif script_name == "git_commit_push.sh":
+
+                    version = request.form.get("version", "").strip()
+                    message = request.form.get("message", "").strip()
+
+                    if not message:
+                        message = "Update"
+
+                    full_message = f"v{version} - {message}" if version else message
+
+                    result = subprocess.run(
+                        ["bash", path, full_message],
+                        capture_output=True,
+                        text=True,
+                        timeout=120
+                    )
+
+                    output = result.stdout or ""
+                    if result.stderr:
+                        output += "\n⚠️ STDERR :\n" + result.stderr
+
+                    if not output.strip():
+                        output = "ℹ️ Script exécuté avec succès, aucune sortie."
+
+                    error = result.returncode != 0
+                    write_log(f"{'❌' if error else '✅'} Script {script_name} exécuté")
+
+                    message = request.form.get("message") or "Version update"
+
+                    result = subprocess.run(
+                        ["bash", path, full_message],
+                        capture_output=True,
+                        text=True,
+                        timeout=120
+                    )
+
+                    output = result.stdout or ""
+                    if result.stderr:
+                        output += "\n⚠️ STDERR :\n" + result.stderr
+
+                    if not output.strip():
+                        output = "ℹ️ Script exécuté avec succès, aucune sortie."
+
+                    error = result.returncode != 0
+                    write_log(f"{'❌' if error else '✅'} Script {script_name} exécuté")
 
                 else:
                     result = subprocess.run(
@@ -812,8 +961,11 @@ def admin_scripts():
                 write_log(f"❌ Exception script {script_name} : {e}")
 
     from utils import get_version_full
+
     v = get_version_full()
-    version_msg = v["message"]
+
+    version = v.get("version", "")
+    version_msg = v.get("message", "")
 
     nb_sessions = count_active_sessions()
 
@@ -826,6 +978,7 @@ def admin_scripts():
         error=error,
         script_name=script_name,
         version_msg=version_msg,
+        version=version,
         connexions_dev=connexions_dev,
         connexions_prod=connexions_prod,
         connexions_historiques=[],
@@ -854,7 +1007,7 @@ __all__ = ["debug_bp"]
 @login_required
 def debug_console_stream():
 
-    if session.get("user_role") != "admin":
+    if not current_user.is_authenticated or current_user.role != "admin":
         return jsonify({"error": "Accès interdit"}), 403
 
     log_files = get_available_logs()
@@ -933,25 +1086,21 @@ def debug_console_stream():
 
 def get_available_logs():
 
+    logs_dir = "/srv/ba38/logs"
+
     logs = {
-        "app.log": get_log_path("app.log"),
+        "app.log (DEV)": "/srv/ba38/dev/logs/app.log",
+        "app.log (PROD)": "/srv/ba38/prod/logs/app.log",
         "connexions.log": get_log_path("connexions.log"),
         "deploy.log": get_log_path("deploy.log"),
 
-        # 👉 AJOUT ICI
-        "import_stocks.log": os.path.join("/srv/ba38/logs", "import_stocks.log"),
+        # 🔵 CRON centralisés
+        "backup_db.log": os.path.join(logs_dir, "backup_db.log"),
+        "publipostage.log": os.path.join(logs_dir, "publipostage.log"),
+        "import_stocks.log": os.path.join(logs_dir, "import_stocks.log"),
 
         "cron (journalctl)": "journalctl",
     }
-
-    # 🔵 Logs CRON PROD visibles depuis DEV ou PROD
-    prod_logs_dir = "/srv/ba38/prod/logs"
-
-    logs.update({
-        "cron_backup_db.log (PROD)": os.path.join(prod_logs_dir, "cron_backup_db.log"),
-        "cron_publipostage.log (PROD)": os.path.join(prod_logs_dir, "cron_publipostage.log"),
-        "cron_import_stocks.log (PROD)": os.path.join(prod_logs_dir, "cron_import_stocks.log"),
-    })
 
     return logs
 

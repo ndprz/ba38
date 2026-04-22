@@ -1,4 +1,4 @@
-{% extends base_template %}
+{% extends "base.html" %}
 
 
 {% block title %}Génération de Fichiers{% endblock %}
@@ -12,11 +12,11 @@
     </a>
 
     <a href="{{ url_for('partenaires.partenaires') }}" class="btn btn-outline-dark">
-      ↩️ Retour Partenaires
+        ↩️ Retour Partenaires
     </a>
 
     <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
-      ↩️ Retour à l'accueil
+        ↩️ Retour à l'accueil
     </a>
 </div>
 
@@ -38,4 +38,3 @@
     <button type="submit">Générer</button>
 </form>
 {% endblock %}
-

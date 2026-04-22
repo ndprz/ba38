@@ -124,9 +124,7 @@ def generateur_excel():
             conn.close()
             return render_template(
                 "generateur_excel.html",
-                base_template="base_assos.html"
-                if data_type == "associations"
-                else "base_bene.html",
+                header_subtitle = "Exports associations" if data_type == "associations" else "Exports bénévoles",
                 grouped_fields=grouped_fields,
                 data_type=data_type,
                 selected_columns=selected_columns,
@@ -220,9 +218,7 @@ def generateur_excel():
             # write_log("👀 Aperçu du résultat généré")
             return render_template(
                 "generateur_excel.html",
-                base_template="base_assos.html"
-                if data_type == "associations"
-                else "base_bene.html",
+                header_subtitle = "Exports associations" if data_type == "associations" else "Exports bénévoles" ,
                 grouped_fields=grouped_fields,
                 data_type=data_type,
                 selected_columns=selected_columns,
@@ -315,7 +311,7 @@ def generateur_excel():
 
     return render_template(
         "generateur_excel.html",
-        base_template="base_assos.html" if data_type == "associations" else "base_bene.html",
+        header_subtitle = "Exports associations" if data_type == "associations" else "Exports bénévoles",
         grouped_fields=grouped_fields,
         data_type=data_type,
         selected_columns=selected_columns,
@@ -334,22 +330,57 @@ def generateur_excel():
 @export_data_bp.route("/generation_fichiers", methods=["GET", "POST"])
 @login_required
 def generation_fichiers():
+
+    IE_FIELDS = [
+        "responsable_ie",
+        "tel_resp_ie",
+        "courriel_resp_ie1",
+        "courriel_resp_ie2",
+        "statut_resp_ie",
+    ]
+
+
+    BESOINS_FIELDS = [
+        "besoins_particuliers",
+        "jour_passage_bai",
+        "frequence",
+        "menu_sec",
+        "menu_frais",
+        "heure_passage",
+        "emplacement",
+        "jour_distribution",
+        "heure",
+    ]
+
     """Exports Excel dynamiques basés sur field_groups"""
 
     source = request.args.get("source", "assos")
-    base_template = "base_assos.html" if source == "assos" else "base_bene.html"
+    header_subtitle = "Exports associations" if source == "assos" else "Exports bénévoles"
 
-    if source == "assos":
-        if not has_access("associations", "lecture"):
-            flash("⛔ Accès non autorisé.", "danger")
-            return redirect(url_for("index"))
-    else:
-        if not has_access("benevoles", "lecture"):
-            flash("⛔ Accès non autorisé.", "danger")
-            return redirect(url_for("index"))
+    # 🔥 accès au module export
+    if not has_access("export", "lecture"):
+        flash("⛔ Accès export non autorisé.", "danger")
+        return redirect(url_for("index"))
+
+    # 🔥 accès aux données selon extraction
+    if request.method == "POST":
+        data_type = request.form.get("data_type", "")
+
+        if data_type in ["all", "active", "inactive", "indicateurs_etats", "besoins"]:
+            if not has_access("associations", "lecture"):
+                flash("⛔ Accès associations non autorisé.", "danger")
+                return redirect(url_for("index"))
+
+        elif data_type == "benevoles_complet":
+            if not has_access("benevoles", "lecture"):
+                flash("⛔ Accès bénévoles non autorisé.", "danger")
+                return redirect(url_for("index"))
 
     if request.method == "POST":
         data_type = request.form.get("data_type", "all")
+
+        where_clause = ""
+        extra_fields = []
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -369,21 +400,45 @@ def generation_fichiers():
             return redirect(url_for("export_data.generation_fichiers"))
 
         # ======================================================
-        # 📋 Récupération des champs depuis field_groups
+        # 📋 Récupération des champs
         # ======================================================
 
-        fields = cursor.execute("""
+        # 🔹 1. Coordonnées principales (toujours incluses)
+        coord_fields = cursor.execute("""
             SELECT field_name
             FROM field_groups
             WHERE appli = ?
+            AND LOWER(group_name) = 'coordonnées principales'
             ORDER BY display_order
         """, (appli,)).fetchall()
 
-        field_names = [row["field_name"] for row in fields]
+        coord_fields = [row["field_name"] for row in coord_fields]
 
-        if not field_names:
-            flash("⚠️ Aucun champ défini dans field_groups.", "warning")
-            return redirect(url_for("export_data.generation_fichiers"))
+        # 🔹 2. Champs spécifiques
+        if data_type == "indicateurs_etats":
+            extra_fields = IE_FIELDS
+
+        elif data_type == "besoins":
+            extra_fields = BESOINS_FIELDS
+
+        else:
+            # fallback = tous les champs
+            fields = cursor.execute("""
+                SELECT field_name
+                FROM field_groups
+                WHERE appli = ?
+                ORDER BY display_order
+            """, (appli,)).fetchall()
+
+            field_names = [row["field_name"] for row in fields]
+            columns_sql = ", ".join([f'"{c}"' for c in field_names])
+            
+            # 👉 on sort ici
+            query = f"SELECT {columns_sql} FROM {table} {where_clause}"
+            df = pd.read_sql_query(query, conn)
+
+        # 🔹 3. Fusion propre (éviter doublons)
+        field_names = list(dict.fromkeys(coord_fields + extra_fields))
 
         columns_sql = ", ".join([f'"{c}"' for c in field_names])
 
@@ -398,6 +453,9 @@ def generation_fichiers():
 
         elif data_type == "inactive":
             where_clause = "WHERE validite != 'oui'"
+
+        elif data_type in ["indicateurs_etats", "besoins"]:
+            where_clause = ""
 
         # indicateurs_etats et besoins
         # 👉 on exporte maintenant tous les champs field_groups
@@ -423,8 +481,54 @@ def generation_fichiers():
 
         file_name = file_map.get(data_type, "export.xlsx")
 
+        from openpyxl.utils import get_column_letter
+        from openpyxl.styles import Font, PatternFill
+
         output = io.BytesIO()
-        df.to_excel(output, index=False, engine="openpyxl")
+
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False, sheet_name="Export")
+
+            worksheet = writer.sheets["Export"]
+
+            # ======================================================
+            # 🎨 1. Style header (gras + fond gris)
+            # ======================================================
+            bold_font = Font(bold=True)
+            fill = PatternFill(start_color="DDDDDD", end_color="DDDDDD", fill_type="solid")
+
+            for cell in worksheet[1]:
+                cell.font = bold_font
+                cell.fill = fill
+
+            # ======================================================
+            # 📏 2. Largeur automatique des colonnes
+            # ======================================================
+            for col_idx, col in enumerate(df.columns, 1):
+                max_length = len(str(col))
+
+                for value in df[col]:
+                    if value is not None:
+                        max_length = max(max_length, len(str(value)))
+
+                adjusted_width = max(10, min(max_length + 2, 50))
+
+                col_letter = get_column_letter(col_idx)
+                worksheet.column_dimensions[col_letter].width = adjusted_width
+
+            # ======================================================
+            # 📌 3. Figer la première ligne
+            # ======================================================
+            worksheet.freeze_panes = "B2"
+
+            # ======================================================
+            # 🔍 4. Activer filtres Excel
+            # ======================================================
+            last_col = get_column_letter(len(df.columns))
+            last_row = len(df) + 1
+
+            worksheet.auto_filter.ref = f"A1:{last_col}{last_row}"
+
         output.seek(0)
 
         return send_file(
@@ -457,7 +561,7 @@ def generation_fichiers():
 
     return render_template(
         "generation_fichiers.html",
-        base_template=base_template,
+        header_subtitle = header_subtitle,
         source=source,
         user_role=current_user.role.lower(),
         grouped_fields=grouped_fields,

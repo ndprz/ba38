@@ -15,9 +15,11 @@
 <form method="post" action="{{ url_for('admin.update_users_batch') }}">
 
     <input type="text"
-       id="userFilter"
-       class="form-control mb-3"
-       placeholder="🔍 Filtrer par email, nom ou rôle...">
+        id="search"
+        name="search"
+        class="form-control"
+        placeholder="Rechercher..."
+        oninput="saveFilter()">
 
 
 
@@ -128,7 +130,8 @@
 
             <td>
                 <a href="{{ url_for('admin.gestion_roles_matrice', email=user.email) }}"
-                   class="btn btn-secondary btn-sm">
+                class="btn btn-secondary btn-sm"
+                onclick="saveScrollPosition()">
                     ⚙️ Droits
                 </a>
             </td>
@@ -215,37 +218,98 @@
 </a>
 
 <script>
+/**
+ * =========================================================
+ * 🧠 GESTION UX LISTE UTILISATEURS
+ * - sauvegarde filtre
+ * - restauration filtre
+ * - filtrage tableau
+ * - sauvegarde position scroll
+ * - restauration scroll
+ * =========================================================
+ */
+
 document.addEventListener("DOMContentLoaded", function () {
-    const filterInput = document.getElementById("userFilter");
+
+    // =====================================================
+    // 🔹 1. RÉFÉRENCES DOM
+    // =====================================================
+    const input = document.getElementById("search");
     const rows = document.querySelectorAll("#usersTable tbody tr");
 
-    filterInput.addEventListener("input", function () {
-        const filter = filterInput.value.toLowerCase();
+    // sécurité : si champ absent → stop
+    if (!input) return;
+
+    // =====================================================
+    // 🔹 2. FONCTION FILTRE TABLEAU
+    // =====================================================
+    function applyFilter() {
+        const filter = input.value.toLowerCase();
 
         rows.forEach(row => {
             let text = "";
 
-            // Email (input disabled)
+            // 📧 Email
             const emailInput = row.querySelector("td input[disabled]");
             if (emailInput) text += " " + emailInput.value;
 
-            // Nom
+            // 👤 Nom
             const nameInput = row.querySelector("input[name*='[username]']");
             if (nameInput) text += " " + nameInput.value;
 
-            // Rôle
+            // 🏷️ Rôle
             const roleSelect = row.querySelector("select[name*='[role]']");
             if (roleSelect) text += " " + roleSelect.value;
 
-            // Droits (texte visible)
+            // 🔐 Droits visibles
             const droitsCell = row.querySelector("td ul");
             if (droitsCell) text += " " + droitsCell.innerText;
 
-            // Comparaison
+            // 🎯 Filtrage
             row.style.display = text.toLowerCase().includes(filter) ? "" : "none";
         });
+    }
+
+    // =====================================================
+    // 🔹 3. RESTAURATION FILTRE
+    // =====================================================
+    const savedFilter = localStorage.getItem("filter_users");
+
+    if (savedFilter !== null) {
+        input.value = savedFilter;
+        applyFilter(); // 🔥 appliquer immédiatement
+    }
+
+    // =====================================================
+    // 🔹 4. SAUVEGARDE + FILTRE EN TEMPS RÉEL
+    // =====================================================
+    input.addEventListener("input", function () {
+        localStorage.setItem("filter_users", input.value);
+        applyFilter();
     });
+
+    // =====================================================
+    // 🔹 5. RESTAURATION SCROLL
+    // =====================================================
+    const savedScroll = localStorage.getItem("scrollY_gestion_users");
+
+    if (savedScroll !== null) {
+        window.scrollTo(0, parseInt(savedScroll));
+        localStorage.removeItem("scrollY_gestion_users");
+    }
+
 });
+
+
+/**
+ * =========================================================
+ * 🔹 6. SAUVEGARDE POSITION SCROLL
+ * (appelée au clic sur bouton "Droits")
+ * =========================================================
+ */
+function saveScrollPosition() {
+    localStorage.setItem("scrollY_gestion_users", window.scrollY);
+}
 </script>
 
 {% endblock %}

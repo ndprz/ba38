@@ -58,7 +58,7 @@
             #}
 
             {% for appli, label in applications.items() %}
-            {% set droit = roles.get(appli, "aucun") %}
+            {% set droit = roles.get(appli) or "aucun" %}
             <tr>
                 <td class="fw-bold">{{ label }}</td>
 
@@ -111,12 +111,28 @@
     <!-- ACTIONS -->
     <!-- ========================================================= -->
     <div class="d-flex gap-2 mt-3">
-        <button type="submit" class="btn btn-primary">
+
+        <!-- Enregistrer -->
+        <button type="submit" name="action" value="save" class="btn btn-primary">
             💾 Enregistrer
         </button>
-        <a href="{{ url_for('admin.gestion_utilisateurs') }}" class="btn btn-secondary">
+
+        <!-- Enregistrer + Retour -->
+        <button type="submit"
+                name="action"
+                value="save_return"
+                class="btn btn-success"
+                onclick="saveScrollPosition()">
+            💾⬅️ Enregistrer et retour
+        </button>
+
+        <!-- Retour simple -->
+        <a href="{{ url_for('admin.gestion_utilisateurs') }}"
+        class="btn btn-secondary"
+        onclick="saveScrollPosition()">
             ⬅️ Retour
         </a>
+
     </div>
 </form>
 
@@ -124,6 +140,39 @@
 <!-- JS : désactivation de la matrice si ADMIN GLOBAL -->
 <!-- ========================================================= -->
 <script>
+
+window.addEventListener("beforeunload", function (e) {
+    if (formModified) {
+        e.preventDefault();
+        e.returnValue = "";
+    }
+});
+
+let formModified = false;
+
+// 🔥 détecter modification
+document.querySelectorAll("form input").forEach(el => {
+    el.addEventListener("change", () => {
+        formModified = true;
+    });
+});
+
+// 🔥 reset après submit
+document.querySelector("form").addEventListener("submit", () => {
+    formModified = false;
+});
+
+// 🔥 contrôle bouton retour
+function confirmLeave(event) {
+    if (formModified) {
+        if (!confirm("⚠️ Vous avez des modifications non enregistrées. Quitter quand même ?")) {
+            event.preventDefault();
+            return false;
+        }
+    }
+    return true;
+}
+
 function toggleMatrice() {
     const isAdmin = document.getElementById("admin_global").checked;
 

@@ -5,7 +5,7 @@
 <h2>⚙️ Gestion des rôles de : {{ user.username }} ({{ user.email }})</h2>
 
 <form method="POST">
-    {% for appli in ['benevoles', 'associations'] %}
+    {% for appli, label in applications.items() %}
     <div class="mb-3">
         <label class="form-label">Application : {{ appli }}</label>
         <select name="niveau_{{ appli }}" class="form-select">

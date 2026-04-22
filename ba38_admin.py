@@ -20,82 +20,91 @@ DOC_BASE_PATH = "/srv/ba38/documentation_technique"
 # GESTION DES DROITS UTILISATEUR – MATRICE (OPTION B)
 # ============================================================
 
-APPLICATIONS = {
-    "planning": "Plannings",
-    "benevoles": "Bénévoles",
-    "associations": "Associations",
-    "distribution": "Distribution",
-    "fournisseurs": "Fournisseurs",
-    "evenements": "Événements",
-    "facturation": "Facturation",
-    "parametres": "Paramètres",
-    "utilisateurs": "Utilisateurs",
-    "engagements": "Engagements",
-    "engagement_parametres": "Engagement Paramètres",
-    "tresorerie": "Trésorerie",
-    "droit_image": "Droit à l'image",
-    "photos_benevoles": "Photos bénévoles",
-}
 
-@admin_bp.route("/roles/<email>", methods=["GET", "POST"])
+@admin_bp.route("/gestion_roles_matrice/<email>", methods=["GET", "POST"])
 @login_required
 @require_admin_global
 def gestion_roles_matrice(email):
-    """
-    Gestion matricielle des droits pour un utilisateur.
-    """
-    # if g.user_role != "admin":
-    #     flash("Accès réservé aux administrateurs.", "danger")
-    #     return redirect(url_for("index"))
 
     with get_db_connection() as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
 
-        # ---- Charger utilisateur ----
-        cur.execute("SELECT email, username, role, actif FROM users WHERE email = ?", (email,))
+        # --------------------------------------------------
+        # 1️⃣ Charger utilisateur
+        # --------------------------------------------------
+        cur.execute("""
+            SELECT email, username, role, actif
+            FROM users
+            WHERE email = ?
+        """, (email,))
         user = cur.fetchone()
+
         if not user:
             flash("Utilisateur introuvable.", "danger")
             return redirect(url_for("admin.gestion_utilisateurs"))
 
-        # ---- POST : mise à jour complète ----
+        # --------------------------------------------------
+        # 2️⃣ Charger les applications dynamiquement
+        # --------------------------------------------------
+        cur.execute("""
+            SELECT appli, label
+            FROM applications
+            ORDER BY label
+        """)
+        applications_rows = cur.fetchall()
+
+        APPLICATIONS = {
+            row["appli"]: row["label"]
+            for row in applications_rows
+        }
+
+        # --------------------------------------------------
+        # 3️⃣ POST : mise à jour des droits
+        # --------------------------------------------------
         if request.method == "POST":
+
+            action = request.form.get("action", "save")
+
             admin_global = request.form.get("admin_global") == "on"
 
-            # 1️⃣ Mise à jour admin global (users.role)
+            # rôle global
             cur.execute(
                 "UPDATE users SET role = ? WHERE email = ?",
                 ("admin" if admin_global else "user", email),
             )
 
-            # 2️⃣ Suppression de TOUS les rôles existants
+            # suppression des droits
             cur.execute(
                 "DELETE FROM roles_utilisateurs WHERE user_email = ?",
                 (email,),
             )
 
-            # 3️⃣ Réinsertion selon la matrice
+            # réinsertion
             for appli in APPLICATIONS:
                 droit = request.form.get(f"droit_{appli}", "")
                 if droit:
-                    cur.execute(
-                        """
+                    cur.execute("""
                         INSERT INTO roles_utilisateurs (user_email, appli, droit)
                         VALUES (?, ?, ?)
-                        """,
-                        (email, appli, droit),
-                    )
+                    """, (email, appli, droit))
 
             conn.commit()
             flash("Droits mis à jour avec succès.", "success")
+
+            if action == "save_return":
+                return redirect(url_for("admin.gestion_utilisateurs"))
+
             return redirect(url_for("admin.gestion_roles_matrice", email=email))
 
-        # ---- GET : affichage ----
-        cur.execute(
-            "SELECT appli, droit FROM roles_utilisateurs WHERE user_email = ?",
-            (email,),
-        )
+        # --------------------------------------------------
+        # 4️⃣ GET : charger droits existants
+        # --------------------------------------------------
+        cur.execute("""
+            SELECT appli, droit
+            FROM roles_utilisateurs
+            WHERE user_email = ?
+        """, (email,))
         rows = cur.fetchall()
 
         droits_existants = {
@@ -103,13 +112,20 @@ def gestion_roles_matrice(email):
             for row in rows
         }
 
+        # 🔥 important : afficher même sans droits existants
+        for appli in APPLICATIONS:
+            if appli not in droits_existants:
+                droits_existants[appli] = ""
+
+    # --------------------------------------------------
+    # 5️⃣ Rendu
+    # --------------------------------------------------
     return render_template(
         "admin/gestion_roles_matrice.html",
         user=user,
         applications=APPLICATIONS,
         roles=droits_existants
     )
-
 
 # ===========================
 #
@@ -165,9 +181,6 @@ def compute_user_role():
 @login_required
 @require_admin_global
 def gestion_roles():
-    # if g.get("user_role") != "admin":
-    #     flash("Accès refusé", "danger")
-    #     return redirect(url_for("index"))
 
     filtre = request.args.get("filtre", "").strip().lower()
 
@@ -485,10 +498,7 @@ def update_users_batch():
     Enregistrement en masse des utilisateurs depuis la page de gestion.
     """
 
-
-    # if g.user_role != "admin":
-    #     flash("⛔ Accès interdit.", "danger")
-    #     return redirect(url_for("index"))
+    action = request.form.get("action", "save")
 
     users_data = request.form.to_dict(flat=False)
 
@@ -534,6 +544,9 @@ def update_users_batch():
                 """, (password_hash, user_id))
 
         conn.commit()
+
+        if action == "save_return":
+            return redirect(url_for("admin.gestion_utilisateurs"))
 
     flash("✅ Modifications enregistrées.", "success")
     return redirect(url_for("admin.gestion_utilisateurs"))

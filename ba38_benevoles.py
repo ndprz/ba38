@@ -303,6 +303,7 @@ def benevoles():
 
     return render_template(
         "benevoles/benevoles.html",
+        header_subtitle="Liste des bénévoles",
         benevoles=rows,
         grouped_fields=grouped_fields_ordered,
         selected_columns=selected_columns,

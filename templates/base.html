@@ -2,96 +2,92 @@
 <html lang="fr">
 
 <head>
-    <!-- =====================================================
+     <!-- =====================================================
          META
     ====================================================== -->
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Gestion BA38{% endblock %}</title>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>{% block title %}Gestion BA38{% endblock %}</title>
 
-    <!-- =====================================================
+     <!-- =====================================================
          FAVICON
     ====================================================== -->
-    <link rel="icon" href="{{ url_for('static', filename='images/favicon.ico') }}">
+     <link rel="icon" href="{{ url_for('static', filename='images/favicon.ico') }}">
 
-    <!-- =====================================================
+     <!-- =====================================================
          CSS GLOBAL
     ====================================================== -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-custom.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">
+     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-custom.css') }}">
+     <link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">
 
-    <!-- =====================================================
+     <!-- =====================================================
          CSS SPÉCIFIQUE PAGE (optionnel)
     ====================================================== -->
-    {% block extra_styles %}{% endblock %}
+     {% block extra_styles %}{% endblock %}
 
-    <!-- Google Font -->
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+     <!-- Google Font -->
+     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
 </head>
 
 <body>
 
-    <!-- =====================================================
+     <!-- =====================================================
          HEADER GLOBAL UNIQUE
     ====================================================== -->
 
-    {# 👉 Chaque page peut surcharger ce sous-titre #}
-    {% set header_subtitle = header_subtitle | default("Plateforme BA38") %}
+     {# 👉 Chaque page peut surcharger ce sous-titre #}
+     {% set header_subtitle = header_subtitle | default("Plateforme BA38") %}
 
-    {% include "partials/_header.html" with context %}
+     {% include "partials/_header.html" with context %}
 
-    <!-- =====================================================
+     <!-- =====================================================
          MODE TEST
     ====================================================== -->
-    {% if session.get('test_user') %}
-    <div class="alert alert-danger text-center m-0">
-        ⚠️ MODE TEST ⚠️
-    </div>
-    {% endif %}
+     {% if session.get('test_user') %}
+     <div class="alert alert-danger text-center m-0">
+          ⚠️ MODE TEST ⚠️
+     </div>
+     {% endif %}
 
-    <!-- =====================================================
+     <!-- =====================================================
          MESSAGES FLASH
     ====================================================== -->
-    {% include "_flash.html" %}
+     {% include "_flash.html" %}
 
-    <!-- =====================================================
+     <!-- =====================================================
          CONTENU PRINCIPAL
     ====================================================== -->
-    <main class="container-fluid mt-3">
-        {% block content %}{% endblock %}
-    </main>
+     <main class="container-fluid mt-3">
+          {% block content %}{% endblock %}
+     </main>
 
-    <!-- =====================================================
+     <!-- =====================================================
          INFO BASE (DEBUG)
     ====================================================== -->
-    {% if db_info %}
-    <div class="alert alert-warning text-center m-0 py-1 small fw-bold">
-        ⚙️ Base en cours : {{ db_info }}
-    </div>
-    {% endif %}
+     {% if db_info %}
+     <div class="alert alert-warning text-center m-0 py-1 small fw-bold">
+          ⚙️ Base en cours : {{ db_info }}
+     </div>
+     {% endif %}
 
-    <!-- =====================================================
+     <!-- =====================================================
          FOOTER
     ====================================================== -->
-    <footer class="main-footer text-center mt-4">
-        &copy; 2025 Gestion BA38 —
-        {% include "partials/_version.html" %}
-    </footer>
+     <footer class="main-footer text-center mt-4">
+          &copy; 2025 Gestion BA38 —
+          {% include "partials/_version.html" %}
+     </footer>
 
-    <!-- =====================================================
-         JS GLOBAL
-    ====================================================== -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-    <script src="{{ url_for('static', filename='js/layout.js') }}"></script>
-
-    <!-- =====================================================
-         JS SPÉCIFIQUE PAGE
-    ====================================================== -->
-    {% block scripts %}{% endblock %}
+     {% block scripts %}{% endblock %}
 
 </body>
+
+
+
+
+
 
 </html>
