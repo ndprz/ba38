@@ -873,6 +873,8 @@ def admin_scripts():
                             timeout=300
                         )
 
+
+
                         output = result.stdout or ""
                         if result.stderr:
                             output += "\n⚠️ STDERR :\n" + result.stderr
