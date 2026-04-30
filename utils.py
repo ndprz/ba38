@@ -459,6 +459,21 @@ def get_version_file_path():
 def get_version():
     version_file = get_version_file_path()
 
+    version = "unknown"
+
+    try:
+        with open(version_file, "r") as f:
+            for line in f:
+                line = line.strip()   # 🔥 rend le parsing insensible aux espaces
+                if line.startswith("VERSION="):
+                    version = line.split("=", 1)[1].strip()
+                    break
+    except Exception as e:
+        write_log(f"❌ get_version erreur : {e}")
+
+    return version
+    version_file = get_version_file_path()
+
     try:
         with open(version_file, "r") as f:
             for line in f:
@@ -493,16 +508,29 @@ def get_version_full():
     try:
         with open(version_file, "r") as f:
             for line in f:
-                if line.startswith("VERSION="):
-                    data["version"] = line.split("=", 1)[1].strip()
-                elif line.startswith("MESSAGE="):
-                    data["message"] = line.split("=", 1)[1].strip()
-                elif line.startswith("DATE="):
-                    data["date"] = line.split("=", 1)[1].strip()
+                line = line.strip()
+                if not line or "=" not in line:
+                    continue
+
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip('"')
+
+                if key == "VERSION":
+                    data["version"] = value
+                elif key == "MESSAGE":
+                    data["message"] = value
+                elif key == "DATE":
+                    data["date"] = value
+
     except Exception as e:
         write_log(f"❌ get_version_full erreur : {e}")
 
     return data
+
+
+
+
 
 def get_all_users():
     """
@@ -1381,3 +1409,27 @@ def get_contacts(param_name):
             WHERE param_name = ?
             ORDER BY param_value
         """, (param_name,)).fetchall()
+
+
+def render_modele_email(texte, contexte):
+    """
+    Remplace les variables <<xxx>> par leur valeur
+    """
+
+    if not texte:
+        return ""
+
+    for key, value in contexte.items():
+        placeholder = f"<<{key}>>"
+        texte = texte.replace(placeholder, str(value or ""))
+
+    return texte
+
+
+def date_fr(value):
+    try:
+        from datetime import datetime
+        dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+        return dt.strftime("%d/%m/%Y %H:%M")
+    except:
+        return value

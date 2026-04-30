@@ -7,9 +7,11 @@
 
   <h2 class="mb-3">📦 Module Distribution</h2>
 
-  <a href="{{ url_for('index') }}" class="btn btn-outline-dark mb-3">
-    ↩️ Retour à l'accueil
-  </a>
+  <div class="d-flex justify-content-end">
+    <a href="{{ url_for('index') }}" class="btn btn-outline-dark mb-3">
+      ↩️ Retour à l'accueil
+    </a>
+  </div>
 
   <div class="list-group">
 
@@ -25,6 +27,10 @@
 
     <a href="{{ url_for('distribution.mouvements_stocks_depot') }}" class="list-group-item list-group-item-action">
       📊 Mouvements de stocks – Dépôt
+    </a>
+
+    <a href="{{ url_for('distribution.mouvements_stocks_v2') }}" class="list-group-item list-group-item-action">
+      🧪 Mouvements de stocks – V2 (beta)
     </a>
 
     <!-- ================= RAMASSE ================= -->

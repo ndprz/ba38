@@ -9,23 +9,31 @@
     <!-- ===================================================== -->
     <!-- EN-TÊTE -->
     <!-- ===================================================== -->
+
+    <div class="alert alert-warning">
+        ⚠️ Ceci est une prévisualisation. Le mouvement n'est pas encore validé.
+    </div>
+
     <div class="d-flex justify-content-between align-items-center mb-4">
 
-    <h2>
-        📦 Bordereau de transfert – {{ num_mvt }}
-    </h2>
+        <h2>
+            📦 Bordereau de transfert – {{ num_mvt }}
+        </h2>
 
-    <div>
-        <button onclick="retourMouvements()" 
-                class="btn btn-secondary btn-sm">
-        ⬅ Retour aux mouvements
-        </button>
+        <div>
 
-        <button onclick="window.print()" 
-                class="btn btn-primary btn-sm ms-2">
-        🖨 Imprimer
-        </button>
-    </div>
+            <a href="/mouvements-stocks-depot?num_mvt={{ num_mvt }}" class="btn btn-secondary">
+                ✏️ Modifier le brouillon
+            </a>
+
+            <button onclick="retourMouvements()" class="btn btn-secondary btn-sm">
+                ⬅ Retour aux mouvements
+            </button>
+
+            <button onclick="window.print()" class="btn btn-primary btn-sm ms-2">
+                🖨 Imprimer
+            </button>
+        </div>
 
     </div>
 
@@ -71,31 +79,31 @@
 <!-- ===================================================== -->
 
 <style>
-@media print {
+    @media print {
 
-    body {
-        background: white !important;
-    }
+        body {
+            background: white !important;
+        }
 
-    .btn,
-    a {
-        display: none !important;
-    }
+        .btn,
+        a {
+            display: none !important;
+        }
 
-    h2 {
-        font-size: 20px;
-    }
+        h2 {
+            font-size: 20px;
+        }
 
-    table {
-        font-size: 12px;
+        table {
+            font-size: 12px;
+        }
     }
-}
 </style>
 
 <script>
-function retourMouvements() {
-    window.location.href = "{{ url_for('distribution.mouvements_stocks_depot') }}?reload=" + Date.now();
-}
+    function retourMouvements() {
+        window.location.href = "{{ url_for('distribution.mouvements_stocks_depot') }}?reload=" + Date.now();
+    }
 </script>
 
 

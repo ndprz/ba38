@@ -142,181 +142,209 @@
 
   <script>
 
-    document.body.style.cursor = "none";
-
-    let prochainHTML = null;
-
-    function startFullscreen() {
-
-      if (document.fullscreenElement) return;
-
-      const el = document.documentElement;
-
-      if (el.requestFullscreen) {
-        el.requestFullscreen();
-      } else if (el.webkitRequestFullscreen) {
-        el.webkitRequestFullscreen();
-      } else if (el.msRequestFullscreen) {
-        el.msRequestFullscreen();
-      }
-    }
-
-    // interaction utilisateur
-    document.addEventListener("click", startFullscreen);
-    document.addEventListener("keydown", startFullscreen);
-
-    // tentative automatique
-    setTimeout(() => {
-      document.body.click();
-    }, 1500);
-    // clic
-    document.addEventListener("click", startFullscreen);
-
-    // touche clavier
-    document.addEventListener("keydown", startFullscreen);
-
-    // tentative automatique (certains navigateurs l’acceptent)
-    window.addEventListener("load", () => {
-      setTimeout(startFullscreen, 1000);
-    });
-    setInterval(function () {
-      location.reload();
-    }, 300000);
-
-
-    document.addEventListener("fullscreenchange", () => {
-      if (!document.fullscreenElement) {
-        setTimeout(startFullscreen, 1000);
-      }
-    });
-
-    const evenements = JSON.parse('{{ evenements | default([]) | tojson | safe }}');
-
+    // =========================================================
+    // 🔧 VARIABLES GLOBALES
+    // =========================================================
     let playlist = [];
     let index = 0;
     let timer = null;
+    let slideInterval = null;
+    let prochainHTML = null;
+    let pause = false;
 
+    // =========================================================
+    // 🧹 CLEAN TIMERS
+    // =========================================================
+    function clearAllTimers() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (slideInterval) {
+        clearInterval(slideInterval);
+        slideInterval = null;
+      }
+    }
+
+    // =========================================================
+    // ⌨️ CLAVIER
+    // =========================================================
+    document.addEventListener("keydown", (e) => {
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        forceNext();
+      }
+
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        forcePrev();
+      }
+
+      if (e.key === " ") {
+        e.preventDefault();
+        pause = !pause;
+        console.log("Pause =", pause);
+      }
+
+    });
+
+    function forceNext() {
+      if (!playlist.length) return;
+      clearAllTimers();
+      index = (index + 1) % playlist.length;
+      playNext();
+    }
+
+    function forcePrev() {
+      if (!playlist.length) return;
+      clearAllTimers();
+      index = (index - 1 + playlist.length) % playlist.length;
+      playNext();
+    }
+
+    // =========================================================
+    // 🖥️ FULLSCREEN
+    // =========================================================
+    function startFullscreen() {
+      if (document.fullscreenElement) return;
+      document.documentElement.requestFullscreen?.();
+    }
+
+    document.addEventListener("click", startFullscreen);
+    document.addEventListener("keydown", startFullscreen);
+
+    setTimeout(() => document.body.click(), 1500);
+
+    window.addEventListener("load", () => {
+      setTimeout(startFullscreen, 1000);
+    });
+
+    // refresh auto
+    setInterval(() => location.reload(), 300000);
+
+    // =========================================================
+    // 🧠 UTILS
+    // =========================================================
     function prechargerSuivant() {
-
-      if (playlist.length === 0) return;
-
-      const nextIndex = (index + 1) % playlist.length;
-      const nextEvent = playlist[nextIndex];
-
-      prochainHTML = htmlPour(nextEvent);
+      if (!playlist.length) return;
+      const next = playlist[(index + 1) % playlist.length];
+      prochainHTML = htmlPour(next);
     }
 
     function sortImagesByPage(images) {
-      // Ex: "..._page_12.jpg" → 12
-      const pageNum = (p) => {
-        const m = String(p).match(/_page_(\d+)\.(?:jpe?g|png|webp)$/i);
-        return m ? parseInt(m[1], 10) : Number.MAX_SAFE_INTEGER; // sans numéro → à la fin
-      };
-      // Tri numérique stable
-      return [...images].sort((a, b) => pageNum(a) - pageNum(b));
+      return [...images].sort((a, b) => {
+        const get = (x) => {
+          const m = x.match(/_page_(\d+)/);
+          return m ? parseInt(m[1]) : 9999;
+        };
+        return get(a) - get(b);
+      });
     }
 
-
     // =========================================================
-    // 🧩 Génération du contenu HTML
+    // 🧩 HTML GENERATION
     // =========================================================
     function htmlPour(e) {
 
-      // === 🎥 Vidéo ===
+      // 🎥 VIDEO
       if (e.type === "video") {
-        let src = (e.fichier_path && e.fichier_path.trim()) || e.contenu || "";
-        if (!src.startsWith("/static/")) src = "/static/evenements/" + src.split("/").pop();
+
+        let src = e.fichier_path || e.contenu || "";
+
+        if (!src.startsWith("/static/")) {
+          src = "/static/evenements/" + src.split("/").pop();
+        }
+
         const base = src.replace(/\.[^/.]+$/, "");
         const trackPath = base + ".vtt";
-        const dureeAffichage = e.duree_affichage ? `<div class="duree-badge">${Math.round(e.duree)} secondes</div>` : "";
+
         return `
-          <div style="position: relative; width: 100vw; height: 100vh;">
-            <video class="fullscreen" autoplay playsinline muted>
-              <source src="${src}" type="video/mp4">
-              <track src="${trackPath}" kind="subtitles" srclang="fr" label="Français" default>
-            </video>
-            ${dureeAffichage}
-          </div>`;
+    <video class="fullscreen" muted playsinline preload="auto">
+      <source src="${src}" type="video/mp4">
+      <track src="${trackPath}" kind="subtitles" srclang="fr" label="Français" default>
+    </video>
+  `;
       }
 
-      // === 📄 Document (PDF ou images converties) ===
+      // 📄 DOCUMENT
       if (e.type === "document") {
-        const src = (e.fichier_path && e.fichier_path.trim()) || e.contenu || "";
-        const srcStr = String(src || "").toLowerCase();
 
-        // 🖼️ PRIORITÉ ABSOLUE : images si disponibles
-        if (e.images && e.images.length > 0) {
-          const ordered = sortImagesByPage(e.images);
-          const slides = ordered.map((img, i) => `
-          <div class="docSlide${i === 0 ? ' active' : ''}">
-            <img src="${img}" class="fullscreen">
-          </div>`).join("");
-          return `<div id="diaporama" style="position:relative; width:100vw; height:100vh;">${slides}</div>`;
+        if (e.images && e.images.length) {
+          const imgs = sortImagesByPage(e.images);
+          return imgs.map((img, i) => `
+        <div class="docSlide ${i === 0 ? 'active' : ''}">
+          <img src="${img}" class="fullscreen">
+        </div>
+      `).join("");
         }
 
-
-        // 🧾 PDF brut
-        if ((!e.images || e.images.length === 0) && srcStr.endsWith(".pdf")) {
-          return `<iframe class="fullscreen" src="${src}#view=FitH" allow="fullscreen"></iframe>`;
-        }
-
-        // 🖼️ Image directe
-        if (srcStr.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
-          return `<img src="${src}" class="fullscreen">`;
-        }
-
-        // Fallback
-        return `<iframe class="fullscreen" src="${src}"></iframe>`;
+        return `<iframe class="fullscreen" src="${e.fichier_path}"></iframe>`;
       }
 
-      // === 💬 Message texte ===
+      // 💬 MESSAGE + IMAGE
       const titre = e.titre || "";
       const contenu = e.contenu || "";
+
       const img = e.image_path
         ? `<div style="margin-top:2rem;">
-             <img src="${e.image_path}" class="fullscreen" style="max-height:50vh; max-width:90vw; object-fit:contain; border-radius:10px;">
-           </div>`
+       <img src="${e.image_path}"
+            style="max-height:50vh; max-width:90vw; object-fit:contain; border-radius:10px;">
+     </div>`
         : "";
 
-      return `<div class="msg"><h1>${titre}</h1><p>${contenu}</p>${img}</div>`;
+      return `
+  <div class="msg">
+    <h1>${titre}</h1>
+    <p>${contenu}</p>
+    ${img}
+  </div>
+`;
     }
 
     // =========================================================
-    // 🔁 Affichage de l'événement suivant
+    // ▶️ LECTURE
     // =========================================================
     function playNext() {
+
+      clearAllTimers();
+
       const zone = document.getElementById("zone");
 
-      if (playlist.length === 0) {
-        zone.innerHTML = `<div class="msg"><h1>Aucun événement en cours</h1></div>`;
+      if (!playlist.length) {
+        zone.innerHTML = "<h1>Aucun événement</h1>";
         return;
       }
 
       const ev = playlist[index];
+
       zone.classList.add("hidden");
 
       setTimeout(() => {
+
         zone.innerHTML = prochainHTML || htmlPour(ev);
         prechargerSuivant();
+
         zone.classList.remove("hidden");
 
-        // 🖼️ Diaporama (si plusieurs images)
         const slides = zone.querySelectorAll(".docSlide");
 
+        // =====================================================
+        // 📸 DIAPORAMA
+        // =====================================================
         if (slides.length > 1) {
 
           let i = 0;
           const interval = (ev.duree_affichage || 8) * 1000;
 
-          // affichage initial
           slides.forEach((s, idx) => s.classList.toggle("active", idx === 0));
 
-          const loop = setInterval(() => {
+          slideInterval = setInterval(() => {
 
             i++;
 
             if (i >= slides.length) {
-              clearInterval(loop);
+              clearInterval(slideInterval);
               nextEvent();
               return;
             }
@@ -325,58 +353,101 @@
 
           }, interval);
 
+          return;
         }
-        else {
 
-          const video = zone.querySelector("video");
+        // =====================================================
+        // 🎥 VIDEO
+        // =====================================================
+        const video = zone.querySelector("video");
 
-          if (video) {
+        if (video) {
 
-            // 🎥 attendre la fin de la vidéo
-            video.onended = () => {
-              nextEvent();
-            };
+          video.muted = true;
 
-          } else {
 
-            // 🖼 image / pdf / message
-            setTimeout(nextEvent, (ev.duree_affichage || 10) * 1000);
+          video.onloadeddata = () => {
+            const tracks = video.textTracks;
+            if (tracks.length > 0) {
+              tracks[0].mode = "showing";
+            }
+          };
 
-          }
+          video.oncanplay = () => {
+            video.play().catch(() => {
+              console.warn("autoplay bloqué");
+              timer = setTimeout(nextEvent, 5000);
+            });
+          };
 
+          video.onended = () => {
+            if (!pause) nextEvent();
+          };
+
+          video.onerror = () => {
+            console.warn("erreur video");
+            nextEvent();
+          };
+
+          return;
         }
+
+        // =====================================================
+        // 🖼️ IMAGE / TEXTE
+        // =====================================================
+        if (!pause) {
+          timer = setTimeout(nextEvent, (ev.duree_affichage || 10) * 1000);
+        }
+
       }, 400);
 
-      function nextEvent() {
-        index = (index + 1) % playlist.length;
-        playNext();
-      }
     }
 
     // =========================================================
-    // 🔄 Récupération de la playlist
+    // 🔁 NEXT
+    // =========================================================
+    function nextEvent() {
+      index = (index + 1) % playlist.length;
+      playNext();
+    }
+
+    // =========================================================
+    // 🔄 REFRESH API
     // =========================================================
     async function refresh() {
+
       try {
         const r = await fetch("/api/evenements_actifs", { cache: "no-store" });
         const data = await r.json();
-        const changed = JSON.stringify(data.map(d => d.id)) !== JSON.stringify(playlist.map(d => d.id));
-        playlist = data;
-        if (changed) {
+
+        const newIds = data.map(d => d.id).sort().join(",");
+        const oldIds = playlist.map(d => d.id).sort().join(",");
+
+        if (newIds !== oldIds) {
+          playlist = data;
           index = 0;
           playNext();
         }
+
       } catch (e) {
-        console.error("Erreur lors du refresh:", e);
+        console.error("refresh error", e);
       }
+
     }
 
+    // =========================================================
+    // 🚀 INIT
+    // =========================================================
     (async () => {
       await refresh();
       setInterval(refresh, 30000);
-      if (playlist.length === 0) playNext();
+      if (!playlist.length) playNext();
     })();
+
   </script>
+
+
+
 </body>
 
 </html>

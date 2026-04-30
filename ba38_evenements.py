@@ -621,11 +621,14 @@ def api_evenements_actifs():
           AND date_fin   >= ?
         ORDER BY date_debut, id
     """, (now, now)).fetchall()
+
+
     conn.close()
 
     data = []
     for r in rows:
         d = dict(r)
+        d["actif"] = int(d.get("actif", 0))
         fichier_web = (d.get("fichier_path") or "").strip()
         images = []
 

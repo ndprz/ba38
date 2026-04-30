@@ -2,6 +2,9 @@
 import sqlite3
 import os
 import io
+from markupsafe import Markup, escape
+
+
 from datetime import date, datetime
 
 from flask import (
@@ -9,7 +12,7 @@ from flask import (
     redirect, url_for, flash, send_file
 )
 from flask_login import login_required
-from weasyprint import HTML
+from weasyprint import HTML, CSS
 
 from utils import (
     get_db_connection,
@@ -18,6 +21,7 @@ from utils import (
     upload_database,
     require_access
 )
+
 
 fiches_visite_bp = Blueprint("fiches_visite", __name__)
 
@@ -87,6 +91,11 @@ def nouvelle(partner_id):
         data = {col: request.form.get(col) for col in colonnes if col != "id"}
         data["partenaire_id"] = partner_id  # forçage du lien
 
+        # ✅ Sécurité : si le champ car n'est pas envoyé ou est vide,
+        # on reprend le CAR partenaire.
+        if "car" in colonnes and not data.get("car"):
+            data["car"] = clean_row(partenaire).get("CAR", "")
+
         # 🔽 Génération dynamique de la requête INSERT
         cols = ", ".join(data.keys())
         placeholders = ", ".join(["?"] * len(data))
@@ -113,6 +122,7 @@ def nouvelle(partner_id):
 
     fiche_data = {}
     last_date = None
+
     if last_fiche:
         fiche_data = dict(last_fiche)
         last_date = last_fiche["date_visite"]
@@ -120,16 +130,22 @@ def nouvelle(partner_id):
         fiche_data["date_precedente_visite"] = last_date
         fiche_data["date_visite"] = ""
 
+    # ✅ En création, le CAR par défaut vient toujours de la fiche partenaire
+    # Il sera ensuite enregistré dans fiches_visite.car à l'enregistrement.
+    partenaire_dict = clean_row(partenaire)
+    fiche_data["car"] = partenaire_dict.get("CAR", "")
+
     conn.close()
 
     return render_template(
         "fiches_visite/fiche_visite_form.html",
-        partenaire=clean_row(partenaire),
+        partenaire=partenaire_dict,
         fiche=fiche_data,
         cars=cars,
         partner_id=partner_id,
         last_date=last_date,
-        lecture_seule=False
+        lecture_seule=False,
+        annee=date.today().year
     )
 
 
@@ -261,7 +277,18 @@ def pdf(fiche_id):
         )
 
         pdf_io = io.BytesIO()
-        HTML(string=rendered_html, base_url=request.url_root).write_pdf(pdf_io)
+        css_path = os.path.join(os.getcwd(), "static/css/fiche_visite_pdf.css")
+
+        HTML(
+            string=rendered_html,
+            base_url=request.url_root
+        ).write_pdf(
+            pdf_io,
+            stylesheets=[
+                CSS(css_path),
+                CSS(string='@page { margin: 1.5cm; }')
+            ]
+        )
         pdf_io.seek(0)
 
         return send_file(
@@ -328,6 +355,22 @@ def datetimeformat(value, format='%d/%m/%Y'):
             return datetime.strptime(value, '%Y-%m-%d %H:%M:%S').strftime(format)
         except ValueError:
             return value
+
+
+@fiches_visite_bp.app_template_filter("nl2br")
+def nl2br(value):
+    """
+    Convertit les retours à la ligne saisis dans les textarea en <br>
+    pour l'affichage HTML/PDF WeasyPrint.
+    """
+    if not value:
+        return ""
+
+    text = str(value).replace("\r\n", "\n").replace("\r", "\n")
+    lines = text.split("\n")
+
+    return Markup("<br>".join(escape(line) for line in lines))
+
 
 # ========================================
 # 🗑️ Supprimer fiche de visite

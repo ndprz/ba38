@@ -19,25 +19,21 @@
 
     <input type="hidden" id="currentNumMvt">
 
-    <div class="d-flex align-items-center pe-3 actions-stock flex-nowrap">
+    <div class="d-flex align-items-center flex-nowrap" style="gap: 12px;">
 
-
-        <div class="form-check mb-0 me-5">
+        <div class="form-check mb-0">
             <input class="form-check-input" type="checkbox" id="toggleZeroStock" checked>
             <label class="form-check-label" for="toggleZeroStock">
                 Masquer stocks = 0
             </label>
         </div>
 
-        <a href="{{ url_for('distribution.distribution_main') }}" class="btn btn-success btn-sm me-4">
-            ↩️ Retour Distribution
-        </a>
 
-        <a href="{{ url_for('distribution.export_stocks_excel') }}" class="btn btn-success btn-sm me-4">
+        <a href="{{ url_for('distribution.export_stocks_excel') }}" class="btn btn-success btn-sm">
             📥 Export Excel
         </a>
 
-        <button id="btnSaveMvt" class="btn btn-secondary btn-sm me-3">
+        <button id="btnSaveMvt" class="btn btn-secondary btn-sm">
             💾 Enregistrer
         </button>
 
@@ -45,8 +41,11 @@
             ✅ Valider transfert
         </button>
 
-    </div>
+        <a href="{{ url_for('distribution.distribution_main') }}" class="btn btn-success btn-sm">
+            ↩️ Retour Distribution
+        </a>
 
+    </div>
 
 </div>
 
@@ -165,7 +164,7 @@
                 %}
 
                 <td class="qty" style="cursor: help;" title="{{ tooltip }}">
-                    {{ a.kg_net }}
+                    {{ "%.3f"|format(a.kg_net or 0)|replace('.', ',') }}
                 </td>
 
                 <!-- Delta jour -->
@@ -173,10 +172,13 @@
 
                 <!-- Stock corrigé -->
                 <td class="qty fw-bold">
-                    {{ (a.kg_net or 0) + (a.delta_jour or 0) }}
+                    {{ "%.3f"|format((a.kg_net or 0) + (a.delta_jour or 0))|replace('.', ',') }}
                 </td>
 
-                <td class="qty">{{ a.kg_brut or "" }}</td>
+                <td class="qty">
+                    {{ "%.3f"|format(a.kg_brut or 0)|replace('.', ',') }}
+                </td>
+
                 <td class="qty">{{ a.col or "" }}</td>
                 <td class="qty">{{ a.pal or "" }}</td>
 
@@ -186,22 +188,22 @@
 
                 {% if a.depot == "02" %}
                 <td>
-                    <input type="number" class="form-control form-control-sm input-pal" min="0" step="1"
-                        placeholder="0">
+                    <input type="number" class="form-control form-control-sm input-pal" min="0" step="1" placeholder="0"
+                        {% if a.statut_mvt=='EXPORTE' %}disabled{% endif %}>
                 </td>
 
                 <td>
-                    <input type="number" class="form-control form-control-sm input-col" min="0" step="1"
-                        placeholder="0">
+                    <input type="number" class="form-control form-control-sm input-col" min="0" step="1" placeholder="0"
+                        {% if a.statut_mvt=='EXPORTE' %}disabled{% endif %}>
                 </td>
 
                 <td>
                     <input type="number" class="form-control form-control-sm input-kgn" min="0" step="0.01"
-                        placeholder="0">
-                </td>
+                        placeholder="0" {% if a.statut_mvt=='EXPORTE' %}disabled{% endif %}>
 
                 <td>
-                    <select class="form-select form-select-sm input-arrivee">
+                    <select class="form-select form-select-sm input-arrivee" {% if a.statut_mvt=='EXPORTE' %}disabled{%
+                        endif %}>
                         <option value="03" selected>03</option>
                         <option value="04">04</option>
                     </select>
@@ -240,112 +242,417 @@
 ========================================================= -->
 
 <script>
-    let selectedDepots = [];
 
+    let state = {};
+
+    let selectedDepots = [];
     const STORAGE_KEY = "stock_filter_depots";
 
-    document.addEventListener("DOMContentLoaded", () => {
+    let saveTimeout = null;
+    let isDirty = false;
 
-        function formatNumber(n) {
-            return (Math.round(n * 100) / 100).toFixed(2);
+    // =========================
+    // INIT
+    // =========================
+
+
+    const tbody = document.querySelector("tbody");
+    const toggleZeroStock = document.getElementById("toggleZeroStock");
+    const searchInput = document.getElementById("searchInput");
+    const btnSave = document.getElementById("btnSaveMvt");
+
+    let currentSearch = "";
+    let isSaving = false;
+    let lastPayload = "";
+
+    // 🔥 récupération des lignes d'origine
+    let originalRows = Array.from(
+        document.querySelectorAll("tbody tr[data-article]")
+    );
+
+    // 🔥 RESTORE
+    restoreBrouillon();
+
+    // 🔥 INIT STATE (IMPORTANT)
+    originalRows.forEach(tr => {
+
+        const key = getKey(tr);
+
+        state[key] = {
+            article: tr.dataset.article,
+            lot: tr.dataset.lot || "",
+            depot_depart: tr.dataset.depot,
+            depot_arrivee: tr.querySelector(".input-arrivee")?.value || "03",
+            qte_pal: 0,
+            qte_col: 0,
+            qte_kgn: 0
+        };
+
+        highlightDelta(tr);
+    });
+
+    // 🔥 NOUVEAU MOTEUR
+    initDepotFilter(originalRows, rebuildTable);
+    rebuildTable();
+
+    // =========================
+    // INPUT EVENTS
+    // =========================
+    document.querySelectorAll(".input-kgn, .input-pal, .input-col")
+        .forEach(input => {
+
+            input.addEventListener("input", function () {
+
+                clearTimeout(this._debounce);
+
+                this._debounce = setTimeout(() => {
+
+                    const tr = this.closest("tr");
+
+                    updateRowCalcul(tr);
+
+                    const key = getKey(tr);
+
+                    const inputPal = tr.querySelector(".input-pal");
+                    const inputCol = tr.querySelector(".input-col");
+                    const inputKgn = tr.querySelector(".input-kgn");
+
+                    state[key] = {
+                        article: tr.dataset.article,
+                        lot: tr.dataset.lot || "",
+                        depot_depart: tr.dataset.depot,
+                        depot_arrivee: tr.querySelector(".input-arrivee")?.value || "03",
+
+                        qte_pal: parseFloat(inputPal?.value) || 0,
+                        qte_col: parseFloat(inputCol?.value) || 0,
+                        qte_kgn: parseFloat(inputKgn?.value) || 0
+                    };
+
+                    markDirty();
+
+                }, 500); // délai réglable
+            });
+        });
+
+    // =========================
+    // BOUTON SAVE
+    // =========================
+    btnSave.addEventListener("click", () => saveMvt(true));
+
+    // =========================
+    // RECHERCHE
+    // =========================
+    searchInput.addEventListener("input", () => {
+        currentSearch = searchInput.value.toLowerCase();
+        applyFilters();
+    });
+
+    toggleZeroStock.addEventListener("change", applyFilters);
+
+    // =========================================================
+    // SAUVEGARDE
+    // =========================================================
+    function saveMvt() {
+
+        if (isSaving) return;
+
+        const lignes = Object.values(state).filter(l =>
+            l.qte_pal !== 0 || l.qte_col !== 0 || l.qte_kgn !== 0
+        );
+
+        if (lignes.length === 0) {
+            console.log("Aucune ligne à enregistrer");
+            return;
         }
 
-        const tbody = document.querySelector("tbody");
-        const rows = Array.from(document.querySelectorAll("tbody tr[data-article]"));
-        const toggleZeroStock = document.getElementById("toggleZeroStock");
-        const searchInput = document.getElementById("searchInput");
+        const payload = JSON.stringify(lignes);
 
-        let currentSearch = "";
+        if (payload === lastPayload) return;
 
-        // =========================
-        // INIT FILTRE DEPOT
-        // =========================
-        initDepotFilter();
-        setTimeout(applyFilters, 50);
+        lastPayload = payload;
 
-        // =========================
-        // EVENTS INPUT
-        // =========================
-        document.querySelectorAll(".input-kgn, .input-pal, .input-col")
-            .forEach(input => {
-                input.addEventListener("input", function () {
-                    updateRowCalcul(this.closest("tr"));
-                });
-            });
+        console.log("SAVE :", lignes);
 
-        // =========================
-        // CALCUL PRINCIPAL
-        // =========================
-        function updateRowCalcul(tr) {
+        isSaving = true;
 
-            const kgERP = parseFloat(tr.dataset.kgErp || 0);
-            const deltaInitial = parseFloat(tr.dataset.deltaInitial || 0);
-
-            const inputKgn = parseFloat(tr.querySelector(".input-kgn")?.value || 0);
-            const inputPal = parseFloat(tr.querySelector(".input-pal")?.value || 0);
-            const inputCol = parseFloat(tr.querySelector(".input-col")?.value || 0);
-
-            const cdt4 = parseFloat(tr.dataset.cdt4 || 0);
-            const cdt3 = parseFloat(tr.dataset.cdt3 || 0);
-
-            const mvtTotal = inputKgn + (inputPal * cdt4) + (inputCol * cdt3);
-
-            // DEPOT DEPART
-            const newDelta = deltaInitial - mvtTotal;
-            const newStock = kgERP + newDelta;
-
-            tr.children[6].innerText = newDelta.toFixed(2);
-            tr.children[7].innerText = newStock.toFixed(2);
-
-            highlightDelta(tr);
-
-            // DEPOT ARRIVEE
-            const article = tr.dataset.article;
-            const lot = tr.dataset.lot || "";
-            const depotArrivee = tr.querySelector(".input-arrivee")?.value;
-
-            if (!depotArrivee) return;
-
-            let found = false;
-
-            document.querySelectorAll("tbody tr[data-article]").forEach(target => {
-
-                if (
-                    target.dataset.article === article &&
-                    (target.dataset.lot || "") === lot &&
-                    target.dataset.depot === depotArrivee
-                ) {
-                    found = true;
-
-                    const kgERP2 = parseFloat(target.dataset.kgErp || 0);
-                    const deltaInitial2 = parseFloat(target.dataset.deltaInitial || 0);
-
-                    const newDelta2 = deltaInitial2 + mvtTotal;
-                    const newStock2 = kgERP2 + newDelta2;
-
-                    target.children[6].innerText = formatNumber(newDelta2);
-                    target.children[7].innerText = formatNumber(newStock2);
-
-                    highlightDelta(target);
+        fetch("{{ url_for('distribution.save_mvt_brouillon') }}", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lignes })
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById("currentNumMvt").value = data.num_mvt;
+                    markSaved();
                 }
+                isSaving = false;
+            })
+            .catch(() => {
+                isSaving = false;
+            });
+    }
+
+    // =========================================================
+    // RESTORE BROUILLON
+    // =========================================================
+    function restoreBrouillon() {
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const num_mvt = urlParams.get("num_mvt");
+
+        if (!num_mvt) return;
+
+        fetch(`/get_mvt_brouillon?num_mvt=${num_mvt}`)
+            .then(r => r.json())
+            .then(lignes => {
+
+                lignes.forEach(l => {
+
+                    document.querySelectorAll("tbody tr[data-article]").forEach(tr => {
+
+                        if (
+                            tr.dataset.article === l.article &&
+                            (tr.dataset.lot || "") === (l.lot || "") &&
+                            tr.dataset.depot === l.depot_depart
+                        ) {
+
+                            const inputPal = tr.querySelector(".input-pal");
+                            const inputCol = tr.querySelector(".input-col");
+                            const inputKgn = tr.querySelector(".input-kgn");
+
+                            if (inputPal) inputPal.value = l.qte_pal || "";
+                            if (inputCol) inputCol.value = l.qte_col || "";
+                            if (inputKgn) inputKgn.value = l.qte_kgn || "";
+
+                            updateRowCalcul(tr);
+
+                            // 🔥 IMPORTANT : MAJ STATE
+                            const key = getKey(tr);
+
+                            state[key] = {
+                                article: l.article,
+                                lot: l.lot || "",
+                                depot_depart: l.depot_depart,
+                                depot_arrivee: l.depot_arrivee || "03",
+                                qte_pal: parseFloat(l.qte_pal) || 0,
+                                qte_col: parseFloat(l.qte_col) || 0,
+                                qte_kgn: parseFloat(l.qte_kgn) || 0
+                            };
+                        }
+                    });
+                });
+
+                markSaved();
+            });
+    }
+
+    // =========================================================
+    // ETAT UI
+    // =========================================================
+    function markDirty() {
+        isDirty = true;
+        btnSave.classList.remove("btn-secondary");
+        btnSave.classList.add("btn-warning");
+        btnSave.innerText = "💾 Modifié...";
+    }
+
+    function markSaved() {
+        isDirty = false;
+        btnSave.classList.remove("btn-warning");
+        btnSave.classList.add("btn-success");
+        btnSave.innerText = "✔️ Sauvegardé";
+    }
+
+    // =========================================================
+    // FILTRES
+    // =========================================================
+    function applyFilters() {
+        rebuildTable();
+    }
+
+    function initDepotFilter() {
+
+        console.log("INIT FILTER");
+
+        const btn = document.getElementById("depotFilterBtn");
+        const dropdown = document.getElementById("filter-depot");
+
+        if (!btn || !dropdown) return;
+
+        dropdown.innerHTML = "";
+
+        const values = new Set();
+
+        // 🔥 UTILISE originalRows (PAS querySelector)
+        originalRows.forEach(r => {
+            if (r.dataset.depot) {
+                values.add(r.dataset.depot);
+            }
+        });
+
+        const sorted = Array.from(values).sort();
+
+        let saved = localStorage.getItem(STORAGE_KEY);
+        saved = saved ? JSON.parse(saved) : [];
+
+        selectedDepots = saved.length ? saved : [...sorted];
+
+        sorted.forEach(val => {
+
+            const label = document.createElement("label");
+
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.value = val;
+            cb.checked = selectedDepots.includes(val);
+
+            cb.addEventListener("change", () => {
+                selectedDepots = Array.from(
+                    dropdown.querySelectorAll("input:checked")
+                ).map(cb => cb.value);
+
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(selectedDepots));
+                rebuildTable(); // 🔥 direct
             });
 
-            // CREATION SI ABSENT
-            if (!found && mvtTotal > 0) {
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(" " + val));
+            dropdown.appendChild(label);
+        });
 
-                const newRow = document.createElement("tr");
+        btn.onclick = (e) => {
+            e.stopPropagation();
 
-                newRow.className = "stock-cree mvt-brouillon";
+            const rect = btn.getBoundingClientRect();
 
-                newRow.dataset.article = article;
-                newRow.dataset.lot = lot;
-                newRow.dataset.depot = depotArrivee;
-                newRow.dataset.kgErp = 0;
-                newRow.dataset.deltaInitial = 0;
+            dropdown.style.top = rect.bottom + "px";
+            dropdown.style.left = rect.left + "px";
 
-                newRow.innerHTML = `
+            dropdown.style.display =
+                dropdown.style.display === "block" ? "none" : "block";
+        };
+
+        document.onclick = () => {
+            dropdown.style.display = "none";
+        };
+    }
+
+    // =========================================================
+    // DELTA + CALCUL
+    // =========================================================
+    function highlightDelta(tr) {
+        const cell = tr.querySelector(".delta-cell");
+        if (!cell) return;
+
+        const val = parseFloat(cell.textContent.replace(",", "."));
+
+        cell.classList.remove("delta-pos", "delta-neg");
+
+        if (!isNaN(val)) {
+            if (val > 0) cell.classList.add("delta-pos");
+            else if (val < 0) cell.classList.add("delta-neg");
+        }
+    }
+
+    function updateRowCalcul(tr) {
+
+        const kgERP = parseFloat(tr.dataset.kgErp || 0);
+
+        const inputKgn = parseFloat(tr.querySelector(".input-kgn")?.value || 0);
+        const inputPal = parseFloat(tr.querySelector(".input-pal")?.value || 0);
+        const inputCol = parseFloat(tr.querySelector(".input-col")?.value || 0);
+
+        const cdt4 = parseFloat(tr.dataset.cdt4 || 0);
+        const cdt3 = parseFloat(tr.dataset.cdt3 || 0);
+
+        const mvtTotal = inputKgn + (inputPal * cdt4) + (inputCol * cdt3);
+
+        // =========================
+        // DEPOT DEPART
+        // =========================
+        const newDelta = -mvtTotal;
+        const newStock = kgERP + newDelta;
+
+        tr.children[6].innerText = formatNumber(newDelta);
+        tr.children[7].innerText = formatNumber(newStock);
+
+        // 🔴 STYLE STOCK MODIFIÉ
+        tr.classList.toggle("stock-modifie", newDelta !== 0);
+
+        // 🔴 STOCK NEGATIF
+        tr.classList.remove("stock-negatif");
+        tr.children[7].classList.remove("stock-negatif-cell");
+
+        if (newStock < 0) {
+            tr.classList.add("stock-negatif");
+            tr.children[7].classList.add("stock-negatif-cell");
+        }
+
+        highlightDelta(tr);
+
+        // =========================
+        // DEPOT ARRIVEE
+        // =========================
+        const article = tr.dataset.article;
+        const lot = tr.dataset.lot || "";
+        const depotArrivee = tr.querySelector(".input-arrivee")?.value;
+
+        if (!depotArrivee) return;
+
+        let found = false;
+
+        document.querySelectorAll("tbody tr[data-article]").forEach(target => {
+
+            if (
+                target.dataset.article === article &&
+                (target.dataset.lot || "") === lot &&
+                target.dataset.depot === depotArrivee
+            ) {
+
+                found = true;
+
+                const kgERP2 = parseFloat(target.dataset.kgErp || 0);
+                const newDelta2 = mvtTotal;
+                const newStock2 = kgERP2 + newDelta2;
+
+                target.children[6].innerText = formatNumber(newDelta2);
+                target.children[7].innerText = formatNumber(newStock2);
+
+                target.classList.toggle("stock-modifie", newDelta2 !== 0);
+
+                target.classList.remove("stock-negatif");
+                target.children[7].classList.remove("stock-negatif-cell");
+
+                if (newStock2 < 0) {
+                    target.classList.add("stock-negatif");
+                    target.children[7].classList.add("stock-negatif-cell");
+                }
+
+                highlightDelta(target);
+            }
+        });
+
+        // =========================
+        // CREATION LIGNE SI ABSENT
+        // =========================
+        if (!found && mvtTotal > 0) {
+
+            const newRow = document.createElement("tr");
+
+            newRow.className = "stock-cree mvt-brouillon stock-modifie";
+
+            newRow.dataset.article = article;
+            newRow.dataset.lot = lot;
+            newRow.dataset.depot = depotArrivee;
+            newRow.dataset.kgErp = 0;
+            newRow.dataset.famille = tr.dataset.famille || "Sans famille"; // 🔥 important
+
+            newRow.innerHTML = `
                 <td>${article}</td>
-                <td>-- création --</td>
+                <td>-- création --</td><a href="{{ url_for('distribution.mouvements_stocks_v2') }}" class="list-group-item list-group-item-action">
+  🧪 Mouvements de stocks – V2 (beta)
+</a>
                 <td></td>
                 <td>${depotArrivee}</td>
                 <td></td>
@@ -360,234 +667,91 @@
                 <td></td><td></td><td></td><td></td>
             `;
 
-                tbody.appendChild(newRow);
-                rows.push(newRow);
-                highlightDelta(newRow);
-                applyFilters();
-            }
+            // 🔥 AJOUT DANS LA SOURCE
+            originalRows.push(newRow);
 
-            applyFilters();
+            highlightDelta(newRow);
+
+            rebuildTable(); // 🔥 OBLIGATOIRE
         }
 
-        // =========================
-        // DELTA ROUGE
-        // =========================
-        function highlightDelta(tr) {
-            const cell = tr.querySelector(".delta-cell");
-            const val = parseFloat(cell.textContent.replace(",", "."));
+        applyFilters();
+    }
 
-            if (!isNaN(val) && val !== 0) {
-                cell.classList.add("delta-stock");
-            }
-        }
+    function formatNumber(n) {
+        return (Math.round(n * 1000) / 1000).toFixed(3);
+    }
 
-        // =========================
-        // FILTRES
-        // =========================
-        function applyFilters() {
+    function getKey(tr) {
+        return [
+            tr.dataset.article,
+            tr.dataset.lot || "",
+            tr.dataset.depot
+        ].join("|");
+    }
 
-            document.querySelectorAll("tbody tr[data-article]").forEach(row => {
 
-                const article = row.dataset.article.toLowerCase();
-                const libelle = row.children[1].textContent.toLowerCase();
-                const sousFam = row.children[2].textContent.toLowerCase();
-                const depot = row.dataset.depot;
+    function rebuildTable() {
 
-                const matchSearch =
-                    !currentSearch ||
-                    article.includes(currentSearch) ||
-                    libelle.includes(currentSearch) ||
-                    sousFam.includes(currentSearch);
+        const tbody = document.querySelector("tbody");
+        tbody.innerHTML = "";
 
-                const isZero = parseFloat(row.children[7].textContent) === 0;
-                const hideZero = toggleZeroStock.checked;
+        const familles = {};
+
+        // 🔹 groupement
+        originalRows.forEach(row => {
+
+            const fam = row.dataset.famille || "Sans famille";
+
+            if (!familles[fam]) familles[fam] = [];
+            familles[fam].push(row);
+        });
+
+        // 🔹 tri des familles
+        const sortedFamilles = Object.keys(familles).sort();
+
+        sortedFamilles.forEach(fam => {
+
+            const rows = [...familles[fam]]; // 🔥 IMPORTANT
+
+            rows.sort((a, b) => {
+
+                const famA = (a.dataset.famille || "").trim();
+                const famB = (b.dataset.famille || "").trim();
+                if (famA !== famB) return famA.localeCompare(famB);
+
+                const artA = (a.dataset.article || "").trim();
+                const artB = (b.dataset.article || "").trim();
+                if (artA !== artB) return artA.localeCompare(artB);
+
+                const depotA = parseInt(a.dataset.depot || 0, 10);
+                const depotB = parseInt(b.dataset.depot || 0, 10);
+                return depotA - depotB;
+            });
+
+            const famRow = document.createElement("tr");
+            famRow.className = "famille-row";
+            famRow.innerHTML = `<td colspan="18">📁 ${fam}</td>`;
+            tbody.appendChild(famRow);
+
+            rows.forEach(row => {
+
+                const depotValue = row.dataset.depot;
 
                 const matchDepot =
                     selectedDepots.length === 0 ||
-                    selectedDepots.includes(depot);
+                    selectedDepots.includes(depotValue);
 
-                row.style.display =
-                    (matchSearch && matchDepot && !(hideZero && isZero))
-                        ? ""
-                        : "none";
+                if (!matchDepot) return;
+
+                row.style.display = "table-row";
+                tbody.appendChild(row);
             });
-        }
-
-        // =========================
-        // FILTRE DEPOT UI
-        // =========================
-        function initDepotFilter() {
-
-            const btn = document.getElementById("depotFilterBtn");
-            const dropdown = document.getElementById("filter-depot");
-
-            const values = new Set();
-
-            rows.forEach(r => {
-                values.add(r.dataset.depot);
-            });
-
-            const sorted = Array.from(values).sort();
-
-            // 🔥 récupérer stockage
-            let saved = localStorage.getItem(STORAGE_KEY);
-
-            if (saved) {
-                try {
-                    saved = JSON.parse(saved);
-                } catch {
-                    saved = [];
-                }
-            } else {
-                saved = [];
-            }
-
-            selectedDepots = saved.length
-                ? sorted.filter(d => saved.includes(d))
-                : [...sorted];
-
-
-            dropdown.innerHTML = "";
-
-            const btnAll = document.createElement("div");
-            btnAll.innerHTML = `
-                <b style="cursor:pointer">Tout</b> |
-                <b style="cursor:pointer">Aucun</b>
-            `;
-
-            btnAll.children[0].onclick = () => {
-                selectedDepots = [...sorted];
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(selectedDepots));
-
-                dropdown.querySelectorAll("input").forEach(cb => cb.checked = true);
-
-                applyFilters();
-
-            };
-
-            btnAll.children[1].onclick = () => {
-                selectedDepots = [];
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(selectedDepots));
-
-                dropdown.querySelectorAll("input").forEach(cb => cb.checked = false);
-
-                applyFilters();
-
-            };
-
-            dropdown.appendChild(btnAll);
-
-            sorted.forEach(val => {
-
-                const label = document.createElement("label");
-
-                const cb = document.createElement("input");
-                cb.type = "checkbox";
-                cb.value = val;
-                cb.checked = selectedDepots.includes(val);
-
-                label.appendChild(cb);
-                label.appendChild(document.createTextNode(" " + val));
-
-                dropdown.appendChild(label);
-            });
-
-            dropdown.querySelectorAll("input").forEach(cb => {
-                cb.addEventListener("change", () => {
-
-                    selectedDepots = Array.from(
-                        dropdown.querySelectorAll("input:checked")
-                    ).map(cb => cb.value);
-
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(selectedDepots));
-
-                    console.log("DEPOTS SELECTED:", selectedDepots);
-
-                    applyFilters(); // 🔥 MANQUANT
-                });
-            });
-
-            dropdown.addEventListener("click", (e) => {
-                e.stopPropagation();
-            });
-
-
-            btn.addEventListener("click", (e) => {
-                e.stopPropagation();
-
-                const rect = btn.getBoundingClientRect();
-
-                dropdown.style.left = rect.left + "px";
-                dropdown.style.top = (rect.bottom + window.scrollY) + "px";
-
-                dropdown.style.display =
-                    dropdown.style.display === "block" ? "none" : "block";
-            });
-
-            document.addEventListener("click", () => {
-                dropdown.style.display = "none";
-            });
-        }
-
-        // =========================
-        // RECHERCHE
-        // =========================
-        searchInput.addEventListener("input", () => {
-            currentSearch = searchInput.value.toLowerCase();
-            applyFilters();
         });
-
-        toggleZeroStock.addEventListener("change", applyFilters);
-
-        // =========================
-        // SAVE
-        // =========================
-        document.getElementById("btnSaveMvt").addEventListener("click", () => {
-
-            const lignes = [];
-
-            rows.forEach(tr => {
-
-                const qte_pal = parseFloat(tr.querySelector(".input-pal")?.value || 0);
-                const qte_col = parseFloat(tr.querySelector(".input-col")?.value || 0);
-                const qte_kgn = parseFloat(tr.querySelector(".input-kgn")?.value || 0);
-
-                if (qte_pal || qte_col || qte_kgn) {
-                    lignes.push({
-                        article: tr.dataset.article,
-                        lot: tr.dataset.lot,
-                        depot_depart: tr.dataset.depot,
-                        depot_arrivee: tr.querySelector(".input-arrivee")?.value || "03",
-                        qte_pal,
-                        qte_col,
-                        qte_kgn
-                    });
-                }
-            });
-
-            if (!lignes.length) {
-                alert("Aucune ligne saisie");
-                return;
-            }
-
-            fetch("{{ url_for('distribution.save_mvt_brouillon') }}", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ lignes })
-            })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success) {
-                        window.location.href = "/mouvements-stocks-depot?num_mvt=" + data.num_mvt;
-                    } else {
-                        alert(data.error);
-                    }
-                });
-        });
-
-    });
+    }
 
 
 
 </script>
+
 {% endblock %}

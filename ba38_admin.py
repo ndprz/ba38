@@ -820,7 +820,7 @@ def export_utilisateurs_excel():
         email = normalize_email(u["email"])
 
         droits = roles_par_user.get(email, [])
-        droits_str = "\n".join(droits) if droits else ""    
+        droits_str = "\n".join(droits) if droits else ""
         data.append({
             "ID": u["id"],
             "Email": u["email"],

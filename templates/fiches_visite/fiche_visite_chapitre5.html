@@ -26,7 +26,7 @@
     <!-- Sac isotherme -->
     <div>●	Les personnes accueillies doivent-elles se munir d’un sac isotherme ?  </div>
     {% if lecture_seule %}
-      <div> class="answer">{{ fiche.get("sac_isotherme","") }}</div>
+      <div class="answer">{{ fiche.get("sac_isotherme","") }}</div>
     {% else %}
       <select class="form-select mb-2" name="sac_isotherme">
         <option value="" {% if not fiche.get('sac_isotherme') %}selected{% endif %}></option>
@@ -38,7 +38,7 @@
     <!-- Participation financière -->
     <div>●	Une participation financière est-elle demandée aux personnes accueillies ? </div>
     {% if lecture_seule %}
-      <div> class="answer">{{ fiche.get("participation_financiere_o_n","") }}</div>
+      <div class="answer">{{ fiche.get("participation_financiere_o_n","") }}</div>
     {% else %}
       <select class="form-select mb-2" name="participation_financiere_o_n">
         <option value="" {% if not fiche.get('participation_financiere_o_n') %}selected{% endif %}></option>
@@ -50,7 +50,7 @@
     <!-- Modalités -->
     <div>Si oui, les modalités et le montant sont-ils formalisés ?</div>
     {% if lecture_seule %}
-      <div> class="answer">{{ fiche.get("participation_modalites_o_n","") }}</div>
+      <div class="answer">{{ fiche.get("participation_modalites_o_n","") }}</div>
     {% else %}
       <select class="form-select mb-2" name="participation_modalites_o_n">
         <option value="" {% if not fiche.get('participation_modalites_o_n') %}selected{% endif %}></option>
@@ -61,7 +61,7 @@
 
     <div>Detail des modalités ?</div>
     {% if lecture_seule %}
-      <div> class="answer">{{ fiche.get("participation_modalitesdetail","") }}</div>
+      <div class="answer">{{ fiche.get("participation_modalitesdetail","") }}</div>
     {% else %}
       <textarea class="form-control mb-2" name="participation_modalites_detail">{{ fiche.get('participation_modalites_detail','') }}</textarea>
     {% endif %}
@@ -69,7 +69,7 @@
     <!-- Montant -->
     <div>Montant de la participation financière</div>
     {% if lecture_seule %}
-      <div> class="answer">{{ fiche.get("montant_de_la_participation_financiere_par_personne","") }}</div>
+      <div class="answer">{{ fiche.get("montant_de_la_participation_financiere_par_personne","") }}</div>
     {% else %}
       <input type="text" class="form-control" 
              name="montant_de_la_participation_financiere_par_personne"

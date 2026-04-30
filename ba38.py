@@ -31,7 +31,8 @@ import logging
 from datetime import datetime, timedelta
 from utils import get_db_connection, write_log, send_reset_email, get_user_roles, get_db_path, get_db_info, upload_database, get_version, get_all_users, format_tel, get_param_value
 from utils import get_user_info,has_access, is_admin_global, format_date_fr, build_menu, require_admin_global
-from utils import is_blocked, record_attempt, reset_attempts, is_suspicious_ip, is_suspicious_ua, get_attempt_count
+from utils import is_blocked, record_attempt, reset_attempts, is_suspicious_ip, is_suspicious_ua, get_attempt_count, require_access
+from utils import date_fr
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, g, current_app, send_from_directory, abort
 from flask_login import current_user, LoginManager, UserMixin, login_user, logout_user, login_required
 from flask_session import Session
@@ -77,14 +78,16 @@ from ba38_planning_report import planning_report_bp
 from ba38_aide import aide_bp
 from ba38_engagements import engagements_bp
 from ba38_droit_image import droit_image_bp
-
-
+from ba38_indicateurs import indicateurs_bp
+from ba38_emails import emails_bp
 
 
 
 
 # Initialisation Flask
 app = Flask(__name__)
+
+app.jinja_env.filters["date_fr"] = date_fr
 
 # =====================================================
 # 🔹 Injection menu global
@@ -337,6 +340,8 @@ app.register_blueprint(planning_report_bp)
 app.register_blueprint(aide_bp)
 app.register_blueprint(engagements_bp)
 app.register_blueprint(droit_image_bp)
+app.register_blueprint(indicateurs_bp)
+app.register_blueprint(emails_bp)
 
 
 
@@ -1305,11 +1310,31 @@ class PDF(FPDF):
         self.cell(0, 10, date_du_jour, align="R")
 
 
+@app.route('/maj_champs_assos')
+@login_required
+@require_access("associations", "ecriture")
+def maj_champs_assos():
+    return redirect(url_for("maj_champs", source="assos"))
 
-@app.route('/maj_champs', methods=['GET', 'POST'])
+
+@app.route('/maj_champs_benevoles')
+@login_required
+@require_access("benevoles", "ecriture")
+def maj_champs_benevoles():
+    return redirect(url_for("maj_champs", source="benevoles"))
+
+
+@app.route('/maj_champs_fournisseurs')
+@login_required
+@require_access("fournisseurs", "ecriture")
+def maj_champs_fournisseurs():
+    return redirect(url_for("maj_champs", source="fournisseurs"))
+
+
+@app.route('/maj_champs')
+@login_required
+@require_access("associations", "ecriture")
 def maj_champs():
-
-    provenance = request.args.get("source", "index")
 
     if provenance == "benevoles":
         table = "benevoles"

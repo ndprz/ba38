@@ -140,7 +140,10 @@ main.container {
     align-items: center;
 }
 
-
+.btn-group-ba38 {
+    display: flex;
+    gap: 8px;
+}
 
 /* =====================================================
    📱 RESPONSIVE
@@ -304,28 +307,174 @@ th {
     background: #ffe5e5 !important;
 }
 
+/* 🔥 on ne touche plus ici (couleur neutre si besoin futur) */
 .stock-modifie {
     background: #e6f7e6 !important;
 }
 
-.mvt-brouillon {
-    background-color: #fff3cd !important;
-    /* jaune */
+#filter-depot {
+    position: absolute;
+    top: 120px;
+    /* ajuste si besoin */
+    left: 300px;
+    /* ajuste si besoin */
+
+    background: white;
+    border: 1px solid #ccc;
+    padding: 10px;
+
+    z-index: 99999;
+    /* 🔥 ULTRA IMPORTANT */
+
+    display: none;
 }
 
+
+
+/* =========================
+HEADER sticky
+========================= */
+thead th {
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    z-index: 10;
+}
+
+/* =========================
+COLONNE 1 : ARTICLE
+========================= */
+td:nth-child(1),
+th:nth-child(1) {
+    position: sticky;
+    left: 0;
+    background: white;
+    z-index: 11;
+}
+
+/* =========================
+COLONNE 2 : LIBELLE
+========================= */
+td:nth-child(2),
+th:nth-child(2) {
+    position: sticky;
+    background: white;
+    z-index: 11;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* séparation visuelle */
+td:nth-child(2),
+th:nth-child(2) {
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+}
+
+.text-danger {
+    color: red;
+}
+
+.text-success {
+    color: green;
+}
+
+/* =========================
+   🟡 MOUVEMENT BROUILLON
+========================= */
+.mvt-brouillon {
+    background-color: #fff3cd !important;
+    /* jaune clair */
+}
+
+/* cellule delta dans ligne jaune */
+.mvt-brouillon .delta-cell {
+    background-color: #ffe69c !important;
+    /* jaune plus foncé */
+    font-weight: bold;
+}
+
+/* =========================
+   🟢 MOUVEMENT EXPORTE
+========================= */
 .mvt-exporte {
     background-color: #d1e7dd !important;
     /* vert */
 }
 
+/* =========================
+   🔵 STOCK CRÉÉ
+========================= */
 .stock-cree {
     background-color: #cfe2ff !important;
-    /* bleu */
+    /* bleu clair */
 }
 
+/* cellule delta dans ligne bleue */
+.stock-cree .delta-cell {
+    background-color: #9ec5fe !important;
+    /* bleu plus foncé */
+    font-weight: bold;
+}
+
+/* =========================
+   DELTA (générique)
+========================= */
+
+/* ❌ on désactive visuellement ancien système rouge */
 .delta-stock {
-    color: #dc3545 !important;
-    /* rouge Bootstrap */
+    color: inherit !important;
+    font-weight: bold;
+}
+
+/* ❌ désactivation vert/rouge (garde si besoin debug) */
+.delta-neg,
+.delta-pos {
+    background-color: inherit !important;
+    color: inherit !important;
+    font-weight: bold;
+    border-radius: 0;
+    padding: 0;
+}
+
+/* =========================
+   ALIGNEMENT QTE
+========================= */
+.qty {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-family: "Courier New", monospace;
+}
+
+/* =========================
+   BONUS UX (hover)
+========================= */
+
+.mvt-brouillon:hover {
+    background-color: #ffe8a1 !important;
+}
+
+.stock-cree:hover {
+    background-color: #b6d4fe !important;
+}
+
+input:disabled,
+select:disabled {
+    background-color: #e9ecef !important;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+/* 🔴 ligne en erreur */
+.stock-negatif {
+    background-color: #f8d7da !important;
+}
+
+/* 🔴 cellule stock */
+.stock-negatif-cell {
+    background-color: #dc3545 !important;
+    color: white !important;
     font-weight: bold;
 }
 
@@ -384,6 +533,7 @@ th {
 
 /* Tooltip simple */
 .info-icon {
+    position: relative;
     cursor: pointer;
     color: #0d6efd;
 }
@@ -391,11 +541,22 @@ th {
 .info-icon:hover::after {
     content: attr(data-tooltip);
     position: absolute;
+
+    top: 22px;
+    /* distance sous l'icône */
+    left: 50%;
+    transform: translateX(-50%);
+
+    white-space: normal;
+    max-width: 250px;
+
     background: #333;
     color: #fff;
     padding: 8px;
     border-radius: 6px;
     font-size: 13px;
+
+    z-index: 9999;
 }
 
 
@@ -544,4 +705,167 @@ th {
 
 .debug-log-content .debug {
     color: #74b9ff;
+}
+
+
+/* ==============================
+   Fiches visite - MODE LECTURE
+   ============================== */
+
+.fiche-visite-layout label,
+.fiche-visite-layout .form-label {
+    display: block;
+    font-weight: 600;
+    margin-top: 10px;
+    margin-bottom: 4px;
+    color: #111;
+}
+
+.fiche-visite-readonly label::before,
+.fiche-visite-readonly .form-label::before {
+    content: "● ";
+    color: #f28c00;
+    font-weight: bold;
+}
+
+.fiche-visite-layout p,
+.fiche-visite-layout div.answer {
+    display: block;
+    margin-left: 18px;
+    margin-bottom: 10px;
+    padding: 6px 8px;
+
+    background: #f7f7f7;
+    border-left: 4px solid #f28c00;
+    border-top: 1px solid #ddd;
+    border-right: 1px solid #ddd;
+    border-bottom: 1px solid #ddd;
+
+    color: #111;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
+.text-muted {
+    font-size: 10pt;
+    color: #666;
+    font-style: italic;
+    margin-bottom: 5px;
+}
+
+
+
+/* =====================================================
+   📊 TABLE RESULTATS FIXE (spécifique page indicateurs)
+===================================================== */
+
+.table-container-fixe {
+    max-height: calc(100vh - 160px);
+    overflow: auto;
+    display: flex;
+    justify-content: center;
+    /* 🔥 centre horizontal */
+}
+
+/* Fixer le header des colonnes */
+.table-container-fixe thead th {
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    z-index: 20;
+}
+
+/* Optionnel : ligne plus visible */
+.table-container-fixe thead th {
+    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.05);
+}
+
+
+.page-sticky-header {
+    position: sticky;
+    top: 60px;
+    /* hauteur de ton header principal */
+    background: white;
+    z-index: 30;
+    padding: 10px 0;
+    border-bottom: 1px solid #ddd;
+}
+
+/* =====================================================
+   📊 TABLE AUTO WIDTH (page indicateurs)
+===================================================== */
+
+.table-auto-width {
+    width: auto !important;
+    table-layout: auto;
+}
+
+/* important pour éviter étirement */
+.table-auto-width th,
+.table-auto-width td {
+    white-space: nowrap;
+}
+
+
+/* ================= KPI INDICATEURS ================= */
+
+.kpi-container {
+    display: flex;
+    justify-content: center;
+    gap: 60px;
+    /* 🔥 espace horizontal */
+    margin: 25px 0;
+    flex-wrap: wrap;
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+}
+
+.kpi-box {
+    text-align: center;
+    min-width: 120px;
+    cursor: pointer;
+    transition: transform 0.15s;
+}
+
+.kpi-box:hover {
+    transform: scale(1.05);
+}
+
+/* 🔢 chiffre */
+.kpi-value {
+    font-size: 32px;
+    /* 🔥 plus gros */
+    font-weight: 700;
+}
+
+/* 📝 libellé */
+.kpi-label {
+    font-size: 14px;
+    color: #333;
+    /* 🔥 plus contrasté (au lieu de gris) */
+    margin-top: 5px;
+}
+
+/* 🎨 couleurs par statut */
+
+.kpi-valid .kpi-value {
+    color: #198754;
+}
+
+.kpi-non .kpi-value {
+    color: #dc3545;
+}
+
+.kpi-revoir .kpi-value {
+    color: #ff9800;
+}
+
+.kpi-absent .kpi-value {
+    color: #6c757d;
+}
+
+.kpi-total .kpi-value {
+    color: #000;
 }

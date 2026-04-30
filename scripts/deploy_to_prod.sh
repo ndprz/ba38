@@ -2,23 +2,6 @@
 # ============================================================================
 # 🚀 Déploiement DEV → PROD pour BA38 (serveur Debian) — VERSION SÉCURISÉE
 # ============================================================================
-#
-# 🎯 Objectifs :
-# - Déployer le code DEV vers PROD
-# - Sauvegarder la base PROD avant toute modification
-# - Migrer automatiquement schéma + données si nécessaire
-# - Synchroniser le code via rsync (exclusions strictes)
-# - Mettre à jour VERSION / VERSION_MSG en PROD
-# - Recharger le service systemd
-# - Journaliser l’intégralité du déploiement
-#
-# ⚠️ IMPORTANT :
-# - Aucun commit Git n’est effectué ici
-# - Le code DOIT être push AVANT le déploiement
-#
-# Logs :
-#   /srv/ba38/logs/deploy.log
-# ============================================================================
 
 set -euo pipefail
 
@@ -60,18 +43,15 @@ echo "🚀 Déploiement BA38 DEV → PROD : $(date '+%Y-%m-%d %H:%M:%S')"
 # ============================================================================
 echo "🔎 Vérification état Git (doit être clean)"
 
+# (désactivé volontairement)
 # cd "$DEV_DIR"
-
 # if ! git diff --quiet || ! git diff --cached --quiet; then
 #   echo "❌ Des modifications non commitées existent"
-#   echo "👉 Faites un git commit + push AVANT le déploiement"
 #   exit 1
 # fi
 
-# echo "✅ Repo Git propre"
-
 # ============================================================================
-# 🌍 Chargement de l’environnement DEV
+# 🌍 Chargement ENV DEV
 # ============================================================================
 if [ ! -f "$DEV_ENV" ]; then
   echo "❌ Fichier .env DEV introuvable"
@@ -83,36 +63,31 @@ source "$DEV_ENV"
 set +a
 
 # ============================================================================
-# 📝 VERSION : argument ou interactif
+# 🌍 Chargement ENV PROD (CORRECTION CRITIQUE)
 # ============================================================================
+if [ ! -f "$PROD_ENV" ]; then
+  echo "❌ Fichier .env PROD introuvable"
+  exit 1
+fi
 
+# On lit UNIQUEMENT SQLITE_DB de PROD (ne pas polluer les autres variables)
+SQLITE_DB_PROD=$(grep "^SQLITE_DB=" "$PROD_ENV" | cut -d '=' -f2)
+
+# ============================================================================
+# 📝 VERSION
+# ============================================================================
 VERSION="${1:-}"
 VERSION_MSG="${2:-}"
 
-# fallback message si vide
-if [ -z "$VERSION_MSG" ]; then
-  VERSION_MSG="(sans message)"
-fi
-
+[ -z "$VERSION_MSG" ] && VERSION_MSG="(sans message)"
 
 if [ -z "$VERSION" ]; then
-  # Mode interactif uniquement si terminal
   if [ -t 0 ]; then
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "📝 Saisie de la version"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-    read -p "➡️ Version (ex: 1.3.39) : " VERSION
+    read -p "➡️ Version : " VERSION
     read -p "➡️ Message : " VERSION_MSG
-
-    if [ -z "$VERSION" ]; then
-      echo "❌ Version obligatoire"
-      exit 1
-    fi
-
+    [ -z "$VERSION" ] && { echo "❌ Version obligatoire"; exit 1; }
   else
-    echo "❌ VERSION non fournie (mode non interactif)"
+    echo "❌ VERSION non fournie"
     exit 1
   fi
 fi
@@ -120,38 +95,31 @@ fi
 echo "📝 VERSION : $VERSION"
 echo "📝 MESSAGE : $VERSION_MSG"
 
+# ============================================================================
+# 🗄️ Bases SQLite (CORRECTION ICI)
+# ============================================================================
+DEV_DB="$DEV_DIR/$SQLITE_DB_DEV"
+PROD_DB="$PROD_DIR/$SQLITE_DB_PROD"
+
+echo "🧪 DEV_DB = $DEV_DB"
+echo "🧪 PROD_DB = $PROD_DB"
 
 # ============================================================================
-# ✅ Confirmation uniquement si mode interactif
+# 🔐 Sécurité forte (évite mauvaise DB)
 # ============================================================================
+[ -f "$DEV_DB" ] || { echo "❌ Base DEV absente"; exit 1; }
+[ -f "$PROD_DB" ] || { echo "❌ Base PROD absente"; exit 1; }
 
-if [ -t 0 ]; then
-  read -p "Confirmer le déploiement ? (o/N) : " CONFIRM
+tables_count=$(sqlite3 "$PROD_DB" \
+  "SELECT COUNT(*) FROM sqlite_master WHERE type='table';")
 
-  if [[ "$CONFIRM" != "o" && "$CONFIRM" != "O" ]]; then
-    echo "❌ Déploiement annulé"
-    exit 1
-  fi
-else
-  echo "⚠️ Mode non interactif → déploiement automatique"
+if [ "$tables_count" -eq 0 ]; then
+  echo "❌ Base PROD vide → STOP"
+  exit 1
 fi
 
-: "${VERSION:?VERSION non défini dans DEV/VERSION}"
-
-
-echo "📝 VERSION : $VERSION"
-echo "📝 MESSAGE : $VERSION_MSG"
-
-
-
-: "${SQLITE_DB_DEV:?SQLITE_DB_DEV non défini}"
-: "${SQLITE_DB:?SQLITE_DB non défini}"
-
-echo "📝 VERSION : $VERSION"
-echo "📝 MESSAGE : $VERSION_MSG"
-
 # ============================================================================
-# 📦 Installation dépendances (option sécurisée)
+# 📦 Installation dépendances
 # ============================================================================
 echo "📦 Vérification des dépendances Python"
 
@@ -161,101 +129,63 @@ if [ -f "$DEV_DIR/requirements.txt" ]; then
 
   if ! cmp -s "$DEV_DIR/requirements.txt" "$PROD_DIR/requirements.txt"; then
     echo "📦 Mise à jour dépendances"
-
     cp "$DEV_DIR/requirements.txt" "$PROD_DIR/"
-
-    if ! pip install --upgrade --no-cache-dir -r "$PROD_DIR/requirements.txt" > /dev/null 2> /tmp/pip_error.log; then
-      echo "❌ ERREUR pip install"
-      cat /tmp/pip_error.log
-      exit 1
-    fi
-
-    echo "📦 Packages installés (requirements)"
-    pip freeze | grep -f "$PROD_DIR/requirements.txt"
-
+    pip install --upgrade --no-cache-dir -r "$PROD_DIR/requirements.txt"
   else
     echo "📦 Dépendances déjà à jour"
   fi
 
-else
-  echo "⚠️ requirements.txt absent"
-fi
-
-
-
-# ============================================================================
-# 🗄️ Bases SQLite
-# ============================================================================
-DEV_DB="$DEV_DIR/$SQLITE_DB_DEV"
-PROD_DB="$PROD_DIR/$SQLITE_DB"
-
-# ============================================================================
-# 🔍 Vérifications préalables
-# ============================================================================
-[ -d "$DEV_DIR" ]  || { echo "❌ DEV_DIR introuvable"; exit 1; }
-[ -d "$PROD_DIR" ] || { echo "❌ PROD_DIR introuvable"; exit 1; }
-[ -f "$DEV_DB" ]   || { echo "❌ Base DEV absente : $DEV_DB"; exit 1; }
-
-# ============================================================================
-# 🧠 Fonctions SQLite – comparaison de schéma
-# ============================================================================
-get_tables() {
-  sqlite3 "$1" \
-    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';"
-}
-
-normalize_table() {
-  sqlite3 "$1" "PRAGMA table_info('$2');" |
-    awk -F'|' '{print $2 "|" $3 "|" $4 "|" $5 "|" $6}'
-}
-
-compare_schemas() {
-  local diff_found=0
-  local all_tables
-
-  echo "🔍 Comparaison des schémas SQLite…"
-
-  all_tables=$(printf "%s\n%s\n" \
-    "$(get_tables "$DEV_DB")" \
-    "$(get_tables "$PROD_DB" 2>/dev/null || true)" | sort -u)
-
-  for table in $all_tables; do
-    exists=$(sqlite3 "$PROD_DB" \
-      "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='$table';")
-
-    if [ "$exists" -eq 0 ]; then
-      diff_found=1
-      continue
-    fi
-
-    diff <(normalize_table "$DEV_DB" "$table" | sort) \
-         <(normalize_table "$PROD_DB" "$table" | sort) \
-         > /dev/null || diff_found=1
-  done
-
-  return $diff_found
-}
-
-# ============================================================================
-# 💾 1) Sauvegarde de la base PROD
-# ============================================================================
-if [ -f "$PROD_DB" ]; then
-  echo "💾 Sauvegarde de la base PROD"
-  "$SCRIPTS_DIR/backup_prod.sh"
 fi
 
 # ============================================================================
-# 🔧 2) Migration schéma / données
+# 💾 BACKUP
 # ============================================================================
-if [ -f "$PROD_DB" ] && compare_schemas; then
-  echo "✅ Schémas identiques"
-else
-  echo "🔧 Migration DEV → PROD"
-  "$DEV_DIR/venv/bin/python" "$SCRIPTS_DIR/migrate_schema_and_data_dev_to_prod.py"
-fi
+echo "💾 Sauvegarde de la base PROD"
+"$SCRIPTS_DIR/backup_prod.sh"
 
 # ============================================================================
-# 📁 3) Synchronisation code (rsync sécurisé)
+# 🔧 MIGRATION
+# ============================================================================
+echo "🔧 Migration schéma DEV → PROD"
+"$DEV_DIR/venv/bin/python" "$SCRIPTS_DIR/migrate_schema_and_data_dev_to_prod.py"
+
+# ============================================================================
+# 🔁 SYNC TABLES METIER (CORRECTION IMPORT)
+# ============================================================================
+echo "🔁 Synchronisation tables métier"
+
+SYNC_TABLES=("applications")
+
+for table in "${SYNC_TABLES[@]}"; do
+  echo "🔁 Sync table : $table"
+
+  exists_dev=$(sqlite3 "$DEV_DB" \
+    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='$table';")
+
+  [ "$exists_dev" -eq 0 ] && continue
+
+  exists_prod=$(sqlite3 "$PROD_DB" \
+    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='$table';")
+
+  if [ "$exists_prod" -eq 1 ]; then
+    echo "♻️ Reset table"
+    sqlite3 "$PROD_DB" "DELETE FROM $table;" || echo "⚠️ DELETE KO"
+  fi
+
+  echo "📥 Import données"
+
+  sqlite3 "$DEV_DB" ".dump $table" \
+    | sed '/^CREATE TABLE/,/);/d' \
+    | sed '/^BEGIN TRANSACTION/d' \
+    | sed '/^COMMIT/d' \
+    | sqlite3 "$PROD_DB" || echo "⚠️ IMPORT KO"
+
+  count=$(sqlite3 "$PROD_DB" "SELECT COUNT(*) FROM $table;" 2>/dev/null || echo "0")
+  echo "📊 $table : $count lignes"
+done
+
+# ============================================================================
+# 📁 RSYNC CODE (INCHANGÉ)
 # ============================================================================
 echo "📁 Synchronisation DEV → PROD"
 
@@ -280,46 +210,29 @@ rsync -av --delete \
   "$DEV_DIR/" "$PROD_DIR/"
 
 # ============================================================================
-# 📝 4) Mise à jour VERSION en PROD
+# 📝 VERSION
 # ============================================================================
-echo "📝 Mise à jour VERSION dans PROD"
+echo "📝 Mise à jour VERSION"
 
 touch "$PROD_ENV"
 sed -i '/^VERSION=/d' "$PROD_ENV"
 sed -i '/^VERSION_MSG=/d' "$PROD_ENV"
 
-{
-  echo "VERSION=\"$VERSION\""
-  echo "VERSION_MSG=\"$VERSION_MSG\""
-} >> "$PROD_ENV"
-
-# ============================================================================
-# 📝 Mise à jour VERSION (DEV + PROD)
-# ============================================================================
+echo "VERSION=\"$VERSION\"" >> "$PROD_ENV"
+echo "VERSION_MSG=\"$VERSION_MSG\"" >> "$PROD_ENV"
 
 DATE_NOW=$(date '+%Y-%m-%d %H:%M')
 
-# 🔵 PROD
-VERSION_FILE_PROD="/srv/ba38/prod/VERSION"
+echo "VERSION=$VERSION" > "$PROD_DIR/VERSION"
+echo "MESSAGE=$VERSION_MSG" >> "$PROD_DIR/VERSION"
+echo "DATE=$DATE_NOW" >> "$PROD_DIR/VERSION"
 
-echo "VERSION=$VERSION" > "$VERSION_FILE_PROD"
-echo "MESSAGE=$VERSION_MSG" >> "$VERSION_FILE_PROD"
-echo "DATE=$DATE_NOW" >> "$VERSION_FILE_PROD"
-
-echo "✅ VERSION mise à jour (PROD)"
-
-# 🟢 DEV (important pour cohérence)
-VERSION_FILE_DEV="/srv/ba38/dev/VERSION"
-
-echo "VERSION=$VERSION" > "$VERSION_FILE_DEV"
-echo "MESSAGE=$VERSION_MSG" >> "$VERSION_FILE_DEV"
-echo "DATE=$DATE_NOW" >> "$VERSION_FILE_DEV"
-
-echo "✅ VERSION mise à jour (DEV)"
-
+echo "VERSION=$VERSION" > "$DEV_DIR/VERSION"
+echo "MESSAGE=$VERSION_MSG" >> "$DEV_DIR/VERSION"
+echo "DATE=$DATE_NOW" >> "$DEV_DIR/VERSION"
 
 # ============================================================================
-# 🔄 5) Restart service
+# 🔄 RESTART
 # ============================================================================
 echo "🔄 Redémarrage ba38-prod"
 sudo systemctl restart ba38-prod.service

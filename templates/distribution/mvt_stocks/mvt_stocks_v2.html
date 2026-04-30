@@ -1,0 +1,387 @@
+{% extends "base.html" %}
+
+{% block title %}Mouvements de stocks V2{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid mt-4">
+
+    <h2>📊 Mouvements de stocks – V2 (mode ERP)</h2>
+
+    <!-- ================= FILTRES ================= -->
+    <div class="d-flex align-items-center mb-3" style="gap:20px;">
+
+        <div>
+            <strong>Dépôts :</strong>
+            <span id="depotFilterBtn" style="cursor:pointer;">⚙️ Filtrer</span>
+        </div>
+
+        <button class="btn btn-success btn-sm" onclick="saveMvt()">
+            💾 Enregistrer
+        </button>
+
+    </div>
+
+    <div id="filter-depot" class="filter-dropdown"></div>
+
+    <!-- ================= TABLE ================= -->
+    <div class="table-responsive" style="max-height: 70vh; overflow-y: auto;">
+        <table class="table table-sm table-striped">
+
+            <thead>
+                <tr>
+                    <th>Article</th>
+                    <th>libellé</th>
+                    <th>Lot</th>
+                    <th>Dépôt</th>
+                    <th>Kgn ERP</th>
+                    <th>Δ</th>
+                    <th>Kgn final</th>
+                    <th>Mvt Kg</th>
+                    <th>Vers dépôt</th>
+                </tr>
+            </thead>
+
+            <tbody></tbody>
+
+        </table>
+    </div>
+
+</div>
+
+<!-- ================= STYLE ================= -->
+<style>
+    .filter-dropdown {
+        position: absolute;
+        background: white;
+        border: 1px solid #ccc;
+        padding: 10px;
+        display: none;
+        z-index: 1000;
+    }
+</style>
+
+<!-- ================= SCRIPT ================= -->
+<script>
+
+    let stocks = {};
+    let mouvements = [];
+    let selectedDepots = [];
+
+    const STORAGE_KEY = "stock_filter_depots";
+
+
+    /* =========================================================
+    INIT
+    ========================================================= */
+
+    const initialData = JSON.parse('{{ articles | tojson | safe }}');
+
+    console.log("INITIAL DATA :", initialData);
+
+    initStocks(initialData);
+    initDepotFilter();
+    computeStocks();
+    renderTable();
+
+
+    function getMouvementValue(article, lot, depot) {
+
+        lot = lot || "";
+
+        const m = mouvements.find(x =>
+            x.article === article &&
+            (x.lot || "") === lot &&
+            x.from === depot
+        );
+
+        return m ? m.kgn : "";
+    }
+
+    /* =========================================================
+    RENDER
+    ========================================================= */
+
+    function renderTable() {
+
+        const tbody = document.querySelector("tbody");
+        tbody.innerHTML = "";
+
+        const grouped = {};
+
+        Object.values(stocks).forEach(s => {
+
+            const matchDepot =
+                selectedDepots.length === 0 ||
+                selectedDepots.includes(s.depot);
+
+            if (!matchDepot) return;
+
+            if (!grouped[s.famille]) grouped[s.famille] = [];
+            grouped[s.famille].push(s);
+        });
+
+        Object.keys(grouped).sort().forEach(fam => {
+
+            // ligne famille
+            const trFam = document.createElement("tr");
+            trFam.style.background = "#eee";
+            trFam.innerHTML = `<td colspan="7">📁 ${fam}</td>`;
+            tbody.appendChild(trFam);
+
+            grouped[fam]
+                .sort((a, b) => {
+                    if (a.article !== b.article)
+                        return a.article.localeCompare(b.article);
+                    return Number(a.depot) - Number(b.depot);
+                })
+                .forEach(s => {
+
+                    const tr = document.createElement("tr");
+
+                    const stockFinal = s.kg + s.delta;
+
+                    tr.innerHTML = `
+                        <td>${s.article}</td>
+                        <td>${s.libelle || ""}</td>
+                        <td>${s.lot || ""}</td>
+                        <td>${s.depot}</td>
+                        <td>${s.kg.toFixed(3)}</td>
+                        <td class="${s.delta > 0 ? 'text-success' : s.delta < 0 ? 'text-danger' : ''}">
+                            ${s.delta.toFixed(3)}
+                        </td>
+
+                        <td>
+                            <strong>${stockFinal.toFixed(3)}</strong>
+                        </td>
+
+                        <td>
+                            <input type="number" step="0.01" class="input-kgn"
+                                data-article="${s.article}"
+                                data-lot="${s.lot}"
+                                data-from="${s.depot}"
+                                value="${getMouvementValue(s.article, s.lot, s.depot)}">
+                        </td>
+
+                        <td>
+                            <select class="input-to"
+                                data-article="${s.article}"
+                                data-lot="${s.lot}"
+                                data-from="${s.depot}">
+                                <option value="02">02</option>
+                                <option value="03">03</option>
+                                <option value="04">04</option>
+                            </select>
+                        </td>
+                    `;
+
+                    tbody.appendChild(tr);
+                    const input = tr.querySelector(".input-kgn");
+                    const select = tr.querySelector(".input-to");
+
+                    function update() {
+                        updateMouvement(
+                            input.dataset.article,
+                            input.dataset.lot,
+                            input.dataset.from,
+                            select.value,
+                            input.value
+                        );
+                    }
+
+                    input.addEventListener("change", update);
+                    select.addEventListener("change", update);
+                    applyStickyOffsets();
+                });
+        });
+    }
+
+
+    /* =========================================================
+    STOCK INIT
+    ========================================================= */
+
+    function initStocks(data) {
+
+        data.forEach(a => {
+
+            const key = `${a.article}|${a.lot || ""}|${a.depot}`;
+
+            stocks[key] = {
+                article: a.article,
+                libelle: a.libelle,
+                lot: a.lot || "",
+                depot: a.depot,
+                famille: a.famille || "Sans famille",
+                kg: parseFloat(a.kg_net || 0),
+                delta: 0,
+                cdt3: a.cdt_unite3 || 0,
+                cdt4: a.cdt_unite4 || 0
+            };
+        });
+    }
+
+    /* =========================================================
+    MOUVEMENTS
+    ========================================================= */
+
+    function updateMouvement(article, lot, from, to, kgn) {
+
+        lot = lot || "";
+
+        let m = mouvements.find(x =>
+            x.article === article &&
+            (x.lot || "") === lot &&
+            x.from === from
+        );
+
+        if (!m) {
+            m = { article, lot, from, to, kgn: 0 };
+            mouvements.push(m);
+        }
+
+        m.to = to;
+        m.kgn = parseFloat(kgn) || 0;
+
+        computeStocks();
+        renderTable();
+    }
+
+    /* =========================================================
+    CALCUL GLOBAL
+    ========================================================= */
+
+    function computeStocks() {
+
+        Object.values(stocks).forEach(s => s.delta = 0);
+
+        mouvements.forEach(m => {
+
+            const fromKey = `${m.article}|${m.lot}|${m.from}`;
+            const toKey = `${m.article}|${m.lot}|${m.to}`;
+
+            const base = stocks[fromKey];
+            if (!base) return;
+
+            const total = m.kgn || 0;
+
+            stocks[fromKey].delta -= total;
+
+            if (!stocks[toKey]) {
+                stocks[toKey] = {
+                    ...base,
+                    depot: m.to,
+                    kg: 0,
+                    delta: 0
+                };
+            }
+
+            stocks[toKey].delta += total;
+        });
+    }
+
+
+
+    function applyStickyOffsets() {
+
+        const firstCol = document.querySelector("th:nth-child(1)");
+        const secondCol = document.querySelector("th:nth-child(2)");
+
+        if (!firstCol || !secondCol) return;
+
+        const width1 = firstCol.offsetWidth;
+
+        // applique left dynamique
+        document.querySelectorAll("td:nth-child(2), th:nth-child(2)")
+            .forEach(el => {
+                el.style.left = width1 + "px";
+            });
+    }
+
+    /* =========================================================
+    FILTRE DEPOT
+    ========================================================= */
+
+    function initDepotFilter() {
+
+        const btn = document.getElementById("depotFilterBtn");
+        const dropdown = document.getElementById("filter-depot");
+
+        const values = [...new Set(Object.values(stocks).map(s => s.depot))].sort();
+
+        let saved = localStorage.getItem(STORAGE_KEY);
+        saved = saved ? JSON.parse(saved) : [];
+
+        selectedDepots = saved.length ? saved : [...values];
+
+        values.forEach(val => {
+
+            const label = document.createElement("label");
+
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.value = val;
+            cb.checked = selectedDepots.includes(val);
+
+            cb.addEventListener("change", () => {
+
+                selectedDepots = Array.from(
+                    dropdown.querySelectorAll("input:checked")
+                ).map(cb => cb.value);
+
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(selectedDepots));
+                renderTable();
+            });
+
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(" " + val));
+            dropdown.appendChild(label);
+        });
+
+        btn.onclick = (e) => {
+            e.stopPropagation();
+
+            const rect = btn.getBoundingClientRect();
+            dropdown.style.top = rect.bottom + "px";
+            dropdown.style.left = rect.left + "px";
+
+            dropdown.style.display =
+                dropdown.style.display === "block" ? "none" : "block";
+        };
+
+        document.onclick = () => dropdown.style.display = "none";
+    }
+
+    /* =========================================================
+    SAVE
+    ========================================================= */
+
+    function saveMvt() {
+
+        console.log("MOUVEMENTS ENVOYÉS :", mouvements);
+
+        fetch("{{ url_for('distribution.save_mvt_v2') }}", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mouvements })
+        })
+            .then(async r => {
+
+                const text = await r.text();
+
+                console.log("REPONSE BRUTE :", text);
+
+                try {
+                    const data = JSON.parse(text);
+                    alert("✅ Sauvegardé : " + (data.num_mvt || ""));
+                } catch (e) {
+                    alert("❌ Erreur serveur (voir console)");
+                }
+
+            });
+    }
+
+
+</script>
+
+{% endblock %}

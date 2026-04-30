@@ -2,7 +2,7 @@
 {% block title %}Fiche de visite{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container mt-4 fiche-visite-layout">
 
   {# ⚠️ Message rouge si la fiche est préremplie depuis la précédente #}
   {% if last_date %}
@@ -70,18 +70,3 @@
 </div>
 {% endblock %}
 
-{# 🔧 Script JS pour CAR (intro) #}
-{% if not lecture_seule %}
-<script>
-  function copyCarToInput() {
-    const select = document.getElementById("car-select");
-    const input = document.getElementById("car-input");
-    if (select.value && select.value !== "__autre__") {
-      input.value = select.value;
-    } else if (select.value === "__autre__") {
-      input.value = "";
-      input.focus();
-    }
-  }
-</script>
-{% endif %}

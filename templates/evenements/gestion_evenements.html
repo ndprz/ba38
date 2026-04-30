@@ -136,9 +136,9 @@
             <form method="post" class="d-inline">
               <input type="hidden" name="id" value="{{ e.id }}">
               <input type="hidden" name="action" value="basculer_actif">
-              <button class="btn btn-sm {% if e.actif %}btn-success{% else %}btn-outline-secondary{% endif %}" {% if
+              <button class="btn btn-sm {% if e.actif == 1 %} btn-success{% else %}btn-outline-secondary{% endif %}" {% if
                 lecture_seule %}disabled{% endif %}>
-                {% if e.actif %}ON{% else %}OFF{% endif %}
+                {% if e.actif == 1 %}ON{% else %}OFF{% endif %}
               </button>
             </form>
           </td>

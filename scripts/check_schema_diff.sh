@@ -48,13 +48,14 @@ if [[ -z "${BA38_BASE_DIR:-}" ]]; then
   exit 1
 fi
 
+
 if [[ -z "${SQLITE_DB_DEV:-}" || -z "${SQLITE_DB_PROD:-}" ]]; then
   echo "❌ Variables SQLITE_DB_DEV / SQLITE_DB_PROD non définies"
   exit 1
 fi
 
 DEV_DB="$BA38_BASE_DIR/$SQLITE_DB_DEV"
-PROD_DB="${BA38_BASE_DIR/dev/prod}/$SQLITE_DB_PROD"
+PROD_DB="/srv/ba38/prod/$SQLITE_DB_PROD"
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📦 Comparaison des schémas SQLite DEV vs PROD"

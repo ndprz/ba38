@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>{{ "Modifier" if modele else "Nouveau" }} modèle</h2>
+
+<form method="POST">
+
+    <div class="mb-3">
+        <label>Code modèle</label>
+        <input type="text" name="code_modele" class="form-control"
+               value="{{ modele.code_modele if modele else '' }}" required>
+    </div>
+
+    <div class="mb-3">
+        <label>Sujet</label>
+        <input type="text" name="sujet" class="form-control"
+               value="{{ modele.sujet if modele else '' }}" required>
+    </div>
+
+    <div class="mb-3">
+        <label>Corps</label>
+        <textarea name="corps" class="form-control" rows="10">{{ modele.corps if modele else '' }}</textarea>
+    </div>
+
+    <button class="btn btn-success">💾 Enregistrer</button>
+
+    <a href="{{ url_for('emails.liste_modeles') }}" 
+    target="emails_window"
+    class="btn btn-secondary">
+        Retour
+    </a>
+
+</form>
+
+{% endblock %}

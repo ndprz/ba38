@@ -64,18 +64,15 @@
 
         <div class="col-md-4">
           <label class="form-label">CAR</label>
-          <!-- Liste déroulante des CAR connus -->
-          <select class="form-select mb-2" id="car-select" onchange="copyCarToInput()">
+          <select class="form-select mb-2" name="car" id="car-select">
             <option value="">-- Sélectionner --</option>
             {% for c in cars %}
-              <option value="{{ c }}" {% if fiche.get('car')==c %}selected{% endif %}>{{ c }}</option>
+              <option value="{{ c }}" 
+                {% if (fiche.get('car') or '')|trim|lower == (c or '')|trim|lower %}selected{% endif %}>
+                {{ c }}
+              </option>
             {% endfor %}
-            <option value="__autre__">Autre…</option>
           </select>
-          <!-- Champ texte toujours visible (permet de saisir un CAR non listé) -->
-          <input type="text" id="car-input" name="car" class="form-control"
-                 value="{{ fiche.get('car') or '' }}"
-                 placeholder="Saisir ou sélectionner un CAR">
         </div>
 
         <div class="col-md-4">

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "macros/forms.html" import input_date %}
+
+{% block content %}
+
+<h2>📊 Campagne indicateurs</h2>
+
+<form method="POST" enctype="multipart/form-data">
+
+    <div class="mb-3">
+        <label>Période</label>
+        <select name="periode" class="form-control">
+            <option value="T1 2026">T1 2026</option>
+            <option value="T2 2026">T2 2026</option>
+            <option value="T3 2026">T3 2026</option>
+            <option value="Année 2026">Année 2026</option>
+        </select>
+    </div>
+
+    <div class="mb-3">
+        {{ input_date("date_limite", "Date limite", required=True) }}
+    </div>
+
+    <div class="mb-3">
+        <label>Fichier CSV</label>
+        <input type="file" name="csv_file" class="form-control">
+    </div>
+
+    <button class="btn btn-primary">Créer campagne</button>
+
+</form>
+
+{% if show_modal %}
+
+<div class="modal fade show" style="display:block; background:rgba(0,0,0,0.5)">
+    <div class="modal-dialog">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title">⚠️ Campagne existante</h5>
+            </div>
+
+            <div class="modal-body">
+                Une campagne existe déjà pour <b>{{ periode }}</b>.<br><br>
+
+                <p class="text-muted">
+                    Dernière mise à jour :
+                    {{ campagne.date_creation | date_fr }}
+                </p>
+
+                Que souhaitez-vous faire ?
+            </div>
+
+            <div class="modal-footer flex-column gap-2">
+
+                <!-- 🔄 RELOAD -->
+                <form method="post" enctype="multipart/form-data" class="w-100">
+                    <input type="hidden" name="periode" value="{{ periode }}">
+                    <input type="hidden" name="date_limite" value="{{ date_limite }}">
+                    <input type="hidden" name="action" value="reload">
+
+                    <p class="text-warning small">
+                        ⚠️ Vous devez re-sélectionner le fichier CSV
+                    </p>
+
+                    <input type="file" name="csv_file" required class="form-control mb-2">
+
+                    <button type="submit" class="btn btn-danger w-100">
+                        🔄 Recharger le fichier AMS
+                    </button>
+                </form>
+
+                <!-- 📂 UTILISER EXISTANT -->
+                <form method="post" class="w-100">
+                    <input type="hidden" name="periode" value="{{ periode }}">
+                    <input type="hidden" name="action" value="use">
+
+                    <button type="submit" class="btn btn-secondary w-100">
+                        📂 Utiliser les données existantes
+                    </button>
+                </form>
+
+            </div>
+
+        </div>
+    </div>
+</div>
+
+{% endif %}
+
+{% endblock %}

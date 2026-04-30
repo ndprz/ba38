@@ -182,9 +182,10 @@ def mouvements_stocks_depot():
         {query}
         {query_union}
         ORDER BY
-            famille,
-            sous_famille,
-            libelle
+            3,  -- famille
+            4,  -- sous_famille
+            1,  -- article
+            15  -- depot
         """
 
         cur.execute(final_query)
@@ -540,23 +541,48 @@ def save_mvt_brouillon():
             FROM mvtstocks
             WHERE user_id = ?
             AND statut = 'BROUILLON'
+            order by date_mvt desc, heure_mvt desc
         """, (current_user.id,))
 
         row = cur.fetchone()
 
         if row:
             num_mvt = row[0]
-
-            # 🔥 on supprime tout (REPLACE logique)
-            cur.execute("""
-                DELETE FROM mvtstocks
-                WHERE num_mvt = ?
-            """, (num_mvt,))
         else:
             num_mvt = generate_num_mvt()
 
-        # 🔥 insertion propre
+
+        # 🔥 suppression UNIQUEMENT des lignes envoyées
         for ligne in lignes:
+            cur.execute("""
+                DELETE FROM mvtstocks
+                WHERE num_mvt = ?
+                AND user_id = ?
+                AND statut = 'BROUILLON'
+                AND article = ?
+                AND IFNULL(lot,'') = IFNULL(?,'')
+                AND depot_depart = ?
+            """, (
+                num_mvt,
+                current_user.id,
+                ligne["article"],
+                ligne.get("lot", ""),
+                ligne["depot_depart"]
+            ))
+
+
+        # 🔥 2. INSERT COMPLET
+        for ligne in lignes:
+
+            article = ligne["article"]
+            lot = ligne.get("lot", "")
+            depot_depart = ligne["depot_depart"]
+            depot_arrivee = ligne["depot_arrivee"]
+
+            qte_pal = ligne["qte_pal"]
+            qte_col = ligne["qte_col"]
+            qte_kgn = ligne["qte_kgn"]
+
             cur.execute("""
                 INSERT INTO mvtstocks (
                     num_mvt, date_mvt, heure_mvt,
@@ -572,13 +598,13 @@ def save_mvt_brouillon():
                 date_mvt,
                 heure_mvt,
                 current_user.id,
-                ligne["article"],
-                ligne["lot"],
-                ligne["depot_depart"],
-                ligne["depot_arrivee"],
-                ligne["qte_pal"],
-                ligne["qte_col"],
-                ligne["qte_kgn"]
+                article,
+                lot,
+                depot_depart,
+                depot_arrivee,
+                qte_pal,
+                qte_col,
+                qte_kgn
             ))
 
         conn.commit()
@@ -587,8 +613,17 @@ def save_mvt_brouillon():
 
 
 @distribution_bp.route("/valider_mvt", methods=["POST"])
+@login_required
+@require_access("distribution", "ecriture")
 def valider_mvt():
+
     num_mvt = request.json.get("num_mvt")
+
+    if not num_mvt:
+        return jsonify(success=False, error="num_mvt manquant")
+
+    # 🔥 NE RIEN MODIFIER EN BASE
+    # 👉 on affiche juste le récap
 
     return jsonify(
         success=True,
@@ -608,6 +643,7 @@ def afficher_mvt(num_mvt):
         SELECT *
         FROM mvtstocks
         WHERE num_mvt = ?
+        and statut = 'BROUILLON'
         ORDER BY article, lot
     """, (num_mvt,))
 
@@ -873,3 +909,93 @@ def export_mvt_vif(num_mvt):
         mimetype="text/csv",
         headers={"Content-Disposition": f"attachment;filename=mvt_{num_mvt}.csv"}
     )
+
+
+# V2 de mvt stocks en test :
+
+@distribution_bp.route('/mouvements-stocks-v2')
+@login_required
+def mouvements_stocks_v2():
+
+    db_path = get_db_path()
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                s.article,
+                a.libelle,
+                a.sous_famille,
+                a.famille,
+
+                s.depot,
+                s.emplacement,
+                s.kg_net,
+                s.lot,
+                s.dlc,
+                s.ddm,
+
+                a.cdt_unite3,
+                a.cdt_unite4
+
+            FROM stocks s
+            LEFT JOIN articles a ON a.article = s.article
+
+            ORDER BY
+                a.famille,
+                s.article,
+                CAST(s.depot AS INTEGER)
+        """)
+
+        articles = [dict(r) for r in cur.fetchall()]
+
+    return render_template(
+        "distribution/mvt_stocks/mvt_stocks_v2.html",
+        articles=articles
+    )
+
+
+
+from datetime import datetime
+
+@distribution_bp.route("/save-mvt-v2", methods=["POST"])
+def save_mvt_v2():
+
+    data = request.get_json()
+    mouvements = data.get("mouvements", [])
+
+    num_mvt = datetime.now().strftime("MVT%Y%m%d%H%M%S")
+
+    db_path = get_db_path()
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.cursor()
+
+        for m in mouvements:
+            cur.execute("""
+            INSERT INTO mvt_stocks_v2 (
+                num_mvt,
+                article,
+                lot,
+                depot_from,
+                depot_to,
+                qte_kgn,
+                qte_col,
+                qte_pal,
+                date_mvt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                num_mvt,
+                m.get("article"),
+                m.get("lot"),
+                m.get("from"),
+                m.get("to"),
+                m.get("kgn", 0),
+                m.get("col", 0),
+                m.get("pal", 0),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ))
+
+        conn.commit()
+
+    return {"success": True, "num_mvt": num_mvt}

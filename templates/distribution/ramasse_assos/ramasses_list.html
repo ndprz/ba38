@@ -3,24 +3,29 @@
 
 <h2 class="mb-3">📊 Historique des ramasses</h2>
 
-<!-- ================= RETOUR ================= -->
-<div class="d-flex justify-content-end mb-3">
-    <a href="{{ url_for('distribution.distribution_main') }}" class="btn btn-success btn-sm">
-        ↩️ Retour Distribution
-    </a>
-</div>
 
 <!-- ================= EXPORT ================= -->
-<form method="post" class="d-flex align-items-center gap-3 mb-3">
+<form method="post"
+    style="display:flex; align-items:center; justify-content:flex-end; gap:10px; flex-wrap:wrap; margin-bottom:15px;">
+    <span style="font-size: 0.9rem; color:#666;">
+        Choisir le mois
+    </span>
+    <div style="display:flex; align-items:center; gap:6px;">
+        <input type="month" name="mois" class="form-control form-control-sm" style="max-width: 180px;" required>
 
-    <!-- 🔹 Mois -->
-    <input type="month" name="mois" class="form-control form-control-sm" style="max-width: 180px;" required>
+
+    </div>
+
+
 
     <!-- ================= RECEPTION ================= -->
-    <div class="d-flex align-items-center gap-1">
+    <div style="display:flex; align-items:center; gap:10px;">
 
-        <button formaction="{{ url_for('distribution.controle_ramasses') }}"
-                class="btn btn-secondary btn-sm">
+        <button formaction="{{ url_for('distribution.export_ramasses_excel_mensuel') }}" class="btn btn-success btn-sm">
+            📊 Export Excel
+        </button>
+
+        <button formaction="{{ url_for('distribution.controle_ramasses') }}" class="btn btn-secondary btn-sm">
             🔎 Contrôler
         </button>
 
@@ -28,31 +33,33 @@
             📤 Export Réception
         </button>
 
-        <span class="info-icon" data-tooltip="le fichier recepba38.csv est a placer dans vif bureau a distance dans le dossier : Z:\imprec\ba38,
-            (Respecter le nom du fichier)">
+        <span class="info-icon"
+            data-tooltip="le fichier recepba38.csv est a placer dans vif bureau a distance dans le dossier : Z:\imprec\ba38, (Respecter le nom du fichier)">
             ℹ️
         </span>
 
     </div>
 
     <!-- ================= COMMANDES ================= -->
-    <div class="d-flex align-items-center gap-1">
+    <div style="display:flex; align-items:center; gap:10px;">
 
         <button formaction="{{ url_for('distribution.export_bl_vif') }}" class="btn btn-warning btn-sm">
             📦 Export Bons de Livraison
         </button>
 
-        <span class="info-icon" data-tooltip="le fichier cmdcli38.csv est a placer sur le dossier local du pc : C:\import commandes,
-            (Respecter le nom du fichier)">
+        <span class="info-icon"
+            data-tooltip="le fichier cmdcli38.csv est a placer sur le dossier local du pc : C:\import commandes, (Respecter le nom du fichier)">
             ℹ️
         </span>
 
     </div>
 
-    <!-- ================= EXCEL ================= -->
-    <button formaction="{{ url_for('distribution.export_ramasses_excel_mensuel') }}" class="btn btn-success btn-sm">
-        📊 Export Excel
-    </button>
+
+
+    <!-- 🔙 Retour -->
+    <a href="{{ url_for('distribution.distribution_main') }}" class="btn btn-success btn-sm">
+        ↩️ Retour Distribution
+    </a>
 
 </form>
 

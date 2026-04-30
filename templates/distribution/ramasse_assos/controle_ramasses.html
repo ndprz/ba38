@@ -4,58 +4,56 @@
 <h2 class="mb-3">🔎 Contrôle des ramasses - {{ mois }}</h2>
 
 <!-- ================= ACTIONS ================= -->
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div style="display:flex; justify-content:flex-end; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:15px;">
 
-    <!-- 🔹 Boutons export -->
-    <div class="d-flex gap-2">
+    <!-- 🔹 Export Réception -->
+    <form method="post" action="{{ url_for('distribution.export_ramasses_vif_mensuel') }}"
+        style="display:flex; align-items:center; gap:6px;">
+        <input type="hidden" name="mois" value="{{ mois }}">
 
-        <!-- 🔹 Export Réception -->
-        <form method="post" action="{{ url_for('distribution.export_ramasses_vif_mensuel') }}">
-            <input type="hidden" name="mois" value="{{ mois }}">
+        {% if confirm_reception %}
+        <input type="hidden" name="force" value="1">
+        <button class="btn btn-danger btn-sm"
+            onclick="return confirm('⚠️ Confirmer le forçage de l\\'export réception ?')">
+            ⚠️ Confirmer Export Réception
+        </button>
+        {% else %}
+        <button class="btn btn-primary btn-sm">
+            📤 Export Réception
+        </button>
+        {% endif %}
 
-            {% if confirm_reception %}
-                <input type="hidden" name="force" value="1">
-                <button class="btn btn-danger btn-sm"
-                        onclick="return confirm('⚠️ Confirmer le forçage de l\\'export réception ?')">
-                    ⚠️ Confirmer Export Réception
-                </button>
-            {% else %}
-                <button class="btn btn-primary btn-sm">
-                    📤 Export Réception
-                </button>
-            {% endif %}
-            <span class="info-icon" data-tooltip="le fichier recepba38.csv est a placer dans vif bureau a distance dans le dossier : Z:\imprec\ba38,
-                (Respecter le nom du fichier)">
-                ℹ️
-            </span>
-        </form>
+        <span class="info-icon"
+            data-tooltip="le fichier recepba38.csv est a placer dans vif bureau a distance dans le dossier : Z:\imprec\ba38">
+            ℹ️
+        </span>
+    </form>
 
-        <!-- 🔹 Export BLs -->
-        <form method="post" action="{{ url_for('distribution.export_bl_vif') }}">
-            <input type="hidden" name="mois" value="{{ mois }}">
+    <!-- 🔹 Export BLs -->
+    <form method="post" action="{{ url_for('distribution.export_bl_vif') }}"
+        style="display:flex; align-items:center; gap:6px;">
+        <input type="hidden" name="mois" value="{{ mois }}">
 
-            {% if confirm_commande %}
-                <input type="hidden" name="force" value="1">
-                <button class="btn btn-danger btn-sm"
-                        onclick="return confirm('⚠️ Confirmer le forçage de l\\'export commandes ?')">
-                    ⚠️ Confirmer Export Bons de Livraison
-                </button>
-            {% else %}
-                <button class="btn btn-warning btn-sm">
-                    📦 Export Bons de Livraison
-                </button>
-            {% endif %}
-            <span class="info-icon" data-tooltip="le fichier cmdcli38.csv est a placer sur le dossier local du pc : C:\import commandes,
-                (Respecter le nom du fichier)">
-                ℹ️
-            </span>
-        </form>
+        {% if confirm_commande %}
+        <input type="hidden" name="force" value="1">
+        <button class="btn btn-danger btn-sm"
+            onclick="return confirm('⚠️ Confirmer le forçage de l\\'export commandes ?')">
+            ⚠️ Confirmer Export Bons de Livraison
+        </button>
+        {% else %}
+        <button class="btn btn-warning btn-sm">
+            📦 Export Bons de Livraison
+        </button>
+        {% endif %}
 
-    </div>
+        <span class="info-icon"
+            data-tooltip="le fichier cmdcli38.csv est a placer sur le dossier local du pc : C:\import commandes">
+            ℹ️
+        </span>
+    </form>
 
-    <!-- 🔹 Retour -->
-    <a href="{{ url_for('distribution.liste_ramasses') }}"
-       class="btn btn-secondary btn-sm">
+    <!-- 🔙 Retour -->
+    <a href="{{ url_for('distribution.liste_ramasses') }}" class="btn btn-secondary btn-sm">
         ↩️ Retour
     </a>
 
