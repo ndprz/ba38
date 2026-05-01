@@ -6,6 +6,8 @@
 
 :root {
     --header-height: 60px;
+    --header-global: 60px;
+    --header-page: 50px;
 }
 
 body {
@@ -161,8 +163,8 @@ main.container {
 ===================================================== */
 
 table {
-    width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
 }
 
 th,
@@ -180,32 +182,6 @@ th {
     user-select: none;
 }
 
-/* Sticky header */
-.table-sticky thead th {
-    position: sticky;
-    top: 0;
-    background: #fff;
-    z-index: 10;
-}
-
-/* Colonnes figées */
-.sticky-col {
-    position: sticky;
-    background: #fff;
-    z-index: 5;
-}
-
-.sticky-col-1 {
-    left: 0;
-}
-
-.sticky-col-2 {
-    left: 100px;
-}
-
-.sticky-col-3 {
-    left: 180px;
-}
 
 /* =====================================================
    🧩 GROUPES DÉPLIABLES
@@ -330,22 +306,12 @@ th {
 }
 
 
-
 /* =========================
-HEADER sticky
+   COLONNES FIGÉES (UNIQUEMENT tables concernées)
 ========================= */
-thead th {
-    position: sticky;
-    top: 0;
-    background: #f8f9fa;
-    z-index: 10;
-}
 
-/* =========================
-COLONNE 1 : ARTICLE
-========================= */
-td:nth-child(1),
-th:nth-child(1) {
+.table-sticky td:nth-child(1),
+.table-sticky th:nth-child(1) {
     position: sticky;
     left: 0;
     background: white;
@@ -355,15 +321,12 @@ th:nth-child(1) {
 /* =========================
 COLONNE 2 : LIBELLE
 ========================= */
-td:nth-child(2),
-th:nth-child(2) {
+.table-sticky td:nth-child(2),
+.table-sticky th:nth-child(2) {
     position: sticky;
+    left: 100px;
     background: white;
     z-index: 11;
-
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 /* séparation visuelle */
@@ -768,29 +731,13 @@ select:disabled {
     /* 🔥 centre horizontal */
 }
 
-/* Fixer le header des colonnes */
-.table-container-fixe thead th {
-    position: sticky;
-    top: 0;
-    background: #f8f9fa;
-    z-index: 20;
-}
+
 
 /* Optionnel : ligne plus visible */
 .table-container-fixe thead th {
     box-shadow: 0 2px 2px rgba(0, 0, 0, 0.05);
 }
 
-
-.page-sticky-header {
-    position: sticky;
-    top: 60px;
-    /* hauteur de ton header principal */
-    background: white;
-    z-index: 30;
-    padding: 10px 0;
-    border-bottom: 1px solid #ddd;
-}
 
 /* =====================================================
    📊 TABLE AUTO WIDTH (page indicateurs)

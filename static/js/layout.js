@@ -26,7 +26,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     }, 12000);
 
-}); 
+});
 
 /* ============================================================
    INITIALISATION SELECT2 (si présent sur la page)
@@ -130,3 +130,5 @@ document.addEventListener("keydown", function (e) {
         document.querySelectorAll('.alert').forEach(a => a.remove());
     }
 });
+
+

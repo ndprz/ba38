@@ -1331,10 +1331,12 @@ def maj_champs_fournisseurs():
     return redirect(url_for("maj_champs", source="fournisseurs"))
 
 
-@app.route('/maj_champs')
+@app.route('/maj_champs', methods=['GET', 'POST'])
 @login_required
 @require_access("associations", "ecriture")
 def maj_champs():
+
+    provenance = request.args.get("source", "assos")
 
     if provenance == "benevoles":
         table = "benevoles"

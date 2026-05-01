@@ -314,10 +314,6 @@ def gestion_utilisateurs():
                 (row["appli"], row["droit"])
             )
 
-        # current_app.logger.info(
-        #     "ROLES PAR USER (normalisés) = %s",
-        #     roles_par_user
-        # )
 
         # Formulaire d’ajout utilisateur
         form = RegistrationForm()
@@ -432,6 +428,7 @@ def supprimer_utilisateur(user_id):
     upload_database()
     flash("🗑️ Utilisateur et rôles associés supprimés.", "success")
     return redirect(url_for('admin.gestion_utilisateurs'))
+
 
 
 @admin_bp.route('/ajouter_utilisateur', methods=['POST'])

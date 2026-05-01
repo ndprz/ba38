@@ -6,13 +6,6 @@
 <h2>Mise à jour des Champs</h2>
 <p>Modifiez, ajoutez ou supprimez les champs affichés dans les formulaires.</p>
 
-{% if provenance == 'assos' %}
-{% set retour_url = url_for('partenaires.partenaires') %}
-{% elif provenance == 'benevoles' %}
-{% set retour_url = url_for('benevoles.benevoles') %}
-{% else %}
-{% set retour_url = url_for('index') %}
-{% endif %}
 
 <form method="POST" action="{{ url_for('maj_champs', source=provenance) }}">
   {% if form %}{{ form.hidden_tag() }}{% endif %}
@@ -85,8 +78,9 @@
 
   <div class="d-flex justify-content-end gap-2 mt-3">
     <button type="submit" class="btn btn-success">✅ Enregistrer</button>
-    <button type="button" class="btn btn-secondary" onclick="retourAvecConfirmation('{{ retour_url }}')">⬅️
-      Retour</button>
+    <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
+      ↩️ Retour à l'accueil
+    </a>
   </div>
 </form>
 
