@@ -1,0 +1,602 @@
+{% extends "base_tabulator.html" %}
+
+{% block title %}
+Liste des Associations
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+
+    <h1>
+        Liste des Associations
+    </h1>
+
+    <!-- ===================================================== -->
+    <!-- BOUTONS -->
+    <!-- ===================================================== -->
+
+    <div class="d-flex gap-2 mb-3 flex-wrap">
+
+        <a href="{{ url_for('partenaires.create_partner') }}"
+           class="btn btn-success">
+
+            ➕ Créer un nouveau partenaire
+
+        </a>
+
+        {% if has_access("associations", "ecriture") %}
+        <button
+            type="button"
+            class="btn btn-success"
+            onclick="updatePublipostageFile()">
+
+            📄 Fichiers Publipostage
+
+        </button>
+        {% endif %}
+
+        {% if not lecture_seule %}
+
+        <form
+            method="POST"
+            action="{{ url_for('partenaires.edition_tableau_associations') }}"
+            id="form-update-table"
+            style="display:inline;">
+
+            <button
+                type="button"
+                class="btn btn-warning"
+                onclick="submitTableUpdate()">
+
+                📝 Mise à jour en tableau
+
+            </button>
+
+            <!-- ===================================================== -->
+            <!-- BOUTON NON VALIDES -->
+            <!-- ===================================================== -->
+
+            {% if voir_non_valides %}
+
+            <a href="{{ url_for('partenaires.partenaires') }}"
+            class="btn btn-danger">
+
+                ✔ Toutes les associations
+
+            </a>
+
+            {% else %}
+
+            <a href="{{ url_for('partenaires.partenaires', voir_non_valides=1) }}"
+            class="btn btn-outline-danger">
+
+                ❌ Voir les non valides
+
+            </a>
+
+            {% endif %}
+
+        </form>
+
+        {% endif %}
+
+        <button class="btn btn-outline-danger"
+                onclick="resetFilters()">
+
+            ♻️ Réinitialiser les filtres
+
+        </button>
+
+        <a href="{{ url_for('index') }}"
+           class="btn btn-outline-secondary">
+
+            ↩ Retour
+
+        </a>
+
+    </div>
+
+    <!-- ===================================================== -->
+    <!-- OPTIONS -->
+    <!-- ===================================================== -->
+
+    <fieldset class="border rounded p-3 bg-white">
+
+        <legend class="float-none w-auto px-2">
+            Options d'affichage
+        </legend>
+
+        <!-- ===================================================== -->
+        <!-- GROUPES -->
+        <!-- ===================================================== -->
+
+        <div class="d-flex flex-wrap gap-4">
+
+            <!-- coordonnees principales toujours premier -->
+
+            {% set ordered_groups = [] %}
+
+            {% if 'coordonnées principales' in grouped_fields %}
+                {% set _ = ordered_groups.append('coordonnées principales') %}
+            {% endif %}
+
+            {% for g in grouped_fields.keys() %}
+                {% if g != 'coordonnées principales' %}
+                    {% set _ = ordered_groups.append(g) %}
+                {% endif %}
+            {% endfor %}
+
+            {% for group_name in ordered_groups %}
+
+            {% set fields = grouped_fields[group_name] %}
+
+            {% set safe_group_name =
+                group_name
+                |replace(' ', '_')
+                |lower
+            %}
+
+            <div class="fields-group">
+
+                <!-- ===================================================== -->
+                <!-- TITRE -->
+                <!-- ===================================================== -->
+
+                <div class="d-flex align-items-center gap-2 mb-1">
+
+                    <div class="titre-depliable"
+                         onclick="toggleGroup('{{ safe_group_name }}', this)">
+
+                        <span class="chevron">▶</span>
+
+                        {{ group_name }}
+
+                    </div>
+
+                    <label class="mb-0">
+
+                        <input
+                            type="checkbox"
+                            class="group-master"
+                            data-group="{{ safe_group_name }}"
+                            onchange="toggleAll('{{ safe_group_name }}', this.checked)">
+
+                        Tout
+
+                    </label>
+
+                </div>
+
+                <!-- ===================================================== -->
+                <!-- CHAMPS -->
+                <!-- ===================================================== -->
+
+                <div class="fields-container"
+                     id="container-{{ safe_group_name }}">
+
+                    {% for field in fields %}
+
+                    {% if field.normalized not in ['id', 'nom_association'] %}
+
+                    <label class="d-block">
+
+                        <input
+                            type="checkbox"
+                            class="field-toggle field-{{ safe_group_name }}"
+                            value="{{ field.normalized }}">
+
+                        {{ field.field_name }}
+
+                    </label>
+
+                    {% endif %}
+
+                    {% endfor %}
+
+                </div>
+
+            </div>
+
+            {% endfor %}
+
+        </div>
+
+        <!-- ===================================================== -->
+        <!-- RECHERCHE -->
+        <!-- ===================================================== -->
+
+        <div class="mt-3">
+
+            <input
+                type="text"
+                id="filtre-association"
+                class="form-control"
+                placeholder="🔎 Rechercher une association...">
+
+        </div>
+
+    </fieldset>
+
+</div>
+
+<!-- ===================================================== -->
+<!-- TABLE -->
+<!-- ===================================================== -->
+
+<div class="table-zone">
+
+    <div id="tabulator-table"></div>
+
+</div>
+
+
+<script>
+
+const tableData = {{ table_data | tojson }};
+const allColumns = {{ columns | tojson }};
+
+let table = new Tabulator("#tabulator-table", {
+
+    data: tableData,
+
+    columns: allColumns,
+
+    layout: "fitDataStretch",
+
+    height: "100%",
+
+    movableColumns: true,
+
+    reactiveData: false,
+
+    virtualDom: true,
+
+    placeholder: "Aucune donnée",
+
+    persistence: false,
+
+    columnHeaderVertAlign: "middle",
+});
+
+
+// ======================================================
+// COLONNES VISIBLES
+// ======================================================
+
+function getVisibleColumns(){
+
+    const selected = Array.from(
+        document.querySelectorAll(".field-toggle:checked")
+    ).map(cb => cb.value);
+
+    return allColumns.filter(col => {
+
+        // toujours visibles
+        if (
+            ["id", "nom_association"]
+            .includes(col.field)
+        ){
+            return true;
+        }
+
+        return selected.includes(col.field);
+    });
+}
+
+
+// ======================================================
+// REFRESH COLONNES
+// ======================================================
+
+function refreshColumns(){
+
+    const cols = getVisibleColumns();
+
+    table.setColumns(cols);
+
+    table.redraw(true);
+
+    saveState();
+}
+
+
+// ======================================================
+// TOGGLE GROUP
+// ======================================================
+
+function toggleGroup(groupName, el){
+
+    const container =
+        document.getElementById(
+            "container-" + groupName
+        );
+
+    container.classList.toggle("expanded");
+
+    const chev = el.querySelector(".chevron");
+
+    chev.textContent =
+        container.classList.contains("expanded")
+        ? "▼"
+        : "▶";
+}
+
+
+// ======================================================
+// TOGGLE ALL
+// ======================================================
+
+function toggleAll(group, checked){
+
+    document
+    .querySelectorAll(".field-" + group)
+    .forEach(cb => {
+
+        cb.checked = checked;
+    });
+
+    requestAnimationFrame(() => {
+
+        updateGroupState();
+
+        refreshColumns();
+    });
+}
+
+
+// ======================================================
+// UPDATE GROUP STATE
+// ======================================================
+
+function updateGroupState(){
+
+    document
+    .querySelectorAll(".group-master")
+    .forEach(master => {
+
+        const group =
+            master.dataset.group;
+
+        const children =
+            document.querySelectorAll(
+                ".field-" + group
+            );
+
+        const checked =
+            Array.from(children)
+            .filter(cb => cb.checked)
+            .length;
+
+        if (checked === 0){
+
+            master.checked = false;
+            master.indeterminate = false;
+        }
+        else if (checked === children.length){
+
+            master.checked = true;
+            master.indeterminate = false;
+        }
+        else{
+
+            master.checked = false;
+            master.indeterminate = true;
+        }
+    });
+}
+
+
+// ======================================================
+// CHECKBOX INDIVIDUELLES
+// ======================================================
+
+document
+.querySelectorAll(".field-toggle")
+.forEach(cb => {
+
+    cb.addEventListener("change", () => {
+
+        updateGroupState();
+
+        refreshColumns();
+    });
+});
+
+
+// ======================================================
+// RECHERCHE
+// ======================================================
+
+document
+.getElementById("filtre-association")
+.addEventListener("input", function(){
+
+    const value = this.value;
+
+    if (!value){
+
+        table.clearFilter();
+        return;
+    }
+
+    table.setFilter(row => {
+
+        return JSON.stringify(row)
+            .toLowerCase()
+            .includes(value.toLowerCase());
+    });
+});
+
+document
+.getElementById("filtre-association")
+.addEventListener("keydown", function(e){
+
+    if (e.key === "Escape"){
+
+        this.value = "";
+
+        table.clearFilter();
+
+        e.preventDefault();
+    }
+});
+
+
+// ======================================================
+// RESET
+// ======================================================
+
+function resetFilters(){
+
+    localStorage.clear();
+
+    location.reload();
+}
+
+
+// ======================================================
+// STATE INITIAL
+// ======================================================
+
+// ======================================================
+// STORAGE
+// ======================================================
+
+const STORAGE_KEY =
+    "partenaires_tabulator_columns";
+
+
+// ======================================================
+// SAVE
+// ======================================================
+
+function saveState(){
+
+    const selected = Array.from(
+        document.querySelectorAll(".field-toggle:checked")
+    ).map(cb => cb.value);
+
+    localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(selected)
+    );
+}
+
+
+// ======================================================
+// RESTORE
+// ======================================================
+
+function restoreState(){
+
+    const saved =
+        localStorage.getItem(STORAGE_KEY);
+
+    if (!saved){
+
+        return;
+    }
+
+    const selected =
+        JSON.parse(saved);
+
+    document
+    .querySelectorAll(".field-toggle")
+    .forEach(cb => {
+
+        cb.checked =
+            selected.includes(cb.value);
+    });
+}
+
+// ======================================================
+// INITIALISATION
+// ======================================================
+
+window.addEventListener("load", () => {
+
+    restoreState();
+
+    updateGroupState();
+
+    refreshColumns();
+});
+
+</script>
+
+<script>
+
+// ======================================================
+// PUBLIPOSTAGE
+// ======================================================
+
+function updatePublipostageFile(){
+
+    if (!confirm(
+        "Lancer la génération des fichiers publipostage ?"
+    )){
+        return;
+    }
+
+    fetch("/export_publipostage/trigger", {
+
+        method: "POST"
+
+    })
+    .then(r => r.json())
+    .then(data => {
+
+        alert(data.message || "Export terminé");
+    });
+}
+
+
+// ======================================================
+// MISE A JOUR TABLEAU
+// ======================================================
+
+function submitTableUpdate(){
+
+    const form =
+        document.getElementById(
+            "form-update-table"
+        );
+
+    // nettoyage
+    form.querySelectorAll(
+        'input[name="columns"]'
+    ).forEach(e => e.remove());
+
+    // colonnes cochées
+    const selected = Array.from(
+        document.querySelectorAll(
+            ".field-toggle:checked"
+        )
+    ).map(cb => cb.value);
+
+    if (selected.length === 0){
+
+        alert("⚠️ Aucun champ sélectionné");
+        return;
+    }
+
+    // injecter colonnes
+    selected.forEach(col => {
+
+        const input =
+            document.createElement("input");
+
+        input.type = "hidden";
+        input.name = "columns";
+        input.value = col;
+
+        form.appendChild(input);
+    });
+
+    form.submit();
+}
+
+</script>
+
+{% endblock %}
