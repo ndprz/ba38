@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 
+
 {% block title %}Mouvements de stocks – Dépôt{% endblock %}
 
 {% block content %}
@@ -235,7 +236,21 @@
     ← Retour Distribution
 </a>
 
+<style>
+.filter-dropdown {
+    position: absolute;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 12px;
 
+    min-width: 220px;
+
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+
+    display: none;
+    z-index: 5000;
+}
 
 <!-- =========================================================
     SCRIPT JAVASCRIPT (LOGIQUE UNIQUE DE VISIBILITÉ)
@@ -471,72 +486,171 @@
         rebuildTable();
     }
 
-    function initDepotFilter() {
+function initDepotFilter() {
 
-        console.log("INIT FILTER");
+    const btn = document.getElementById("depotFilterBtn");
+    const dropdown = document.getElementById("filter-depot");
 
-        const btn = document.getElementById("depotFilterBtn");
-        const dropdown = document.getElementById("filter-depot");
+    dropdown.innerHTML = "";
 
-        if (!btn || !dropdown) return;
+    const values = [...new Set(
+        Object.values(stocks).map(s => s.depot)
+    )].sort((a, b) => Number(a) - Number(b));
 
-        dropdown.innerHTML = "";
+    // =========================
+    // RESTAURATION LOCALSTORAGE
+    // =========================
 
-        const values = new Set();
+    let saved = localStorage.getItem(STORAGE_KEY);
+    saved = saved ? JSON.parse(saved) : [];
 
-        // 🔥 UTILISE originalRows (PAS querySelector)
-        originalRows.forEach(r => {
-            if (r.dataset.depot) {
-                values.add(r.dataset.depot);
-            }
+    selectedDepots = saved.length
+        ? saved
+        : [...values];
+
+    // =========================
+    // BOUTONS RAPIDES
+    // =========================
+
+    const toolbar = document.createElement("div");
+    toolbar.style.marginBottom = "10px";
+    toolbar.style.display = "flex";
+    toolbar.style.gap = "10px";
+
+    const btnAll = document.createElement("button");
+    btnAll.type = "button";
+    btnAll.className = "btn btn-sm btn-outline-success";
+    btnAll.innerText = "Tout";
+
+    const btnNone = document.createElement("button");
+    btnNone.type = "button";
+    btnNone.className = "btn btn-sm btn-outline-secondary";
+    btnNone.innerText = "Aucun";
+
+    toolbar.appendChild(btnAll);
+    toolbar.appendChild(btnNone);
+
+    dropdown.appendChild(toolbar);
+
+    // =========================
+    // LISTE DEPOTS
+    // =========================
+
+    const list = document.createElement("div");
+    list.style.maxHeight = "300px";
+    list.style.overflowY = "auto";
+
+    values.forEach(val => {
+
+        const row = document.createElement("div");
+        row.style.padding = "3px 0";
+
+        const label = document.createElement("label");
+        label.style.cursor = "pointer";
+        label.style.display = "flex";
+        label.style.alignItems = "center";
+        label.style.gap = "8px";
+
+        const cb = document.createElement("input");
+
+        cb.type = "checkbox";
+        cb.value = val;
+        cb.checked = selectedDepots.includes(val);
+
+        cb.addEventListener("change", () => {
+
+            selectedDepots = Array.from(
+                dropdown.querySelectorAll("input[type='checkbox']:checked")
+            ).map(cb => cb.value);
+
+            localStorage.setItem(
+                STORAGE_KEY,
+                JSON.stringify(selectedDepots)
+            );
+
+            renderTable();
         });
 
-        const sorted = Array.from(values).sort();
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode("Dépôt " + val));
 
-        let saved = localStorage.getItem(STORAGE_KEY);
-        saved = saved ? JSON.parse(saved) : [];
+        row.appendChild(label);
+        list.appendChild(row);
+    });
 
-        selectedDepots = saved.length ? saved : [...sorted];
+    dropdown.appendChild(list);
 
-        sorted.forEach(val => {
+    // =========================
+    // TOUT
+    // =========================
 
-            const label = document.createElement("label");
+    btnAll.onclick = () => {
 
-            const cb = document.createElement("input");
-            cb.type = "checkbox";
-            cb.value = val;
-            cb.checked = selectedDepots.includes(val);
+        selectedDepots = [...values];
 
-            cb.addEventListener("change", () => {
-                selectedDepots = Array.from(
-                    dropdown.querySelectorAll("input:checked")
-                ).map(cb => cb.value);
+        dropdown.querySelectorAll("input[type='checkbox']")
+            .forEach(cb => cb.checked = true);
 
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(selectedDepots));
-                rebuildTable(); // 🔥 direct
-            });
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify(selectedDepots)
+        );
 
-            label.appendChild(cb);
-            label.appendChild(document.createTextNode(" " + val));
-            dropdown.appendChild(label);
-        });
+        renderTable();
+    };
 
-        btn.onclick = (e) => {
-            e.stopPropagation();
+    // =========================
+    // AUCUN
+    // =========================
 
-            const rect = btn.getBoundingClientRect();
+    btnNone.onclick = () => {
 
-            dropdown.style.top = rect.bottom + "px";
-            dropdown.style.left = rect.left + "px";
+        selectedDepots = [];
 
-            dropdown.style.display =
-                dropdown.style.display === "block" ? "none" : "block";
-        };
+        dropdown.querySelectorAll("input[type='checkbox']")
+            .forEach(cb => cb.checked = false);
 
-        document.onclick = () => {
-            dropdown.style.display = "none";
-        };
-    }
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify(selectedDepots)
+        );
+
+        renderTable();
+    };
+
+    // =========================
+    // OUVERTURE / FERMETURE
+    // =========================
+
+    btn.onclick = (e) => {
+
+        e.stopPropagation();
+
+        const rect = btn.getBoundingClientRect();
+
+        dropdown.style.top =
+            (rect.bottom + window.scrollY + 5) + "px";
+
+        dropdown.style.left =
+            (rect.left + window.scrollX) + "px";
+
+        dropdown.style.display =
+            dropdown.style.display === "block"
+                ? "none"
+                : "block";
+    };
+
+    // IMPORTANT :
+    // empêche fermeture quand on clique dedans
+    dropdown.onclick = (e) => {
+        e.stopPropagation();
+    };
+
+    // fermeture clic extérieur
+    document.addEventListener("click", () => {
+        dropdown.style.display = "none";
+    });
+}
 
     // =========================================================
     // DELTA + CALCUL

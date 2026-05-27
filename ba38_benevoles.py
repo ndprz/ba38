@@ -6,7 +6,7 @@ import unicodedata
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, current_app, abort, send_from_directory
 from flask_login import login_required, current_user
-from utils import get_db_connection, upload_database, write_log, has_access, is_valid_email, is_valid_phone, require_access
+from utils import get_db_connection, upload_database, write_log, has_access, is_valid_email, is_valid_phone, require_access, get_db_path
 from werkzeug.security import generate_password_hash
 from PIL import Image, ExifTags
 from urllib.parse import urlencode, quote_plus, quote
@@ -127,192 +127,490 @@ def api_quick_create_benevole():
 
 
 
-@benevoles_bp.route('/benevoles', methods=['GET'])
+# ============================================================
+# ROUTE TABULATOR BENEVOLES
+# ============================================================
+
+@benevoles_bp.route("/benevoles")
 @login_required
 @require_access("benevoles", "lecture")
 def benevoles():
 
-    # 📌 Redirection si mobile vers la prise de photo
-    user_agent = request.headers.get('User-Agent', '').lower()
-    if any(mobile in user_agent for mobile in ["iphone", "android"]):
-        return redirect(url_for('benevoles.photo_benevole_mobile'))
+    return redirect(
+        url_for("benevoles.benevoles_tabulator")
+    )
 
-    conn = get_db_connection()
+
+# ============================================================
+# ROUTE TABULATOR
+# ============================================================
+
+@benevoles_bp.route("/benevoles_tabulator")
+@login_required
+@require_access("benevoles", "lecture")
+def benevoles_tabulator():
+
+    db_path = get_db_path()
+
+    conn = sqlite3.connect(db_path)
+
+    conn.row_factory = sqlite3.Row
+
     cursor = conn.cursor()
 
-    # 🔹 Récupérer les groupes de champs
-    fields_data = cursor.execute("""
-        SELECT * FROM field_groups
+    # ============================================================
+    # CHAMPS DYNAMIQUES
+    # ============================================================
+
+    cursor.execute("""
+        SELECT *
+        FROM field_groups
         WHERE appli = 'benevoles'
-        ORDER BY display_order
-    """).fetchall()
+        ORDER BY
+            CASE
+                WHEN LOWER(group_name)
+                     = 'coordonnées principales'
+                THEN 0
+                ELSE 1
+            END,
+            group_name COLLATE NOCASE,
+            display_order
+    """)
 
-    # Ne garder que les champs affichables
-    fields_data = [f for f in fields_data if f["display_order"] and int(f["display_order"]) > 0]
+    fields = cursor.fetchall()
 
-    # Regrouper par familles
-    grouped_fields = {}
-    for row in fields_data:
-        group = row["group_name"] or "Autres"
-        grouped_fields.setdefault(group, []).append(row)
+    # ============================================================
+    # BENEVOLES
+    # ============================================================
 
-    # 🔹 Récupération paramètres GET
-    selected_columns = request.args.getlist("columns")
-    selected_groups = request.args.getlist("selected_groups")
-    has_interacted = request.args.get("has_interacted") == "1"
-    search_term = request.args.get("search_term", "").strip()  # ✅ persistance recherche
-
-    # Mode TEST → pré-sélectionner coordonnées principales
-    test_mode = session.get("test_user", False)
-    if test_mode and not selected_columns and not has_interacted:
-        selected_groups = [g for g in grouped_fields if g.lower().startswith("coordonnées principales")]
-        selected_columns = []
-        seen = set()
-        for group in selected_groups:
-            for field in grouped_fields[group]:
-                fname = field["field_name"]
-                if fname not in ['id', 'nom'] and fname not in seen:
-                    selected_columns.append(fname)
-                    seen.add(fname)
-
-    # Si rien de sélectionné, valeur par défaut
-    if not selected_columns:
-        selected_columns = ["id", "nom"]
-
-    # Compatibilité paramètres CSV
-    if len(selected_columns) == 1 and ',' in selected_columns[0]:
-        selected_columns = selected_columns[0].split(',')
-    if len(selected_groups) == 1 and ',' in selected_groups[0]:
-        selected_groups = selected_groups[0].split(',')
-
-    # Pas d’interaction → colonnes par défaut coordonnées principales
-    if not has_interacted and not test_mode and not selected_columns:
-        selected_groups = [g for g in grouped_fields if g.lower().startswith("coordonnées principales")]
-        selected_columns = []
-        seen = set()
-        for group in selected_groups:
-            for field in grouped_fields[group]:
-                fname = field["field_name"]
-                if fname not in ['id', 'nom'] and fname not in seen:
-                    selected_columns.append(fname)
-                    seen.add(fname)
-
-    # Supprimer doublons et champs non désirés
-    selected_columns = [c for i, c in enumerate(selected_columns) if c not in ['id'] and c not in selected_columns[:i]]
-
-    # Construire la clause SQL
-    escaped_columns = [f"`{col}`" for col in selected_columns if col not in ['id', 'nom']]
-    columns_clause = ", ".join(["id", "`nom`"] + escaped_columns)
-
-    # 🔎 Une seule requête complète
-    rows_full = cursor.execute("""
+    cursor.execute("""
         SELECT *
         FROM benevoles
         ORDER BY nom COLLATE NOCASE
-    """).fetchall()
+    """)
 
-    # -----------------------------------------
-    # Chargement des statuts droit image
-    # -----------------------------------------
+    rows = cursor.fetchall()
+
+    # ============================================================
+    # DROIT IMAGE
+    # ============================================================
+
     droit_image_map = {}
 
     try:
+
         rows_droit = cursor.execute("""
             SELECT id, acceptation
             FROM droit_image
         """).fetchall()
 
         droit_image_map = {
+
             row["id"]: row["acceptation"]
+
             for row in rows_droit
         }
 
     except Exception:
+
         droit_image_map = {}
-    EXCLUDED_SEARCH_FIELDS = {
-        "user_modif",
-        "date_modif",
-        "id"
-    }
 
     conn.close()
 
+    # ============================================================
+    # NORMALISATION
+    # ============================================================
 
+    def normalize(name):
 
-    def normalize_text(text: str) -> str:
-        if not text:
-            return ""
-        text = str(text).lower()
-        text = unicodedata.normalize("NFD", text)
-        text = "".join(c for c in text if unicodedata.category(c) != "Mn")
-        return text
-
-    rows = []
-
-    for row in rows_full:
-        row_dict = dict(row)
-
-        search_blob_raw = " ".join(
-            str(value or "")
-            for key, value in row_dict.items()
-            if key not in EXCLUDED_SEARCH_FIELDS
+        return (
+            name.lower()
+            .replace(" ", "_")
+            .replace("é", "e")
+            .replace("è", "e")
+            .replace("ê", "e")
+            .replace("à", "a")
+            .replace("ù", "u")
+            .replace("ô", "o")
+            .replace("-", "_")
         )
 
-        search_blob = normalize_text(search_blob_raw)
+    # ============================================================
+    # GROUPES
+    # ============================================================
 
-        display_dict = {
-            "id": row_dict.get("id"),
-            "nom": row_dict.get("nom")
-        }
+    grouped_fields = {}
 
-        for col in selected_columns:
-            if col not in ["id", "nom"]:
-                display_dict[col] = row_dict.get(col)
+    for field in fields:
 
-        rows.append({
-            "display": display_dict,
-            "search_blob": search_blob
+        group_name = field["group_name"] or "Autres"
+
+        field_name = field["field_name"]
+
+        normalized = normalize(field_name)
+
+        grouped_fields.setdefault(group_name, []).append({
+
+            "field_name": field_name,
+
+            "normalized": normalized
         })
 
-    # Photos disponibles
+    # ============================================================
+    # PHOTOS
+    # ============================================================
+
     photo_dir = "/srv/ba38/photos_benevoles"
+
     photo_ids = set()
+
     if os.path.isdir(photo_dir):
+
         for filename in os.listdir(photo_dir):
+
             if filename.endswith(".jpg"):
+
                 try:
+
                     bene_id = int(filename.split(".")[0])
+
                     photo_ids.add(bene_id)
+
                 except ValueError:
+
                     continue
 
-    # Droits utilisateur
-    user_role = current_user.role.lower()
-    lecture_seule = not has_access("benevoles", "ecriture")
+    # ============================================================
+    # TABLE DATA
+    # ============================================================
 
-    # Forcer coordonnées principales en premier
-    grouped_fields_ordered = {}
-    if "coordonnées principales" in grouped_fields:
-        grouped_fields_ordered["coordonnées principales"] = grouped_fields["coordonnées principales"]
-        for k, v in grouped_fields.items():
-            if k != "coordonnées principales":
-                grouped_fields_ordered[k] = v
-    else:
-        grouped_fields_ordered = grouped_fields
+    table_data = []
 
+    for row in rows:
+
+        d = {}
+
+        for key in row.keys():
+
+            d[normalize(key)] = row[key]
+
+        bene_id = row["id"]
+
+        # ========================================================
+        # PHOTO
+        # ========================================================
+
+        if bene_id in photo_ids:
+
+            d["photo_url"] = url_for(
+                "benevoles.serve_photo_benevole",
+                filename=f"{bene_id}.jpg"
+            )
+
+        else:
+
+            d["photo_url"] = None
+
+        # ========================================================
+        # DROIT IMAGE
+        # ========================================================
+
+        statut = droit_image_map.get(bene_id)
+
+        if statut == "Accord Total":
+
+            d["droit_image"] = "🟢"
+
+        elif statut == "Accord Entrepot":
+
+            d["droit_image"] = "🟠"
+
+        elif statut == "Refus":
+
+            d["droit_image"] = "🔴"
+
+        else:
+
+            d["droit_image"] = "⚪"
+
+        table_data.append(d)
+
+    # ============================================================
+    # COLONNES TABULATOR
+    # ============================================================
+
+    columns = [
+
+        {
+            "title": "Action",
+            "field": "id",
+            "width": 165,
+            "frozen": True,
+            "hozAlign": "center",
+            "headerSort": False,
+            "formatter": "buttonCross"
+        },
+
+        {
+            "title": "ID",
+            "field": "id",
+            "minWidth": 80,
+            "widthGrow": 1,
+            "frozen": True
+        },
+
+        {
+            "title": "Nom",
+            "field": "nom",
+            "tooltip": True,
+            "minWidth": 240,
+            "widthGrow": 3,
+            "frozen": True
+        },
+
+        {
+            "title": "📸",
+            "field": "photo_url",
+            "width": 70,
+            "hozAlign": "center",
+            "frozen": True,
+            "formatter": "photoFormatter",
+            "headerSort": False
+        },
+
+        {
+            "title": "Droit image",
+            "field": "droit_image",
+            "minWidth": 110,
+            "widthGrow": 1,
+            "hozAlign": "center",
+            "frozen": True,
+            "formatter": "html"
+        }
+    ]
+
+    # ============================================================
+    # COLONNES DYNAMIQUES
+    # ============================================================
+
+    for field in fields:
+
+        field_name = field["field_name"]
+
+        normalized = normalize(field_name)
+
+        if normalized in [
+            "id",
+            "nom"
+        ]:
+            continue
+
+        # ========================================================
+        # TYPE CHAMP
+        # ========================================================
+
+        type_champ = (
+            field["type_champ"] or ""
+        ).lower()
+
+        # ========================================================
+        # FILTRE PAR DEFAUT
+        # ========================================================
+
+        header_filter = "input"
+
+        header_filter_params = {
+
+            "placeholder": "Filtrer..."
+        }
+
+        # ========================================================
+        # LARGEURS DYNAMIQUES
+        # ========================================================
+
+        min_width = 125
+
+        width_grow = 1
+
+        hoz_align = "left"
+
+        # ========================================================
+        # CHAMPS OUI/NON
+        # ========================================================
+
+        if type_champ == "oui_non":
+
+            header_filter = "list"
+
+            header_filter_params = {
+
+                "values": {
+
+                    "": "Tous",
+
+                    "oui": "Oui",
+
+                    "non": "Non"
+                },
+
+                "clearable": True
+            }
+
+            min_width = 110
+
+            width_grow = 0
+
+            hoz_align = "center"
+
+        # ========================================================
+        # EMAILS
+        # ========================================================
+
+        elif (
+            "courriel" in normalized
+            or
+            "email" in normalized
+        ):
+
+            min_width = 260
+
+            width_grow = 2
+
+        # ========================================================
+        # TELEPHONES
+        # ========================================================
+
+        elif (
+            "tel" in normalized
+            or
+            "telephone" in normalized
+        ):
+
+            min_width = 150
+
+            width_grow = 1
+
+        # ========================================================
+        # DATES
+        # ========================================================
+
+        elif (
+            "date" in normalized
+        ):
+
+            min_width = 140
+
+            width_grow = 1
+
+            hoz_align = "center"
+
+        # ========================================================
+        # CODES / IDS
+        # ========================================================
+
+        elif (
+            "code" in normalized
+            or
+            normalized.endswith("_id")
+        ):
+
+            min_width = 120
+
+            width_grow = 1
+
+            hoz_align = "center"
+
+        # ========================================================
+        # ADRESSES
+        # ========================================================
+
+        elif (
+            "rue" in normalized
+            or
+            "adresse" in normalized
+            or
+            "commentaire" in normalized
+            or
+            "observation" in normalized
+        ):
+
+            min_width = 320
+
+            width_grow = 3
+
+        # ========================================================
+        # PRENOM
+        # ========================================================
+
+        elif normalized == "prenom":
+
+            min_width = 180
+
+            width_grow = 2
+
+        # ========================================================
+        # CONFIG COLONNE
+        # ========================================================
+
+        col = {
+
+            "title": beautify_title(field_name),
+
+            "field": normalized,
+
+            "tooltip": True,
+
+            "headerTooltip": field_name,
+
+            "minWidth": min_width,
+
+            "widthGrow": width_grow,
+
+            "hozAlign": hoz_align,
+
+            "sorter": "string",
+
+            "editor": "list",
+
+            "headerFilter": header_filter,
+
+            "headerFilterParams": header_filter_params,
+        }
+
+        # ========================================================
+        # FORMAT EMAIL
+        # ========================================================
+
+        if (
+            "courriel" in normalized
+            or
+            "email" in normalized
+        ):
+
+            col["formatter"] = "emailFormatter"
+
+        columns.append(col)
+
+
+
+    lecture_seule = not has_access(
+        "benevoles",
+        "ecriture"
+    )
 
     return render_template(
-        "benevoles/benevoles.html",
-        header_subtitle="Liste des bénévoles",
-        benevoles=rows,
-        grouped_fields=grouped_fields_ordered,
-        selected_columns=selected_columns,
-        selected_groups=selected_groups,
-        user_role=user_role,
+
+        "benevoles/benevoles_tabulator.html",
+
+        table_data=table_data,
+
+        grouped_fields=grouped_fields,
+
+        columns=columns,
+
         lecture_seule=lecture_seule,
-        photo_ids=photo_ids,
-        search_term=search_term,  # ✅ pour préremplir le champ de recherche
-        droit_image_map=droit_image_map
+
+        photo_ids=photo_ids
     )
 
 
@@ -344,11 +642,39 @@ def edition_tableau_benevoles():
     selected_columns = request.args.getlist("columns")
     selected_groups = request.args.getlist("selected_groups")
 
+    benevole_ids = request.args.getlist("benevole_ids")
+
     # Préparer la requête SQL
     escaped_columns = [f"`{col}`" for col in selected_columns if col not in ['id', 'nom']]
     columns_clause = ", ".join(["id", "nom", "prenom"] + escaped_columns)
 
-    rows = cursor.execute(f"SELECT {columns_clause} FROM benevoles ORDER BY nom COLLATE NOCASE").fetchall()
+    # ============================================================
+    # FILTRE SUR IDS VISIBLES
+    # ============================================================
+
+    if benevole_ids:
+
+        placeholders = ",".join(["?"] * len(benevole_ids))
+
+        rows = cursor.execute(
+            f"""
+            SELECT {columns_clause}
+            FROM benevoles
+            WHERE id IN ({placeholders})
+            ORDER BY nom COLLATE NOCASE
+            """,
+            benevole_ids
+        ).fetchall()
+
+    else:
+
+        rows = cursor.execute(
+            f"""
+            SELECT {columns_clause}
+            FROM benevoles
+            ORDER BY nom COLLATE NOCASE
+            """
+        ).fetchall()
 
     type_benevole_options = get_type_benevole_options(conn)
 
@@ -1525,3 +1851,14 @@ def delete_message_bene(mid):
     upload_database()
     flash("🗑️ Modèle supprimé.", "warning")
     return redirect(url_for("benevoles.messages_predefinis_benevoles"))
+
+
+def beautify_title(name):
+
+    return (
+        name
+        .replace("_", " ")
+        .replace("-", " ")
+        .strip()
+        .title()
+    )

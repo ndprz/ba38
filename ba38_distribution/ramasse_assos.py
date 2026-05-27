@@ -26,7 +26,7 @@ import sqlite3
 # 📦 MODÈLES DE RAMASSE
 # ============================================================
 
-@distribution_bp.route("/ramasse-types")
+@distribution_bp.route("/ramasse_types_list")
 @login_required
 @require_access("distribution", "ecriture")
 def ramasse_types_list():
@@ -57,11 +57,172 @@ def ramasse_types_list():
 # ➕ CRÉATION / ✏️ MODIFICATION
 # ============================================================
 
-@distribution_bp.route("/ramasse-types/create", methods=["GET", "POST"])
-@distribution_bp.route("/ramasse-types/<int:id>/edit", methods=["GET", "POST"])
+@distribution_bp.route("/ramasse_types_list/create", methods=["GET", "POST"])
+@distribution_bp.route("/ramasse_types_list/<int:id>/edit", methods=["GET", "POST"])
 @login_required
 @require_access("distribution", "ecriture")
 def ramasse_type_form(id=None):
+
+    db_path = get_db_path()
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+
+        # =====================================================
+        # 🔹 LISTES
+        # =====================================================
+        associations = cur.execute("""
+            SELECT id, nom_association
+            FROM associations
+            ORDER BY nom_association
+        """).fetchall()
+
+        fournisseurs = cur.execute("""
+            SELECT id, nom, code_vif
+            FROM fournisseurs
+            ORDER BY nom
+        """).fetchall()
+
+        articles = cur.execute("""
+            SELECT article, libelle
+            FROM articles
+            ORDER BY libelle
+        """).fetchall()
+
+        # =====================================================
+        # 🔹 MODE EDITION
+        # =====================================================
+        lignes = []
+        type_data = None
+
+        if id:
+            type_data = cur.execute("""
+                SELECT * FROM ramasses_partenaire_type_entete
+                WHERE id=?
+            """, (id,)).fetchone()
+
+            lignes = cur.execute("""
+                SELECT * FROM ramasses_partenaire_type_detail
+                WHERE id_ramasse_type=?
+            """, (id,)).fetchall()
+
+        # =====================================================
+        # 🔹 POST
+        # =====================================================
+        if request.method == "POST":
+
+            nom = request.form.get("nom_type")
+            id_asso = request.form.get("id_association")
+            id_magasin = request.form.get("id_magasin")
+
+            codes = request.form.getlist("code_vif")
+            reps = request.form.getlist("repartition")
+
+            # =====================================================
+            # 🔴 VALIDATION FOURNISSEUR (code_vif obligatoire)
+            # =====================================================
+            fournisseur = cur.execute("""
+                SELECT nom, code_vif
+                FROM fournisseurs
+                WHERE id = ?
+            """, (id_magasin,)).fetchone()
+
+            if not fournisseur or not fournisseur["code_vif"]:
+                flash(
+                    f"❌ Fournisseur sans code VIF : {fournisseur['nom'] if fournisseur else 'inconnu'}",
+                    "danger"
+                )
+
+                return render_template(
+                    "distribution/ramasse_assos/ramasse_type_form.html",
+                    type_data=type_data,
+                    lignes=[{"code_vif": c, "repartition": r} for c, r in zip(codes, reps)],
+                    associations=associations,
+                    fournisseurs=fournisseurs,
+                    articles=articles
+                )
+
+            # =====================================================
+            # 🔴 VALIDATION POURCENTAGES
+            # =====================================================
+            total = 0
+            lignes_valides = []
+
+            for c, r in zip(codes, reps):
+
+                if not c:
+                    continue
+
+                try:
+                    rep = float(r or 0)
+                except:
+                    rep = 0
+
+                total += rep
+                lignes_valides.append((c.strip(), rep))
+
+            if round(total, 2) != 100:
+                flash(f"❌ Total des pourcentages = {total}% (doit être 100%)", "danger")
+
+                return render_template(
+                    "distribution/ramasse_assos/ramasse_type_form.html",
+                    type_data=type_data,
+                    lignes=[{"code_vif": c, "repartition": r} for c, r in lignes_valides],
+                    associations=associations,
+                    fournisseurs=fournisseurs,
+                    articles=articles
+                )
+
+            # =====================================================
+            # 🔄 INSERT / UPDATE ENTETE
+            # =====================================================
+            if id:
+                cur.execute("""
+                    UPDATE ramasses_partenaire_type_entete
+                    SET nom_type=?, id_association=?, id_magasin=?
+                    WHERE id=?
+                """, (nom, id_asso, id_magasin, id))
+
+                cur.execute("""
+                    DELETE FROM ramasses_partenaire_type_detail
+                    WHERE id_ramasse_type=?
+                """, (id,))
+            else:
+                cur.execute("""
+                    INSERT INTO ramasses_partenaire_type_entete
+                    (nom_type, id_association, id_magasin)
+                    VALUES (?, ?, ?)
+                """, (nom, id_asso, id_magasin))
+
+                id = cur.lastrowid
+
+            # =====================================================
+            # 🔹 INSERT LIGNES
+            # =====================================================
+            for c, rep in lignes_valides:
+                cur.execute("""
+                    INSERT INTO ramasses_partenaire_type_detail
+                    (id_ramasse_type, code_vif, repartition)
+                    VALUES (?, ?, ?)
+                """, (id, c, rep))
+
+            conn.commit()
+
+            flash("✅ Modèle enregistré", "success")
+            return redirect(url_for("distribution.ramasse_types_list"))
+
+    # =====================================================
+    # 🔹 AFFICHAGE
+    # =====================================================
+    return render_template(
+        "distribution/ramasse_assos/ramasse_type_form.html",
+        type_data=type_data,
+        lignes=lignes,
+        associations=associations,
+        fournisseurs=fournisseurs,
+        articles=articles
+    )
 
     db_path = get_db_path()
 
@@ -77,7 +238,7 @@ def ramasse_type_form(id=None):
         """).fetchall()
 
         fournisseurs = cur.execute("""
-            SELECT id, nom
+            SELECT id, nom, code_vif
             FROM fournisseurs
             ORDER BY nom
         """).fetchall()
@@ -198,7 +359,7 @@ def ramasse_type_form(id=None):
 # 🗑️ SUPPRESSION
 # ============================================================
 
-@distribution_bp.route("/ramasse-types/<int:id>/delete")
+@distribution_bp.route("/ramasse_types_list/<int:id>/delete")
 @login_required
 @require_access("distribution", "ecriture")
 def ramasse_type_delete(id):
@@ -220,7 +381,7 @@ def ramasse_type_delete(id):
 # ============================================================
 # SAISIE RAMASSE
 # ============================================================
-@distribution_bp.route("/ramasse/saisie/<int:id_modele>", methods=["GET", "POST"])
+@distribution_bp.route("/ramasse_saisie/<int:id_modele>", methods=["GET", "POST"])
 @login_required
 @require_access("distribution", "ecriture")
 def saisie_ramasse(id_modele):
@@ -255,6 +416,39 @@ def saisie_ramasse(id_modele):
     """, (id_modele,)).fetchall()
 
 
+
+    # =====================================================
+    # 🔹 LECTURE SAISIE PRECEDENTE
+    # =====================================================
+    mois = session.get("mois_ramasse")
+
+    ramasse_existante = None
+    lignes_existantes = {}
+
+    if mois:
+        ramasse_existante = cur.execute("""
+            SELECT *
+            FROM ramasses_partenaire
+            WHERE id_association = ?
+            AND id_fournisseur = ?
+            AND strftime('%Y-%m', date_ramasse) = ?
+        """, (
+            entete["id_association"],
+            entete["id_magasin"],
+            mois
+        )).fetchone()
+
+        if ramasse_existante:
+            rows = cur.execute("""
+                SELECT code_vif, quantite_kg
+                FROM ramasses_partenaire_lignes
+                WHERE id_ramasse = ?
+            """, (ramasse_existante["id"],)).fetchall()
+
+            lignes_existantes = {
+                r["code_vif"]: r["quantite_kg"]
+                for r in rows
+            }
     # =====================================================
     # 🔹 POST
     # =====================================================
@@ -262,27 +456,64 @@ def saisie_ramasse(id_modele):
 
         date_ramasse = request.form.get("date_saisie")
         user_id = session.get("user_id")
+        mois = session.get("mois_ramasse")
 
-        # INSERT HEADER
-        cur.execute("""
-            INSERT INTO ramasses_partenaire (
-                id_association,
-                id_fournisseur,
-                date_ramasse,
-                created_at,
-                created_by
-            )
-            VALUES (?, ?, ?, datetime('now'), ?)
+        # 🔥 RECHERCHE A REFAIRE ICI (IMPORTANT)
+        ramasse_existante = cur.execute("""
+            SELECT *
+            FROM ramasses_partenaire
+            WHERE id_association = ?
+            AND id_fournisseur = ?
+            AND strftime('%Y-%m', date_ramasse) = ?
         """, (
             entete["id_association"],
             entete["id_magasin"],
-            date_ramasse,
-            user_id
-        ))
+            mois
+        )).fetchone()
 
-        id_ramasse = cur.lastrowid
+        # =====================================================
+        # 🔄 UPDATE ou INSERT
+        # =====================================================
+        if ramasse_existante:
 
-        # INSERT LIGNES
+            id_ramasse = ramasse_existante["id"]
+
+            # 🔥 SUPPRESSION DES ANCIENNES LIGNES
+            cur.execute("""
+                DELETE FROM ramasses_partenaire_lignes
+                WHERE id_ramasse = ?
+            """, (id_ramasse,))
+
+            # 🔄 mise à jour date
+            cur.execute("""
+                UPDATE ramasses_partenaire
+                SET date_ramasse = ?
+                WHERE id = ?
+            """, (date_ramasse, id_ramasse))
+
+        else:
+            # ➕ CREATION
+            cur.execute("""
+                INSERT INTO ramasses_partenaire (
+                    id_association,
+                    id_fournisseur,
+                    date_ramasse,
+                    created_at,
+                    created_by
+                )
+                VALUES (?, ?, ?, datetime('now'), ?)
+            """, (
+                entete["id_association"],
+                entete["id_magasin"],
+                date_ramasse,
+                user_id
+            ))
+
+            id_ramasse = cur.lastrowid
+
+        # =====================================================
+        # 🔹 INSERT DES LIGNES
+        # =====================================================
         for key, value in request.form.items():
 
             if key.startswith("poids_"):
@@ -312,13 +543,23 @@ def saisie_ramasse(id_modele):
 
     conn.close()
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    mois = session.get("mois_ramasse")
+
+    if mois:
+        annee, m = mois.split("-")
+        dernier_jour = monthrange(int(annee), int(m))[1]
+
+        date_defaut = f"{annee}-{m}-{dernier_jour:02d}"
+    else:
+        date_defaut = datetime.now().strftime("%Y-%m-%d")
 
     return render_template(
         "distribution/ramasse_assos/ramasse_saisie.html",
         entete=entete,
         lignes=lignes,
-        today=today
+        today=date_defaut,
+        ramasse_existante=ramasse_existante,
+        lignes_existantes=lignes_existantes
     )
 
 
@@ -326,33 +567,55 @@ def saisie_ramasse(id_modele):
 # ============================================================
 #  HISTORIQUE
 # ============================================================
-@distribution_bp.route("/ramasses")
+@distribution_bp.route("/ramasses_list")
 @login_required
 @require_access("distribution", "lecture")
 def liste_ramasses():
 
+    # 🔥 mois prioritaire = session
+    mois = session.get("mois_ramasse")
+
     conn = get_db_connection()
     cur = conn.cursor()
 
-    rows = cur.execute("""
-        SELECT r.id,
-               r.date_ramasse,
-               a.nom_association,
-               f.nom AS nom_fournisseur,
-               SUM(l.quantite_kg) AS total_kg
-        FROM ramasses_partenaire r
-        LEFT JOIN ramasses_partenaire_lignes l ON l.id_ramasse = r.id
-        LEFT JOIN associations a ON a.id = r.id_association
-        LEFT JOIN fournisseurs f ON f.id = r.id_fournisseur
-        GROUP BY r.id
-        ORDER BY r.date_ramasse DESC
-    """).fetchall()
+    if mois:
+        rows = cur.execute("""
+            SELECT r.id,
+                   r.date_ramasse,
+                   a.nom_association,
+                   f.nom AS nom_fournisseur,
+                   SUM(l.quantite_kg) AS total_kg
+            FROM ramasses_partenaire r
+            LEFT JOIN ramasses_partenaire_lignes l ON l.id_ramasse = r.id
+            LEFT JOIN associations a ON a.id = r.id_association
+            LEFT JOIN fournisseurs f ON f.id = r.id_fournisseur
+            WHERE strftime('%Y-%m', r.date_ramasse) = ?
+            GROUP BY r.id
+            ORDER BY r.date_ramasse DESC
+        """, (mois,)).fetchall()
+    else:
+        # fallback si pas de mois
+        rows = cur.execute("""
+            SELECT r.id,
+                   r.date_ramasse,
+                   a.nom_association,
+                   f.nom AS nom_fournisseur,
+                   SUM(l.quantite_kg) AS total_kg
+            FROM ramasses_partenaire r
+            LEFT JOIN ramasses_partenaire_lignes l ON l.id_ramasse = r.id
+            LEFT JOIN associations a ON a.id = r.id_association
+            LEFT JOIN fournisseurs f ON f.id = r.id_fournisseur
+            GROUP BY r.id
+            ORDER BY r.date_ramasse DESC
+        """).fetchall()
 
     conn.close()
 
+
     return render_template(
         "distribution/ramasse_assos/ramasses_list.html",
-        ramasses=rows
+        ramasses=rows,
+        mois=mois
     )
 
 
@@ -412,7 +675,7 @@ def delete_ramasse(id):
 
 
 
-@distribution_bp.route("/ramasse-types/<int:id>/duplicate", methods=["GET", "POST"])
+@distribution_bp.route("/ramasse_type_duplicate/<int:id>/duplicate", methods=["GET", "POST"])
 @login_required
 @require_access("distribution", "ecriture")
 def ramasse_type_duplicate(id):
@@ -446,7 +709,7 @@ def ramasse_type_duplicate(id):
         """).fetchall()
 
         fournisseurs = cur.execute("""
-            SELECT id, nom
+            SELECT id, nom, code_vif
             FROM fournisseurs
             ORDER BY nom
         """).fetchall()
@@ -504,8 +767,8 @@ def ramasse_type_duplicate(id):
 @require_access("distribution", "lecture")
 def export_ramasses_vif_mensuel():
 
-    mois = request.form.get("mois")  # format YYYY-MM
-    force = request.form.get("force")  # pour forcer même si export déjà fait
+    mois = request.form.get("mois") or session.get("mois_ramasse")
+    force = request.form.get("force") == "1"
 
     date_du_jour_plus_2 = (datetime.now() + timedelta(days=2)).strftime("%d/%m/%Y")
 
@@ -517,18 +780,18 @@ def export_ramasses_vif_mensuel():
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    # 🔴 Vérification export déjà fait
+    # 🔴 contrôle export déjà fait
     deja = cur.execute("""
         SELECT 1 FROM exports_vif
         WHERE mois = ? AND type_export = 'reception'
     """, (mois,)).fetchone()
 
-    if deja and force != "1":
+    if deja and not force:
         flash("⚠️ Export réception déjà effectué pour ce mois", "warning")
         conn.close()
         return redirect(url_for("distribution.controle_ramasses_get", mois=mois, confirm_reception=1))
 
-
+    # ================= DATA =================
     rows = cur.execute("""
         SELECT
             r.id_fournisseur,
@@ -544,12 +807,8 @@ def export_ramasses_vif_mensuel():
         ORDER BY f.nom, l.code_vif
     """, (mois,)).fetchall()
 
-    # 🔴 CONTROLE BLOQUANT
-    erreurs = []
-
-    for r in rows:
-        if not r["code_vif"]:
-            erreurs.append(f"Fournisseur sans code VIF : {r['nom']}")
+    # 🔴 contrôle VIF
+    erreurs = [f"Fournisseur sans code VIF : {r['nom']}" for r in rows if not r["code_vif"]]
 
     if erreurs:
         for e in erreurs:
@@ -557,7 +816,7 @@ def export_ramasses_vif_mensuel():
         conn.close()
         return redirect(url_for("distribution.liste_ramasses"))
 
-    # 🔹 date = dernier jour du mois
+    # 🔹 date réception
     annee, m = mois.split("-")
     dernier_jour = monthrange(int(annee), int(m))[1]
     date_recep = f"{dernier_jour}/{m}/{annee}"
@@ -565,36 +824,21 @@ def export_ramasses_vif_mensuel():
     lignes_csv = []
 
     for r in rows:
-
         article = r["article_code_vif"].strip()
-
-        annee, mois_num = mois.split("-")
-
-        lot = f"RP{annee[-2:]}{mois_num}{article}"
+        lot = f"RP{annee[-2:]}{m}{article}"
 
         ligne = [
-            "01",                       # 1STE
-            "38",                       # 2ETAB
-            date_recep,                 #3 DATE RECEP
-            r["code_vif"],              #4 CODE VIF FOURNISSEUR
-            "01",                       #5 LIEU
-            "03",                       #6 DEPOT
-            r["article_code_vif"],      #7 ARTICLE
-            int(r["total_kg"]),         #8 QUANTITE
-            "KG",                       #9 UNITE
-            lot,                        #10 LOT
-            date_du_jour_plus_2,        #11 DLUO
-            date_du_jour_plus_2,        #12 DLC
-            "",                         #13 Lartlibel artic
-            "RA"                        #14 ORIGINE
-
+            "01","38",date_recep,r["code_vif"],"01","03",
+            r["article_code_vif"],
+            f"{float(r['total_kg'] or 0):.3f}".replace(".", ","),
+            "KG",lot,date_du_jour_plus_2,date_du_jour_plus_2,"","RA"
         ]
 
         lignes_csv.append(";".join(map(str, ligne)))
 
     output = "\n".join(lignes_csv)
 
-    # 🔹 Enregistrement export
+    # 🔹 trace
     cur.execute("""
         INSERT INTO exports_vif (mois, type_export, date_export, user)
         VALUES (?, 'reception', datetime('now'), ?)
@@ -607,11 +851,9 @@ def export_ramasses_vif_mensuel():
         output,
         mimetype="text/csv",
         headers={
-            "Content-Disposition": f"attachment; filename=recepba38.csv"
+            "Content-Disposition": "attachment; filename=recepba38.csv"
         }
     )
-
-
 
 
 @distribution_bp.route("/ramasses/export_excel_mensuel", methods=["POST"])
@@ -619,7 +861,7 @@ def export_ramasses_vif_mensuel():
 @require_access("distribution", "lecture")
 def export_ramasses_excel_mensuel():
 
-    mois = request.form.get("mois")  # format YYYY-MM
+    mois = request.form.get("mois") or session.get("mois_ramasse")  # format YYYY-MM
 
     if not mois:
         flash("❌ Mois non sélectionné", "danger")
@@ -707,7 +949,7 @@ def export_ramasses_excel_mensuel():
 @require_access("distribution", "lecture")
 def export_bl_vif():
 
-    mois = request.form.get("mois")
+    mois = request.form.get("mois") or session.get("mois_ramasse")
     force = request.form.get("force") == "1"
 
     if not mois:
@@ -823,7 +1065,7 @@ def export_bl_vif():
 @require_access("distribution", "lecture")
 def controle_ramasses():
 
-    mois = request.form.get("mois")
+    mois = request.form.get("mois") or session.get("mois_ramasse")
 
     if not mois:
         flash("❌ Mois non sélectionné", "danger")
@@ -882,6 +1124,7 @@ def controle_ramasses():
             "danger"
         )
 
+    conn.close()
 
     return render_template(
         "distribution/ramasse_assos/controle_ramasses.html",
@@ -891,15 +1134,6 @@ def controle_ramasses():
         total_entrees=total_entrees,
         total_sorties=total_sorties,
         coherent=coherent
-    )
-
-    conn.close()
-
-    return render_template(
-        "distribution/ramasse_assos/controle_ramasses.html",
-        mois=mois,
-        fournisseurs=fournisseurs,
-        associations=associations
     )
 
 
@@ -973,3 +1207,51 @@ def controle_ramasses_get():
         confirm_reception=confirm_reception,
         confirm_commande=confirm_commande
     )
+
+# ============================================================================
+# 📄 mois_ramasse disponible dans tous les templates
+# ============================================================================
+@distribution_bp.app_context_processor
+def inject_mois_ramasse():
+    return {
+        "mois_ramasse": session.get("mois_ramasse")
+    }
+
+
+@distribution_bp.route("/ramasse/set_mois", methods=["POST"])
+@login_required
+@require_access("distribution", "ecriture")
+def set_mois_ramasse():
+
+    mois = request.form.get("mois_ramasse")
+
+    # 🔒 Sécurité minimale
+    if not mois or len(mois) != 7:
+        flash("❌ Mois invalide", "danger")
+        return redirect(request.referrer or url_for("distribution.ramasse_types_list"))
+
+    session["mois_ramasse"] = mois
+
+    write_log(f"📅 Mois de travail défini : {mois} | user={current_user.email}")
+
+    flash(f"📅 Mois de travail défini : {mois}", "success")
+
+    return redirect(request.referrer or url_for("distribution.ramasse_types_list"))
+
+
+@distribution_bp.route("/get_fournisseur_libelle/<code>")
+def get_fournisseur_libelle(code):
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    row = cur.execute("""
+        SELECT nom FROM fournisseurs WHERE code_vif = ?
+    """, (code,)).fetchone()
+
+    conn.close()
+
+    return jsonify({"libelle": row["nom"] if row else None})
+
+
+

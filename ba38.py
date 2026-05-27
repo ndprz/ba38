@@ -53,6 +53,9 @@ import re
 
 
 
+# --------------------------------------------------
+# BLUEPRINTS (Modules fonctionnels)
+# --------------------------------------------------
 
 from ba38_planning_ramasse import planning_bp  # Ramasse
 from ba38_planning_distribution import planning_dist_bp  # Distribution
@@ -76,10 +79,11 @@ from ba38_evenements import evenements_bp
 from ba38_factures import factures_bp
 from ba38_planning_report import planning_report_bp
 from ba38_aide import aide_bp
-from ba38_engagements import engagements_bp
+from engagements import engagements_bp
 from ba38_droit_image import droit_image_bp
 from ba38_indicateurs import indicateurs_bp
 from ba38_emails import emails_bp
+from ba38_applications import applications_bp
 
 
 
@@ -342,6 +346,7 @@ app.register_blueprint(engagements_bp)
 app.register_blueprint(droit_image_bp)
 app.register_blueprint(indicateurs_bp)
 app.register_blueprint(emails_bp)
+app.register_blueprint(applications_bp)
 
 
 
@@ -1528,11 +1533,6 @@ def list_routes():
     return "<pre>" + "\n".join(sorted(output)) + "</pre>"
 
 
-# @app.errorhandler(404)
-# def not_found_error(error):
-#     write_log(f"❌ 404 - URL non trouvée : {request.url}")
-#     return render_template('404.html', url=request.url), 404
-
 @app.route('/test_404_page')
 def test_404_page():
     try:
@@ -1556,17 +1556,6 @@ def test_upload():
     except Exception as e:
         return f"❌ Erreur pendant upload : {e}"
 
-# if __name__ == '__main__':
-#     FLASK_ENV = os.getenv("FLASK_ENV", "prod")
-#     debug_mode = FLASK_ENV == "dev"
-
-#     write_log(f"🚀 Lancement du serveur Flask (debug={debug_mode})")
-#     write_log(f"🧪 Environnement FLASK_ENV = {FLASK_ENV}")
-#     write_log(app.url_map)
-
-#     app.run(debug=debug_mode)
-#     write_log(str(app.url_map))  # Pour lister toutes les routes définies
-#     app.run(debug=True)
 
 
 

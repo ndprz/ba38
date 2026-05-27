@@ -3,13 +3,26 @@
 
 {% block content %}
 
+
 <h2>📊 Campagne indicateurs</h2>
+
+<button class="btn btn-outline-info mb-3"
+        type="button"
+        data-bs-toggle="modal"
+        data-bs-target="#modalAide">
+    ℹ️ Aide utilisateur
+</button>
+
+<div class="collapse" id="aideIndicateurs">
+    {% include "docsHtml/indicateurs_aide.html" %}
+</div>
 
 <form method="POST" enctype="multipart/form-data">
 
     <div class="mb-3">
         <label>Période</label>
-        <select name="periode" class="form-control">
+        <select id="periode" name="periode" class="form-control">
+            <option value="" selected disabled>-- Choisir un trimestre --</option>
             <option value="T1 2026">T1 2026</option>
             <option value="T2 2026">T2 2026</option>
             <option value="T3 2026">T3 2026</option>
@@ -32,64 +45,151 @@
         ↩️ Retour à l'accueil
     </a>
 
+
 </form>
 
-{% if show_modal %}
+<!-- MODAL CAMPAGNE EXISTANTE -->
 
-<div class="modal fade show" style="display:block; background:rgba(0,0,0,0.5)">
-    <div class="modal-dialog">
-        <div class="modal-content">
+<div class="modal fade" id="modalCampagneExistante" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
 
-            <div class="modal-header">
-                <h5 class="modal-title">⚠️ Campagne existante</h5>
-            </div>
+      <div class="modal-header">
+        <h5 class="modal-title">⚠️ Campagne existante</h5>
+      </div>
 
-            <div class="modal-body">
-                Une campagne existe déjà pour <b>{{ periode }}</b>.<br><br>
+      <div class="modal-body">
 
-                <p class="text-muted">
-                    Dernière mise à jour :
-                    {{ campagne.date_creation | date_fr }}
-                </p>
+        <p>Une campagne existe déjà pour cette période.</p>
 
-                Que souhaitez-vous faire ?
-            </div>
+        <p><b>Que souhaitez-vous faire ?</b></p>
 
-            <div class="modal-footer flex-column gap-2">
-
-                <!-- 🔄 RELOAD -->
-                <form method="post" enctype="multipart/form-data" class="w-100">
-                    <input type="hidden" name="periode" value="{{ periode }}">
-                    <input type="hidden" name="date_limite" value="{{ date_limite }}">
-                    <input type="hidden" name="action" value="reload">
-
-                    <p class="text-warning small">
-                        ⚠️ Vous devez re-sélectionner le fichier CSV
-                    </p>
-
-                    <input type="file" name="csv_file" required class="form-control mb-2">
-
-                    <button type="submit" class="btn btn-danger w-100">
-                        🔄 Recharger le fichier AMS
-                    </button>
-                </form>
-
-                <!-- 📂 UTILISER EXISTANT -->
-                <form method="post" class="w-100">
-                    <input type="hidden" name="periode" value="{{ periode }}">
-                    <input type="hidden" name="action" value="use">
-
-                    <button type="submit" class="btn btn-secondary w-100">
-                        📂 Utiliser les données existantes
-                    </button>
-                </form>
-
-            </div>
-
+        <!-- 🔥 AJOUT : upload CSV dans modale -->
+        <div class="mt-3">
+            <label><b>📂 Nouveau fichier CSV (obligatoire si écrasement)</b></label>
+            <input type="file" id="csv_modal" class="form-control">
         </div>
+
+      </div>
+
+      <div class="modal-footer">
+
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Annuler
+        </button>
+
+        <a href="#" id="btnVoirCampagne" class="btn btn-primary">
+            Voir la campagne
+        </a>
+
+        <button type="button" class="btn btn-danger" id="btnForcerCreation">
+            ♻️ M.A.J campagne depuis .csv
+        </button>
+
+      </div>
+
     </div>
+  </div>
 </div>
 
-{% endif %}
+<!-- Modeale AIDE    -->
+<div class="modal fade" id="modalAide" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📊 Aide – Module Indicateurs ÉTAT</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <!-- 👇 C’EST ICI -->
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/indicateurs_aide.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+    console.log("JS chargé");
+
+    const select = document.getElementById("periode");
+    const CHECK_URL = "/check_campagne";
+
+    select.addEventListener("change", function () {
+
+        const periode = this.value;
+        if (!periode) return;
+
+        fetch(`${CHECK_URL}?periode=${encodeURIComponent(periode)}`)
+            .then(response => response.json())
+            .then(data => {
+
+                console.log("REPONSE BACKEND =", data);
+
+                if (data.exists) {
+
+                    const modalEl = document.getElementById("modalCampagneExistante");
+                    const modal = new bootstrap.Modal(modalEl);
+
+                    // 🔹 Bouton VOIR
+                    const btnVoir = document.getElementById("btnVoirCampagne");
+                    btnVoir.href = `/indicateurs/${data.id}`;
+
+                    // 🔹 Bouton CREER QUAND MEME
+                    const btnForce = document.getElementById("btnForcerCreation");
+
+                    btnForce.onclick = function () {
+
+                        const fileInputModal = document.getElementById("csv_modal");
+                        const mainFileInput = document.querySelector("input[name='csv_file']");
+
+                        if (!fileInputModal.files.length) {
+                            alert("⚠️ Veuillez sélectionner un fichier CSV");
+                            return;
+                        }
+
+                        // 🔥 Copier le fichier de la modale vers le form principal
+                        mainFileInput.files = fileInputModal.files;
+
+                        // 🔥 Ajouter action reload
+                        let input = document.createElement("input");
+                        input.type = "hidden";
+                        input.name = "action";
+                        input.value = "reload";
+
+                        document.querySelector("form").appendChild(input);
+
+                        document.querySelector("form").submit();
+                    };
+
+                    modal.show();
+                }
+
+            })
+            .catch(err => console.error("Erreur check campagne:", err)); // 🔥 MANQUAIT
+
+    });
+
+});
+</script>
+
 
 {% endblock %}

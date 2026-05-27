@@ -3,67 +3,66 @@
 
 <h2 class="mb-3">🔎 Contrôle des ramasses - {{ mois }}</h2>
 
-<!-- ================= ACTIONS ================= -->
-<div style="display:flex; justify-content:flex-end; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:15px;">
+<form method="post" class="mb-3">
 
-    <!-- 🔹 Export Réception -->
-    <form method="post" action="{{ url_for('distribution.export_ramasses_vif_mensuel') }}"
-        style="display:flex; align-items:center; gap:6px;">
-        <input type="hidden" name="mois" value="{{ mois }}">
+    <input type="hidden" name="mois" value="{{ mois }}">
 
+    <div class="d-flex justify-content-end align-items-center gap-2 flex-wrap">
+
+        <!-- 🔹 Réception -->
         {% if confirm_reception %}
-        <input type="hidden" name="force" value="1">
-        <button class="btn btn-danger btn-sm"
-            onclick="return confirm('⚠️ Confirmer le forçage de l\\'export réception ?')">
-            ⚠️ Confirmer Export Réception
-        </button>
+            <input type="hidden" name="force" value="1">
+            <button formaction="{{ url_for('distribution.export_ramasses_vif_mensuel') }}"
+                    class="btn btn-danger btn-sm"
+                    onclick="return confirm('⚠️ Confirmer le forçage ?')">
+                ⚠️ Confirmer Export Réception
+            </button>
         {% else %}
-        <button class="btn btn-primary btn-sm">
-            📤 Export Réception
-        </button>
+            <button formaction="{{ url_for('distribution.export_ramasses_vif_mensuel') }}"
+                    class="btn btn-primary btn-sm">
+                📤 Export Réception
+            </button>
         {% endif %}
 
         <span class="info-icon"
-            data-tooltip="le fichier recepba38.csv est a placer dans vif bureau a distance dans le dossier : Z:\imprec\ba38">
+              data-tooltip="recepba38.csv → Z:\imprec\ba38">
             ℹ️
         </span>
-    </form>
 
-    <!-- 🔹 Export BLs -->
-    <form method="post" action="{{ url_for('distribution.export_bl_vif') }}"
-        style="display:flex; align-items:center; gap:6px;">
-        <input type="hidden" name="mois" value="{{ mois }}">
-
+        <!-- 🔹 BL -->
         {% if confirm_commande %}
-        <input type="hidden" name="force" value="1">
-        <button class="btn btn-danger btn-sm"
-            onclick="return confirm('⚠️ Confirmer le forçage de l\\'export commandes ?')">
-            ⚠️ Confirmer Export Bons de Livraison
-        </button>
+            <input type="hidden" name="force" value="1">
+            <button formaction="{{ url_for('distribution.export_bl_vif') }}"
+                    class="btn btn-danger btn-sm"
+                    onclick="return confirm('⚠️ Confirmer le forçage BL ?')">
+                ⚠️ Confirmer Export BL
+            </button>
         {% else %}
-        <button class="btn btn-warning btn-sm">
-            📦 Export Bons de Livraison
-        </button>
+            <button formaction="{{ url_for('distribution.export_bl_vif') }}"
+                    class="btn btn-warning btn-sm">
+                📦 Export Bons de Livraison
+            </button>
         {% endif %}
 
         <span class="info-icon"
-            data-tooltip="le fichier cmdcli38.csv est a placer sur le dossier local du pc : C:\import commandes">
+              data-tooltip="cmdcli38.csv → C:\import commandes">
             ℹ️
         </span>
-    </form>
 
-    <!-- 🔙 Retour -->
-    <a href="{{ url_for('distribution.liste_ramasses') }}" class="btn btn-secondary btn-sm">
-        ↩️ Retour
-    </a>
+        <!-- 🔙 -->
+        <a href="{{ url_for('distribution.liste_ramasses') }}"
+           class="btn btn-secondary btn-sm">
+            ↩️ Retour
+        </a>
 
-</div>
+    </div>
 
+</form>
 
-<!-- ================= FOURNISSEURS ================= -->
+<!-- ================= TABLES ================= -->
+
 <div class="card p-3 mb-4">
-    <h5>🔵 Totaux par fournisseur (réception)</h5>
-
+    <h5>🔵 Totaux par fournisseur</h5>
     <table class="table table-sm table-bordered">
         <thead class="table-light">
             <tr>
@@ -76,11 +75,9 @@
             {% for f in fournisseurs %}
             <tr>
                 <td>{{ f.fournisseur }}</td>
-
                 <td class="{% if not f.code_vif %}text-danger fw-bold{% endif %}">
-                    {{ f.code_vif or "❌ manquant" }}
+                    {{ f.code_vif or "❌" }}
                 </td>
-
                 <td class="text-end fw-bold">
                     {{ "%.1f"|format(f.total_kg or 0) }}
                 </td>
@@ -90,10 +87,8 @@
     </table>
 </div>
 
-<!-- ================= ASSOCIATIONS ================= -->
 <div class="card p-3">
-    <h5>🟠 Totaux par association (commandes)</h5>
-
+    <h5>🟠 Totaux par association</h5>
     <table class="table table-sm table-bordered">
         <thead class="table-light">
             <tr>
@@ -106,11 +101,9 @@
             {% for a in associations %}
             <tr>
                 <td>{{ a.nom_association }}</td>
-
                 <td class="{% if not a.code_vif %}text-danger fw-bold{% endif %}">
-                    {{ a.code_vif or "❌ manquant" }}
+                    {{ a.code_vif or "❌" }}
                 </td>
-
                 <td class="text-end fw-bold">
                     {{ "%.1f"|format(a.total_kg or 0) }}
                 </td>

@@ -143,6 +143,10 @@
   <input type="hidden" name="columns" value="{{ col }}">
   {% endfor %}
 
+  <input type="hidden"
+       name="filtered_ids"
+       value='{{ filtered_ids|tojson }}'>
+
   <div class="d-flex justify-content-end gap-2 mt-3">
     <a href="{{ url_for('partenaires.partenaires') }}" class="btn btn-secondary">↩️ Retour à la liste</a>
     <button type="submit" class="btn btn-success">💾 Enregistrer les modifications</button>

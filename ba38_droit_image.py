@@ -13,7 +13,7 @@ droit_image_bp = Blueprint("droit_image", __name__)
 # ==========================================
 @droit_image_bp.route("/droit_image")
 @login_required
-@require_access("image", "lecture")
+@require_access("droit_image", "lecture")
 def droit_image():
 
     filtre = request.args.get("acceptation")
@@ -41,7 +41,7 @@ def droit_image():
             d.acceptation,
             d.lien_drive
         FROM droit_image d
-        LEFT JOIN benevoles b ON b.id = d.id
+        INNER JOIN benevoles b ON b.id = d.id
         """
 
         params = []
@@ -68,7 +68,7 @@ def droit_image():
 # ==========================================
 @droit_image_bp.route("/export_droit_image")
 @login_required
-@require_access("image", "lecture")
+@require_access("droit_image", "lecture")
 def export_droit_image():
 
     filtre = request.args.get("acceptation")
@@ -85,7 +85,7 @@ def export_droit_image():
             d.acceptation,
             d.lien_drive
         FROM droit_image d
-        LEFT JOIN benevoles b ON b.id = d.id
+        INNER JOIN benevoles b ON b.id = d.id
         """
 
         params = []
@@ -100,7 +100,7 @@ def export_droit_image():
 
     output = io.BytesIO()
 
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+    with pd.ExcelWriter(output) as writer:
         df.to_excel(writer, index=False, sheet_name="droit_image")
 
     output.seek(0)
@@ -115,9 +115,9 @@ def export_droit_image():
 # MISE A JOUR
 # ---------------------------------------------------------
 
-@droit_image_bp.route("/update_droit_image")
+@droit_image_bp.route("/update_droit_image", methods=["POST"])
 @login_required
-@require_access("image", "ecriture")
+@require_access("droit_image", "ecriture")
 def update_droit_image():
 
     db_path = get_db_path()

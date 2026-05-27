@@ -72,6 +72,7 @@ def build_menu():
         rows = cursor.execute("""
             SELECT *
             FROM applications
+            where menu_visible = 1
             ORDER BY ordre_groupe, ordre
         """).fetchall()
     else:
@@ -82,6 +83,7 @@ def build_menu():
                 ON r.appli = a.appli
             WHERE r.user_email = ?
               AND r.droit IN ('lecture', 'ecriture')
+              and a.menu_visible = 1
             ORDER BY a.ordre_groupe, a.ordre
         """, (current_user.email,)).fetchall()
 
@@ -1059,6 +1061,17 @@ def get_static_factures_dir():
     os.makedirs(path, exist_ok=True)
     return path
 
+def get_templates_pdf_dir():
+    """
+    Retourne le dossier templates/pdf de l'environnement courant.
+    """
+    base_dir = os.getenv("BA38_BASE_DIR")
+
+    if not base_dir:
+        raise RuntimeError("BA38_BASE_DIR non défini")
+
+    return os.path.join(base_dir, "templates", "pdf")
+
 
 # ============================================================================
 # 🧰 GIT
@@ -1209,38 +1222,96 @@ def migrate_schema_and_data(source_db_path, dest_db_path, copy_data=False):
 
 def has_access(appli: str, niveau_requis: str) -> bool:
     """
-    Vérifie si l'utilisateur courant a le droit requis sur une application.
-    Source de vérité unique.  NICOLAS
+    ============================================================
+    VERIFICATION DES DROITS UTILISATEUR
+    ============================================================
+
+    Source unique des permissions applicatives.
+
+    Hiérarchie :
+        aucun < lecture < ecriture < admin
     """
 
-    # Admin global
+    # ============================================================
+    # ADMIN GLOBAL
+    # ============================================================
+
     if session.get("user_role") == "admin":
         return True
 
-    roles = session.get("roles_utilisateurs", [])
-    hierarchy = ["lecture", "ecriture", "admin"]
+    # ============================================================
+    # ROLES SESSION
+    # ============================================================
+
+    roles = session.get(
+        "roles_utilisateurs",
+        []
+    )
+
+    hierarchy = [
+        "aucun",
+        "lecture",
+        "ecriture",
+        "admin"
+    ]
+
+    # ============================================================
+    # RECHERCHE DROIT APPLICATION
+    # ============================================================
 
     for app, droit in roles:
+
         if app != appli:
             continue
 
-        # Aucun droit ou droit explicite "aucun"
-        if not droit or droit == "aucun":
-            return False
+        # --------------------------------------------------------
+        # SECURITE VALEURS INATTENDUES
+        # --------------------------------------------------------
 
-        # Sécurité : valeurs inattendues
-        if droit not in hierarchy or niveau_requis not in hierarchy:
+        if (
+            droit not in hierarchy
+            or niveau_requis not in hierarchy
+        ):
+
             write_log(
-                f"⚠️ has_access incohérent : appli={appli}, droit={droit}, requis={niveau_requis}"
+                f"""
+⚠️ has_access incohérent
+
+appli = {appli}
+droit = {droit}
+requis = {niveau_requis}
+"""
             )
+
             return False
 
-        return hierarchy.index(droit) >= hierarchy.index(niveau_requis)
+        # --------------------------------------------------------
+        # COMPARAISON HIERARCHIQUE
+        # --------------------------------------------------------
 
-    write_log(f"ROLES SESSION = {session.get('roles_utilisateurs')}")
-    write_log(f"USER ROLE = {session.get('user_role')}")
+        return (
+            hierarchy.index(droit)
+            >=
+            hierarchy.index(niveau_requis)
+        )
+
+    # ============================================================
+    # AUCUN DROIT TROUVE
+    # ============================================================
+
+    write_log(
+        f"""
+❌ has_access : aucun droit trouvé
+
+appli = {appli}
+requis = {niveau_requis}
+
+roles = {roles}
+"""
+    )
 
     return False
+
 
 from functools import wraps
 from flask import abort, session
@@ -1433,3 +1504,52 @@ def date_fr(value):
         return dt.strftime("%d/%m/%Y %H:%M")
     except:
         return value
+
+
+import re
+
+
+# ============================================================
+# VALIDATION IBAN
+# ============================================================
+
+def is_valid_iban(iban):
+
+    if not iban:
+        return False
+
+    # suppression espaces
+    iban = iban.replace(" ", "").upper()
+
+    # format général
+    if not re.match(r'^[A-Z0-9]+$', iban):
+        return False
+
+    # longueur mini
+    if len(iban) < 15 or len(iban) > 34:
+        return False
+
+    # déplacement 4 premiers caractères
+    iban_rearranged = iban[4:] + iban[:4]
+
+    # conversion lettres -> chiffres
+    iban_numeric = ""
+
+    for char in iban_rearranged:
+
+        if char.isdigit():
+
+            iban_numeric += char
+
+        else:
+
+            iban_numeric += str(ord(char) - 55)
+
+    # contrôle modulo 97
+    try:
+
+        return int(iban_numeric) % 97 == 1
+
+    except Exception:
+
+        return False

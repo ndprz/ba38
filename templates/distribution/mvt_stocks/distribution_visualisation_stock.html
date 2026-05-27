@@ -5,9 +5,12 @@
 {% block content %}
 
 <!-- ===================================================== -->
-<!-- EN-TÊTE -->
+<!-- HEADER STICKY -->
 <!-- ===================================================== -->
-<div class="d-flex justify-content-between align-items-center mb-4 flex-nowrap">
+
+<div class="page-sticky-header" id="page-header">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-nowrap">
 
     <h2 class="mb-0">
         👁️ Visualisation des stocks
@@ -21,6 +24,12 @@
     <input type="hidden" id="currentNumMvt">
 
     <div class="d-flex align-items-center flex-nowrap" style="gap: 12px;">
+
+        <input type="text"
+            id="searchInput"
+            class="form-control form-control-sm"
+            placeholder="🔎 Article / Libellé"
+            style="width: 240px;">
 
         <div class="form-check mb-0">
             <input class="form-check-input" type="checkbox" id="toggleZeroStock" checked>
@@ -41,11 +50,12 @@
     </div>
 
 
+    </div>
+
 </div>
 
-
-<div class="table-responsive">
-    <table class="table table-sm table-striped table-hover sticky-table">
+<div class="table-container" id="table-container">
+    <table class="table table-sm table-striped table-hover">
 
 
         <thead class="table-light">
@@ -172,158 +182,581 @@
     ← Retour
 </a>
 
+<style>
+
+/* =====================================================
+   HEADER STICKY
+===================================================== */
+
+.page-sticky-header {
+    position: sticky;
+    top: 60px;
+    z-index: 500;
+    background: white;
+    padding-bottom: 6px;
+}
+
+
+/* =====================================================
+   CONTAINER TABLEAU
+===================================================== */
+
+#table-container {
+    overflow-y: auto;
+    overflow-x: auto;
+    position: relative;
+}
+
+
+/* =====================================================
+   ENTETES STICKY
+===================================================== */
+
+#table-container thead th {
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    z-index: 5;
+}
+
+
+/* =====================================================
+   LIGNES FAMILLES
+===================================================== */
+
+.famille-row td {
+    font-weight: bold;
+    background: #f3f3f3;
+    border-top: 2px solid #d0d0d0;
+    cursor: pointer;
+}
+
+
+/* =====================================================
+   TABLE
+===================================================== */
+
+#table-container table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+
+/* =====================================================
+   CELLULES
+===================================================== */
+
+#table-container td,
+#table-container th {
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+
+/* =====================================================
+   FILTRE DEPOT
+===================================================== */
+
+.filter-dropdown {
+    position: fixed;
+    z-index: 3000;
+
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+
+    padding: 10px;
+
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+
+    display: none;
+
+    min-width: 180px;
+}
+
+.filter-dropdown label {
+    display: block;
+    margin-bottom: 5px;
+    cursor: pointer;
+}
+
+</style>
+
 
 <script>
 
-    let selectedDepots = [];
+/* =====================================================
+   VARIABLES GLOBALES
+===================================================== */
 
-    document.addEventListener("DOMContentLoaded", () => {
-
-        const tbody = document.querySelector("tbody");
-        const originalRows = Array.from(
-            tbody.querySelectorAll("tr[data-famille]")
-        );
-
-        console.log("Rows:", originalRows.length);
-
-        function rebuildTable() {
-
-            tbody.innerHTML = "";
-            const familles = {};
-
-            originalRows.forEach(row => {
-
-                const fam = row.dataset.famille ? row.dataset.famille : "Sans famille";
-                const depotValue = row.dataset.depot;
-
-                const matchDepot =
-                    selectedDepots.length === 0 ||
-                    selectedDepots.includes(depotValue);
-
-                if (!matchDepot) return;
-
-                if (!familles[fam]) familles[fam] = [];
-                familles[fam].push(row);
-            });
-
-            Object.keys(familles).forEach(fam => {
-
-                const famRow = document.createElement("tr");
-                famRow.className = "famille-row";
-                famRow.innerHTML = `<td colspan="17">📁 ${fam}</td>`;
-
-                famRow.addEventListener("click", () => {
-                    const collapsed = famRow.classList.toggle("collapsed");
-                    let next = famRow.nextElementSibling;
-                    while (next && !next.classList.contains("famille-row")) {
-                        next.style.display = collapsed ? "none" : "";
-                        next = next.nextElementSibling;
-                    }
-                });
-
-                tbody.appendChild(famRow);
-
-                familles[fam].forEach(row => {
-                    row.style.display = "table-row";
-                    tbody.appendChild(row);
-                });
-
-            });
-        }
-
-        initDepotFilter(originalRows, rebuildTable);
-        rebuildTable();
-    });
+let selectedDepots = [];
 
 
-    function initDepotFilter(rows, rebuildTable) {
+/* =====================================================
+   INIT PAGE
+===================================================== */
 
-        const btn = document.getElementById("depotFilterBtn");
-        const dropdown = document.getElementById("filter-depot");
+document.addEventListener("DOMContentLoaded", () => {
 
-        if (!btn || !dropdown) return;
+    const tbody =
+        document.querySelector("tbody");
 
-        const values = new Set();
+    const toggleZeroStock =
+        document.getElementById("toggleZeroStock");
 
-        rows.forEach(r => {
-            const depot = r.dataset.depot;
-            if (depot) values.add(depot);
-        });
+    const searchInput =
+        document.getElementById("searchInput");
 
-        const sorted = Array.from(values).sort();
-        const storageKey = "filterDepot_visualisation_stocks";
+    const originalRows = Array.from(
+        tbody.querySelectorAll("tr[data-famille]")
+    );
 
-        // 🔥 récupération sauvegarde navigateur
-        const saved = localStorage.getItem(storageKey);
+    console.log("Rows:", originalRows.length);
 
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved);
-                selectedDepots = parsed.length > 0 ? parsed : [...sorted];
-            } catch {
-                selectedDepots = [...sorted];
-            }
-        } else {
-            selectedDepots = [...sorted];
-            if (selectedDepots.length === 0) {
-                selectedDepots = [...sorted];
-            }
 
-        }
+    /* =================================================
+       FIGE LARGEURS COLONNES
+       IMPORTANT :
+       Evite le décalage des colonnes après rebuild
+    ================================================= */
 
-        dropdown.innerHTML = "";
+    function freezeColumnWidths() {
 
-        sorted.forEach(val => {
+        const table =
+            document.querySelector("#table-container table");
 
-            const label = document.createElement("label");
-            const cb = document.createElement("input");
+        const firstRow =
+            table.querySelector("tbody tr[data-famille]");
 
-            cb.type = "checkbox";
-            cb.value = val;
-            cb.checked = selectedDepots.includes(val);
+        if (!firstRow) return;
 
-            label.appendChild(cb);
-            label.appendChild(document.createTextNode(" " + val));
-            dropdown.appendChild(label);
-        });
+        const headerCells =
+            table.querySelectorAll("thead th");
 
-        function applyFilter() {
+        const bodyCells =
+            firstRow.querySelectorAll("td");
 
-            const checked = Array.from(
-                dropdown.querySelectorAll("input:checked")
-            ).map(cb => cb.value);
+        headerCells.forEach((th, index) => {
 
-            selectedDepots = checked.length > 0 ? checked : [...sorted];
+            const td = bodyCells[index];
 
-            localStorage.setItem(storageKey, JSON.stringify(selectedDepots));
+            if (!td) return;
 
-            rebuildTable();
-        }
+            const width =
+                td.getBoundingClientRect().width;
 
-        dropdown.addEventListener("change", applyFilter);
+            th.style.width = width + "px";
+            th.style.minWidth = width + "px";
+            th.style.maxWidth = width + "px";
 
-        btn.addEventListener("click", (e) => {
-
-            e.stopPropagation();
-
-            const rect = btn.getBoundingClientRect();
-            dropdown.style.left = rect.left + "px";
-            dropdown.style.top = rect.bottom + "px";
-
-            dropdown.style.display =
-                dropdown.style.display === "block" ? "none" : "block";
-        });
-
-        document.addEventListener("click", () => {
-            dropdown.style.display = "none";
-        });
-
-        dropdown.addEventListener("click", (e) => {
-            e.stopPropagation();
+            td.style.width = width + "px";
+            td.style.minWidth = width + "px";
+            td.style.maxWidth = width + "px";
         });
     }
 
-</script>
+
+    /* =================================================
+       REBUILD TABLE
+    ================================================= */
+
+    function rebuildTable() {
+
+        tbody.innerHTML = "";
+
+        const familles = {};
+
+        const hideZero =
+            toggleZeroStock.checked;
+
+        const search =
+            searchInput.value
+                .toLowerCase()
+                .trim();
+
+
+        /* =============================================
+           FILTRES
+        ============================================= */
+
+        originalRows.forEach(row => {
+
+            const fam =
+                row.dataset.famille || "Sans famille";
+
+            const depotValue =
+                row.dataset.depot;
+
+            const txt =
+                (
+                    row.children[0].innerText + " " +
+                    row.children[1].innerText
+                ).toLowerCase();
+
+            const matchSearch =
+                !search || txt.includes(search);
+
+            const matchDepot =
+                selectedDepots.length === 0 ||
+                selectedDepots.includes(depotValue);
+
+            const isZero =
+                row.dataset.stockZero === "1";
+
+
+            if (hideZero && isZero) return;
+            if (!matchDepot) return;
+            if (!matchSearch) return;
+
+
+            if (!familles[fam]) {
+                familles[fam] = [];
+            }
+
+            familles[fam].push(row);
+        });
+
+
+        /* =============================================
+           RECONSTRUCTION TABLEAU
+        ============================================= */
+
+        Object.keys(familles).forEach(fam => {
+
+            const famRow =
+                document.createElement("tr");
+
+            famRow.className =
+                "famille-row";
+
+            famRow.innerHTML =
+                `<td colspan="17">📁 ${fam}</td>`;
+
+
+            /* =========================================
+               COLLAPSE FAMILLE
+            ========================================= */
+
+            famRow.addEventListener("click", () => {
+
+                const collapsed =
+                    famRow.classList.toggle("collapsed");
+
+                let next =
+                    famRow.nextElementSibling;
+
+                while (
+                    next &&
+                    !next.classList.contains("famille-row")
+                ) {
+
+                    next.style.display =
+                        collapsed ? "none" : "";
+
+                    next =
+                        next.nextElementSibling;
+                }
+            });
+
+            tbody.appendChild(famRow);
+
+
+            /* =========================================
+               AJOUT LIGNES
+            ========================================= */
+
+            familles[fam].forEach(row => {
+
+                row.style.display = "table-row";
+
+                tbody.appendChild(row);
+            });
+        });
+
+
+        /* =============================================
+           REFIGE LARGEURS
+        ============================================= */
+
+        setTimeout(() => {
+            freezeColumnWidths();
+        }, 0);
+    }
+
+
+    /* =================================================
+       FILTRE DEPOT
+    ================================================= */
+
+    initDepotFilter(originalRows, rebuildTable);
+
+
+    /* =================================================
+       EVENTS
+    ================================================= */
+
+    toggleZeroStock.addEventListener(
+        "change",
+        rebuildTable
+    );
+
+    searchInput.addEventListener(
+        "input",
+        rebuildTable
+    );
+    /* =============================================
+    ECHAP = RESET RECHERCHE
+    ============================================= */
+
+    searchInput.addEventListener("keydown", (e) => {
+
+        if (e.key === "Escape") {
+
+            searchInput.value = "";
+
+            rebuildTable();
+
+            searchInput.blur();
+        }
+    });
+
+
+    /* =================================================
+       PREMIER BUILD
+    ================================================= */
+
+    rebuildTable();
+});
+
+
+/* =====================================================
+   FILTRE DEPOT
+===================================================== */
+
+function initDepotFilter(rows, rebuildTable) {
+
+    const btn =
+        document.getElementById("depotFilterBtn");
+
+    const dropdown =
+        document.getElementById("filter-depot");
+
+    if (!btn || !dropdown) return;
+
+
+    /* =================================================
+       LISTE DEPOTS
+    ================================================= */
+
+    const values = new Set();
+
+    rows.forEach(r => {
+
+        const depot =
+            r.dataset.depot;
+
+        if (depot) {
+            values.add(depot);
+        }
+    });
+
+    const sorted =
+        Array.from(values).sort();
+
+    const storageKey =
+        "filterDepot_visualisation_stocks";
+
+
+    /* =================================================
+       RESTAURATION LOCAL STORAGE
+    ================================================= */
+
+    const saved =
+        localStorage.getItem(storageKey);
+
+    if (saved) {
+
+        try {
+
+            const parsed =
+                JSON.parse(saved);
+
+            selectedDepots =
+                parsed.length > 0
+                    ? parsed
+                    : [...sorted];
+
+        } catch {
+
+            selectedDepots =
+                [...sorted];
+        }
+
+    } else {
+
+        selectedDepots =
+            [...sorted];
+    }
+
+
+    /* =================================================
+       BUILD DROPDOWN
+    ================================================= */
+
+    dropdown.innerHTML = "";
+
+    sorted.forEach(val => {
+
+        const label =
+            document.createElement("label");
+
+        const cb =
+            document.createElement("input");
+
+        cb.type = "checkbox";
+        cb.value = val;
+
+        cb.checked =
+            selectedDepots.includes(val);
+
+        label.appendChild(cb);
+
+        label.appendChild(
+            document.createTextNode(" " + val)
+        );
+
+        dropdown.appendChild(label);
+    });
+
+
+    /* =================================================
+       APPLY FILTER
+    ================================================= */
+
+    function applyFilter() {
+
+        const checked = Array.from(
+            dropdown.querySelectorAll("input:checked")
+        ).map(cb => cb.value);
+
+        selectedDepots =
+            checked.length > 0
+                ? checked
+                : [...sorted];
+
+        localStorage.setItem(
+            storageKey,
+            JSON.stringify(selectedDepots)
+        );
+
+        rebuildTable();
+    }
+
+    dropdown.addEventListener(
+        "change",
+        applyFilter
+    );
+
+
+    /* =================================================
+       OPEN DROPDOWN
+    ================================================= */
+
+    btn.addEventListener("click", (e) => {
+
+        e.stopPropagation();
+
+        const rect =
+            btn.getBoundingClientRect();
+
+        dropdown.style.left =
+            rect.left + "px";
+
+        dropdown.style.top =
+            rect.bottom + "px";
+
+        dropdown.style.display =
+            dropdown.style.display === "block"
+                ? "none"
+                : "block";
+    });
+
+
+    /* =================================================
+       CLOSE DROPDOWN
+    ================================================= */
+
+    document.addEventListener("click", () => {
+        dropdown.style.display = "none";
+    });
+
+    dropdown.addEventListener("click", (e) => {
+        e.stopPropagation();
+    });
+}
+
+
+/* =====================================================
+   RESIZE TABLE
+===================================================== */
+
+function resizeTable() {
+
+    const header =
+        document.getElementById("page-header");
+
+    const table =
+        document.getElementById("table-container");
+
+    const footer =
+        document.getElementById("main-footer");
+
+    const windowHeight =
+        window.innerHeight;
+
+    const headerHeight =
+        header.offsetHeight;
+
+    const offsetTop =
+        header.getBoundingClientRect().top;
+
+    const footerHeight =
+        footer ? footer.offsetHeight : 0;
+
+    const safeMargin = 30;
+
+    const available =
+        windowHeight
+        - offsetTop
+        - headerHeight
+        - footerHeight
+        - safeMargin;
+
+    table.style.height =
+        available + "px";
+
+    document.body.style.overflow =
+        "hidden";
+}
+
+
+/* =====================================================
+   EVENTS RESIZE
+===================================================== */
+
+window.addEventListener(
+    "load",
+    resizeTable
+);
+
+window.addEventListener(
+    "resize",
+    resizeTable
+);
+
+</script></script>
 
 
 {% endblock %}

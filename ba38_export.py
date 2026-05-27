@@ -27,6 +27,9 @@ def generateur_excel():
     """🔧 Générateur Excel personnalisé avec traçage complet (debug write_log)."""
 
     # write_log("🚀 Entrée dans generateur_excel()"
+    # 🔙 mémorisation page précédente réelle
+    if request.method == "GET":
+        session["generateur_excel_return_url"] = request.referrer
 
     filters = {}
     mode_or_val = 0

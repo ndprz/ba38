@@ -2,11 +2,12 @@
 # 📊 Module Indicateurs
 # =========================================
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required
-from utils import get_db_connection, write_log, require_access
+from utils import get_db_connection, write_log, require_access, get_db_path
 import os
 import pandas as pd
+import sqlite3
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
@@ -16,7 +17,7 @@ indicateurs_bp = Blueprint(
     template_folder="templates/indicateurs"
 )
 
-UPLOAD_DIR = "/srv/ba38/dev/uploads/indicateurs"
+UPLOAD_DIR = "/srv/ba38/uploads/indicateurs"
 
 
 # =========================================
@@ -183,7 +184,7 @@ def index():
         return redirect(url_for("indicateurs.index"))
 
     # =========================================================
-    # 🔥 DB LOGIQUE PRINCIPALE
+    # 🔥 DB + CSV EN UNE SEULE TRANSACTION (FIX LOCK SQLITE)
     # =========================================================
     with get_db_connection() as conn:
         cur = conn.cursor()
@@ -258,6 +259,74 @@ def index():
         os.makedirs(UPLOAD_DIR, exist_ok=True)
         fichier.save(filepath)
 
+        # =====================================================
+        # 📊 TRAITEMENT CSV
+        # =====================================================
+        df = load_indicateurs_csv(filepath)
+
+        col_statut = find_statut_column(df, periode)
+
+        if not col_statut:
+            flash("⛔ Colonne statut introuvable dans le CSV", "danger")
+            return redirect(url_for("indicateurs.index"))
+
+        index_csv = build_csv_index(df, col_statut)
+
+        # 🔥 sécurité anti doublons
+        cur.execute("""
+            DELETE FROM indicateurs_suivi
+            WHERE campagne_id = ?
+        """, (campagne_id,))
+
+        associations = cur.execute("""
+            SELECT id, code_VIF
+            FROM associations
+            WHERE validite = 'oui'
+        """).fetchall()
+
+        count_insert = 0
+
+        for assoc in associations:
+
+            code_vif = normalize_code(assoc["code_VIF"]).lstrip("0")
+
+            statut = index_csv.get(code_vif, "")
+            statut = statut.strip()
+
+            present = 1 if statut != "" else 0
+
+            if not statut:
+                write_log(f"⚠️ Code absent du CSV : {code_vif}")
+
+            cur.execute("""
+                INSERT INTO indicateurs_suivi
+                (campagne_id, association_id, statut_csv, present_csv, date_import)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                campagne_id,
+                assoc["id"],
+                statut,
+                present,
+                datetime.now()
+            ))
+
+            count_insert += 1
+
+        write_log(f"📊 {count_insert} lignes insérées dans indicateurs_suivi")
+
+        # =====================================================
+        # 🔥 UPDATE CAMPAGNE
+        # =====================================================
+        cur.execute("""
+            UPDATE indicateurs_campagnes
+            SET fichier_csv = ?, date_limite = ?, date_creation = ?, periode = ?
+            WHERE id = ?
+        """, (filepath, date_limite, datetime.now(), periode, campagne_id))
+
+        conn.commit()
+
+        write_log(f"📊 {count_insert} lignes insérées dans indicateurs_suivi")
+
         # update campagne
         cur.execute("""
             UPDATE indicateurs_campagnes
@@ -274,6 +343,7 @@ def index():
         "indicateurs.resultats",
         campagne_id=campagne_id
     ))
+
 
 # =========================================
 # 📊 Écran 2 : Résultats
@@ -331,74 +401,8 @@ def resultats(campagne_id):
     )
 
 
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.pagesizes import A4
-from datetime import datetime
-import os
 
-def generate_pdf_indicateurs_trim(association, campagne, output_path):
 
-    styles = getSampleStyleSheet()
-
-    doc = SimpleDocTemplate(output_path, pagesize=A4)
-
-    elements = []
-
-    # 🧾 Titre
-    elements.append(Paragraph(
-        f"<b>Indicateurs d’Etat {campagne['periode']}</b>",
-        styles["Title"]
-    ))
-
-    elements.append(Spacer(1, 20))
-
-    # 📅 Date limite
-    elements.append(Paragraph(
-        f"Retour avant le <b>{campagne['date_limite']}</b>",
-        styles["Normal"]
-    ))
-
-    elements.append(Spacer(1, 20))
-
-    # 🏢 Association
-    elements.append(Paragraph(
-        f"<b>Association :</b> {association['nom_association']}",
-        styles["Normal"]
-    ))
-
-    elements.append(Paragraph(
-        f"<b>Code VIF :</b> {association['code_vif']}",
-        styles["Normal"]
-    ))
-
-    elements.append(Spacer(1, 20))
-
-    # 📩 Contact
-    elements.append(Paragraph(
-        f"<b>Email :</b> {association.get('courriel_resp_IE1', '')}",
-        styles["Normal"]
-    ))
-
-    elements.append(Spacer(1, 40))
-
-    # 📊 Champs à remplir
-    elements.append(Paragraph("Nombre de foyers inscrits :", styles["Normal"]))
-    elements.append(Spacer(1, 15))
-
-    elements.append(Paragraph("Nombre de bénéficiaires :", styles["Normal"]))
-    elements.append(Spacer(1, 15))
-
-    elements.append(Paragraph("Nombre de passages :", styles["Normal"]))
-
-    doc.build(elements)
-
-    return output_path
-
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.pagesizes import A4
-from datetime import datetime
 
 
 def get_mois_trimestre(trimestre):
@@ -411,125 +415,27 @@ def get_mois_trimestre(trimestre):
     return mapping.get(trimestre, ("", "", ""))
 
 
-def generate_pdf_indicateurs_annuel(association, campagne, output_path):
 
-    styles = getSampleStyleSheet()
-    doc = SimpleDocTemplate(output_path, pagesize=A4)
 
-    elements = []
+@indicateurs_bp.route("/check_campagne")
+@login_required
+def check_campagne():
 
-    # 🔍 Extraction période
-    periode = campagne["periode"]  # ex: T1 2026
-    parts = periode.split()
-    trimestre = parts[0]
-    annee = parts[1]
+    periode = request.args.get("periode")
 
-    mois1, mois2, mois3 = get_mois_trimestre(trimestre)
+    db_path = get_db_path()
 
-    # =========================================================
-    # 🧾 TITRE
-    # =========================================================
-    elements.append(Paragraph(
-        f"<b>Indicateurs d’Etat {trimestre} {annee}</b>",
-        styles["Title"]
-    ))
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
 
-    elements.append(Spacer(1, 10))
+        campagne = cur.execute("""
+            SELECT id 
+            FROM indicateurs_campagnes
+            WHERE periode = ?
+        """, (periode,)).fetchone()
 
-    elements.append(Paragraph(
-        f"Retour avant le <b>{campagne['date_limite']}</b>",
-        styles["Normal"]
-    ))
-
-    elements.append(Spacer(1, 15))
-
-    # =========================================================
-    # 🏢 ASSOCIATION
-    # =========================================================
-    elements.append(Paragraph(
-        f"<b>Association :</b> {association['nom_association']}",
-        styles["Normal"]
-    ))
-
-    elements.append(Paragraph(
-        f"<b>Code VIF :</b> {association['code_vif']}",
-        styles["Normal"]
-    ))
-
-    elements.append(Paragraph(
-        f"<b>Responsable IE :</b> {association.get('responsable_IE', '')}",
-        styles["Normal"]
-    ))
-
-    elements.append(Paragraph(
-        f"<b>Téléphone :</b> {association.get('tel_resp_IE', '')}",
-        styles["Normal"]
-    ))
-
-    elements.append(Paragraph(
-        f"<b>Email :</b> {association.get('courriel_resp_IE1', '')} ; {association.get('courriel_resp_IE2', '')}",
-        styles["Normal"]
-    ))
-
-    elements.append(Spacer(1, 15))
-
-    # =========================================================
-    # 📊 PARTIE TRIMESTRIELLE
-    # =========================================================
-    elements.append(Paragraph("<b>TRIMESTRE</b>", styles["Heading2"]))
-
-    elements.append(Paragraph(
-        f"Calcul foyers : {mois1} + nouveaux {mois2} + nouveaux {mois3}",
-        styles["Normal"]
-    ))
-
-    elements.append(Paragraph("Nombre de foyers inscrits : ____________", styles["Normal"]))
-    elements.append(Paragraph("Nombre de bénéficiaires : ____________", styles["Normal"]))
-    elements.append(Paragraph("Nombre de passages : ____________", styles["Normal"]))
-
-    elements.append(Spacer(1, 15))
-
-    # =========================================================
-    # 📊 PARTIE ANNUELLE
-    # =========================================================
-    elements.append(Paragraph("<b>ANNUEL</b>", styles["Heading2"]))
-
-    elements.append(Paragraph(
-        "Foyers annuels (ne pas additionner les trimestres)",
-        styles["Normal"]
-    ))
-
-    elements.append(Paragraph("Nombre de foyers annuels : ____________", styles["Normal"]))
-
-    elements.append(Paragraph(
-        "Bénéficiaires annuels (ne pas additionner les trimestres)",
-        styles["Normal"]
-    ))
-
-    elements.append(Paragraph("Nombre de bénéficiaires annuels : ____________", styles["Normal"]))
-
-    elements.append(Paragraph(
-        "Total passages = somme des 4 trimestres",
-        styles["Normal"]
-    ))
-
-    elements.append(Paragraph("Total passages annuels : ____________", styles["Normal"]))
-
-    elements.append(Spacer(1, 20))
-
-    # =========================================================
-    # 📞 CONTACT
-    # =========================================================
-    elements.append(Paragraph(
-        "Contact : ba380@banquealimentaire.org - 04 76 85 92 50",
-        styles["Normal"]
-    ))
-
-    elements.append(Paragraph(
-        "11 allée de la Pinéa - 38600 FONTAINE",
-        styles["Normal"]
-    ))
-
-    doc.build(elements)
-
-    return output_path
+    return jsonify({
+        "exists": campagne is not None,
+        "id": campagne["id"] if campagne else None
+    })

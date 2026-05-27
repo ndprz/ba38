@@ -1,4 +1,8 @@
 {% extends "base.html" %}
+
+{% from "macros/buttons.html"
+   import action_button, action_buttons %}
+
 {% block title %}Gestion des pôles{% endblock %}
 {% block content %}
 
@@ -8,71 +12,300 @@
     ⬅ Retour
 </a>
 
-<table class="table table-bordered table-striped">
+<form method="POST">
+
+<div class="table-responsive">
+
+<table class="table table-bordered table-striped table-poles">
+
     <thead class="table-dark">
+
         <tr>
             <th>Pôle</th>
             <th>Responsable</th>
             <th>Suppléant 1</th>
             <th>Suppléant 2</th>
+            <th>Email validation présidence</th>
+            <th>Trésorerie</th>
             <th>Actions</th>
         </tr>
+
     </thead>
+
     <tbody>
 
-        {% for p in poles %}
-        <form method="POST">
+
+            {% for p in poles %}
+
             <tr>
+
                 <td>
-                    <input type="hidden" name="pole_id" value="{{ p.id }}">
-                    <input type="text" name="nom_affiche" class="form-control" value="{{ p.nom_affiche }}">
+
+                    <input type="hidden"
+                        name="pole_ids[]"
+                        value="{{ p.id }}">
+
+                    <input type="text"
+                        name="nom_affiche_{{ p.id }}"
+                        class="form-control"
+                        value="{{ p.nom_affiche }}">
+
                 </td>
 
                 <td>
-                    <select name="responsable_id" class="form-select select2">
-                        <option value="">-- Aucun --</option>
+
+                    <select name="responsable_id_{{ p.id }}"
+                            class="form-select select2">
+
                         {% for u in users %}
-                        <option value="{{ u.id }}" {% if u.id==p.responsable_id %}selected{% endif %}>
+
+                        <option value="{{ u.id }}"
+                                {% if u.id == p.responsable_id %}
+                                selected
+                                {% endif %}>
+
                             {{ u.email }}
+
                         </option>
+
                         {% endfor %}
+
                     </select>
+
                 </td>
 
                 <td>
-                    <select name="suppleant1_id" class="form-select select2">
+
+                    <select name="suppleant1_id_{{ p.id }}"
+                            class="form-select select2">
+
                         <option value="">-- Aucun --</option>
+
                         {% for u in users %}
-                        <option value="{{ u.id }}" {% if u.id==p.suppleant1_id %}selected{% endif %}>
+
+                        <option value="{{ u.id }}"
+                                {% if u.id == p.suppleant1_id %}
+                                selected
+                                {% endif %}>
+
                             {{ u.email }}
+
                         </option>
+
                         {% endfor %}
+
                     </select>
+
                 </td>
 
                 <td>
-                    <select name="suppleant2_id" class="form-select select2">
+
+                    <select name="suppleant2_id_{{ p.id }}"
+                            class="form-select select2">
+
                         <option value="">-- Aucun --</option>
+
                         {% for u in users %}
-                        <option value="{{ u.id }}" {% if u.id==p.suppleant2_id %}selected{% endif %}>
+
+                        <option value="{{ u.id }}"
+                                {% if u.id == p.suppleant2_id %}
+                                selected
+                                {% endif %}>
+
                             {{ u.email }}
+
                         </option>
+
                         {% endfor %}
+
                     </select>
+
                 </td>
 
                 <td>
-                    {% if has_access('engagement_parametres','ecriture') %}
-                    <button type="submit" onclick="formChanged=false" class="btn btn-success btn-sm">
-                        💾 Enregistrer
-                    </button> {% endif %}
+
+                    <input type="text"
+                        name="validation_presidence_email_{{ p.id }}"
+                        value="{{ p.validation_presidence_email or '' }}"
+                        class="form-control">
+
                 </td>
+
+    <!-- ========================================== -->
+    <!-- TRESORERIE -->
+    <!-- ========================================== -->
+
+    <td>
+
+        <select name="tresorier_user_id_{{ p.id }}"
+                class="form-select select2">
+
+            <option value="">
+                -- Aucun --
+            </option>
+
+            {% for u in users %}
+
+            <option value="{{ u.id }}"
+                    {% if u.id == p.tresorier_user_id %}
+                    selected
+                    {% endif %}>
+
+                {{ u.email }}
+
+            </option>
+
+            {% endfor %}
+
+        </select>
+
+    </td>
+
+    <!-- ========================================== -->
+    <!-- ACTIONS -->
+    <!-- ========================================== -->
+
+            <td>
+
+                <button type="button"
+                        class="btn btn-danger btn-sm"
+
+                        onclick="
+                            if(confirm('Supprimer ce pôle ?')) {
+
+                                window.location.href='{{ url_for(
+                                    'engagements.delete_pole',
+                                    pole_id=p.id
+                                ) }}';
+
+                            }
+                        ">
+
+                    🗑 Supprimer
+
+                </button>
+
+            </td>
+
             </tr>
-        </form>
-        {% endfor %}
+
+            {% endfor %}
 
     </tbody>
+
 </table>
+
+</div>
+
+    {% if has_access('engagement_parametres','ecriture') %}
+
+    <div class="d-flex justify-content-end mt-4">
+
+        <div style="display:flex; gap:15px;">
+
+            <a href="{{ url_for(
+                    'engagements.engagements_parametres_main'
+                ) }}"
+            class="btn btn-secondary">
+
+                ↩️ Retour
+
+            </a>
+
+            <button type="submit"
+                    onclick="formChanged=false"
+                    class="btn btn-success">
+
+                💾 Enregistrer tout
+
+            </button>
+
+        </div>
+
+    </div>
+
+    {% endif %}
+
+    </form>
+</table>
+
+
+<style>
+
+.table-poles {
+
+    width: auto;
+    table-layout: auto;
+
+}
+
+.table-poles th {
+
+    white-space: nowrap;
+    width: 1%;
+    vertical-align: middle;
+
+}
+
+.table-poles td {
+
+    white-space: nowrap;
+    vertical-align: middle;
+    padding: 4px 6px;
+
+}
+
+/* ========================================= */
+/* INPUTS */
+/* ========================================= */
+
+.table-poles input.form-control {
+
+    width: auto;
+    min-width: 160px;
+
+}
+
+/* ========================================= */
+/* SELECTS */
+/* ========================================= */
+
+.table-poles select.form-select {
+
+    width: 240px;
+
+}
+
+/* ========================================= */
+/* SELECT2 */
+/* ========================================= */
+
+.table-poles .select2-container {
+
+    width: 240px !important;
+
+}
+
+.table-poles .select2-selection {
+
+    min-height: 38px;
+
+}
+
+/* ========================================= */
+/* ACTIONS */
+/* ========================================= */
+
+.table-poles td:last-child {
+
+    width: 1%;
+
+}
+
+</style>
+
+
+
 
 <script>
     let formChanged = false;

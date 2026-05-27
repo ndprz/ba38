@@ -1,8 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 import sqlite3
 import os
-from utils import get_db_path, require_access, write_log, envoyer_mail, render_modele_email
-from ba38_indicateurs import generate_pdf_indicateurs_trim, generate_pdf_indicateurs_annuel
+from utils import get_db_path, require_access, write_log, envoyer_mail, render_modele_email, get_templates_pdf_dir
 from utils_pdf_form import remplir_pdf_indicateurs
 
 emails_bp = Blueprint("emails", __name__, template_folder="templates")
@@ -24,6 +23,7 @@ def liste_modeles():
         "emails/liste_modeles.html",
         modeles=modeles
     )
+
 
 
 # ==========================================
@@ -88,6 +88,7 @@ def delete_modele(id):
 def envoyer_mails(campagne_id):
 
     db_path = get_db_path()
+    
 
     # ============================================================================
     # 📥 RÉCUPÉRATION DES DONNÉES
@@ -95,16 +96,29 @@ def envoyer_mails(campagne_id):
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
 
-        modeles = conn.execute("""
-            SELECT * FROM modeles_emails
-            ORDER BY code_modele
-        """).fetchall()
-
+        # 1️⃣ récupérer campagne AVANT
         campagne = conn.execute("""
             SELECT * FROM indicateurs_campagnes
             WHERE id = ?
         """, (campagne_id,)).fetchone()
 
+        if not campagne:
+            raise ValueError(f"❌ Campagne {campagne_id} introuvable")
+
+        # 2️⃣ ensuite seulement utiliser periode
+        periode = campagne["periode"]
+
+        if periode.lower().startswith("année"):
+            type_periode = "annuel"
+        else:
+            type_periode = "trimestriel"
+
+        # 3️⃣ filtrer les modèles
+        modeles = conn.execute("""
+            SELECT * FROM modeles_emails
+            WHERE type_periode = ?
+            ORDER BY code_modele
+        """, (type_periode,)).fetchall()
         write_log(f"📧 campagne_id utilisé = {campagne_id}")
 
         if not campagne:
@@ -141,10 +155,22 @@ def envoyer_mails(campagne_id):
                 SELECT * FROM modeles_emails
                 WHERE id = ?
             """, (modele_id,)).fetchone()
+            periode = campagne["periode"]
 
-        if not modele:
-            flash("❌ Modèle introuvable", "danger")
-            return redirect(url_for("emails.envoyer_mails", campagne_id=campagne_id))
+            if periode.lower().startswith("année"):
+                type_periode = "annuel"
+            else:
+                type_periode = "trimestriel"
+
+            if not modele:
+                flash("❌ Modèle introuvable", "danger")
+                return redirect(url_for("emails.envoyer_mails", campagne_id=campagne_id))
+
+
+            if modele["type_periode"] != type_periode:
+                flash("❌ Modèle incompatible avec la période", "danger")
+                return redirect(url_for("emails.envoyer_mails", campagne_id=campagne_id))
+
 
         # ============================================================================
         # ❌ VALIDATION EMAILS
@@ -171,6 +197,7 @@ def envoyer_mails(campagne_id):
         else:
             type_periode = "trimestriel"
 
+
         for i, l in enumerate(lignes):
 
             # 🔥 OPTION 2 → conversion en dict
@@ -181,9 +208,15 @@ def envoyer_mails(campagne_id):
 
             # 🔥 choix du template
             if type_periode == "annuel":
-                template = "/srv/ba38/dev/templates/pdf/indicateurs_annuels.pdf"
+                template = os.path.join(
+                    get_templates_pdf_dir(),
+                    "indicateurs_annuels.pdf"
+                )
             else:
-                template = "/srv/ba38/dev/templates/pdf/indicateurs_trimestriels.pdf"
+                template = os.path.join(
+                    get_templates_pdf_dir(),
+                    "indicateurs_trimestriels.pdf"
+                )
 
             remplir_pdf_indicateurs(
                 template,

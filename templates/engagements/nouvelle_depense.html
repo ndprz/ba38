@@ -1,144 +1,998 @@
 {% extends "base.html" %}
 
-{% block title %}Nouvelle demande d'engagement{% endblock %}
+{% block title %}
+Nouvelle demande d'engagement
+{% endblock %}
 
 {% block content %}
 
-<h2>Nouvelle demande d'engagement de dépense</h2>
+<h2>
+    Nouvelle demande d'engagement de dépense
+</h2>
 
-<form method="POST">
+<form method="POST"
+      enctype="multipart/form-data">
 
-    <div class="mb-3">
-        <label class="form-label">Dépense demandée par</label>
-        <input type="text" class="form-control" value="{{ current_user.username }} {{ current_user.email }}" disabled>
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">Pôle d'activité *</label>
-        <select name="pole_id" class="form-select" required>
-            <option value="">-- Sélectionner un pôle --</option>
-            {% for p in poles %}
-            <option value="{{ p.id }}">{{ p.nom_affiche }}</option>
-            {% endfor %}
-        </select>
-    </div>
+    <!-- ================================================== -->
+    <!-- DEMANDEUR -->
+    <!-- ================================================== -->
 
     <div class="mb-3">
-        <label class="form-label">Objet *</label>
-        <input type="text" name="objet" class="form-control" required>
-    </div>
 
-    <div class="mb-3">
-        <label class="form-label">Description</label>
-        <textarea name="description" class="form-control" rows="3"></textarea>
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">Projet subventionné</label>
-        <input type="text" name="projet_subventionne" class="form-control">
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">Convention partenariale</label>
-        <input type="text" name="convention_partenariale" class="form-control">
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">Rubrique</label>
-        <select name="rubrique" class="form-select">
-            <option value="">-- Choisir --</option>
-            <option value="fonctionnement">Fonctionnement</option>
-            <option value="fournitures_entretien">Fournitures entretien & petit matériel</option>
-            <option value="fournitures_administratives">Fournitures administratives</option>
-            <option value="vie_associative">Vie associative</option>
-            <option value="collecte_annuelle">Collecte annuelle</option>
-        </select>
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">Précision rubrique</label>
-        <input type="text" name="precision_rubrique" class="form-control">
-    </div>
-
-    <div class="mb-3">
         <label class="form-label">
+
+            Dépense demandée par
+
+        </label>
+
+        <input type="text"
+               class="form-control"
+               value="{{ current_user.username }} {{ current_user.email }}"
+               disabled>
+
+    </div>
+
+
+    <!-- ================================================== -->
+    <!-- NATURE DEPENSE -->
+    <!-- ================================================== -->
+
+    <div class="card mb-4">
+
+        <div class="card-header bg-light">
+
+            Nature de la dépense
+
+        </div>
+
+        <div class="card-body">
+
+            <!-- ========================================== -->
+            <!-- ACHAT -->
+            <!-- ========================================== -->
+
+            <div class="form-check mb-3">
+
+                <input class="form-check-input"
+                    type="radio"
+                    name="sous_type_depense"
+                    id="type_achat"
+                    value="achat"
+
+                    {% if request.form.get(
+                            'sous_type_depense',
+                            'achat'
+                    ) == 'achat' %}
+                    checked
+                    {% endif %}>
+
+                <label class="form-check-label"
+                    for="type_achat">
+
+                    🛒 Achat / dépense
+
+                </label>
+
+            </div>
+
+            <!-- ========================================== -->
+            <!-- DEPLACEMENT -->
+            <!-- ========================================== -->
+
+            <div class="form-check">
+
+                <input class="form-check-input"
+                    type="radio"
+                    name="sous_type_depense"
+                    id="type_deplacement"
+                    value="deplacement"
+
+                    {% if request.form.get(
+                            'sous_type_depense'
+                    ) == 'deplacement' %}
+                    checked
+                    {% endif %}>
+
+                <label class="form-check-label"
+                    for="type_deplacement">
+
+                    🚗 Déplacement
+
+                </label>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- ================================================== -->
+    <!-- MODE DE PAIEMENT -->
+    <!-- ================================================== -->
+
+    <div class="card mb-4">
+
+        <div class="card-header bg-light">
+
+            Mode de paiement
+
+        </div>
+
+        <div class="card-body">
+
+            <!-- ============================================= -->
+            <!-- VOUS-MEME -->
+            <!-- ============================================= -->
+
+            <div class="form-check mb-3">
+
+                <input class="form-check-input"
+                       type="radio"
+                       name="type_engagement"
+                       id="type_self"
+                       value="benevole_self"
+
+                       {% if request.form.get(
+                            'type_engagement',
+                            'benevole_self'
+                       ) == 'benevole_self' %}
+                       checked
+                       {% endif %}>
+
+                <label class="form-check-label"
+                       for="type_self">
+
+                    👤 Vous-même
+                    (remboursement bénévole)
+
+                </label>
+
+            </div>
+
+            <!-- ============================================= -->
+            <!-- AUTRE BENEVOLE -->
+            <!-- ============================================= -->
+
+            <div class="form-check mb-3">
+
+                <input class="form-check-input"
+                       type="radio"
+                       name="type_engagement"
+                       id="type_other"
+                       value="benevole_other"
+
+                       {% if request.form.get(
+                            'type_engagement'
+                       ) == 'benevole_other' %}
+                       checked
+                       {% endif %}>
+
+                <label class="form-check-label"
+                       for="type_other">
+
+                    👥 Autre bénévole
+
+                </label>
+
+            </div>
+
+            <!-- ============================================= -->
+            <!-- FOURNISSEUR -->
+            <!-- ============================================= -->
+
+            <div class="form-check mb-3">
+
+                <input class="form-check-input"
+                       type="radio"
+                       name="type_engagement"
+                       id="type_fournisseur"
+                       value="fournisseur"
+
+                       {% if request.form.get(
+                            'type_engagement'
+                       ) == 'fournisseur' %}
+                       checked
+                       {% endif %}>
+
+                <label class="form-check-label"
+                       for="type_fournisseur">
+
+                    🏢 Paiement fournisseur BA38
+
+                </label>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- ================================================== -->
+    <!-- BENEVOLE -->
+    <!-- ================================================== -->
+
+    <div id="bloc-benevole"
+         class="card mb-4"
+         style="display:none;">
+
+        <div class="card-header bg-light">
+
+            Bénévole concerné
+
+        </div>
+
+        <div class="card-body">
+
+            <select name="beneficiaire_benevole_id"
+                    class="form-select select2">
+
+                <option value="">
+                    -- Choisir un bénévole --
+                </option>
+
+                {% for b in benevoles %}
+
+                <option value="{{ b.id }}"
+                    {% if request.form.get(
+                        'beneficiaire_benevole_id'
+                    ) == b.id|string %}
+                        selected
+                    {% endif %}>
+
+                    {{ b.nom }} {{ b.prenom }}
+
+                </option>
+
+                {% endfor %}
+
+            </select>
+
+        </div>
+
+    </div>
+
+    <!-- ================================================== -->
+    <!-- FOURNISSEUR -->
+    <!-- ================================================== -->
+
+    <div id="bloc-fournisseur"
+         class="card mb-4"
+         style="display:none;">
+
+        <div class="card-header bg-light">
+
+            Fournisseur
+
+        </div>
+
+        <div class="card-body">
+
+            <!-- ============================================= -->
+            <!-- FOURNISSEUR CONNU -->
+            <!-- ============================================= -->
+
+            <div class="form-check mb-4">
+
+                <input class="form-check-input"
+                       type="checkbox"
+                       id="fournisseur_connu_tresorerie"
+                       name="fournisseur_connu_tresorerie"
+                       value="1"
+
+                       {% if request.form.get(
+                            'fournisseur_connu_tresorerie'
+                       ) %}
+                       checked
+                       {% endif %}>
+
+                <label class="form-check-label"
+                       for="fournisseur_connu_tresorerie">
+
+                    Fournisseur connu de la trésorerie
+
+                </label>
+
+            </div>
+
+            <!-- ============================================= -->
+            <!-- NOM -->
+            <!-- ============================================= -->
+
+            <div class="mb-3">
+
+                <label class="form-label">
+
+                    Nom fournisseur
+
+                </label>
+
+                <input type="text"
+                       name="fournisseur_nom"
+                       class="form-control"
+                       value="{{ request.form.get(
+                            'fournisseur_nom',
+                            ''
+                       ) }}">
+
+            </div>
+
+            <!-- ============================================= -->
+            <!-- ADRESSE -->
+            <!-- ============================================= -->
+
+            <div class="mb-3">
+
+                <label class="form-label">
+
+                    Adresse
+
+                </label>
+
+                <textarea name="fournisseur_adresse"
+                          class="form-control"
+                          rows="3">{{ request.form.get(
+                                'fournisseur_adresse',
+                                ''
+                          ) }}</textarea>
+
+            </div>
+
+            <!-- ============================================= -->
+            <!-- TELEPHONE -->
+            <!-- ============================================= -->
+
+            <div class="mb-3">
+
+                <label class="form-label">
+
+                    Téléphone
+
+                </label>
+
+                <input type="text"
+                       name="fournisseur_telephone"
+                       class="form-control"
+                       value="{{ request.form.get(
+                            'fournisseur_telephone',
+                            ''
+                       ) }}">
+
+            </div>
+
+            <!-- ============================================= -->
+            <!-- EMAIL -->
+            <!-- ============================================= -->
+
+            <div class="mb-3">
+
+                <label class="form-label">
+
+                    Email
+
+                </label>
+
+                <input type="email"
+                       name="fournisseur_email"
+                       class="form-control"
+                       value="{{ request.form.get(
+                            'fournisseur_email',
+                            ''
+                       ) }}">
+
+            </div>
+
+            <!-- ============================================= -->
+            <!-- IBAN -->
+            <!-- ============================================= -->
+
+            <div class="mb-3">
+
+                <label class="form-label">
+
+                    IBAN
+
+                </label>
+
+                <input type="text"
+                       name="fournisseur_iban"
+                       class="form-control"
+                       value="{{ request.form.get(
+                            'fournisseur_iban',
+                            ''
+                       ) }}">
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- ================================================== -->
+    <!-- POLE -->
+    <!-- ================================================== -->
+
+    <div class="mb-3">
+
+        <label class="form-label">
+
+            Pôle d'activité *
+
+        </label>
+
+        <select name="pole_id"
+                class="form-select"
+                required>
+
+            <option value="">
+                -- Sélectionner un pôle --
+            </option>
+
+            {% for p in poles %}
+
+            <option value="{{ p.id }}"
+                {% if request.form.get(
+                    'pole_id'
+                ) == p.id|string %}
+                    selected
+                {% endif %}>
+
+                {{ p.nom_affiche }}
+
+            </option>
+
+            {% endfor %}
+
+        </select>
+
+    </div>
+
+    <!-- ================================================== -->
+    <!-- OBJET -->
+    <!-- ================================================== -->
+
+    <div class="mb-3">
+
+        <label class="form-label">
+
+            Objet *
+
+        </label>
+
+        <input type="text"
+               name="objet"
+               class="form-control"
+               value="{{ request.form.get(
+                    'objet',
+                    ''
+               ) }}"
+               required>
+
+    </div>
+
+    <!-- ================================================== -->
+    <!-- DESCRIPTION -->
+    <!-- ================================================== -->
+
+    <div class="mb-3">
+
+        <label class="form-label">
+
+            Description
+
+        </label>
+
+        <textarea name="description"
+                  class="form-control">{{ request.form.get(
+                        'description',
+                        ''
+                  ) }}</textarea>
+
+    </div>
+
+    <!-- ================================================== -->
+    <!-- PROJET -->
+    <!-- ================================================== -->
+
+    <div class="mb-3">
+
+        <label class="form-label">
+
+            Projet subventionné
+
+        </label>
+
+        <select name="subvention_id"
+                class="form-select select2">
+
+            <option value="">
+                -- Aucun --
+            </option>
+
+            {% for s in subventions %}
+
+            <option value="{{ s.id }}"
+
+                {% if request.form.get(
+                    'subvention_id'
+                ) == s.id|string %}
+                    selected
+                {% endif %}>
+
+                {{ s.nom_subvention }}
+
+            </option>
+
+            {% endfor %}
+
+        </select>
+
+    </div>
+
+    <!-- ================================================== -->
+    <!-- CONVENTION -->
+    <!-- ================================================== -->
+
+    <div class="mb-3">
+
+        <label class="form-label">
+
+            Convention partenariale
+
+        </label>
+
+        <input type="text"
+               name="convention_partenariale"
+               class="form-control"
+               value="{{ request.form.get(
+                    'convention_partenariale',
+                    ''
+               ) }}">
+
+    </div>
+
+    <!-- ================================================== -->
+    <!-- RUBRIQUE -->
+    <!-- ================================================== -->
+
+    <div class="mb-3">
+
+        <label class="form-label">
+
+            Rubrique
+
+        </label>
+
+        <select name="rubrique"
+                class="form-select">
+
+            <option value="">
+                -- Choisir --
+            </option>
+
+            <option value="fonctionnement"
+                {% if request.form.get(
+                    'rubrique'
+                ) == 'fonctionnement' %}
+                    selected
+                {% endif %}>
+
+                Fonctionnement
+
+            </option>
+
+            <option value="achats_denrees"
+                {% if request.form.get(
+                    'rubrique'
+                ) == 'achats_denrees' %}
+                    selected
+                {% endif %}>
+
+                Achats denrées
+
+            </option>
+
+            <option value="fournitures_entretien"
+                {% if request.form.get(
+                    'rubrique'
+                ) == 'fournitures_entretien' %}
+                    selected
+                {% endif %}>
+
+                Fournitures entretien & petit matériel
+
+            </option>
+
+            <option value="fournitures_administratives"
+                {% if request.form.get(
+                    'rubrique'
+                ) == 'fournitures_administratives' %}
+                    selected
+                {% endif %}>
+
+                Fournitures administratives
+
+            </option>
+
+            <option value="vie_associative"
+                {% if request.form.get(
+                    'rubrique'
+                ) == 'vie_associative' %}
+                    selected
+                {% endif %}>
+
+                Vie associative
+
+            </option>
+
+            <option value="collecte_annuelle"
+                {% if request.form.get(
+                    'rubrique'
+                ) == 'collecte_annuelle' %}
+                    selected
+                {% endif %}>
+
+                Collecte annuelle
+
+            </option>
+
+        </select>
+
+    </div>
+
+    <!-- ================================================== -->
+    <!-- PRECISION -->
+    <!-- ================================================== -->
+
+    <div class="mb-3">
+
+        <label class="form-label">
+
+            Précision rubrique
+
+        </label>
+
+        <input type="text"
+               name="precision_rubrique"
+               class="form-control"
+               value="{{ request.form.get(
+                    'precision_rubrique',
+                    ''
+               ) }}">
+
+    </div>
+
+    <!-- ================================================== -->
+    <!-- MONTANT -->
+    <!-- ================================================== -->
+
+    <div class="mb-3">
+
+        <label class="form-label">
+
             Montant total des dépenses prévues (€) *
+
         </label>
-        <input type="number" step="0.01" name="montant_total" id="montant_total" class="form-control" required>
+
+        <input type="number"
+               step="0.01"
+               name="montant_total"
+               id="montant_total"
+               class="form-control"
+               value="{{ request.form.get(
+                    'montant_total',
+                    ''
+               ) }}"
+               required>
+
     </div>
 
-    <!-- Bloc 200-500 -->
-    <div id="bloc_200_500" class="alert alert-warning d-none">
-        <input type="checkbox" name="attestation_comparaison" id="attestation_comparaison" value="1">
-        <label for="attestation_comparaison">
-            J’atteste avoir comparé les prix pour garantir la meilleure offre
-            (dépenses entre 200 € et 500 €)
-        </label>
+    <!-- ================================================== -->
+    <!-- BLOC 1 DEVIS -->
+    <!-- ================================================== -->
+
+    <div id="bloc_200_500"
+         class="alert alert-warning d-none">
+
     </div>
 
-    <!-- Bloc > 500 -->
-    <div id="bloc_500_plus" class="alert alert-danger d-none">
-        <strong>
-            Les engagements supérieurs à 500 € doivent être accompagnés
-            d’un comparatif de prix (3 devis).
-        </strong>
+    <!-- ================================================== -->
+    <!-- BLOC 3 DEVIS -->
+    <!-- ================================================== -->
 
-        <div class="mt-2">
-            <label>Nombre de devis joints :</label>
-            <input type="number" name="nb_devis" min="0" max="10" class="form-control">
-        </div>
+    <div id="bloc_500_plus"
+         class="alert alert-danger d-none">
 
-        <div class="mt-2">
-            <label>Commentaire / résumé du comparatif :</label>
-            <textarea name="commentaire_devis" class="form-control" rows="2"></textarea>
-        </div>
     </div>
+
     <hr>
 
+    <!-- ================================================== -->
+    <!-- SIGNATURE -->
+    <!-- ================================================== -->
+
     <div class="mb-3">
-        <input type="checkbox" name="signature" value="1" required>
-        Je confirme cette demande (signature numérique)
+
+        <div class="form-check">
+
+            <input class="form-check-input"
+                   type="checkbox"
+                   name="signature"
+                   value="1"
+                   id="signature"
+
+                   {% if request.form.get('signature') %}
+                   checked
+                   {% endif %}
+
+                   required>
+
+            <label class="form-check-label"
+                   for="signature">
+
+                J’atteste l’exactitude des informations saisies
+                et confirme électroniquement cette demande.
+
+            </label>
+
+        </div>
+
     </div>
 
-    <button type="submit" class="btn btn-success">
+    <!-- ================================================== -->
+    <!-- BOUTONS -->
+    <!-- ================================================== -->
+
+    <button type="submit"
+            class="btn btn-success">
+
         💾 Enregistrer la demande
+
     </button>
 
-    <a href="{{ url_for('engagements.engagements_main') }}" class="btn btn-secondary">
+    <a href="{{ url_for(
+            'engagements.engagements_main'
+       ) }}"
+       class="btn btn-secondary">
+
         ⬅ Retour
+
     </a>
 
 </form>
 
+<!-- ====================================================== -->
+<!-- PALIERS -->
+<!-- ====================================================== -->
 
 <script>
-    document.addEventListener("DOMContentLoaded", function () {
 
-        console.log("JS chargé");
+const paliers = {{ paliers | tojson }};
 
-        const input = document.getElementById("montant_total");
-        if (!input) return;
+</script>
 
-        input.addEventListener("input", function () {
+<!-- ====================================================== -->
+<!-- WORKFLOW DYNAMIQUE -->
+<!-- ====================================================== -->
 
-            const montant = parseFloat(this.value) || 0;
+<script>
 
-            const bloc200 = document.getElementById("bloc_200_500");
-            const bloc500 = document.getElementById("bloc_500_plus");
+document.addEventListener("DOMContentLoaded", function () {
 
-            if (bloc200) bloc200.classList.add("d-none");
-            if (bloc500) bloc500.classList.add("d-none");
+    const inputMontant =
+        document.getElementById("montant_total");
 
-            if (montant > 200 && montant <= 500 && bloc200) {
-                bloc200.classList.remove("d-none");
+    const bloc200 =
+        document.getElementById("bloc_200_500");
+
+    const bloc500 =
+        document.getElementById("bloc_500_plus");
+
+    if (!inputMontant) return;
+
+    function updateWorkflow() {
+
+        const montant =
+            parseFloat(inputMontant.value) || 0;
+
+        bloc200.classList.add("d-none");
+        bloc500.classList.add("d-none");
+
+        bloc200.innerHTML = "";
+        bloc500.innerHTML = "";
+
+        let palierActif = null;
+
+        for (const p of paliers) {
+
+            if (montant <= p.montant_max) {
+
+                palierActif = p;
+                break;
             }
+        }
 
-            if (montant > 500 && bloc500) {
-                bloc500.classList.remove("d-none");
-            }
-        });
+        if (!palierActif) return;
 
-    });
+        // ==================================================
+        // 1 DEVIS
+        // ==================================================
+
+        if (palierActif.un_devis === "o") {
+
+            bloc200.classList.remove("d-none");
+
+            bloc200.innerHTML = `
+                <strong>
+                    ⚠️ Un devis est obligatoire
+                </strong>
+
+                <div class="mt-2">
+
+                    <label>
+                        Nombre de devis joints :
+                    </label>
+
+                    <input type="number"
+                        name="nb_devis"
+                        min="0"
+                        max="10"
+                        value="${document.querySelector('[name="nb_devis"]')?.value || 1}"
+                        class="form-control">
+
+                </div>
+
+                <div class="mt-2">
+
+                    <label>
+                        Commentaire devis :
+                    </label>
+
+                    <textarea name="commentaire_devis"
+                            class="form-control"
+                            rows="2">${document.querySelector('[name="commentaire_devis"]')?.value || ''}</textarea>
+
+                </div>
+
+                <div class="mt-3">
+
+                    <label class="form-label">
+                        📎 Devis PDF
+                    </label>
+
+                    <input type="file"
+                        name="devis_files"
+                        class="form-control"
+                        multiple
+                        accept=".pdf">
+
+                </div>
+            `;
+        }
+
+        // ==================================================
+        // 3 DEVIS
+        // ==================================================
+
+        if (palierActif.trois_devis === "o") {
+
+            bloc500.classList.remove("d-none");
+
+            bloc500.innerHTML = `
+                <strong>
+                    ⚠️ Trois devis obligatoires
+                </strong>
+
+                <div class="mt-2">
+
+                    <label>
+                        Nombre de devis joints :
+                    </label>
+
+                    <input type="number"
+                        name="nb_devis"
+                        min="0"
+                        max="10"
+                        value="${document.querySelector('[name="nb_devis"]')?.value || 3}"
+                        class="form-control">
+
+                </div>
+
+                <div class="mt-3">
+
+                    <label class="form-label">
+                        📎 Devis PDF
+                    </label>
+
+                    <input type="file"
+                        name="devis_files"
+                        class="form-control"
+                        multiple
+                        accept=".pdf">
+
+                </div>
+
+                <div class="mt-2">
+
+                    <label>
+                        Commentaire / comparatif :
+                    </label>
+
+                    <textarea name="commentaire_devis"
+                            class="form-control"
+                            rows="2">${document.querySelector('[name="commentaire_devis"]')?.value || ''}</textarea>
+
+                </div>
+            `;
+        }
+
+        // ==================================================
+        // VALIDATION PRESIDENCE
+        // ==================================================
+
+        if (palierActif.accord_presidence === "o") {
+
+            bloc500.classList.remove("d-none");
+
+            bloc500.innerHTML += `
+                <div class="alert alert-warning mt-3 mb-0">
+
+                    ⚠️ Cette demande nécessitera
+                    une validation présidence.
+
+                </div>
+            `;
+        }
+    }
+
+    inputMontant.addEventListener(
+        "input",
+        updateWorkflow
+    );
+
+    updateWorkflow();
+
+});
+
+</script>
+
+<!-- ====================================================== -->
+<!-- AFFICHAGE TYPE ENGAGEMENT -->
+<!-- ====================================================== -->
+
+<script>
+
+function updateTypeEngagement() {
+
+    const type = document.querySelector(
+        'input[name="type_engagement"]:checked'
+    ).value;
+
+    document.getElementById(
+        'bloc-benevole'
+    ).style.display = (
+        type === 'benevole_other'
+    ) ? 'block' : 'none';
+
+    document.getElementById(
+        'bloc-fournisseur'
+    ).style.display = (
+        type === 'fournisseur'
+    ) ? 'block' : 'none';
+}
+
+document.querySelectorAll(
+    'input[name="type_engagement"]'
+).forEach(el => {
+
+    el.addEventListener(
+        'change',
+        updateTypeEngagement
+    );
+
+});
+
+updateTypeEngagement();
+
 </script>
 
 {% endblock %}

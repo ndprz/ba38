@@ -7,6 +7,13 @@
 
     <div style="display:flex; gap:15px;">
 
+        <button class="btn btn-outline-info"
+            type="button"
+            data-bs-toggle="modal"
+            data-bs-target="#modalAide">
+            ℹ️ Aide utilisateur
+        </button>
+
         <a href="{{ url_for('distribution.ramasse_type_form') }}"
            class="btn btn-success btn-sm">
            ➕ Nouveau modèle
@@ -20,6 +27,21 @@
     </div>
 
 </div>
+<form method="post" action="{{ url_for('distribution.set_mois_ramasse') }}"
+      style="display:flex; gap:10px; align-items:center; margin-bottom:10px;">
+
+    <label>Mois de travail</label>
+
+    <input type="month"
+           name="mois_ramasse"
+           class="form-control form-control-sm"
+           style="max-width: 180px;"
+           value="{{ session.get('mois_ramasse', '') }}"
+           required>
+
+    <button class="btn btn-primary btn-sm">Valider</button>
+
+</form>
 
 
 <table class="table table-bordered">
@@ -59,5 +81,33 @@
         {% endfor %}
     </tbody>
 </table>
+
+🪟 Modale d’affichage La documentation est affichée dans une modale Bootstrap :
+
+<div class="modal fade" id="modalAide" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📘 Aide utilisateur</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_Ramasse_Partenaires_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
 
 {% endblock %}

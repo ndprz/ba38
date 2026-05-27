@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 
+
 <head>
      <!-- =====================================================
          META
@@ -20,6 +21,9 @@
      <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-custom.css') }}">
      <link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">
 
+     {% block extra_css %}{% endblock %}
+
+
      <!-- =====================================================
          CSS SPÉCIFIQUE PAGE (optionnel)
     ====================================================== -->
@@ -27,6 +31,10 @@
 
      <!-- Google Font -->
      <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+
+
+
+
 </head>
 
 <body>
@@ -55,32 +63,72 @@
      {% include "_flash.html" %}
 
      <!-- =====================================================
-         CONTENU PRINCIPAL
-    ====================================================== -->
+     BANDEAU MOIS DE TRAVAIL
+     ===================================================== -->
+     {% if request.blueprint == 'distribution' and request.path.startswith('/ramasse') and mois_ramasse %}
+
+     <div class="alert alert-primary d-flex justify-content-between align-items-center mb-2">
+
+     <div>
+          📅 Mois de travail :
+          <strong>{{ mois_ramasse }}</strong>
+     </div>
+
+     <form method="post"
+               action="{{ url_for('distribution.set_mois_ramasse') }}"
+               class="d-flex gap-2 align-items-center">
+
+          <input type="month"
+                    name="mois_ramasse"
+                    value="{{ mois_ramasse }}"
+                    class="form-control form-control-sm"
+                    style="max-width: 150px;">
+
+          <button class="btn btn-light btn-sm">
+               Modifier
+          </button>
+
+     </form>
+
+     </div>
+
+     {% endif %}
+
+
      <main class="container-fluid mt-0">
           {% block content %}{% endblock %}
      </main>
 
      <!-- =====================================================
-         INFO BASE (DEBUG)
-    ====================================================== -->
-     {% if db_info %}
-     <div class="alert alert-warning text-center m-0 py-1 small fw-bold">
-          ⚙️ Base en cours : {{ db_info }}
-     </div>
-     {% endif %}
+     FOOTER UNIQUE
+     ===================================================== -->
 
-     <!-- =====================================================
-         FOOTER
-    ====================================================== -->
-     <footer id="main-footer" class="text-center mt-2">
+     <footer
+     id="main-footer"
+     class="d-flex justify-content-between align-items-center flex-nowrap px-3 py-1 small">
+
+     <div class="text-start">
+
+          {% if db_info %}
+          ⚙️ Base en cours : {{ db_info }}
+          {% endif %}
+
+     </div>
+
+     <div class="text-end">
+
           &copy; 2025 Gestion BA38 —
           {% include "partials/_version.html" %}
+
+     </div>
+
      </footer>
 
 
      <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
      <script src="{{ url_for('static', filename='js/ba38-utils.js') }}"></script>
+
+     {% block extra_js %}{% endblock %}
 
 
      {% block scripts %}

@@ -3,6 +3,7 @@ import sqlite3
 import base64
 import re
 import unicodedata
+import json
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
@@ -76,137 +77,433 @@ class CSRFForm(FlaskForm):
 
 partenaires_bp = Blueprint("partenaires", __name__)
 
-@partenaires_bp.route("/partenaires", methods=["GET", "POST"])
+@partenaires_bp.route("/partenaires")
 @login_required
 @require_access("associations", "lecture")
 def partenaires():
 
-    # ======================================================
-    # 🔐 Accès
-    # ======================================================
+    return redirect(
+        url_for('partenaires.partenaires_tabulator')
+    )
 
-    lecture_seule = not has_access("associations", "ecriture")
 
-    # ======================================================
-    # 🔌 DB
-    # ======================================================
-    conn = get_db_connection()
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+# # ============================================================
+# # ROUTE TABULATOR
+# # ============================================================
 
-    # ======================================================
-    # 🧩 Champs configurés
-    # ======================================================
-    fields_data = cursor.execute("""
-        SELECT *
-        FROM field_groups
-        WHERE appli = 'associations'
-        ORDER BY display_order
-    """).fetchall()
+@partenaires_bp.route("/partenaires_tabulator")
+@login_required
+@require_access("associations", "lecture")
+def partenaires_tabulator():
 
-    # filtrer display_order > 0
-    def _ok_display_order(row):
-        try:
-            return row["display_order"] and int(row["display_order"]) > 0
-        except:
-            return False
+    db_path = get_db_path()
 
-    fields_data = [f for f in fields_data if _ok_display_order(f)]
+    voir_non_valides = request.args.get("voir_non_valides")
 
-    # ======================================================
-    # 🗂️ Groupes (UI)
-    # ======================================================
-    grouped_fields = {}
-    for row in fields_data:
-        group = row["group_name"] or "Autres"
-        grouped_fields.setdefault(group, []).append(row)
+    voir_toutes = request.args.get("voir_toutes") == "1"
 
-    # 👉 IMPORTANT : toutes les colonnes sont envoyées
-    selected_columns = [row["field_name"] for row in fields_data]
-    selected_groups = list(grouped_fields.keys())
+    user_role = (current_user.role or "").lower()
 
-    # ======================================================
-    # 👤 Gestion rôle CAR
-    # ======================================================
-    user_role = current_user.role.lower()
-    voir_toutes = request.values.get("voir_toutes") == "1"
+    is_car = user_role == "car"
 
-    is_car = (user_role == "car") and not voir_toutes
-    car_value = current_user.username if is_car else None
+    car_value = current_user.username
 
-    voir_non_valides = request.values.get("voir_non_valides") == "1"
+    with sqlite3.connect(db_path) as conn:
 
-    # ======================================================
-    # 🔎 Requête principale (TOUT)
-    # ======================================================
-    if is_car:
-        query = """
-            SELECT *
-            FROM associations
-            WHERE LOWER(car) = LOWER(?)
-        """
-        params = [car_value]
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # ============================================================
+        # FILTRE VALIDITE
+        # ============================================================
 
         if voir_non_valides:
-            query += " AND LOWER(validite) = 'non'"
+
+            validite_clause = """
+                (
+                    validite IS NULL
+                    OR TRIM(validite) = ''
+                    OR LOWER(TRIM(validite)) != 'oui'
+                )
+            """
+
         else:
-            query += " AND (validite IS NULL OR LOWER(validite) != 'non')"
 
-        query += " ORDER BY nom_association COLLATE NOCASE"
+            validite_clause = """
+                LOWER(TRIM(COALESCE(validite, ''))) = 'oui'
+            """
 
-        rows_full = cursor.execute(query, params).fetchall()
+        # ============================================================
+        # FILTRE CAR
+        # ============================================================
 
-    else:
-        query = """
+        if is_car and not voir_toutes:
+
+            query = f"""
+                SELECT *
+                FROM associations
+                WHERE {validite_clause}
+                AND LOWER(TRIM(COALESCE(car, ''))) = LOWER(TRIM(?))
+                ORDER BY nom_association
+            """
+
+            cursor.execute(query, (car_value,))
+
+        else:
+
+            query = f"""
+                SELECT *
+                FROM associations
+                WHERE {validite_clause}
+                ORDER BY nom_association
+            """
+
+            cursor.execute(query)
+
+        rows = cursor.fetchall()
+
+        cursor.execute("""
             SELECT *
-            FROM associations
-        """
+            FROM field_groups
+            WHERE appli = 'associations'
+            ORDER BY
+                CASE
+                    WHEN LOWER(group_name) = 'coordonnées principales'
+                    THEN 0
+                    ELSE 1
+                END,
+                group_name COLLATE NOCASE,
+                display_order
+        """)
 
-        if voir_non_valides:
-            query += " WHERE LOWER(validite) = 'non'"
-        else:
-            query += " WHERE validite IS NULL OR LOWER(validite) != 'non'"
+        fields = cursor.fetchall()
 
-        query += " ORDER BY nom_association COLLATE NOCASE"
+    # ============================================================
+    # NORMALISATION
+    # ============================================================
 
-        rows_full = cursor.execute(query).fetchall()
+    def normalize(name):
 
-    # ======================================================
-    # 🔎 Construction affichage + search_blob
-    # ======================================================
-    rows = []
-
-    for row in rows_full:
-
-        excluded = ["user_modif"]
-
-        search_blob = " ".join(
-            str(row[k] or "")
-            for k in row.keys()
-            if k not in excluded
+        return (
+            name.lower()
+            .replace(" ", "_")
+            .replace("é", "e")
+            .replace("è", "e")
+            .replace("ê", "e")
+            .replace("à", "a")
+            .replace("ù", "u")
+            .replace("ô", "o")
+            .replace("-", "_")
         )
 
-        rows.append({
-            "display": row,
-            "search_blob": search_blob
+    # ============================================================
+    # GROUPES
+    # ============================================================
+
+    grouped_fields = {}
+
+    for field in fields:
+
+        group_name = field["group_name"] or "Autres"
+
+        field_name = field["field_name"]
+
+        normalized = normalize(field_name)
+
+        grouped_fields.setdefault(group_name, []).append({
+
+            "field_name": field_name,
+            "normalized": normalized
         })
 
-    conn.close()
+    # ============================================================
+    # DATA
+    # ============================================================
 
-    # ======================================================
-    # 🎨 Rendu
-    # ======================================================
+    table_data = []
+
+    for row in rows:
+
+        d = {}
+
+        for key in row.keys():
+
+            d[normalize(key)] = row[key]
+
+        table_data.append(d)
+
+    # ============================================================
+    # COLONNES TABULATOR
+    # ============================================================
+
+    columns = [
+
+        {
+            "title": "Action",
+            "field": "id",
+            "width": 110,
+            "frozen": True,
+            "hozAlign": "center",
+            "headerSort": False,
+            "formatter": "buttonCross"
+        },
+
+        {
+            "title": "ID",
+            "field": "id",
+            "minWidth": 80,
+            "widthGrow": 1,
+            "frozen": True,
+            "hozAlign": "center"
+        },
+
+        {
+            "title": "Nom",
+            "field": "nom_association",
+            "tooltip": True,
+            "minWidth": 320,
+            "widthGrow": 4,
+            "frozen": True
+        }
+    ]
+
+    # ============================================================
+    # COLONNES DYNAMIQUES
+    # ============================================================
+
+    for field in fields:
+
+        field_name = field["field_name"]
+
+        normalized = normalize(field_name)
+
+        if normalized in [
+            "id",
+            "nom_association"
+        ]:
+            continue
+
+        # ========================================================
+        # TYPE CHAMP
+        # ========================================================
+
+        type_champ = (
+            field["type_champ"] or ""
+        ).lower()
+
+        # ========================================================
+        # CONFIG FILTRE
+        # ========================================================
+
+        header_filter = "list"
+
+        header_filter_params = {
+
+            "valuesLookup": "active",
+
+            "clearable": True,
+
+            "autocomplete": True,
+
+            "sort": "asc"
+        }
+
+        header_filter_func = "="
+
+        # ========================================================
+        # LARGEURS DYNAMIQUES
+        # ========================================================
+
+        min_width = 125
+
+        width_grow = 1
+
+        hoz_align = "left"
+
+        # ========================================================
+        # OUI / NON
+        # ========================================================
+
+        if type_champ == "oui_non":
+
+            header_filter_params = {
+
+                "values": {
+
+                    "": "Tous",
+
+                    "oui": "Oui",
+
+                    "non": "Non"
+                },
+
+                "clearable": True
+            }
+
+            min_width = 110
+
+            width_grow = 0
+
+            hoz_align = "center"
+
+        # ========================================================
+        # EMAILS
+        # ========================================================
+
+        elif (
+            "courriel" in normalized
+            or
+            "email" in normalized
+        ):
+
+            min_width = 260
+
+            width_grow = 2
+
+        # ========================================================
+        # TELEPHONES
+        # ========================================================
+
+        elif (
+            "tel" in normalized
+            or
+            "telephone" in normalized
+        ):
+
+            min_width = 150
+
+            width_grow = 1
+
+        # ========================================================
+        # DATES
+        # ========================================================
+
+        elif (
+            "date" in normalized
+        ):
+
+            min_width = 140
+
+            width_grow = 1
+
+            hoz_align = "center"
+
+        # ========================================================
+        # CODES
+        # ========================================================
+
+        elif (
+            "code" in normalized
+            or
+            normalized.endswith("_id")
+        ):
+
+            min_width = 120
+
+            width_grow = 1
+
+            hoz_align = "center"
+
+        # ========================================================
+        # ADRESSES / COMMENTAIRES
+        # ========================================================
+
+        elif (
+            "adresse" in normalized
+            or
+            "commentaire" in normalized
+            or
+            "observation" in normalized
+        ):
+
+            min_width = 320
+
+            width_grow = 3
+
+        # ========================================================
+        # DRIVE LINK
+        # ========================================================
+
+        if normalized == "drive_link":
+
+            columns.append({
+
+                "title": "Drive",
+
+                "field": normalized,
+
+                "tooltip": True,
+
+                "minWidth": 140,
+
+                "widthGrow": 1,
+
+                "hozAlign": "center",
+
+                "formatter": "link",
+
+                "formatterParams": {
+
+                    "label": "📁 Dossier",
+
+                    "target": "_blank"
+                }
+            })
+
+            continue
+
+        # ========================================================
+        # CONFIG COLONNE
+        # ========================================================
+
+        col = {
+
+            "title": beautify_title(field_name),
+
+            "field": normalized,
+
+            "tooltip": True,
+
+            "headerTooltip": field_name,
+
+            "minWidth": min_width,
+
+            "widthGrow": width_grow,
+
+            "hozAlign": hoz_align,
+
+            "headerFilter": header_filter,
+
+            "headerFilterParams": header_filter_params,
+
+            "headerFilterFunc": header_filter_func
+        }
+
+        # ========================================================
+        # EMAIL FORMATTER
+        # ========================================================
+
+        if (
+            "courriel" in normalized
+            or
+            "email" in normalized
+        ):
+
+            col["formatter"] = "emailFormatter"
+
+        columns.append(col)
+
     return render_template(
-        "partenaires/partenaires.html",
-        rows=rows,
+        "partenaires/partenaires_tabulator.html",
+        table_data=table_data,
         grouped_fields=grouped_fields,
-        selected_columns=selected_columns,
-        selected_groups=selected_groups,
-        voir_toutes=voir_toutes,
-        user_role=user_role,
-        lecture_seule=lecture_seule,
+        columns=columns,
         voir_non_valides=voir_non_valides
     )
+
+
+
+
 
 @partenaires_bp.route("/create_partner", methods=["GET", "POST"])
 @login_required
@@ -307,7 +604,7 @@ def create_partner():
             conn.commit()
             upload_database()
             flash("✅ Partenaire créé avec succès.", "success")
-            return redirect(url_for("partenaires.partenaires"))
+            return redirect(url_for("partenaires.partenaires_tabulator"))
         except Exception as e:
             flash(f"❌ Erreur lors de l'insertion : {e}", "danger")
 
@@ -413,235 +710,727 @@ def duplicate_partner(partner_id):
 @require_access("associations", "lecture")
 def update_partner(partner_id):
     """
-    Page de mise à jour d’un partenaire (association).
+    ============================================================
+    MODIFICATION D’UNE ASSOCIATION
+    ============================================================
 
-    ⚙️ Fonctionnalités :
-    - Affiche le formulaire avec les champs dynamiques regroupés par familles (field_groups).
-    - Valide les modifications (emails, téléphones, etc.).
-    - Réinjecte les valeurs saisies en cas d’erreur.
-    - Met à jour la base uniquement si des modifications sont détectées (via form_hash).
-    - Affiche la date/heure de dernière modification en heure française + l’utilisateur modificateur.
-    - Navigation Suivant / Précédent / Retour : déclenche d’abord une mise à jour si demandé,
-      puis redirige vers la cible.
+    Fonctionnalités :
+    - affichage dynamique des champs depuis field_groups
+    - gestion des groupes repliables
+    - gestion des droits par application (access_app)
+    - lecture seule partielle ou totale
+    - validation emails / téléphones
+    - hash anti faux positifs de modification
+    - navigation précédent / suivant
+    - sauvegarde automatique Google Drive
     """
-
-    # 🔒 Vérification des droits
-
-    lecture_seule = not has_access("associations", "ecriture")
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # 🔍 Récupération du partenaire
-    partner = cursor.execute("SELECT * FROM associations WHERE id = ?", (partner_id,)).fetchone()
+    # ============================================================
+    # CHARGEMENT ASSOCIATION
+    # ============================================================
+
+    partner = cursor.execute(
+        """
+        SELECT *
+        FROM associations
+        WHERE id = ?
+        """,
+        (partner_id,)
+    ).fetchone()
+
     if not partner:
+
         conn.close()
-        flash("Association introuvable.", "danger")
-        return redirect(url_for("partenaires.partenaires"))
+
+        flash(
+            "Association introuvable.",
+            "danger"
+        )
+
+        return redirect(
+            url_for("partenaires.partenaires")
+        )
 
     partner_dict = dict(partner)
 
-    # 📌 Récupération des voisins alphabétiques (Précédent/Suivant)
-    previous_id, next_id = get_neighbor_ids_alphabetically(conn, partner_id)
+    # ============================================================
+    # DROITS GENERAUX
+    # ============================================================
 
-    # 🔢 Champs dynamiques
-    fields_rows = cursor.execute("""
-        SELECT * FROM field_groups
+    lecture_seule = not has_access(
+        "associations",
+        "ecriture"
+    )
+
+    user_role = (
+        current_user.role or ""
+    ).lower()
+
+    # ============================================================
+    # CAS SPECIAL CAR
+    # ============================================================
+
+    if user_role == "car":
+
+        car_assoc = (
+            (partner_dict.get("CAR") or "")
+            .strip()
+            .lower()
+        )
+
+        current_car = (
+            (current_user.username or "")
+            .strip()
+            .lower()
+        )
+
+        write_log(
+            f"""
+    DEBUG CAR
+
+    car_assoc   = {repr(car_assoc)}
+    current_car = {repr(current_car)}
+
+    lecture_seule AVANT = {lecture_seule}
+    """
+        )
+
+        # ========================================================
+        # SI LE CAR N'EST PAS LE CAR DE L'ASSOCIATION
+        # ========================================================
+
+        if car_assoc != current_car:
+
+            lecture_seule = True
+
+            write_log(
+                "⛔ CAR hors périmètre → lecture seule"
+            )
+
+        else:
+
+            write_log(
+                "✅ CAR autorisé sur cette association"
+            )
+            write_log(
+                f"""
+            DEBUG CAR
+
+            partner car brut = {repr(partner_dict.get("car"))}
+            username brut    = {repr(current_user.username)}
+
+            car_assoc        = {repr(car_assoc)}
+            current_car      = {repr(current_car)}
+
+            egalite          = {car_assoc == current_car}
+            """
+            )
+
+
+    # ============================================================
+    # PARTENAIRE PRECEDENT / SUIVANT
+    # ============================================================
+
+    previous_id, next_id = get_neighbor_ids_alphabetically(
+        conn,
+        partner_id
+    )
+
+    # ============================================================
+    # CHAMPS DYNAMIQUES
+    # ============================================================
+
+    fields_rows = cursor.execute(
+        """
+        SELECT *
+        FROM field_groups
         WHERE appli = 'associations'
         ORDER BY display_order
-    """).fetchall()
+        """
+    ).fetchall()
 
     fields_data = []
+
     for row in fields_rows:
+
         field = dict(row)
+
         fname = field["field_name"]
-        field["value"] = partner_dict.get(fname, partner_dict.get(fname.lower(), ""))
+
+        field["value"] = partner_dict.get(
+            fname,
+            partner_dict.get(
+                fname.lower(),
+                ""
+            )
+        )
+
+        # ========================================================
+        # DROITS PAR APPLICATION
+        # ========================================================
+
+        field_access_app = field.get(
+            "access_app"
+        )
+
+        if field_access_app:
+
+            field["readonly"] = not has_access(
+                field_access_app,
+                "ecriture"
+            )
+
+        else:
+
+            field["readonly"] = lecture_seule
+
         fields_data.append(field)
 
-    # 📦 Regroupement par familles
-    grouped_fields = {}
-    for field in fields_data:
-        group = field["group_name"] or "Autres"
-        grouped_fields.setdefault(group, []).append(field)
+    # ============================================================
+    # AU MOINS UN CHAMP MODIFIABLE ?
+    # ============================================================
 
-    # 📋 Liste des réseaux nationaux
-    reseaux = cursor.execute("""
-        SELECT param_value FROM parametres
+    can_edit_any_field = any(
+        not field["readonly"]
+        for field in fields_data
+    )
+
+    # ============================================================
+    # GROUPES
+    # ============================================================
+
+    grouped_fields = {}
+
+    for field in fields_data:
+
+        group = (
+            field["group_name"]
+            or "Autres"
+        )
+
+        grouped_fields.setdefault(
+            group,
+            []
+        ).append(field)
+
+    # ============================================================
+    # TRI DES GROUPES
+    # ============================================================
+
+    grouped_fields = dict(
+
+        sorted(
+
+            grouped_fields.items(),
+
+            key=lambda item: (
+
+                # Coordonnées principales toujours en premier
+                0 if item[0].strip().lower() == "coordonnées principales"
+
+                else 1,
+
+                # Puis tri alphabétique
+                item[0].strip().lower()
+            )
+        )
+    )
+
+
+    # ============================================================
+    # RESEAUX NATIONAUX
+    # ============================================================
+
+    reseaux = cursor.execute(
+        """
+        SELECT param_value
+        FROM parametres
         WHERE param_name = 'RESEAUX_NATIONAUX'
         ORDER BY param_value
-    """).fetchall()
-    liste_reseaux = [r["param_value"] for r in reseaux]
+        """
+    ).fetchall()
 
-    # 🚗 Options CAR
-    car_options_query = cursor.execute("SELECT param_value FROM parametres WHERE param_name = 'car'").fetchall()
-    car_options = [{"param_value": row[0]} for row in car_options_query]
+    liste_reseaux = [
+        r["param_value"]
+        for r in reseaux
+    ]
 
-    # 🔁 Paramètres de navigation à préserver (utile pour le retour à la liste)
-    search_term = request.values.get("search", "")
-    limit = request.values.get("limit", "7")
-    selected_columns = request.values.getlist("columns")
-    selected_groups = request.values.getlist("selected_groups")
+    # ============================================================
+    # OPTIONS CAR
+    # ============================================================
+
+    car_options_query = cursor.execute(
+        """
+        SELECT param_value
+        FROM parametres
+        WHERE param_name = 'car'
+        """
+    ).fetchall()
+
+    car_options = [
+        {"param_value": row[0]}
+        for row in car_options_query
+    ]
+
+    # ============================================================
+    # PARAMETRES NAVIGATION
+    # ============================================================
+
+    search_term = request.values.get(
+        "search",
+        ""
+    )
+
+    limit = request.values.get(
+        "limit",
+        "7"
+    )
+
+    selected_columns = request.values.getlist(
+        "columns"
+    )
+
+    selected_groups = request.values.getlist(
+        "selected_groups"
+    )
+
     query_params = {
+
         "search": search_term,
+
         "limit": limit,
+
         "columns": selected_columns,
+
         "selected_groups": selected_groups
     }
 
-    # 📝 Gestion POST (mise à jour et navigation)
-    if request.method == "POST":
-        go_to = request.form.get("go_to")          # Cible navigation (Suivant, Précédent, Retour)
-        do_upload = request.form.get("do_upload", "1")  # "1" = on sauvegarde avant de naviguer
+    # ============================================================
+    # POST
+    # ============================================================
 
-        # ❌ Blocage écriture en lecture seule
-        if lecture_seule and do_upload == "1":
+    if request.method == "POST":
+
+        go_to = request.form.get("go_to")
+
+        do_upload = request.form.get(
+            "do_upload",
+            "1"
+        )
+
+        # ========================================================
+        # AUCUN DROIT D'ECRITURE
+        # ========================================================
+
+        if not can_edit_any_field and do_upload == "1":
+
             conn.close()
-            flash("⛔ Vous n’avez pas les droits pour modifier cette association.", "danger")
-            return redirect(url_for("partenaires.update_partner", partner_id=partner_id, **request.args))
+
+            flash(
+                "⛔ Vous n’avez pas les droits pour modifier cette association.",
+                "danger"
+            )
+
+            return redirect(
+                url_for(
+                    "partenaires.update_partner",
+                    partner_id=partner_id
+                )
+            )
 
         updates = {}
+
         champs_invalides = []
+
         erreurs = []
 
-        # ✅ Gestion des champs multiples
-        produits_souhaites = ",".join(request.form.getlist("produits_souhaites"))
-        autres_approvisionnements = ",".join(request.form.getlist("autres_approvisionnements"))
+        # ========================================================
+        # CHAMPS MULTIPLES
+        # ========================================================
+
+        produits_souhaites = ",".join(
+            request.form.getlist(
+                "produits_souhaites"
+            )
+        )
+
+        autres_approvisionnements = ",".join(
+            request.form.getlist(
+                "autres_approvisionnements"
+            )
+        )
 
         if produits_souhaites:
-            updates["produits_souhaites"] = produits_souhaites
+
+            updates[
+                "produits_souhaites"
+            ] = produits_souhaites
+
         if autres_approvisionnements:
-            updates["autres_approvisionnements"] = autres_approvisionnements
 
-        # ✅ Autres champs
+            updates[
+                "autres_approvisionnements"
+            ] = autres_approvisionnements
+
+        # ========================================================
+        # AUTRES CHAMPS
+        # ========================================================
+
         for field in fields_data:
+
             fname = field["field_name"]
-            if fname in ("id", "produits_souhaites", "autres_approvisionnements"):
+
+            if fname in (
+                "id",
+                "produits_souhaites",
+                "autres_approvisionnements"
+            ):
+
                 continue
-            val = request.form.get(fname, "").strip()
-            updates[fname] = None if val == "" else val
 
-        # 🔍 Validation email / téléphone
+            # ====================================================
+            # SECURITE PAR CHAMP
+            # ====================================================
+
+            if field["readonly"]:
+
+                continue
+
+            val = request.form.get(
+                fname,
+                ""
+            ).strip()
+
+            updates[fname] = (
+                None if val == "" else val
+            )
+
+        # ========================================================
+        # VALIDATIONS
+        # ========================================================
+
         for field in fields_data:
+
             fname = field["field_name"]
-            label = fname.replace("_", " ").capitalize()
-            group = field.get("group_name", "Autres") or "Autres"
-            val = (updates.get(fname) or "").strip()
+
+            label = (
+                fname
+                .replace("_", " ")
+                .capitalize()
+            )
+
+            group = (
+                field.get("group_name", "Autres")
+                or "Autres"
+            )
+
+            val = (
+                updates.get(fname)
+                or ""
+            ).strip()
+
             if val:
-                if field.get("type_champ") == "email" and not is_valid_email(val):
-                    erreurs.append(f"Champ invalide dans {group} : {label} ➜ « {val} » n’est pas un email valide.")
-                    champs_invalides.append(fname)
-                if "tel" in fname.lower() and not is_valid_phone(val):
-                    erreurs.append(f"Champ invalide dans {group} : {label} ➜ « {val} » n’est pas un numéro de téléphone valide.")
+
+                if (
+                    field.get("type_champ") == "email"
+                    and not is_valid_email(val)
+                ):
+
+                    erreurs.append(
+                        f"Champ invalide dans {group} : "
+                        f"{label} ➜ « {val} » "
+                        f"n’est pas un email valide."
+                    )
+
                     champs_invalides.append(fname)
 
-        # ⛔ Si erreurs → réafficher formulaire
+                if (
+                    "tel" in fname.lower()
+                    and not is_valid_phone(val)
+                ):
+
+                    erreurs.append(
+                        f"Champ invalide dans {group} : "
+                        f"{label} ➜ « {val} » "
+                        f"n’est pas un numéro valide."
+                    )
+
+                    champs_invalides.append(fname)
+
+        # ========================================================
+        # ERREURS VALIDATION
+        # ========================================================
+
         if erreurs:
+
             for msg in erreurs:
-                flash(msg, "danger")
+
+                flash(
+                    msg,
+                    "danger"
+                )
+
             for field in fields_data:
+
                 fname = field["field_name"]
-                field["value"] = request.form.get(fname, "").strip()
+
+                field["value"] = request.form.get(
+                    fname,
+                    ""
+                ).strip()
+
             grouped_fields = {}
+
             for field in fields_data:
-                group = field["group_name"] or "Autres"
-                grouped_fields.setdefault(group, []).append(field)
+
+                group = (
+                    field["group_name"]
+                    or "Autres"
+                )
+
+                grouped_fields.setdefault(
+                    group,
+                    []
+                ).append(field)
+
             conn.close()
+
             return render_template(
                 "partenaires/update_partenaire.html",
                 partenaire=partner_dict,
                 partner_id=partner_id,
-                nom_association=request.form.get("nom_association") or partner_dict.get("nom_association", "Nom inconnu"),
+                nom_association=request.form.get(
+                    "nom_association"
+                ) or partner_dict.get(
+                    "nom_association",
+                    "Nom inconnu"
+                ),
                 grouped_fields=grouped_fields,
                 liste_reseaux=liste_reseaux,
                 car_options=car_options,
-                next_url=urlencode(query_params, doseq=True),
+                next_url=urlencode(
+                    query_params,
+                    doseq=True
+                ),
                 previous_id=previous_id,
                 next_id=next_id,
                 lecture_seule=lecture_seule,
-                date_modif=partner_dict.get("date_modif", ""),
-                heure_modif=partner_dict.get("heure_modif", ""),
-                user_modif=partner_dict.get("user_modif", ""),
+                date_modif=partner_dict.get(
+                    "date_modif",
+                    ""
+                ),
+                heure_modif=partner_dict.get(
+                    "heure_modif",
+                    ""
+                ),
+                user_modif=partner_dict.get(
+                    "user_modif",
+                    ""
+                ),
                 champs_invalides=champs_invalides,
-                form_hash=request.form.get("form_hash", ""),
-                data=dict(partner)
+                form_hash=request.form.get(
+                    "form_hash",
+                    ""
+                ),
+                data=dict(partner),
+                can_edit_any_field=can_edit_any_field
             )
 
-        # 🔒 Horodatage si des modifs détectées
-        if do_upload == "1":
-            inputs_for_hash = [
-                f"{f['field_name']}:{request.form.get(f['field_name'], '').strip()}"
-                for f in fields_data if f["field_name"] != "id"
-            ]
-            computed_hash = base64.b64encode("|#|".join(inputs_for_hash).encode("utf-8")).decode("utf-8")
-            received_hash = request.form.get("form_hash", "")
-            if computed_hash != received_hash:
-                now = datetime.now()
-                updates["date_modif"] = now.strftime("%Y-%m-%d")
-                updates["heure_modif"] = now.strftime("%H:%M:%S")
-                updates["user_modif"] = current_user.username
+        # ========================================================
+        # HASH MODIFICATIONS
+        # ========================================================
 
-            # 💾 Mise à jour
+        if do_upload == "1":
+
+            inputs_for_hash = [
+
+                f"{f['field_name']}:"
+                f"{request.form.get(f['field_name'], '').strip()}"
+
+                for f in fields_data
+
+                if f["field_name"] != "id"
+            ]
+
+            computed_hash = base64.b64encode(
+                "|#|".join(inputs_for_hash).encode("utf-8")
+            ).decode("utf-8")
+
+            received_hash = request.form.get(
+                "form_hash",
+                ""
+            )
+
+            if computed_hash != received_hash:
+
+                now = datetime.now()
+
+                updates["date_modif"] = now.strftime(
+                    "%Y-%m-%d"
+                )
+
+                updates["heure_modif"] = now.strftime(
+                    "%H:%M:%S"
+                )
+
+                updates["user_modif"] = (
+                    current_user.username
+                )
+
+            # ====================================================
+            # UPDATE SQL
+            # ====================================================
+
             if updates:
-                set_clause = ", ".join([f"`{k}` = ?" for k in updates])
-                values = list(updates.values()) + [partner_id]
+
+                set_clause = ", ".join([
+                    f"`{k}` = ?"
+                    for k in updates
+                ])
+
+                values = list(
+                    updates.values()
+                ) + [partner_id]
+
                 try:
-                    cursor.execute(f"UPDATE associations SET {set_clause} WHERE id = ?", values)
+
+                    cursor.execute(
+                        f"""
+                        UPDATE associations
+                        SET {set_clause}
+                        WHERE id = ?
+                        """,
+                        values
+                    )
+
                     conn.commit()
+
                     upload_database()
-                    flash("✅ Association mise à jour avec succès.", "success")
+
+                    flash(
+                        "✅ Association mise à jour avec succès.",
+                        "success"
+                    )
+
                 except Exception as e:
-                    flash(f"❌ Erreur lors de la mise à jour : {e}", "danger")
+
+                    flash(
+                        f"❌ Erreur lors de la mise à jour : {e}",
+                        "danger"
+                    )
 
         conn.close()
 
-        # 🚀 Navigation après mise à jour
+        # ========================================================
+        # NAVIGATION
+        # ========================================================
+
         if go_to:
+
             return redirect(go_to)
-        else:
-            return redirect(url_for("partenaires.update_partner", partner_id=partner_id))
 
-    # 🧮 Calcul du form_hash initial (GET)
+        return redirect(
+            url_for(
+                "partenaires.update_partner",
+                partner_id=partner_id
+            )
+        )
+
+    # ============================================================
+    # HASH INITIAL
+    # ============================================================
+
     inputs_for_hash = [
-        f"{field['field_name']}:{field['value'] or ''}" for field in fields_data if field['field_name'] != "id"
-    ]
-    form_hash = base64.b64encode("|#|".join(inputs_for_hash).encode("utf-8")).decode("utf-8")
 
-    # 🕒 Conversion date_modif + heure_modif en heure FR
-    date_modif = partner_dict.get("date_modif")
-    heure_modif = partner_dict.get("heure_modif")
+        f"{field['field_name']}:{field['value'] or ''}"
+
+        for field in fields_data
+
+        if field['field_name'] != "id"
+    ]
+
+    form_hash = base64.b64encode(
+        "|#|".join(inputs_for_hash).encode("utf-8")
+    ).decode("utf-8")
+
+    # ============================================================
+    # DATE MODIF FR
+    # ============================================================
+
+    date_modif = partner_dict.get(
+        "date_modif"
+    )
+
+    heure_modif = partner_dict.get(
+        "heure_modif"
+    )
+
     heure_fr = None
+
     if date_modif and heure_modif:
+
         try:
+
             dt_str = f"{date_modif} {heure_modif}"
-            dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+
+            dt = datetime.strptime(
+                dt_str,
+                "%Y-%m-%d %H:%M:%S"
+            )
+
             import pytz
-            dt = pytz.utc.localize(dt).astimezone(pytz.timezone("Europe/Paris"))
-            heure_fr = dt.strftime("%d/%m/%Y %H:%M")
+
+            dt = pytz.utc.localize(dt).astimezone(
+                pytz.timezone("Europe/Paris")
+            )
+
+            heure_fr = dt.strftime(
+                "%d/%m/%Y %H:%M"
+            )
+
         except Exception:
-            heure_fr = f"{date_modif} {heure_modif}"
+
+            heure_fr = (
+                f"{date_modif} {heure_modif}"
+            )
+
     elif date_modif:
+
         heure_fr = date_modif
 
     conn.close()
+
     return render_template(
         "partenaires/update_partenaire.html",
         partenaire=partner_dict,
         partner_id=partner_id,
-        nom_association=partner_dict.get("nom_association", "Nom inconnu"),
+        nom_association=partner_dict.get(
+            "nom_association",
+            "Nom inconnu"
+        ),
         grouped_fields=grouped_fields,
         liste_reseaux=liste_reseaux,
         car_options=car_options,
-        next_url=urlencode(query_params, doseq=True),
+        next_url=urlencode(
+            query_params,
+            doseq=True
+        ),
         previous_id=previous_id,
         next_id=next_id,
         lecture_seule=lecture_seule,
         date_modif=heure_fr,
-        user_modif=partner_dict.get("user_modif", ""),
+        user_modif=partner_dict.get(
+            "user_modif",
+            ""
+        ),
         champs_invalides=[],
         form_hash=form_hash,
+        can_edit_any_field=can_edit_any_field,
         data=dict(partner)
     )
-
 
 
 @partenaires_bp.route("/delete_partner/<int:partner_id>", methods=["POST"])
@@ -657,7 +1446,7 @@ def delete_partner(partner_id):
         upload_database()  # Sauvegarde automatique sur Google Drive
         conn.close()
         flash("✅ Partenaire supprimé avec succès.", "success")
-        return redirect(url_for('partenaires.partenaires'))
+        return redirect(url_for('partenaires.partenaires_tabulator'))
     else:
         flash("❌ Suppression annulée ou confirmation incorrecte.", "danger")
         return redirect(url_for('partenaires.update_partner', partner_id=partner_id))
@@ -694,6 +1483,22 @@ def edition_tableau_associations():
         ]
 
         selected_columns = request.values.getlist("columns")
+
+        filtered_ids_raw = request.values.get(
+            "filtered_ids",
+            "[]"
+        )
+
+        try:
+
+            filtered_ids = json.loads(
+                filtered_ids_raw
+            )
+
+        except Exception:
+
+            filtered_ids = []
+
         voir_toutes = request.args.get("voir_toutes") == "1"
         user_role = current_user.role.lower()
         is_car = user_role == "car" and not voir_toutes
@@ -708,31 +1513,64 @@ def edition_tableau_associations():
             ["ID", "`nom_association`"] + escaped_columns
         )
 
-        if is_car:
-            query = f"""
-                SELECT {columns_clause}
-                FROM associations
-                WHERE LOWER(car) = LOWER(?)
-                  AND (validite IS NULL OR LOWER(validite) != 'non')
-                ORDER BY nom_association COLLATE NOCASE
-            """
-            rows = conn.execute(query, (car_value,)).fetchall()
+        params = []
 
-        else:
-            query = f"""
-                SELECT {columns_clause}
-                FROM associations
-                WHERE validite IS NULL OR LOWER(validite) != 'non'
-                ORDER BY nom_association COLLATE NOCASE
-            """
-            rows = conn.execute(query).fetchall()
+        where_clauses = [
+
+            "(validite IS NULL OR LOWER(validite) != 'non')"
+        ]
+
+        # ========================================================
+        # FILTRE CAR
+        # ========================================================
+
+        if is_car:
+
+            where_clauses.append(
+
+                "LOWER(car) = LOWER(?)"
+            )
+
+            params.append(car_value)
+
+        # ========================================================
+        # FILTRE IDS TABULATOR
+        # ========================================================
+
+        if filtered_ids:
+
+            placeholders = ",".join(
+                "?" for _ in filtered_ids
+            )
+
+            where_clauses.append(
+
+                f"ID IN ({placeholders})"
+            )
+
+            params.extend(filtered_ids)
+
+        where_sql = " AND ".join(where_clauses)
+
+        query = f"""
+            SELECT {columns_clause}
+            FROM associations
+            WHERE {where_sql}
+            ORDER BY nom_association COLLATE NOCASE
+        """
+
+        rows = conn.execute(
+            query,
+            params
+        ).fetchall()
 
     return render_template(
         "partenaires/edition_tableau_associations.html",
         rows=rows,
         selected_columns=selected_columns,
         user_role=user_role,
-        oui_non_fields=oui_non_fields
+        oui_non_fields=oui_non_fields,
+        filtered_ids=filtered_ids
     )
 
 
@@ -749,16 +1587,27 @@ def generate_annexe1(partner_id):
 @require_access("associations", "ecriture")
 def update_associations_table():
 
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
     total = int(request.form.get("total_rows", 0))
     columns = request.form.getlist("columns")
 
+    filtered_ids_raw = request.form.get(
+        "filtered_ids",
+        "[]"
+    )
+
+    filtered_ids = json.loads(
+        filtered_ids_raw
+    )
+
+
     # ✅ Vérification du nombre de colonnes
     if len(columns) > 40:
         flash("⚠️ Trop de colonnes sélectionnées. Veuillez limiter votre sélection à 40 colonnes maximum.", "danger")
-        return redirect(url_for("partenaires.partenaires"))
+        return redirect(url_for("partenaires.partenaires_tabulator"))
 
 
     erreurs = []
@@ -779,8 +1628,24 @@ def update_associations_table():
         champs_invalides = []
 
         for col in columns:
-            old_val = (asso_dict[col] or "").strip() if asso_dict[col] else ""
-            new_val = request.form.get(f"{col}_{i}", "").strip()
+            db_key = None
+
+            for k in asso_dict.keys():
+
+                if k.lower() == col.lower():
+
+                    db_key = k
+                    break
+
+            old_val = ""
+
+            if db_key:
+
+                old_val = (
+                    str(asso_dict.get(db_key) or "")
+                    .strip()
+                )
+                new_val = request.form.get(f"{col}_{i}", "").strip()
 
             if new_val != old_val:
                 if "email" in col.lower() and new_val and not is_valid_email(new_val):
@@ -840,7 +1705,8 @@ def update_associations_table():
 
     return redirect(url_for(
         "partenaires.edition_tableau_associations",
-        columns=columns
+        columns=columns,
+        filtered_ids=json.dumps(filtered_ids)
     ))
 
 
@@ -1983,3 +2849,16 @@ def edit_message(mid):
     conn.close()
     # (Si tu as un template 'edit_message.html', pense à y ajouter un bouton retour aussi)
     return render_template("partenaires/edit_message.html", message=message)
+
+
+
+
+def beautify_title(name):
+
+    return (
+        name
+        .replace("_", " ")
+        .replace("-", " ")
+        .strip()
+        .title()
+    )

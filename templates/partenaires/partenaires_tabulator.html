@@ -1,10 +1,454 @@
-{% extends "base_tabulator.html" %}
+{% extends "base.html" %}
+
+{% from "macros/buttons.html"
+   import action_button, action_buttons %}
 
 {% block title %}
 Liste des Associations
 {% endblock %}
 
+{% block extra_css %}
+
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css"
+      rel="stylesheet">
+
+<style>
+
+/* =====================================================
+   PAGE TABULATOR
+===================================================== */
+
+html,
+body{
+
+    height:100%;
+}
+
+fieldset legend{
+
+    font-size:14px;
+
+    font-weight:600;
+
+    margin-bottom:4px;
+
+    padding:0 6px;
+}
+
+#filtre-association{
+
+    height:34px;
+
+    font-size:13px;
+}
+
+.page-header .btn-toolbar,
+.page-header .buttons-toolbar{
+
+    margin-bottom:4px !important;
+}
+
+/* =====================================================
+   WRAPPER PAGE
+===================================================== */
+
+.part-tabulator-page{
+
+    font-family:
+        system-ui,
+        -apple-system,
+        "Segoe UI",
+        Roboto,
+        Arial,
+        sans-serif;
+
+    display:flex;
+
+    flex-direction:column;
+
+    height:calc(100vh - 135px);
+}
+
+
+/* =====================================================
+   PAGE HEADER
+===================================================== */
+
+.page-header{
+
+    flex:0 0 auto;
+
+    background:white;
+
+    border:1px solid #ddd;
+
+    border-radius:6px;
+
+    padding:4px 8px;
+
+    margin-bottom:6px;
+}
+
+
+.page-header h1{
+
+    font-size:1.1rem;
+
+    margin:0 0 4px 0;
+
+    font-weight:600;
+}
+
+/* =====================================================
+   BOUTONS DANS TABULATOR
+===================================================== */
+
+.tabulator .btn-sm{
+
+    padding:2px 8px !important;
+
+    font-size:12px !important;
+
+    line-height:1.2 !important;
+}
+
+
+
+/* =====================================================
+   GROUPES
+===================================================== */
+
+.fields-group{
+
+    min-width:190px;
+
+    padding:4px 6px;
+
+    border:1px solid #ddd;
+
+    border-radius:6px;
+
+    background:white;
+
+    font-size:12px;
+
+    flex:0 0 auto;
+}
+
+.fields-group .d-flex{
+
+    gap:10px !important;
+}
+
+.fields-group input[type="checkbox"]{
+
+    margin-right:5px;
+}
+
+
+.titre-depliable{
+
+    cursor:pointer;
+
+    user-select:none;
+
+    font-weight:600;
+
+    font-size:12px;
+}
+
+
+.fields-container{
+
+    display:none;
+
+    padding-left:18px;
+
+    margin-top:5px;
+}
+
+
+.fields-container.expanded{
+
+    display:block;
+}
+
+
+.fields-container label{
+
+    display:block;
+
+    margin-bottom:2px;
+
+    line-height:1.15;
+
+    font-size:12px;
+}
+
+
+/* =====================================================
+   TABLE ZONE
+===================================================== */
+
+.table-zone{
+
+    flex:1 1 auto;
+
+    min-height:0;
+
+    overflow:hidden;
+
+    border:1px solid #ccc;
+
+    background:white;
+
+    border-radius:6px;
+
+    margin-top:6px;
+}
+
+
+/* =====================================================
+   TABULATOR
+===================================================== */
+
+#tabulator-table{
+
+    height:100%;
+}
+
+
+.tabulator{
+
+    height:100% !important;
+
+    font-size:14px !important;
+
+    border:none !important;
+}
+
+
+/* =====================================================
+   HEADER TABULATOR ULTRA PROPRE
+===================================================== */
+
+.tabulator .tabulator-header{
+
+    background:#f8f9fa !important;
+}
+
+/* cellule colonne */
+
+.tabulator .tabulator-col{
+
+    background:#f8f9fa !important;
+
+    border-right:1px solid #ddd !important;
+
+    padding:2px !important;
+}
+
+/* contenu header */
+
+.tabulator-col-content{
+
+    display:flex !important;
+
+    flex-direction:column !important;
+
+    align-items:stretch !important;
+
+    justify-content:flex-start !important;
+
+    gap:4px;
+
+    padding:2px;
+}
+
+/* titre */
+
+.tabulator-col-title{
+
+    width:100%;
+
+    text-align:center;
+
+    font-weight:600;
+
+    font-size:13px;
+
+    line-height:1.1;
+
+    white-space:normal !important;
+
+    word-break:break-word;
+
+    hyphens:auto;
+
+    align-items:center;
+    
+    min-height:32px;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+}
+
+/* ligne filtre */
+
+.tabulator-header-filter{
+
+    width:100% !important;
+
+    margin:0 !important;
+
+    padding:0 !important;
+}
+
+/* input */
+
+.tabulator-header-filter input{
+
+    width:100% !important;
+
+    height:28px !important;
+
+    min-height:28px !important;
+
+    font-size:12px !important;
+
+    padding:2px 6px !important;
+
+    box-sizing:border-box !important;
+}
+
+/* select */
+
+.tabulator-header-filter select{
+
+    width:100% !important;
+
+    height:28px !important;
+
+    min-height:28px !important;
+
+    font-size:12px !important;
+
+    padding:2px 4px !important;
+
+    box-sizing:border-box !important;
+}
+
+/* focus */
+
+.tabulator-header-filter input:focus,
+.tabulator-header-filter select:focus{
+
+    outline:none !important;
+
+    border:1px solid #ff6b2c !important;
+
+    box-shadow:0 0 0 2px rgba(255,107,44,.15);
+}
+
+/* hauteur header */
+
+.tabulator .tabulator-header{
+
+    min-height:72px !important;
+
+    border-bottom:1px solid #ccc;
+}
+
+
+.tabulator .tabulator-header .tabulator-col{
+
+    border-right:1px solid #d9d9d9 !important;
+
+    min-height:34px !important;
+
+    padding:5px 8px !important;
+
+    background:#f8f9fa;
+
+    font-weight:600;
+
+    font-size:14px;
+
+    text-align: center;
+}
+
+.tabulator-col-title{
+
+    width:100%;
+
+    text-align:center;
+}
+
+.tabulator .tabulator-header .tabulator-col .tabulator-col-content{
+
+    display:flex;
+
+    justify-content:center;
+
+    align-items:center;
+}
+
+/* =====================================================
+   CELLULES
+===================================================== */
+
+.tabulator-row{
+
+    min-height:24px !important;
+}
+
+
+.tabulator-row .tabulator-cell{
+
+    padding:4px 8px !important;
+
+    white-space:nowrap;
+
+    line-height:1.25;
+
+    font-size:14px;
+}
+
+
+/* =====================================================
+   BORDURES TABULATOR
+===================================================== */
+
+.tabulator-row .tabulator-cell{
+
+    border-right:1px solid #d9d9d9 !important;
+}
+
+
+
+/* =====================================================
+   LIGNES ALTERNÉES
+===================================================== */
+
+.tabulator-row:nth-child(even){
+
+    background:#fafafa;
+}
+
+</style>
+
+{% endblock %}
+
+
+
+
+
 {% block content %}
+
+<div class="part-tabulator-page">
 
 <div class="page-header">
 
@@ -12,96 +456,120 @@ Liste des Associations
         Liste des Associations
     </h1>
 
+    {% if voir_non_valides %}
+
+    <div class="alert alert-danger py-2 px-3 mb-2 fw-bold">
+
+        ⚠️ MODE NON VALIDES :
+        seules les associations non valides sont affichées.
+
+    </div>
+
+    {% endif %}
+
     <!-- ===================================================== -->
     <!-- BOUTONS -->
     <!-- ===================================================== -->
 
-    <div class="d-flex gap-2 mb-3 flex-wrap">
+    {% call action_buttons() %}
 
-        <a href="{{ url_for('partenaires.create_partner') }}"
-           class="btn btn-success">
+    {{ action_button(
+        "➕ Créer un nouveau partenaire",
+        href=url_for('partenaires.create_partner'),
+        color="success"
+    ) }}
 
-            ➕ Créer un nouveau partenaire
+    {% if has_access("associations", "ecriture") %}
 
-        </a>
+    {{ action_button(
+        "📄 Fichiers Publipostage",
+        onclick="updatePublipostageFile()",
+        color="success"
+    ) }}
 
-        {% if has_access("associations", "ecriture") %}
-        <button
-            type="button"
-            class="btn btn-success"
-            onclick="updatePublipostageFile()">
+    {% endif %}
 
-            📄 Fichiers Publipostage
+    {% if not lecture_seule %}
 
-        </button>
-        {% endif %}
+    {{ action_button(
+        "📝 Mise à jour en tableau",
+        onclick="submitTableUpdate()",
+        color="warning"
+    ) }}
 
-        {% if not lecture_seule %}
+    {% endif %}
 
-        <form
-            method="POST"
-            action="{{ url_for('partenaires.edition_tableau_associations') }}"
-            id="form-update-table"
-            style="display:inline;">
+    {% if voir_non_valides %}
 
-            <button
-                type="button"
-                class="btn btn-warning"
-                onclick="submitTableUpdate()">
+    {{ action_button(
+        "✔ Toutes les associations",
+        href=url_for('partenaires.partenaires_tabulator'),
+        color="danger"
+    ) }}
 
-                📝 Mise à jour en tableau
+    {% else %}
 
-            </button>
+    {{ action_button(
+        "❌ Voir les non valides",
+        href=url_for(
+            'partenaires.partenaires_tabulator',
+            voir_non_valides=1
+        ),
+        color="outline-danger"
+    ) }}
 
-            <!-- ===================================================== -->
-            <!-- BOUTON NON VALIDES -->
-            <!-- ===================================================== -->
+    {% endif %}
 
-            {% if voir_non_valides %}
+    {{ action_button(
+        "♻️ Réinitialiser les filtres",
+        onclick="resetFilters()",
+        color="outline-danger"
+    ) }}
 
-            <a href="{{ url_for('partenaires.partenaires') }}"
-            class="btn btn-danger">
+    {% if current_user.role|lower == "car" %}
 
-                ✔ Toutes les associations
+        {% if request.args.get("voir_toutes") == "1" %}
 
-            </a>
+            {{ action_button(
+                "👁 Mes associations",
+                href=url_for(
+                    'partenaires.partenaires_tabulator'
+                ),
+                color="outline-primary"
+            ) }}
 
-            {% else %}
+        {% else %}
 
-            <a href="{{ url_for('partenaires.partenaires', voir_non_valides=1) }}"
-            class="btn btn-outline-danger">
+            {{ action_button(
+                "👁 Voir toutes les associations",
+                href=url_for(
+                    'partenaires.partenaires_tabulator',
+                    voir_toutes=1
+                ),
+                color="outline-primary"
+            ) }}
 
-                ❌ Voir les non valides
+    {% endif %}
 
-            </a>
+    {{ action_button(
+        "↩ Retour",
+        href=url_for('index'),
+        color="outline-secondary"
+    ) }}
 
-            {% endif %}
 
-        </form>
 
-        {% endif %}
+    {% endif %}
 
-        <button class="btn btn-outline-danger"
-                onclick="resetFilters()">
+    {% endcall %}
 
-            ♻️ Réinitialiser les filtres
 
-        </button>
-
-        <a href="{{ url_for('index') }}"
-           class="btn btn-outline-secondary">
-
-            ↩ Retour
-
-        </a>
-
-    </div>
 
     <!-- ===================================================== -->
     <!-- OPTIONS -->
     <!-- ===================================================== -->
 
-    <fieldset class="border rounded p-3 bg-white">
+    <fieldset class="border rounded p-1 bg-white">
 
         <legend class="float-none w-auto px-2">
             Options d'affichage
@@ -111,7 +579,7 @@ Liste des Associations
         <!-- GROUPES -->
         <!-- ===================================================== -->
 
-        <div class="d-flex flex-wrap gap-4">
+        <div class="d-flex gap-2 align-items-start overflow-auto pb-1">
 
             <!-- coordonnees principales toujours premier -->
 
@@ -206,7 +674,7 @@ Liste des Associations
         <!-- RECHERCHE -->
         <!-- ===================================================== -->
 
-        <div class="mt-3">
+        <div class="mt-1">
 
             <input
                 type="text"
@@ -230,19 +698,198 @@ Liste des Associations
 
 </div>
 
+<form
+    id="form-update-table"
+    method="POST"
+    action="{{ url_for('partenaires.update_associations_table') }}"
+    style="display:none;">
+</form>
+
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
 
 <script>
 
 const tableData = {{ table_data | tojson }};
 const allColumns = {{ columns | tojson }};
 
+
+
+// ======================================================
+// FORMATTER EMAIL
+// ======================================================
+
+function emailFormatter(cell){
+
+    const value = cell.getValue();
+
+    if (!value){
+
+        return "";
+    }
+
+    return `
+        <a href="mailto:${value}"
+           target="_blank"
+           style="color:#ff6b2c; text-decoration:none;">
+            ${value}
+        </a>
+    `;
+}
+
+
+// ======================================================
+// FORMATTER MODIFIER
+// ======================================================
+
+function modifierFormatter(cell){
+
+    const id = cell.getValue();
+
+    return `
+        <a href="/update_partner/${id}"
+           class="btn btn-warning btn-sm">
+           Modifier
+        </a>
+    `;
+}
+
+
+// ======================================================
+// NORMALISATION RECHERCHE
+// ======================================================
+
+function normalizeSearch(text){
+
+    return (text || "")
+        .toString()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/['’`]/g, "")
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .toLowerCase();
+}
+
+
+// ======================================================
+// HIGHLIGHT TEXTE
+// ======================================================
+
+function highlightText(text){
+
+    const input =
+        document.getElementById(
+            "filtre-association"
+        );
+
+    if (!input){
+
+        return text;
+    }
+
+    const rawSearch =
+        input.value.trim();
+
+    if (!rawSearch){
+
+        return text;
+    }
+
+    if (
+        text === null
+        ||
+        text === undefined
+    ){
+        return "";
+    }
+
+    const original =
+        text.toString();
+
+    const escaped =
+        rawSearch.replace(
+            /[.*+?^${}()|[\]\\]/g,
+            "\\$&"
+        );
+
+    const regex =
+        new RegExp(
+            "(" + escaped + ")",
+            "gi"
+        );
+
+    return original.replace(
+        regex,
+        '<span style="background:yellow;font-weight:bold;">$1</span>'
+    );
+}
+
+
+// ======================================================
+// TABULATOR
+// ======================================================
+
 let table = new Tabulator("#tabulator-table", {
 
     data: tableData,
 
-    columns: allColumns,
+    columns: allColumns.map(col => {
 
-    layout: "fitDataStretch",
+        // ==========================================
+        // BOUTON MODIFIER
+        // ==========================================
+
+        if (col.formatter === "buttonCross"){
+
+            col.formatter = modifierFormatter;
+
+            return col;
+        }
+
+        // ==========================================
+        // EMAIL
+        // ==========================================
+
+        if (col.formatter === "emailFormatter"){
+
+            col.formatter = emailFormatter;
+
+            return col;
+        }
+
+        // ==========================================
+        // HIGHLIGHT RECHERCHE
+        // ==========================================
+
+        if (
+            ![
+                "id",
+                "drive_link"
+            ].includes(col.field)
+        ){
+
+            col.formatter = function(cell){
+
+                const value =
+                    cell.getValue();
+
+                if (
+                    value === null
+                    ||
+                    value === undefined
+                ){
+                    return "";
+                }
+
+                return highlightText(value);
+            };
+        }
+
+        return col;
+    }),
+
+    layout:"fitColumns",
+
+    resizableColumnFit:true,
 
     height: "100%",
 
@@ -272,7 +919,6 @@ function getVisibleColumns(){
 
     return allColumns.filter(col => {
 
-        // toujours visibles
         if (
             ["id", "nom_association"]
             .includes(col.field)
@@ -295,7 +941,7 @@ function refreshColumns(){
 
     table.setColumns(cols);
 
-    table.redraw(true);
+    table.replaceData(table.getData());
 
     saveState();
 }
@@ -371,16 +1017,19 @@ function updateGroupState(){
         if (checked === 0){
 
             master.checked = false;
+
             master.indeterminate = false;
         }
         else if (checked === children.length){
 
             master.checked = true;
+
             master.indeterminate = false;
         }
         else{
 
             master.checked = false;
+
             master.indeterminate = true;
         }
     });
@@ -412,21 +1061,72 @@ document
 .getElementById("filtre-association")
 .addEventListener("input", function(){
 
-    const value = this.value;
+    const search =
+        normalizeSearch(this.value);
 
-    if (!value){
+    // ==========================================
+    // RESET
+    // ==========================================
+
+    if (!search){
 
         table.clearFilter();
+
+        table.replaceData(tableData);
+
         return;
     }
 
-    table.setFilter(row => {
+    // ==========================================
+    // FILTRE
+    // ==========================================
 
-        return JSON.stringify(row)
-            .toLowerCase()
-            .includes(value.toLowerCase());
+    table.setFilter(function(data){
+
+        // colonnes visibles actuellement
+        const visibleColumns =
+            table.getColumns();
+
+        for (const col of visibleColumns){
+
+            const field =
+                col.getField();
+
+            // exclusions techniques
+            if (
+                !field
+                ||
+                [
+                    "id",
+                    "drive_link"
+                ].includes(field)
+            ){
+                continue;
+            }
+
+            const value =
+                normalizeSearch(data[field]);
+
+            if (value.includes(search)){
+
+                return true;
+            }
+        }
+
+        return false;
     });
+
+    // refresh highlight
+
+    table.replaceData(
+        table.getData()
+    );
 });
+
+
+// ======================================================
+// ESCAPE = RESET
+// ======================================================
 
 document
 .getElementById("filtre-association")
@@ -438,13 +1138,15 @@ document
 
         table.clearFilter();
 
+        table.replaceData(tableData);
+
         e.preventDefault();
     }
 });
 
 
 // ======================================================
-// RESET
+// RESET FILTRES
 // ======================================================
 
 function resetFilters(){
@@ -454,10 +1156,6 @@ function resetFilters(){
     location.reload();
 }
 
-
-// ======================================================
-// STATE INITIAL
-// ======================================================
 
 // ======================================================
 // STORAGE
@@ -510,6 +1208,7 @@ function restoreState(){
     });
 }
 
+
 // ======================================================
 // INITIALISATION
 // ======================================================
@@ -556,6 +1255,10 @@ function updatePublipostageFile(){
 // MISE A JOUR TABLEAU
 // ======================================================
 
+// ======================================================
+// MISE A JOUR TABLEAU
+// ======================================================
+
 function submitTableUpdate(){
 
     const form =
@@ -563,12 +1266,16 @@ function submitTableUpdate(){
             "form-update-table"
         );
 
-    // nettoyage
-    form.querySelectorAll(
-        'input[name="columns"]'
-    ).forEach(e => e.remove());
+    // ==================================================
+    // RESET
+    // ==================================================
 
-    // colonnes cochées
+    form.innerHTML = "";
+
+    // ==================================================
+    // COLONNES SELECTIONNEES
+    // ==================================================
+
     const selected = Array.from(
         document.querySelectorAll(
             ".field-toggle:checked"
@@ -578,25 +1285,64 @@ function submitTableUpdate(){
     if (selected.length === 0){
 
         alert("⚠️ Aucun champ sélectionné");
+
         return;
     }
 
-    // injecter colonnes
+    // ==================================================
+    // AJOUT COLONNES
+    // ==================================================
+
     selected.forEach(col => {
 
         const input =
             document.createElement("input");
 
         input.type = "hidden";
+
         input.name = "columns";
+
         input.value = col;
 
         form.appendChild(input);
     });
 
+    // ==================================================
+    // IDS FILTRES
+    // ==================================================
+
+    const filteredIds =
+        table
+        .getRows("active")
+        .map(r => r.getData().id);
+
+    console.log(
+        "IDS FILTRES",
+        filteredIds
+    );
+
+    const idsInput =
+        document.createElement("input");
+
+    idsInput.type = "hidden";
+
+    idsInput.name = "filtered_ids";
+
+    idsInput.value =
+        JSON.stringify(filteredIds);
+
+    form.appendChild(idsInput);
+
+    // ==================================================
+    // SUBMIT
+    // ==================================================
+
     form.submit();
 }
 
 </script>
+
+
+</div>
 
 {% endblock %}

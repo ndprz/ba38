@@ -2841,7 +2841,7 @@ def extract_infos_facture(text):
 # ============================
 # ENVOI PARTICIPATION PAR MAIL
 # ============================
-@tresorerie_bp.route('/factures_pdf', methods=['GET', 'POST'])
+@tresorerie_bp.route('/factures_upload', methods=['GET', 'POST'])
 @login_required
 @require_access("tresorerie", "ecriture")
 def factures_pdf():
@@ -2930,17 +2930,17 @@ def factures_pdf():
                 destinataires=[email],
                 texte="""Bonjour,
 
-Suite à un probleme technique, un certain nombre d'emails de factures ne sont pas partis.
-Nous faisons un deuxième envoi aujourd'hui, veuillez nous excuser pour ce désagrément si vous aviez déjà reçu la facture.
+                    Suite à un probleme technique, un certain nombre d'emails de factures ne sont pas partis.
+                    Nous faisons un deuxième envoi aujourd'hui, veuillez nous excuser pour ce désagrément si vous aviez déjà reçu la facture.
 
 
-Vous trouverez ci-joint, en fichier attaché, votre facture de participation de solidarité du 1er  trimestre 2026.
+                    Vous trouverez ci-joint, en fichier attaché, votre facture de participation de solidarité du 1er  trimestre 2026.
 
-Pour les C.C.A.S. : Votre Participation de Solidarité est déposée sur le site ChorusPro. Vous recevez ce mail à titre d’information.
+                    Pour les C.C.A.S. : Votre Participation de Solidarité est déposée sur le site ChorusPro. Vous recevez ce mail à titre d’information.
 
-Bonne réception
-La Trésorerie de la Banque Alimentaire de l’Isère
-""",
+                    Bonne réception
+                    La Trésorerie de la Banque Alimentaire de l’Isère
+                    """,
                 sender_override=mail_sender,
                 attachment_path=fichier,
                 bcc=[mail_sender]
@@ -2972,7 +2972,7 @@ La Trésorerie de la Banque Alimentaire de l’Isère
 
             if not pdf_path or not os.path.exists(pdf_path):
                 flash("❌ Fichier introuvable", "danger")
-                return redirect(url_for("tresorerie.factures_pdf"))
+                return redirect(url_for("tresorerie.factures_upload"))
 
             pages = extract_pages(pdf_path)
 
@@ -2983,7 +2983,7 @@ La Trésorerie de la Banque Alimentaire de l’Isère
 
             flash(f"📧 Envoi lancé en arrière-plan (expéditeur : {mail_sender})", "info")
 
-            return redirect(url_for("tresorerie.factures_pdf"))
+            return redirect(url_for("tresorerie.factures_upload"))
 
         # ======================================================
         # ANALYSE PDF
@@ -2994,7 +2994,7 @@ La Trésorerie de la Banque Alimentaire de l’Isère
 
             if not file:
                 flash("❌ Fichier manquant", "danger")
-                return redirect(url_for("tresorerie.factures_pdf"))
+                return redirect(url_for("tresorerie.factures_upload"))
 
             tmp_path = f"/srv/ba38/tmp/factures_{int(time.time())}.pdf"
             file.save(tmp_path)
@@ -3073,7 +3073,7 @@ def factures_toggle_mode():
         session["MAIL_MODE"] = "TEST"
         flash("🧪 Mode TEST activé", "warning")
 
-    return redirect(url_for("tresorerie.factures_pdf"))
+    return redirect(url_for("tresorerie.factures_upload"))
 
 
 def envoyer_factures_background(pages, pdf_path, mail_mode, mail_test_to):

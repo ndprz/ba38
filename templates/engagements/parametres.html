@@ -21,6 +21,30 @@
 
     </div>
 
+    <div class="card mb-3">
+
+        <div class="card-body">
+
+            <h5 class="card-title">
+                ⚖️ Workflow des validations
+            </h5>
+
+            <p class="card-text">
+                Gestion des paliers de validation,
+                devis obligatoires et validations.
+            </p>
+
+            <a href="{{ url_for('engagements.engagements_parametres_workflow') }}"
+            class="btn btn-primary">
+
+                Gérer les paliers
+
+            </a>
+
+        </div>
+
+    </div>
+
     <div class="mb-4">
 
         {% if has_access('engagement_parametres', 'lecture') %}
@@ -36,6 +60,37 @@
             </div>
         </div>
         {% endif %}
+
+    </div>
+
+    <div class="card mb-3">
+
+        <div class="card-body">
+
+            <h5 class="card-title">
+
+                💰 Subventions
+
+            </h5>
+
+            <p class="card-text">
+
+                Gestion des subventions,
+                organismes financeurs
+                et budgets.
+
+            </p>
+
+            <a href="{{ url_for(
+                    'engagements.gestion_subventions'
+                ) }}"
+            class="btn btn-primary">
+
+                Gérer les subventions
+
+            </a>
+
+        </div>
 
     </div>
 

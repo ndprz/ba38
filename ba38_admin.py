@@ -617,9 +617,32 @@ def documentation_view():
         content_md = f.read()
 
     # Conversion Markdown → HTML
+    safe_md = escape_html_outside_code(content_md)
+
+
+    import markdown
+    import bleach
+
     html = markdown.markdown(
-        content_md,
+        safe_md,
         extensions=["fenced_code", "tables"]
+    )
+
+    # 🔥 nettoyage HTML (à mettre ici)
+    html = bleach.clean(
+        html,
+        tags=[
+            "p","ul","li","strong","em",
+            "h1","h2","h3","h4","h5",
+            "pre","code",
+            "table","thead","tbody","tr","td","th"
+        ],
+        attributes={
+            "code": ["class"],
+            "th": ["colspan"],
+            "td": ["colspan"]
+        },
+        strip=True
     )
 
     return render_template(
@@ -627,6 +650,28 @@ def documentation_view():
         content=html,
         file=file
     )
+
+import html
+
+def escape_html_in_markdown(text):
+    return html.escape(text)
+
+import re
+import html
+
+def escape_html_outside_code(md_text):
+
+    parts = re.split(r'(```.*?```)', md_text, flags=re.DOTALL)
+
+    result = ""
+
+    for part in parts:
+        if part.startswith("```"):
+            result += part  # on garde tel quel
+        else:
+            result += html.escape(part)
+
+    return result
 
 @admin_bp.route("/documentation/ajax")
 @login_required
@@ -973,3 +1018,48 @@ def clean_code(code):
     code = unicodedata.normalize("NFD", code)
     code = "".join(c for c in code if unicodedata.category(c) != "Mn")
     return code
+
+
+@admin_bp.route("/admin/convert_docs")
+@login_required
+def convert_docs():
+
+    if session.get("user_role") != "admin":
+        flash("⛔ Accès interdit", "danger")
+        return redirect(url_for("index"))
+
+    import subprocess
+    import os
+
+    base_dir = os.getenv("BA38_BASE_DIR")
+    script_path = os.path.join(base_dir, "scripts", "convert_doc_to_html.py")
+
+    try:
+        result = subprocess.run(
+            [os.path.join(base_dir, "venv/bin/python"), script_path],
+            capture_output=True,
+            text=True
+        )
+
+        output = result.stdout + "\n" + result.stderr
+
+        write_log(f"📄 Conversion docs exécutée\n{output}")
+
+        flash("✅ Documentation convertie", "success")
+
+    except Exception as e:
+        write_log(f"❌ Erreur conversion docs : {e}")
+        flash(f"❌ Erreur : {e}", "danger")
+
+    return redirect(url_for("debug_bp.admin_scripts"))
+
+    def load_doc_html(filename):
+
+        base_dir = os.getenv("BA38_BASE_DIR")
+        path = os.path.join(base_dir, "doc_html", filename)
+
+        if not os.path.exists(path):
+            return "<p>⚠️ Documentation non disponible</p>"
+
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()

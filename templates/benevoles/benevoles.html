@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}Liste des Bénévoles{% endblock %}
 
 {% block content %}
@@ -10,61 +12,89 @@
 
         <h2>Liste des Bénévoles</h2>
 
-        <div class="mb-3" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+        {% set buttons = [] %}
 
-            {% if not lecture_seule %}
-            <a href="{{ url_for('benevoles.create_benevole') }}" class="btn btn-success">
-                ➕ Ajouter un nouveau bénévole
-            </a>
-            {% else %}
-            <button class="btn btn-success" disabled>
-                ➕ Ajouter un nouveau bénévole
-            </button>
-            {% endif %}
+        {# =======================================================
+           AJOUT BENEVOLE
+        ======================================================== #}
 
-            {% if has_access("benevoles", "ecriture") %}
-            <button type="button" class="btn btn-success" onclick="updatePublipostageFile()">
-                📄 Fichiers Publipostage
-            </button>
-            {% endif %}
+        {% if not lecture_seule %}
 
-            {% if not lecture_seule %}
-            <form method="GET" action="{{ url_for('benevoles.edition_tableau_benevoles') }}" style="display:inline;"
-                onsubmit="syncHiddenColumnsBeforeSubmit(this)">
+            {% set _ = buttons.append({
+                'url': url_for('benevoles.create_benevole'),
+                'label': '➕ Ajouter un nouveau bénévole',
+                'color': 'success'
+            }) %}
 
-                <!-- flag interaction -->
-                <input type="hidden" name="has_interacted" value="1">
+        {% endif %}
 
-                <button type="submit" class="btn btn-warning">
-                    📝 Mise à jour en tableau
-                </button>
-            </form>
-            {% else %}
-            <button class="btn btn-warning" disabled>
-                📝 Mise à jour en tableau
-            </button>
-            {% endif %}
+        {# =======================================================
+           PUBLIPOSTAGE
+        ======================================================== #}
 
-            <a href="{{ url_for('benevoles.benevoles_archives') }}" class="btn btn-outline-secondary">
-                👁 Voir les désactivés
-            </a>
+        {% if has_access("benevoles", "ecriture") %}
 
-            <a href="{{ url_for('benevoles.envoi_mail_benevoles') }}" class="btn btn-outline-primary">
-                📧 Mail groupé bénévoles
-            </a>
+            {% set _ = buttons.append({
+                'onclick': 'updatePublipostageFile()',
+                'label': '📄 Fichiers Publipostage',
+                'color': 'success',
+                'type': 'button'
+            }) %}
 
-            <button type="button" class="btn btn-outline-danger" onclick="resetFilters()">
-                ♻️ Réinitialiser les filtres
-            </button>
+        {% endif %}
 
-            <a href="{{ url_for('droit_image.droit_image') }}" class="btn btn-outline-dark">
-                📸 Droit à l'image
-            </a>
+        {# =======================================================
+           MAJ TABLEAU
+        ======================================================== #}
 
-            <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
-                ↩️ Retour à l'accueil
-            </a>
+        {% if not lecture_seule %}
 
+            {% set _ = buttons.append({
+                'url': url_for('benevoles.edition_tableau_benevoles'),
+                'label': '📝 Mise à jour en tableau',
+                'color': 'warning'
+            }) %}
+
+        {% endif %}
+
+    
+        {# =======================================================
+           AUTRES ACTIONS
+        ======================================================== #}
+
+        {% set _ = buttons.append({
+            'url': url_for('benevoles.benevoles_archives'),
+            'label': '👁 Voir les désactivés',
+            'color': 'outline-secondary'
+        }) %}
+
+        {% set _ = buttons.append({
+            'url': url_for('benevoles.envoi_mail_benevoles'),
+            'label': '📧 Mail groupé bénévoles',
+            'color': 'outline-primary'
+        }) %}
+
+        {% set _ = buttons.append({
+            'onclick': 'resetFilters()',
+            'label': '♻️ Réinitialiser les filtres',
+            'color': 'outline-danger',
+            'type': 'button'
+        }) %}
+
+        {% set _ = buttons.append({
+            'url': url_for('droit_image.droit_image'),
+            'label': "📸 Droit à l'image",
+            'color': 'outline-dark'
+        }) %}
+
+        {% set _ = buttons.append({
+            'url': url_for('index'),
+            'label': "↩️ Retour à l'accueil",
+            'color': 'outline-dark'
+        }) %}
+
+        {{ action_buttons(buttons) }}
+        
         </div>
 
         <form method="GET" id="form-options">
@@ -119,28 +149,30 @@
     </div>
 
     {% if benevoles %}
-    <div id="scroll-top" style="overflow-x: auto; height: 20px; margin-bottom: 5px;">
+    <!-- <div id="scroll-top" style="overflow-x: auto; height: 20px; margin-bottom: 5px;">
         <div id="sync-scroll" style="height: 1px;"></div>
-    </div>
+    </div> -->
 
-    <div id="scroll-bottom" style="overflow-x: auto;
-            overflow-y: auto;
-            height: 65vh;
-            white-space: nowrap;">
-        <table class="table table-striped table-bordered table-sticky" id="benevole-table">
+    <div id="scroll-bottom" class="bene-table-wrapper"
+        style="
+            overflow:auto;
+            height: calc(100vh - 320px);
+            white-space: nowrap;
+    ">
+        <table class="table table-striped table-bordered bene-table-custom" id="benevole-table">
             <thead>
                 <tr>
-                    <th class="sticky-col sticky-col-1">Action</th>
+                    <th class="bene-sticky-1">Action</th>
 
-                    <th class="sticky-col sticky-col-2 sortable" data-sort="id">
+                    <th class="bene-sticky-2 sortable" data-sort="id">
                         ID <span class="arrow">▲▼</span>
                     </th>
 
-                    <th class="sticky-col sticky-col-3 sortable" data-sort="nom">
+                    <th class="bene-sticky-3 sortable" data-sort="nom">
                         Nom <span class="arrow">▲▼</span>
                     </th>
 
-                    <th class="sticky-col sticky-col-4">📸</th>
+                    <th class="bene-sticky-4">📸</th>
 
                     {% for group_name, fields in grouped_fields.items() %}
                     {% for field in fields %}
@@ -157,7 +189,7 @@
                 {% for item in benevoles %}
                 <tr data-search="{{ item.search_blob }}">
 
-                    <td class="sticky-col sticky-col-1">
+                    <td class="bene-sticky-1">
                         {% if item.display['id'] %}
                         <form method="GET"
                             action="{{ url_for('benevoles.update_benevole', benevole_id=item.display['id']) }}"
@@ -174,11 +206,11 @@
                         {% endif %}
                     </td>
 
-                    <td class="sticky-col sticky-col-2">
+                    <td class="bene-sticky-2">
                         {{ item.display['id'] }}
                     </td>
 
-                    <td class="sticky-col sticky-col-3">
+                    <td class="bene-sticky-3">
 
                         {% if item.display['id'] in photo_ids %}
                         <span class="photo-hover-container"
@@ -190,7 +222,7 @@
                         {% endif %}
                     </td>
 
-                    <td class="sticky-col sticky-col-4">
+                    <td class="bene-sticky-4">
 
 
                         {% set statut = droit_image_map.get(item.display['id']) %}
@@ -243,82 +275,26 @@
 
 
     <style>
-        max-height: calc(100vh - 260px);
 
-        /* =========================
-        CONTENEUR GLOBAL
-        ========================= */
-        .benevoles-page {
-            display: flex;
-            flex-direction: column;
-        }
+    /* =====================================================
+    TABLEAU BENEVOLES - CSS 100% ISOLÉ
+    ===================================================== */
 
-        /* =========================
-        HEADER FIXE (boutons + options)
-        ========================= */
-        .benevoles-header {
-            position: sticky;
-            top: 60px;
-            z-index: 200;
-            background: white;
-            padding-bottom: 10px;
-        }
+.bene-table-wrapper {
+    overflow: auto;
+    height: calc(100vh - 320px);
+}
 
-        /* =========================
-        SCROLL TABLEAU
-        ========================= */
-        #scroll-bottom {
-            overflow: auto;
-        }
+#benevole-table {
+    width: max-content;
+    min-width: 100%;
+}
 
-        /* =========================
-        HEADER TABLE (thead)
-        ========================= */
-        #benevole-table thead th {
-            position: sticky;
-            top: 0;
-            z-index: 150;
-            background: #f8f9fa;
-        }
+#benevole-table th,
+#benevole-table td {
+    white-space: nowrap;
+}
 
-        /* =====================================================
-        COLONNES FIGÉES SPÉCIFIQUES BENEVOLES
-        ===================================================== */
-
-        /* base */
-        #benevole-table .sticky-col {
-            position: sticky;
-            background: white;
-            z-index: 200;
-        }
-
-        /* positions */
-        #benevole-table .sticky-col-1 {
-            left: 0px;
-        }
-
-        #benevole-table .sticky-col-2 {
-            left: 90px;
-        }
-
-        #benevole-table .sticky-col-3 {
-            left: 180px;
-        }
-
-        #benevole-table .sticky-col-4 {
-            left: 320px;
-        }
-
-        /* header au-dessus */
-        #benevole-table thead th.sticky-col {
-            z-index: 300;
-            background: #f8f9fa;
-        }
-
-        /* séparation visuelle */
-        #benevole-table .sticky-col-3 {
-            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
-        }
     </style>
 
     <script>
@@ -448,13 +424,13 @@
 
 
         // Scroll synchronisé
-        const topScroll = document.getElementById("scroll-top");
-        const bottomScroll = document.getElementById("scroll-bottom");
-        const syncDiv = document.getElementById("sync-scroll");
-        const table = document.getElementById("benevole-table");
-        if (syncDiv && table) syncDiv.style.width = table.scrollWidth + "px";
-        topScroll.addEventListener("scroll", () => bottomScroll.scrollLeft = topScroll.scrollLeft);
-        bottomScroll.addEventListener("scroll", () => topScroll.scrollLeft = bottomScroll.scrollLeft);
+        // const topScroll = document.getElementById("scroll-top");
+        // const bottomScroll = document.getElementById("scroll-bottom");
+        // const syncDiv = document.getElementById("sync-scroll");
+        // const table = document.getElementById("benevole-table");
+        // if (syncDiv && table) syncDiv.style.width = table.scrollWidth + "px";
+        // topScroll.addEventListener("scroll", () => bottomScroll.scrollLeft = topScroll.scrollLeft);
+        // bottomScroll.addEventListener("scroll", () => topScroll.scrollLeft = bottomScroll.scrollLeft);
 
         // Photos au survol
         let floating = null;
@@ -744,6 +720,8 @@
             document.querySelectorAll("#benevole-table td[data-col]").forEach(td => {
                 td.style.display = selectedSet.has(td.dataset.col) ? "" : "none";
             });
+
+            // refreshHorizontalScroll();
         }
 
         // ============================================
@@ -786,31 +764,45 @@
         }
 
 
-        function resizeTable() {
+        // function resizeTable() {
 
-            const tableContainer = document.getElementById("scroll-bottom");
-            if (!tableContainer) return;
+        //     const tableContainer = document.getElementById("scroll-bottom");
+        //     if (!tableContainer) return;
 
-            const rect = tableContainer.getBoundingClientRect();
+        //     const rect = tableContainer.getBoundingClientRect();
 
-            // hauteur totale viewport
-            const viewportHeight = window.innerHeight;
+        //     // hauteur totale viewport
+        //     const viewportHeight = window.innerHeight;
 
-            // hauteur totale réelle de la page
-            const bodyHeight = document.body.scrollHeight;
+        //     // hauteur totale réelle de la page
+        //     const bodyHeight = document.body.scrollHeight;
 
-            // tout ce qui dépasse en bas (footer + bandeau + marges)
-            const bottomOverflow = bodyHeight - viewportHeight;
+        //     // tout ce qui dépasse en bas (footer + bandeau + marges)
+        //     const bottomOverflow = bodyHeight - viewportHeight;
 
-            // hauteur dispo corrigée
-            const availableHeight = viewportHeight - rect.top - bottomOverflow;
+        //     // hauteur dispo corrigée
+        //     const availableHeight = viewportHeight - rect.top - bottomOverflow;
 
-            tableContainer.style.height = availableHeight + "px";
-        }
+        //     tableContainer.style.height = availableHeight + "px";
+        // }
 
-        window.addEventListener("load", resizeTable);
-        window.addEventListener("resize", resizeTable);
+        // window.addEventListener("load", resizeTable);
+        // window.addEventListener("resize", resizeTable);
+        window.addEventListener("resize", refreshHorizontalScroll);
 
+
+
+        // function refreshHorizontalScroll() {
+
+        //     const syncDiv = document.getElementById("sync-scroll");
+        //     const table = document.getElementById("benevole-table");
+
+        //     if (!syncDiv || !table) return;
+
+        //     requestAnimationFrame(() => {
+        //         syncDiv.style.width = table.scrollWidth + "px";
+        //     });
+        // }
     </script>
 </div>
 {% endblock %}

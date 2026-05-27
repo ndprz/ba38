@@ -28,7 +28,7 @@
 
 {% for groupe, items in main_menu.items() %}
 
-<div class="mb-3">
+<div class="mb-2">
 
     <!-- ================= TITRE DU GROUPE ================= -->
     <h5 class="mb-1">
@@ -36,7 +36,7 @@
     </h5>
 
     <!-- ================= CARTES MODULES ================= -->
-    <div class="row g-3">
+    <div class="row g-2">
 
         {% for item in items %}
 
@@ -113,7 +113,7 @@
      INFOS UTILISATEUR
 ===================================================== -->
 
-<div class="mt-4 small text-muted">
+<div class="mt-2 small text-muted">
 
     {% if current_user.is_authenticated %}
     <p>Email : {{ current_user.email }}</p>

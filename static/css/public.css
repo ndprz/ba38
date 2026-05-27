@@ -73,11 +73,27 @@ main.container {
 .main-nav a {
     color: #212529;
     font-weight: 600;
-    padding: 6px 10px;
+    padding: 6px 15px;
     border-radius: 6px;
     text-decoration: none;
     transition: all 0.2s ease;
 }
+
+/* =====================================================
+   UNIFORMISATION MENU HEADER
+===================================================== */
+
+.main-nav > a{
+
+    display:flex;
+    align-items:center;
+
+    height:38px;
+
+    font-size:15px;
+}
+
+
 
 .main-nav a:hover {
     background-color: #f1f1f1;
@@ -90,7 +106,8 @@ main.container {
     border: none !important;
     color: #212529 !important;
     font-weight: 600;
-    padding: 6px 10px;
+    font-size: 15px;
+    padding: 8px 12px;
     border-radius: 6px;
 }
 
@@ -816,3 +833,84 @@ select:disabled {
 .kpi-total .kpi-value {
     color: #000;
 }
+
+/* =====================================================
+   📊 NEUTRALISATION HTML DANS LE FICHIERS .MD
+===================================================== */
+
+.markdown-content pre code button,
+.markdown-content pre code .btn {
+
+    all: unset !important;
+
+    display: inline !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    background: none !important;
+    color: inherit !important;
+    font-family: monospace !important;
+    font-size: 0.9rem !important;
+}
+
+.markdown-content pre code {
+    white-space: pre;
+}
+
+/* =====================================================
+   📊 WORKFLOW ENGAGEMENTS
+===================================================== */
+
+
+.badge-workflow {
+
+    font-size: 0.92rem;
+
+    padding: 0.50rem 0.85rem;
+
+    border-radius: 10px;
+
+    font-weight: 600;
+
+}
+
+/* =====================================================
+   FOOTER GLOBAL FIXE
+===================================================== */
+
+#main-footer{
+
+    position:fixed;
+
+    bottom:0;
+
+    left:0;
+
+    width:100%;
+
+    z-index:1000;
+
+    background:#f8f1d8;
+
+    border-top:1px solid #ddd;
+
+    white-space:nowrap;
+
+    overflow:hidden;
+
+    font-size:12px;
+
+    line-height:1.1;
+}
+
+
+/* =====================================================
+   RESERVE FOOTER FIXE
+===================================================== */
+
+body{
+
+    padding-bottom:28px;
+}
+
+

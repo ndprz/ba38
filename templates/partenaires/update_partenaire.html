@@ -2,7 +2,11 @@
 
 {% block title %}Modifier les informations du partenaire{% endblock %}
 
+
+
 {% block content %}
+
+
 <div class="container mt-4">
   <!-- 🔹 En-tête -->
   <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
@@ -28,8 +32,10 @@
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
       <div style="font-size: 1.4em; font-weight: bold; color: #333;">
         🏷️ {{ nom_association }}
-        {% if lecture_seule %}
-          <span class="badge bg-secondary ms-2">Lecture seule</span>
+        {% if not can_edit_any_field %}
+        <span class="badge bg-secondary ms-2">
+          Lecture seule
+        </span>
         {% endif %}
       </div>
       <div>{% include "partials/boutons_nav.html" %}</div>
@@ -92,80 +98,192 @@
                 {% set css = 'form-control' %}
                 {% if invalide %}{% set css = css + ' is-invalid' %}{% endif %}
 
-                {# 🔽 Sélection du rendu en fonction du type de champ #}
-                {% if field['field_name'] == 'CAR' %}
-                  <select name="CAR" id="CAR" class="{{ css }}" {% if lecture_seule %}disabled{% endif %}>
-                    <option value="">-- Sélectionnez un CAR --</option>
-                    {% for opt in car_options %}
-                    <option value="{{ opt.param_value }}" {% if opt.param_value == field['value'] %}selected{% endif %}>{{ opt.param_value }}</option>
-                    {% endfor %}
-                  </select>
-                
+          {# ==========================================================
+            SELECTION DU RENDU SELON LE TYPE DE CHAMP
+          ========================================================== #}
 
-                {% elif field['type_champ'] == 'oui_non' %}
-                  <select name="{{ field['field_name'] }}" id="{{ field['field_name'] }}" class="{{ css }}" 
-                          {% if lecture_seule %}disabled{% endif %}
-                          onchange="toggleReseauNational(); toggleStatutAutre();">
-                    <option value="">-- Choisir --</option>
-                    <option value="oui" {% if field['value'] == 'oui' %}selected{% endif %}>Oui</option>
-                    <option value="non" {% if field['value'] == 'non' %}selected{% endif %}>Non</option>
-                  </select>
+          {% if field['field_name'] == 'CAR' %}
 
-                {% elif field['type_champ'] == 'statut_liste' %}
-                  <select name="{{ field['field_name'] }}" id="statut" class="{{ css }}" 
-                          {% if lecture_seule %}disabled{% endif %} onchange="toggleStatutAutre()">
-                    <option value="">-- Choisir --</option>
-                    <option value="Association" {% if field['value'] == 'Association' %}selected{% endif %}>Association</option>
-                    <option value="CCAS/CIAS" {% if field['value'] == 'CCAS/CIAS' %}selected{% endif %}>CCAS/CIAS</option>
-                    <option value="Autres" {% if field['value'] == 'Autres' %}selected{% endif %}>Autres</option>
-                  </select>
+          <select
+              name="CAR"
+              id="CAR"
+              class="{{ css }} {% if field.readonly %}readonly-select{% endif %}"
+          >
+              <option value="">-- Sélectionnez un CAR --</option>
 
-                {% elif field['field_name'] == 'statut_autre' %}
-                  <input type="text" id="statut_autre" name="statut_autre"
-                         value="{{ field['value'] or '' }}"
-                         class="{{ css }}"
-                         {% if lecture_seule %}readonly{% endif %}
-                         style="{% if data.statut != 'Autres' %}display:none;{% endif %}">
+              {% for opt in car_options %}
+              <option
+                  value="{{ opt.param_value }}"
+                  {% if opt.param_value == field['value'] %}selected{% endif %}
+              >
+                  {{ opt.param_value }}
+              </option>
+              {% endfor %}
+          </select>
 
-                {% elif field['type_champ'] == 'statut' %}
-                  <select name="{{ field['field_name'] }}" id="{{ field['field_name'] }}" class="{{ css }}" 
-                          {% if lecture_seule %}disabled{% endif %}>
-                    <option value="">-- Choisir --</option>
-                    <option value="salarié" {% if field['value'] == 'salarié' %}selected{% endif %}>Salarié</option>
-                    <option value="bénévole" {% if field['value'] == 'bénévole' %}selected{% endif %}>Bénévole</option>
-                  </select>
+          {% elif field['type_champ'] == 'oui_non' %}
 
-                {% elif field['field_name'] == 'reseau_national' %}
-                  <select name="reseau_national" id="reseau_national" class="{{ css }}" 
-                          {% if lecture_seule %}disabled{% endif %}
-                          style="{% if data.appartient_grand_reseau_habilitation_nationale != 'oui' %}display:none;{% endif %}">
-                    <option value="">-- Sélectionnez un réseau national --</option>
-                    {% for reseau in liste_reseaux %}
-                    <option value="{{ reseau }}" {% if reseau == field['value'] %}selected{% endif %}>{{ reseau }}</option>
-                    {% endfor %}
-                  </select>
+          <select
+              name="{{ field['field_name'] }}"
+              id="{{ field['field_name'] }}"
+              class="{{ css }} {% if field.readonly %}readonly-select{% endif %}"
+              onchange="toggleReseauNational(); toggleStatutAutre();"
+          >
+              <option value="">-- Choisir --</option>
 
-                {% elif field['type_champ'] == 'date' %}
-                  <input type="text" id="{{ field['field_name'] }}" name="{{ field['field_name'] }}"
-                        value="{{ field['value'] or '' }}"
-                        class="{{ css }}"
-                        onblur="formatDateInput(this)"
-                        placeholder="JJMMAAAA ou JJMM ou JJMMAA"
-                        {% if lecture_seule %}readonly{% endif %}>
+              <option
+                  value="oui"
+                  {% if field['value'] == 'oui' %}selected{% endif %}
+              >
+                  Oui
+              </option>
 
-                {% elif field['field_name'] == 'categorie' %}
-                  <select name="categorie" id="categorie" class="{{ css }}" {% if lecture_seule %}disabled{% endif %}>
-                    <option value="">-- Choisir --</option>
-                    <option value="Catégorie 1" {% if field['value'] == 'Catégorie 1' %}selected{% endif %}>Catégorie 1</option>
-                    <option value="Catégorie 2" {% if field['value'] == 'Catégorie 2' %}selected{% endif %}>Catégorie 2</option>
-                  </select>
+              <option
+                  value="non"
+                  {% if field['value'] == 'non' %}selected{% endif %}
+              >
+                  Non
+              </option>
+          </select>
 
-                {% else %}
-                  <input type="text" id="{{ field['field_name'] }}" name="{{ field['field_name'] }}"
-                          value="{{ field['value'] or '' }}"
-                          class="{{ css }}"
-                          {% if lecture_seule %}readonly{% endif %}>
-                {% endif %}
+          {% elif field['type_champ'] == 'statut_liste' %}
+
+          <select
+              name="{{ field['field_name'] }}"
+              id="statut"
+              class="{{ css }} {% if field.readonly %}readonly-select{% endif %}"
+              onchange="toggleStatutAutre()"
+          >
+              <option value="">-- Choisir --</option>
+
+              <option
+                  value="Association"
+                  {% if field['value'] == 'Association' %}selected{% endif %}
+              >
+                  Association
+              </option>
+
+              <option
+                  value="CCAS/CIAS"
+                  {% if field['value'] == 'CCAS/CIAS' %}selected{% endif %}
+              >
+                  CCAS/CIAS
+              </option>
+
+              <option
+                  value="Autres"
+                  {% if field['value'] == 'Autres' %}selected{% endif %}
+              >
+                  Autres
+              </option>
+          </select>
+
+          {% elif field['field_name'] == 'statut_autre' %}
+
+          <input
+              type="text"
+              id="statut_autre"
+              name="statut_autre"
+              value="{{ field['value'] or '' }}"
+              class="{{ css }}"
+              {% if field.readonly %}readonly{% endif %}
+              style="{% if data.statut != 'Autres' %}display:none;{% endif %}"
+          >
+
+          {% elif field['type_champ'] == 'statut' %}
+
+          <select
+              name="{{ field['field_name'] }}"
+              id="{{ field['field_name'] }}"
+              class="{{ css }} {% if field.readonly %}readonly-select{% endif %}"
+          >
+              <option value="">-- Choisir --</option>
+
+              <option
+                  value="salarié"
+                  {% if field['value'] == 'salarié' %}selected{% endif %}
+              >
+                  Salarié
+              </option>
+
+              <option
+                  value="bénévole"
+                  {% if field['value'] == 'bénévole' %}selected{% endif %}
+              >
+                  Bénévole
+              </option>
+          </select>
+
+          {% elif field['field_name'] == 'reseau_national' %}
+
+          <select
+              name="reseau_national"
+              id="reseau_national"
+              class="{{ css }} {% if field.readonly %}readonly-select{% endif %}"
+              style="{% if data.appartient_grand_reseau_habilitation_nationale != 'oui' %}display:none;{% endif %}"
+          >
+              <option value="">-- Sélectionnez un réseau national --</option>
+
+              {% for reseau in liste_reseaux %}
+              <option
+                  value="{{ reseau }}"
+                  {% if reseau == field['value'] %}selected{% endif %}
+              >
+                  {{ reseau }}
+              </option>
+              {% endfor %}
+          </select>
+
+          {% elif field['type_champ'] == 'date' %}
+
+          <input
+              type="text"
+              id="{{ field['field_name'] }}"
+              name="{{ field['field_name'] }}"
+              value="{{ field['value'] or '' }}"
+              class="{{ css }}"
+              onblur="formatDateInput(this)"
+              placeholder="JJMMAAAA ou JJMM ou JJMMAA"
+              {% if field.readonly %}readonly{% endif %}
+          >
+
+          {% elif field['field_name'] == 'categorie' %}
+
+          <select
+              name="categorie"
+              id="categorie"
+              class="{{ css }} {% if field.readonly %}readonly-select{% endif %}"
+          >
+              <option value="">-- Choisir --</option>
+
+              <option
+                  value="Catégorie 1"
+                  {% if field['value'] == 'Catégorie 1' %}selected{% endif %}
+              >
+                  Catégorie 1
+              </option>
+
+              <option
+                  value="Catégorie 2"
+                  {% if field['value'] == 'Catégorie 2' %}selected{% endif %}
+              >
+                  Catégorie 2
+              </option>
+          </select>
+
+          {% else %}
+
+          <input
+              type="text"
+              id="{{ field['field_name'] }}"
+              name="{{ field['field_name'] }}"
+              value="{{ field['value'] or '' }}"
+              class="{{ css }}"
+              {% if field.readonly %}readonly{% endif %}
+          >
+
+          {% endif %}
+
 
                 {% if invalide %}
                 <div class="invalid-feedback">❌ Ce champ contient une valeur invalide.</div>
@@ -178,7 +296,7 @@
     </fieldset>
     {% endfor %}
 
-    {% if not lecture_seule %}
+    {% if can_edit_any_field %}
     <div class="text-end mt-4">
       <div class="d-flex justify-content-end mt-4">
         {% include "partials/boutons_nav.html" %}
@@ -378,6 +496,19 @@ function handleReturn(targetUrl) {
     }
 }
 </script>
+
+<style>
+
+.readonly-select {
+
+    pointer-events: none;
+
+    background-color: #e9ecef !important;
+
+    opacity: 1 !important;
+}
+
+</style>
 
 {% endblock %}
 

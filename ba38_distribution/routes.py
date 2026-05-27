@@ -7,7 +7,7 @@ from openpyxl import Workbook
 from io import BytesIO
 from datetime import datetime
 
-from . import distribution_bp   
+from . import distribution_bp
 
 import sqlite3
 
