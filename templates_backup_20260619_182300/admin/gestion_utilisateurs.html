@@ -1,0 +1,493 @@
+{% extends "base.html" %} {% block title %}Gestion des utilisateurs{% endblock
+%} {% block content %}
+<div class="users-page">
+  <div class="page-sticky-header">
+    <form
+      method="get"
+      action="{{ url_for('admin.export_utilisateurs_excel') }}"
+      style="display: inline"
+    >
+      <button type="submit" class="btn btn-success">Export Excel</button>
+    </form>
+    <input
+      type="text"
+      id="search"
+      class="form-control"
+      placeholder="Rechercher..."
+    />
+  </div>
+
+  <!-- TABLEAU SEUL -->
+  <form method="post" action="{{ url_for('admin.update_users_batch') }}">
+    <div class="table-scroll">
+      <table id="usersTable" class="table table-bordered table-sm">
+        <thead>
+          <tr>
+            <th>Id</th>
+            <th>Email</th>
+            <th>Nom</th>
+            <th>Rôle (UI)</th>
+            <th>Actif</th>
+            <th>Nouveau mot de passe</th>
+            <th>Droits actifs</th>
+            <th>2FA</th>
+            <th>Droits</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for user in users %}
+          <tr>
+
+            <!-- ID -->
+            <td>
+              <input
+                class="form-control text-center"
+                style="width: 6ch"
+                value="{{ user.id }}"
+                disabled
+              />
+              <input
+                type="hidden"
+                name="users[{{ loop.index0 }}][id]"
+                value="{{ user.id }}"
+              />
+            </td>
+
+            <!-- Email -->
+            <td>
+              <input
+                class="form-control"
+                value="{{ user.email }}"
+                disabled
+              />
+            </td>
+
+            <!-- Nom -->
+            <td>
+              <input
+                class="form-control"
+                name="users[{{ loop.index0 }}][username]"
+                value="{{ user.username }}"
+              />
+            </td>
+
+            <!-- Rôle -->
+            <td>
+              <select class="form-select" name="users[{{ loop.index0 }}][role]">
+                <option value="user" {% if user.role|default('')|lower == "user" %}selected{% endif %}>Utilisateur</option>
+                <option value="gestionnaire" {% if user.role|default('')|lower == "gestionnaire" %}selected{% endif %}>Gestionnaire</option>
+                <option value="car" {% if user.role|default('')|lower == "car" %}selected{% endif %}>CAR</option>
+                <option value="admin" {% if user.role|default('')|lower == "admin" %}selected{% endif %}>Admin</option>
+              </select>
+            </td>
+
+            <!-- Actif -->
+            <td>
+              <select class="form-select" name="users[{{ loop.index0 }}][actif]">
+                <option value="Oui" {% if user.actif %}selected{% endif %}>Oui</option>
+                <option value="Non" {% if not user.actif %}selected{% endif %}>Non</option>
+              </select>
+            </td>
+
+            <!-- Mot de passe -->
+            <td>
+              <input
+                type="password"
+                name="users[{{ loop.index0 }}][new_password]"
+                class="form-control"
+                placeholder="Laisser vide si inchangé"
+              />
+            </td>
+
+            <!-- Droits actifs -->
+            <td>
+              {% if user.resume_roles %}
+              <ul class="mb-0">
+                {% for role in user.resume_roles %}
+                <li>
+                  <strong>{{ role.label }}</strong>
+                  <span class="badge
+                    {% if role.droit == 'lecture' %}bg-info
+                    {% elif role.droit == 'ecriture' %}bg-warning
+                    {% elif role.droit == 'admin' %}bg-danger
+                    {% else %}bg-secondary{% endif %}">
+                    {{ role.droit }}
+                  </span>
+                </li>
+                {% endfor %}
+              </ul>
+              {% else %}
+              —
+              {% endif %}
+            </td>
+
+            <!-- 2FA -->
+            <td class="text-center">
+              <input
+                type="checkbox"
+                name="users[{{ loop.index0 }}][force_2fa]"
+                value="1"
+                {% if user.force_2fa %}checked{% endif %}
+              />
+
+              <button
+                type="button"
+                class="btn btn-sm btn-warning mt-1"
+                onclick="if(confirm('Réinitialiser le 2FA ?')) {
+                  window.location.href='{{ url_for('admin.reset_2fa_user', user_id=user.id) }}';
+                }"
+              >
+                🔄 Reset
+              </button>
+            </td>
+
+            <!-- Accès droits -->
+            <td>
+              <a
+                href="{{ url_for('admin.gestion_roles_matrice', email=user.email) }}"
+                class="btn btn-secondary btn-sm"
+                onclick="saveScrollPosition()"
+              >
+                ⚙️ Droits
+              </a>
+            </td>
+
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ACTIONS -->
+    <div class="bottom-actions">
+      <div class="d-flex gap-2 mt-3">
+        <button type="submit" class="btn btn-primary">
+          💾 Enregistrer les modifications
+        </button>
+
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">
+          ⬅️ Retour
+        </a>
+      </div>
+    </div>
+  </form>
+
+  <hr class="my-4" />
+
+  <!-- ============================= -->
+  <!-- AJOUT D'UN UTILISATEUR -->
+  <!-- ============================= -->
+
+  <h4>➕ Ajouter un utilisateur</h4>
+
+  <form
+    method="post"
+    action="{{ url_for('admin.ajouter_utilisateur') }}"
+    class="mt-3"
+  >
+    <div class="row mb-2">
+      <div class="col-md-4">
+        <label class="form-label">Email</label>
+        <input
+          type="email"
+          name="email"
+          class="form-control"
+          required
+          pattern="^[a-zA-Z0-9._%+-]+@banquealimentaire\.org$"
+          title="L'email doit se terminer par @banquealimentaire.org"
+        />
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Nom</label>
+        <input type="text" name="username" class="form-control" />
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Rôle (UI)</label>
+        <select name="role" class="form-select">
+          <option value="user">Utilisateur</option>
+          <option value="gestionnaire">Gestionnaire</option>
+          <option value="admin">Administrateur</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Mot de passe</label>
+        <input type="password" name="password" class="form-control" required />
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Actif</label>
+        <select name="actif" class="form-select">
+          <option value="Oui">Oui</option>
+          <option value="Non">Non</option>
+        </select>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-success">
+      ➕ Ajouter l'utilisateur
+    </button>
+  </form>
+
+  <a href="{{ url_for('index') }}" class="btn btn-secondary mt-4">
+    ⬅️ Retour
+  </a>
+
+  <style>
+    /* =====================================================
+            🧱 CONTEXTE LOCAL (gestion utilisateurs uniquement)
+            ===================================================== */
+
+    .users-page {
+      display: block;
+      /* 🔥 plus de layout bloqué */
+    }
+
+    /* =====================================================
+            📌 HEADER FIXE (titre + bouton + recherche)
+            ===================================================== */
+
+    .users-page .page-sticky-header {
+      position: sticky;
+      top: 60px;
+      /* hauteur header global */
+      z-index: 100;
+      background: white;
+
+      padding: 10px 0;
+      border-bottom: 1px solid #ddd;
+
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* amélioration UX */
+    .users-page .page-sticky-header input {
+      max-width: 250px;
+    }
+
+    .users-page .table-scroll {
+      max-height: calc(100vh - 260px);
+      overflow: auto;
+    }
+
+    .users-page .page-sticky-header {
+      margin-bottom: 0;
+    }
+
+    /* =====================================================
+            📊 ZONE SCROLL TABLEAU
+            ===================================================== */
+
+    .users-page .table-scroll {
+      max-height: calc(100vh - 260px);
+      overflow: auto;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+    }
+
+    /* =====================================================
+            📌 HEADER TABLE (thead sticky)
+            ===================================================== */
+
+    .users-page #usersTable thead th {
+      position: sticky;
+      top: 0;
+      /* 🔥 IMPORTANT */
+      z-index: 90;
+      background: #f8f9fa;
+    }
+
+    /* =====================================================
+            📌 BAS  TABLE (thead sticky)
+            ===================================================== */
+
+    .users-page .bottom-actions {
+      margin-top: 10px;
+    }
+
+    /* =====================================================
+            🧠 CORRECTION CLASSIQUE BOOTSTRAP
+            ===================================================== */
+
+    /* évite que le sticky saute */
+    .users-page table {
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+
+    /* =====================================================
+            🎯 BONUS VISUEL
+            ===================================================== */
+
+    /* légère ombre pour bien voir le bloc figé */
+    .users-page .page-sticky-header {
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+
+    /* idem pour thead */
+    .users-page #usersTable thead th {
+      box-shadow: 0 2px 2px rgba(0, 0, 0, 0.05);
+    }
+
+
+    .highlight {
+    background-color: yellow;
+    font-weight: bold;
+    padding: 0 2px;
+}
+
+.highlight-input {
+    border: 2px solid orange !important;
+    background-color: #fff3cd;
+}
+  </style>
+
+  <script>
+    /**
+     * =========================================================
+     * 🧠 GESTION UX LISTE UTILISATEURS
+     * - sauvegarde filtre
+     * - restauration filtre
+     * - filtrage tableau
+     * - sauvegarde position scroll
+     * - restauration scroll
+     * =========================================================
+     */
+
+    document.addEventListener("DOMContentLoaded", function () {
+      // =====================================================
+      // 🔹 1. RÉFÉRENCES DOM
+      // =====================================================
+      const input = document.getElementById("search");
+      const rows = document.querySelectorAll("#usersTable tbody tr");
+
+      // sécurité : si champ absent → stop
+      if (!input) return;
+
+      // =====================================================
+      // 🔹 2. FONCTION FILTRE TABLEAU
+      // =====================================================
+function applyFilter() {
+    const filter = input.value.toLowerCase();
+
+    document.querySelectorAll("#usersTable tbody tr").forEach(row => {
+
+        let text = row.innerText;
+
+        // 🔹 reconstruire texte complet
+        row.querySelectorAll("input").forEach(input => {
+            if (input.value) text += " " + input.value;
+        });
+
+        row.querySelectorAll("select").forEach(select => {
+            text += " " + select.options[select.selectedIndex].text;
+        });
+
+        const match = text.includes(filter);
+        row.style.display = match ? "" : "none";
+
+        // 🔥 nettoyage ancien highlight
+        removeHighlights(row);
+
+        // 🔥 ajout highlight si match
+        if (filter && match) {
+            highlightRow(row, filter);
+        }
+    });
+}
+
+      // =====================================================
+      // 🔹 3. RESTAURATION FILTRE
+      // =====================================================
+      const savedFilter = localStorage.getItem("filter_users");
+
+      if (savedFilter !== null) {
+        input.value = savedFilter;
+        applyFilter(); // 🔥 appliquer immédiatement
+      }
+
+      // =====================================================
+      // 🔹 4. SAUVEGARDE + FILTRE EN TEMPS RÉEL
+      // =====================================================
+      input.addEventListener("input", function () {
+        localStorage.setItem("filter_users", input.value);
+        applyFilter();
+      });
+
+      // =====================================================
+      // 🔹 5. RESTAURATION SCROLL
+      // =====================================================
+      const savedScroll = localStorage.getItem("scrollY_gestion_users");
+
+      if (savedScroll !== null) {
+        window.scrollTo(0, parseInt(savedScroll));
+        localStorage.removeItem("scrollY_gestion_users");
+      }
+    });
+
+    /**
+     * =========================================================
+     * 🔹 6. SAUVEGARDE POSITION SCROLL
+     * (appelée au clic sur bouton "Droits")
+     * =========================================================
+     */
+function saveScrollPosition() {
+    localStorage.setItem("scrollY_gestion_users", window.scrollY);
+}
+
+// 🔥 DOIT ÊTRE GLOBAL
+function removeHighlights(row) {
+    row.querySelectorAll(".highlight").forEach(span => {
+        span.replaceWith(document.createTextNode(span.textContent));
+    });
+
+    row.querySelectorAll("input").forEach(input => {
+        input.classList.remove("highlight-input");
+    });
+}
+
+
+function highlightRow(row, filter) {
+    const regex = new RegExp(`(${filter})`, "gi");
+
+    row.querySelectorAll("td").forEach(td => {
+
+        // 🔥 IGNORER si contient input ou select
+        if (td.querySelector("input, select")) return;
+
+        // 🔥 parcourir les noeuds texte uniquement
+        td.childNodes.forEach(node => {
+            if (node.nodeType === 3) { // texte pur
+                const replaced = node.textContent.replace(regex, '<span class="highlight">$1</span>');
+
+                if (replaced !== node.textContent) {
+                    const span = document.createElement("span");
+                    span.innerHTML = replaced;
+                    node.replaceWith(span);
+                }
+            }
+        });
+    });
+
+    // 🔥 highlight inputs (bordure uniquement)
+    row.querySelectorAll("input").forEach(input => {
+        if (input.value.toLowerCase().includes(filter)) {
+            input.classList.add("highlight-input");
+        } else {
+            input.classList.remove("highlight-input");
+        }
+    });
+}
+
+
+</script>
+</div>
+
+{% endblock %}

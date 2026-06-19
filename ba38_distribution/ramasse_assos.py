@@ -31,6 +31,9 @@ import sqlite3
 @require_access("distribution", "ecriture")
 def ramasse_types_list():
 
+    # # 🔥 mois prioritaire = session
+    # mois = session.get("mois_ramasse")
+
     db_path = get_db_path()
 
     with sqlite3.connect(db_path) as conn:
@@ -798,10 +801,15 @@ def export_ramasses_vif_mensuel():
             f.code_vif,
             f.nom,
             l.code_vif AS article_code_vif,
+            ar.libelle,
             SUM(l.quantite_kg) AS total_kg
         FROM ramasses_partenaire r
-        JOIN ramasses_partenaire_lignes l ON l.id_ramasse = r.id
-        LEFT JOIN fournisseurs f ON f.id = r.id_fournisseur
+        JOIN ramasses_partenaire_lignes l
+            ON l.id_ramasse = r.id
+        LEFT JOIN fournisseurs f
+            ON f.id = r.id_fournisseur
+        LEFT JOIN articles ar
+            ON ar.article = l.code_vif
         WHERE strftime('%Y-%m', r.date_ramasse) = ?
         GROUP BY r.id_fournisseur, l.code_vif
         ORDER BY f.nom, l.code_vif
@@ -816,7 +824,15 @@ def export_ramasses_vif_mensuel():
         conn.close()
         return redirect(url_for("distribution.liste_ramasses"))
 
+    if not mois:
+        flash("❌ Aucun mois de travail sélectionné", "danger")
+        return redirect(url_for("distribution.liste_ramasses"))
+
+    if "-" not in mois:
+        flash(f"❌ Format de mois invalide : {mois}", "danger")
+        return redirect(url_for("distribution.liste_ramasses"))
     # 🔹 date réception
+
     annee, m = mois.split("-")
     dernier_jour = monthrange(int(annee), int(m))[1]
     date_recep = f"{dernier_jour}/{m}/{annee}"
@@ -824,14 +840,29 @@ def export_ramasses_vif_mensuel():
     lignes_csv = []
 
     for r in rows:
-        article = r["article_code_vif"].strip()
-        lot = f"RP{annee[-2:]}{m}{article}"
+        article = (r["article_code_vif"] or "").strip()
+        libelle = (r["libelle"] or "").lower()
+
+        if "non loti" in libelle:
+            lot = ""
+        else:
+            lot = f"RP{annee[-2:]}{m}{article}"
 
         ligne = [
-            "01","38",date_recep,r["code_vif"],"01","03",
+            "01",
+            "38",
+            date_recep,
+            r["code_vif"],
+            "01",
+            "03",
             r["article_code_vif"],
-            f"{float(r['total_kg'] or 0):.3f}".replace(".", ","),
-            "KG",lot,date_du_jour_plus_2,date_du_jour_plus_2,"","RA"
+            f"{float(r['total_kg'] or 0):.3f}",
+            "KG",
+            lot,
+            date_du_jour_plus_2,
+            date_du_jour_plus_2,
+            "",
+            "RA"
         ]
 
         lignes_csv.append(";".join(map(str, ligne)))
@@ -1015,10 +1046,23 @@ def export_bl_vif():
     for r in rows:
 
         article = (r["article"] or "").strip()
-        annee, mois_num = mois.split("-")
 
-        # 🔹 LOT (13 caractères OK)
-        lot = f"RP{annee[-2:]}{mois_num}{article}"
+        # =====================================================
+        # Détermination du lot
+        # Si le libellé contient "non loti" alors pas de lot
+        # =====================================================
+        row_article = cur.execute("""
+            SELECT libelle
+            FROM articles
+            WHERE article = ?
+        """, (article,)).fetchone()
+
+        libelle = (row_article["libelle"] or "").lower() if row_article else ""
+
+        if "non loti" in libelle:
+            lot = ""
+        else:
+            lot = f"RP{annee[-2:]}{mois_num}{article}"
 
         ligne = [
             "01",                                                   # 1 Société
@@ -1035,7 +1079,7 @@ def export_bl_vif():
             lot,                                                    # 12 NO LOT
             f"{float(r['total_kg'] or 0):.3f}".replace(".", ","),   # 13 Qte
             "KG",                                                   # 14 Unité
-            "06",                                                   # 15 Dépôt de sortie
+            "03",                                                   # 15 Dépôt de sortie
             "1",                                                    # 16 Gratuit
             "0"                                                     # 17 Prix
         ]
@@ -1255,3 +1299,93 @@ def get_fournisseur_libelle(code):
 
 
 
+@distribution_bp.route("/ramasses_bilan")
+@login_required
+@require_access("distribution", "lecture")
+def ramasses_bilan():
+
+    annee = request.args.get("annee")
+
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    # ===========================
+    # Liste années disponibles
+    # ===========================
+    annees = cur.execute("""
+        SELECT DISTINCT strftime('%Y', date_ramasse) AS annee
+        FROM ramasses_partenaire
+        ORDER BY annee DESC
+    """).fetchall()
+
+    if not annee and annees:
+        annee = annees[0]["annee"]
+
+    # ===========================
+    # Fournisseurs
+    # ===========================
+    fournisseurs = cur.execute("""
+        SELECT
+            strftime('%m', r.date_ramasse) AS mois,
+            f.nom AS fournisseur,
+            SUM(l.quantite_kg) AS total_kg
+        FROM ramasses_partenaire r
+        JOIN ramasses_partenaire_lignes l
+            ON l.id_ramasse = r.id
+        JOIN fournisseurs f
+            ON f.id = r.id_fournisseur
+        WHERE strftime('%Y', r.date_ramasse) = ?
+        GROUP BY mois, f.id
+        ORDER BY mois DESC, fournisseur
+    """, (annee,)).fetchall()
+
+    # ===========================
+    # Associations
+    # ===========================
+    associations = cur.execute("""
+        SELECT
+            strftime('%m', r.date_ramasse) AS mois,
+            a.nom_association,
+            SUM(l.quantite_kg) AS total_kg
+        FROM ramasses_partenaire r
+        JOIN ramasses_partenaire_lignes l
+            ON l.id_ramasse = r.id
+        JOIN associations a
+            ON a.id = r.id_association
+        WHERE strftime('%Y', r.date_ramasse) = ?
+        GROUP BY mois, a.id
+        ORDER BY mois DESC, nom_association
+    """, (annee,)).fetchall()
+
+    # ===========================
+    # Totaux mensuels
+    # ===========================
+    totaux_mensuels = cur.execute("""
+        SELECT
+            strftime('%m', r.date_ramasse) AS mois,
+            SUM(l.quantite_kg) AS total_kg
+        FROM ramasses_partenaire r
+        JOIN ramasses_partenaire_lignes l
+            ON l.id_ramasse = r.id
+        WHERE strftime('%Y', r.date_ramasse) = ?
+        GROUP BY mois
+        ORDER BY mois DESC
+    """, (annee,)).fetchall()
+
+    total_annuel = sum(
+        float(r["total_kg"] or 0)
+        for r in totaux_mensuels
+    )
+
+    conn.close()
+
+    return render_template(
+        "distribution/ramasse_assos/ramasses_bilan.html",
+        annee=annee,
+        annees=annees,
+        fournisseurs=fournisseurs,
+        associations=associations,
+        totaux_mensuels=totaux_mensuels,
+        total_annuel=total_annuel
+    )

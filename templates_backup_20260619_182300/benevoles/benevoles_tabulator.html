@@ -1,0 +1,1140 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html"
+   import action_button, action_buttons %}
+
+{% block title %}
+Liste des Bénévoles
+{% endblock %}
+
+{% block extra_css %}
+
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css"
+      rel="stylesheet">
+
+<style>
+
+/* =====================================================
+   PAGE
+===================================================== */
+
+html,
+body{
+
+    height:100%;
+}
+
+.bene-tabulator-page{
+
+    display:flex;
+
+    flex-direction:column;
+
+    height:calc(100vh - 105px);
+
+    font-family:
+        system-ui,
+        -apple-system,
+        "Segoe UI",
+        Roboto,
+        Arial,
+        sans-serif;
+}
+
+/* =====================================================
+   HEADER
+===================================================== */
+
+.page-header{
+
+    flex:0 0 auto;
+
+    background:white;
+
+    border:1px solid #ddd;
+
+    border-radius:6px;
+
+    padding:6px 8px;
+
+    margin-bottom:6px;
+}
+
+.page-header h1{
+
+    font-size:1.1rem;
+
+    margin:0 0 6px 0;
+
+    font-weight:600;
+}
+
+/* =====================================================
+   HEADER TABULATOR ULTRA PROPRE
+===================================================== */
+
+.tabulator .tabulator-header{
+
+    background:#f8f9fa !important;
+}
+
+/* cellule colonne */
+
+.tabulator .tabulator-col{
+
+    background:#f8f9fa !important;
+
+    border-right:1px solid #ddd !important;
+
+    padding:2px !important;
+}
+
+/* contenu header */
+
+.tabulator-col-content{
+
+    display:flex !important;
+
+    flex-direction:column !important;
+
+    align-items:stretch !important;
+
+    justify-content:flex-start !important;
+
+    gap:4px;
+
+    padding:2px;
+}
+
+/* titre */
+
+.tabulator-col-title{
+
+    width:100%;
+
+    text-align:center;
+
+    font-weight:600;
+
+    font-size:13px;
+
+    line-height:1.1;
+
+    white-space:normal !important;
+
+    overflow-wrap:anywhere;
+
+    min-height:32px;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+}
+
+/* ligne filtre */
+
+.tabulator-header-filter{
+
+    width:100% !important;
+
+    margin:0 !important;
+
+    padding:0 !important;
+}
+
+/* champs input */
+
+.tabulator-header-filter input{
+
+    width:100% !important;
+
+    height:28px !important;
+
+    min-height:28px !important;
+
+    font-size:12px !important;
+
+    padding:2px 6px !important;
+
+    box-sizing:border-box !important;
+}
+
+/* listes */
+
+.tabulator-header-filter select{
+
+    width:100% !important;
+
+    height:28px !important;
+
+    min-height:28px !important;
+
+    font-size:12px !important;
+
+    padding:2px 4px !important;
+
+    box-sizing:border-box !important;
+}
+
+/* header plus haut */
+
+.tabulator .tabulator-header{
+
+    min-height:72px !important;
+}
+
+/* =====================================================
+   GROUPES
+===================================================== */
+
+.fields-group{
+
+    min-width:220px;
+
+    padding:6px 8px;
+
+    border:1px solid #ddd;
+
+    border-radius:6px;
+
+    background:white;
+
+    font-size:12px;
+
+    flex:0 0 auto;
+}
+
+.fields-group .d-flex{
+
+    gap:12px !important;
+}
+
+.fields-group .group-master{
+
+    margin-right:4px;
+}
+
+.titre-depliable{
+
+    cursor:pointer;
+
+    user-select:none;
+
+    font-weight:600;
+
+    font-size:12px;
+}
+
+.fields-container{
+
+    display:none;
+
+    padding-left:18px;
+
+    margin-top:5px;
+}
+
+.fields-container label{
+
+    display:flex;
+
+    align-items:center;
+
+    gap:6px;
+
+    margin-bottom:4px;
+
+    line-height:1.2;
+}
+
+.fields-container input[type="checkbox"]{
+
+    margin:0;
+}
+
+.fields-container.expanded{
+
+    display:block;
+}
+
+/* =====================================================
+   TABLE
+===================================================== */
+
+.table-zone{
+
+    flex:1 1 auto;
+
+    min-height:0;
+
+    overflow: auto;
+
+    border:1px solid #ccc;
+
+    border-radius:6px;
+
+    background:white;
+}
+
+#tabulator-table{
+
+    width:100%;
+
+    height:calc(100vh - 340px);
+}
+
+.tabulator{
+
+    height:100% !important;
+
+    border:none !important;
+
+    font-size:14px !important;
+}
+
+.tabulator .tabulator-header{
+
+    background:#f8f9fa;
+}
+
+.tabulator .tabulator-col{
+
+    background:#f8f9fa !important;
+
+    font-weight:600;
+}
+
+.tabulator .tabulator-header .tabulator-col{
+
+    text-align:center;
+}
+
+.tabulator-col-title{
+
+    width:100%;
+
+    text-align:center;
+}
+
+.tabulator .tabulator-header .tabulator-col .tabulator-col-content{
+
+    display:flex;
+
+    justify-content:center;
+
+    align-items:center;
+}
+
+
+.tabulator-frozen{
+
+    background:#f8f9fa !important;
+}
+
+
+.photo-preview{
+
+    max-width:140px;
+
+    max-height:140px;
+
+    border:1px solid #ccc;
+
+    background:white;
+
+    padding:2px;
+
+    position:fixed;
+
+    z-index:99999;
+
+    box-shadow:0 2px 10px rgba(0,0,0,.25);
+}
+
+</style>
+
+{% endblock %}
+
+{% block content %}
+
+<div class="bene-tabulator-page">
+
+<div class="page-header">
+
+    <h1>
+        Liste des Bénévoles
+    </h1>
+
+    <!-- ===================================================== -->
+    <!-- BOUTONS -->
+    <!-- ===================================================== -->
+
+    {% call action_buttons() %}
+
+    {{ action_button(
+        "➕ Ajouter un bénévole",
+        href=url_for('benevoles.create_benevole'),
+        color="success"
+    ) }}
+
+    {{ action_button(
+        "📄 Fichiers Publipostage",
+        onclick="updatePublipostageFile()",
+        color="success"
+    ) }}
+
+    {{ action_button(
+        "📝 Mise à jour en tableau",
+        onclick="submitTableUpdate()",
+        color="warning"
+    ) }}
+
+    {{ action_button(
+        "👁 Voir les désactivés",
+        href=url_for('benevoles.benevoles_archives'),
+        color="outline-secondary"
+    ) }}
+
+    {{ action_button(
+        "📧 Mail groupé bénévoles",
+        href=url_for('benevoles.envoi_mail_benevoles'),
+        color="outline-primary"
+    ) }}
+
+    {{ action_button(
+        "📸 Droit à l'image",
+        href=url_for('droit_image.droit_image'),
+        color="outline-dark"
+    ) }}
+
+    {{ action_button(
+        "♻️ Réinitialiser",
+        onclick="resetFilters()",
+        color="outline-danger"
+    ) }}
+
+    {{ action_button(
+        "↩ Retour",
+        href=url_for('index'),
+        color="outline-secondary"
+    ) }}
+
+    {% endcall %}
+
+    <!-- ===================================================== -->
+    <!-- GROUPES -->
+    <!-- ===================================================== -->
+
+    <fieldset class="border rounded p-1 bg-white mt-2">
+
+        <legend class="float-none w-auto px-2">
+            Options d'affichage
+        </legend>
+
+        <div class="d-flex gap-2 align-items-start overflow-auto pb-1">
+
+            {% for group_name, fields in grouped_fields.items() %}
+
+            {% set safe_group_name =
+                group_name
+                |replace(' ', '_')
+                |lower
+            %}
+
+            <div class="fields-group">
+
+                <div class="d-flex align-items-center gap-2 mb-1">
+
+                    <div class="titre-depliable"
+                         onclick="toggleGroup('{{ safe_group_name }}', this)">
+
+                        <span class="chevron">▶</span>
+
+                        {{ group_name }}
+
+                    </div>
+
+                    <label class="mb-0">
+
+                        <input
+                            type="checkbox"
+                            class="group-master"
+                            data-group="{{ safe_group_name }}"
+                            onchange="toggleAll('{{ safe_group_name }}', this.checked)">
+
+                        Tout
+
+                    </label>
+
+                </div>
+
+                <div class="fields-container"
+                     id="container-{{ safe_group_name }}">
+
+                    {% for field in fields %}
+
+                    {% if field.normalized not in ['id', 'nom'] %}
+
+                    <label class="d-block">
+
+                        <input
+                            type="checkbox"
+                            class="field-toggle field-{{ safe_group_name }}"
+                            value="{{ field.normalized }}">
+
+                        {{ field.field_name }}
+
+                    </label>
+
+                    {% endif %}
+
+                    {% endfor %}
+
+                </div>
+
+            </div>
+
+            {% endfor %}
+
+        </div>
+
+        <!-- ===================================================== -->
+        <!-- RECHERCHE -->
+        <!-- ===================================================== -->
+
+        <div class="mt-2">
+
+            <input
+                type="text"
+                id="filtre-benevole"
+                class="form-control"
+                placeholder="🔎 Rechercher un bénévole...">
+
+        </div>
+
+    </fieldset>
+
+</div>
+
+<!-- ===================================================== -->
+<!-- TABLE -->
+<!-- ===================================================== -->
+
+<div class="table-zone">
+
+    <div id="tabulator-table"></div>
+
+</div>
+
+<form
+    id="form-update-table"
+    method="GET"
+    action="{{ url_for('benevoles.edition_tableau_benevoles') }}"
+    style="display:none;">
+</form>
+
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+
+<script>
+
+const tableData = {{ table_data | tojson }};
+const allColumns = {{ columns | tojson }};
+
+// ======================================================
+// EMAIL
+// ======================================================
+
+function emailFormatter(cell){
+
+    const value = cell.getValue();
+
+    if (!value){
+
+        return "";
+    }
+
+    return `
+        <a href="mailto:${value}"
+           target="_blank"
+           style="color:#ff6b2c;text-decoration:none;">
+            ${value}
+        </a>
+    `;
+}
+
+// ======================================================
+// PHOTO
+// ======================================================
+
+function photoFormatter(cell){
+
+    const url = cell.getValue();
+
+    if (!url){
+
+        return "";
+    }
+
+    return `
+        <span class="photo-hover"
+              data-url="${url}"
+              style="cursor:pointer;">
+            📷
+        </span>
+    `;
+}
+
+// ======================================================
+// MODIFIER
+// ======================================================
+
+function modifierFormatter(cell){
+
+    const id = cell.getValue();
+
+    return `
+        <div style="
+            display:flex;
+            gap:3px;
+            justify-content:center;
+            align-items:center;
+        ">
+
+            <a href="/update_benevole/${id}"
+               class="btn btn-warning btn-sm px-2 py-0">
+
+               Modifier
+            </a>
+
+            <a href="/desactiver_benevole/${id}"
+               class="btn btn-outline-secondary btn-sm px-2 py-0">
+
+               💤 Désactiver
+            </a>
+
+        </div>
+    `;
+}
+
+// ======================================================
+// NORMALIZE
+// ======================================================
+
+function normalizeSearch(text){
+
+    return (text || "")
+        .toString()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+        .toLowerCase();
+}
+
+// ======================================================
+// TABULATOR
+// ======================================================
+
+function getTabulatorConfig(data){
+
+    return {
+
+        data:data,
+
+        columns:getVisibleColumns().map(col => {
+
+            if (col.formatter === "buttonCross"){
+
+                col.formatter = modifierFormatter;
+            }
+
+            if (col.formatter === "emailFormatter"){
+
+                col.formatter = emailFormatter;
+            }
+
+            if (col.formatter === "photoFormatter"){
+
+                col.formatter = photoFormatter;
+            }
+            // ======================================================
+            // FORCE FILTRE LISTE TYPE EXCEL
+            // ======================================================
+
+            if (
+                col.headerFilter === "list"
+            ){
+
+                col.headerFilter = "list";
+
+                col.headerFilterParams = {
+
+                    valuesLookup:true,
+
+                    clearable:true,
+
+                    autocomplete:true
+                };
+            }
+            return col;
+        }),
+
+        layout:"fitColumns",
+
+        resizableColumnFit:true,
+
+        height:"calc(100vh - 340px)",
+
+        responsiveLayout:false,
+
+        movableColumns:true,
+
+        renderVerticalBuffer:0,
+
+        renderVerticalBuffer:0,
+
+        columnHeaderVertAlign:"middle",
+
+        placeholder:"Aucune donnée"
+    };
+}
+
+let table = new Tabulator(
+    "#tabulator-table",
+    getTabulatorConfig(tableData)
+);
+
+// ======================================================
+// RECHERCHE
+// ======================================================
+
+const filtreInput =
+    document.getElementById(
+        "filtre-benevole"
+    );
+
+filtreInput.addEventListener("input", function(){
+
+    const search =
+        normalizeSearch(this.value);
+
+    if (!search){
+
+        table.clearFilter();
+
+        return;
+    }
+
+    table.setFilter(function(data){
+
+        for (const key in data){
+
+            const value =
+                normalizeSearch(data[key]);
+
+            if (value.includes(search)){
+
+                return true;
+            }
+        }
+
+        return false;
+    });
+
+});
+
+
+// ======================================================
+// ECHAP = RESET
+// ======================================================
+
+filtreInput.addEventListener("keydown", function(e){
+
+    if (e.key === "Escape"){
+
+        this.value = "";
+
+        table.clearFilter();
+
+        e.preventDefault();
+    }
+});
+
+// ======================================================
+// PHOTOS HOVER
+// ======================================================
+
+let floating = null;
+
+document.addEventListener("mouseover", function(e){
+
+    const target =
+        e.target.closest(".photo-hover");
+
+    if (!target){
+
+        return;
+    }
+
+    const url =
+        target.dataset.url;
+
+    floating =
+        document.createElement("img");
+
+    floating.src = url;
+
+    floating.className =
+        "photo-preview";
+
+    floating.style.left =
+        (e.clientX + 15) + "px";
+
+    floating.style.top =
+        (e.clientY + 15) + "px";
+
+    document.body.appendChild(floating);
+});
+
+document.addEventListener("mouseout", function(e){
+
+    if (!floating){
+
+        return;
+    }
+
+    const target =
+        e.target.closest(".photo-hover");
+
+    if (!target){
+
+        return;
+    }
+
+    floating.remove();
+
+    floating = null;
+});
+
+// ======================================================
+// COLONNES
+// ======================================================
+
+function getVisibleColumns(){
+
+    const selected = Array.from(
+        document.querySelectorAll(".field-toggle:checked")
+    ).map(cb => cb.value);
+
+    return allColumns.filter(col => {
+
+        if (
+            [
+                "id",
+                "nom",
+                "photo_url",
+                "droit_image"
+            ].includes(col.field)
+        ){
+            return true;
+        }
+
+        return selected.includes(col.field);
+    });
+}
+
+function refreshColumns(){
+
+    saveState();
+
+    table.setColumns(
+        getVisibleColumns()
+    );
+    setTimeout(() => {
+
+        table.redraw(true);
+
+    }, 50);
+}
+
+
+
+// ======================================================
+// GROUPES
+// ======================================================
+
+function toggleGroup(groupName, el){
+
+    const container =
+        document.getElementById(
+            "container-" + groupName
+        );
+
+    container.classList.toggle("expanded");
+
+    const chev =
+        el.querySelector(".chevron");
+
+    chev.textContent =
+        container.classList.contains("expanded")
+        ? "▼"
+        : "▶";
+}
+
+function toggleAll(group, checked){
+
+    document
+    .querySelectorAll(".field-" + group)
+    .forEach(cb => {
+
+        cb.checked = checked;
+    });
+
+    updateGroupState();
+
+    refreshColumns();
+}
+
+function updateGroupState(){
+
+    document
+    .querySelectorAll(".group-master")
+    .forEach(master => {
+
+        const group =
+            master.dataset.group;
+
+        const children =
+            document.querySelectorAll(
+                ".field-" + group
+            );
+
+        const checked =
+            Array.from(children)
+            .filter(cb => cb.checked)
+            .length;
+
+        if (checked === 0){
+
+            master.checked = false;
+
+            master.indeterminate = false;
+        }
+        else if (checked === children.length){
+
+            master.checked = true;
+
+            master.indeterminate = false;
+        }
+        else{
+
+            master.checked = false;
+
+            master.indeterminate = true;
+        }
+    });
+}
+
+document
+.querySelectorAll(".field-toggle")
+.forEach(cb => {
+
+    cb.addEventListener("change", () => {
+
+        updateGroupState();
+
+        refreshColumns();
+    });
+});
+
+// ======================================================
+// STORAGE
+// ======================================================
+
+const STORAGE_KEY =
+    "benevoles_tabulator_columns";
+
+function saveState(){
+
+    const selected = Array.from(
+        document.querySelectorAll(".field-toggle:checked")
+    ).map(cb => cb.value);
+
+    localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(selected)
+    );
+}
+
+function restoreState(){
+
+    const saved =
+        localStorage.getItem(STORAGE_KEY);
+
+    if (!saved){
+
+        return;
+    }
+
+    let selected = [];
+
+    try{
+
+        selected = JSON.parse(saved);
+
+    }catch(e){
+
+        console.error("Erreur restoreState", e);
+
+        return;
+    }
+
+    document
+    .querySelectorAll(".field-toggle")
+    .forEach(cb => {
+
+        cb.checked =
+            selected.includes(cb.value);
+    });
+}
+
+// ======================================================
+// RESET
+// ======================================================
+
+function resetFilters(){
+
+    localStorage.removeItem(STORAGE_KEY);
+
+    location.reload();
+}
+
+// ======================================================
+// PUBLIPOSTAGE
+// ======================================================
+
+function updatePublipostageFile(){
+
+    if (!confirm(
+        "Lancer la génération des fichiers publipostage ?"
+    )){
+        return;
+    }
+
+    fetch("/export_publipostage/trigger", {
+
+        method: "POST"
+
+    })
+    .then(r => r.json())
+    .then(data => {
+
+        alert(data.message || "Export terminé");
+    });
+}
+
+// ======================================================
+// MAJ TABLEAU
+// ======================================================
+
+function submitTableUpdate(){
+
+    const form =
+        document.getElementById(
+            "form-update-table"
+        );
+
+    // ============================================
+    // RESET anciens champs cachés
+    // ============================================
+
+    form.querySelectorAll(
+        'input[name="columns"], input[name="benevole_ids"]'
+    ).forEach(e => e.remove());
+
+    // ============================================
+    // COLONNES SELECTIONNEES
+    // ============================================
+
+    const selected = Array.from(
+        document.querySelectorAll(
+            ".field-toggle:checked"
+        )
+    ).map(cb => cb.value);
+
+    if (selected.length === 0){
+
+        alert("⚠️ Aucun champ sélectionné");
+
+        return;
+    }
+
+    selected.forEach(col => {
+
+        const input =
+            document.createElement("input");
+
+        input.type = "hidden";
+
+        input.name = "columns";
+
+        input.value = col;
+
+        form.appendChild(input);
+    });
+
+    // ============================================
+    // IDS VISIBLES DANS TABULATOR
+    // ============================================
+
+    const visibleRows =
+        table.getData("active");
+
+    visibleRows.forEach(row => {
+
+        const input =
+            document.createElement("input");
+
+        input.type = "hidden";
+
+        input.name = "benevole_ids";
+
+        input.value = row.id;
+
+        form.appendChild(input);
+    });
+
+    // ============================================
+    // SECURITE
+    // ============================================
+
+    if (visibleRows.length === 0){
+
+        alert("⚠️ Aucun bénévole visible");
+
+        return;
+    }
+
+    form.submit();
+}
+
+// ======================================================
+// INIT
+// ======================================================
+
+window.addEventListener("load", () => {
+
+    restoreState();
+
+    updateGroupState();
+
+    refreshColumns();
+
+});
+
+</script>
+
+</div>
+
+{% endblock %}

@@ -89,7 +89,7 @@ def gestion_subventions():
                     ) or 0
                 )
 
-                montant_recu = (
+                montant_recu = float(
                     request.form.get(
                         f"montant_recu_{sub_id}"
                     ) or 0
@@ -99,13 +99,13 @@ def gestion_subventions():
                     f"date_montant_recu_{sub_id}"
                 )
 
-                montant_utilise = (
+                montant_utilise = float(
                     request.form.get(
                         f"montant_utilise_{sub_id}"
                     ) or 0
                 )
 
-                montant_restant = (
+                montant_restant = float(
                     Decimal(str(montant_recu))
                     - Decimal(str(montant_utilise))
                 )

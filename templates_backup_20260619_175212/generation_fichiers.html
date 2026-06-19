@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+
+{% block title %}Génération de Fichiers{% endblock %}
+
+{% block content %}
+<h2>Génération d'extractions de données</h2>
+
+<div class="mb-4">
+    <a href="{{ url_for('export_data.generateur_excel', source='benevoles') }}" class="btn btn-success">
+        📊 Générateur Excel personnalisé
+    </a>
+
+
+    <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
+        ↩️ Retour à l'accueil
+    </a>
+</div>
+
+
+<p>Sélectionnez une extraction à générer :</p>
+
+<form method="POST" action="{{ url_for('export_data.generation_fichiers') }}">
+    <label for="data_type">Choisissez le type de données :</label>
+    <select id="data_type" name="data_type">
+        <option value="all">Toutes les associations</option>
+        <option value="active">Associations actives</option>
+        <option value="inactive">Associations inactives</option>
+        <option value="indicateurs_etats">Extraction Indicateurs d'États</option>
+        <option value="besoins">Extraction Associations Besoins</option>
+        <option value="benevoles_complet">Tous les bénévoles</option>
+
+    </select>
+
+    <button type="submit">Générer</button>
+</form>
+{% endblock %}

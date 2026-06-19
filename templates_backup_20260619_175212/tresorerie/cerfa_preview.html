@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Prévisualisation CERFA{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+
+  <h2>📊 Prévisualisation des envois CERFA</h2>
+
+  <!-- ================= MODE ================= -->
+  {% if mail_mode == "TEST" %}
+  <div class="alert alert-warning">
+    🧪 MODE TEST — aucun mail réel ne sera envoyé
+  </div>
+  {% else %}
+  <div class="alert alert-danger">
+    🚨 MODE PRODUCTION — envoi réel
+  </div>
+  {% endif %}
+
+  <!-- ================= STATS ================= -->
+  <div class="mb-3">
+    <strong>Total détecté :</strong> {{ preview|length }}
+  </div>
+
+  <!-- ================= TABLE ================= -->
+  <div style="max-height:500px; overflow:auto; border:1px solid #ddd;">
+
+    <table class="table table-sm table-striped table-hover mb-0">
+
+      <thead class="table-dark sticky-top">
+        <tr>
+          <th>#</th>
+          <th>Nom</th>
+          <th>Email</th>
+          <th>Statut</th>
+        </tr>
+      </thead>
+
+      <tbody>
+
+        {% for p in preview %}
+        <tr>
+          <td>{{ loop.index }}</td>
+
+          <td>
+            {{ p.nom or "⚠️ Non détecté" }}
+          </td>
+
+          <td>
+            {% if p.email %}
+              {{ p.email }}
+              {% if p.email_reel and p.email != p.email_reel %}
+                <br><small class="text-muted">(réel : {{ p.email_reel }})</small>
+              {% endif %}
+            {% else %}
+              <span class="text-danger">❌ Aucun</span>
+            {% endif %}
+          </td>
+
+          <td>
+
+            {% if p.erreur %}
+              <span class="text-danger">❌ {{ p.erreur }}</span>
+
+            {% elif not p.nom %}
+              <span class="text-warning">⚠️ Nom manquant</span>
+
+            {% else %}
+              <span class="text-success">✔ OK</span>
+
+            {% endif %}
+
+          </td>
+
+        </tr>
+        {% endfor %}
+
+      </tbody>
+    </table>
+
+  </div>
+
+  <!-- ================= ACTIONS ================= -->
+  <form method="post" class="mt-4">
+
+    <input type="hidden" name="confirm" value="1">
+
+    <!-- ⚠️ sécurité PROD -->
+    {% if mail_mode != "TEST" %}
+    <div class="form-check mb-3">
+      <input class="form-check-input" type="checkbox" name="confirm_prod" required>
+      <label class="form-check-label">
+        ✅ Je confirme l’envoi en production
+      </label>
+    </div>
+    {% endif %}
+
+
+    <div class="d-flex justify-content-between">
+
+      <a href="{{ url_for('tresorerie.cerfa') }}" class="btn btn-secondary">
+        ⬅ Retour
+      </a>
+
+      <button class="btn btn-danger">
+        🚀 Confirmer l’envoi
+      </button>
+
+    </div>
+
+  </form>
+
+</div>
+{% endblock %}

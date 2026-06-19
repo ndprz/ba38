@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_buttons %}
+
+{% block title %}Analyse PARSOL2L{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid mt-4">
+
+    <h2>📂 Analyse d'un fichier PARSOL2L</h2>
+
+    {{ action_buttons([
+        {
+            "label": "← Retour",
+            "url": url_for('tresorerie.tresorerie'),
+            "color": "outline-secondary"
+        }
+    ]) }}
+
+    <hr>
+
+    <form method="POST"
+          enctype="multipart/form-data">
+
+        <div class="mb-3">
+
+            <label class="form-label">
+                Fichier PARSOL2L (.txt)
+            </label>
+
+            <input type="file"
+                   class="form-control"
+                   name="parsol_file"
+                   accept=".txt"
+                   required>
+
+        </div>
+
+        <button type="submit"
+                class="btn btn-primary">
+            🔍 Analyser
+        </button>
+
+    </form>
+
+    {% if resultats %}
+
+    <hr>
+
+    <form method="POST"
+          action="{{ url_for('tresorerie.parsol2l_export_excel') }}">
+
+        <button class="btn btn-success mb-3">
+            📥 Export Excel
+        </button>
+
+    </form>
+
+    <div class="table-responsive">
+
+        <table class="table table-sm table-striped table-bordered">
+
+            <thead class="table-dark">
+
+                <tr>
+                    <th>Code VIF</th>
+                    <th>Compte</th>
+                    <th>Association</th>
+                    <th>Bénéficiaires</th>
+                    <th>Trouvé</th>
+                </tr>
+
+            </thead>
+
+            <tbody>
+
+            {% for r in resultats %}
+
+                <tr>
+
+                    <td>{{ r.code_vif }}</td>
+
+                    <td>{{ r.compte_comptable }}</td>
+
+                    <td>{{ r.nom_association }}</td>
+
+                    <td class="text-end">
+                        {{ r.beneficiaires }}
+                    </td>
+
+                    <td>
+                        {{ r.trouve }}
+                    </td>
+
+                </tr>
+
+            {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+    <div class="alert alert-info">
+
+        <strong>{{ resultats|length }}</strong>
+        codes VIF trouvés dans le fichier.
+
+        {% if orphelines %}
+            <br>
+            <strong>{{ orphelines|length }}</strong>
+            codes VIF non trouvés dans la base.
+        {% endif %}
+
+    </div>
+
+    {% endif %}
+
+</div>
+
+{% endblock %}

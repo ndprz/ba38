@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Résultats du rapport{% endblock %}
+
+{% block content %}
+
+<h2 class="mb-4">📊 Rapport d’activité des bénévoles</h2>
+
+<p class="text-muted">
+  <strong>Période analysée :</strong>
+  {{ first.strftime('%d/%m/%Y') }} → {{ last.strftime('%d/%m/%Y') }}
+</p>
+
+
+<!-- ====================================================== -->
+<!-- TABLEAU DES TOTAUX                                     -->
+<!-- ====================================================== -->
+
+<table class="table table-bordered mt-2">
+  <thead class="table-light">
+    <tr>
+      <th>Type d’activité</th>
+      <th style="width: 200px;">Heures totalisées</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Ramasse</td><td>{{ "%.2f"|format(total_ram) }}</td></tr>
+    <tr><td>Distribution</td><td>{{ "%.2f"|format(total_dist) }}</td></tr>
+    <tr><td>Palettes</td><td>{{ "%.2f"|format(total_pal) }}</td></tr>
+    <tr><td>Pesée</td><td>{{ "%.2f"|format(total_pes) }}</td></tr>
+    <tr><td>VIF</td><td>{{ "%.2f"|format(total_vif) }}</td></tr>
+
+    <tr class="table-secondary">
+      <th>Total général</th>
+      <th>{{ "%.2f"|format(total_general) }}</th>
+    </tr>
+  </tbody>
+</table>
+
+<div class="mt-4 d-flex gap-3 justify-content-between">
+
+  <!-- Bouton retour -->
+  <a href="{{ url_for('planning_report.planning_report_run') }}"
+     class="btn btn-secondary">
+    ⬅️ Retour
+  </a>
+
+  {% set periode_safe = first.strftime('%Y-%m-%d') ~ '_to_' ~ last.strftime('%Y-%m-%d') %}
+
+  <!-- Excel de controle -->
+  <a class="btn btn-success"
+    href="{{ url_for('planning_report.planning_report_excel') }}">
+    📊 Télécharger Excel de contrôle
+  </a>
+
+  <!-- Export CSV -->
+  <a class="btn btn-outline-success"
+     href="{{ url_for('planning_report.planning_report_csv',
+                      periode=periode_safe,
+                      ram=total_ram,
+                      dist=total_dist,
+                      pal=total_pal,
+                      pes=total_pes,
+                      vif=total_vif,
+                      total=total_general) }}">
+    📄 Export CSV
+  </a>
+
+  <!-- Export PDF -->
+  <a class="btn btn-outline-danger"
+     href="{{ url_for('planning_report.planning_report_pdf',
+                      periode=periode_safe,
+                      ram=total_ram,
+                      dist=total_dist,
+                      pal=total_pal,
+                      pes=total_pes,
+                      vif=total_vif,
+                      total=total_general) }}">
+    🖨️ Export PDF
+  </a>
+
+</div>
+
+
+{% endblock %}

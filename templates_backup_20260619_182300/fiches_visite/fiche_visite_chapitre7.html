@@ -1,0 +1,42 @@
+<div class="card mb-3">
+  <div class="card-header bg-warning">7) TICADI</div>
+  <div class="card-body">
+
+    <!-- Indicateurs État -->
+    <label>Utilisez-vous TICADI pour remonter les indicateurs État ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("ticadi_utilise_indicateurs_etat","") }}</p>
+    {% else %}
+      <select class="form-select mb-2" name="ticadi_utilise_indicateurs_etat">
+        <option value="" {% if not fiche.get('ticadi_utilise_indicateurs_etat') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('ticadi_utilise_indicateurs_etat')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('ticadi_utilise_indicateurs_etat')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <!-- Comptabilité matière -->
+    <label>Utilisez-vous TICADI pour votre comptabilité matière ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("ticadi_utilise_compta_matiere","") }}</p>
+    {% else %}
+      <select class="form-select mb-2" name="ticadi_utilise_compta_matiere">
+        <option value="" {% if not fiche.get('ticadi_utilise_compta_matiere') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('ticadi_utilise_compta_matiere')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('ticadi_utilise_compta_matiere')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <!-- Formation TICADI -->
+    <label>Avez-vous bénéficié d’une formation à l’utilisation de TICADI ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("formation_ticadi_a_jour","") }}</p>
+    {% else %}
+      <select class="form-select mb-2" name="formation_ticadi_a_jour">
+        <option value="" {% if not fiche.get('formation_ticadi_a_jour') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('formation_ticadi_a_jour')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('formation_ticadi_a_jour')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+  </div>
+</div>

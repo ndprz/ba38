@@ -201,6 +201,11 @@ def generateur_excel():
         where_clauses.append("(nom LIKE ? OR prenom LIKE ?)")
         params.extend([f"%{search}%", f"%{search}%"])
 
+    # 🔒 Liste blanche : seules les colonnes connues de field_groups pour ce
+    # data_type peuvent atteindre le SQL (sinon injection via le champ "columns").
+    valid_columns = {f["field_name"] for f in fields_data}
+    selected_columns = [c for c in selected_columns if c in valid_columns]
+
     where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
     columns_sql = ", ".join(selected_columns) if selected_columns else "id"
     query = f"SELECT {columns_sql} FROM {data_type} {where_sql}"

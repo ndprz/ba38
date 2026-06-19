@@ -276,9 +276,9 @@ def engagements_parametres_workflow():
 
                 un_devis = "o" if request.form.get(f"un_devis_{param_id}") else "n"
 
-                trois_devis = (
+                deux_devis = (
                     "o"
-                    if request.form.get(f"trois_devis_{param_id}")
+                    if request.form.get(f"deux_devis_{param_id}")
                     else "n"
                 )
 
@@ -299,14 +299,14 @@ def engagements_parametres_workflow():
                     SET
                         montant_max = ?,
                         un_devis = ?,
-                        trois_devis = ?,
+                        deux_devis = ?,
                         accord_resp_pole = ?,
                         accord_presidence = ?
                     WHERE id = ?
                 """, (
                     montant_max,
                     un_devis,
-                    trois_devis,
+                    deux_devis,
                     accord_resp_pole,
                     accord_presidence,
                     param_id

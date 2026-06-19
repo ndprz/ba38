@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Planning Ramasse – Semaine {{ semaine }}</title>
+    <style>
+        @page { size: A3 landscape; margin: 1cm; }
+        body { font-family: Arial, sans-serif; font-size: 12px; }
+        h2 { text-align: center; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        th, td { border: 1px solid #444; padding: 5px; text-align: center; }
+        th { background-color: #f2f2f2; }
+        .nowrap { white-space: nowrap; }
+    </style>
+</head>
+<body>
+
+<h2>Planning de Ramasse – Semaine {{ semaine }} ({{ date_debut }} au {{ date_fin }})</h2>
+
+<div style="text-align: center; margin-bottom: 20px;" class="no-print">
+
+    <label style="margin-right: 20px; font-size: 14px; cursor: pointer;">
+        <input type="checkbox"
+               id="impression_partielle"
+               checked
+               onchange="toggleColonnes()">
+        Impression partielle (sans tri et camion)
+    </label>
+
+    <button onclick="window.print()"
+            style="padding: 8px 16px; font-size: 14px; cursor: pointer;">
+        🖨️ Imprimer cette page
+    </button>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th class="col-jour">Jour</th>
+            <th class="tournee col-tournee">Tournée</th>
+            <th class="col-chauffeur">Chauffeur</th>
+            <th class="col-equipier">Équipier</th>
+
+            <th class="col-responsable col-optional">Responsable Tri</th>
+            <th class="col-tri col-optional">Tri 1</th>
+            <th class="col-tri col-optional">Tri 2</th>
+            <th class="col-tri col-optional">Tri 3</th>
+            <th class="col-camion col-optional">Camion</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for l in lignes %}
+        <tr class="{{ l.jour|lower }}">
+            <td class="col-jour">{{ l.jour|capitalize }} {{ l.date_jour[0:2] }}</td>
+            <td class="tournee col-tournee">{{ l.tournee }}</td>
+            <td class="col-chauffeur">{{ l.chauffeur|safe }}</td>
+            <td class="col-equipier">{{ l.equipier|safe }}</td>
+
+            <td class="col-responsable col-optional">{{ l.responsable|safe }}</td>
+            <td class="col-tri col-optional">{{ l.ramasse_tri1|safe }}</td>
+            <td class="col-tri col-optional">{{ l.ramasse_tri2|safe }}</td>
+            <td class="col-tri col-optional">{{ l.ramasse_tri3|safe }}</td>
+            <td class="col-camion col-optional">{{ l.camion }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<script>
+function toggleColonnes() {
+    const checked = document.getElementById("impression_partielle").checked;
+    document.querySelectorAll(".col-optional").forEach(el => {
+        el.style.display = checked ? "none" : "";
+    });
+}
+
+// appliqué au chargement (coché par défaut)
+document.addEventListener("DOMContentLoaded", toggleColonnes);
+</script>
+
+
+</body>
+</html>
+
+<style>
+    @page { size: A3 landscape; margin: 1cm; }
+
+   
+    .absent {
+        color: red;
+        font-weight: bold;
+    }
+
+    .remplacant {
+        color: #007bff;
+        font-style: italic;
+    }
+
+
+    body {
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+    }
+
+    h2 {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        table-layout: auto;
+    }
+
+    th, td {
+        border: 1px solid #444;
+        padding: 4px 8px;
+        text-align: left;
+        vertical-align: middle;
+        white-space: normal;
+    }
+
+    th {
+        background-color: #f2f2f2;
+        font-weight: bold;
+    }
+
+    td.tournee, th.tournee {
+        min-width: 120px;
+        max-width: 400px;
+    }
+
+    @media print {
+        * {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+    }
+
+    @media print {
+        .no-print {
+            display: none !important;
+        }
+    }
+
+    @media print {
+        .col-optional {
+            display: none !important;
+        }
+    }
+
+    tr.lundi { background-color: #eaf6ff; }
+    tr.mardi { background-color: #e8f5e9; }
+    tr.mercredi { background-color: #fffde7; }
+    tr.jeudi { background-color: #fce4ec; }
+    tr.vendredi { background-color: #f3e5f5; }
+</style>

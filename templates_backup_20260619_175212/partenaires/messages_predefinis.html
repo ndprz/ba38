@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Messages pré-enregistrés{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <h2>📑 Messages pré-enregistrés</h2>
+
+  {% if assoc_id %}
+    <a href="{{ url_for('partenaires.envoi_mail', assoc_id=assoc_id) }}" class="btn btn-secondary mb-3">
+      ⬅️ Retour à l’envoi de mail
+    </a>
+  {% endif %}
+
+  <!-- Formulaire ajout -->
+  <form method="post" class="mb-4">
+    <input type="hidden" name="assoc_id" value="{{ assoc_id or '' }}">
+    <div class="mb-2">
+      <label for="titre" class="form-label">Titre</label>
+      <input type="text" name="titre" id="titre" class="form-control" required>
+    </div>
+    <div class="mb-2">
+      <label for="contenu" class="form-label">Contenu</label>
+      <textarea name="contenu" id="contenu" class="form-control" rows="4" required></textarea>
+    </div>
+    <button type="submit" class="btn btn-success">➕ Ajouter</button>
+  </form>
+
+  <!-- Liste des modèles -->
+  <table class="table table-striped">
+    <thead>
+      <tr><th>Titre</th><th>Contenu</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+    {% for m in messages %}
+      <tr>
+        <td>{{ m.titre }}</td>
+        <td style="white-space: pre-wrap;">{{ m.contenu }}</td>
+        <td>
+          <a href="{{ url_for('partenaires.edit_message', mid=m.id, assoc_id=assoc_id) }}" class="btn btn-sm btn-primary">✏️ Modifier</a>
+          <form method="post" action="{{ url_for('partenaires.delete_message', mid=m.id, assoc_id=assoc_id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Supprimer ce message ?');">🗑️ Supprimer</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

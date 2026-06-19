@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}Restaurer une version précédente{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>🔁 Restaurer une version précédente de la PROD</h2>
+
+  <form method="POST">
+    <div class="mb-3">
+      <label for="backup_file" class="form-label">Choisir une version à restaurer :</label>
+      <select name="backup_file" id="backup_file" class="form-select" required>
+        {% for f in fichiers %}
+        <option value="{{ f.file }}">{{ f.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-danger">✅ Restaurer cette version</button>
+    <a href="{{ url_for('debug_bp.admin_scripts') }}" class="btn btn-secondary">⬅️ Retour</a>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,81 @@
+<!-- =====================================================
+     HEADER GLOBAL UNIQUE
+====================================================== -->
+
+{% set is_admin = is_admin_global() %}
+
+<header class="main-header">
+
+    <!-- ================= LEFT ================= -->
+    <div class="header-left">
+
+        <img src="{{ url_for('static', filename='images/logo-circle-orange.svg') }}" class="header-logo">
+
+        <div class="header-text">
+            <strong>BA38</strong>
+            <span class="header-subtitle">
+                {{ header_subtitle or "Plateforme BA38" }}
+            </span>
+        </div>
+
+        {% if env_name == "dev" %}
+        <span class="badge bg-danger ms-2">DEV</span>
+        {% endif %}
+
+    </div>
+
+
+    <!-- ================= MENU ================= -->
+    <nav class="main-nav">
+
+        <a href="{{ url_for('index') }}">Accueil</a>
+
+        {% for groupe, items in main_menu.items() %}
+
+        {% if items|length == 1 %}
+
+        {% set item = items[0] %}
+
+        <a href="{{ url_for(item.endpoint) }}">
+            {{ item.icon }} {{ item.label }}
+        </a>
+
+        {% else %}
+
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                {{ groupe }}
+            </button>
+
+            <ul class="dropdown-menu">
+                {% for item in items %}
+                <li>
+                    <a class="dropdown-item" href="{{ url_for(item.endpoint) }}">
+                        {{ item.icon }} {{ item.label }}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        {% endif %}
+
+        {% endfor %}
+
+    </nav>
+
+    <!-- ================= RIGHT ================= -->
+    <div class="header-right">
+        {% if current_user.is_authenticated %}
+        <div class="user-mini">
+            {{ current_user.email }}
+
+            <a href="{{ url_for('logout') }}" class="btn btn-danger btn-sm ms-2">
+                Déconnexion
+            </a>
+        </div>
+        {% endif %}
+    </div>
+
+</header>
+

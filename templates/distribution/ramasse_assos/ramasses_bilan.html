@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% from "macros/buttons.html" import action_buttons %}
+
+{% block content %}
+
+<h2 class="mb-3">
+    📈 Bilan des ramasses {{ annee }}
+</h2>
+
+<form method="get" class="mb-4">
+
+    <div class="row align-items-center">
+
+        <div class="col-auto">
+            <label class="form-label">Année</label>
+        </div>
+
+        <div class="col-auto">
+            <select name="annee"
+                    class="form-select"
+                    onchange="this.form.submit()">
+
+                {% for a in annees %}
+                <option value="{{ a.annee }}"
+                        {% if a.annee == annee %}selected{% endif %}>
+                    {{ a.annee }}
+                </option>
+                {% endfor %}
+
+            </select>
+        </div>
+
+    </div>
+
+</form>
+
+<div class="alert alert-success fs-5">
+    📦 Total annuel :
+    <strong>{{ "%.1f"|format(total_annuel) }} kg</strong>
+</div>
+
+<div class="card p-3 mb-4">
+
+    <h4>🚚 Fournisseurs</h4>
+
+    <table class="table table-sm table-bordered">
+
+        <thead>
+            <tr>
+                <th>Mois</th>
+                <th>Fournisseur</th>
+                <th class="text-end">Kg</th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+            {% for r in fournisseurs %}
+            <tr>
+                <td>{{ r.mois }}</td>
+                <td>{{ r.fournisseur }}</td>
+                <td class="text-end">
+                    {{ "%.1f"|format(r.total_kg or 0) }}
+                </td>
+            </tr>
+            {% endfor %}
+
+        </tbody>
+
+    </table>
+
+</div>
+
+<div class="card p-3 mb-4">
+
+    <h4>🟠 Associations</h4>
+
+    <table class="table table-sm table-bordered">
+
+        <thead>
+            <tr>
+                <th>Mois</th>
+                <th>Association</th>
+                <th class="text-end">Kg</th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+            {% for r in associations %}
+            <tr>
+                <td>{{ r.mois }}</td>
+                <td>{{ r.nom_association }}</td>
+                <td class="text-end">
+                    {{ "%.1f"|format(r.total_kg or 0) }}
+                </td>
+            </tr>
+            {% endfor %}
+
+        </tbody>
+
+    </table>
+
+</div>
+
+<div class="card p-3 mb-4">
+
+    <h4>📅 Totaux mensuels</h4>
+
+    <table class="table table-sm table-bordered">
+
+        <thead>
+            <tr>
+                <th>Mois</th>
+                <th class="text-end">Kg</th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+            {% for r in totaux_mensuels %}
+            <tr>
+                <td>{{ r.mois }}</td>
+                <td class="text-end fw-bold">
+                    {{ "%.1f"|format(r.total_kg or 0) }}
+                </td>
+            </tr>
+            {% endfor %}
+
+        </tbody>
+
+    </table>
+
+</div>
+
+{{ action_buttons([
+    {
+        "label": "↩️ Retour",
+        "url": url_for('distribution.distribution_main'),
+        "color": "success"
+    }
+]) }}
+
+{% endblock %}

@@ -1,0 +1,70 @@
+<p><strong>Paramétrage du poste utilisateur pour les liens e-mail
+(mailto)</strong></p>
+<p>Afin que les adresses e-mail cliquables dans BA38 ouvrent
+correctement une fenêtre de rédaction Gmail ou Outlook, chaque
+utilisateur doit configurer une fois son navigateur et Windows.</p>
+<p><strong>1. Vérifier que Google Chrome est le navigateur par
+défaut</strong></p>
+<p>Dans Windows :</p>
+<p>Paramètres<br />
+→ Applications<br />
+→ Applications par défaut<br />
+→ Google Chrome<br />
+→ Définir par défaut</p>
+<p><strong>2. Autoriser Chrome à gérer les liens e-mail</strong></p>
+<p>Dans Chrome, ouvrir :</p>
+<p>chrome://settings/handlers</p>
+<p>Vérifier que l’option suivante est activée :</p>
+<p>Les sites peuvent demander à gérer des protocoles</p>
+<p><strong>3. Autoriser Gmail à gérer les liens e-mail</strong></p>
+<p>Ouvrir Gmail :</p>
+<p>https://mail.google.com</p>
+<p>Puis :</p>
+<ul>
+<li><p>attendre quelques secondes,</p></li>
+<li><p>une petite icône 📧 peut apparaître dans la barre d’adresse
+Chrome,</p></li>
+<li><p>cliquer dessus,</p></li>
+<li><p>choisir :</p></li>
+</ul>
+<p>Autoriser mail.google.com à ouvrir tous les liens e-mail</p>
+<p><strong>4. Vérifier le protocole MAILTO dans Windows</strong></p>
+<p>Dans Windows :</p>
+<p>Paramètres<br />
+→ Applications<br />
+→ Applications par défaut<br />
+→ Choisir les valeurs par défaut par protocole</p>
+<p>Rechercher :</p>
+<p>MAILTO</p>
+<p>Vérifier que la valeur est :</p>
+<p>Google Chrome</p>
+<p>ou éventuellement :</p>
+<p>Outlook</p>
+<p>selon l’outil utilisé.</p>
+<p><strong>5. Redémarrer complètement Chrome</strong></p>
+<p>IMPORTANT :</p>
+<p>Fermer :</p>
+<ul>
+<li><p>toutes les fenêtres Chrome,</p></li>
+<li><p>puis relancer Chrome.</p></li>
+</ul>
+<p><strong>6. Test de fonctionnement</strong></p>
+<p>Dans BA38 :</p>
+<ul>
+<li><p>cliquer sur une adresse e-mail dans la liste des
+associations.</p></li>
+</ul>
+<p>Le comportement attendu :</p>
+<ul>
+<li><p>ouverture automatique d’une nouvelle rédaction Gmail,</p></li>
+<li><p>avec le destinataire déjà renseigné.</p></li>
+</ul>
+<p><strong>Symptômes si le poste n’est pas configuré</strong></p>
+<p><strong>Cas 1 — Rien ne se passe</strong></p>
+<p>Le protocole MAILTO n’est pas associé.</p>
+<p><strong>Cas 2 — Page blanche avec :</strong></p>
+<p>mailto:test@gmail.com</p>
+<p>Chrome reçoit bien le lien mais Gmail n’est pas autorisé comme
+gestionnaire de messagerie.</p>
+<p><strong>Cas 3 — Outlook s’ouvre au lieu de Gmail</strong></p>
+<p>Le protocole MAILTO est associé à Outlook dans Windows.</p>

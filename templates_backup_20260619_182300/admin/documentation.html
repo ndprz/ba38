@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block title %}Documentation technique{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid mt-3">
+
+    <!-- ===================================================== -->
+    <!-- LAYOUT PRINCIPAL : 2 COLONNES (SIDEBAR + CONTENU) -->
+    <!-- ===================================================== -->
+    <div class="row">
+
+        <!-- ===================================================== -->
+        <!-- SIDEBAR (GAUCHE) -->
+        <!-- ===================================================== -->
+        <div class="col-md-3 col-lg-2 border-end" style="min-height:80vh;">
+
+            <h5 class="mt-2">📚 Documentation</h5>
+
+            <!-- 🔍 Champ de recherche -->
+            <input type="text" id="searchDoc" class="form-control form-control-sm mb-3" placeholder="🔍 Rechercher...">
+
+            <!-- ================= ACCUEIL ================= -->
+            {% if root_docs %}
+            <div class="mb-3">
+
+                <div class="fw-bold text-success">
+                    🏠 Accueil
+                </div>
+
+                <hr class="my-2">
+
+                <div class="list-group list-group-flush">
+                    {% for doc in root_docs %}
+                    <div class="list-group-item list-group-item-action py-1 doc-item" data-file="{{ doc }}">
+                        {{ doc.replace('.md','') }}
+                    </div>
+                    {% endfor %}
+                </div>
+
+            </div>
+            {% endif %}
+
+            <!-- ================= MODULES ================= -->
+            {% for module, docs in modules.items() %}
+            <div class="mb-3">
+
+                <div class="fw-bold text-primary">
+                    📁 {{ module.replace('_', ' ') }}
+                </div>
+
+                <div class="list-group list-group-flush">
+                    {% for doc in docs %}
+                    <div class="list-group-item list-group-item-action py-1 doc-item" data-file="{{ doc }}"
+                        data-name="{{ doc.split('/')[-1].replace('.md','')|lower }}" data-module="{{ module|lower }}">
+
+                        {{ doc.split('/')[-1].replace('.md','') }}
+                        <small class="text-muted">({{ module.replace('_',' ') }})</small>
+
+                    </div>
+                    {% endfor %}
+                </div>
+
+            </div>
+            {% endfor %}
+
+        </div> <!-- FIN SIDEBAR -->
+
+        <!-- ===================================================== -->
+        <!-- CONTENU (DROITE) -->
+        <!-- ===================================================== -->
+        <div class="col-md-9 col-lg-10">
+
+            <div class="row">
+
+                <!-- CONTENU -->
+                <div class="col-md-9">
+
+                    <div class="p-3">
+
+                        <div id="breadcrumb" class="text-muted mb-2"></div>
+
+                        <div id="docContent"></div>
+
+                    </div>
+
+                </div>
+
+                <!-- TOC -->
+                <div class="col-md-3 border-start">
+
+                    <div class="p-3" style="position:sticky; top:20px;">
+
+                        <div class="fw-bold mb-2">📑 Sommaire</div>
+
+                        <div id="toc"></div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- ===================================================== -->
+<!-- JS : RECHERCHE + NAVIGATION AJAX -->
+<!-- ===================================================== -->
+<script>
+
+    // =========================
+    // SURLIGNAGE RECHERCHE
+    // =========================
+    function highlight(text, query) {
+        let mots = query.split(" ");
+        mots.forEach(mot => {
+            if (mot.length > 2) {
+                let regex = new RegExp(`(${mot})`, "gi");
+                text = text.replace(regex, "<mark>$1</mark>");
+            }
+        });
+        return text;
+    }
+
+    // =========================
+    // SAUVEGARDE CONTENU INITIAL
+    // =========================
+    let originalContent;
+
+    window.addEventListener("DOMContentLoaded", function () {
+        originalContent = document.getElementById("docContent").innerHTML;
+    });
+
+    // =========================
+    // RECHERCHE
+    // =========================
+    document.getElementById("searchDoc").addEventListener("input", function () {
+
+        let query = this.value.trim();
+
+        // reset si trop court
+        if (query.length < 2) {
+            document.getElementById("docContent").innerHTML = originalContent;
+            return;
+        }
+
+        fetch(`/documentation/search?q=${encodeURIComponent(query)}`)
+            .then(res => res.json())
+            .then(data => {
+
+                let html = `<h4>Résultats (${data.results.length})</h4>`;
+
+                data.results.forEach(r => {
+
+                    let name = highlight(r.name, query);
+                    let module = r.module.replace("_", " ");
+                    let content = highlight(r.content, query);
+
+                    html += `
+                <div class="card mb-2 p-2 doc-result"
+                     data-file="${r.path}"
+                     style="cursor:pointer;">
+
+                    <div><strong>${name}</strong></div>
+                    <div class="text-muted small">${module}</div>
+                    <div class="small">${content}...</div>
+
+                </div>
+            `;
+                });
+
+                document.getElementById("docContent").innerHTML = html;
+
+            });
+
+    });
+
+    // =========================
+    // CLICK RESULTATS (RECHERCHE)
+    // =========================
+    document.addEventListener("click", function (e) {
+
+        let el = e.target.closest(".doc-result");
+        if (!el) return;
+
+        loadDoc(el.dataset.file);
+
+    });
+
+    // =========================
+    // CLICK SIDEBAR
+    // =========================
+    document.querySelectorAll(".doc-item").forEach(item => {
+        item.addEventListener("click", function () {
+            loadDoc(this.dataset.file);
+        });
+    });
+
+    // =========================
+    // CHARGEMENT DOC (CENTRALISÉ)
+    // =========================
+    function loadDoc(file) {
+
+        fetch(`/documentation/ajax?file=${file}`)
+            .then(res => res.json())
+            .then(data => {
+
+                document.getElementById("docContent").innerHTML = data.html;
+
+                // 🔥 génération TOC
+                generateTOC();
+
+
+                // breadcrumb
+                let parts = file.split("/");
+                let module = parts[0].replace("_", " ");
+                let doc = parts[parts.length - 1].replace(".md", "");
+
+                document.getElementById("breadcrumb").innerHTML =
+                    `📁 ${module} > 📄 ${doc}`;
+            });
+
+    }
+
+    // =========================
+    // CHARGEMENT INITIAL (INDEX)
+    // =========================
+    window.addEventListener("DOMContentLoaded", function () {
+
+        loadDoc("index.md");
+
+        document.getElementById("breadcrumb").innerHTML =
+            "📚 Accueil documentation";
+
+    });
+
+
+    // =========================
+    // GENERATION TOC
+    // =========================
+    function generateTOC() {
+
+        let container = document.getElementById("docContent");
+        let toc = document.getElementById("toc");
+
+        if (!container || !toc) return;
+
+        let headers = container.querySelectorAll("h1, h2, h3");
+
+        let html = "";
+
+        headers.forEach((h, index) => {
+
+            let id = "section-" + index;
+            h.id = id;
+
+            let text = h.innerText;
+            let level = h.tagName;
+
+            let indent = (level === "H2") ? "ms-3" :
+                (level === "H3") ? "ms-4" : "";
+
+            html += `
+            <div class="${indent}">
+                <a href="#${id}" class="d-block small text-decoration-none">
+                    ${text}
+                </a>
+            </div>
+        `;
+        });
+
+        toc.innerHTML = html;
+    }
+
+
+</script>
+
+{% endblock %}

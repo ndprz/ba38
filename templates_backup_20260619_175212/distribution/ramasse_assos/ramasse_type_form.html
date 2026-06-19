@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+{% from "macros/buttons.html" import action_buttons %}
+
+<!-- ===================================================== -->
+<!-- 🧾 FORMULAIRE MODÈLE DE RAMASSE -->
+<!-- ===================================================== -->
+
+
+<h2 class="mb-2 mt-1">📝 Modèle de ramasse</h2>
+
+<form method="post">
+
+    <div class="card p-2 mb-2">
+
+        <div class="row align-items-center g-2">
+
+            <!-- NOM -->
+            <div class="col-md-4 d-flex align-items-center">
+                <label class="me-2 mb-0 fw-semibold" style="min-width: 60px;">Nom</label>
+                <input name="nom_type" class="form-control form-control-sm fw-semibold"
+                    value="{{ type_data.nom_type if type_data else '' }}">
+            </div>
+
+            <!-- ASSOCIATION -->
+            <div class="col-md-4 d-flex align-items-center">
+                <label class="me-2 mb-0 fw-semibold" style="min-width: 100px;">Association</label>
+                <select name="id_association" class="form-select form-select-sm fw-semibold">
+                    {% for a in associations %}
+                    <option value="{{ a.id }}" {% if type_data and a.id==type_data.id_association %}selected{% endif %}>
+                        {{ a.nom_association }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- MAGASIN -->
+            <div class="col-md-4 d-flex align-items-center">
+                <label class="me-2 mb-0 fw-semibold" style="min-width: 80px;">Magasin</label>
+                <select name="id_magasin" class="form-select form-select-sm fw-semibold">
+                    {% for f in fournisseurs %}
+                        <option value="{{ f.id }}"
+                            {% if not f.code_vif %}disabled{% endif %}
+                            {% if type_data and f.id==type_data.id_magasin %}selected{% endif %}>
+
+                            {{ f.nom }}
+
+                            {% if not f.code_vif %}
+                                ❌ (pas de code VIF)
+                            {% endif %}
+
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- ===================================================== -->
+    <!-- 🔹 LIGNES DU MODÈLE (CODE VIF + %) -->
+    <!-- ===================================================== -->
+    <div class="card p-3 mx-auto shadow-sm" style="max-width: 900px;">
+
+        <table class="table table-sm table-bordered align-middle" id="table_lignes" style="font-size: 0.95rem;">
+
+            <thead class="table-light">
+                <tr>
+                    <th style="width:65%">Article</th>
+                    <th style="width:25%">%</th>
+                    <th style="width:10%"></th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+                {% for l in lignes %}
+                <tr>
+                    <td>
+                        <div class="d-flex flex-column">
+
+                            <!-- Code VIF -->
+                            <input name="code_vif" class="form-control form-control-sm code_vif fw-bold"
+                                value="{{ l.code_vif if l else '' }}" placeholder="Code VIF">
+
+                            <!-- Libellé -->
+                            <div class="libelle mt-1 px-2 py-1 rounded bg-light fw-semibold"></div>
+
+                        </div>
+                    </td>
+
+                    <td>
+                        <input type="number" name="repartition" class="form-control form-control-sm rep text-center"
+                            value="{{ l.repartition if l else '' }}" step="0.01" placeholder="%">
+                    </td>
+
+                    <td class="text-center">
+                        <button type="button" class="btn btn-danger btn-sm btn-del">
+                            🗑️
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+
+            </tbody>
+        </table>
+
+        <!-- ===================================================== -->
+        <!-- ➕ AJOUT LIGNE -->
+        <!-- ===================================================== -->
+        <button type="button" class="btn btn-primary mt-2" id="add_line">
+            ➕ Ajouter une ligne
+        </button>
+
+    </div>
+
+    <!-- ===================================================== -->
+    <!-- 🔹 ACTIONS -->
+    <!-- ===================================================== -->
+    {% call action_buttons() %}
+
+    <a href="{{ url_for('distribution.ramasse_types_list') }}"
+    class="btn btn-secondary btn-sm">
+    ↩️ Retour
+    </a>
+
+    <button class="btn btn-success btn-sm">
+        💾 Enregistrer
+    </button>
+
+    {% endcall %}
+
+</form>
+
+<style>
+option[disabled] {
+    color: #999;
+}
+</style>
+
+
+<!-- ===================================================== -->
+<!-- ⚙️ JAVASCRIPT -->
+<!-- ===================================================== -->
+<script>
+
+    // =====================================================
+    // ➕ AJOUT LIGNE
+    // =====================================================
+    document.getElementById("add_line").addEventListener("click", function () {
+
+        const tbody = document.querySelector("#table_lignes tbody")
+
+        const row = document.createElement("tr")
+
+        row.innerHTML = `
+        <tr>
+            <td>
+                <div class="d-flex flex-column">
+
+                    <select name="code_vif" class="form-select form-select-sm code_vif">
+                        <option value="">-- Choisir un article --</option>
+
+                        {% for a in articles %}
+                        <option value="{{ a.article }}">
+                            {{ a.article }} - {{ a.libelle }}
+                        </option>
+                        {% endfor %}
+                    </select>
+
+                    <div class="libelle text-success fw-semibold small mt-1"></div>
+
+                </div>
+            </td>
+
+            <td>
+                <input type="number" name="repartition"
+                    class="form-control form-control-sm rep text-center"
+                    step="0.01" placeholder="%">
+            </td>
+
+            <td class="text-center">
+                <button type="button" class="btn btn-danger btn-sm btn-del">🗑️</button>
+            </td>
+        </tr>
+        `
+
+        tbody.appendChild(row)
+    })
+
+
+    // =====================================================
+    // 🗑️ SUPPRESSION LIGNE
+    // =====================================================
+    document.addEventListener("click", function (e) {
+
+        if (e.target.classList.contains("btn-del")) {
+            e.target.closest("tr").remove()
+        }
+
+    })
+
+
+    // =====================================================
+    // 📊 CONTROLE SOMME %
+    // =====================================================
+    document.querySelector("form").addEventListener("submit", function (e) {
+
+        let total = 0
+
+        document.querySelectorAll(".rep").forEach(input => {
+            total += parseFloat(input.value || 0)
+        })
+
+        if (total !== 100) {
+            if (!confirm("⚠️ Total des % = " + total + "% (≠ 100). Continuer ?")) {
+                e.preventDefault()
+            }
+        }
+
+    })
+
+
+    // =====================================================
+    // 🔎 FONCTION UNIQUE CHARGEMENT LIBELLE
+    // =====================================================
+    function chargerLibelle(select) {
+
+        const code = select.value
+        const libelleSpan = select.parentElement.querySelector(".libelle")
+
+        if (!code) {
+            libelleSpan.textContent = ""
+            return
+        }
+
+        fetch(`/get_article_libelle/${code}`)
+            .then(r => r.json())
+            .then(data => {
+
+                if (data.libelle) {
+                    libelleSpan.textContent = data.libelle
+                    libelleSpan.className = "libelle text-success fw-semibold small mt-1"
+                } else {
+                    libelleSpan.textContent = "❌ inconnu"
+                    libelleSpan.className = "libelle text-danger fw-semibold small mt-1"
+                }
+
+            })
+    }
+
+
+    // =====================================================
+    // 🔁 CHANGEMENT SELECT
+    // =====================================================
+    document.addEventListener("change", function (e) {
+
+        if (e.target.classList.contains("code_vif")) {
+            chargerLibelle(e.target)
+        }
+
+    })
+
+
+    // =====================================================
+    // 🚀 CHARGEMENT PAGE (édition modèle)
+    // =====================================================
+    window.addEventListener("load", function () {
+
+        document.querySelectorAll(".code_vif").forEach(select => {
+            chargerLibelle(select)
+        })
+
+    })
+
+
+
+
+
+</script>
+
+{% endblock %}

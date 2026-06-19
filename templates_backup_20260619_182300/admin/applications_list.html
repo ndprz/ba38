@@ -1,0 +1,375 @@
+{% extends "base.html" %}
+
+{% block title %}
+Gestion des applications
+{% endblock %}
+
+{% block content %}
+
+<div class="container mt-4">
+
+    <!-- ===================================================== -->
+    <!-- TITRE -->
+    <!-- ===================================================== -->
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+
+        <h2>
+            ⚙️ Gestion des applications
+        </h2>
+
+        <a href="{{ url_for('index') }}"
+           class="btn btn-secondary">
+            ⬅ Retour
+        </a>
+
+    </div>
+
+    <hr>
+
+    <!-- ===================================================== -->
+    <!-- TABLEAU -->
+    <!-- ===================================================== -->
+
+    <style>
+
+    .applications-admin-page {
+
+        display: flex;
+        justify-content: center;
+    }
+
+    .applications-admin-page table {
+
+        width: max-content !important;
+        table-layout: auto !important;
+    }
+
+    .applications-admin-page table th,
+    .applications-admin-page table td {
+
+        white-space: nowrap !important;
+        width: auto !important;
+    }
+
+    .applications-admin-page table input {
+
+        width: auto !important;
+        min-width: unset !important;
+        max-width: none !important;
+
+        display: inline-block !important;
+    }
+
+    .applications-admin-page .table-responsive {
+
+        overflow-x: auto;
+    }
+
+    </style>
+
+    <div class="applications-admin-page">
+
+        <table class="table table-bordered table-striped align-middle applications-table">
+
+            <thead class="table-dark">
+
+                <tr>
+
+                    <th>Appli</th>
+
+                    <th>Label</th>
+
+                    <th>Endpoint</th>
+
+                    <th>Groupe</th>
+
+                    <th>Ordre</th>
+
+                    <th>Ordre groupe</th>
+
+                    <th>Icône</th>
+
+                    <th>Menu</th>
+
+                    <th>Action</th>
+
+                </tr>
+
+            </thead>
+
+            <tbody>
+
+                <!-- ================================================= -->
+                <!-- LIGNES EXISTANTES -->
+                <!-- ================================================= -->
+
+                {% for app in applications %}
+
+                <tr>
+
+                    <form method="POST"
+                        action="{{ url_for('applications.update_application', appli=app.appli) }}">
+
+                        <!-- ========================================= -->
+                        <!-- APPLI -->
+                        <!-- ========================================= -->
+
+                        <td class="col-appli">
+
+                            <input type="text"
+                                class="form-control"
+                                value="{{ app.appli }}"
+                                readonly>
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- LABEL -->
+                        <!-- ========================================= -->
+
+                        <td class="col-label">
+
+                            <input type="text"
+                                name="label"
+                                class="form-control"
+                                value="{{ app.label or '' }}">
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- ENDPOINT -->
+                        <!-- ========================================= -->
+
+                        <td class="col-endpoint">
+
+                            <input type="text"
+                                name="endpoint"
+                                class="form-control"
+                                value="{{ app.endpoint or '' }}">
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- GROUPE -->
+                        <!-- ========================================= -->
+
+                        <td class="col-groupe">
+
+                            <input type="text"
+                                name="groupe"
+                                class="form-control"
+                                value="{{ app.groupe or '' }}">
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- ORDRE -->
+                        <!-- ========================================= -->
+
+                        <td class="col-ordre">
+
+                            <input type="number"
+                                name="ordre"
+                                class="form-control"
+                                value="{{ app.ordre or 0 }}">
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- ORDRE GROUPE -->
+                        <!-- ========================================= -->
+
+                        <td class="col-ordre">
+
+                            <input type="number"
+                                name="ordre_groupe"
+                                class="form-control"
+                                value="{{ app.ordre_groupe or 0 }}">
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- ICONE -->
+                        <!-- ========================================= -->
+
+                        <td class="col-icon">
+
+                            <input type="text"
+                                name="icon"
+                                class="form-control text-center"
+                                value="{{ app.icon or '' }}">
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- MENU VISIBLE -->
+                        <!-- ========================================= -->
+
+                        <td class="text-center col-menu">
+
+                            <input type="checkbox"
+                                name="menu_visible"
+                                value="1"
+                                {% if app.menu_visible %}checked{% endif %}>
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- ACTION -->
+                        <!-- ========================================= -->
+
+                        <td class="col-action">
+
+                            <button type="submit"
+                                    class="btn btn-success btn-sm">
+
+                                💾 Enregistrer
+
+                            </button>
+
+                        </td>
+
+                    </form>
+                </tr>
+
+                {% endfor %}
+
+                <!-- ================================================= -->
+                <!-- AJOUT -->
+                <!-- ================================================= -->
+
+                <tr class="table-warning">
+
+                    <form method="POST"
+                          action="{{ url_for('applications.create_application') }}">
+
+                        <!-- ========================================= -->
+                        <!-- APPLI -->
+                        <!-- ========================================= -->
+
+                        <td>
+
+                            <input type="text"
+                                   name="appli"
+                                   class="form-control"
+                                   required>
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- LABEL -->
+                        <!-- ========================================= -->
+
+                        <td>
+
+                            <input type="text"
+                                   name="label"
+                                   class="form-control"
+                                   required>
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- ENDPOINT -->
+                        <!-- ========================================= -->
+
+                        <td>
+
+                            <input type="text"
+                                   name="endpoint"
+                                   class="form-control">
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- GROUPE -->
+                        <!-- ========================================= -->
+
+                        <td>
+
+                            <input type="text"
+                                   name="groupe"
+                                   class="form-control">
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- ORDRE -->
+                        <!-- ========================================= -->
+
+                        <td>
+
+                            <input type="number"
+                                   name="ordre"
+                                   class="form-control"
+                                   value="999">
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- ORDRE GROUPE -->
+                        <!-- ========================================= -->
+
+                        <td>
+
+                            <input type="number"
+                                   name="ordre_groupe"
+                                   class="form-control"
+                                   value="999">
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- ICON -->
+                        <!-- ========================================= -->
+
+                        <td>
+
+                            <input type="text"
+                                   name="icon"
+                                   class="form-control">
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- MENU -->
+                        <!-- ========================================= -->
+
+                        <td class="text-center">
+
+                            <input type="checkbox"
+                                   name="menu_visible"
+                                   value="1"
+                                   checked>
+
+                        </td>
+
+                        <!-- ========================================= -->
+                        <!-- ACTION -->
+                        <!-- ========================================= -->
+
+                        <td>
+
+                            <button type="submit"
+                                    class="btn btn-primary btn-sm w-100">
+
+                                ➕ Ajouter
+
+                            </button>
+
+                        </td>
+
+                    </form>
+
+                </tr>
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="page-sticky-header d-flex justify-content-between align-items-center">
+
+    <h2 class="mb-0">📊 Résultats - {{ campagne.periode }}</h2>
+
+    <div class="btn-group-ba38">
+        <a href="{{ url_for('emails.liste_modeles') }}"
+            onclick="window.open(this.href, 'emails_window', 'width=1200,height=800'); return false;"
+            class="btn btn-outline-primary btn-sm">
+            ✉️ Textes mails
+        </a>
+
+        <a href="{{ url_for('emails.envoyer_mails', campagne_id=campagne.id) }}" class="btn btn-success btn-sm">
+            📤 Envoyer mails
+        </a>
+
+        <a href="{{ url_for('indicateurs.index') }}" class="btn btn-outline-secondary btn-sm">
+            ⬅️ Retour
+        </a>
+    </div>
+
+</div>
+
+
+<!-- Affichage recap des STATUTS -->
+
+{% set ns = namespace(valid=0, non=0, revoir=0, absent=0, total=0) %}
+
+{% for l in lignes %}
+{% set statut = (l.statut_csv or '')|lower %}
+{% set ns.total = ns.total + 1 %}
+
+{% if l.present_csv == 0 %}
+{% set ns.absent = ns.absent + 1 %}
+
+{% elif "valid" in statut %}
+{% set ns.valid = ns.valid + 1 %}
+
+{% elif "non" in statut %}
+{% set ns.non = ns.non + 1 %}
+
+{% elif "revoir" in statut or "valider" in statut %}
+{% set ns.revoir = ns.revoir + 1 %}
+{% endif %}
+{% endfor %}
+
+<div class="kpi-container">
+
+    <div class="kpi-box kpi-valid" onclick="filterStatut('valide')">
+        <div class="kpi-value">{{ ns.valid }}</div>
+        <div class="kpi-label">✔ Validés</div>
+    </div>
+
+    <div class="kpi-box kpi-non" onclick="filterStatut('non')">
+        <div class="kpi-value">{{ ns.non }}</div>
+        <div class="kpi-label">✖ Non reçus</div>
+    </div>
+
+    <div class="kpi-box kpi-revoir" onclick="filterStatut('revoir')">
+        <div class="kpi-value">{{ ns.revoir }}</div>
+        <div class="kpi-label">⚠ À revoir</div>
+    </div>
+
+    <div class="kpi-box kpi-absent" onclick="filterStatut('absent')">
+        <div class="kpi-value">{{ ns.absent }}</div>
+        <div class="kpi-label">📭 Absents AMS</div>
+    </div>
+
+    <div class="kpi-box kpi-total" onclick="filterStatut('all')">
+        <div class="kpi-value">{{ ns.total }}</div>
+        <div class="kpi-label">Total</div>
+    </div>
+
+    <!-- 🔄 RESET -->
+    <div class="text-center mt-2">
+        <button class="btn btn-sm btn-outline-secondary" onclick="filterStatut('all')">
+            🔄 Réinitialiser
+        </button>
+    </div>
+
+</div>
+
+<div class="table-container-fixe">
+
+    <table class="table table-striped indicateurs-table table-auto-width">
+
+        <thead>
+            <tr>
+                <th>Association</th>
+                <th>Code VIF</th>
+                <th>Statut</th>
+                <th>Répondu</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for l in lignes %}
+            <tr data-statut="{{ (l.statut_csv or '')|lower }}" data-present="{{ l.present_csv }}">
+
+                <td>{{ l.nom_association }}</td>
+                <td>{{ l.code_vif }}</td>
+                <td>
+                    {% if l.present_csv == 0 %}
+                    <span class="badge bg-warning text-dark">Absent AMS</span>
+                    {% elif l.statut_csv %}
+                    {{ l.statut_csv }}
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td class="text-center align-middle statut-cell">
+                    {% set statut = (l.statut_csv or '')|lower %}
+
+                    {% if l.present_csv == 0 %}
+                    <span class="badge bg-danger statut-badge">✖</span>
+
+                    {% elif "valid" in statut %}
+                    <span class="badge bg-success statut-badge">✔</span>
+
+                    {% elif "non" in statut %}
+                    <span class="badge bg-danger statut-badge">✖</span>
+
+                    {% elif "revoir" in statut or "valider" in statut %}
+                    <span class="badge bg-warning text-dark statut-badge">⚠</span>
+
+                    {% else %}
+                    <span class="badge bg-secondary statut-badge">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+
+    </table>
+
+</div>
+
+<script>
+    function filterStatut(type) {
+
+        const rows = document.querySelectorAll("tbody tr");
+
+        rows.forEach(row => {
+
+            const statut = (row.dataset.statut || "").toLowerCase();
+            const present = row.dataset.present;
+
+            let show = false;
+
+            if (type === "all") {
+                show = true;
+            }
+
+            else if (type === "absent") {
+                show = (present == "0");
+            }
+
+            else if (type === "valide") {
+                show = statut.includes("valid");
+            }
+
+            else if (type === "non") {
+                show = statut.includes("non");
+            }
+
+            else if (type === "revoir") {
+                show = statut.includes("revoir") || statut.includes("valider");
+            }
+
+            row.style.display = show ? "" : "none";
+
+        });
+    }
+
+</script>
+
+
+
+{% endblock %}

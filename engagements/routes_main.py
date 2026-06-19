@@ -46,6 +46,15 @@ def engagements_main():
         False
     )
 
+    # =========================================================
+    # DROIT DE VOIR TOUS LES ENGAGEMENTS
+    # =========================================================
+
+    voir_tous_engagements = has_access(
+        "engagements_admin",
+        "ecriture"
+    )
+
     with sqlite3.connect(db_path) as conn:
 
         conn.row_factory = sqlite3.Row
@@ -88,15 +97,40 @@ def engagements_main():
                 ON b.id = d.beneficiaire_benevole_id
         """
 
+        where_clauses = []
+        params = []
+
         # =====================================================
         # FILTRE ARCHIVES
         # =====================================================
 
         if not show_deleted:
 
-            query += """
-                WHERE COALESCE(e.deleted, 0) = 0
-            """
+            where_clauses.append(
+                "COALESCE(e.deleted, 0) = 0"
+            )
+
+        # =====================================================
+        # UTILISATEUR STANDARD
+        # =====================================================
+
+        if not voir_tous_engagements:
+
+            where_clauses.append(
+                "e.demandeur_id = ?"
+            )
+
+            params.append(
+                current_user.id
+            )
+
+        # =====================================================
+        # CONSTRUCTION WHERE
+        # =====================================================
+
+        if where_clauses:
+
+            query += "\nWHERE " + "\nAND ".join(where_clauses)
 
         # =====================================================
         # TRI
@@ -106,14 +140,33 @@ def engagements_main():
             ORDER BY e.cree_le DESC
         """
 
-        rows = conn.execute(query).fetchall()
+        rows = conn.execute(
+            query,
+            params
+        ).fetchall()
 
 
         # =====================================================
         # TABLEAU DE BORD - STATISTIQUES GLOBALES
         # =====================================================
 
-        stats = conn.execute("""
+        stats_where = [
+            "COALESCE(e.deleted, 0) = 0"
+        ]
+
+        stats_params = []
+
+        if not voir_tous_engagements:
+
+            stats_where.append(
+                "e.demandeur_id = ?"
+            )
+
+            stats_params.append(
+                current_user.id
+            )
+
+        stats_sql = f"""
 
             SELECT
 
@@ -202,9 +255,14 @@ def engagements_main():
             LEFT JOIN engagements_depenses d
                 ON d.engagement_id = e.id
 
-            WHERE COALESCE(e.deleted, 0) = 0
+            WHERE {" AND ".join(stats_where)}
 
-        """).fetchone()
+        """
+
+        stats = conn.execute(
+            stats_sql,
+            stats_params
+        ).fetchone()
 
         # =====================================================
         # CONVERSION DICT
@@ -256,6 +314,9 @@ def engagements_main():
         show_deleted=show_deleted,
         stats=stats
     )
+
+
+
 
 @engagements_bp.route("/engagements/depense/nouvelle", methods=["GET", "POST"])
 @require_access("engagements", "ecriture")
@@ -331,8 +392,38 @@ def nouvelle_depense():
                 "achat"
             )
 
+            # =====================================================
+            # NOTE DE FRAIS
+            # =====================================================
+
+            date_frais = None
+            kms = None
+            peages = None
+            repas = None
+            commentaire_frais = None
+
+
             beneficiaire_benevole_id = request.form.get(
                 "beneficiaire_benevole_id"
+            )
+            date_frais = request.form.get(
+                "date_frais"
+            )
+
+            kms = request.form.get(
+                "kms"
+            ) or 0
+
+            peages = request.form.get(
+                "peages"
+            ) or 0
+
+            repas = request.form.get(
+                "repas"
+            ) or 0
+
+            commentaire_frais = request.form.get(
+                "commentaire_frais"
             )
 
             fournisseur_nom = request.form.get(
@@ -400,9 +491,53 @@ def nouvelle_depense():
                 "commentaire_devis"
             )
 
-            files = request.files.getlist(
-                "devis_files"
+            files = []
+
+            devis1 = request.files.get("devis_file_1")
+            devis2 = request.files.get("devis_file_2")
+
+            documents_complementaires = (
+                request.files.getlist(
+                    "documents_complementaires"
+                )
             )
+
+            write_log("===================================")
+            write_log(
+                f"Nb documents complémentaires = "
+                f"{len(documents_complementaires)}"
+            )
+
+            for doc in documents_complementaires:
+
+                write_log(
+                    f"Document reçu : {doc.filename}"
+                )
+
+            write_log("===================================")
+
+            if devis1 and devis1.filename:
+                files.append(devis1)
+
+            if devis2 and devis2.filename:
+                files.append(devis2)
+
+            write_log(
+                f"Nombre de fichiers reçus = {len(files)}"
+            )
+
+            for f in files:
+                write_log(
+                    f"Fichier reçu : {f.filename}"
+                )
+
+
+            fichiers_devis = [
+                f for f in files
+                if f and f.filename
+            ]
+
+            nb_fichiers_devis = len(fichiers_devis)
 
             # =====================================================
             # RECHERCHE PALIER
@@ -433,7 +568,7 @@ def nouvelle_depense():
             )
 
             write_log(
-                f"trois_devis = {palier['trois_devis']}"
+                f"deux_devis = {palier['deux_devis']}"
             )
 
             write_log(
@@ -458,7 +593,7 @@ def nouvelle_depense():
                 )
 
                 write_log(
-                    f"trois_devis = {palier['trois_devis']}"
+                    f"deux_devis = {palier['deux_devis']}"
                 )
 
                 write_log(
@@ -491,20 +626,29 @@ def nouvelle_depense():
                 palier["un_devis"] == "o"
             )
 
-            trois_devis_obligatoires = (
-                palier["trois_devis"] == "o"
+            deux_devis_obligatoires = (
+                palier["deux_devis"] == "o"
             )
+
+            # =====================================================
+            # EXCEPTION DEPLACEMENT
+            # =====================================================
+
+            if sous_type_depense == "deplacement":
+
+                un_devis_obligatoire = False
+                deux_devis_obligatoires = False
 
             devis_necessaire = 1 if (
                 un_devis_obligatoire
-                or trois_devis_obligatoires
+                or deux_devis_obligatoires
             ) else 0
 
             # =====================================================
             # CONTROLES METIER
             # =====================================================
 
-            if un_devis_obligatoire and nb_devis < 1:
+            if un_devis_obligatoire and nb_fichiers_devis < 1:
 
                 flash(
                     "⚠️ Au moins 1 devis est obligatoire.",
@@ -515,22 +659,28 @@ def nouvelle_depense():
                     "engagements/nouvelle_depense.html",
                     poles=poles,
                     paliers=paliers,
+                    benevoles=benevoles,
                     subventions=subventions
                 )
 
-            if trois_devis_obligatoires and nb_devis < 3:
 
-                flash(
-                    "⚠️ Minimum 3 devis obligatoires.",
-                    "warning"
-                )
+            if deux_devis_obligatoires:
 
-                return render_template(
-                    "engagements/nouvelle_depense.html",
-                    poles=poles,
-                    paliers=paliers,
-                    subventions=subventions
-                )
+                if not devis1 or not devis1.filename \
+                or not devis2 or not devis2.filename:
+
+                    flash(
+                        "⚠️ Les deux devis PDF sont obligatoires.",
+                        "warning"
+                    )
+
+                    return render_template(
+                        "engagements/nouvelle_depense.html",
+                        poles=poles,
+                        paliers=paliers,
+                        benevoles=benevoles,
+                        subventions=subventions
+                    )
 
             # =====================================================
             # WORKFLOW
@@ -645,7 +795,7 @@ def nouvelle_depense():
                 "engagements",
                 str(engagement_id)
             )
-            
+
             os.makedirs(upload_dir, exist_ok=True)
 
             for file in files:
@@ -725,6 +875,67 @@ def nouvelle_depense():
                     f"Ajout fichier : {filename}",
                     current_user.id,
                     current_user.email
+                ))
+
+            # =====================================================
+            # STOCKAGE DOCUMENTS COMPLEMENTAIRES
+            # =====================================================
+
+            for file in documents_complementaires:
+
+                if not file or not file.filename:
+                    continue
+
+                filename = secure_filename(
+                    file.filename
+                )
+
+                extension = os.path.splitext(
+                    filename
+                )[1].lower()
+
+                if extension not in [
+                    ".pdf",
+                    ".jpg",
+                    ".jpeg",
+                    ".png"
+                ]:
+                    continue
+
+                unique_name = (
+                    f"{uuid.uuid4()}_{filename}"
+                )
+
+                filepath = os.path.join(
+                    upload_dir,
+                    unique_name
+                )
+
+                file.save(filepath)
+
+                conn.execute("""
+                    INSERT INTO engagements_fichiers (
+                        engagement_id,
+                        type_fichier,
+                        nom_original,
+                        nom_stockage,
+                        chemin_fichier,
+                        taille,
+                        mime_type,
+                        uploaded_by,
+                        uploaded_le
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    engagement_id,
+                    "justificatif",
+                    filename,
+                    unique_name,
+                    filepath,
+                    os.path.getsize(filepath),
+                    file.mimetype,
+                    current_user.id,
+                    datetime.now().isoformat()
                 ))
 
             # ============================
@@ -850,6 +1061,12 @@ def nouvelle_depense():
 
                     montant_total,
 
+                    date_frais,
+                    kms,
+                    peages,
+                    repas,
+                    commentaire_frais,
+
                     attestation_comparaison,
 
                     devis_necessaire,
@@ -882,7 +1099,7 @@ def nouvelle_depense():
 
                     ?, ?, ?, ?, ?,
 
-                    ?,
+                    ?, ?, ?, ?, ?, ?,
 
                     ?
 
@@ -898,6 +1115,12 @@ def nouvelle_depense():
                 subvention_id,
 
                 str(montant),
+
+                date_frais,
+                kms,
+                peages,
+                repas,
+                commentaire_frais,
 
                 attestation,
 
@@ -930,6 +1153,25 @@ def nouvelle_depense():
                 sous_type_depense
 
             ))
+
+            # =====================================================
+            # GENERATION AUTO NOTE DE FRAIS
+            # =====================================================
+
+            if sous_type_depense == "deplacement":
+
+                from .routes_notes_frais import generer_note_frais_auto
+
+                generer_note_frais_auto(
+                    conn=conn,
+                    engagement_id=engagement_id,
+                    objet=objet,
+                    date_frais=date_frais,
+                    kms=kms,
+                    peages=peages,
+                    repas=repas,
+                    commentaire=""
+                )
 
             conn.commit()
 
@@ -1136,4 +1378,3 @@ def detail_engagement(engagement_id):
         peut_valider_pole=peut_valider_pole,
         peut_valider_presidence=peut_valider_presidence
     )
-

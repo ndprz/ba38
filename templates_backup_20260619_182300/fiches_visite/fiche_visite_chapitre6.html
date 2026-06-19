@@ -1,0 +1,221 @@
+<div class="card mb-3">
+  <div class="card-header bg-warning">6) Réglementation</div>
+  <div class="card-body">
+    <p class="text-muted">
+      Vérification de la conformité réglementaire (DREETS, hygiène, sécurité alimentaire, FSE+).
+    </p>
+
+    <h6 class="fw-bold fst-italic text-warning" style="text-decoration: underline;">Pour tous les partenaires</h6>
+
+    <!-- Date contrôle DREETS -->
+    <div>Date du dernier contrôle de la DREETS</div>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("date_controle_dreets","") }}</p>
+    {% else %}
+      <input type="date" class="form-control mb-2" name="date_controle_dreets"
+             value="{{ fiche.get('date_controle_dreets','') }}">
+    {% endif %}
+
+    <!-- Procédure éligibilité -->
+    <div>Existence d’une procédure d’éligibilité des personnes accueillies ?</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("criteres_d_eligibilite_de_l_aide_par_ecrit","") }}</div>
+    {% else %}
+      <select class="form-select mb-2" name="criteres_d_eligibilite_de_l_aide_par_ecrit">
+        <option value="" {% if not fiche.get('criteres_d_eligibilite_de_l_aide_par_ecrit') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('criteres_d_eligibilite_de_l_aide_par_ecrit')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('criteres_d_eligibilite_de_l_aide_par_ecrit')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <!-- GBPH -->
+    <div>Le GBPH est-il porté à la connaissance des collaborateurs concernés ?</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("gbph","") }}</div>
+    {% else %}
+      <select class="form-select mb-2" name="gbph">
+        <option value="" {% if not fiche.get('gbph') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('gbph')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('gbph')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <!-- Thermomètres -->
+    <div>Des thermomètres sont-ils présents dans les frigos et congélateurs ?</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("thermometres_frigos_congels","") }}</div>
+    {% else %}
+      <select class="form-select mb-2" name="thermometres_frigos_congels">
+        <option value="" {% if not fiche.get('thermometres_frigos_congels') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('thermometres_frigos_congels')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('thermometres_frigos_congels')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <!-- Relevés de températures -->
+    <div>Les relevés de températures sont-ils faits, disponibles et archivés ?</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("releves_temperatures","") }}</div>
+    {% else %}
+      <select class="form-select mb-2" name="releves_temperatures">
+        <option value="" {% if not fiche.get('releves_temperatures') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('releves_temperatures')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('releves_temperatures')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <!-- Procédure DLC/DDM -->
+    <div>La procédure de vérification DLC/DDM est-elle appliquée ?</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("procedure_verif_dlc_ddm","") }}</div>
+    {% else %}
+      <select class="form-select mb-2" name="procedure_verif_dlc_ddm">
+        <option value="" {% if not fiche.get('procedure_verif_dlc_ddm') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('procedure_verif_dlc_ddm')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('procedure_verif_dlc_ddm')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <!-- Rotation produits -->
+    <div>La rotation des produits (PPPS = 1er périmé, 1er sorti) est-elle appliquée ?</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("rotation_produits_appliquee","") }}</div>
+    {% else %}
+      <select class="form-select mb-2" name="rotation_produits_appliquee">
+        <option value="" {% if not fiche.get('rotation_produits_appliquee') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('rotation_produits_appliquee')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('rotation_produits_appliquee')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <!-- Nettoyage frigos/congels -->
+    <div>Les dates de nettoyage des frigos et congélateurs sont-elles relevées ?</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("date_nettoyage_frigo_congels","") }}</div>
+    {% else %}
+      <select class="form-select mb-2" name="date_nettoyage_frigo_congels">
+        <option value="" {% if not fiche.get('date_nettoyage_frigo_congels') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('date_nettoyage_frigo_congels')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('date_nettoyage_frigo_congels')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <h6 class="fw-bold fst-italic text-warning" style="text-decoration: underline;">Pour les partenaires recevant des denrées FSE+</h6>
+
+    <p class="fst-italic" style="font-size: 0.8rem; margin-top: 5px;">
+      Le Fonds Social Européen (FSE) est un programme financé par l’Union européenne, renouvelé tous les 7 ans. 
+      Grâce à ce programme, les partenaires qui le souhaitent, par le biais du réseau des Banques Alimentaires, 
+      peuvent bénéficier de produits alimentaires achetés par FranceAgrimer et qui doivent être distribués gratuitement 
+      aux personnes en situation de précarité.<br>
+      La dotation FSE+ est assortie d’une obligation de respect de 8 lignes directrices. À ce titre, la FFBA, 
+      les Banques Alimentaires, les associations et CCAS partenaires sont responsables de la bonne gestion des produits FSE+ 
+      et jusqu’au bout de la chaîne de distribution.
+    </p>
+
+    <!-- Contrôle FranceAgriMer -->
+    <div>Date du dernier contrôle FranceAgriMer</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("date_controle_franceagrimer","") }}</div>
+    {% else %}
+      <input type="date" class="form-control mb-2" name="date_controle_franceagrimer"
+             value="{{ fiche.get('date_controle_franceagrimer','') }}">
+    {% endif %}
+
+    <!-- Livret procédures FSE+ -->
+    <div>Le livret des procédures FSE+ est rempli et signé</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("livret_procedures_fse","") }}</div>
+    {% else %}
+      <select class="form-select mb-2" name="livret_procedures_fse">
+        <option value="" {% if not fiche.get('livret_procedures_fse') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('livret_procedures_fse')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('livret_procedures_fse')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <!-- Affiche FSE+ -->
+    <div>Présence de l’affiche FSE+</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("affiche_fse","") }}</div>
+    {% else %}
+      <select class="form-select mb-2" name="affiche_fse">
+        <option value="" {% if not fiche.get('affiche_fse') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('affiche_fse')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('affiche_fse')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <!-- Gratuité FSE+ -->
+    <div>Gratuité des denrées FSE+</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("gratuite_fse","") }}</div>
+    {% else %}
+      <select class="form-select mb-2" name="gratuite_fse">
+        <option value="" {% if not fiche.get('gratuite_fse') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('gratuite_fse')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('gratuite_fse')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <!-- Procédure écrite règles hygiène -->
+    <div>Procédures écrites sur les règles d'hygiène et de sécurité alimentaire</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("procedure_ecrite_hygiene_securite","") }}</div>
+    {% else %}
+      <select class="form-select mb-2" name="procedure_ecrite_hygiene_securite">
+        <option value="" {% if not fiche.get('procedure_ecrite_hygiene_securite') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('procedure_ecrite_hygiene_securite')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('procedure_ecrite_hygiene_securite')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <!-- Comptabilite matière -->
+    <div>Comptabilité matière (entrées, sorties et inventaires)</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("comptabilite_matiere","") }}</div>
+    {% else %}
+      <select class="form-select mb-2" name="comptabilite_matiere">
+        <option value="" {% if not fiche.get('comptabilite_matiere') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('comptabilite_matiere')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('comptabilite_matiere')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <!-- Transmission indicateurs Etat -->
+    <div>Transmission des indicateurs Etat</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("transmission_indicateurs_etat","") }}</div>
+    {% else %}
+      <select class="form-select mb-2" name="transmission_indicateurs_etat">
+        <option value="" {% if not fiche.get('transmission_indicateurs_etat') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('transmission_indicateurs_etat')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('transmission_indicateurs_etat')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <!-- Procedure conserv. documents FSE+ -->
+    <div>Procédure de conservation de tous les documents liés à la gestion du FSE+ (conserver 7 ans : BL, comptabilité matière, relevés des températures…)</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("procedure_conservation_gestion_fse_7ans","") }}</div>
+    {% else %}
+      <select class="form-select mb-2" name="procedure_conservation_gestion_fse_7ans">
+        <option value="" {% if not fiche.get('procedure_conservation_gestion_fse_7ans') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('procedure_conservation_gestion_fse_7ans')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('procedure_conservation_gestion_fse_7ans')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <!-- Tests gustatifs -->
+    <div>Les tests gustatifs pour les produits DDM dépassés sont-ils effectués ? Si oui, à quelle fréquence ?</div>
+    {% if lecture_seule %}
+      <div class="answer">{{ fiche.get("test_gustatifs","") }}</div>
+    {% else %}
+      <select class="form-select mb-2" name="test_gustatifs">
+        <option value="" {% if not fiche.get('test_gustatifs') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('test_gustatifs')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('test_gustatifs')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+  </div>
+</div>

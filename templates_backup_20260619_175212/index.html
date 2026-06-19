@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Accueil{% endblock %}
+
+{% block content %}
+
+<!-- =====================================================
+     MODE TEST
+===================================================== -->
+{% if session.get('test_user') %}
+<form action="{{ url_for('unset_test_user') }}" method="post" style="display: inline;">
+    <button type="submit" class="btn btn-danger mb-3">
+        🔴 Désactiver le Mode Test
+    </button>
+</form>
+{% else %}
+<form action="{{ url_for('set_test_user') }}" method="post" style="display: inline;">
+    <button type="submit" class="btn btn-success mb-3">
+        🟢 Activer le Mode Test
+    </button>
+</form>
+{% endif %}
+
+
+<!-- =====================================================
+     MENU DYNAMIQUE (GROUPES + MODULES)
+===================================================== -->
+
+{% for groupe, items in main_menu.items() %}
+
+<div class="mb-2">
+
+    <!-- ================= TITRE DU GROUPE ================= -->
+    <h5 class="mb-1">
+        {{ groupe }}
+    </h5>
+
+    <!-- ================= CARTES MODULES ================= -->
+    <div class="row g-2">
+
+        {% for item in items %}
+
+        <!-- =====================================================
+             CARTE MODULE
+             - Cliquable si endpoint existe
+             - Grisée sinon
+        ====================================================== -->
+
+        <div class="col-6 col-md-4 col-lg-3">
+
+            {% if item.endpoint %}
+            <a href="{{ url_for(item.endpoint) }}" class="menu-card-link">
+                <div class="card shadow-sm menu-card" data-group="{{ groupe|lower|trim }}">
+                    {% else %}
+                    <div class="card shadow-sm menu-card disabled">
+                        {% endif %}
+
+                        <div class="card-body d-flex flex-column justify-content-center align-items-center">
+
+                            <div class="menu-icon mb-2">
+                                {{ item.icon }}
+                            </div>
+
+                            <div class="menu-label">
+                                {{ item.label }}
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                    {% if item.endpoint %}
+            </a>
+            {% endif %}
+
+        </div>
+
+        {% endfor %}
+
+    </div>
+
+</div>
+
+{% endfor %}
+
+
+<!-- =====================================================
+     ADMIN
+===================================================== -->
+
+{% if g.user_role == 'admin' %}
+<div class="mt-4">
+
+    <h5>⚙️ Administration</h5>
+
+    <div class="d-flex gap-2 flex-wrap">
+
+        <a href="{{ url_for('debug_bp.admin_scripts') }}" class="btn btn-info btn-sm">
+            📊 Admin Scripts
+        </a>
+
+        <a href="{{ url_for('debug_bp.admin_conv_chatgpt') }}" class="btn btn-info btn-sm">
+            💬 Conversations ChatGPT
+        </a>
+
+    </div>
+
+</div>
+{% endif %}
+
+
+<!-- =====================================================
+     INFOS UTILISATEUR
+===================================================== -->
+
+<div class="mt-2 small text-muted">
+
+    {% if current_user.is_authenticated %}
+    <p>Email : {{ current_user.email }}</p>
+    <p>Nom d'utilisateur : {{ current_user.username }}</p>
+    {% else %}
+    <p>Vous n'êtes pas connecté.</p>
+    {% endif %}
+
+</div>
+
+{% endblock %}

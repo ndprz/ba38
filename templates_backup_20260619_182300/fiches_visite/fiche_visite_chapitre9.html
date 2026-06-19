@@ -1,0 +1,81 @@
+<div class="card mb-3">
+  <div class="card-header bg-warning">9) Le plan d’action</div>
+  <div class="card-body">
+
+    <label>Vos points forts :</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("plan_action_points_forts","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-3" name="plan_action_points_forts">{{ fiche.get("plan_action_points_forts","") }}</textarea>
+    {% endif %}
+
+    <label>Plan d’action :</label>
+    <table class="table table-bordered table-sm align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Action évolutive ou corrective</th>
+          <th>Acteur (partenaire/BA)</th>
+          <th>Échéance</th>
+          <th>Réalisé ?</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for i in range(1,11) %}
+        <tr>
+          <td>
+            {% if lecture_seule %}
+              <p>{{ fiche.get("plan_action_" ~ i, "") }}</p>
+            {% else %}
+              <input type="text" class="form-control" name="plan_action_{{i}}" value="{{ fiche.get('plan_action_' ~ i, '') }}">
+            {% endif %}
+          </td>
+          <td>
+            {% if lecture_seule %}
+              <p>{{ fiche.get("plan_action_" ~ i ~ "_acteur", "") }}</p>
+            {% else %}
+              <input type="text" class="form-control" name="plan_action_{{i}}_acteur" value="{{ fiche.get('plan_action_' ~ i ~ '_acteur', '') }}">
+            {% endif %}
+          </td>
+          <td>
+            {% if lecture_seule %}
+              <p>{{ fiche.get("plan_action_" ~ i ~ "_echeance", "") }}</p>
+            {% else %}
+              <input type="date" class="form-control" name="plan_action_{{i}}_echeance" value="{{ fiche.get('plan_action_' ~ i ~ '_echeance', '') }}">
+            {% endif %}
+          </td>
+          <td>
+            {% if lecture_seule %}
+              <p>{{ fiche.get("plan_action_" ~ i ~ "_realise", "") }}</p>
+            {% else %}
+              <select class="form-select" name="plan_action_{{i}}_realise">
+                <option value="" {% if not fiche.get('plan_action_' ~ i ~ '_realise') %}selected{% endif %}></option>
+                <option value="oui" {% if fiche.get('plan_action_' ~ i ~ '_realise')=='oui' %}selected{% endif %}>Oui</option>
+                <option value="non" {% if fiche.get('plan_action_' ~ i ~ '_realise')=='non' %}selected{% endif %}>Non</option>
+              </select>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <label>Remarques / Observations diverses :</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("remarques_observations_diverses","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-3" name="remarques_observations_diverses">{{ fiche.get("remarques_observations_diverses","") }}</textarea>
+    {% endif %}
+
+    <label>La visite a eu lieu :</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("visite_pendant_ou_hors_distribution","") }}</p>
+    {% else %}
+      <select class="form-select" name="visite_pendant_ou_hors_distribution">
+        <option value="" {% if not fiche.get('visite_pendant_ou_hors_distribution') %}selected{% endif %}></option>
+        <option value="pendant" {% if fiche.get('visite_pendant_ou_hors_distribution')=='pendant' %}selected{% endif %}>Pendant distribution</option>
+        <option value="hors" {% if fiche.get('visite_pendant_ou_hors_distribution')=='hors' %}selected{% endif %}>Hors distribution</option>
+      </select>
+    {% endif %}
+
+  </div>
+</div>

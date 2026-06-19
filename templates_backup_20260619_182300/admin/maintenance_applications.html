@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>⚙️ Maintenance des applications</h2>
+
+<form method="post">
+
+<table class="table table-bordered table-sm">
+    <thead>
+        <tr>
+            <th>Code (technique)</th>
+            <th>Label</th>
+            <th>Ordre</th>
+            <th>🗑️</th>
+        </tr>
+    </thead>
+    <tbody>
+
+    {% for row in rows %}
+    <tr>
+        <td>
+            <input name="code_{{ row.id }}"
+                class="form-control"
+                value="{{ row.code }}"
+                {% if row.code in used_codes %}disabled{% endif %}>
+            <td>
+                {{ row.code }}
+                {% if row.code in used_codes %}
+                    <span class="badge bg-warning">utilisée</span>
+                {% endif %}
+            </td>
+        </td>
+
+        <td>
+            <input name="label_{{ row.id }}" class="form-control"
+                   value="{{ row.label }}">
+        </td>
+
+        <td>
+            <input name="ordre_{{ row.id }}" class="form-control"
+                   value="{{ row.ordre }}">
+        </td>
+
+        <td>
+            <button name="action" value="delete"
+                    onclick="this.form.id.value='{{ row.id }}'"
+                    class="btn btn-danger btn-sm">
+                🗑️
+            </button>
+        </td>
+    </tr>
+    {% endfor %}
+
+    </tbody>
+</table>
+
+<input type="hidden" name="id">
+
+<button name="action" value="update" class="btn btn-primary">
+    💾 Enregistrer
+</button>
+
+</form>
+
+<hr>
+
+<h4>➕ Ajouter une application</h4>
+
+<form method="post" class="row g-2">
+
+    <input type="hidden" name="action" value="add">
+
+    <div class="col-md-3">
+        <input name="code" class="form-control"
+               placeholder="code (ex: associations)">
+    </div>
+
+    <div class="col-md-4">
+        <input name="label" class="form-control"
+               placeholder="label (ex: Associations)">
+    </div>
+
+    <div class="col-md-2">
+        <input name="ordre" class="form-control" value="0">
+    </div>
+
+    <div class="col-md-2">
+        <button class="btn btn-success">➕ Ajouter</button>
+    </div>
+
+</form>
+
+{% endblock %}

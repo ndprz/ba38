@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Conversations ChatGPT</h2>
+    {% if conversations %}
+    <div class="list-group">
+        {% for conv in conversations %}
+        <div class="list-group-item">
+            <h5 class="mb-1">{{ conv.date }}</h5>
+            <pre class="mb-1">{{ conv.content }}</pre>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        Aucune conversation disponible. Veuillez importer un fichier JSON de conversations ChatGPT.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}{{ file }}{% endblock %}
+
+{% block content %}
+
+<div class="container mt-4" style="max-width: 1000px;">
+
+    <a href="{{ url_for('admin.documentation') }}"
+       class="btn btn-secondary mb-3">
+        ⬅ Retour
+    </a>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+
+            <div class="markdown-content">
+                {{ content | safe }}
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<style>
+.markdown-content h1 { margin-top: 20px; }
+.markdown-content h2 { margin-top: 20px; }
+.markdown-content pre {
+    background: #f8f9fa;
+    padding: 10px;
+    border-radius: 5px;
+}
+</style>
+
+{% endblock %}

@@ -44,7 +44,8 @@ def valider_engagement_pole(engagement_id):
         engagement = conn.execute("""
             SELECT
                 e.*,
-                d.montant_total
+                d.montant_total,
+                d.sous_type_depense
             FROM engagements e
 
             LEFT JOIN engagements_depenses d
@@ -119,7 +120,19 @@ def valider_engagement_pole(engagement_id):
 
         ancien_statut = engagement["statut"]
 
-        if palier["accord_presidence"] == "o":
+        # -----------------------------------------------------
+        # Déplacement
+        # -----------------------------------------------------
+
+        if engagement["sous_type_depense"] == "deplacement":
+
+            nouveau_statut = "a_payer"
+
+        # -----------------------------------------------------
+        # Workflow normal
+        # -----------------------------------------------------
+
+        elif palier["accord_presidence"] == "o":
 
             nouveau_statut = "validation_presidence"
 
@@ -167,6 +180,95 @@ def valider_engagement_pole(engagement_id):
             current_user.email
         ))
 
+        if engagement["sous_type_depense"] == "deplacement":
+
+            conn.execute("""
+                INSERT INTO engagements_workflow (
+                    engagement_id,
+                    action,
+                    ancien_statut,
+                    nouveau_statut,
+                    commentaire,
+                    user_id,
+                    user_email
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                engagement_id,
+                "transmission_auto_tresorerie",
+                "validation_pole",
+                "a_payer",
+                "Transmission automatique à la trésorerie (déplacement)",
+                current_user.id,
+                current_user.email
+            ))
+
+
+            # =====================================================
+            # MAIL TRESORERIE AUTO (DEPLACEMENT)
+            # =====================================================
+
+            if engagement["sous_type_depense"] == "deplacement":
+
+                tresorier = conn.execute("""
+                    SELECT
+                        u.email AS tresorier_email,
+                        p.nom_affiche
+
+                    FROM engagement_poles p
+
+                    LEFT JOIN users u
+                        ON u.id = p.tresorier_user_id
+
+                    WHERE p.id = ?
+                """, (
+                    engagement["pole_id"],
+                )).fetchone()
+
+                if tresorier and tresorier["tresorier_email"]:
+
+                    lien = url_for(
+                        "engagements.detail_engagement",
+                        engagement_id=engagement_id,
+                        _external=True
+                    )
+
+                    sujet = (
+                        f"Engagement prêt pour règlement "
+                        f"#{engagement_id}"
+                    )
+
+                    texte = f"""
+            Bonjour,
+
+            Une note de frais déplacement est prête
+            pour remboursement.
+
+            Engagement :
+            #{engagement_id}
+
+            Montant :
+            {montant:.2f} €
+
+            Lien :
+            {lien}
+
+            ---
+            BA38
+            """
+
+                    envoyer_mail(
+                        sujet=sujet,
+                        destinataires=[
+                            tresorier["tresorier_email"]
+                        ],
+                        texte=texte
+                    )
+
+                    write_log(
+                        f"[ENGAGEMENTS] Mail trésorerie envoyé à "
+                        f"{tresorier['tresorier_email']}"
+                    )
 
         conn.commit()
 
@@ -439,6 +541,20 @@ def refuser_engagement(engagement_id):
 
             current_user.id,
             current_user.email
+        ))
+
+        conn.execute("""
+            INSERT INTO engagements_commentaires (
+                engagement_id,
+                commentaire,
+                user_id,
+                cree_le
+            )
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, (
+            engagement_id,
+            f"REFUS : {motif}",
+            current_user.id
         ))
 
         conn.commit()

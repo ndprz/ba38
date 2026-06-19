@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h3>📄 Dupliquer un modèle</h3>
+
+<div class="card p-3">
+
+    <p><strong>Modèle source :</strong> {{ source.nom_type }}</p>
+
+    <form method="post">
+
+        <input type="text"
+            class="form-control"
+            value="{{ source.nom_type }} (copie)"
+            required>
+
+        <div class="mb-3">
+            <label>Nom du nouveau modèle</label>
+            <input type="text" 
+                name="nom_type" 
+                class="form-control" 
+                value="{{ source.nom_type }} (copie)"
+                autofocus
+                required>
+        </div>
+
+        <select name="id_association" class="form-select" required>
+            {% for a in associations %}
+                <option value="{{ a.id }}"
+                    {% if a.id == source.id_association %}selected{% endif %}>
+                    {{ a.nom_association }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <select name="id_magasin" class="form-select" required>
+            {% for f in fournisseurs %}
+                <option value="{{ f.id }}"
+                    {% if f.id == source.id_magasin %}selected{% endif %}>
+                    {{ f.nom }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <button class="btn btn-success">Dupliquer</button>
+        <a href="{{ url_for('distribution.ramasse_types_list') }}" class="btn btn-secondary">Retour</a>
+
+    </form>
+
+</div>
+
+{% endblock %}

@@ -36,6 +36,8 @@ from utils import date_fr
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, g, current_app, send_from_directory, abort
 from flask_login import current_user, LoginManager, UserMixin, login_user, logout_user, login_required
 from flask_session import Session
+from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFError
 from wtforms import StringField, PasswordField, SubmitField, SelectField
 from wtforms.validators import Optional, DataRequired, Email, Length, EqualTo, ValidationError
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -90,6 +92,14 @@ from ba38_applications import applications_bp
 
 # Initialisation Flask
 app = Flask(__name__)
+
+# 🔒 Protection CSRF globale
+csrf = CSRFProtect(app)
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(e):
+    flash("Session expirée ou requête invalide. Veuillez réessayer.", "warning")
+    return redirect(request.referrer or url_for('login')), 400
 
 app.jinja_env.filters["date_fr"] = date_fr
 

@@ -1,0 +1,218 @@
+<div class="card mb-3">
+  <div class="card-header bg-warning">8) La relation partenariale</div>
+  <div class="card-body">
+    <p class="text-muted">Retour d’expérience et satisfaction concernant différents aspects de la relation avec la BA.</p>
+
+    <!-- Accompagnement de la BA -->
+    <h6 class="fw-bold fst-italic text-warning" style="text-decoration: underline;">Accompagnement de la Banque Alimentaire</h6>
+
+    <label>Que pensez-vous de l’accompagnement de la Banque Alimentaire ? (visite, réunion, contact…)</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("avis_accompagnement_ba","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="avis_accompagnement_ba">{{ fiche.get("avis_accompagnement_ba","") }}</textarea>
+    {% endif %}
+
+    <label>Êtes-vous satisfaits de la fréquence des contacts et rencontres proposées par la BA ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("avis_frequence_contacts_ba","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="avis_frequence_contacts_ba">{{ fiche.get("avis_frequence_contacts_ba","") }}</textarea>
+    {% endif %}
+
+    <!-- Entrepôt / Commandes -->
+    <h6 class="fw-bold fst-italic text-warning" style="text-decoration: underline;">Entrepôt / Prise de commande / Livraison</h6>
+
+    <label>Remarques concernant les échanges et l’accueil au sein de la BA :</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("avis_relations_commandes_livraison","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="avis_relations_commandes_livraison">{{ fiche.get("avis_relations_commandes_livraison","") }}</textarea>
+    {% endif %}
+
+    <label>Que pensez-vous du fonctionnement du passage de commande auprès de la BA ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("avis_passge_de_commandes","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="avis_passge_de_commandes">{{ fiche.get("avis_passge_de_commandes","") }}</textarea>
+    {% endif %}
+
+    <label>Avez-vous des besoins spécifiques en termes de retrait/livraison des commandes ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("besoins_specifiques_retraits_livraisons","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="besoins_specifiques_retraits_livraisons">{{ fiche.get("besoins_specifiques_retraits_livraisons","") }}</textarea>
+    {% endif %}
+
+    <!-- Denrées alimentaires -->
+    <h6 class="fw-bold fst-italic text-warning" style="text-decoration: underline;">Denrées alimentaires</h6>
+
+    <table class="table table-bordered table-sm align-middle mt-2">
+      <thead class="table-light">
+        <tr>
+          <th style="width: 20%;">Catégorie</th>
+          <th style="width: 40%;">Qualité</th>
+          <th style="width: 40%;">Quantité</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set categories = {
+          'sec': 'Produits Secs',
+          'frais': 'Produits Frais (Fruits/Légumes)',
+          'surgeles': 'Produits Surgelés'
+        } %}
+        {% for key, label in categories.items() %}
+        <tr>
+          <td>{{ label }}</td>
+          <td>
+            {% if lecture_seule %}
+              <p>{{ fiche.get("satisfaction_qualite_" ~ key, "") }}</p>
+            {% else %}
+              <select class="form-select" name="satisfaction_qualite_{{key}}">
+                <option value="" {% if not fiche.get("satisfaction_qualite_" ~ key) %}selected{% endif %}></option>
+                <option value="satisfaisant" {% if fiche.get("satisfaction_qualite_" ~ key)=='satisfaisant' %}selected{% endif %}>Satisfaisant</option>
+                <option value="moyen" {% if fiche.get("satisfaction_qualite_" ~ key)=='moyen' %}selected{% endif %}>Moyen</option>
+                <option value="insuffisant" {% if fiche.get("satisfaction_qualite_" ~ key)=='insuffisant' %}selected{% endif %}>Insuffisant</option>
+              </select>
+            {% endif %}
+          </td>
+          <td>
+            {% if lecture_seule %}
+              <p>{{ fiche.get("satisfaction_quantite_" ~ key, "") }}</p>
+            {% else %}
+              <select class="form-select" name="satisfaction_quantite_{{key}}">
+                <option value="" {% if not fiche.get("satisfaction_quantite_" ~ key) %}selected{% endif %}></option>
+                <option value="suffisante" {% if fiche.get("satisfaction_quantite_" ~ key)=='suffisante' %}selected{% endif %}>Suffisante</option>
+                <option value="moyenne" {% if fiche.get("satisfaction_quantite_" ~ key)=='moyenne' %}selected{% endif %}>Moyenne</option>
+                <option value="insuffisante" {% if fiche.get("satisfaction_quantite_" ~ key)=='insuffisante' %}selected{% endif %}>Insuffisante</option>
+              </select>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Autres approvisionnements -->
+    <h6 class="fw-bold fst-italic text-warning" style="text-decoration: underline;">Autres approvisionnements</h6>
+
+    {% set autres = {
+      'autres_appros_ramasse': 'Ramasse',
+      'convention_delegation_retrait': 'Convention de délégation de retrait',
+      'proxidon': 'Proxidon',
+      'achats': 'Achats'
+    } %}
+    {% for field, label in autres.items() %}
+    <div class="mb-3">
+      <label>{{ label }}</label>
+      {% if lecture_seule %}
+        <p>{{ fiche.get(field,"") }}</p>
+      {% else %}
+        <select class="form-select" name="{{field}}">
+          <option value="" {% if not fiche.get(field) %}selected{% endif %}></option>
+          <option value="oui" {% if fiche.get(field)=='oui' %}selected{% endif %}>Oui</option>
+          <option value="non" {% if fiche.get(field)=='non' %}selected{% endif %}>Non</option>
+        </select>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <label>Souhaitez-vous bénéficier des produits non-alimentaires ? Si oui, lesquels ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("souhaits_produits_non_alimentaires","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="souhaits_produits_non_alimentaires">{{ fiche.get("souhaits_produits_non_alimentaires","") }}</textarea>
+    {% endif %}
+
+    <!-- Collecte nationale -->
+    <h6 class="fw-bold fst-italic text-warning" style="text-decoration: underline;">Collecte nationale</h6>
+
+    <label>Participez-vous à la Collecte nationale ? Si non, pourquoi ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("collecte_participation_commentaires","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="collecte_participation_commentaires">{{ fiche.get("collecte_participation_commentaires","") }}</textarea>
+    {% endif %}
+
+    <label>De quel type de produit avez-vous besoin lors de la Collecte ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("collecte_besoins_produits","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="collecte_besoins_produits">{{ fiche.get("collecte_besoins_produits","") }}</textarea>
+    {% endif %}
+
+    <!-- Formation -->
+    <h6 class="fw-bold fst-italic text-warning" style="text-decoration: underline;">Formation</h6>
+
+    <label>Votre équipe a-t-elle participé à des formations depuis notre dernière rencontre ? Souhaitez-vous en organiser ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("formations","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="formations">{{ fiche.get("formations","") }}</textarea>
+    {% endif %}
+
+    <label>Quand a eu lieu la dernière formation TASA / CASA ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("formation_tasa_casa","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="formation_tasa_casa">{{ fiche.get("formation_tasa_casa","") }}</textarea>
+    {% endif %}
+
+    <label>Avez-vous d’autres besoins en formation ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("formations_autres","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="formations_autres">{{ fiche.get("formations_autres","") }}</textarea>
+    {% endif %}
+
+    <!-- Accompagnement social -->
+    <h6 class="fw-bold fst-italic text-warning" style="text-decoration: underline;">Accompagnement social</h6>
+
+    <label>Êtes-vous intéressé par la formation « à l’écoute et à l’accompagnement » ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("formation_ecoute","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="formation_ecoute">{{ fiche.get("formation_ecoute","") }}</textarea>
+    {% endif %}
+
+    <label>Êtes-vous intéressé par des ateliers « Bons Gestes & Bonne Assiette » ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("formation_ateliers_bon_gestes_bonne_assiette","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="formation_ateliers_bon_gestes_bonne_assiette">{{ fiche.get("formation_ateliers_bon_gestes_bonne_assiette","") }}</textarea>
+    {% endif %}
+
+    <!-- Autres services -->
+    <h6 class="fw-bold fst-italic text-warning" style="text-decoration: underline;">Autres services</h6>
+
+    <label>Avez-vous mis en place Proxidon ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("proxidon_mis_en_place","") }}</p>
+    {% else %}
+      <select class="form-select mb-2" name="proxidon_mis_en_place">
+        <option value="" {% if not fiche.get('proxidon_mis_en_place') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('proxidon_mis_en_place')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('proxidon_mis_en_place')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <label>Êtes-vous satisfait des produits issus de l’atelier de transformation ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("satisfaction_produits_atelier_transformation","") }}</p>
+    {% else %}
+      <select class="form-select mb-2" name="satisfaction_produits_atelier_transformation">
+        <option value="" {% if not fiche.get('satisfaction_produits_atelier_transformation') %}selected{% endif %}></option>
+        <option value="oui" {% if fiche.get('satisfaction_produits_atelier_transformation')=='oui' %}selected{% endif %}>Oui</option>
+        <option value="non" {% if fiche.get('satisfaction_produits_atelier_transformation')=='non' %}selected{% endif %}>Non</option>
+      </select>
+    {% endif %}
+
+    <label>De manière générale, avez-vous des remarques à faire partager à la Banque Alimentaire ?</label>
+    {% if lecture_seule %}
+      <p>{{ fiche.get("remarques_diverses","") }}</p>
+    {% else %}
+      <textarea class="form-control mb-2" name="remarques_diverses">{{ fiche.get("remarques_diverses","") }}</textarea>
+    {% endif %}
+
+  </div>
+</div>

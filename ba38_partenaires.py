@@ -147,6 +147,13 @@ def partenaires_tabulator():
                 ORDER BY nom_association
             """
 
+            write_log(
+                f"[CAR FILTER] user={current_user.username} "
+                f"role={current_user.role} "
+                f"is_car={is_car} "
+                f"voir_toutes={voir_toutes}"
+            )
+
             cursor.execute(query, (car_value,))
 
         else:
@@ -161,6 +168,10 @@ def partenaires_tabulator():
             cursor.execute(query)
 
         rows = cursor.fetchall()
+
+        write_log(
+            f"[CAR FILTER] nb associations={len(rows)}"
+        )
 
         cursor.execute("""
             SELECT *
@@ -566,6 +577,21 @@ def create_partner():
             if ftype == "tel" and raw_value and not is_valid_phone(cleaned_value):
                 erreurs.append(f"Téléphone invalide dans « {fname} » ➜ « {raw_value} »")
                 champs_invalides.append(fname)
+
+            # 🔢 Validation numérique
+            if (
+                field["type_champ"] == "number"
+                and raw_value
+            ):
+                try:
+                    float(
+                        raw_value.replace(",", ".")
+                    )
+                except ValueError:
+                    erreurs.append(
+                        f"Valeur numérique invalide dans « {fname} » ➜ « {raw_value} »"
+                    )
+                    champs_invalides.append(fname)
 
         # ✅ Valeur par défaut si champ 'validite' non renseigné
         if not valeurs.get("validite"):
@@ -1160,6 +1186,23 @@ def update_partner(partner_id):
 
                     champs_invalides.append(fname)
 
+                if (
+                    field.get("type_champ") == "number"
+                    and val
+                ):
+                    try:
+                        float(
+                            val.replace(",", ".")
+                        )
+                    except ValueError:
+                        erreurs.append(
+                            f"Champ invalide dans {group} : "
+                            f"{label} ➜ « {val} » "
+                            f"n’est pas une valeur numérique valide."
+                        )
+
+                        champs_invalides.append(fname)
+
         # ========================================================
         # ERREURS VALIDATION
         # ========================================================
@@ -1471,6 +1514,12 @@ def edition_tableau_associations():
             ORDER BY display_order
         """).fetchall()
 
+        number_fields = [
+            row["field_name"]
+            for row in fields_data
+            if row["type_champ"] == "number"
+        ]
+
         grouped_fields = {}
         for row in fields_data:
             group = row["group_name"] or "Autres"
@@ -1480,6 +1529,12 @@ def edition_tableau_associations():
         oui_non_fields = [
             row["field_name"] for row in fields_data
             if row["type_champ"] == "oui_non"
+        ]
+
+        number_fields = [
+            row["field_name"]
+            for row in fields_data
+            if row["type_champ"] == "number"
         ]
 
         selected_columns = request.values.getlist("columns")
@@ -1570,6 +1625,7 @@ def edition_tableau_associations():
         selected_columns=selected_columns,
         user_role=user_role,
         oui_non_fields=oui_non_fields,
+        number_fields=number_fields,
         filtered_ids=filtered_ids
     )
 
@@ -1593,6 +1649,19 @@ def update_associations_table():
 
     total = int(request.form.get("total_rows", 0))
     columns = request.form.getlist("columns")
+
+    field_config = cursor.execute("""
+        SELECT field_name, type_champ
+        FROM field_groups
+        WHERE appli='associations'
+    """).fetchall()
+
+    field_types = {
+
+        row["field_name"]: row["type_champ"]
+
+        for row in field_config
+    }
 
     filtered_ids_raw = request.form.get(
         "filtered_ids",
@@ -1629,6 +1698,7 @@ def update_associations_table():
 
         for col in columns:
             db_key = None
+            field_type = field_types.get(col)
 
             for k in asso_dict.keys():
 
@@ -1654,6 +1724,22 @@ def update_associations_table():
                 elif "tel" in col.lower() and new_val and not is_valid_phone(new_val):
                     erreurs.append(f"Ligne {i + 1}, champ {col} : numéro de téléphone invalide « {new_val} »")
                     champs_invalides.append(col)
+
+                elif field_type == "number" and new_val:
+                    try:
+                        float(
+                            new_val.replace(",", ".")
+                        )
+                        modifications[col] = new_val
+
+                    except ValueError:
+                        erreurs.append(
+                            f"Ligne {i + 1}, champ {col} : "
+                            f"valeur numérique invalide « {new_val} »"
+                        )
+
+                        champs_invalides.append(col)
+
                 else:
                     modifications[col] = new_val if new_val else None
 

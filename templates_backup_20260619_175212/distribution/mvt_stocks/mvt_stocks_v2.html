@@ -1,0 +1,883 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Mouvements de stocks V2{% endblock %}
+
+
+{% block content %}
+
+<div id="mvt-v2-root">
+    <div class="page-container">
+        <div class="page-header">
+
+
+            <h2>📊 Mouvements de stocks – 02 vers 03 et 03 vers 02
+                {% if date_stock %}
+                <small class="text-muted">— Stock au {{ date_stock }}</small>
+                {% endif %}
+                {% if stock_warning %}
+                <div class="alert alert-danger py-2 mb-3">
+                    ⚠️ ATTENTION :
+                    le stock affiché n'est pas celui de la veille.
+
+                    La récupération automatique VIF a probablement échoué.
+                </div>
+                {% endif %}
+            </h2>
+
+            <!-- ================= FILTRES ================= -->
+            <div class="d-flex justify-content-between align-items-center mb-3">
+
+                <div>
+                    <strong>Dépôts :</strong>
+                    <span id="depotFilterBtn" style="cursor:pointer;">
+                        ⚙️ Filtrer
+                    </span>
+                </div>
+
+                {% call action_buttons() %}
+
+                    {{ action_button(
+                        "💾 Enregistrer",
+                        onclick="saveMvt()",
+                        color="success",
+                        size="sm"
+                    ) }}
+
+                    {{ action_button(
+                        "📤 Export VIF",
+                        onclick="exportVIF()",
+                        color="warning",
+                        size="sm"
+                    ) }}
+
+                    {{ action_button(
+                        "↩️ Retour Distribution",
+                        href=url_for('distribution.distribution_main'),
+                        color="secondary",
+                        size="sm"
+                    ) }}
+
+                {% endcall %}
+
+                </div>
+
+            </div>
+
+
+        <div id="filter-depot" class="filter-dropdown"></div>
+
+        <!-- ================= TABLE ================= -->
+        <div class="table-container">
+            <table class="table table-sm table-striped">
+
+                <thead>
+                    <tr>
+                        <th>Article</th>
+                        <th>libellé</th>
+                        <th>Lot</th>
+                        <th>DLC</th>
+                        <th>DDM</th>
+                        <th>Dépôt</th>
+                        <th>Kgn ERP</th>
+                        <th>Δ</th>
+                        <th>Kgn final</th>
+                        <th>Mvt Kg</th>
+                        <th>Vers dépôt</th>
+                    </tr>
+                </thead>
+
+                <tbody></tbody>
+
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- ================= STYLE ================= -->
+<style>
+.filter-dropdown {
+    position: absolute;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 12px;
+
+    min-width: 220px;
+
+    max-height: 70vh;
+    overflow: hidden;
+
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+
+    display: none;
+    z-index: 5000;
+}
+
+#mvt-v2-root {
+    display: flex;
+    flex-direction: column;
+}
+
+#mvt-v2-root .table-container {
+    overflow-y: auto;
+    position: relative; /* 🔥 important */
+}
+
+#mvt-v2-root thead th {
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    z-index: 5;
+}
+
+
+</style>
+
+<!-- ================= SCRIPT ================= -->
+<script>
+
+    let stocks = {};
+    let mouvements = [];
+    let selectedDepots = [];
+    let lastSavedNumMvt =
+    {{ last_num_mvt | tojson }};
+
+    const STORAGE_KEY = "stock_filter_depots_mvt_v2";
+
+    function formatDate(d) {
+        return d.split("-").reverse().join("/");
+    }
+
+    /* =========================================================
+    INIT
+    ========================================================= */
+    document.addEventListener("DOMContentLoaded", async () => {
+
+    const initialData = JSON.parse('{{ articles | tojson | safe }}');
+
+    console.log("INITIAL DATA :", initialData);
+
+    initStocks(initialData);
+
+    await loadExistingBrouillon();
+
+    initDepotFilter();
+
+    renderTable();
+
+
+    function getMouvementValue(article, lot, depot) {
+
+        lot = lot || "";
+
+        const m = mouvements.find(x =>
+            x.article === article &&
+            (x.lot || "") === lot &&
+            x.from === depot
+        );
+
+        return m ? m.kgn : "";
+    }
+
+    async function loadExistingBrouillon() {
+
+        if (!lastSavedNumMvt) {
+
+            console.log("Aucun brouillon existant");
+
+            computeStocks();
+
+            return;
+        }
+
+        console.log("Chargement brouillon :", lastSavedNumMvt);
+
+        const response = await fetch(
+            `/get_mvt_brouillon?num_mvt=${lastSavedNumMvt}`
+        );
+
+        const lignes = await response.json();
+
+        console.log("BROUILLON CHARGE :", lignes);
+
+        mouvements = [];
+
+        lignes.forEach(l => {
+
+            mouvements.push({
+
+                article: l.article,
+                lot: l.lot || "",
+                from: l.depot_from,
+                to: l.depot_to,
+
+                kgn:
+                    (parseFloat(l.qte_kgn || 0))
+                    +
+                    (parseFloat(l.qte_col || 0) * 0)
+                    +
+                    (parseFloat(l.qte_pal || 0) * 0)
+            });
+
+        });
+
+        computeStocks();
+        renderTable();
+
+    }
+
+    /* =========================================================
+    RENDER
+    ========================================================= */
+
+    function renderTable() {
+
+        console.log("RENDER START");
+
+        try {
+        const tbody = document.querySelector("tbody");
+        tbody.innerHTML = "";
+
+        const grouped = {};
+
+        Object.values(stocks).forEach(s => {
+
+            const matchDepot =
+                selectedDepots.length === 0 ||
+                selectedDepots.includes(
+                    String(s.depot).trim()
+                );
+            if (!matchDepot) return;
+
+            if (!grouped[s.famille]) grouped[s.famille] = [];
+            grouped[s.famille].push(s);
+        });
+
+        Object.keys(grouped).sort().forEach(fam => {
+
+            // ligne famille
+            const trFam = document.createElement("tr");
+            trFam.style.background = "#eee";
+            trFam.innerHTML = `<td colspan="11">📁 ${fam}</td>`;
+            if (grouped[fam].length > 0) {
+                tbody.appendChild(trFam);
+            }
+
+            grouped[fam]
+                .sort((a, b) => {
+                    if (a.article !== b.article)
+                        return a.article.localeCompare(b.article);
+                    return Number(a.depot) - Number(b.depot);
+                })
+                .forEach(s => {
+
+                    if (!s.depot || s.depot.trim() === "") {
+                        return;
+                    }
+
+                    const tr = document.createElement("tr");
+
+                    const stockFinal = s.kg + s.delta;
+
+                    let defaultTo = s.depot === "02" ? "03" : "02";
+
+                    tr.dataset.article = s.article;
+                    tr.dataset.lot = s.lot || "";
+                    tr.dataset.from = s.depot;
+
+                    tr.innerHTML = `
+                        <td>${s.article}</td>
+                        <td>${s.libelle || ""}</td>
+                        <td>${s.lot || ""}</td>
+                        <td>${s.dlc ? formatDate(s.dlc) : ""}</td>
+                        <td>${s.ddm ? formatDate(s.ddm) : ""}</td>
+                        <td>${s.depot}</td>
+                        <td>
+                            ${s.kg.toFixed(3)}<br>
+                            <small class="text-muted">
+                                ${formatStockUnites(s.kg, s.cdt3, s.cdt4)}
+                            </small>
+                        </td>
+                        <td class="${s.delta > 0 ? 'text-success' : s.delta < 0 ? 'text-danger' : ''}">
+                            ${s.delta === 0 ? "" : s.delta.toFixed(3)}
+                        </td>
+
+                        <td>
+                            <strong>${stockFinal.toFixed(3)}</strong><br>
+                            <small>
+                                ${formatStockUnites(stockFinal, s.cdt3, s.cdt4)}
+                            </small>
+                        </td>
+                        <td>
+                            <input type="number" class="input-pal" placeholder="PAL" style="width:60px;" value="">
+                            <input type="number" class="input-col" placeholder="COL" style="width:60px;" value="">
+                            <input type="number" step="0.01" class="input-kgn" placeholder="Kg" style="width:80px;"
+                                value="${getMouvementValue(s.article, s.lot, s.depot)}">
+                        </td>
+
+                        <td>
+                            <select class="input-to" disabled
+                                data-article="${s.article}"
+                                data-lot="${s.lot}"
+                                data-from="${s.depot}">
+                                <option value="${defaultTo}" selected>${defaultTo}</option>
+                            </select>
+                        </td>
+                    `;
+
+                    tbody.appendChild(tr);
+
+                    // 🔥 récupérer les inputs
+                    const inputPal = tr.querySelector(".input-pal");
+                    const inputCol = tr.querySelector(".input-col");
+                    const inputKgn = tr.querySelector(".input-kgn");
+                    const select = tr.querySelector(".input-to");
+
+                    // 🔥 fonction unique
+                    function update() {
+
+                        const pal = parseFloat(inputPal.value) || 0;
+                        const col = parseFloat(inputCol.value) || 0;
+                        const kgn = parseFloat(inputKgn.value) || 0;
+
+                        const total =
+                            kgn +
+                            (pal * (s.cdt4 || 0)) +
+                            (col * (s.cdt3 || 0));
+
+                        updateMouvement(
+                            tr.dataset.article,
+                            tr.dataset.lot,
+                            tr.dataset.from,
+                            select.value,
+                            total
+                        );
+                        updateRowDisplay(tr, s, total);
+                    }
+
+                    // 🔥 listeners propres
+                    inputPal.addEventListener("input", update);
+                    inputCol.addEventListener("input", update);
+                    inputKgn.addEventListener("input", update);
+
+
+                });
+
+        });
+        applyStickyOffsets();
+
+                console.log("RENDER OK");
+
+            } catch (e) {
+
+                console.error("ERREUR RENDER :", e);
+
+            }
+        }
+
+
+    /* =========================================================
+    STOCK INIT
+    ========================================================= */
+
+    function initStocks(data) {
+
+        data.forEach(a => {
+
+            const key = `${a.article}|${a.lot || ""}|${a.depot}`;
+
+            stocks[key] = {
+                article: a.article,
+                libelle: a.libelle,
+                lot: a.lot || "",
+                dlc: a.dlc || "",
+                ddm: a.ddm || "",
+                depot: a.depot,
+                famille: a.famille || "Sans famille",
+                kg: parseFloat(a.kg_net || 0),
+                delta: 0,
+                cdt3: a.cdt_unite3 || 0,
+                cdt4: a.cdt_unite4 || 0
+            };
+        });
+    }
+
+    /* =========================================================
+    MOUVEMENTS
+    ========================================================= */
+
+    function updateMouvement(article, lot, from, to, kgn) {
+
+        lot = lot || "";
+
+        let m = mouvements.find(x =>
+            x.article === article &&
+            (x.lot || "") === lot &&
+            x.from === from
+        );
+
+        if (!m) {
+            m = { article, lot, from, to, kgn: 0 };
+            mouvements.push(m);
+        }
+
+        m.to = to;
+        m.kgn = parseFloat(kgn) || 0;
+
+        computeStocks();
+
+    }
+
+    /* =========================================================
+    CALCUL GLOBAL
+    ========================================================= */
+
+    function computeStocks() {
+
+        Object.values(stocks).forEach(s => s.delta = 0);
+
+        mouvements.forEach(m => {
+
+            const fromKey = `${m.article}|${m.lot}|${m.from}`;
+            const toKey = `${m.article}|${m.lot}|${m.to}`;
+
+            const base = stocks[fromKey];
+            if (!base) return;
+
+            const total = m.kgn || 0;
+
+            stocks[fromKey].delta -= total;
+
+            if (m.to && !stocks[toKey]) {
+                stocks[toKey] = {
+                    ...base,
+                    depot: m.to,
+                    kg: 0,
+                    delta: 0
+                };
+            }
+
+            stocks[toKey].delta += total;
+        });
+    }
+
+
+
+    function applyStickyOffsets() {
+
+        const firstCol = document.querySelector("th:nth-child(1)");
+        const secondCol = document.querySelector("th:nth-child(2)");
+
+        if (!firstCol || !secondCol) return;
+
+        const width1 = firstCol.offsetWidth;
+
+        // applique left dynamique
+        document.querySelectorAll("td:nth-child(2), th:nth-child(2)")
+            .forEach(el => {
+                el.style.left = width1 + "px";
+            });
+    }
+
+    /* =========================================================
+    FILTRE DEPOT
+    ========================================================= */
+
+function initDepotFilter() {
+
+    const btn = document.getElementById("depotFilterBtn");
+    const dropdown = document.getElementById("filter-depot");
+
+    dropdown.innerHTML = "";
+
+    const values = [...new Set(
+
+        Object.values(stocks)
+
+            .map(s => String(s.depot || "").trim())
+
+            .filter(v => /^\d+$/.test(v))
+
+    )].sort((a, b) => Number(a) - Number(b));
+
+    // =========================
+    // RESTAURATION LOCALSTORAGE
+    // =========================
+
+    let saved = localStorage.getItem(STORAGE_KEY);
+
+    try {
+
+        saved = saved
+            ? JSON.parse(saved)
+            : null;
+
+    } catch {
+
+        saved = null;
+    }
+
+    // 🔥 si vide/null => tous sélectionnés
+    if (!Array.isArray(saved) || saved.length === 0) {
+
+        selectedDepots = [...values];
+
+    } else {
+
+        selectedDepots = saved
+            .map(v => String(v).trim())
+            .filter(v => values.includes(v));
+    }
+
+    // 🔥 sécurité ultime
+    if (selectedDepots.length === 0) {
+        selectedDepots = [...values];
+    }
+
+    console.log("DEPOTS SELECTIONNES :", selectedDepots);
+
+    // =========================
+    // BOUTONS RAPIDES
+    // =========================
+
+    const toolbar = document.createElement("div");
+    toolbar.style.marginBottom = "10px";
+    toolbar.style.display = "flex";
+    toolbar.style.gap = "10px";
+
+    const btnAll = document.createElement("button");
+    btnAll.type = "button";
+    btnAll.className = "btn btn-sm btn-outline-success";
+    btnAll.innerText = "Tout";
+
+    const btnNone = document.createElement("button");
+    btnNone.type = "button";
+    btnNone.className = "btn btn-sm btn-outline-secondary";
+    btnNone.innerText = "Aucun";
+
+    toolbar.appendChild(btnAll);
+    toolbar.appendChild(btnNone);
+
+    dropdown.appendChild(toolbar);
+
+    // =========================
+    // LISTE DEPOTS
+    // =========================
+
+    const list = document.createElement("div");
+    list.style.maxHeight = "60vh";
+    list.style.overflowY = "auto";
+
+    values.forEach(val => {
+
+        const row = document.createElement("div");
+        row.style.padding = "3px 0";
+
+        const label = document.createElement("label");
+        label.style.cursor = "pointer";
+        label.style.display = "flex";
+        label.style.alignItems = "center";
+        label.style.gap = "8px";
+
+        const cb = document.createElement("input");
+
+        cb.type = "checkbox";
+        cb.value = val;
+        cb.checked = selectedDepots.includes(val);
+
+        cb.addEventListener("change", () => {
+
+            selectedDepots = Array.from(
+                dropdown.querySelectorAll(
+                    "input[type='checkbox']:checked"
+                )
+            ).map(cb => cb.value);
+
+            localStorage.setItem(
+                STORAGE_KEY,
+                JSON.stringify(selectedDepots)
+            );
+
+            clearTimeout(window._filterTimer);
+
+            window._filterTimer = setTimeout(() => {
+                renderTable();
+            }, 50);
+        });
+
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode("Dépôt " + val));
+
+        row.appendChild(label);
+        list.appendChild(row);
+    });
+
+    dropdown.appendChild(list);
+
+    // =========================
+    // TOUT
+    // =========================
+
+    btnAll.onclick = () => {
+
+        selectedDepots = [...values];
+
+        dropdown.querySelectorAll("input[type='checkbox']")
+            .forEach(cb => cb.checked = true);
+
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify(selectedDepots)
+        );
+
+        renderTable();
+    };
+
+    // =========================
+    // AUCUN
+    // =========================
+
+    btnNone.onclick = () => {
+
+        selectedDepots = [];
+
+        dropdown.querySelectorAll("input[type='checkbox']")
+            .forEach(cb => cb.checked = false);
+
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify(selectedDepots)
+        );
+
+        renderTable();
+    };
+
+    // =========================
+    // OUVERTURE / FERMETURE
+    // =========================
+
+    btn.onclick = (e) => {
+
+        e.stopPropagation();
+
+        const rect = btn.getBoundingClientRect();
+
+        dropdown.style.top =
+            (rect.bottom + window.scrollY + 5) + "px";
+
+        dropdown.style.left =
+            (rect.left + window.scrollX) + "px";
+
+        dropdown.style.display =
+            dropdown.style.display === "block"
+                ? "none"
+                : "block";
+    };
+
+    // IMPORTANT :
+    // empêche fermeture quand on clique dedans
+    dropdown.onclick = (e) => {
+        e.stopPropagation();
+    };
+
+    // fermeture clic extérieur
+    document.addEventListener("click", () => {
+        dropdown.style.display = "none";
+    });
+}
+
+    /* =========================================================
+    SAVE
+    ========================================================= */
+
+    function saveMvt() {
+
+        console.log("MOUVEMENTS ENVOYÉS :", mouvements);
+
+        fetch("{{ url_for('distribution.save_mvt_v2') }}", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                mouvements,
+                num_mvt: lastSavedNumMvt
+            })
+        })
+            .then(async r => {
+
+                const text = await r.text();
+
+                console.log("REPONSE BRUTE :", text);
+
+                try {
+
+                    const data = JSON.parse(text);
+
+                    console.log("SAVE OK :", data);
+
+                    lastSavedNumMvt = data.num_mvt;
+
+                    console.log("NUM MVT =", lastSavedNumMvt);
+
+                    alert("✅ Sauvegardé : " + (data.num_mvt || ""));
+
+                } catch (e) {
+
+                    console.error(e);
+
+                    alert("❌ Erreur serveur (voir console)");
+                }
+
+            });
+    }
+
+    /* =========================================================
+    TRAITEMENT DES UNITES
+    ========================================================= */
+    function formatStockUnites(kgn, cdt3, cdt4) {
+
+        let reste = kgn;
+        let parts = [];
+
+        // PAL
+        if (cdt4 > 0) {
+            let pal = Math.floor(reste / cdt4);
+            if (pal > 0) {
+                parts.push(pal + " PAL");
+                reste -= pal * cdt4;
+            }
+        }
+
+        // COL
+        if (cdt3 > 0) {
+            let col = Math.floor(reste / cdt3);
+            if (col > 0) {
+                parts.push(col + " COL");
+                reste -= col * cdt3;
+            }
+        }
+
+        // reste en Kgn
+        if (reste > 0.01) {
+            parts.push(reste.toFixed(1) + " Kgn");
+        }
+
+        return parts.join(" + ");
+    }
+
+    function updateRowDisplay(tr, s, total) {
+
+        const deltaCell = tr.children[7];
+        const finalCell = tr.children[8];
+
+        const newDelta = -total;
+        const newFinal = s.kg + newDelta;
+
+        // =========================
+        // DELTA
+        // =========================
+        deltaCell.innerText = newDelta === 0 ? "" : newDelta.toFixed(3);
+
+        // =========================
+        // FORMAT PAL / COL / KGN
+        // =========================
+        const formatUnits = (kgn, cdt3, cdt4) => {
+
+            let reste = kgn;
+            let parts = [];
+
+            // PAL
+            if (cdt4 > 0) {
+                let pal = Math.floor(reste / cdt4);
+                if (pal > 0) {
+                    parts.push(pal + " PAL");
+                    reste -= pal * cdt4;
+                }
+            }
+
+            // COL
+            if (cdt3 > 0) {
+                let col = Math.floor(reste / cdt3);
+                if (col > 0) {
+                    parts.push(col + " COL");
+                    reste -= col * cdt3;
+                }
+            }
+
+            // reste Kgn
+            if (reste > 0.01) {
+                parts.push(reste.toFixed(1) + " Kgn");
+            }
+
+            return parts.join(" + ");
+        };
+
+        // =========================
+        // STOCK FINAL
+        // =========================
+        finalCell.innerHTML = `
+        <strong>${newFinal.toFixed(3)}</strong><br>
+        <small>${formatUnits(newFinal, s.cdt3, s.cdt4)}</small>
+    `;
+    }
+
+function resizeTable() {
+
+    const root = document.getElementById("mvt-v2-root");
+    const header = root.querySelector(".page-header");
+    const table = root.querySelector(".table-container");
+
+    const footer = document.getElementById("main-footer");
+    const alert = document.querySelector(".alert.alert-warning");
+
+    const windowHeight = window.innerHeight;
+
+    const headerHeight = header.offsetHeight;
+    const offsetTop = root.getBoundingClientRect().top;
+
+    const footerHeight = footer ? footer.offsetHeight : 0;
+    const alertHeight = alert ? alert.offsetHeight : 0;
+
+    const safeMargin = 30;
+
+    const available =
+        windowHeight
+        - offsetTop
+        - headerHeight
+        - footerHeight
+        - alertHeight
+        - safeMargin;
+
+    table.style.height = available + "px";
+    document.body.style.overflow = "hidden";document.body.style.overflow = "hidden";
+}
+
+    window.addEventListener("load", resizeTable);
+    window.addEventListener("resize", resizeTable);
+
+function exportVIF() {
+
+    const numMvt = lastSavedNumMvt;
+
+    if (!numMvt || numMvt === "null") {
+
+        console.log("lastSavedNumMvt =", lastSavedNumMvt);
+
+        alert(
+            "⚠️ Aucun mouvement sauvegardé.\n\n" +
+            "Veuillez cliquer sur 💾 Enregistrer avant export."
+        );
+
+        return;
+    }
+
+    window.location =
+        `/confirm_export_mvt_v2/${numMvt}`;
+}
+});
+
+</script>
+
+{% endblock %}

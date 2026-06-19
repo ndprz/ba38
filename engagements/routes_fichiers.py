@@ -35,9 +35,48 @@ def upload_fichier_engagement(engagement_id):
 
     db_path = get_db_path()
 
+    with sqlite3.connect(db_path) as conn:
+
+        conn.row_factory = sqlite3.Row
+
+        engagement = conn.execute("""
+            SELECT statut
+            FROM engagements
+            WHERE id = ?
+        """, (engagement_id,)).fetchone()
+
+        if engagement["statut"] == "reglee":
+
+            flash(
+                "⚠️ Cet engagement est déjà réglé.",
+                "warning"
+            )
+
+            return redirect(
+                url_for(
+                    "engagements.detail_engagement",
+                    engagement_id=engagement_id
+                )
+            )
+
     fichier = request.files.get("fichier")
 
+    write_log(
+        f"[UPLOAD] engagement={engagement_id}"
+    )
+
+    write_log(
+        f"[UPLOAD] fichier="
+        f"{fichier.filename if fichier else 'AUCUN'}"
+    )
+
+
+
     type_fichier = request.form.get("type_fichier", "").strip()
+
+    write_log(
+        f"[UPLOAD] type={type_fichier}"
+    )
 
     # ========================================================
     # VERIFICATIONS
@@ -119,8 +158,15 @@ def upload_fichier_engagement(engagement_id):
         nom_stockage
     )
 
-    fichier.save(chemin_complet)
 
+    write_log(
+        f"[UPLOAD] sauvegarde vers "
+        f"{chemin_complet}"
+    )
+    fichier.save(chemin_complet)
+    write_log(
+        f"[UPLOAD] fichier sauvegardé"
+    )
     # ========================================================
     # BASE
     # ========================================================
