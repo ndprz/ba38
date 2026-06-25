@@ -159,6 +159,17 @@ def valider_engagement_pole(engagement_id):
         # HISTORIQUE
         # =====================================================
 
+        # Le badge "Validé Pôle" de la liste des engagements se base sur
+        # nouveau_statut = "valide" dans l'historique. Pour un déplacement,
+        # le statut réel saute directement à "a_payer" (transmission auto),
+        # donc on historise "valide" ici pour que le jalon "pôle a validé"
+        # reste visible, sans changer le statut réellement appliqué ci-dessus.
+        statut_historique_validation_pole = (
+            "valide"
+            if engagement["sous_type_depense"] == "deplacement"
+            else nouveau_statut
+        )
+
         conn.execute("""
             INSERT INTO engagements_workflow (
                 engagement_id,
@@ -174,7 +185,7 @@ def valider_engagement_pole(engagement_id):
             engagement_id,
             "validation_pole",
             ancien_statut,
-            nouveau_statut,
+            statut_historique_validation_pole,
             "Validation du responsable de pôle",
             current_user.id,
             current_user.email
@@ -196,7 +207,7 @@ def valider_engagement_pole(engagement_id):
             """, (
                 engagement_id,
                 "transmission_auto_tresorerie",
-                "validation_pole",
+                "valide",
                 "a_payer",
                 "Transmission automatique à la trésorerie (déplacement)",
                 current_user.id,
