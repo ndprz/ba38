@@ -1,203 +1,870 @@
 {% extends "base.html" %}
 
-{% block title %}Liste des Fournisseurs{% endblock %}
+{% from "macros/buttons.html"
+   import action_button, action_buttons %}
+
+{% block title %}
+Liste des Fournisseurs
+{% endblock %}
+
+{% block extra_css %}
+
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css"
+      rel="stylesheet">
+
+<style>
+
+/* =====================================================
+   PAGE
+===================================================== */
+
+html,
+body{
+
+    height:100%;
+}
+
+.frs-tabulator-page{
+
+    display:flex;
+
+    flex-direction:column;
+
+    height:calc(100vh - 105px);
+
+    font-family:
+        system-ui,
+        -apple-system,
+        "Segoe UI",
+        Roboto,
+        Arial,
+        sans-serif;
+}
+
+/* =====================================================
+   HEADER
+===================================================== */
+
+.page-header{
+
+    flex:0 0 auto;
+
+    background:white;
+
+    border:1px solid #ddd;
+
+    border-radius:6px;
+
+    padding:6px 8px;
+
+    margin-bottom:6px;
+}
+
+.page-header h1{
+
+    font-size:1.1rem;
+
+    margin:0 0 6px 0;
+
+    font-weight:600;
+}
+
+/* =====================================================
+   HEADER TABULATOR ULTRA PROPRE
+===================================================== */
+
+.tabulator .tabulator-header{
+
+    background:#f8f9fa !important;
+}
+
+.tabulator .tabulator-col{
+
+    background:#f8f9fa !important;
+
+    border-right:1px solid #ddd !important;
+
+    padding:2px !important;
+}
+
+.tabulator-col-content{
+
+    display:flex !important;
+
+    flex-direction:column !important;
+
+    align-items:stretch !important;
+
+    justify-content:flex-start !important;
+
+    gap:4px;
+
+    padding:2px;
+}
+
+.tabulator-col-title{
+
+    width:100%;
+
+    text-align:center;
+
+    font-weight:600;
+
+    font-size:13px;
+
+    line-height:1.1;
+
+    white-space:normal !important;
+
+    overflow-wrap:anywhere;
+
+    min-height:32px;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+}
+
+.tabulator-header-filter{
+
+    width:100% !important;
+
+    margin:0 !important;
+
+    padding:0 !important;
+}
+
+.tabulator-header-filter input{
+
+    width:100% !important;
+
+    height:28px !important;
+
+    min-height:28px !important;
+
+    font-size:12px !important;
+
+    padding:2px 6px !important;
+
+    box-sizing:border-box !important;
+}
+
+.tabulator-header-filter select{
+
+    width:100% !important;
+
+    height:28px !important;
+
+    min-height:28px !important;
+
+    font-size:12px !important;
+
+    padding:2px 4px !important;
+
+    box-sizing:border-box !important;
+}
+
+.tabulator .tabulator-header{
+
+    min-height:72px !important;
+}
+
+/* =====================================================
+   GROUPES
+===================================================== */
+
+.fields-group{
+
+    min-width:220px;
+
+    padding:6px 8px;
+
+    border:1px solid #ddd;
+
+    border-radius:6px;
+
+    background:white;
+
+    font-size:12px;
+
+    flex:0 0 auto;
+}
+
+.fields-group .d-flex{
+
+    gap:12px !important;
+}
+
+.fields-group .group-master{
+
+    margin-right:4px;
+}
+
+.titre-depliable{
+
+    cursor:pointer;
+
+    user-select:none;
+
+    font-weight:600;
+
+    font-size:12px;
+}
+
+.fields-container{
+
+    display:none;
+
+    padding-left:18px;
+
+    margin-top:5px;
+}
+
+.fields-container label{
+
+    display:flex;
+
+    align-items:center;
+
+    gap:6px;
+
+    margin-bottom:4px;
+
+    line-height:1.2;
+}
+
+.fields-container input[type="checkbox"]{
+
+    margin:0;
+}
+
+.fields-container.expanded{
+
+    display:block;
+}
+
+/* =====================================================
+   TABLE
+===================================================== */
+
+.table-zone{
+
+    flex:1 1 auto;
+
+    min-height:0;
+
+    overflow: auto;
+
+    border:1px solid #ccc;
+
+    border-radius:6px;
+
+    background:white;
+}
+
+#tabulator-table{
+
+    width:100%;
+
+    height:calc(100vh - 340px);
+}
+
+.tabulator{
+
+    height:100% !important;
+
+    border:none !important;
+
+    font-size:14px !important;
+}
+
+.tabulator .tabulator-header{
+
+    background:#f8f9fa;
+}
+
+.tabulator .tabulator-col{
+
+    background:#f8f9fa !important;
+
+    font-weight:600;
+}
+
+.tabulator .tabulator-header .tabulator-col{
+
+    text-align:center;
+}
+
+.tabulator-col-title{
+
+    width:100%;
+
+    text-align:center;
+}
+
+.tabulator .tabulator-header .tabulator-col .tabulator-col-content{
+
+    display:flex;
+
+    justify-content:center;
+
+    align-items:center;
+}
+
+.tabulator-frozen{
+
+    background:#f8f9fa !important;
+}
+
+</style>
+
+{% endblock %}
 
 {% block content %}
-<h2>Liste des Fournisseurs</h2>
 
-<!-- 🔎 Barre de recherche + boutons -->
-<div class="d-flex align-items-center flex-nowrap" <div class="d-flex align-items-center flex-nowrap"
-    style="gap: 12px;">
+<div class="frs-tabulator-page">
 
-    <!-- Recherche -->
-    <div class="flex-grow-1 me-3">
-        <input type="text" id="searchInput" class="form-control" placeholder="🔍 Rechercher un fournisseur...">
-    </div>
+<div class="page-header">
 
+    <h1>
+        Liste des Fournisseurs
+    </h1>
 
+    <!-- ===================================================== -->
+    <!-- BOUTONS -->
+    <!-- ===================================================== -->
 
+    {% call action_buttons() %}
 
+    {% if not lecture_seule %}
 
-    <div class="d-flex" style="gap: 10px;">
-        {% if rows %}
-        <a href="{{ url_for('fournisseurs.export_fournisseurs_excel') }}" class="btn btn-outline-primary">
-            📊 Exporter
-        </a>
-        {% endif %}
+    {{ action_button(
+        "➕ Créer",
+        href=url_for('fournisseurs.create_fournisseur'),
+        color="success"
+    ) }}
 
-        {% if not lecture_seule %}
-        <a href="{{ url_for('fournisseurs.create_fournisseur') }}" class="btn btn-success">
-            ➕ Créer
-        </a>
-        {% else %}
-        <button class="btn btn-success" disabled title="Vous n'avez pas les droits pour créer un fournisseur.">
-            ➕ Créer
-        </button>
-        {% endif %}
+    {% endif %}
 
-        <!-- Boutons -->
-        <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
-            ↩️ Retour à l'accueil
-        </a>
-    </div>
-</div>
+    {{ action_button(
+        "📊 Exporter",
+        href=url_for('fournisseurs.export_fournisseurs_excel'),
+        color="outline-primary"
+    ) }}
 
-<hr>
+    {{ action_button(
+        "♻️ Réinitialiser",
+        onclick="resetFilters()",
+        color="outline-danger"
+    ) }}
 
-{% if rows %}
-<!-- 🎯 Scroll haut synchronisé -->
-<div id="scroll-top" style="overflow-x: auto; height: 20px; margin-bottom: 5px;">
-    <div id="sync-scroll" style="height: 1px;"></div>
-</div>
+    {{ action_button(
+        "↩ Retour",
+        href=url_for('index'),
+        color="outline-secondary"
+    ) }}
 
-<!-- 📊 Tableau principal avec colonnes figées -->
-<div id="scroll-bottom" style="overflow-x: auto;
-            overflow-y: auto;
-            height: 65vh;
-            white-space: nowrap;">
-    <table class="table table-bordered table-sticky" id="fournisseurs-table">
-        <thead>
-            <tr>
-                <th class="sticky-col sticky-col-1">Action</th>
-                <th class="sticky-col sticky-col-2">ID</th>
-                <th class="sticky-col sticky-col-3">Nom</th>
-                <th>Drive</th>
-                <th>Code VIF</th>
-                <th>Enseigne</th>
-                <th>Société</th>
-                <th>Type</th> {# <-- type_frs ajouté #} <th>Mobile</th>
-                    <th>Téléphone</th>
-                    <th>Email</th>
-                    <th>Adresse</th>
-                    <th>Adresse 2</th>
-                    <th>CP</th>
-                    <th>Ville</th>
-                    <th>Notes</th>
-                    <th>Actif</th>
-                    <th>Date création</th>
-                    <th>Date modif</th>
-                    <th>Utilisateur</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in rows %}
-            <tr>
-                <td class="sticky-col sticky-col-1">
-                    <form method="GET"
-                        action="{{ url_for('fournisseurs.update_fournisseur', fournisseur_id=row['id']) }}"
-                        style="display:inline;">
-                        <button type="submit" class="btn btn-primary btn-sm">Modifier</button>
-                    </form>
-                </td>
+    {% endcall %}
 
-                <td class="sticky-col sticky-col-2">{{ row['id'] }}</td>
-                <td class="sticky-col sticky-col-3">{{ row['nom'] }}</td>
-                <td>
-                    {% if row['drive_link'] %}
-                    <a href="{{ row['drive_link'] }}" target="_blank">📂 Dossier</a>
-                    {% endif %}
-                </td>
-                <td>{{ row['code_vif'] }}</td>
-                <td>{{ row['enseigne'] }}</td>
-                <td>{{ row['societe'] }}</td>
-                <td>{{ row['type_frs'] }}</td> {# <-- affichage type_frs #} <td>{{ row['tel_mobile'] }}</td>
-                    <td>{{ row['tel'] }}</td>
-                    <td>{{ row['mail'] }}</td>
-                    <td>{{ row['adresse'] }}</td>
-                    <td>{{ row['adresse2'] }}</td>
-                    <td>{{ row['cp'] }}</td>
-                    <td>{{ row['ville'] }}</td>
-                    <td>{{ row['notes'] }}</td>
-                    <td>{{ row['actif'] }}</td>
-                    <td>{{ row['date_creation'] }}</td>
-                    <td>{{ row['date_modif'] }}</td>
-                    <td>{{ row['user_modif'] }}</td>
-            </tr>
+    <!-- ===================================================== -->
+    <!-- GROUPES -->
+    <!-- ===================================================== -->
+
+    <fieldset class="border rounded p-1 bg-white mt-2">
+
+        <legend class="float-none w-auto px-2">
+            Options d'affichage
+        </legend>
+
+        <div class="d-flex gap-2 align-items-start overflow-auto pb-1">
+
+            {% for group_name, fields in grouped_fields.items() %}
+
+            {% set safe_group_name =
+                group_name
+                |replace(' ', '_')
+                |lower
+            %}
+
+            <div class="fields-group">
+
+                <div class="d-flex align-items-center gap-2 mb-1">
+
+                    <div class="titre-depliable"
+                         onclick="toggleGroup('{{ safe_group_name }}', this)">
+
+                        <span class="chevron">▶</span>
+
+                        {{ group_name }}
+
+                    </div>
+
+                    <label class="mb-0">
+
+                        <input
+                            type="checkbox"
+                            class="group-master"
+                            data-group="{{ safe_group_name }}"
+                            onchange="toggleAll('{{ safe_group_name }}', this.checked)">
+
+                        Tout
+
+                    </label>
+
+                </div>
+
+                <div class="fields-container"
+                     id="container-{{ safe_group_name }}">
+
+                    {% for field in fields %}
+
+                    <label class="d-block">
+
+                        <input
+                            type="checkbox"
+                            class="field-toggle field-{{ safe_group_name }}"
+                            value="{{ field.field_name }}"
+                            {% if group_name == 'coordonnees principales' %}checked{% endif %}>
+
+                        {{ field.field_name | format_label }}
+
+                    </label>
+
+                    {% endfor %}
+
+                </div>
+
+            </div>
+
             {% endfor %}
-        </tbody>
-    </table>
+
+        </div>
+
+        <!-- ===================================================== -->
+        <!-- RECHERCHE -->
+        <!-- ===================================================== -->
+
+        <div class="mt-2">
+
+            <input
+                type="text"
+                id="filtre-fournisseur"
+                class="form-control"
+                placeholder="🔎 Rechercher un fournisseur...">
+
+        </div>
+
+    </fieldset>
+
 </div>
-{% else %}
-<p>Aucun fournisseur trouvé.</p>
-{% endif %}
 
-<!-- 🔁 JS : dynamique et synchronisation -->
+<!-- ===================================================== -->
+<!-- TABLE -->
+<!-- ===================================================== -->
+
+<div class="table-zone">
+
+    <div id="tabulator-table"></div>
+
+</div>
+
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+
 <script>
-    const topScroll = document.getElementById("scroll-top");
-    const bottomScroll = document.getElementById("scroll-bottom");
-    const syncDiv = document.getElementById("sync-scroll");
-    const table = document.getElementById("fournisseurs-table");
-    if (syncDiv && table) syncDiv.style.width = table.scrollWidth + "px";
-    topScroll.addEventListener("scroll", () => bottomScroll.scrollLeft = topScroll.scrollLeft);
-    bottomScroll.addEventListener("scroll", () => topScroll.scrollLeft = bottomScroll.scrollLeft);
 
+const tableData = {{ table_data | tojson }};
+const allColumns = {{ columns | tojson }};
 
-    // ===============================
-    // 🔎 FILTRE RAPIDE FOURNISSEURS
-    // ===============================
+// ======================================================
+// EMAIL
+// ======================================================
 
-    const searchInput = document.getElementById("searchInput");
+function emailFormatter(cell){
 
-    let fournisseurRows = [];
+    const value = cell.getValue();
 
-    function initFiltreCacheFournisseurs() {
-
-        const rows = document.querySelectorAll("#fournisseurs-table tbody tr");
-
-        fournisseurRows = Array.from(rows).map(row => ({
-            element: row,
-            text: row.innerText.toLowerCase()
-        }));
+    if (!value){
+        return "";
     }
 
-    function applyFiltreFournisseurs() {
+    return `
+        <a href="mailto:${value}"
+           target="_blank"
+           style="color:#ff6b2c;text-decoration:none;">
+            ${value}
+        </a>
+    `;
+}
 
-        const filtre = searchInput.value.toLowerCase();
-        let visibleCount = 0;
+// ======================================================
+// DRIVE
+// ======================================================
 
-        fournisseurRows.forEach(obj => {
+function driveFormatter(cell){
 
-            const match = obj.text.includes(filtre);
-            obj.element.style.display = match ? "" : "none";
+    const value = cell.getValue();
 
-            if (match) visibleCount++;
-        });
-
-        localStorage.setItem("fournisseurs_search_filter", filtre);
+    if (!value){
+        return "";
     }
 
-    /* Debounce */
-    let filtreTimeout;
+    return `
+        <a href="${value}" target="_blank">
+            📂 Dossier
+        </a>
+    `;
+}
 
-    searchInput.addEventListener("input", function () {
+// ======================================================
+// MODIFIER
+// ======================================================
 
-        clearTimeout(filtreTimeout);
+function modifierFormatter(cell){
 
-        filtreTimeout = setTimeout(() => {
-            applyFiltreFournisseurs();
-        }, 120);
+    const id = cell.getValue();
+
+    return `
+        <a href="/fournisseurs/${id}/update"
+           class="btn btn-warning btn-sm px-2 py-0">
+
+           Modifier
+        </a>
+    `;
+}
+
+// ======================================================
+// NORMALIZE
+// ======================================================
+
+function normalizeSearch(text){
+
+    return (text || "")
+        .toString()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .toLowerCase();
+}
+
+// ======================================================
+// COLONNES VISIBLES
+// ======================================================
+
+function getVisibleColumns(){
+
+    const selected = Array.from(
+        document.querySelectorAll(".field-toggle:checked")
+    ).map(cb => cb.value);
+
+    return allColumns.filter(col => {
+
+        if (["id", "nom"].includes(col.field)){
+            return true;
+        }
+
+        return selected.includes(col.field);
+    });
+}
+
+// ======================================================
+// TABULATOR
+// ======================================================
+
+function getTabulatorConfig(data){
+
+    return {
+
+        data:data,
+
+        columns:getVisibleColumns().map(col => {
+
+            if (col.formatter === "modifierFormatter"){
+                col.formatter = modifierFormatter;
+            }
+
+            if (col.formatter === "emailFormatter"){
+                col.formatter = emailFormatter;
+            }
+
+            if (col.formatter === "driveFormatter"){
+                col.formatter = driveFormatter;
+            }
+
+            // ==================================================
+            // FORCE FILTRE LISTE TYPE EXCEL
+            // ==================================================
+
+            if (col.headerFilter === "list"){
+
+                col.headerFilterParams = {
+                    valuesLookup:true,
+                    clearable:true,
+                    autocomplete:true
+                };
+            }
+
+            return col;
+        }),
+
+        layout:"fitColumns",
+
+        resizableColumnFit:true,
+
+        height:"calc(100vh - 340px)",
+
+        responsiveLayout:false,
+
+        movableColumns:true,
+
+        columnHeaderVertAlign:"middle",
+
+        placeholder:"Aucune donnée"
+    };
+}
+
+let table = new Tabulator(
+    "#tabulator-table",
+    getTabulatorConfig(tableData)
+);
+
+// ======================================================
+// RECHERCHE
+// ======================================================
+
+const filtreInput =
+    document.getElementById(
+        "filtre-fournisseur"
+    );
+
+filtreInput.addEventListener("input", function(){
+
+    const search =
+        normalizeSearch(this.value);
+
+    if (!search){
+
+        table.clearFilter();
+
+        return;
+    }
+
+    table.setFilter(function(data){
+
+        for (const key in data){
+
+            const value =
+                normalizeSearch(data[key]);
+
+            if (value.includes(search)){
+
+                return true;
+            }
+        }
+
+        return false;
     });
 
-    /* Échap */
-    searchInput.addEventListener("keydown", function (e) {
-        if (e.key === "Escape") {
-            this.value = "";
-            applyFiltreFournisseurs();
-            e.preventDefault();
+});
+
+filtreInput.addEventListener("keydown", function(e){
+
+    if (e.key === "Escape"){
+
+        this.value = "";
+
+        table.clearFilter();
+
+        e.preventDefault();
+    }
+});
+
+// ======================================================
+// COLONNES
+// ======================================================
+
+function refreshColumns(){
+
+    saveState();
+
+    table.setColumns(
+        getVisibleColumns()
+    );
+
+    setTimeout(() => {
+
+        table.redraw(true);
+
+    }, 50);
+}
+
+// ======================================================
+// GROUPES
+// ======================================================
+
+function toggleGroup(groupName, el){
+
+    const container =
+        document.getElementById(
+            "container-" + groupName
+        );
+
+    container.classList.toggle("expanded");
+
+    const chev =
+        el.querySelector(".chevron");
+
+    chev.textContent =
+        container.classList.contains("expanded")
+        ? "▼"
+        : "▶";
+}
+
+function toggleAll(group, checked){
+
+    document
+    .querySelectorAll(".field-" + group)
+    .forEach(cb => {
+
+        cb.checked = checked;
+    });
+
+    updateGroupState();
+
+    refreshColumns();
+}
+
+function updateGroupState(){
+
+    document
+    .querySelectorAll(".group-master")
+    .forEach(master => {
+
+        const group =
+            master.dataset.group;
+
+        const children =
+            document.querySelectorAll(
+                ".field-" + group
+            );
+
+        const checked =
+            Array.from(children)
+            .filter(cb => cb.checked)
+            .length;
+
+        if (checked === 0){
+
+            master.checked = false;
+
+            master.indeterminate = false;
+        }
+        else if (checked === children.length){
+
+            master.checked = true;
+
+            master.indeterminate = false;
+        }
+        else{
+
+            master.checked = false;
+
+            master.indeterminate = true;
         }
     });
+}
 
-    /* Initialisation */
-    window.addEventListener("DOMContentLoaded", () => {
+document
+.querySelectorAll(".field-toggle")
+.forEach(cb => {
 
-        initFiltreCacheFournisseurs();
+    cb.addEventListener("change", () => {
 
-        const saved = localStorage.getItem("fournisseurs_search_filter");
-        if (saved) {
-            searchInput.value = saved;
-            applyFiltreFournisseurs();
-        }
+        updateGroupState();
+
+        refreshColumns();
     });
+});
+
+// ======================================================
+// STORAGE
+// ======================================================
+
+const STORAGE_KEY =
+    "fournisseurs_tabulator_columns";
+
+function saveState(){
+
+    const selected = Array.from(
+        document.querySelectorAll(".field-toggle:checked")
+    ).map(cb => cb.value);
+
+    localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(selected)
+    );
+}
+
+function restoreState(){
+
+    const saved =
+        localStorage.getItem(STORAGE_KEY);
+
+    if (!saved){
+
+        return;
+    }
+
+    let selected = [];
+
+    try{
+
+        selected = JSON.parse(saved);
+
+    }catch(e){
+
+        console.error("Erreur restoreState", e);
+
+        return;
+    }
+
+    document
+    .querySelectorAll(".field-toggle")
+    .forEach(cb => {
+
+        cb.checked =
+            selected.includes(cb.value);
+    });
+}
+
+// ======================================================
+// RESET
+// ======================================================
+
+function resetFilters(){
+
+    localStorage.removeItem(STORAGE_KEY);
+
+    location.reload();
+}
+
+// ======================================================
+// INIT
+// ======================================================
+
+window.addEventListener("load", () => {
+
+    restoreState();
+
+    updateGroupState();
+
+    refreshColumns();
+
+});
 
 </script>
+
+</div>
+
 {% endblock %}

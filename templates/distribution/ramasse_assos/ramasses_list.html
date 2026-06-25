@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block content %}
 
 <h2 class="mb-3">📊 Historique des ramasses</h2>
@@ -9,6 +12,7 @@
         <form method="POST"
               action="{{ url_for('distribution.set_mois_ramasse') }}"
               class="row g-2 align-items-center">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
             <div class="col-auto">
                 <label class="form-label mb-0">
@@ -57,11 +61,12 @@
 
 <!-- ================= ACTIONS ================= -->
 <form method="post" class="mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <!-- 🔥 mois -->
     <input type="hidden" name="mois" value="{{ mois }}">
 
-    <div style="display:flex; justify-content:flex-end; gap:10px;">
+    <div style="display:flex; justify-content:flex-end; align-items:center; gap:10px;">
 
             <button class="btn btn-outline-info"
                 type="button"
@@ -70,56 +75,55 @@
                 ℹ️ Aide utilisateur
             </button>
 
-        <!-- Excel -->
-        <button formaction="{{ url_for('distribution.export_ramasses_excel_mensuel') }}"
-                class="btn btn-success btn-sm">
-            📊 Export Excel
-        </button>
+        {% call action_buttons() %}
 
-        <!-- Contrôle -->
-        <button formaction="{{ url_for('distribution.controle_ramasses') }}"
-                class="btn btn-secondary btn-sm">
-            🔎 Contrôler
-        </button>
+            <!-- Excel -->
+            {{ action_button(
+                "📊 Export Excel",
+                type="submit",
+                formaction=url_for('distribution.export_ramasses_excel_mensuel'),
+                color="success"
+            ) }}
 
-        <!-- Réception -->
-        {% if mois_ramasse %}
-        <button formaction="{{ url_for('distribution.export_ramasses_vif_mensuel') }}"
-                class="btn btn-primary btn-sm">
-            📤 Export Réception
-        {% else %}
-            <button class="btn btn-primary" disabled>📤 Export Réception</button>
-        {% endif %}
-        </button>
+            <!-- Contrôle -->
+            {{ action_button(
+                "🔎 Contrôler",
+                type="submit",
+                formaction=url_for('distribution.controle_ramasses'),
+                color="secondary"
+            ) }}
+
+            <!-- Réception -->
+            {{ action_button(
+                "📤 Export Réception",
+                type="submit",
+                formaction=url_for('distribution.export_ramasses_vif_mensuel'),
+                color="primary",
+                disabled=not mois_ramasse
+            ) }}
+
+            <!-- BL -->
+            {{ action_button(
+                "📦 Export Bons de Livraison",
+                type="submit",
+                formaction=url_for('distribution.export_bl_vif'),
+                color="warning",
+                disabled=not mois_ramasse
+            ) }}
+
+            {{ action_button("↩️ Retour Distribution", href=url_for('distribution.distribution_main'), color="outline-dark") }}
+
+        {% endcall %}
 
         <span class="info-icon"
             data-tooltip="le fichier recepba38.csv est a placer dans vif bureau a distance dans le dossier : Z:\imprec\ba38 utiliser l'import BA38IMP">
             ℹ️
         </span>
 
-        <!-- BL -->
-        {% if mois_ramasse %}
-        <button formaction="{{ url_for('distribution.export_bl_vif') }}"
-                class="btn btn-warning btn-sm">
-            📦 Export Bons de Livraison
-        {% else %}
-            <button class="btn btn-warning" disabled>📦 Export Bons de Livraison</button>
-        {% endif %}
-        </button>
-
         <span class="info-icon"
             data-tooltip="le fichier cmdcli38.csv est a placer sur le dossier local du pc : C:\import commandes. Utiliser l'import PC_BL38">
             ℹ️
         </span>
-
-        <!-- PUSH À DROITE -->
-        <div class="ms-auto"></div>
-
-        <!-- Retour -->
-        <a href="{{ url_for('distribution.distribution_main') }}"
-           class="btn btn-success btn-sm">
-            ↩️ Retour Distribution
-        </a>
 
     </div>
 

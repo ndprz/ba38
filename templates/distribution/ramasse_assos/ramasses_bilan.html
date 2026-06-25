@@ -105,6 +105,51 @@
 
 <div class="card p-3 mb-4">
 
+    <div class="d-flex justify-content-between align-items-center">
+        <h4>🍞 Articles</h4>
+
+        <form method="post"
+              action="{{ url_for('distribution.export_ramasses_bilan_articles') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="annee" value="{{ annee }}">
+            <button type="submit" class="btn btn-success btn-sm">
+                📊 Export Excel
+            </button>
+        </form>
+    </div>
+
+    <table class="table table-sm table-bordered">
+
+        <thead>
+            <tr>
+                <th>Mois</th>
+                <th>Article</th>
+                <th>Code VIF</th>
+                <th class="text-end">Kg</th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+            {% for r in articles %}
+            <tr>
+                <td>{{ r.mois }}</td>
+                <td>{{ r.article }}</td>
+                <td>{{ r.code_vif }}</td>
+                <td class="text-end">
+                    {{ "%.1f"|format(r.total_kg or 0) }}
+                </td>
+            </tr>
+            {% endfor %}
+
+        </tbody>
+
+    </table>
+
+</div>
+
+<div class="card p-3 mb-4">
+
     <h4>📅 Totaux mensuels</h4>
 
     <table class="table table-sm table-bordered">
@@ -137,7 +182,7 @@
     {
         "label": "↩️ Retour",
         "url": url_for('distribution.distribution_main'),
-        "color": "success"
+        "color": "outline-dark"
     }
 ]) }}
 

@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}Visualisation des stocks{% endblock %}
 
 {% block content %}
@@ -38,14 +40,10 @@
             </label>
         </div>
 
-        <a href="{{ url_for('distribution.export_stocks_excel') }}" class="btn btn-success btn-sm">
-            📥 Export Excel
-        </a>
-
-        <a href="{{ url_for('distribution.distribution_main') }}" class="btn btn-success btn-sm">
-            ↩️ Retour Distribution
-        </a>
-
+        {% call action_buttons() %}
+            {{ action_button("📥 Export Excel", href=url_for('distribution.export_stocks_excel'), color="success") }}
+            {{ action_button("↩️ Retour Distribution", href=url_for('distribution.distribution_main'), color="outline-dark") }}
+        {% endcall %}
 
     </div>
 
@@ -178,9 +176,9 @@
 
 <div id="filter-depot" class="filter-dropdown"></div>
 
-<a href="{{ url_for('distribution.distribution_main') }}" class="btn btn-secondary mt-3">
-    ← Retour
-</a>
+{% call action_buttons() %}
+    {{ action_button("← Retour", href=url_for('distribution.distribution_main'), color="outline-dark") }}
+{% endcall %}
 
 <style>
 

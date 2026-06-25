@@ -274,6 +274,12 @@ def engagements_parametres_workflow():
 
                 montant_max = request.form.get(f"montant_max_{param_id}")
 
+                attestation_comparaison = (
+                    "o"
+                    if request.form.get(f"attestation_comparaison_{param_id}")
+                    else "n"
+                )
+
                 un_devis = "o" if request.form.get(f"un_devis_{param_id}") else "n"
 
                 deux_devis = (
@@ -298,6 +304,7 @@ def engagements_parametres_workflow():
                     UPDATE engagements_parametres
                     SET
                         montant_max = ?,
+                        attestation_comparaison = ?,
                         un_devis = ?,
                         deux_devis = ?,
                         accord_resp_pole = ?,
@@ -305,6 +312,7 @@ def engagements_parametres_workflow():
                     WHERE id = ?
                 """, (
                     montant_max,
+                    attestation_comparaison,
                     un_devis,
                     deux_devis,
                     accord_resp_pole,

@@ -1,23 +1,44 @@
+{% macro action_button(
+    label,
+    href=None,
+    onclick=None,
+    color="primary",
+    type=None,
+    formaction=None,
+    disabled=False
+) %}
+{% if href %}
+<a href="{{ href }}"
+   class="btn btn-{{ color }}{% if disabled %} disabled{% endif %}"
+   {% if onclick %}onclick="{{ onclick }}"{% endif %}>
+    {{ label }}
+</a>
+{% else %}
+<button type="{{ type or 'button' }}"
+        class="btn btn-{{ color }}"
+        {% if onclick %}onclick="{{ onclick }}"{% endif %}
+        {% if formaction %}formaction="{{ formaction }}"{% endif %}
+        {% if disabled %}disabled{% endif %}>
+    {{ label }}
+</button>
+{% endif %}
+{% endmacro %}
+
+
 {% macro action_buttons(buttons=None) %}
 <div class="d-flex justify-content-end mb-3">
     <div style="display:flex; gap:15px; flex-wrap:wrap;">
         {% if buttons %}
             {% for btn in buttons %}
-                {% if btn.onclick %}
-                    <button
-                        type="{{ btn.type or 'button' }}"
-                        class="btn btn-{{ btn.color }} "
-                        onclick="{{ btn.onclick }}"
-                        {% if btn.disabled %}disabled{% endif %}>
-                        {{ btn.label }}
-                    </button>
-                {% else %}
-                    <a href="{{ btn.url }}"
-                       class="btn btn-{{ btn.color }}
-                       {% if btn.disabled %}disabled{% endif %}">
-                        {{ btn.label }}
-                    </a>
-                {% endif %}
+                {{ action_button(
+                    btn.label,
+                    href=btn.url,
+                    onclick=btn.onclick,
+                    color=btn.color or 'primary',
+                    type=btn.type,
+                    formaction=btn.formaction,
+                    disabled=btn.disabled
+                ) }}
             {% endfor %}
         {% elif caller %}
             {{ caller() }}
@@ -25,32 +46,3 @@
     </div>
 </div>
 {% endmacro %}
-
-
-
-{% macro action_button(
-    label,
-    href=None,
-    onclick=None,
-    color="primary",
-    size="md"
-) %}
-
-{% if href %}
-<a href="{{ href }}"
-   class="btn btn-{{ color }}">
-    {{ label }}
-</a>
-
-{% else %}
-<button type="button"
-        class="btn btn-{{ color }}"
-        {% if onclick %}
-        onclick="{{ onclick }}"
-        {% endif %}>
-    {{ label }}
-</button>
-{% endif %}
-
-{% endmacro %}
-

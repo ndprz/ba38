@@ -18,6 +18,7 @@
   <!-- 🧾 FORMULAIRE D'AJOUT D'UN NOUVEL ÉVÉNEMENT -->
   <!-- ============================================= -->
   <form method="post" enctype="multipart/form-data" class="card p-3 mt-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="ajouter">
 
     <div class="row g-3">
@@ -134,6 +135,7 @@
           <!-- ✅ bouton ON/OFF -->
           <td>
             <form method="post" class="d-inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="id" value="{{ e.id }}">
               <input type="hidden" name="action" value="basculer_actif">
               <button class="btn btn-sm {% if e.actif == 1 %} btn-success{% else %}btn-outline-secondary{% endif %}" {% if
@@ -177,6 +179,7 @@
 
               <!-- 🗑️ -->
               <form method="post" onsubmit="return confirm('Supprimer cet événement ?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="id" value="{{ e.id }}">
                 <input type="hidden" name="action" value="supprimer">
                 <button class="btn btn-sm btn-outline-danger px-1 py-0" {% if lecture_seule %}disabled{% endif %}>
@@ -242,6 +245,7 @@
   <div class="modal-dialog modal-lg">
     <form class="modal-content" method="post" enctype="multipart/form-data" {% if lecture_seule
       %}onsubmit="return false;" {% endif %}>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <!-- Champs cachés -->
       <input type="hidden" name="action" value="modifier">
       <input type="hidden" name="id" id="edit_id">

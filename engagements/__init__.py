@@ -12,3 +12,5 @@ from engagements import routes_subventions
 from engagements import routes_fichiers
 from engagements import routes_tresorerie
 from engagements import routes_notes_frais
+from engagements import routes_reporting
+from engagements import routes_ged

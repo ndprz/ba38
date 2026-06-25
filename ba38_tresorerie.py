@@ -2566,8 +2566,8 @@ def edit_modele_email(code_modele):
 @require_access("tresorerie", "ecriture")
 def cerfa():
 
-    os.makedirs("/srv/ba38/tmp", exist_ok=True)
-    tmp_dir = "/srv/ba38/tmp"
+    os.makedirs(os.getenv("TMP_DIR", "/srv/ba38/tmp"), exist_ok=True)
+    tmp_dir = os.getenv("TMP_DIR", "/srv/ba38/tmp")
 
     mail_mode = session.get(
         "MAIL_MODE",
@@ -2611,7 +2611,7 @@ def cerfa():
                 flash("❌ Fichier manquant", "danger")
                 return redirect(url_for("tresorerie.cerfa"))
 
-            tmp_dir = "/srv/ba38/tmp"
+            tmp_dir = os.getenv("TMP_DIR", "/srv/ba38/tmp")
 
             filename = f"cerfa_{int(time.time())}.pdf"
             tmp_path = os.path.join(tmp_dir, filename)
@@ -2697,7 +2697,7 @@ def cerfa():
                 if mail_mode == "TEST" and i >= 1:
                     break
 
-                signature_path = "/srv/ba38/static/signatures/signature_chantal_vivier.png"
+                signature_path = os.path.join(os.getenv("BASE_PATH", "/srv/ba38"), "static/signatures/signature_chantal_vivier.png")
 
                 signed_pdf = ajouter_signature_pdf(
                     p["pdf"],
@@ -2978,7 +2978,7 @@ def factures_pdf():
     from threading import Thread
     from PyPDF2 import PdfReader, PdfWriter
 
-    os.makedirs("/srv/ba38/tmp", exist_ok=True)
+    os.makedirs(os.getenv("TMP_DIR", "/srv/ba38/tmp"), exist_ok=True)
 
     # ==========================================================
     # 🔧 CONFIG MAIL
@@ -3122,7 +3122,7 @@ def factures_pdf():
                 flash("❌ Fichier manquant", "danger")
                 return redirect(url_for("tresorerie.factures_upload"))
 
-            tmp_path = f"/srv/ba38/tmp/factures_{int(time.time())}.pdf"
+            tmp_path = os.path.join(os.getenv("TMP_DIR", "/srv/ba38/tmp"), f"factures_{int(time.time())}.pdf")
             file.save(tmp_path)
 
             session["factures_pdf_path"] = tmp_path

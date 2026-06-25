@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}Facturation des cotisations{% endblock %}
 
 
@@ -33,6 +36,7 @@
   {% endif %}
 
   <form method="post" action="{{ url_for('tresorerie.cotisations_toggle_test_mode') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if mail_mode == "TEST" %}
     <button class="btn btn-warning w-100 mb-3">
       🧪 Mode TEST actif – Désactiver
@@ -50,6 +54,7 @@
   <!-- FORMULAIRE FACTURATION    -->
   <!-- ========================= -->
   <form method="post" enctype="multipart/form-data" class="mb-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="row g-3 align-items-end">
 
       <div class="col-md-2">
@@ -85,6 +90,7 @@
 
   <form method="post" action="{{ url_for('tresorerie.cotisations_relance') }}" enctype="multipart/form-data"
     class="mb-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="row g-3 align-items-end">
 
@@ -178,6 +184,7 @@
     <!-- Export Excel -->
     <div class="col">
       <form method="post" action="{{ url_for('tresorerie.cotisations_export_excel') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="annee" value="{{ annee }}">
         <input type="hidden" name="data" value='{{ resultats | tojson | safe }}'>
         <button class="btn btn-success w-100">
@@ -190,6 +197,7 @@
     <div class="col">
       <form method="post" action="{{ url_for('tresorerie.cotisations_generer_pdfs') }}"
         onsubmit="return lancerGenerationPDF();">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="annee" value="{{ annee }}">
         <input type="hidden" name="data" value='{{ resultats | tojson | safe }}'>
         <button class="btn btn-secondary w-100">
@@ -203,6 +211,7 @@
       <form method="post" action="{{ url_for('tresorerie.cotisations_envoyer_mails') }}" onsubmit="if (!confirmerEnvoiProd()) return false;
                       showOverlay('📧 Envoi des factures par mail en cours…');
                       return true;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <select name="mail_sender" class="form-select mb-2" required>
           <option value="ba380@banquealimentaire.org">ba380@banquealimentaire.org</option>
@@ -221,9 +230,9 @@
     </div>
 
     <!-- Retour -->
-    <a href="{{ url_for('tresorerie.cotisations_quit') }}" class="btn btn-outline-secondary w-100">
-      ⬅️ Retour aux menu trésorerie
-    </a>
+    <div class="col">
+      {{ action_button("⬅️ Retour aux menu trésorerie", href=url_for('tresorerie.cotisations_quit'), color="outline-dark") }}
+    </div>
 
   </div>
   {% endif %}

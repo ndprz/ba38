@@ -33,6 +33,7 @@
             {% if not lecture_seule %}
             <form method="POST" action="{{ url_for('partenaires.edition_tableau_associations') }}"
                 style="display: inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="has_interacted" value="1">
                 {% if voir_toutes %}
                 <input type="hidden" name="voir_toutes" value="1">

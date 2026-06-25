@@ -814,6 +814,7 @@ def export_ramasses_vif_mensuel():
         GROUP BY r.id_fournisseur, l.code_vif
         ORDER BY f.nom, l.code_vif
     """, (mois,)).fetchall()
+    
 
     # 🔴 contrôle VIF
     erreurs = [f"Fournisseur sans code VIF : {r['nom']}" for r in rows if not r["code_vif"]]
@@ -1359,6 +1360,25 @@ def ramasses_bilan():
     """, (annee,)).fetchall()
 
     # ===========================
+    # Articles
+    # ===========================
+    articles = cur.execute("""
+        SELECT
+            strftime('%m', r.date_ramasse) AS mois,
+            l.code_vif AS code_vif,
+            COALESCE(ar.libelle, l.code_vif) AS article,
+            SUM(l.quantite_kg) AS total_kg
+        FROM ramasses_partenaire r
+        JOIN ramasses_partenaire_lignes l
+            ON l.id_ramasse = r.id
+        LEFT JOIN articles ar
+            ON ar.article = l.code_vif
+        WHERE strftime('%Y', r.date_ramasse) = ?
+        GROUP BY mois, l.code_vif
+        ORDER BY mois DESC, article
+    """, (annee,)).fetchall()
+
+    # ===========================
     # Totaux mensuels
     # ===========================
     totaux_mensuels = cur.execute("""
@@ -1386,6 +1406,64 @@ def ramasses_bilan():
         annees=annees,
         fournisseurs=fournisseurs,
         associations=associations,
+        articles=articles,
         totaux_mensuels=totaux_mensuels,
         total_annuel=total_annuel
+    )
+
+
+@distribution_bp.route("/ramasses_bilan/export_articles", methods=["POST", "GET"])
+@login_required
+@require_access("distribution", "lecture")
+def export_ramasses_bilan_articles():
+
+    annee = request.values.get("annee")
+
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    rows = cur.execute("""
+        SELECT
+            strftime('%m', r.date_ramasse) AS mois,
+            l.code_vif AS code_vif,
+            COALESCE(ar.libelle, l.code_vif) AS article,
+            SUM(l.quantite_kg) AS total_kg
+        FROM ramasses_partenaire r
+        JOIN ramasses_partenaire_lignes l
+            ON l.id_ramasse = r.id
+        LEFT JOIN articles ar
+            ON ar.article = l.code_vif
+        WHERE strftime('%Y', r.date_ramasse) = ?
+        GROUP BY mois, l.code_vif
+        ORDER BY mois DESC, article
+    """, (annee,)).fetchall()
+
+    conn.close()
+
+    # ======================================================
+    # 📄 CREATION EXCEL
+    # ======================================================
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Bilan articles"
+
+    ws.append(["Mois", "Article", "Code VIF", "Quantité (kg)"])
+
+    for r in rows:
+        ws.append([r["mois"], r["article"], r["code_vif"], r["total_kg"] or 0])
+
+    for col in ws.columns:
+        max_length = max(len(str(cell.value or "")) for cell in col)
+        ws.column_dimensions[col[0].column_letter].width = min(max_length + 2, 40)
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=f"bilan_ramasses_articles_{annee}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )

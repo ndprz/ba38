@@ -5,7 +5,7 @@ import re
 import unicodedata
 import json
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, render_template_string, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from utils import get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_phone, require_access, get_db_path
 from urllib.parse import urlencode
@@ -1789,11 +1789,24 @@ def update_associations_table():
     if lignes_modifiees == 0:
         flash("ℹ️ Aucune modification détectée.", "info")
 
-    return redirect(url_for(
-        "partenaires.edition_tableau_associations",
+    # Repost en POST plutôt qu'un redirect GET classique : avec beaucoup
+    # d'associations filtrées, l'URL générée (filtered_ids + columns) peut
+    # dépasser la taille de ligne de requête autorisée par Gunicorn.
+    return render_template_string(
+        """
+        <form id="repost-edition-tableau" method="POST"
+              action="{{ url_for('partenaires.edition_tableau_associations') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% for col in columns %}
+            <input type="hidden" name="columns" value="{{ col }}">
+            {% endfor %}
+            <input type="hidden" name="filtered_ids" value="{{ filtered_ids }}">
+        </form>
+        <script>document.getElementById('repost-edition-tableau').submit();</script>
+        """,
         columns=columns,
         filtered_ids=json.dumps(filtered_ids)
-    ))
+    )
 
 
 def get_neighbor_ids_alphabetically(conn, current_id):

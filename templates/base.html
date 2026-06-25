@@ -77,6 +77,7 @@
      <form method="post"
                action="{{ url_for('distribution.set_mois_ramasse') }}"
                class="d-flex gap-2 align-items-center">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
           <input type="month"
                     name="mois_ramasse"

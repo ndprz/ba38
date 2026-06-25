@@ -305,7 +305,7 @@ def get_log_path(filename="app.log"):
 
     # 🔹 Cas particulier : historique des déploiements (global)
     if filename == "deploy.log":
-        base_dir = "/srv/ba38"
+        base_dir = os.getenv("BASE_PATH", "/srv/ba38")
     else:
         base_dir = os.getenv("BA38_BASE_DIR") or os.getcwd()
 
@@ -451,12 +451,12 @@ def get_version_file_path():
         # write_log(f"DEBUG path (env) = {path}")
         return path
 
-    if os.path.exists("/srv/ba38/dev/VERSION"):
+    if os.path.exists(os.getenv("BASE_PATH", "/srv/ba38") + "/dev/VERSION"):
         # write_log("DEBUG fallback DEV utilisé")
-        return "/srv/ba38/dev/VERSION"
+        return os.getenv("BASE_PATH", "/srv/ba38") + "/dev/VERSION"
 
     write_log("DEBUG fallback PROD utilisé")
-    return "/srv/ba38/prod/VERSION"
+    return os.getenv("BASE_PATH", "/srv/ba38") + "/prod/VERSION"
 
 def get_version():
     version_file = get_version_file_path()

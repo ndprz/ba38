@@ -416,9 +416,9 @@ body{
     ) }}
 
     {{ action_button(
-        "↩ Retour",
+        "↩️ Retour",
         href=url_for('index'),
-        color="outline-secondary"
+        color="outline-dark"
     ) }}
 
     {% endcall %}
@@ -530,9 +530,10 @@ body{
 
 <form
     id="form-update-table"
-    method="GET"
+    method="POST"
     action="{{ url_for('benevoles.edition_tableau_benevoles') }}"
     style="display:none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 </form>
 
 <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>

@@ -335,6 +335,7 @@
 
 
     <form method="post" action="{{ url_for('partenaires.generate_annexe1', partner_id=partner_id) }}" style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn btn-secondary">📄 Annexe 1 bis</button>
     </form>
   </div>

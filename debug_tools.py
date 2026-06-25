@@ -548,7 +548,7 @@ def restaurer_version():
 
     BASE_DIR = os.getenv("BA38_BASE_DIR", "/srv/ba38")
     PROD_DIR = os.path.join(BASE_DIR, "prod")
-    BACKUP_DIR = "/srv/ba38/backups"
+    BACKUP_DIR = os.getenv("BASE_PATH", "/srv/ba38") + "/backups"
 
     # =========================================================================
     # 🧠 Parser nom backup
@@ -610,7 +610,7 @@ def restaurer_version():
             write_log(f"🔄 Lancement rollback via script externe : {backup_path}")
 
             result = subprocess.run(
-                ["/srv/ba38/scripts_taches/rollback_prod.sh", backup_path],
+                [os.getenv("BASE_PATH", "/srv/ba38") + "/scripts_taches/rollback_prod.sh", backup_path],
                 capture_output=True,
                 text=True
             )
@@ -660,8 +660,8 @@ def check_drive_ids():
     write_log("🔍 Vérification des IDs Google Drive")
 
     base_envs = {
-        "DEV": "/srv/ba38/dev/.env",
-        "PROD": "/srv/ba38/prod/.env",
+        "DEV": os.getenv("BASE_PATH", "/srv/ba38") + "/dev/.env",
+        "PROD": os.getenv("BASE_PATH", "/srv/ba38") + "/prod/.env",
     }
 
     results = []
@@ -752,16 +752,16 @@ def check_drive_ids():
     )
 
 
-def count_active_sessions():
-    dev = get_active_sessions("dev")
-    prod = get_active_sessions("prod")
-    return len(dev) + len(prod)
-
 def get_active_sessions(env):
     """
-    Retourne les sessions Redis actives pour DEV ou PROD
+    Retourne les sessions Redis actives (utilisateurs connectés) pour DEV ou PROD.
+
+    Les sessions Flask-Session sont sérialisées en msgpack (pas en JSON), et DEV/PROD
+    partagent le même Redis (db=0) : on doit donc décoder avec le serializer de
+    l'app et filtrer sur le champ "environment" stocké dans la session à la connexion.
     """
-    redis_client = Redis(host="127.0.0.1", port=6379, decode_responses=True)
+    redis_client = Redis(host="127.0.0.1", port=6379)
+    serializer = current_app.session_interface.serializer
 
     sessions = []
     prefix = "session:"
@@ -772,17 +772,23 @@ def get_active_sessions(env):
             if not raw:
                 continue
 
-            data = json.loads(raw)
+            data = serializer.decode(raw)
 
-            # Sécurité : on filtre sur l'env si présent
-            if data.get("ENVIRONMENT") and data["ENVIRONMENT"] != env:
+            # On ne garde que les sessions d'utilisateurs connectés
+            if not data.get("user_id"):
                 continue
+
+            if data.get("environment") != env:
+                continue
+
+            ttl = redis_client.ttl(key)
+            last_seen = f"expire dans {ttl // 3600}h{(ttl % 3600) // 60:02d}" if ttl and ttl > 0 else "?"
 
             sessions.append({
                 "username": data.get("username", "?"),
                 "email": data.get("email", "?"),
                 "connexion_time": data.get("login_time", "?"),
-                "last_seen": data.get("last_seen", "?"),
+                "last_seen": last_seen,
                 "actif": "oui",
             })
 
@@ -967,10 +973,8 @@ def admin_scripts():
     version = v.get("version", "")
     version_msg = v.get("message", "")
 
-    nb_sessions = count_active_sessions()
-
-    connexions_dev = [{"label": f"{nb_sessions} session(s) active(s)"}] if nb_sessions else []
-    connexions_prod = [{"label": f"{nb_sessions} session(s) active(s)"}] if nb_sessions else []
+    connexions_dev = get_active_sessions("dev")
+    connexions_prod = get_active_sessions("prod")
 
     return render_template(
         "admin/admin_scripts.html",
@@ -1086,11 +1090,11 @@ def debug_console_stream():
 
 def get_available_logs():
 
-    logs_dir = "/srv/ba38/logs"
+    logs_dir = os.getenv("BASE_PATH", "/srv/ba38") + "/logs"
 
     logs = {
-        "app.log (DEV)": "/srv/ba38/dev/logs/app.log",
-        "app.log (PROD)": "/srv/ba38/prod/logs/app.log",
+        "app.log (DEV)": os.getenv("BASE_PATH", "/srv/ba38") + "/dev/logs/app.log",
+        "app.log (PROD)": os.getenv("BASE_PATH", "/srv/ba38") + "/prod/logs/app.log",
         "connexions.log": get_log_path("connexions.log"),
         "deploy.log": get_log_path("deploy.log"),
 

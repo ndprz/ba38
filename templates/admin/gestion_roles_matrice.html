@@ -1,105 +1,288 @@
 {% extends "base.html" %}
-{% block title %}Droits utilisateur{% endblock %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Droits — {{ user.email }}{% endblock %}
 
 {% block content %}
-<h2>🔐 Droits de l’utilisateur</h2>
 
+<style>
+/* ── Layout ── */
+.roles-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+}
+
+.roles-user-card {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-left: 4px solid #0d6efd;
+    border-radius: 6px;
+    padding: .75rem 1rem;
+    font-size: .9rem;
+}
+
+/* ── Sticky bar ── */
+#sticky-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #fff;
+    border-bottom: 2px solid #dee2e6;
+    padding: .6rem 0;
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+}
+
+#dirty-badge {
+    display: none;
+    font-size: .8rem;
+}
+
+/* ── Admin override banner ── */
+#admin-global-warning {
+    display: none;
+    border-left: 4px solid #0dcaf0;
+}
+
+/* ── Droit selector (radio group styled as buttons) ── */
+.droit-group {
+    display: flex;
+    gap: 4px;
+}
+
+.droit-group input[type="radio"] {
+    display: none;
+}
+
+.droit-group label {
+    cursor: pointer;
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    font-size: .8rem;
+    font-weight: 500;
+    transition: background .12s, color .12s, border-color .12s;
+    white-space: nowrap;
+    color: #6c757d;
+    border-color: #dee2e6;
+    background: #fff;
+    user-select: none;
+}
+
+/* Aucun */
+.droit-group input[value="aucun"]:checked + label,
+.droit-group label[for$="-aucun"]:has(~ input:checked) { /* fallback handled by JS */ }
+
+.droit-group input[value="aucun"]:checked + label {
+    background: #6c757d;
+    color: #fff;
+    border-color: #6c757d;
+}
+
+/* Lecture */
+.droit-group input[value="lecture"]:checked + label {
+    background: #0d6efd;
+    color: #fff;
+    border-color: #0d6efd;
+}
+
+/* Écriture */
+.droit-group input[value="ecriture"]:checked + label {
+    background: #198754;
+    color: #fff;
+    border-color: #198754;
+}
+
+/* Admin */
+.droit-group input[value="admin"]:checked + label {
+    background: #dc3545;
+    color: #fff;
+    border-color: #dc3545;
+}
+
+.droit-group label:hover {
+    filter: brightness(.92);
+    border-color: #adb5bd;
+}
+
+/* ── Table ── */
+.roles-table th {
+    font-weight: 600;
+    font-size: .8rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #495057;
+    background: #f1f3f5;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.roles-table td {
+    vertical-align: middle;
+    font-size: .9rem;
+}
+
+.roles-table tr.table-disabled td {
+    opacity: .45;
+    pointer-events: none;
+}
+
+/* app label */
+.appli-label {
+    font-weight: 500;
+}
+
+.appli-key {
+    font-family: monospace;
+    font-size: .75rem;
+    color: #6c757d;
+}
+
+/* ── Legend ── */
+.legend-row {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    font-size: .8rem;
+    color: #495057;
+    margin-top: 1rem;
+}
+
+.legend-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    margin-right: 4px;
+}
+</style>
 
 <!-- ========================================================= -->
-<!-- INFORMATIONS UTILISATEUR -->
+<!-- HEADER -->
 <!-- ========================================================= -->
-<div class="mb-3">
-    <strong>Email :</strong> {{ user.email }}<br>
-    <strong>Nom :</strong> {{ user.username or "-" }}
+<div class="roles-header">
+    <div>
+        <h2 class="mb-1">🔐 Droits applicatifs</h2>
+        <div class="roles-user-card">
+            <strong>{{ user.email }}</strong>
+            {% if user.username %}
+            &nbsp;·&nbsp; {{ user.username }}
+            {% endif %}
+            &nbsp;·&nbsp;
+            {% if user.actif %}
+                <span class="badge bg-success">actif</span>
+            {% else %}
+                <span class="badge bg-secondary">inactif</span>
+            {% endif %}
+        </div>
+    </div>
+    {% call action_buttons() %}
+        {{ action_button("← Retour à la liste", href=url_for('admin.gestion_utilisateurs'), color="outline-dark") }}
+    {% endcall %}
 </div>
 
-<form method="post">
+<!-- ========================================================= -->
+<!-- FORM -->
+<!-- ========================================================= -->
+<form method="post" id="roles-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    <!-- ========================================================= -->
-    <!-- ADMINISTRATEUR GLOBAL -->
-    <!-- ========================================================= -->
-    <div class="form-check form-switch mb-4">
-        <input
-            class="form-check-input"
-            type="checkbox"
-            name="admin_global"
-            id="admin_global"
-            {% if user.role == 'admin' %}checked{% endif %}
-        >
-        <label class="form-check-label fw-bold" for="admin_global">
-            Administrateur global
-        </label>
+    <!-- ── Sticky action bar ── -->
+    <div id="sticky-bar">
+
+        <button type="submit" name="action" value="save"
+                class="btn btn-primary btn-sm">
+            💾 Enregistrer
+        </button>
+
+        <button type="submit" name="action" value="save_return"
+                class="btn btn-success btn-sm">
+            💾 Enregistrer &amp; retour
+        </button>
+
+        <span id="dirty-badge" class="badge bg-warning text-dark">
+            ⚠ Modifications non enregistrées
+        </span>
+
+        <div class="ms-auto form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox"
+                   name="admin_global" id="admin_global"
+                   {% if user.role == 'admin' %}checked{% endif %}>
+            <label class="form-check-label fw-semibold small"
+                   for="admin_global">
+                Administrateur global
+            </label>
+        </div>
     </div>
 
-    <div id="admin-global-warning" class="alert alert-info" style="display:none;">
-        🔒 Administrateur global : tous les droits sont accordés automatiquement.
-        La matrice ci-dessous est désactivée.
+    <!-- ── Admin global banner ── -->
+    <div id="admin-global-warning"
+         class="alert alert-info mb-3">
+        🔒 Administrateur global : tous les droits sont accordés
+        automatiquement. La matrice ci-dessous est désactivée.
     </div>
 
-    <!-- ========================================================= -->
-    <!-- MATRICE DES DROITS MÉTIERS -->
-    <!-- Source de vérité : table roles_utilisateurs -->
-    <!-- ========================================================= -->
-    <table class="table table-bordered align-middle">
-        <thead class="table-light">
+    <!-- ── Matrice ── -->
+    <table class="table table-bordered roles-table">
+        <thead>
             <tr>
-                <th>Application</th>
-                <th class="text-center">Aucun</th>
-                <th class="text-center">Lecture</th>
-                <th class="text-center">Écriture</th>
-                <th class="text-center">Admin</th>
+                <th style="width:45%">Application</th>
+                <th>Niveau d'accès</th>
             </tr>
         </thead>
-        <tbody>
-
-            {# 
-                applications : dict { cle_appli: label_affiché }
-                roles        : dict { cle_appli: droit }
-            #}
+        <tbody id="matrice-body">
 
             {% for appli, label in applications.items() %}
             {% set droit = roles.get(appli) or "aucun" %}
-            <tr>
-                <td class="fw-bold">{{ label }}</td>
-
-                <!-- ===== AUCUN ===== -->
-                <td class="text-center">
-                    <input
-                        type="radio"
-                        name="droit_{{ appli }}"
-                        value="aucun"
-                        {% if droit == "aucun" %}checked{% endif %}
-                    >
+            <tr data-appli="{{ appli }}">
+                <td>
+                    <div class="appli-label">{{ label }}</div>
+                    <div class="appli-key">{{ appli }}</div>
                 </td>
+                <td>
+                    <div class="droit-group" role="group"
+                         aria-label="Niveau d'accès {{ label }}">
 
-                <!-- ===== LECTURE ===== -->
-                <td class="text-center">
-                    <input
-                        type="radio"
-                        name="droit_{{ appli }}"
-                        value="lecture"
-                        {% if droit == "lecture" %}checked{% endif %}
-                    >
-                </td>
+                        {# Aucun #}
+                        <input type="radio"
+                               name="droit_{{ appli }}"
+                               id="droit-{{ appli }}-aucun"
+                               value="aucun"
+                               {% if droit == "aucun" or droit == "" %}checked{% endif %}>
+                        <label for="droit-{{ appli }}-aucun">Aucun</label>
 
-                <!-- ===== ÉCRITURE ===== -->
-                <td class="text-center">
-                    <input
-                        type="radio"
-                        name="droit_{{ appli }}"
-                        value="ecriture"
-                        {% if droit == "ecriture" %}checked{% endif %}
-                    >
-                </td>
+                        {# Lecture #}
+                        <input type="radio"
+                               name="droit_{{ appli }}"
+                               id="droit-{{ appli }}-lecture"
+                               value="lecture"
+                               {% if droit == "lecture" %}checked{% endif %}>
+                        <label for="droit-{{ appli }}-lecture">Lecture</label>
 
-                <!-- ===== ADMIN ===== -->
-                <td class="text-center">
-                    <input
-                        type="radio"
-                        name="droit_{{ appli }}"
-                        value="admin"
-                        {% if droit == "admin" %}checked{% endif %}
-                    >
+                        {# Écriture #}
+                        <input type="radio"
+                               name="droit_{{ appli }}"
+                               id="droit-{{ appli }}-ecriture"
+                               value="ecriture"
+                               {% if droit == "ecriture" %}checked{% endif %}>
+                        <label for="droit-{{ appli }}-ecriture">Écriture</label>
+
+                        {# Admin #}
+                        <input type="radio"
+                               name="droit_{{ appli }}"
+                               id="droit-{{ appli }}-admin"
+                               value="admin"
+                               {% if droit == "admin" %}checked{% endif %}>
+                        <label for="droit-{{ appli }}-admin">Admin</label>
+
+                    </div>
                 </td>
             </tr>
             {% endfor %}
@@ -107,87 +290,100 @@
         </tbody>
     </table>
 
-    <!-- ========================================================= -->
-    <!-- ACTIONS -->
-    <!-- ========================================================= -->
-    <div class="d-flex gap-2 mt-3">
+    <!-- ── Legend ── -->
+    <div class="legend-row">
+        <span>
+            <span class="legend-dot" style="background:#6c757d"></span>
+            Aucun — pas d'accès
+        </span>
+        <span>
+            <span class="legend-dot" style="background:#0d6efd"></span>
+            Lecture — consultation uniquement
+        </span>
+        <span>
+            <span class="legend-dot" style="background:#198754"></span>
+            Écriture — consultation + modification
+        </span>
+        <span>
+            <span class="legend-dot" style="background:#dc3545"></span>
+            Admin — accès complet + administration
+        </span>
+    </div>
 
-        <!-- Enregistrer -->
-        <button type="submit" name="action" value="save" class="btn btn-primary">
+    <!-- ── Bottom actions ── -->
+    <div class="d-flex gap-2 mt-4">
+        <button type="submit" name="action" value="save"
+                class="btn btn-primary">
             💾 Enregistrer
         </button>
-
-        <!-- Enregistrer + Retour -->
-        <button type="submit"
-                name="action"
-                value="save_return"
-                class="btn btn-success"
-                onclick="saveScrollPosition()">
-            💾⬅️ Enregistrer et retour
+        <button type="submit" name="action" value="save_return"
+                class="btn btn-success">
+            💾 Enregistrer &amp; retour
         </button>
-
-        <!-- Retour simple -->
         <a href="{{ url_for('admin.gestion_utilisateurs') }}"
-        class="btn btn-secondary"
-        onclick="saveScrollPosition()">
-            ⬅️ Retour
+           class="btn btn-outline-dark"
+           id="btn-retour">
+            ← Retour
         </a>
-
     </div>
 </form>
 
 <!-- ========================================================= -->
-<!-- JS : désactivation de la matrice si ADMIN GLOBAL -->
+<!-- JS -->
 <!-- ========================================================= -->
 <script>
+(function () {
+    const form        = document.getElementById("roles-form");
+    const dirtyBadge  = document.getElementById("dirty-badge");
+    const adminCb     = document.getElementById("admin_global");
+    const warning     = document.getElementById("admin-global-warning");
+    const tbody       = document.getElementById("matrice-body");
+    const btnRetour   = document.getElementById("btn-retour");
 
-window.addEventListener("beforeunload", function (e) {
-    if (formModified) {
-        e.preventDefault();
-        e.returnValue = "";
+    let dirty = false;
+
+    /* ── Marquer comme modifié ── */
+    function markDirty() {
+        dirty = true;
+        dirtyBadge.style.display = "inline-flex";
     }
-});
 
-let formModified = false;
-
-// 🔥 détecter modification
-document.querySelectorAll("form input").forEach(el => {
-    el.addEventListener("change", () => {
-        formModified = true;
+    form.querySelectorAll("input").forEach(el => {
+        el.addEventListener("change", markDirty);
     });
-});
 
-// 🔥 reset après submit
-document.querySelector("form").addEventListener("submit", () => {
-    formModified = false;
-});
+    /* ── Réinitialiser après soumission ── */
+    form.addEventListener("submit", () => { dirty = false; });
 
-// 🔥 contrôle bouton retour
-function confirmLeave(event) {
-    if (formModified) {
-        if (!confirm("⚠️ Vous avez des modifications non enregistrées. Quitter quand même ?")) {
-            event.preventDefault();
-            return false;
+    /* ── Avertir avant de quitter ── */
+    window.addEventListener("beforeunload", e => {
+        if (dirty) { e.preventDefault(); e.returnValue = ""; }
+    });
+
+    btnRetour.addEventListener("click", e => {
+        if (dirty && !confirm(
+            "⚠️ Vous avez des modifications non enregistrées.\nQuitter quand même ?"
+        )) {
+            e.preventDefault();
         }
-    }
-    return true;
-}
+    });
 
-function toggleMatrice() {
-    const isAdmin = document.getElementById("admin_global").checked;
-
-    document.getElementById("admin-global-warning").style.display =
-        isAdmin ? "block" : "none";
-
-    document
-        .querySelectorAll("table input[type=radio]")
-        .forEach(el => {
-            el.disabled = isAdmin;
+    /* ── Admin global : activer/désactiver la matrice ── */
+    function applyAdminState() {
+        const isAdmin = adminCb.checked;
+        warning.style.display = isAdmin ? "block" : "none";
+        tbody.querySelectorAll("tr").forEach(tr => {
+            tr.classList.toggle("table-disabled", isAdmin);
+            tr.querySelectorAll("input[type=radio]").forEach(r => {
+                r.disabled = isAdmin;
+            });
         });
-}
+    }
 
-document.getElementById("admin_global").addEventListener("change", toggleMatrice);
-document.addEventListener("DOMContentLoaded", toggleMatrice);
+    adminCb.addEventListener("change", applyAdminState);
+    applyAdminState(); /* init au chargement */
+
+})();
 </script>
 
 {% endblock %}

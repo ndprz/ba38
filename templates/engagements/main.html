@@ -38,6 +38,22 @@
         }) %}
     {% endif %}
 
+    {% if has_access('engagement_parametres', 'lecture') %}
+        {% set _ = buttons.append({
+        'url': url_for('engagements.engagements_reporting'),
+        'label': "📊 Reporting",
+        'color': 'info'
+        }) %}
+    {% endif %}
+
+    {% if has_access('engagement_parametres', 'lecture') %}
+            {% set _ = buttons.append({
+            'url': url_for('engagements.engagements_ged'),
+            'label': "🗂️ GED",
+            'color': 'dark'
+            }) %}
+    {% endif %}
+
     {% set _ = buttons.append({
         'url': url_for('index'),
         'label': "↩️ Retour à l\\'accueil",
@@ -72,7 +88,7 @@
 
         </span>
 
-        <span class="badge bg-success text-dark badge-workflow">
+        <span class="badge bg-success text-white badge-workflow">
 
             🟢 Validé Pôle
 
@@ -315,7 +331,7 @@
             <th class="text-end">Montant (€)</th>
             <th style="min-width:340px;">
 
-                Statut
+                Statut / Workflow
 
             </th>
 

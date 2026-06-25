@@ -36,39 +36,190 @@ def _connect():
     conn.row_factory = sqlite3.Row
     return conn
 
+def beautify_title(name):
+
+    return (
+        name
+        .replace("_", " ")
+        .replace("-", " ")
+        .strip()
+        .title()
+    )
+
+
 @fournisseurs_bp.route('/fournisseurs')
 @login_required
 @require_access("fournisseurs", "lecture")
 def liste_fournisseurs():
-    q = request.args.get('q', '').strip()
+
+    lecture_seule = not has_access("fournisseurs", "ecriture")
 
     with _connect() as conn:
-        # 🔍 Récupérer la liste des colonnes de la table
-        cursor = conn.execute("PRAGMA table_info(fournisseurs)")
-        columns_info = cursor.fetchall()
-        columns = [col[1] for col in columns_info]  # col[1] = nom de la colonne
 
-        # Construire la requête SELECT dynamique
-        cols_sql = ", ".join([f"COALESCE({c}, '') AS {c}" for c in columns])
-        sql = f"SELECT {cols_sql} FROM fournisseurs"
-        params = []
+        fields = conn.execute("""
+            SELECT *
+            FROM field_groups
+            WHERE appli = 'fournisseurs'
+            ORDER BY
+                CASE
+                    WHEN LOWER(group_name) = 'coordonnees principales'
+                    THEN 0
+                    ELSE 1
+                END,
+                group_name COLLATE NOCASE,
+                display_order
+        """).fetchall()
 
-        # Si recherche → WHERE dynamique sur toutes les colonnes texte
-        if q:
-            like_cols = [c for c in columns if c not in ("id", "date_creation", "date_modif")]
-            where = " OR ".join([f"{c} LIKE ?" for c in like_cols])
-            sql += f" WHERE {where}"
-            params = [f"%{q}%"] * len(like_cols)
+        rows = conn.execute("""
+            SELECT *
+            FROM fournisseurs
+            ORDER BY nom COLLATE NOCASE
+        """).fetchall()
 
-        sql += " ORDER BY nom COLLATE NOCASE"
+    # ============================================================
+    # GROUPES (pour le panneau "Options d'affichage")
+    # ============================================================
 
-        rows = conn.execute(sql, params).fetchall()
+    grouped_fields = {}
+
+    for field in fields:
+
+        field_name = field["field_name"]
+
+        if field_name == "nom":
+            continue
+
+        group_name = field["group_name"] or "Autres"
+
+        grouped_fields.setdefault(group_name, []).append({
+            "field_name": field_name
+        })
+
+    table_data = [dict(row) for row in rows]
+
+    # ============================================================
+    # COLONNES TABULATOR
+    # ============================================================
+
+    LISTE_FIELDS = {"type_frs", "enseigne", "famille_fournisseur"}
+
+    columns = [
+
+        {
+            "title": "Action",
+            "field": "id",
+            "width": 110,
+            "frozen": True,
+            "hozAlign": "center",
+            "headerSort": False,
+            "formatter": "modifierFormatter"
+        },
+
+        {
+            "title": "ID",
+            "field": "id",
+            "minWidth": 70,
+            "widthGrow": 0,
+            "frozen": True
+        },
+
+        {
+            "title": "Nom",
+            "field": "nom",
+            "tooltip": True,
+            "minWidth": 220,
+            "widthGrow": 2,
+            "frozen": True
+        }
+    ]
+
+    for field in fields:
+
+        field_name = field["field_name"]
+
+        if field_name == "nom":
+            continue
+
+        type_champ = (field["type_champ"] or "").lower()
+
+        header_filter = "input"
+
+        header_filter_params = {
+            "placeholder": "Filtrer..."
+        }
+
+        min_width = 130
+        width_grow = 1
+        hoz_align = "left"
+
+        if type_champ == "oui_non":
+
+            header_filter = "list"
+
+            header_filter_params = {
+                "values": {"": "Tous", "oui": "Oui", "non": "Non"},
+                "clearable": True
+            }
+
+            min_width = 100
+            width_grow = 0
+            hoz_align = "center"
+
+        elif type_champ == "liste" or field_name in LISTE_FIELDS:
+
+            header_filter = "list"
+
+            header_filter_params = {
+                "valuesLookup": True,
+                "clearable": True,
+                "autocomplete": True
+            }
+
+            min_width = 160
+
+        elif "mail" in field_name:
+            min_width = 240
+            width_grow = 2
+
+        elif "tel" in field_name:
+            min_width = 140
+
+        elif "date" in field_name:
+            min_width = 130
+            hoz_align = "center"
+
+        elif field_name in ("adresse", "adresse2", "notes"):
+            min_width = 260
+            width_grow = 2
+
+        col = {
+            "title": beautify_title(field_name),
+            "field": field_name,
+            "tooltip": True,
+            "headerTooltip": field_name,
+            "minWidth": min_width,
+            "widthGrow": width_grow,
+            "hozAlign": hoz_align,
+            "sorter": "string",
+            "headerFilter": header_filter,
+            "headerFilterParams": header_filter_params,
+        }
+
+        if field_name == "drive_link":
+            col["formatter"] = "driveFormatter"
+            col["headerSort"] = False
+
+        if "mail" in field_name:
+            col["formatter"] = "emailFormatter"
+
+        columns.append(col)
 
     return render_template(
         "fournisseurs/fournisseurs.html",
-        columns=columns,  # ⬅️ plus besoin de COLUMNS fixe
-        rows=rows,
-        q=q
+        table_data=table_data,
+        columns=columns,
+        grouped_fields=grouped_fields,
+        lecture_seule=lecture_seule
     )
 
 
@@ -259,6 +410,7 @@ def create_fournisseur():
 
         enseigne = request.form.get("enseigne", "").strip()
         type_frs = request.form.get("type_frs", "").strip()
+        famille_fournisseur = request.form.get("famille_fournisseur", "").strip()
         tel = request.form.get("tel", "").strip()
         mail = request.form.get("mail", "").strip()
         adresse = request.form.get("adresse", "").strip()
@@ -270,11 +422,11 @@ def create_fournisseur():
         try:
             cursor.execute("""
                 INSERT INTO fournisseurs
-                (nom, enseigne, type_frs, tel, mail, adresse, ville, notes,
+                (nom, enseigne, type_frs, famille_fournisseur, tel, mail, adresse, ville, notes,
                  date_creation, date_modif, user_modif)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                nom, enseigne, type_frs, tel, mail,
+                nom, enseigne, type_frs, famille_fournisseur, tel, mail,
                 adresse, ville, notes,
                 now, now,
                 current_user.username or current_user.email

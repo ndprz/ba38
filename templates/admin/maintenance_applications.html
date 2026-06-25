@@ -5,6 +5,7 @@
 <h2>⚙️ Maintenance des applications</h2>
 
 <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
 <table class="table table-bordered table-sm">
     <thead>
@@ -68,6 +69,7 @@
 <h4>➕ Ajouter une application</h4>
 
 <form method="post" class="row g-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <input type="hidden" name="action" value="add">
 

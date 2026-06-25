@@ -19,6 +19,7 @@ import uuid
 
 
 from engagements import engagements_bp
+from engagements.utils_financement import calculer_montant_utilise
 
 # ============================================================
 # PAGE PRINCIPALE MODULE ENGAGEMENTS
@@ -271,38 +272,42 @@ def engagements_main():
         demandes = [dict(r) for r in rows]
 
         # =====================================================
-        # HISTORIQUE WORKFLOW
+        # HISTORIQUE WORKFLOW (tous les badges par engagement)
         # =====================================================
+
+        historique_par_engagement = {}
+
+        if demandes:
+
+            ids = [d["id"] for d in demandes]
+
+            placeholders = ",".join("?" * len(ids))
+
+            historique_rows = conn.execute(f"""
+                SELECT
+                    engagement_id,
+                    nouveau_statut
+                FROM engagements_workflow
+                WHERE engagement_id IN ({placeholders})
+                AND nouveau_statut IS NOT NULL
+                ORDER BY engagement_id, date_action ASC, id ASC
+            """, ids).fetchall()
+
+            for r in historique_rows:
+
+                badges = historique_par_engagement.setdefault(
+                    r["engagement_id"], []
+                )
+
+                if not badges or badges[-1] != r["nouveau_statut"]:
+
+                    badges.append(r["nouveau_statut"])
 
         for d in demandes:
 
-            workflow = conn.execute("""
-                SELECT
-                    nouveau_statut
-                FROM engagements_workflow
-                WHERE engagement_id = ?
-                ORDER BY id
-            """, (d["id"],)).fetchall()
-
-            # ================================================
-            # LISTE DES STATUTS
-            # ================================================
-
-            d["workflow_badges"] = []
-
-            for w in workflow:
-
-                statut = w["nouveau_statut"]
-
-                # éviter doublons successifs
-                if (
-                    not d["workflow_badges"]
-                    or d["workflow_badges"][-1] != statut
-                ):
-
-                    d["workflow_badges"].append(
-                        statut
-                    )
+            d["workflow_badges"] = historique_par_engagement.get(
+                d["id"], [d["statut"]]
+            )
 
     # =========================================================
     # AFFICHAGE
@@ -354,6 +359,15 @@ def nouvelle_depense():
             FROM engagement_subventions
             ORDER BY nom_subvention
         """).fetchall()
+
+        fournisseurs = [
+            dict(f) for f in conn.execute("""
+                SELECT id, nom, adresse, adresse2, cp, ville, tel, mail, iban
+                FROM fournisseurs
+                WHERE actif IS NULL OR actif != 'non'
+                ORDER BY nom COLLATE NOCASE
+            """).fetchall()
+        ]
 
         paliers = [dict(p) for p in paliers_rows]
 
@@ -426,6 +440,10 @@ def nouvelle_depense():
                 "commentaire_frais"
             )
 
+            fournisseur_id = request.form.get(
+                "fournisseur_id"
+            ) or None
+
             fournisseur_nom = request.form.get(
                 "fournisseur_nom"
             )
@@ -444,12 +462,6 @@ def nouvelle_depense():
 
             fournisseur_iban = request.form.get(
                 "fournisseur_iban"
-            )
-
-            fournisseur_connu_tresorerie = (
-                1 if request.form.get(
-                    "fournisseur_connu_tresorerie"
-                ) else 0
             )
 
             attestation = 1 if request.form.get("attestation_comparaison") else 0
@@ -558,10 +570,27 @@ def nouvelle_depense():
 
             write_log(f"Montant = {montant}")
 
-            if palier:
-                write_log(f"Palier = {dict(palier)}")
-            else:
+            if not palier:
+
                 write_log("Palier = None")
+
+                write_log("===================================")
+
+                flash(
+                    "⚠️ Aucun palier de validation configuré.",
+                    "danger"
+                )
+
+                return render_template(
+                    "engagements/nouvelle_depense.html",
+                    poles=poles,
+                    paliers=paliers,
+                    benevoles=benevoles,
+                    subventions=subventions,
+                    fournisseurs=fournisseurs
+                )
+
+            write_log(f"Palier = {dict(palier)}")
 
             write_log(
                 f"un_devis = {palier['un_devis']}"
@@ -575,48 +604,7 @@ def nouvelle_depense():
                 f"accord_presidence = {palier['accord_presidence']}"
             )
 
-
             write_log("===================================")
-
-            if not palier:
-
-                write_log("===================================")
-
-                write_log("[ENGAGEMENTS] DEBUG WORKFLOW")
-
-                write_log(f"Montant = {montant}")
-
-                write_log(f"Palier = {dict(palier)}")
-
-                write_log(
-                    f"un_devis = {palier['un_devis']}"
-                )
-
-                write_log(
-                    f"deux_devis = {palier['deux_devis']}"
-                )
-
-                write_log(
-                    f"accord_presidence = {palier['accord_presidence']}"
-                )
-
-                write_log(f"Statut final = {statut}")
-
-                write_log("===================================")
-
-                flash(
-                    "⚠️ Aucun palier de validation configuré.",
-                    "danger"
-                )
-
-
-                return render_template(
-                    "engagements/nouvelle_depense.html",
-                    poles=poles,
-                    paliers=paliers,
-                    benevoles=benevoles,
-                    subventions=subventions
-                )
 
             # =====================================================
             # REGLES DEVIS
@@ -660,7 +648,8 @@ def nouvelle_depense():
                     poles=poles,
                     paliers=paliers,
                     benevoles=benevoles,
-                    subventions=subventions
+                    subventions=subventions,
+                    fournisseurs=fournisseurs
                 )
 
 
@@ -679,7 +668,8 @@ def nouvelle_depense():
                         poles=poles,
                         paliers=paliers,
                         benevoles=benevoles,
-                        subventions=subventions
+                        subventions=subventions,
+                        fournisseurs=fournisseurs
                     )
 
             # =====================================================
@@ -703,44 +693,12 @@ def nouvelle_depense():
 
             if type_engagement == "fournisseur":
 
-                if not fournisseur_connu_tresorerie:
+                if fournisseur_iban:
 
-                    if fournisseur_iban:
-
-                        if not is_valid_iban(fournisseur_iban):
-
-                            flash(
-                                "⚠️ IBAN invalide.",
-                                "warning"
-                            )
-
-                            return render_template(
-                                "engagements/nouvelle_depense.html",
-                                poles=poles,
-                                paliers=paliers,
-                                benevoles=benevoles,
-                                subventions=subventions
-                            )
-
-                    champs_manquants = []
-
-                    if not fournisseur_nom:
-                        champs_manquants.append("nom")
-
-                    if not fournisseur_adresse:
-                        champs_manquants.append("adresse")
-
-                    if not fournisseur_email:
-                        champs_manquants.append("email")
-
-                    if not fournisseur_iban:
-                        champs_manquants.append("IBAN")
-
-                    if champs_manquants:
+                    if not is_valid_iban(fournisseur_iban):
 
                         flash(
-                            "⚠️ Champs fournisseur manquants : "
-                            + ", ".join(champs_manquants),
+                            "⚠️ IBAN invalide.",
                             "warning"
                         )
 
@@ -749,8 +707,40 @@ def nouvelle_depense():
                             poles=poles,
                             paliers=paliers,
                             benevoles=benevoles,
-                            subventions=subventions
+                            subventions=subventions,
+                            fournisseurs=fournisseurs
                         )
+
+                champs_manquants = []
+
+                if not fournisseur_nom:
+                    champs_manquants.append("nom")
+
+                if not fournisseur_adresse:
+                    champs_manquants.append("adresse")
+
+                if not fournisseur_email:
+                    champs_manquants.append("email")
+
+                if not fournisseur_iban:
+                    champs_manquants.append("IBAN")
+
+                if champs_manquants:
+
+                    flash(
+                        "⚠️ Champs fournisseur manquants : "
+                        + ", ".join(champs_manquants),
+                        "warning"
+                    )
+
+                    return render_template(
+                        "engagements/nouvelle_depense.html",
+                        poles=poles,
+                        paliers=paliers,
+                        benevoles=benevoles,
+                        subventions=subventions,
+                        fournisseurs=fournisseurs
+                    )
 
             # ============================
             # 1️⃣ INSERT TABLE MÈRE
@@ -817,7 +807,8 @@ def nouvelle_depense():
                         poles=poles,
                         paliers=paliers,
                         benevoles=benevoles,
-                        subventions=subventions
+                        subventions=subventions,
+                        fournisseurs=fournisseurs
                     )
 
                 unique_name = (
@@ -1079,13 +1070,12 @@ def nouvelle_depense():
                     beneficiaire_benevole_id,
                     beneficiaire_nom,
 
+                    fournisseur_id,
                     fournisseur_nom,
                     fournisseur_adresse,
                     fournisseur_telephone,
                     fournisseur_email,
                     fournisseur_iban,
-
-                    fournisseur_connu_tresorerie,
 
                     sous_type_depense
 
@@ -1142,13 +1132,12 @@ def nouvelle_depense():
                     if type_engagement == "benevole_self"
                     else None,
 
+                fournisseur_id,
                 fournisseur_nom,
                 fournisseur_adresse,
                 fournisseur_telephone,
                 fournisseur_email,
                 fournisseur_iban,
-
-                fournisseur_connu_tresorerie,
 
                 sous_type_depense
 
@@ -1185,9 +1174,97 @@ def nouvelle_depense():
         poles=poles,
         paliers=paliers,
         benevoles=benevoles,
-        subventions=subventions
+        subventions=subventions,
+        fournisseurs=fournisseurs
     )
 
+
+# ============================================================
+# API : CREATION RAPIDE D'UN FOURNISSEUR
+# ============================================================
+
+@engagements_bp.route(
+    "/engagements/api/quick_create_fournisseur",
+    methods=["POST"]
+)
+@login_required
+@require_access("engagements", "ecriture")
+def api_quick_create_fournisseur():
+
+    try:
+        data = request.get_json(force=True)
+
+        nom = (data.get("nom") or "").strip()
+        adresse = (data.get("adresse") or "").strip()
+        adresse2 = (data.get("adresse2") or "").strip()
+        cp = (data.get("cp") or "").strip()
+        ville = (data.get("ville") or "").strip()
+        tel = (data.get("tel") or "").strip()
+        mail = (data.get("mail") or "").strip()
+        iban = (data.get("iban") or "").strip()
+
+        if not nom:
+            return jsonify(
+                success=False,
+                error="Le nom du fournisseur est obligatoire."
+            )
+
+        if iban and not is_valid_iban(iban):
+            return jsonify(
+                success=False,
+                error="IBAN invalide."
+            )
+
+        db_path = get_db_path()
+
+        with sqlite3.connect(db_path) as conn:
+
+            cur = conn.execute("""
+                INSERT INTO fournisseurs (
+                    nom, adresse, adresse2, cp, ville, tel, mail, iban,
+                    actif, date_creation, user_modif
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'oui', ?, ?)
+            """, (
+                nom,
+                adresse or None,
+                adresse2 or None,
+                cp or None,
+                ville or None,
+                tel or None,
+                mail or None,
+                iban or None,
+                datetime.now().isoformat(),
+                current_user.email
+            ))
+
+            fournisseur_id = cur.lastrowid
+            conn.commit()
+
+        write_log(
+            f"➕ Fournisseur créé rapidement depuis engagements : "
+            f"#{fournisseur_id} {nom} (par {current_user.email})"
+        )
+
+        return jsonify(
+            success=True,
+            id=fournisseur_id,
+            nom=nom,
+            adresse=adresse,
+            adresse2=adresse2,
+            cp=cp,
+            ville=ville,
+            tel=tel,
+            mail=mail,
+            iban=iban
+        )
+
+    except Exception as e:
+        current_app.logger.exception(
+            "❌ Exception api_quick_create_fournisseur"
+        )
+        write_log(f"❌ Erreur création fournisseur rapide : {e}")
+        return jsonify(success=False, error="Erreur serveur")
 
 
 # ============================================================
@@ -1243,6 +1320,8 @@ def detail_engagement(engagement_id):
 
                 d.fournisseur_connu_tresorerie,
 
+                d.subvention_id,
+
                 s.nom_subvention,
                 s.commentaire AS subvention_commentaire,
                 s.nom_organisme,
@@ -1274,6 +1353,23 @@ def detail_engagement(engagement_id):
 
         if not engagement:
             abort(404)
+
+        engagement = dict(engagement)
+
+        if engagement["subvention_id"]:
+
+            montant_utilise = float(
+                calculer_montant_utilise(
+                    conn, engagement["subvention_id"]
+                )
+            )
+
+            engagement["montant_utilise"] = montant_utilise
+
+            if engagement["montant_recu"]:
+                engagement["montant_restant"] = (
+                    engagement["montant_recu"] - montant_utilise
+                )
 
         # =====================================================
         # WORKFLOW / HISTORIQUE

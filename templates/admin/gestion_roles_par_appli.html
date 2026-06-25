@@ -1,0 +1,452 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Droits par application{% endblock %}
+
+{% block content %}
+
+<style>
+/* ── Layout ── */
+.page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+/* ── Sélecteur d'application ── */
+.appli-switcher {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    margin-bottom: 1.5rem;
+}
+
+.appli-btn {
+    padding: .35rem .85rem;
+    border-radius: 20px;
+    border: 1.5px solid #dee2e6;
+    background: #fff;
+    font-size: .82rem;
+    font-weight: 500;
+    color: #495057;
+    text-decoration: none;
+    transition: border-color .15s, background .15s, color .15s;
+    white-space: nowrap;
+}
+
+.appli-btn:hover {
+    border-color: #0d6efd;
+    color: #0d6efd;
+    background: #f0f5ff;
+}
+
+.appli-btn.active {
+    background: #0d6efd;
+    color: #fff;
+    border-color: #0d6efd;
+}
+
+/* ── Sticky bar ── */
+#sticky-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #fff;
+    border-bottom: 2px solid #dee2e6;
+    padding: .6rem 0;
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+}
+
+#dirty-badge {
+    display: none;
+    font-size: .8rem;
+}
+
+/* ── Filtres ── */
+.filter-bar {
+    display: flex;
+    gap: .75rem;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.filter-bar input[type=search] {
+    max-width: 240px;
+    font-size: .85rem;
+}
+
+.filter-btn {
+    font-size: .8rem;
+    padding: .25rem .65rem;
+}
+
+/* ── Droit selector ── */
+.droit-group {
+    display: flex;
+    gap: 3px;
+}
+
+.droit-group input[type="radio"] {
+    display: none;
+}
+
+.droit-group label {
+    cursor: pointer;
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+    font-size: .78rem;
+    font-weight: 500;
+    color: #6c757d;
+    background: #fff;
+    transition: background .12s, color .12s, border-color .12s;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.droit-group input[value="aucun"]:checked  + label { background:#6c757d; color:#fff; border-color:#6c757d; }
+.droit-group input[value="lecture"]:checked + label { background:#0d6efd; color:#fff; border-color:#0d6efd; }
+.droit-group input[value="ecriture"]:checked + label{ background:#198754; color:#fff; border-color:#198754; }
+.droit-group input[value="admin"]:checked   + label { background:#dc3545; color:#fff; border-color:#dc3545; }
+
+.droit-group label:hover { filter: brightness(.9); border-color:#adb5bd; }
+
+/* ── Table ── */
+.roles-table th {
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #495057;
+    background: #f1f3f5;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+}
+
+.roles-table td { vertical-align: middle; font-size: .88rem; }
+
+.user-name  { font-weight: 500; }
+.user-email { font-size: .78rem; color: #6c757d; }
+
+/* admin global tag */
+.tag-admin-global {
+    font-size: .7rem;
+    background: #dc3545;
+    color: #fff;
+    border-radius: 3px;
+    padding: 1px 5px;
+    vertical-align: middle;
+}
+
+/* hidden rows */
+tr.row-hidden { display: none; }
+
+/* ── Legend ── */
+.legend-row {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    font-size: .78rem;
+    color: #495057;
+    margin-top: 1rem;
+}
+.legend-dot {
+    display: inline-block;
+    width: 9px; height: 9px;
+    border-radius: 2px;
+    margin-right: 3px;
+}
+
+/* ── Summary badge ── */
+#summary-bar {
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+    font-size: .82rem;
+}
+</style>
+
+
+<!-- ========================================================= -->
+<!-- HEADER -->
+<!-- ========================================================= -->
+<div class="page-header">
+    <div>
+        <h2 class="mb-0">🔐 Droits par application</h2>
+        <p class="text-muted mb-0" style="font-size:.88rem;">
+            Choisissez une application, puis affectez le niveau
+            d'accès à chaque utilisateur.
+        </p>
+    </div>
+    {% call action_buttons() %}
+        {{ action_button("← Utilisateurs", href=url_for('admin.gestion_utilisateurs'), color="outline-dark") }}
+    {% endcall %}
+</div>
+
+
+<!-- ========================================================= -->
+<!-- SÉLECTEUR D'APPLICATION -->
+<!-- ========================================================= -->
+<div class="appli-switcher">
+    {% for app in applications %}
+    <a href="{{ url_for('admin.gestion_roles_par_appli', appli=app.appli) }}"
+       class="appli-btn {% if app.appli == appli_selectionnee %}active{% endif %}">
+        {{ app.label }}
+    </a>
+    {% endfor %}
+</div>
+
+
+<!-- ========================================================= -->
+<!-- FORM -->
+<!-- ========================================================= -->
+<form method="post" id="roles-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="appli" value="{{ appli_selectionnee }}">
+
+    <!-- Passer tous les emails pour que le POST sache
+         quels utilisateurs traiter -->
+    {% for u in users %}
+    <input type="hidden" name="user_email[]" value="{{ u.email }}">
+    {% endfor %}
+
+    <!-- ── Sticky bar ── -->
+    <div id="sticky-bar">
+        <button type="submit" class="btn btn-primary btn-sm">
+            💾 Enregistrer les droits pour «&nbsp;{{ label_appli }}&nbsp;»
+        </button>
+        <span id="dirty-badge" class="badge bg-warning text-dark">
+            ⚠ Modifications non enregistrées
+        </span>
+    </div>
+
+    <!-- ── Résumé des droits actuels ── -->
+    <div id="summary-bar">
+        <span class="badge bg-secondary" id="cnt-aucun">— Aucun</span>
+        <span class="badge bg-primary"   id="cnt-lecture">— Lecture</span>
+        <span class="badge bg-success"   id="cnt-ecriture">— Écriture</span>
+        <span class="badge bg-danger"    id="cnt-admin">— Admin</span>
+    </div>
+
+    <!-- ── Filtres ── -->
+    <div class="filter-bar">
+        <input type="search" id="search-user"
+               class="form-control form-control-sm"
+               placeholder="🔍 Filtrer par nom ou email…">
+
+        <button type="button" class="btn btn-outline-secondary filter-btn"
+                onclick="setAll('aucun')">
+            Tout retirer
+        </button>
+        <button type="button" class="btn btn-outline-primary filter-btn"
+                onclick="setAll('lecture')">
+            Tout en lecture
+        </button>
+        <button type="button" class="btn btn-outline-success filter-btn"
+                onclick="setAll('ecriture')">
+            Tout en écriture
+        </button>
+
+        <label class="ms-auto form-check form-check-inline mb-0"
+               style="font-size:.82rem;">
+            <input class="form-check-input" type="checkbox"
+                   id="hide-aucun">
+            Masquer «&nbsp;Aucun accès&nbsp;»
+        </label>
+    </div>
+
+    <!-- ── Table ── -->
+    <table class="table table-bordered table-hover roles-table"
+           id="users-table">
+        <thead>
+            <tr>
+                <th style="width:35%">Utilisateur</th>
+                <th>Niveau d'accès sur «&nbsp;{{ label_appli }}&nbsp;»</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for u in users %}
+        <tr data-name="{{ (u.username or '') | lower }}"
+            data-email="{{ u.email | lower }}"
+            data-droit="{{ u.droit }}">
+
+            <td>
+                <div class="user-name">
+                    {{ u.username or "—" }}
+                    {% if u.role == "admin" %}
+                    <span class="tag-admin-global">admin global</span>
+                    {% endif %}
+                    {% if not u.actif %}
+                    <span class="badge bg-secondary ms-1"
+                          style="font-size:.65rem;">inactif</span>
+                    {% endif %}
+                </div>
+                <div class="user-email">{{ u.email }}</div>
+            </td>
+
+            <td>
+                {% if u.role == "admin" %}
+                    <span class="text-muted" style="font-size:.82rem;">
+                        Accès complet (administrateur global)
+                    </span>
+                {% else %}
+                <div class="droit-group"
+                     role="group"
+                     aria-label="Droit {{ u.email }}">
+
+                    {% for val, lbl in [
+                        ("aucun",   "Aucun"),
+                        ("lecture", "Lecture"),
+                        ("ecriture","Écriture"),
+                        ("admin",   "Admin")
+                    ] %}
+                    <input type="radio"
+                           name="droit_{{ u.email }}"
+                           id="d-{{ loop.index }}-{{ u.email }}-{{ val }}"
+                           value="{{ val }}"
+                           {% if u.droit == val %}checked{% endif %}>
+                    <label for="d-{{ loop.index }}-{{ u.email }}-{{ val }}">
+                        {{ lbl }}
+                    </label>
+                    {% endfor %}
+
+                </div>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- ── Légende ── -->
+    <div class="legend-row">
+        <span><span class="legend-dot" style="background:#6c757d"></span>Aucun — pas d'accès</span>
+        <span><span class="legend-dot" style="background:#0d6efd"></span>Lecture — consultation</span>
+        <span><span class="legend-dot" style="background:#198754"></span>Écriture — consultation + modification</span>
+        <span><span class="legend-dot" style="background:#dc3545"></span>Admin — accès complet</span>
+    </div>
+
+    <!-- ── Bottom CTA ── -->
+    <div class="mt-4">
+        <button type="submit" class="btn btn-primary">
+            💾 Enregistrer les droits pour «&nbsp;{{ label_appli }}&nbsp;»
+        </button>
+    </div>
+</form>
+
+
+<!-- ========================================================= -->
+<!-- JS -->
+<!-- ========================================================= -->
+<script>
+(function () {
+
+    /* ── Dirty tracking ── */
+    const form       = document.getElementById("roles-form");
+    const dirtyBadge = document.getElementById("dirty-badge");
+    let dirty = false;
+
+    form.querySelectorAll("input[type=radio]").forEach(r => {
+        r.addEventListener("change", () => {
+            dirty = true;
+            dirtyBadge.style.display = "inline-flex";
+            updateSummary();
+            updateHideAucun();
+        });
+    });
+
+    form.addEventListener("submit", () => { dirty = false; });
+
+    window.addEventListener("beforeunload", e => {
+        if (dirty) { e.preventDefault(); e.returnValue = ""; }
+    });
+
+    /* ── Recherche ── */
+    const searchInput = document.getElementById("search-user");
+    const rows = Array.from(
+        document.querySelectorAll("#users-table tbody tr")
+    );
+
+    searchInput.addEventListener("input", applyFilters);
+
+    /* ── Masquer Aucun ── */
+    const hideAucunCb = document.getElementById("hide-aucun");
+    hideAucunCb.addEventListener("change", applyFilters);
+
+    function getRowDroit(tr) {
+        const checked = tr.querySelector("input[type=radio]:checked");
+        return checked ? checked.value : "aucun";
+    }
+
+    function applyFilters() {
+        const q = searchInput.value.toLowerCase().trim();
+        const hideAucun = hideAucunCb.checked;
+
+        rows.forEach(tr => {
+            const name  = tr.dataset.name  || "";
+            const email = tr.dataset.email || "";
+            const droit = getRowDroit(tr);
+
+            const matchSearch = !q
+                || name.includes(q)
+                || email.includes(q);
+
+            const matchHide = !hideAucun
+                || droit !== "aucun";
+
+            tr.classList.toggle("row-hidden", !(matchSearch && matchHide));
+        });
+    }
+
+    /* ── Tout mettre au même niveau ── */
+    window.setAll = function(val) {
+        rows.forEach(tr => {
+            // Ne pas toucher les admin globaux (pas de radio)
+            const radio = tr.querySelector(
+                `input[type=radio][value="${val}"]`
+            );
+            if (radio) {
+                radio.checked = true;
+            }
+        });
+        dirty = true;
+        dirtyBadge.style.display = "inline-flex";
+        updateSummary();
+        updateHideAucun();
+    };
+
+    /* ── Compteurs de synthèse ── */
+    function updateSummary() {
+        const counts = { aucun: 0, lecture: 0, ecriture: 0, admin: 0 };
+
+        rows.forEach(tr => {
+            const d = getRowDroit(tr);
+            if (d in counts) counts[d]++;
+        });
+
+        document.getElementById("cnt-aucun").textContent    = `${counts.aucun} Aucun`;
+        document.getElementById("cnt-lecture").textContent  = `${counts.lecture} Lecture`;
+        document.getElementById("cnt-ecriture").textContent = `${counts.ecriture} Écriture`;
+        document.getElementById("cnt-admin").textContent    = `${counts.admin} Admin`;
+    }
+
+    function updateHideAucun() {
+        if (hideAucunCb.checked) applyFilters();
+    }
+
+    /* Init */
+    updateSummary();
+
+})();
+</script>
+
+{% endblock %}

@@ -4,7 +4,26 @@
 Nouvelle demande d'engagement
 {% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+{% endblock %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block content %}
+
+<div class="depense-compact">
+
+<style>
+    .depense-compact h2 { font-size: 1.4rem; margin-bottom: 0.75rem; }
+    .depense-compact .card-header { padding: 0.35rem 1rem; font-weight: 600; }
+    .depense-compact .card-body { padding: 0.6rem 1rem; }
+    .depense-compact .form-label { margin-bottom: 0.15rem; }
+    .depense-compact .form-check-label { line-height: 1.2; }
+    .depense-compact .form-control,
+    .depense-compact .form-select { padding-top: 0.3rem; padding-bottom: 0.3rem; }
+</style>
 
 <h2>
     Nouvelle demande d'engagement de dépense
@@ -12,12 +31,13 @@ Nouvelle demande d'engagement
 
 <form method="POST"
       enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <!-- ================================================== -->
     <!-- DEMANDEUR -->
     <!-- ================================================== -->
 
-    <div class="mb-3">
+    <div class="mb-2">
 
         <label class="form-label">
 
@@ -34,10 +54,13 @@ Nouvelle demande d'engagement
 
 
     <!-- ================================================== -->
-    <!-- NATURE DEPENSE -->
+    <!-- NATURE DEPENSE + MODE PAIEMENT -->
     <!-- ================================================== -->
 
-    <div class="card mb-4">
+    <div class="row g-2 mb-2">
+    <div class="col-md-6">
+
+    <div class="card h-100">
 
         <div class="card-header bg-light">
 
@@ -51,7 +74,7 @@ Nouvelle demande d'engagement
             <!-- ACHAT -->
             <!-- ========================================== -->
 
-            <div class="form-check mb-3">
+            <div class="form-check mb-1">
 
                 <input class="form-check-input"
                     type="radio"
@@ -106,11 +129,14 @@ Nouvelle demande d'engagement
 
     </div>
 
+    </div>
+    <div class="col-md-6">
+
     <!-- ================================================== -->
     <!-- MODE DE PAIEMENT -->
     <!-- ================================================== -->
 
-    <div class="card mb-4">
+    <div class="card h-100">
 
         <div class="card-header bg-light">
 
@@ -124,7 +150,7 @@ Nouvelle demande d'engagement
             <!-- VOUS-MEME -->
             <!-- ============================================= -->
 
-            <div class="form-check mb-3">
+            <div class="form-check mb-1">
 
                 <input class="form-check-input"
                        type="radio"
@@ -153,7 +179,7 @@ Nouvelle demande d'engagement
             <!-- AUTRE BENEVOLE -->
             <!-- ============================================= -->
 
-            <div class="form-check mb-3">
+            <div class="form-check mb-1">
 
                 <input class="form-check-input"
                        type="radio"
@@ -180,7 +206,7 @@ Nouvelle demande d'engagement
             <!-- FOURNISSEUR -->
             <!-- ============================================= -->
 
-            <div class="form-check mb-3">
+            <div class="form-check mb-1">
 
                 <input class="form-check-input"
                        type="radio"
@@ -207,12 +233,15 @@ Nouvelle demande d'engagement
 
     </div>
 
+    </div>
+    </div>{# /row nature+paiement #}
+
     <!-- ================================================== -->
     <!-- BENEVOLE -->
     <!-- ================================================== -->
 
     <div id="bloc-benevole"
-         class="card mb-4"
+         class="card mb-2"
          style="display:none;">
 
         <div class="card-header bg-light">
@@ -256,7 +285,7 @@ Nouvelle demande d'engagement
     <!-- ================================================== -->
 
     <div id="bloc-fournisseur"
-         class="card mb-4"
+         class="card mb-2"
          style="display:none;">
 
         <div class="card-header bg-light">
@@ -268,37 +297,11 @@ Nouvelle demande d'engagement
         <div class="card-body">
 
             <!-- ============================================= -->
-            <!-- FOURNISSEUR CONNU -->
+            <!-- NOM + TELEPHONE -->
             <!-- ============================================= -->
 
-            <div class="form-check mb-4">
-
-                <input class="form-check-input"
-                       type="checkbox"
-                       id="fournisseur_connu_tresorerie"
-                       name="fournisseur_connu_tresorerie"
-                       value="1"
-
-                       {% if request.form.get(
-                            'fournisseur_connu_tresorerie'
-                       ) %}
-                       checked
-                       {% endif %}>
-
-                <label class="form-check-label"
-                       for="fournisseur_connu_tresorerie">
-
-                    Fournisseur connu de la trésorerie
-
-                </label>
-
-            </div>
-
-            <!-- ============================================= -->
-            <!-- NOM -->
-            <!-- ============================================= -->
-
-            <div class="mb-3">
+            <div class="row g-2 mb-2">
+            <div class="col-md-6">
 
                 <label class="form-label">
 
@@ -306,42 +309,41 @@ Nouvelle demande d'engagement
 
                 </label>
 
-                <input type="text"
+                <div class="d-flex gap-2">
+
+                    <select id="fournisseur_select"
+                            class="form-select"
+                            style="width:100%;">
+                    </select>
+
+                    <button type="button"
+                            id="btn_nouveau_fournisseur"
+                            class="btn btn-outline-primary text-nowrap">
+
+                        ➕ Nouveau
+
+                    </button>
+
+                </div>
+
+                <input type="hidden"
+                       name="fournisseur_id"
+                       id="fournisseur_id_input"
+                       value="{{ request.form.get(
+                            'fournisseur_id',
+                            ''
+                       ) }}">
+
+                <input type="hidden"
                        name="fournisseur_nom"
-                       class="form-control"
+                       id="fournisseur_nom_input"
                        value="{{ request.form.get(
                             'fournisseur_nom',
                             ''
                        ) }}">
 
             </div>
-
-            <!-- ============================================= -->
-            <!-- ADRESSE -->
-            <!-- ============================================= -->
-
-            <div class="mb-3">
-
-                <label class="form-label">
-
-                    Adresse
-
-                </label>
-
-                <textarea name="fournisseur_adresse"
-                          class="form-control"
-                          rows="3">{{ request.form.get(
-                                'fournisseur_adresse',
-                                ''
-                          ) }}</textarea>
-
-            </div>
-
-            <!-- ============================================= -->
-            <!-- TELEPHONE -->
-            <!-- ============================================= -->
-
-            <div class="mb-3">
+            <div class="col-md-6">
 
                 <label class="form-label">
 
@@ -351,6 +353,7 @@ Nouvelle demande d'engagement
 
                 <input type="text"
                        name="fournisseur_telephone"
+                       id="fournisseur_telephone_input"
                        class="form-control"
                        value="{{ request.form.get(
                             'fournisseur_telephone',
@@ -358,12 +361,14 @@ Nouvelle demande d'engagement
                        ) }}">
 
             </div>
+            </div>{# /row nom+telephone #}
 
             <!-- ============================================= -->
-            <!-- EMAIL -->
+            <!-- EMAIL + IBAN -->
             <!-- ============================================= -->
 
-            <div class="mb-3">
+            <div class="row g-2 mb-2">
+            <div class="col-md-6">
 
                 <label class="form-label">
 
@@ -373,6 +378,7 @@ Nouvelle demande d'engagement
 
                 <input type="email"
                        name="fournisseur_email"
+                       id="fournisseur_email_input"
                        class="form-control"
                        value="{{ request.form.get(
                             'fournisseur_email',
@@ -380,12 +386,7 @@ Nouvelle demande d'engagement
                        ) }}">
 
             </div>
-
-            <!-- ============================================= -->
-            <!-- IBAN -->
-            <!-- ============================================= -->
-
-            <div class="mb-3">
+            <div class="col-md-6">
 
                 <label class="form-label">
 
@@ -395,11 +396,35 @@ Nouvelle demande d'engagement
 
                 <input type="text"
                        name="fournisseur_iban"
+                       id="fournisseur_iban_input"
                        class="form-control"
                        value="{{ request.form.get(
                             'fournisseur_iban',
                             ''
                        ) }}">
+
+            </div>
+            </div>{# /row email+iban #}
+
+            <!-- ============================================= -->
+            <!-- ADRESSE -->
+            <!-- ============================================= -->
+
+            <div class="mb-2">
+
+                <label class="form-label">
+
+                    Adresse
+
+                </label>
+
+                <textarea name="fournisseur_adresse"
+                          id="fournisseur_adresse"
+                          class="form-control"
+                          rows="2">{{ request.form.get(
+                                'fournisseur_adresse',
+                                ''
+                          ) }}</textarea>
 
             </div>
 
@@ -408,10 +433,166 @@ Nouvelle demande d'engagement
     </div>
 
     <!-- ================================================== -->
-    <!-- POLE -->
+    <!-- MODALE NOUVEAU FOURNISSEUR -->
     <!-- ================================================== -->
 
-    <div class="mb-3">
+    <div class="modal fade"
+         id="modal_nouveau_fournisseur"
+         tabindex="-1">
+
+        <div class="modal-dialog">
+
+            <div class="modal-content">
+
+                <div class="modal-header">
+
+                    <h5 class="modal-title">
+                        ➕ Nouveau fournisseur
+                    </h5>
+
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"></button>
+
+                </div>
+
+                <div class="modal-body">
+
+                    <div id="nf_modal_erreur"
+                         class="alert alert-danger d-none"></div>
+
+                    <div class="mb-2">
+
+                        <label class="form-label">
+                            Nom *
+                        </label>
+
+                        <input type="text"
+                               id="nf_modal_nom"
+                               class="form-control">
+
+                    </div>
+
+                    <div class="row g-2 mb-2">
+                    <div class="col-md-6">
+
+                        <label class="form-label">
+                            Téléphone
+                        </label>
+
+                        <input type="text"
+                               id="nf_modal_tel"
+                               class="form-control">
+
+                    </div>
+                    <div class="col-md-6">
+
+                        <label class="form-label">
+                            Email
+                        </label>
+
+                        <input type="email"
+                               id="nf_modal_mail"
+                               class="form-control">
+
+                    </div>
+                    </div>
+
+                    <div class="mb-2">
+
+                        <label class="form-label">
+                            Adresse
+                        </label>
+
+                        <input type="text"
+                               id="nf_modal_adresse"
+                               class="form-control">
+
+                    </div>
+
+                    <div class="mb-2">
+
+                        <label class="form-label">
+                            Complément d'adresse
+                        </label>
+
+                        <input type="text"
+                               id="nf_modal_adresse2"
+                               class="form-control">
+
+                    </div>
+
+                    <div class="row g-2 mb-2">
+                    <div class="col-md-4">
+
+                        <label class="form-label">
+                            Code postal
+                        </label>
+
+                        <input type="text"
+                               id="nf_modal_cp"
+                               class="form-control">
+
+                    </div>
+                    <div class="col-md-8">
+
+                        <label class="form-label">
+                            Ville
+                        </label>
+
+                        <input type="text"
+                               id="nf_modal_ville"
+                               class="form-control">
+
+                    </div>
+                    </div>
+
+                    <div class="mb-2">
+
+                        <label class="form-label">
+                            IBAN
+                        </label>
+
+                        <input type="text"
+                               id="nf_modal_iban"
+                               class="form-control">
+
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+
+                    <button type="button"
+                            class="btn btn-secondary"
+                            data-bs-dismiss="modal">
+
+                        Annuler
+
+                    </button>
+
+                    <button type="button"
+                            id="btn_creer_fournisseur"
+                            class="btn btn-success">
+
+                        Créer le fournisseur
+
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- ================================================== -->
+    <!-- POLE + OBJET -->
+    <!-- ================================================== -->
+
+    <div class="row g-2 mb-2">
+    <div class="col-md-6">
 
         <label class="form-label">
 
@@ -445,12 +626,7 @@ Nouvelle demande d'engagement
         </select>
 
     </div>
-
-    <!-- ================================================== -->
-    <!-- OBJET -->
-    <!-- ================================================== -->
-
-    <div class="mb-3">
+    <div class="col-md-6">
 
         <label class="form-label">
 
@@ -468,12 +644,13 @@ Nouvelle demande d'engagement
                required>
 
     </div>
+    </div>{# /row pole+objet #}
 
     <!-- ================================================== -->
     <!-- DESCRIPTION -->
     <!-- ================================================== -->
 
-    <div class="mb-3">
+    <div class="mb-2">
 
         <label class="form-label">
 
@@ -490,10 +667,11 @@ Nouvelle demande d'engagement
     </div>
 
     <!-- ================================================== -->
-    <!-- PROJET -->
+    <!-- PROJET + CONVENTION -->
     <!-- ================================================== -->
 
-    <div class="mb-3">
+    <div class="row g-2 mb-2">
+    <div class="col-md-6">
 
         <label class="form-label">
 
@@ -527,12 +705,7 @@ Nouvelle demande d'engagement
         </select>
 
     </div>
-
-    <!-- ================================================== -->
-    <!-- CONVENTION -->
-    <!-- ================================================== -->
-
-    <div class="mb-3">
+    <div class="col-md-6">
 
         <label class="form-label">
 
@@ -549,12 +722,14 @@ Nouvelle demande d'engagement
                ) }}">
 
     </div>
+    </div>{# /row projet+convention #}
 
     <!-- ================================================== -->
-    <!-- RUBRIQUE -->
+    <!-- RUBRIQUE + PRECISION -->
     <!-- ================================================== -->
 
-    <div class="mb-3">
+    <div class="row g-2 mb-2">
+    <div class="col-md-6">
 
         <label class="form-label">
 
@@ -650,12 +825,7 @@ Nouvelle demande d'engagement
         </select>
 
     </div>
-
-    <!-- ================================================== -->
-    <!-- PRECISION -->
-    <!-- ================================================== -->
-
-    <div class="mb-3">
+    <div class="col-md-6">
 
         <label class="form-label">
 
@@ -672,17 +842,18 @@ Nouvelle demande d'engagement
                ) }}">
 
     </div>
+    </div>{# /row rubrique+precision #}
 
     <!-- ================================================== -->
     <!-- BLOC NOTE DE FRAIS-->
     <!-- ================================================== -->
 
     <div id="bloc-note-frais"
-        class="card mb-4"
+        class="card mb-2"
         style="display:none;">
 
         <div class="card-header bg-light">
-            🚗 Pré-calcul note de frais
+            🚗 Pré-calcul note de frais (Application du barême FFBA 2026 : 0,529€/km, restaurant maxi 21.40€, hotel maxi 100€ p.dej compris)
         </div>
 
         <div class="card-body">
@@ -691,10 +862,11 @@ Nouvelle demande d'engagement
 
                 <div class="col-md-3">
                     <label>Date déplacement</label>
-                    <input type="date"
+                    <input type="text"
                         id="nf_date_frais"
                         name="date_frais"
-                        class="form-control">
+                        class="form-control date-fr"
+                        placeholder="ex: 1003 ou 10/03/2026">
                 </div>
 
                 <div class="col-md-3">
@@ -760,7 +932,7 @@ Nouvelle demande d'engagement
     <!-- ================================================== -->
 
     <div id="bloc-justificatifs"
-        class="card mb-4"
+        class="card mb-2"
         style="display:none;">
 
         <div class="card-header bg-light">
@@ -788,7 +960,7 @@ Nouvelle demande d'engagement
 
             </ul>
 
-            <div class="mb-3">
+            <div class="mb-2">
 
                 <label class="form-label">
                     Documents complémentaires
@@ -810,16 +982,11 @@ Nouvelle demande d'engagement
     </div>
 
 
-    ...
-</div>
-
-
-
     <!-- ================================================== -->
     <!-- MONTANT -->
     <!-- ================================================== -->
 
-    <div class="mb-3">
+    <div class="mb-2">
 
         <label class="form-label">
 
@@ -845,7 +1012,7 @@ Nouvelle demande d'engagement
     <!-- ================================================== -->
 
     <div id="bloc_devis"
-        class="card mb-4 d-none">
+        class="card mb-2 d-none">
 
         <div class="card-header bg-light">
 
@@ -858,7 +1025,7 @@ Nouvelle demande d'engagement
             <div id="message_devis"></div>
 
             <div id="zone_devis_1"
-                class="mb-3 d-none">
+                class="mb-2 d-none">
 
                 <label class="form-label">
 
@@ -874,7 +1041,7 @@ Nouvelle demande d'engagement
             </div>
 
             <div id="zone_devis_2"
-                class="mb-3 d-none">
+                class="mb-2 d-none">
 
                 <label class="form-label">
 
@@ -900,7 +1067,7 @@ Nouvelle demande d'engagement
     <!-- SIGNATURE -->
     <!-- ================================================== -->
 
-    <div class="mb-3">
+    <div class="mb-2">
 
         <div class="form-check">
 
@@ -951,10 +1118,15 @@ Nouvelle demande d'engagement
 
 </form>
 
+</div>{# /depense-compact #}
+
 <script>
 
 const paliers =
     {{ paliers | tojson }};
+
+const fournisseursConnus =
+    {{ fournisseurs | tojson }};
 
 </script>
 
@@ -1098,6 +1270,223 @@ function updateNoteFrais() {
 }
 
 // =====================================================
+// SELECTION D'UN FOURNISSEUR EXISTANT
+// =====================================================
+
+function composerAdresse(f) {
+
+    const lignes = [];
+
+    if (f.adresse) lignes.push(f.adresse);
+    if (f.adresse2) lignes.push(f.adresse2);
+
+    const cpVille = [f.cp, f.ville].filter(Boolean).join(" ");
+    if (cpVille) lignes.push(cpVille);
+
+    return lignes.join("\n");
+}
+
+const fournisseursParId = {};
+
+fournisseursConnus.forEach(f => {
+    fournisseursParId[f.id] = f;
+});
+
+function initFournisseurSelect() {
+
+    if (
+        !window.jQuery ||
+        typeof window.jQuery.fn.select2 !== "function"
+    ) {
+        setTimeout(initFournisseurSelect, 100);
+        return;
+    }
+
+    const $select = window.jQuery("#fournisseur_select");
+
+    if (!$select.length) return;
+
+    const idActuel =
+        document.getElementById("fournisseur_id_input").value;
+
+    const nomActuel =
+        document.getElementById("fournisseur_nom_input").value;
+
+    $select.empty();
+
+    fournisseursConnus.forEach(f => {
+
+        const opt = new Option(
+            f.nom,
+            f.id,
+            String(f.id) === idActuel,
+            String(f.id) === idActuel
+        );
+
+        $select.append(opt);
+
+    });
+
+    // Cas d'un fournisseur créé via la modale lors d'un
+    // re-affichage du formulaire après une erreur de validation
+    if (nomActuel && !idActuel) {
+
+        const opt = new Option(nomActuel, nomActuel, true, true);
+        $select.append(opt);
+
+    }
+
+    $select.select2({
+        placeholder: "Choisir un fournisseur",
+        allowClear: true,
+        width: "100%",
+        language: {
+            noResults: function () {
+                return "Aucun fournisseur trouvé.";
+            }
+        }
+    });
+
+    $select.on("select2:select", function (e) {
+
+        const data = e.params.data;
+
+        const info = fournisseursParId[data.id];
+
+        document.getElementById("fournisseur_id_input").value = data.id;
+        document.getElementById("fournisseur_nom_input").value = data.text;
+
+        if (info) {
+
+            const champAdresse = document.getElementById("fournisseur_adresse");
+            const champTel = document.getElementById("fournisseur_telephone_input");
+            const champMail = document.getElementById("fournisseur_email_input");
+            const champIban = document.getElementById("fournisseur_iban_input");
+
+            if (champAdresse) champAdresse.value = composerAdresse(info);
+            if (champTel) champTel.value = info.tel || "";
+            if (champMail) champMail.value = info.mail || "";
+            if (champIban) champIban.value = info.iban || "";
+
+        }
+
+    });
+
+    $select.on("select2:clear", function () {
+        document.getElementById("fournisseur_id_input").value = "";
+        document.getElementById("fournisseur_nom_input").value = "";
+    });
+
+}
+
+// =====================================================
+// CREATION D'UN NOUVEAU FOURNISSEUR (bouton + modale)
+// =====================================================
+
+function initNouveauFournisseur() {
+
+    const btnOuvrir = document.getElementById("btn_nouveau_fournisseur");
+    const btnCreer = document.getElementById("btn_creer_fournisseur");
+    const modalEl = document.getElementById("modal_nouveau_fournisseur");
+    const erreurEl = document.getElementById("nf_modal_erreur");
+
+    if (!btnOuvrir || !btnCreer || !modalEl) return;
+
+    let modal = null;
+
+    function afficherErreur(message) {
+        erreurEl.innerText = message;
+        erreurEl.classList.remove("d-none");
+    }
+
+    btnOuvrir.addEventListener("click", function () {
+
+        erreurEl.classList.add("d-none");
+        erreurEl.innerText = "";
+
+        document.getElementById("nf_modal_nom").value = "";
+        document.getElementById("nf_modal_tel").value = "";
+        document.getElementById("nf_modal_mail").value = "";
+        document.getElementById("nf_modal_adresse").value = "";
+        document.getElementById("nf_modal_adresse2").value = "";
+        document.getElementById("nf_modal_cp").value = "";
+        document.getElementById("nf_modal_ville").value = "";
+        document.getElementById("nf_modal_iban").value = "";
+
+        modal = window.bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+
+    });
+
+    btnCreer.addEventListener("click", function () {
+
+        const nom = document.getElementById("nf_modal_nom").value.trim();
+
+        if (!nom) {
+            afficherErreur("Le nom du fournisseur est obligatoire.");
+            return;
+        }
+
+        const csrfToken = document.querySelector(
+            'input[name="csrf_token"]'
+        ).value;
+
+        fetch("{{ url_for('engagements.api_quick_create_fournisseur') }}", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken
+            },
+            body: JSON.stringify({
+                nom: nom,
+                adresse: document.getElementById("nf_modal_adresse").value || "",
+                adresse2: document.getElementById("nf_modal_adresse2").value || "",
+                cp: document.getElementById("nf_modal_cp").value || "",
+                ville: document.getElementById("nf_modal_ville").value || "",
+                tel: document.getElementById("nf_modal_tel").value || "",
+                mail: document.getElementById("nf_modal_mail").value || "",
+                iban: document.getElementById("nf_modal_iban").value || ""
+            })
+        })
+        .then(res => res.json())
+        .then(json => {
+
+            if (!json.success) {
+                afficherErreur(
+                    json.error || "Erreur lors de la création du fournisseur."
+                );
+                return;
+            }
+
+            fournisseursConnus.push(json);
+            fournisseursParId[json.id] = json;
+
+            const $select = window.jQuery("#fournisseur_select");
+
+            const opt = new Option(json.nom, json.id, true, true);
+            $select.append(opt).val(json.id).trigger("change");
+
+            document.getElementById("fournisseur_id_input").value = json.id;
+            document.getElementById("fournisseur_nom_input").value = json.nom;
+
+            document.getElementById("fournisseur_adresse").value = composerAdresse(json);
+            document.getElementById("fournisseur_telephone_input").value = json.tel || "";
+            document.getElementById("fournisseur_email_input").value = json.mail || "";
+            document.getElementById("fournisseur_iban_input").value = json.iban || "";
+
+            modal?.hide();
+
+        })
+        .catch(() => {
+            afficherErreur("Erreur réseau lors de la création du fournisseur.");
+        });
+
+    });
+
+}
+
+// =====================================================
 // LOG DE SELECTION DES FICHIERS
 // =====================================================
 
@@ -1131,6 +1520,8 @@ document.addEventListener(
         updateTypeEngagement();
         updateNoteFrais();
         updateDevis();
+        initFournisseurSelect();
+        initNouveauFournisseur();
 
 
         const champMontant =
@@ -1215,6 +1606,13 @@ function updateDevis() {
             "signature_label"
         );
 
+    const montant =
+        parseFloat(
+            document.getElementById(
+                "montant_total"
+            ).value
+        ) || 0;
+
     const typeDepense =
         document.querySelector(
             'input[name="sous_type_depense"]:checked'
@@ -1233,13 +1631,6 @@ function updateDevis() {
             "J’atteste l’exactitude des informations saisies et confirme électroniquement cette demande.";
     }
 
-    const montant =
-        parseFloat(
-            document.getElementById(
-                "montant_total"
-            ).value
-        ) || 0;
-
     let palierTrouve = null;
 
     for (const p of paliers){
@@ -1250,6 +1641,40 @@ function updateDevis() {
             break;
         }
     }
+
+    // ================================================
+    // AFFICHAGE DES CHAMPS DEVIS SELON LE PALIER
+    // ================================================
+
+    const unDevisObligatoire =
+        palierTrouve?.un_devis === "o";
+
+    const deuxDevisObligatoires =
+        palierTrouve?.deux_devis === "o";
+
+    const blocDevis =
+        document.getElementById("bloc_devis");
+
+    const zoneDevis1 =
+        document.getElementById("zone_devis_1");
+
+    const zoneDevis2 =
+        document.getElementById("zone_devis_2");
+
+    const devisRequis =
+        unDevisObligatoire || deuxDevisObligatoires;
+
+    blocDevis.classList.toggle("d-none", !devisRequis);
+    zoneDevis1.classList.toggle("d-none", !devisRequis);
+    zoneDevis2.classList.toggle("d-none", !deuxDevisObligatoires);
+
+    document.querySelector(
+        'input[name="devis_file_1"]'
+    ).required = devisRequis;
+
+    document.querySelector(
+        'input[name="devis_file_2"]'
+    ).required = deuxDevisObligatoires;
 
 }
 
@@ -1335,8 +1760,26 @@ document.querySelector("form")
     }
 );
 
+// Auto-complétion date courte (classe .date-fr)
+(function() {
+    const annee = new Date().getFullYear();
+    document.querySelectorAll(".date-fr").forEach(function(input) {
+        input.addEventListener("blur", function () {
+            let v = this.value.replace(/\D/g, "");
+            if (v.length === 4) {
+                this.value = v.substring(0,2) + "/" + v.substring(2,4) + "/" + annee;
+            } else if (v.length === 8) {
+                this.value = v.substring(0,2) + "/" + v.substring(2,4) + "/" + v.substring(4,8);
+            }
+        });
+    });
+})();
+
 </script>
 
+{% endblock %}
 
-
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/jquery-3.5.1.min.js') }}"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 {% endblock %}

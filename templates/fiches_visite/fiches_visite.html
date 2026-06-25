@@ -45,6 +45,7 @@
           <!-- 🗑️ SUPPRESSION -->
           <form method="POST" action="{{ url_for('fiches_visite.supprimer', fiche_id=fiche['id']) }}"
             style="display:inline;" onsubmit="return confirmDelete();">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
             <button class="btn btn-sm btn-danger" onclick="openDeleteModal({{ fiche['id'] }})">
               🗑️ Supprimer

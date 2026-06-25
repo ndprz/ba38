@@ -5,6 +5,7 @@
 {% block content %}
 
 <form method="post" action="{{ url_for('planning.gestion_planning_ramasse', semaine=semaine) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="ajouter">
 </form>
 
@@ -17,6 +18,7 @@
 </div>
 
 <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="gestion-planning-container">
         <table class="table table-bordered table-striped">
             <thead>
@@ -157,6 +159,7 @@
 <tr>
   <td colspan="11">
     <form method="post" action="{{ url_for('planning.gestion_planning_ramasse', semaine=semaine)}}" class="d-flex flex-wrap gap-1 align-items-center">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="text" name="new_jour" class="form-control" placeholder="Jour" style="width: 90px;">
         <input type="number" name="new_semaine" class="form-control" placeholder="Semaine" style="width: 90px;" value="{{ semaine.split('-W')[1] }}">
         <input type="text" name="new_tournee" class="form-control" placeholder="Nouvelle tournée" style="width: 180px;">

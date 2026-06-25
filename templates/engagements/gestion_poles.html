@@ -8,9 +8,9 @@
 
 <h2>👥 Gestion des pôles d’activité</h2>
 
-<a href="{{ url_for('engagements.engagements_parametres_main') }}" class="btn btn-secondary mb-3">
-    ⬅ Retour
-</a>
+{% call action_buttons() %}
+    {{ action_button("⬅ Retour", href=url_for('engagements.engagements_parametres_main'), color="outline-dark") }}
+{% endcall %}
 
 <form method="POST">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -200,30 +200,10 @@
 
     {% if has_access('engagement_parametres','ecriture') %}
 
-    <div class="d-flex justify-content-end mt-4">
-
-        <div style="display:flex; gap:15px;">
-
-            <a href="{{ url_for(
-                    'engagements.engagements_parametres_main'
-                ) }}"
-            class="btn btn-secondary">
-
-                ↩️ Retour
-
-            </a>
-
-            <button type="submit"
-                    onclick="formChanged=false"
-                    class="btn btn-success">
-
-                💾 Enregistrer tout
-
-            </button>
-
-        </div>
-
-    </div>
+    {% call action_buttons() %}
+        {{ action_button("💾 Enregistrer tout", type="submit", onclick="formChanged=false", color="success") }}
+        {{ action_button("↩️ Retour", href=url_for('engagements.engagements_parametres_main'), color="outline-dark") }}
+    {% endcall %}
 
     {% endif %}
 

@@ -1,18 +1,17 @@
 {% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}Envoi de mail bénévoles{% endblock %}
 {% block content %}
 <div class="container mt-4">
 
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h2>📧 Envoi d'un mail (bénévoles)</h2>
-    <a href="{{ retour_url or url_for('benevoles.benevoles') }}" class="btn btn-secondary">
-      ⬅️ Retour
-    </a>
-  </div>
+  <h2>📧 Envoi d'un mail (bénévoles)</h2>
 
-  <a href="{{ url_for('benevoles.messages_predefinis_benevoles') }}" class="btn btn-outline-secondary mt-2 mb-3">
-    ⚙️ Gérer les messages pré-enregistrés
-  </a>
+  {% call action_buttons() %}
+    {{ action_button("⚙️ Gérer les messages pré-enregistrés", href=url_for('benevoles.messages_predefinis_benevoles'), color="outline-secondary") }}
+    {{ action_button("↩️ Retour", href=retour_url or url_for('benevoles.benevoles'), color="outline-dark") }}
+  {% endcall %}
 
   <!-- 🔹 Filtrage par fonction -->
   <form method="get" class="mb-4 border rounded p-3 bg-light">
@@ -97,14 +96,10 @@
       <textarea id="modele-{{ m.id }}" class="d-none" style="display:none;">{{ m.contenu }}</textarea>
     {% endfor %}
 
-    <div class="mt-4 d-flex justify-content-between align-items-center">
-    <a href="{{ retour_url or url_for('benevoles.benevoles') }}" class="btn btn-secondary">
-        ⬅️ Retour
-    </a>
-    <button type="button" class="btn btn-primary" onclick="ouvrirGmail()">
-        📤 Ouvrir Gmail
-    </button>
-    </div>
+    {% call action_buttons() %}
+        {{ action_button("📤 Ouvrir Gmail", onclick="ouvrirGmail()", color="primary") }}
+        {{ action_button("↩️ Retour", href=retour_url or url_for('benevoles.benevoles'), color="outline-dark") }}
+    {% endcall %}
   </form>
 </div>
 

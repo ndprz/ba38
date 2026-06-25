@@ -99,7 +99,7 @@ csrf = CSRFProtect(app)
 @app.errorhandler(CSRFError)
 def handle_csrf_error(e):
     flash("Session expirée ou requête invalide. Veuillez réessayer.", "warning")
-    return redirect(request.referrer or url_for('login')), 400
+    return redirect(request.referrer or url_for('login'))
 
 app.jinja_env.filters["date_fr"] = date_fr
 
@@ -650,9 +650,9 @@ from collections import defaultdict
 ENV = os.getenv("ENVIRONMENT", "DEV").upper()
 
 if ENV == "PROD":
-    FLAG_PATH = "/srv/ba38/prod/maintenance.flag"
+    FLAG_PATH = os.getenv("BASE_PATH", "/srv/ba38") + "/prod/maintenance.flag"
 else:
-    FLAG_PATH = "/srv/ba38/dev/maintenance.flag"
+    FLAG_PATH = os.getenv("BASE_PATH", "/srv/ba38") + "/dev/maintenance.flag"
 
 
 @app.before_request
@@ -744,6 +744,7 @@ def reset_password_request():
 
 
 @app.route('/debug_session')
+@login_required
 def debug_session():
     return f"Session complète : {dict(session)}"
 
@@ -1040,6 +1041,9 @@ def login():
 
             session["user_id"] = str(user["id"])
             session["username"] = user["username"]
+            session["email"] = email
+            session["environment"] = os.getenv("ENVIRONMENT", "prod").lower()
+            session["login_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             session["roles_utilisateurs"] = get_user_roles(email)
 
             # 🔑 Admin → droits complets
@@ -1160,6 +1164,11 @@ def login_2fa():
             session.permanent = True
             session.modified = True
 
+            session["user_id"] = str(user["id"])
+            session["username"] = user["username"]
+            session["email"] = user["email"]
+            session["environment"] = os.getenv("ENVIRONMENT", "prod").lower()
+            session["login_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             session["user_role"] = user["role"]
             session["roles_utilisateurs"] = get_user_roles(user["email"])
 
@@ -1657,11 +1666,13 @@ def reset_password_ui():
     return render_template("reset_password_ui.html", users=users)
 
 @app.route("/debug_database")
+@login_required
 def debug_database():
     return f"📂 Base active : {get_db_path()}"
 
 
 @app.route("/test_flash")
+@login_required
 def test_flash():
     from flask import flash, redirect, url_for
     flash("✅ Test de message Flash réussi", "success")

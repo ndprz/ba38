@@ -1,15 +1,16 @@
 {% extends "base.html" %}
 
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}{{ file }}{% endblock %}
 
 {% block content %}
 
 <div class="container mt-4" style="max-width: 1000px;">
 
-    <a href="{{ url_for('admin.documentation') }}"
-       class="btn btn-secondary mb-3">
-        ⬅ Retour
-    </a>
+    {% call action_buttons() %}
+        {{ action_button("⬅ Retour", href=url_for('admin.documentation'), color="outline-dark") }}
+    {% endcall %}
 
     <div class="card shadow-sm">
         <div class="card-body">

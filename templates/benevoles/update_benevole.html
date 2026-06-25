@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}Modifier les informations du bénévole{% endblock %}
 
 {% block content %}
@@ -38,8 +41,7 @@
             {% endif %}
         </div>
 
-        <div class="d-flex gap-2 flex-wrap justify-content-end">
-            {% include "partials/boutons_nav_benevole.html" %} </div>
+        {% include "partials/boutons_nav_benevole.html" %}
     </div>
 
     <!-- 🔹 Style du survol de photo -->
@@ -79,6 +81,7 @@
     <form id="updateForm" method="POST" enctype="multipart/form-data"
         action="{{ url_for('benevoles.update_benevole', benevole_id=benevole_id) }}?{{ next_url }}"
         class="partner-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="next_url" value="{{ next_url }}">
         <input type="hidden" name="go_to" id="go_to">
         <input type="hidden" name="do_upload" id="do_upload" value="1">
@@ -164,6 +167,7 @@
     <form method="POST" enctype="multipart/form-data"
         action="{{ url_for('benevoles.upload_photo_benevole', benevole_id=benevole_id) }}"
         class="border rounded p-3 bg-light mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="row align-items-center">
 
@@ -210,22 +214,24 @@
 
 
     <!-- 🔴 Ligne d’actions : suppression photo + suppression bénévole -->
-    <div class="d-flex justify-content-end align-items-center gap-2 mb-4">
+    {% call action_buttons() %}
 
         {% if photo_filename %}
         <form method="POST" action="{{ url_for('benevoles.supprimer_photo_benevole', benevole_id=benevole_id) }}"
             onsubmit="return confirmDeletePhoto();" class="m-0">
-            <button type="submit" class="btn btn-outline-danger">🗑️ Supprimer la photo</button>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {{ action_button("🗑️ Supprimer la photo", type="submit", color="outline-danger") }}
         </form>
         {% endif %}
 
         <form method="POST" action="{{ url_for('benevoles.delete_benevole', benevole_id=benevole_id) }}"
             onsubmit="return confirmDelete();" class="m-0">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="confirm_final" id="confirm_final">
-            <button type="submit" class="btn btn-danger">🗑️ Supprimer le bénévole</button>
+            {{ action_button("🗑️ Supprimer le bénévole", type="submit", color="danger") }}
         </form>
 
-    </div>
+    {% endcall %}
     {% endif %}
 
     <!-- 🔹 Scripts de gestion de formulaire -->

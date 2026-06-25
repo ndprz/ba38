@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}Droit à l'image{% endblock %}
 
 {% block content %}
@@ -8,6 +11,12 @@
     <h2>📸 Droit à l'image</h2>
 
     {% set lecture_seule = not has_access("droit_image", "ecriture") %}
+
+    {% call action_buttons() %}
+        {{ action_button("📊 Export Excel", href=url_for('droit_image.export_droit_image', acceptation=filtre), color="success") }}
+        {{ action_button("↩️ Retour Bénévoles", href=url_for('benevoles.benevoles'), color="outline-dark") }}
+        {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
+    {% endcall %}
 
     <div class="mb-3" style="display:flex; gap:10px; flex-wrap:wrap">
 
@@ -47,22 +56,11 @@
 
         <input type="text" id="search" class="form-control" placeholder="🔎 Rechercher..." style="max-width:300px">
 
-        <a href="{{ url_for('droit_image.export_droit_image', acceptation=filtre) }}" class="btn btn-success">
-            📊 Export Excel
-        </a>
-
-        <a href="{{ url_for('benevoles.benevoles') }}" class="btn btn-outline-dark">
-            ↩️ Retour Bénévoles
-        </a>
-
-        <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
-            ↩️ Retour à l'accueil
-        </a>
-
     </div>
 
 
     <form method="post" action="{{ url_for('droit_image.update_droit_image') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <table class="table table-striped table-bordered" id="table">
 

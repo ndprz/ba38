@@ -8,6 +8,7 @@
 
     <!-- MODE -->
     <form method="post" action="{{ url_for('tresorerie.factures_toggle_mode') }}" class="mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         {% if mail_mode == "TEST" %}
         <button class="btn btn-warning w-100">
@@ -34,6 +35,7 @@
 
 
     <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="mb-3">
             <label>Expéditeur</label>

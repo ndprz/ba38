@@ -56,6 +56,18 @@
     </div>
 
     <div class="row mb-3">
+      <label for="famille_fournisseur" class="col-md-3 col-form-label text-end">Famille fournisseur</label>
+      <div class="col-md-6">
+        <select name="famille_fournisseur" id="famille_fournisseur" class="form-select">
+          <option value="">-- Choisir --</option>
+          {% for val in parametres.get('famille_fournisseur', []) %}
+            <option value="{{ val }}">{{ val }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="row mb-3">
       <label for="tel" class="col-md-3 col-form-label text-end">Téléphone</label>
       <div class="col-md-6">
         <input type="text" class="form-control" id="tel" name="tel">

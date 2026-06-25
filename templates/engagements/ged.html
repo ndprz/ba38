@@ -1,0 +1,586 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}GED — Engagements{% endblock %}
+
+{% block content %}
+
+{# ============================================================ #}
+{# TITRE                                                         #}
+{# ============================================================ #}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2 class="mb-0">🗂️ GED — Engagements de dépenses</h2>
+        <div class="text-muted small mt-1">
+            Gestion Électronique des Documents — Vue révision comptable
+        </div>
+    </div>
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('engagements.engagements_main'), color="outline-dark") }}
+    {% endcall %}
+</div>
+
+<div class="alert alert-info py-2 mb-3 d-flex align-items-center gap-2">
+    <span>🔒</span>
+    <span>
+        Accès restreint — Vue administrateur / trésorerie / commissaire aux comptes.
+        Tous les engagements sont visibles.
+    </span>
+</div>
+
+
+{# ============================================================ #}
+{# FILTRES                                                       #}
+{# ============================================================ #}
+
+<div class="card mb-4 shadow-sm">
+    <div class="card-header bg-dark text-white fw-bold">
+        🔍 Filtres
+    </div>
+    <div class="card-body">
+
+        <form method="POST"
+              action="{{ url_for('engagements.engagements_ged') }}"
+              id="form-ged">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="d-flex flex-wrap gap-3 mb-3">
+
+                {# Période #}
+                <div style="min-width:150px;">
+                    <label class="form-label fw-semibold small">📅 Date début</label>
+                    <input type="date"
+                           name="date_debut"
+                           class="form-control form-control-sm"
+                           value="{{ filters.date_debut }}">
+                </div>
+
+                <div style="min-width:150px;">
+                    <label class="form-label fw-semibold small">📅 Date fin</label>
+                    <input type="date"
+                           name="date_fin"
+                           class="form-control form-control-sm"
+                           value="{{ filters.date_fin }}">
+                </div>
+
+                {# Pôle #}
+                <div style="min-width:160px;">
+                    <label class="form-label fw-semibold small">🏢 Pôle</label>
+                    <select name="pole_id" class="form-select form-select-sm">
+                        <option value="">Tous les pôles</option>
+                        {% for pole in poles %}
+                        <option value="{{ pole.id }}"
+                            {% if filters.pole_id == pole.id|string %}selected{% endif %}>
+                            {{ pole.nom_affiche }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                {# Rubrique #}
+                <div style="min-width:160px;">
+                    <label class="form-label fw-semibold small">🏷️ Rubrique</label>
+                    <select name="rubrique" class="form-select form-select-sm">
+                        <option value="">Toutes rubriques</option>
+                        {% for r in rubriques %}
+                        <option value="{{ r.rubrique }}"
+                            {% if filters.rubrique == r.rubrique %}selected{% endif %}>
+                            {{ r.rubrique }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                {# Financement #}
+                <div style="min-width:200px;">
+                    <label class="form-label fw-semibold small">💰 Financement</label>
+                    <select name="subvention_id" class="form-select form-select-sm">
+                        <option value="">Tous</option>
+                        <option value="budget"
+                            {% if filters.subvention_id == "budget" %}selected{% endif %}>
+                            Budget propre
+                        </option>
+                        {% for s in subventions %}
+                        <option value="{{ s.id }}"
+                            {% if filters.subvention_id == s.id|string %}selected{% endif %}>
+                            {{ s.nom_subvention }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                {# Statut #}
+                <div style="min-width:150px;">
+                    <label class="form-label fw-semibold small">⚙️ Statut</label>
+                    <select name="statut" class="form-select form-select-sm">
+                        <option value="">Tous statuts</option>
+                        {% for code, label in statuts.items() %}
+                        <option value="{{ code }}"
+                            {% if filters.statut == code %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                {# N° EBP #}
+                <div style="min-width:170px;">
+                    <label class="form-label fw-semibold small">🔢 N° EBP</label>
+                    <select name="avec_ebp" class="form-select form-select-sm">
+                        <option value="">Tous</option>
+                        <option value="oui"
+                            {% if filters.avec_ebp == "oui" %}selected{% endif %}>
+                            ✅ Avec N° EBP
+                        </option>
+                        <option value="non"
+                            {% if filters.avec_ebp == "non" %}selected{% endif %}>
+                            ❌ Sans N° EBP
+                        </option>
+                    </select>
+                </div>
+
+                {# Complétude #}
+                <div style="min-width:170px;">
+                    <label class="form-label fw-semibold small">📋 Complétude</label>
+                    <select name="completude" class="form-select form-select-sm">
+                        <option value="">Toutes</option>
+                        <option value="complet"
+                            {% if filters.completude == "complet" %}selected{% endif %}>
+                            ✅ Complets
+                        </option>
+                        <option value="incomplet"
+                            {% if filters.completude == "incomplet" %}selected{% endif %}>
+                            ⚠️ Incomplets
+                        </option>
+                        <option value="en_cours"
+                            {% if filters.completude == "en_cours" %}selected{% endif %}>
+                            🔵 En cours
+                        </option>
+                        <option value="refuse"
+                            {% if filters.completude == "refuse" %}selected{% endif %}>
+                            🔴 Refusés
+                        </option>
+                    </select>
+                </div>
+
+            </div>{# /flex #}
+
+            {% call action_buttons() %}
+                {{ action_button("🔍 Rechercher", type="submit", color="primary") }}
+                {{ action_button("✖ Réinitialiser", href=url_for('engagements.engagements_ged'), color="outline-secondary") }}
+            {% endcall %}
+
+        </form>
+    </div>
+</div>
+
+
+{# ============================================================ #}
+{# RÉSULTATS                                                     #}
+{# ============================================================ #}
+
+{% if has_search %}
+
+    {# ======================================================== #}
+    {# TABLEAU DE BORD COMPLÉTUDE                                #}
+    {# ======================================================== #}
+
+    {% if stats %}
+    <div class="row g-3 mb-4">
+
+        <div class="col-6 col-md-3">
+            <div class="card text-center border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <div class="fs-2 fw-bold text-dark">
+                        {{ stats.nb_total }}
+                    </div>
+                    <div class="text-muted small">Dossiers</div>
+                    <div class="small text-secondary mt-1">
+                        {{ "%.2f"|format(stats.montant_total) }} €
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 col-md-3">
+            <div class="card text-center border-0 shadow-sm h-100
+                        {% if stats.nb_complet == stats.nb_total and stats.nb_total > 0 %}
+                        border-success
+                        {% endif %}">
+                <div class="card-body py-3">
+                    <div class="fs-2 fw-bold text-success">
+                        {{ stats.nb_complet }}
+                    </div>
+                    <div class="text-muted small">✅ Complets</div>
+                    <div class="small mt-1">
+                        {% if stats.nb_total > 0 %}
+                        <div class="progress" style="height:6px;">
+                            <div class="progress-bar bg-success"
+                                 style="width:{{ stats.pct_complet }}%"></div>
+                        </div>
+                        <span class="text-muted">{{ stats.pct_complet }}%</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 col-md-3">
+            <div class="card text-center border-0 shadow-sm h-100
+                        {% if stats.nb_incomplet > 0 %}border-warning{% endif %}">
+                <div class="card-body py-3">
+                    <div class="fs-2 fw-bold
+                                {% if stats.nb_incomplet > 0 %}text-warning{% else %}text-muted{% endif %}">
+                        {{ stats.nb_incomplet }}
+                    </div>
+                    <div class="text-muted small">⚠️ Incomplets</div>
+                    {% if stats.nb_sans_ebp_reglee > 0 %}
+                    <div class="small text-danger mt-1">
+                        dont {{ stats.nb_sans_ebp_reglee }} sans N° EBP
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 col-md-3">
+            <div class="card text-center border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <div class="fs-2 fw-bold text-info">
+                        {{ stats.nb_avec_ebp }}
+                    </div>
+                    <div class="text-muted small">🔢 Avec N° EBP</div>
+                    <div class="small text-secondary mt-1">
+                        {{ "%.2f"|format(stats.montant_regle) }} € réglés
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    {% endif %}
+
+
+    {# ======================================================== #}
+    {# BOUTON EXPORT                                             #}
+    {# ======================================================== #}
+
+    {% if rows %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+
+        <div class="text-muted small">
+            {{ rows|length }} dossier(s) affiché(s)
+        </div>
+
+        <form method="POST"
+              action="{{ url_for('engagements.engagements_ged_excel') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="date_debut"    value="{{ filters.date_debut }}">
+            <input type="hidden" name="date_fin"      value="{{ filters.date_fin }}">
+            <input type="hidden" name="pole_id"       value="{{ filters.pole_id }}">
+            <input type="hidden" name="rubrique"      value="{{ filters.rubrique }}">
+            <input type="hidden" name="subvention_id" value="{{ filters.subvention_id }}">
+            <input type="hidden" name="statut"        value="{{ filters.statut }}">
+            <input type="hidden" name="avec_ebp"      value="{{ filters.avec_ebp }}">
+            <input type="hidden" name="completude"    value="{{ filters.completude }}">
+            <button type="submit" class="btn btn-success btn-sm">
+                📥 Export Excel CAC
+            </button>
+        </form>
+
+    </div>
+    {% endif %}
+
+
+    {# ======================================================== #}
+    {# TABLEAU GED                                               #}
+    {# ======================================================== #}
+
+    {% if rows %}
+
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered table-hover"
+               id="table-ged"
+               style="font-size:0.85rem;">
+
+            <thead class="table-dark">
+                <tr>
+                    <th class="text-center" style="width:50px;">ID</th>
+                    <th style="width:85px;">Date</th>
+                    <th>Demandeur</th>
+                    <th>Pôle</th>
+                    <th>Objet / Bénéficiaire</th>
+                    <th>Rubrique</th>
+                    <th class="text-end" style="width:90px;">Montant</th>
+                    <th class="text-center" style="width:90px;">Statut</th>
+                    <th style="width:110px;">
+                        Réglé le
+                    </th>
+                    <th style="width:130px;">
+                        🔢 N° EBP
+                    </th>
+                    <th class="text-center" style="width:70px;">📎</th>
+                    <th class="text-center" style="width:95px;">Complétude</th>
+                    <th class="text-center" style="width:55px;">Dossier</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+            {% for r in rows %}
+
+                {# Couleur de ligne selon complétude #}
+                {% set c = r.completude.statut %}
+                <tr class="
+                    {% if c == 'incomplet' %}table-warning
+                    {% elif c == 'refuse'  %}table-danger
+                    {% elif c == 'complet' %}table-success
+                    {% endif %}
+                ">
+
+                    {# ID #}
+                    <td class="text-center fw-semibold">
+                        {{ r.id }}
+                    </td>
+
+                    {# Date #}
+                    <td class="text-nowrap text-muted small">
+                        {% if r.cree_le %}
+                            {{ r.cree_le[8:10] }}/{{ r.cree_le[5:7] }}/{{ r.cree_le[0:4] }}
+                        {% endif %}
+                    </td>
+
+                    {# Demandeur #}
+                    <td>
+                        {{ r.demandeur_nom or "—" }}
+                    </td>
+
+                    {# Pôle #}
+                    <td class="small">
+                        {{ r.pole or "—" }}
+                    </td>
+
+                    {# Objet + bénéficiaire #}
+                    <td>
+                        <div class="fw-semibold">
+                            {{ r.objet or "—" }}
+                        </div>
+                        {% set benef = r.fournisseur_nom or r.beneficiaire_nom %}
+                        {% if benef %}
+                        <div class="text-muted small">
+                            {% if r.fournisseur_nom %}🏢{% else %}👤{% endif %}
+                            {{ benef }}
+                        </div>
+                        {% endif %}
+                        {% if r.nom_subvention %}
+                        <div class="mt-1">
+                            <span class="badge bg-info text-dark"
+                                  style="font-size:0.7rem;">
+                                {{ r.nom_subvention }}
+                            </span>
+                        </div>
+                        {% endif %}
+                    </td>
+
+                    {# Rubrique #}
+                    <td class="small">
+                        <span class="badge bg-secondary">
+                            {{ r.rubrique or "—" }}
+                        </span>
+                        {% if r.sous_type_depense == "deplacement" %}
+                        <br><span class="text-muted" style="font-size:0.7rem;">
+                            🚗 déplacement
+                        </span>
+                        {% endif %}
+                    </td>
+
+                    {# Montant #}
+                    <td class="text-end fw-semibold">
+                        {{ "%.2f"|format(r.montant_total|float) }} €
+                    </td>
+
+                    {# Statut #}
+                    <td class="text-center">
+                        {% set s = r.statut %}
+                        {% if s == 'validation_pole' %}
+                            <span class="badge bg-warning text-dark" style="font-size:0.7rem;">
+                                🟡 Att. pôle
+                            </span>
+                        {% elif s == 'validation_presidence' %}
+                            <span class="badge bg-primary" style="font-size:0.7rem;">
+                                🔵 Att. bureau
+                            </span>
+                        {% elif s == 'valide' %}
+                            <span class="badge bg-success" style="font-size:0.7rem;">
+                                🟢 Validé
+                            </span>
+                        {% elif s == 'a_payer' %}
+                            <span class="badge bg-warning text-dark" style="font-size:0.7rem;">
+                                🟠 À payer
+                            </span>
+                        {% elif s == 'reglee' %}
+                            <span class="badge bg-info text-white" style="font-size:0.7rem;">
+                                💶 Réglé
+                            </span>
+                        {% elif s == 'termine' %}
+                            <span class="badge bg-secondary" style="font-size:0.7rem;">
+                                📦 Terminé
+                            </span>
+                        {% elif s == 'refuse' %}
+                            <span class="badge bg-danger" style="font-size:0.7rem;">
+                                🔴 Refusé
+                            </span>
+                        {% else %}
+                            <span class="badge bg-light text-dark" style="font-size:0.7rem;">
+                                {{ s }}
+                            </span>
+                        {% endif %}
+                    </td>
+
+                    {# Réglé le #}
+                    <td class="small text-nowrap">
+                        {% if r.paye_le %}
+                            {{ r.paye_le[8:10] }}/{{ r.paye_le[5:7] }}/{{ r.paye_le[0:4] }}
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+
+                    {# N° EBP — colonne clé CAC #}
+                    <td>
+                        {% if r.numero_ecriture_ebp %}
+                            <code class="small text-dark fw-semibold">
+                                {{ r.numero_ecriture_ebp }}
+                            </code>
+                        {% elif r.statut in ('reglee', 'termine') %}
+                            {# Réglé mais sans EBP = anomalie #}
+                            <span class="badge bg-danger"
+                                  title="Engagement réglé sans N° EBP">
+                                ❌ Manquant
+                            </span>
+                        {% else %}
+                            <span class="text-muted small">—</span>
+                        {% endif %}
+                    </td>
+
+                    {# Fichiers joints #}
+                    <td class="text-center">
+                        {% if r.nb_fichiers > 0 %}
+                            <span class="badge bg-primary"
+                                  title="{{ r.nb_fichiers }} pièce(s) jointe(s)">
+                                📎 {{ r.nb_fichiers }}
+                            </span>
+                        {% else %}
+                            <span class="text-muted small">0</span>
+                        {% endif %}
+                    </td>
+
+                    {# Complétude #}
+                    <td class="text-center">
+                        <span class="badge {{ r.completude.badge }}"
+                              style="font-size:0.75rem;"
+                              {% if r.completude.detail %}
+                              title="{{ r.completude.detail | join(' · ') }}"
+                              data-bs-toggle="tooltip"
+                              {% endif %}>
+                            {{ r.completude.icone }} {{ r.completude.label }}
+                        </span>
+                        {% if r.completude.detail %}
+                        <div class="mt-1">
+                            {% for manque in r.completude.detail %}
+                            <div class="text-danger" style="font-size:0.65rem; line-height:1.2;">
+                                ↳ {{ manque }}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </td>
+
+                    {# Lien dossier #}
+                    <td class="text-center">
+                        <a href="{{ url_for('engagements.detail_engagement',
+                                            engagement_id=r.id) }}"
+                           class="btn btn-outline-primary btn-sm py-0 px-1"
+                           target="_blank"
+                           title="Ouvrir le dossier">
+                            👁
+                        </a>
+                    </td>
+
+                </tr>
+
+            {% endfor %}
+
+            </tbody>
+
+            <tfoot class="table-dark">
+                <tr>
+                    <td colspan="6" class="fw-bold">
+                        Total — {{ rows|length }} dossier(s)
+                    </td>
+                    <td class="text-end fw-bold">
+                        {{ "%.2f"|format(rows | sum(attribute='montant_total') | float) }} €
+                    </td>
+                    <td colspan="6"></td>
+                </tr>
+            </tfoot>
+
+        </table>
+    </div>
+
+    {# Légende #}
+    <div class="d-flex flex-wrap gap-3 mt-2 mb-4"
+         style="font-size:0.8rem;">
+        <span class="d-flex align-items-center gap-1">
+            <span class="badge bg-success">✅ Complet</span>
+            Dossier réglé avec N° EBP et pièces attendues
+        </span>
+        <span class="d-flex align-items-center gap-1">
+            <span class="badge bg-warning text-dark">⚠️ Incomplet</span>
+            Dossier réglé avec manques documentaires
+        </span>
+        <span class="d-flex align-items-center gap-1">
+            <span class="badge bg-secondary">🔵 En cours</span>
+            Workflow non terminé — complétude non évaluée
+        </span>
+        <span class="d-flex align-items-center gap-1">
+            <span class="badge bg-danger">🔴 Refusé</span>
+            Engagement refusé
+        </span>
+    </div>
+
+    {% else %}
+
+    <div class="alert alert-warning mt-3">
+        Aucun dossier ne correspond aux critères sélectionnés.
+    </div>
+
+    {% endif %}{# /if rows #}
+
+{% elif not has_search %}
+
+    <div class="alert alert-light border mt-2 text-muted">
+        Sélectionnez vos critères et cliquez sur
+        <strong>Rechercher</strong> pour afficher la GED.
+        <br>
+        <span class="small">
+            Par défaut, l'exercice en cours (1er janvier — aujourd'hui) est présélectionné.
+        </span>
+    </div>
+
+{% endif %}{# /if has_search #}
+
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+// Activation des tooltips Bootstrap (pour les détails de complétude)
+document.addEventListener('DOMContentLoaded', function () {
+    const tooltipEls = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+    tooltipEls.forEach(el => new bootstrap.Tooltip(el));
+});
+</script>
+{% endblock %}

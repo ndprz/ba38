@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}Mise à jour en tableau des associations{% endblock %}
 
 {% block content %}
@@ -51,14 +53,15 @@
 </style>
 
 <form method="post" action="{{ url_for('partenaires.update_associations_table') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
   {# 🔒 Titre + boutons fixes #}
   <div class="position-sticky top-0 bg-white py-2 z-3 border-bottom shadow-sm mb-2">
     <div class="d-flex justify-content-between align-items-center flex-wrap">
       <h2 class="mb-0">Mise à jour en tableau des associations</h2>
       <div class="d-flex gap-2 mt-2 mt-md-0">
-        <a href="{{ url_for('partenaires.partenaires') }}" class="btn btn-secondary">↩️ Retour à la liste</a>
-        <button type="submit" class="btn btn-success">💾 Enregistrer les modifications</button>
+        {{ action_button("💾 Enregistrer les modifications", type="submit", color="success") }}
+        {{ action_button("↩️ Retour à la liste", href=url_for('partenaires.partenaires'), color="outline-dark") }}
       </div>
     </div>
   </div>
@@ -166,10 +169,10 @@
        name="filtered_ids"
        value='{{ filtered_ids|tojson }}'>
 
-  <div class="d-flex justify-content-end gap-2 mt-3">
-    <a href="{{ url_for('partenaires.partenaires') }}" class="btn btn-secondary">↩️ Retour à la liste</a>
-    <button type="submit" class="btn btn-success">💾 Enregistrer les modifications</button>
-  </div>
+  {% call action_buttons() %}
+    {{ action_button("💾 Enregistrer les modifications", type="submit", color="success") }}
+    {{ action_button("↩️ Retour à la liste", href=url_for('partenaires.partenaires'), color="outline-dark") }}
+  {% endcall %}
 </form>
 
 <script>

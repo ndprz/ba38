@@ -172,6 +172,25 @@ def transmettre_tresorerie(engagement_id):
 @require_access("engagements", "ecriture")
 def marquer_reglee(engagement_id):
 
+    numero_ecriture_ebp = request.form.get(
+        "numero_ecriture_ebp", ""
+    ).strip()
+
+    if not numero_ecriture_ebp:
+
+        flash(
+            "⚠️ Le numéro d'écriture EBP est obligatoire "
+            "pour marquer l'engagement réglé.",
+            "warning"
+        )
+
+        return redirect(
+            url_for(
+                "engagements.detail_engagement",
+                engagement_id=engagement_id
+            )
+        )
+
     db_path = get_db_path()
 
     with sqlite3.connect(db_path) as conn:
@@ -202,7 +221,8 @@ def marquer_reglee(engagement_id):
         nouveau_statut = "reglee"
 
         commentaire = (
-            "Règlement effectué"
+            f"Règlement effectué (écriture EBP n° "
+            f"{numero_ecriture_ebp})"
         )
 
         # =====================================================
@@ -214,11 +234,13 @@ def marquer_reglee(engagement_id):
             SET
                 statut = ?,
                 paye_le = CURRENT_TIMESTAMP,
-                paye_par = ?
+                paye_par = ?,
+                numero_ecriture_ebp = ?
             WHERE id = ?
         """, (
             nouveau_statut,
             current_user.id,
+            numero_ecriture_ebp,
             engagement_id
         ))
 

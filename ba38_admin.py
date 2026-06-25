@@ -14,7 +14,7 @@ import os
 
 admin_bp = Blueprint("admin", __name__)
 
-DOC_BASE_PATH = "/srv/ba38/documentation_technique"
+DOC_BASE_PATH = os.getenv("DOC_BASE_PATH", "/srv/ba38/documentation_technique")
 
 # ============================================================
 # GESTION DES DROITS UTILISATEUR – MATRICE (OPTION B)
@@ -1063,3 +1063,124 @@ def convert_docs():
 
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
+
+
+
+# ============================================================
+# GESTION DES DROITS PAR APPLICATION
+# Vue inversée : on choisit une appli et on affecte
+# le droit à tous les utilisateurs en une seule page.
+# ============================================================
+
+@admin_bp.route(
+    "/gestion_roles_appli",
+    methods=["GET", "POST"]
+)
+@login_required
+@require_admin_global
+def gestion_roles_par_appli():
+
+    with get_db_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+
+        # --------------------------------------------------
+        # Charger les applications disponibles
+        # --------------------------------------------------
+        cur.execute("""
+            SELECT appli, label
+            FROM applications
+            ORDER BY label
+        """)
+        applications = [dict(r) for r in cur.fetchall()]
+
+        appli_selectionnee = request.args.get(
+            "appli", ""
+        ) or (applications[0]["appli"] if applications else "")
+
+        # --------------------------------------------------
+        # POST : enregistrer les droits pour cette appli
+        # --------------------------------------------------
+        if request.method == "POST":
+
+            appli_selectionnee = request.form.get("appli", "")
+
+            emails = request.form.getlist("user_email[]")
+
+            for email in emails:
+
+                droit = request.form.get(
+                    f"droit_{email}", "aucun"
+                )
+
+                # Supprimer l'entrée existante pour cet
+                # utilisateur / cette appli
+                cur.execute("""
+                    DELETE FROM roles_utilisateurs
+                    WHERE user_email = ?
+                      AND appli = ?
+                """, (email, appli_selectionnee))
+
+                # Réinsérer seulement si droit != aucun
+                if droit and droit != "aucun":
+                    cur.execute("""
+                        INSERT INTO roles_utilisateurs
+                            (user_email, appli, droit)
+                        VALUES (?, ?, ?)
+                    """, (email, appli_selectionnee, droit))
+
+            conn.commit()
+
+            flash(
+                f"✅ Droits mis à jour pour "
+                f"« {appli_selectionnee} ».",
+                "success"
+            )
+
+            return redirect(url_for(
+                "admin.gestion_roles_par_appli",
+                appli=appli_selectionnee
+            ))
+
+        # --------------------------------------------------
+        # GET : charger les utilisateurs + leurs droits
+        # pour l'application sélectionnée
+        # --------------------------------------------------
+        cur.execute("""
+            SELECT id, email, username, role, actif
+            FROM users
+            ORDER BY username, email
+        """)
+        all_users = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT user_email, droit
+            FROM roles_utilisateurs
+            WHERE appli = ?
+        """, (appli_selectionnee,))
+
+        droits_existants = {
+            row["user_email"]: row["droit"]
+            for row in cur.fetchall()
+        }
+
+        # Enrichir chaque utilisateur avec son droit actuel
+        for u in all_users:
+            u["droit"] = droits_existants.get(
+                u["email"], "aucun"
+            )
+
+        # Label de l'application sélectionnée
+        label_appli = next(
+            (a["label"] for a in applications
+             if a["appli"] == appli_selectionnee),
+            appli_selectionnee
+        )
+
+    return render_template(
+        "admin/gestion_roles_par_appli.html",
+        applications=applications,
+        appli_selectionnee=appli_selectionnee,
+        label_appli=label_appli,
+        users=all_users,
+    )

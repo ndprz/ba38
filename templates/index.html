@@ -9,12 +9,14 @@
 ===================================================== -->
 {% if session.get('test_user') %}
 <form action="{{ url_for('unset_test_user') }}" method="post" style="display: inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn btn-danger mb-3">
         🔴 Désactiver le Mode Test
     </button>
 </form>
 {% else %}
 <form action="{{ url_for('set_test_user') }}" method="post" style="display: inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn btn-success mb-3">
         🟢 Activer le Mode Test
     </button>
@@ -97,10 +99,6 @@
 
         <a href="{{ url_for('debug_bp.admin_scripts') }}" class="btn btn-info btn-sm">
             📊 Admin Scripts
-        </a>
-
-        <a href="{{ url_for('debug_bp.admin_conv_chatgpt') }}" class="btn btn-info btn-sm">
-            💬 Conversations ChatGPT
         </a>
 
     </div>

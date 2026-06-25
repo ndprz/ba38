@@ -60,14 +60,14 @@ def is_valid_email(email):
 def trigger_publipostage_cron():
     try:
         cmd = [
-            "/srv/ba38/prod/venv/bin/python",
-            "/srv/ba38/scripts_taches/export_publipostage_nuit.py"
+            os.path.join(os.getenv("BASE_PATH", "/srv/ba38"), "prod/venv/bin/python"),
+            os.path.join(os.getenv("BASE_PATH", "/srv/ba38"), "scripts_taches/export_publipostage_nuit.py")
         ]
 
         subprocess.Popen(
             cmd,
-            stdout=open("/srv/ba38/prod/logs/cron_publipostage.log", "a"),
-            stderr=open("/srv/ba38/prod/logs/cron_publipostage.log", "a"),
+            stdout=open(os.path.join(os.getenv("BASE_PATH", "/srv/ba38"), "prod/logs/cron_publipostage.log"), "a"),
+            stderr=open(os.path.join(os.getenv("BASE_PATH", "/srv/ba38"), "prod/logs/cron_publipostage.log"), "a"),
             start_new_session=True
         )
 
@@ -353,7 +353,7 @@ def export_all_publipostage_job():
 
         nom_fichier_metropole = "Publipostage_Assos_Metropole"
 
-        json_path = "/srv/ba38/data/codes_postaux_metropole.json"
+        json_path = os.path.join(os.getenv("BASE_PATH", "/srv/ba38"), "data/codes_postaux_metropole.json")
 
         try:
             with open(json_path, "r", encoding="utf-8") as f:
@@ -592,7 +592,7 @@ def export_all_publipostage():
 @export_bp.route("/last_summary", methods=["GET"])
 def last_summary():
     try:
-        with open("/srv/ba38/prod/logs/last_publipostage_summary.txt") as f:
+        with open(os.path.join(os.getenv("BASE_PATH", "/srv/ba38"), "prod/logs/last_publipostage_summary.txt")) as f:
             content = f.read()
         return jsonify({"summary": content})
     except:

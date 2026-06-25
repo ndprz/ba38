@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}Relance des cotisations{% endblock %}
 
 {% block content %}
@@ -16,6 +19,7 @@
   <form method="post"
         action="{{ url_for('tresorerie.cotisations_toggle_test_mode') }}"
         class="mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     {% if mail_mode == "TEST" %}
       <button class="btn btn-warning w-100">
@@ -41,6 +45,7 @@
   <!-- ========================================================= -->
   <form method="post"
         action="{{ url_for('tresorerie.cotisations_relance') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="row g-3 align-items-end">
 
@@ -117,17 +122,12 @@
 
       <!-- Prévisualiser -->
       <div class="col-md-2">
-        <button class="btn btn-warning w-100">
-          🔎 Prévisualiser
-        </button>
+        {{ action_button("🔎 Prévisualiser", type="submit", color="warning") }}
       </div>
 
       <!-- Retour -->
       <div class="col-md-2">
-        <a href="{{ url_for('tresorerie.tresorerie') }}"
-           class="btn btn-outline-dark w-100">
-           ↩️ Retour
-        </a>
+        {{ action_button("↩️ Retour", href=url_for('tresorerie.tresorerie'), color="outline-dark") }}
       </div>
 
     </div>
@@ -184,6 +184,7 @@
 
   {% if preview is defined and preview %}
   <form method="post" class="mt-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="annee" value="{{ annee }}">
     <input type="hidden" name="numero_relance" value="{{ numero_relance }}">
     <input type="hidden" name="mail_sender" value="{{ mail_sender }}">

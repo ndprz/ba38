@@ -703,6 +703,7 @@ fieldset legend{
     method="POST"
     action="{{ url_for('partenaires.update_associations_table') }}"
     style="display:none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 </form>
 
 <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
@@ -1267,10 +1268,12 @@ function submitTableUpdate(){
         );
 
     // ==================================================
-    // RESET
+    // RESET (sans toucher au csrf_token)
     // ==================================================
 
-    form.innerHTML = "";
+    form.querySelectorAll(
+        'input[name="columns"], input[name="filtered_ids"]'
+    ).forEach(e => e.remove());
 
     // ==================================================
     // COLONNES SELECTIONNEES

@@ -204,6 +204,7 @@ rsync -av --delete \
   --exclude "static/factures/archives/" \
   --exclude "static/evenements/" \
   --exclude "static/photos_benevoles/" \
+  --exclude "uploads/" \
   --exclude "exports/" \
   --exclude "__pycache__/" \
   --exclude "venv/" \

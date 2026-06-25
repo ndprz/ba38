@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}
 Détail engagement #{{ engagement.id }}
 {% endblock %}
@@ -36,10 +38,9 @@ Détail engagement #{{ engagement.id }}
             📄 Engagement #{{ engagement.id }}
         </h2>
 
-        <a href="{{ url_for('engagements.engagements_main') }}"
-           class="btn btn-secondary">
-            ⬅ Retour
-        </a>
+        {% call action_buttons() %}
+            {{ action_button("⬅ Retour", href=url_for('engagements.engagements_main'), color="outline-dark") }}
+        {% endcall %}
 
     </div>
 
@@ -104,6 +105,17 @@ Détail engagement #{{ engagement.id }}
                         {% endif %}
                     </div>
                 </div>
+
+                {% if engagement.numero_ecriture_ebp %}
+                <div class="row mb-2">
+                    <div class="col-md-4">
+                        <strong>N° écriture EBP</strong>
+                    </div>
+                    <div class="col-md-8">
+                        <code>{{ engagement.numero_ecriture_ebp }}</code>
+                    </div>
+                </div>
+                {% endif %}
 
                 <div class="row mb-2">
                     <div class="col-md-4">
@@ -531,6 +543,7 @@ Détail engagement #{{ engagement.id }}
                                 'engagements.valider_engagement_pole',
                                 engagement_id=engagement.id
                         ) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                         <button type="submit"
                                 class="btn btn-success">
@@ -555,6 +568,7 @@ Détail engagement #{{ engagement.id }}
                             engagement_id=engagement.id
                     ) }}"
                     class="d-inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                     <button
                         type="submit"
@@ -580,6 +594,7 @@ Détail engagement #{{ engagement.id }}
                             'engagements.valider_engagement_presidence',
                             engagement_id=engagement.id
                     ) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                     <button type="submit"
                             class="btn btn-primary">
@@ -605,6 +620,7 @@ Détail engagement #{{ engagement.id }}
                     ) }}"
 
                     style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                     <button type="submit"
                             class="btn btn-warning">
@@ -623,22 +639,14 @@ Détail engagement #{{ engagement.id }}
 
                 {% if engagement.statut == "a_payer" %}
 
-                <form method="POST"
-                    action="{{ url_for(
-                            'engagements.marquer_reglee',
-                            engagement_id=engagement.id
-                    ) }}"
+                <button type="button"
+                        class="btn btn-info text-white"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalReglement">
 
-                    style="display:inline;">
+                    ✅ Marquer réglé
 
-                    <button type="submit"
-                            class="btn btn-info text-white">
-
-                        ✅ Marquer réglé
-
-                    </button>
-
-                </form>
+                </button>
 
                 {% endif %}
 
@@ -678,6 +686,7 @@ Détail engagement #{{ engagement.id }}
                         );"
 
                         style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                         <button type="submit"
                                 class="btn btn-outline-danger">
@@ -703,6 +712,7 @@ Détail engagement #{{ engagement.id }}
                             ) }}"
 
                             style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                             <button type="submit"
                                     class="btn btn-dark">
@@ -733,6 +743,7 @@ Détail engagement #{{ engagement.id }}
                         );"
 
                         style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                         <button type="submit"
                                 class="btn btn-danger">
@@ -866,6 +877,7 @@ Détail engagement #{{ engagement.id }}
                             'engagements.upload_fichier_engagement',
                             engagement_id=engagement.id
                     ) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                     <div class="row g-3 align-items-end">
 
@@ -1053,6 +1065,7 @@ Détail engagement #{{ engagement.id }}
                         'engagements.refuser_engagement',
                         engagement_id=engagement.id
                   ) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                 <div class="modal-header bg-danger text-white">
 
@@ -1097,6 +1110,88 @@ Détail engagement #{{ engagement.id }}
                             class="btn btn-danger">
 
                         ❌ Confirmer refus
+
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- ================================================== -->
+<!-- MODALE REGLEMENT -->
+<!-- ================================================== -->
+
+<div class="modal fade"
+     id="modalReglement"
+     tabindex="-1">
+
+    <div class="modal-dialog">
+
+        <div class="modal-content">
+
+            <form method="POST"
+                  action="{{ url_for(
+                        'engagements.marquer_reglee',
+                        engagement_id=engagement.id
+                  ) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="modal-header bg-info text-white">
+
+                    <h5 class="modal-title">
+
+                        ✅ Marquer réglé
+
+                    </h5>
+
+                    <button type="button"
+                            class="btn-close btn-close-white"
+                            data-bs-dismiss="modal"></button>
+
+                </div>
+
+                <div class="modal-body">
+
+                    <label class="form-label">
+
+                        Numéro Ecriture EBP
+
+                    </label>
+
+                    <input type="text"
+                           name="numero_ecriture_ebp"
+                           class="form-control"
+                           placeholder="Ex : 2026-000123"
+                           required>
+
+                    <small class="text-muted">
+                        Numéro de l'écriture comptable saisie dans EBP,
+                        permettant de retrouver le règlement.
+                    </small>
+
+                </div>
+
+                <div class="modal-footer">
+
+                    <button type="button"
+                            class="btn btn-secondary"
+                            data-bs-dismiss="modal">
+
+                        Annuler
+
+                    </button>
+
+                    <button type="submit"
+                            class="btn btn-info text-white">
+
+                        ✅ Confirmer le règlement
 
                     </button>
 

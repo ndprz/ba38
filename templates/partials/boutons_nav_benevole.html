@@ -1,36 +1,39 @@
-<!-- 🔁 Bloc de boutons de navigation (haut et bas de page) pour les bénévoles -->
-<div class="mb-4 d-flex flex-wrap justify-content-end" style="gap: 1rem;">
+{% from "macros/buttons.html" import action_button, action_buttons %}
 
-    <a href="{{ url_for('benevoles.envoi_mail_benevoles', bene_id=benevole['id'], retour_url=request.url) }}"
-        class="btn btn-sm btn-outline-primary">
-        📧 Envoyer un mail
-    </a>
+{% call action_buttons() %}
 
-
+    {{ action_button(
+        "📧 Envoyer un mail",
+        href=url_for('benevoles.envoi_mail_benevoles', bene_id=benevole['id'], retour_url=request.url),
+        color="outline-primary"
+    ) }}
 
     {% if previous_id is defined and previous_id %}
-    <button type="button"
-            class="btn btn-outline-secondary"
-            onclick="handleNav('{{ url_for('benevoles.update_benevole', benevole_id=previous_id) }}{% if next_url is defined %}?{{ next_url|replace('&', '&amp;') }}{% endif %}')">
-        ⬅️ Précédent
-    </button>
+    {{ action_button(
+        "⬅️ Précédent",
+        onclick="handleNav('" ~ url_for('benevoles.update_benevole', benevole_id=previous_id) ~ (("?" ~ next_url|replace('&', '&amp;')) if next_url is defined else "") ~ "')",
+        color="outline-secondary"
+    ) }}
     {% endif %}
+
+    {{ action_button("✅ Enregistrer les modifications", onclick="handleSave()", color="primary") }}
+
 
     {% if next_id is defined and next_id %}
-    <button type="button"
-            class="btn btn-outline-secondary"
-            onclick="handleNav('{{ url_for('benevoles.update_benevole', benevole_id=next_id) }}{% if next_url is defined %}?{{ next_url|replace('&', '&amp;') }}{% endif %}')">
-        ➡️ Suivant
-    </button>
+    {{ action_button(
+        "➡️ Suivant",
+        onclick="handleNav('" ~ url_for('benevoles.update_benevole', benevole_id=next_id) ~ (("?" ~ next_url|replace('&', '&amp;')) if next_url is defined else "") ~ "')",
+        color="outline-secondary"
+    ) }}
     {% endif %}
 
-    <button type="button"
-            class="btn btn-outline-secondary"
-            onclick="handleReturn('{{ url_for('benevoles.benevoles') }}{% if next_url is defined %}?{{ next_url|replace('&', '&amp;') }}{% endif %}')">
-        ↩️ Retour
-    </button>
 
-    <button type="button" class="btn btn-primary" onclick="handleSave()">
-        ✅ Enregistrer les modifications
-    </button>
-</div>
+
+
+    {{ action_button(
+        "↩️ Retour",
+        onclick="handleReturn('" ~ url_for('benevoles.benevoles') ~ (("?" ~ next_url|replace('&', '&amp;')) if next_url is defined else "") ~ "')",
+        color="outline-dark"
+    ) }}
+
+{% endcall %}

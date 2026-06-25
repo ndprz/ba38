@@ -29,7 +29,7 @@
         <th>Utilisateur</th>
         <th>Email</th>
         <th>Connexion</th>
-        <th>Dernière activité</th>
+        <th>Expire dans</th>
         <th>Actif</th>
       </tr>
     </thead>
@@ -41,10 +41,6 @@
         <td>{{ ligne.connexion_time }}</td>
         <td>{{ ligne.last_seen }}</td>
         <td class="text-center">✅</td>
-        {% for c in connexions_dev %}
-        <li>{{ c.label }}</li>
-        {% endfor %}
-
       </tr>
       {% endfor %}
     </tbody>
@@ -65,7 +61,7 @@
         <th>Utilisateur</th>
         <th>Email</th>
         <th>Connexion</th>
-        <th>Dernière activité</th>
+        <th>Expire dans</th>
         <th>Actif</th>
       </tr>
     </thead>

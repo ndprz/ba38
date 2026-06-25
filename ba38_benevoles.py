@@ -260,7 +260,7 @@ def benevoles_tabulator():
     # PHOTOS
     # ============================================================
 
-    photo_dir = "/srv/ba38/photos_benevoles"
+    photo_dir = os.getenv("PHOTOS_BENEVOLES_DIR", "/srv/ba38/photos_benevoles")
 
     photo_ids = set()
 
@@ -615,7 +615,7 @@ def benevoles_tabulator():
 
 
 
-@benevoles_bp.route("/edition_tableau_benevoles")
+@benevoles_bp.route("/edition_tableau_benevoles", methods=["GET", "POST"])
 @login_required
 @require_access("benevoles", "ecriture")
 def edition_tableau_benevoles():
@@ -638,11 +638,12 @@ def edition_tableau_benevoles():
     # 🔁 Extraire les champs de type oui/non
     oui_non_fields = [row["field_name"] for row in fields_data if row["type_champ"] == "oui_non"]
 
-    # Lire les paramètres
-    selected_columns = request.args.getlist("columns")
-    selected_groups = request.args.getlist("selected_groups")
+    # Lire les paramètres (GET ou POST : le formulaire passe en POST pour
+    # éviter une ligne de requête trop longue avec beaucoup de bénévoles/colonnes)
+    selected_columns = request.values.getlist("columns")
+    selected_groups = request.values.getlist("selected_groups")
 
-    benevole_ids = request.args.getlist("benevole_ids")
+    benevole_ids = request.values.getlist("benevole_ids")
 
     # Préparer la requête SQL
     escaped_columns = [f"`{col}`" for col in selected_columns if col not in ['id', 'nom']]
@@ -979,7 +980,7 @@ def update_benevole(benevole_id):
         opts_type_bene = get_type_benevole_options(conn)
         do_upload = request.form.get("do_upload", "1")
 
-        photo_dir = "/srv/ba38/photos_benevoles"
+        photo_dir = os.getenv("PHOTOS_BENEVOLES_DIR", "/srv/ba38/photos_benevoles")
         os.makedirs(photo_dir, exist_ok=True)
 
         # =====================================================
@@ -1117,7 +1118,7 @@ def update_benevole(benevole_id):
     photo_filename = None
 
     photo_path = os.path.join(
-        "/srv/ba38/photos_benevoles",
+        os.getenv("PHOTOS_BENEVOLES_DIR", "/srv/ba38/photos_benevoles"),
         f"{benevole_id}.jpg"
     )
 
@@ -1334,7 +1335,7 @@ def photo_benevole_mobile():
 @login_required
 def serve_photo_benevole(filename):
 
-    photo_dir = "/srv/ba38/photos_benevoles"
+    photo_dir = os.getenv("PHOTOS_BENEVOLES_DIR", "/srv/ba38/photos_benevoles")
 
     return send_from_directory(photo_dir, filename)
 
@@ -1386,7 +1387,7 @@ def upload_photo_benevole(benevole_id):
         img.thumbnail((400, 400))
 
         # ✅ Détermine le bon répertoire
-        photo_dir = "/srv/ba38/photos_benevoles"
+        photo_dir = os.getenv("PHOTOS_BENEVOLES_DIR", "/srv/ba38/photos_benevoles")
         os.makedirs(photo_dir, exist_ok=True)
 
         # ✅ Sauvegarde du fichier
@@ -1599,7 +1600,7 @@ def supprimer_photo_benevole(benevole_id):
         environment = os.getenv("ENVIRONMENT", "dev")
         BASE_DIR = os.getenv("BA38_BASE_DIR", "/srv/ba38")
         base_dir = os.path.join(BASE_DIR, "prod" if environment == "prod" else "dev")
-        photo_path = os.path.join("/srv/ba38/photos_benevoles", f"{benevole_id}.jpg")
+        photo_path = os.path.join(os.getenv("PHOTOS_BENEVOLES_DIR", "/srv/ba38/photos_benevoles"), f"{benevole_id}.jpg")
 
         # Supprimer le fichier s'il existe
         if os.path.exists(photo_path):

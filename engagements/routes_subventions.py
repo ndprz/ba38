@@ -19,6 +19,7 @@ import uuid
 
 
 from engagements import engagements_bp
+from engagements.utils_financement import calculer_montant_utilise
 
 
 # ============================================================
@@ -100,9 +101,7 @@ def gestion_subventions():
                 )
 
                 montant_utilise = float(
-                    request.form.get(
-                        f"montant_utilise_{sub_id}"
-                    ) or 0
+                    calculer_montant_utilise(conn, int(sub_id))
                 )
 
                 montant_restant = float(
@@ -205,6 +204,19 @@ def gestion_subventions():
             ORDER BY nom_subvention
 
         """).fetchall()
+
+        subventions = [dict(s) for s in subventions]
+
+        for s in subventions:
+
+            s["montant_utilise"] = float(
+                calculer_montant_utilise(conn, s["id"])
+            )
+
+            s["montant_restant"] = float(
+                Decimal(str(s["montant_recu"] or 0))
+                - Decimal(str(s["montant_utilise"]))
+            )
 
     return render_template(
         "engagements/gestion_subventions.html",

@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block content %}
 
 <!-- ===================================================== -->
@@ -24,24 +27,14 @@
 {% endif %}
 
 <!-- 🔹 Bouton retour -->
-<div class="mt-3 d-flex justify-content-end gap-2">
-
-    <!-- 📋 Retour liste des ramasses -->
-    <a href="{{ url_for('distribution.ramasse_types_list') }}"
-       class="btn btn-secondary">
-        📋 Liste des ramasses
-    </a>
-
-    <!-- ↩️ Retour distribution -->
-    <a href="{{ url_for('distribution.distribution_main') }}"
-       class="btn btn-outline-secondary">
-        ↩️ Retour Distribution
-    </a>
-
-</div>
+{% call action_buttons() %}
+    {{ action_button("📋 Liste des ramasses", href=url_for('distribution.ramasse_types_list'), color="secondary") }}
+    {{ action_button("↩️ Retour Distribution", href=url_for('distribution.distribution_main'), color="outline-dark") }}
+{% endcall %}
 
 
 <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <!-- ===================================================== -->
     <!-- 📦 ENTÊTE -->
@@ -141,23 +134,17 @@
     <!-- ===================================================== -->
     <!-- 🔘 BOUTONS -->
     <!-- ===================================================== -->
-    <div class="mt-3 d-flex justify-content-between">
+    {% call action_buttons() %}
 
-        <a href="{{ url_for('distribution.ramasse_types_list') }}"
-           class="btn btn-secondary">
-            ⬅ Retour
-        </a>
+        {% if ramasse_existante %}
+            {{ action_button("🔄 Mettre à jour", type="submit", color="success") }}
+        {% else %}
+            {{ action_button("💾 Enregistrer", type="submit", color="success") }}
+        {% endif %}
 
-        <!-- 🔹 Bouton dynamique -->
-        <button type="submit" class="btn btn-success">
-            {% if ramasse_existante %}
-                🔄 Mettre à jour
-            {% else %}
-                💾 Enregistrer
-            {% endif %}
-        </button>
+        {{ action_button("⬅ Retour", href=url_for('distribution.ramasse_types_list'), color="outline-dark") }}
 
-    </div>
+    {% endcall %}
 
 </form>
 

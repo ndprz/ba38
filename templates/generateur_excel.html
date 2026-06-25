@@ -15,7 +15,7 @@
             "label": "← Retour",
             "url": session.get('generateur_excel_return_url')
                 or url_for('export_data.generation_fichiers'),
-            "color": "outline-secondary"
+            "color": "outline-dark"
         }
     ]) }}
 
@@ -234,7 +234,7 @@
       {
           "label": "← Retour",
           "url": request.referrer or url_for('export_data.generation_fichiers'),
-          "color": "outline-secondary"
+          "color": "outline-dark"
       }
   ]) }}
 </form>

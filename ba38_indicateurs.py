@@ -17,7 +17,7 @@ indicateurs_bp = Blueprint(
     template_folder="templates/indicateurs"
 )
 
-UPLOAD_DIR = "/srv/ba38/uploads/indicateurs"
+UPLOAD_DIR = os.getenv("UPLOAD_DIR_INDICATEURS", "/srv/ba38/uploads/indicateurs")
 
 
 # =========================================

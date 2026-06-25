@@ -69,6 +69,7 @@
         <form method="POST"
               action="{{ url_for('planning_tournees.planning_tournees') }}"
               class="p-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
           <div class="mb-2">
             <label>Nom :</label>

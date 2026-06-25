@@ -41,22 +41,19 @@
                     {{ action_button(
                         "💾 Enregistrer",
                         onclick="saveMvt()",
-                        color="success",
-                        size="sm"
+                        color="success"
                     ) }}
 
                     {{ action_button(
                         "📤 Export VIF",
                         onclick="exportVIF()",
-                        color="warning",
-                        size="sm"
+                        color="warning"
                     ) }}
 
                     {{ action_button(
                         "↩️ Retour Distribution",
                         href=url_for('distribution.distribution_main'),
-                        color="secondary",
-                        size="sm"
+                        color="outline-dark"
                     ) }}
 
                 {% endcall %}

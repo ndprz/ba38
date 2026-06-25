@@ -22,6 +22,7 @@
 
     <form method="POST"
           enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="mb-3">
 
@@ -50,6 +51,7 @@
 
     <form method="POST"
           action="{{ url_for('tresorerie.parsol2l_export_excel') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <button class="btn btn-success mb-3">
             📥 Export Excel

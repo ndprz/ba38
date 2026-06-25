@@ -4,6 +4,7 @@
 {% block content %}
 
 <form id="planningForm" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
 {# ============================== #
 #  🔝 Bandeau supérieur : titre + boutons

@@ -46,6 +46,7 @@
     <!-- Formulaire d'import de photo -->
     <form method="POST" action="{{ url_for('benevoles.upload_photo_benevole', benevole_id=benevole.id) }}"
       enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
       <div class="mt-3">
         <label for="photo" class="form-label">📸 Ajouter une photo :</label>

@@ -216,6 +216,7 @@ Export VIF mouvements
                                             onsubmit="return confirm(
                                                 'Supprimer ce mouvement ?'
                                             );">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                                             <button class="btn btn-sm btn-danger">
                                                 🗑️
@@ -294,7 +295,7 @@ Export VIF mouvements
                 {{ action_button(
                     "↩️ Retour",
                     href=url_for('distribution.mouvements_stocks_v2'),
-                    color="secondary"
+                    color="outline-dark"
                 ) }}
 
             {% endcall %}

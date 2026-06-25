@@ -1,7 +1,43 @@
 {% extends "base.html" %}
 
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}
 Note de frais
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+    const annee = new Date().getFullYear();
+
+    document.querySelectorAll(".date-fr").forEach(input => {
+
+        input.addEventListener("blur", function () {
+
+            let v = this.value.replace(/\D/g, "");
+
+            // 1003 -> 10/03/2026
+            if (v.length === 4) {
+                const j = v.substring(0, 2);
+                const m = v.substring(2, 4);
+                this.value = `${j}/${m}/${annee}`;
+            }
+
+            // 10032026 -> 10/03/2026
+            else if (v.length === 8) {
+                const j = v.substring(0, 2);
+                const m = v.substring(2, 4);
+                const a = v.substring(4, 8);
+                this.value = `${j}/${m}/${a}`;
+            }
+
+        });
+
+    });
+
+});
+</script>
+
 {% endblock %}
 
 {% block content %}
@@ -57,9 +93,10 @@ Note de frais
                             Date
                         </label>
 
-                        <input type="date"
+                        <input type="text"
                                name="date_frais"
-                               class="form-control"
+                               class="form-control date-fr"
+                               placeholder="ex: 1003 ou 10/03/2026"
                                required>
 
                     </div>
@@ -124,29 +161,47 @@ Note de frais
 
         </div>
 
-        <div class="d-flex gap-2">
-
-            <button type="submit"
-                    class="btn btn-success">
-
-                💾 Générer la note de frais
-
-            </button>
-
-            <a href="{{ url_for(
-                    'engagements.detail_engagement',
-                    engagement_id=engagement.id
-            ) }}"
-               class="btn btn-secondary">
-
-                ↩ Retour
-
-            </a>
-
-        </div>
+        {% call action_buttons() %}
+            {{ action_button("💾 Générer la note de frais", type="submit", color="success") }}
+            {{ action_button("↩ Retour", href=url_for('engagements.detail_engagement', engagement_id=engagement.id), color="outline-dark") }}
+        {% endcall %}
 
     </form>
 
 </div>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+    const annee = new Date().getFullYear();
+
+    document.querySelectorAll(".date-fr").forEach(input => {
+
+        input.addEventListener("blur", function () {
+
+            let v = this.value.replace(/\D/g, "");
+
+            // 1003 -> 10/03/2026
+            if (v.length === 4) {
+                const j = v.substring(0, 2);
+                const m = v.substring(2, 4);
+                this.value = `${j}/${m}/${annee}`;
+            }
+
+            // 10032026 -> 10/03/2026
+            else if (v.length === 8) {
+                const j = v.substring(0, 2);
+                const m = v.substring(2, 4);
+                const a = v.substring(4, 8);
+                this.value = `${j}/${m}/${a}`;
+            }
+
+        });
+
+    });
+
+});
+</script>
 
 {% endblock %}

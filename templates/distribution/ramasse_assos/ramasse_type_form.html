@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block content %}
+{% from "macros/buttons.html" import action_button, action_buttons %}
 
-{% from "macros/buttons.html" import action_buttons %}
+{% block content %}
 
 <!-- ===================================================== -->
 <!-- 🧾 FORMULAIRE MODÈLE DE RAMASSE -->
@@ -12,6 +12,7 @@
 <h2 class="mb-2 mt-1">📝 Modèle de ramasse</h2>
 
 <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="card p-2 mb-2">
 
@@ -122,14 +123,8 @@
     <!-- ===================================================== -->
     {% call action_buttons() %}
 
-    <a href="{{ url_for('distribution.ramasse_types_list') }}"
-    class="btn btn-secondary btn-sm">
-    ↩️ Retour
-    </a>
-
-    <button class="btn btn-success btn-sm">
-        💾 Enregistrer
-    </button>
+    {{ action_button("💾 Enregistrer", type="submit", color="success") }}
+    {{ action_button("↩️ Retour", href=url_for('distribution.ramasse_types_list'), color="outline-dark") }}
 
     {% endcall %}
 

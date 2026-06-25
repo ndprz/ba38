@@ -1,0 +1,588 @@
+{% extends "base.html" %}
+
+{% block title %}Reporting — Engagements{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">📊 Reporting des engagements</h2>
+    <a href="{{ url_for('engagements.engagements_main') }}"
+       class="btn btn-outline-dark btn-sm">
+        ↩️ Retour
+    </a>
+</div>
+
+{% if voir_tout %}
+    <div class="alert alert-info py-2 mb-3">
+        🌍 Mode administrateur — tous les engagements sont visibles.
+    </div>
+{% else %}
+    <div class="alert alert-secondary py-2 mb-3">
+        👤 Affichage limité à vos propres engagements.
+    </div>
+{% endif %}
+
+{# ============================================================ #}
+{# FORMULAIRE FILTRES                                           #}
+{# ============================================================ #}
+
+<div class="card mb-4 shadow-sm">
+    <div class="card-header bg-dark text-white fw-bold">
+        🔍 Filtres
+    </div>
+    <div class="card-body">
+        <form method="POST"
+              action="{{ url_for('engagements.engagements_reporting') }}"
+              id="form-reporting">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="d-flex flex-wrap gap-3">
+
+                {# Période #}
+                <div class="d-flex flex-column" style="min-width: 150px;">
+                    <label class="form-label fw-semibold">
+                        📅 Date début
+                    </label>
+                    <input type="date"
+                           name="date_debut"
+                           class="form-control form-control-sm"
+                           value="{{ filters.date_debut }}">
+                </div>
+
+                <div class="d-flex flex-column" style="min-width: 150px;">
+                    <label class="form-label fw-semibold">
+                        📅 Date fin
+                    </label>
+                    <input type="date"
+                           name="date_fin"
+                           class="form-control form-control-sm"
+                           value="{{ filters.date_fin }}">
+                </div>
+
+                {# Demandeur (admin uniquement) #}
+                {% if voir_tout %}
+                <div class="d-flex flex-column" style="min-width: 160px;">
+                    <label class="form-label fw-semibold">
+                        👤 Demandeur
+                    </label>
+                    <input type="text"
+                           name="demandeur"
+                           class="form-control form-control-sm"
+                           placeholder="Nom partiel…"
+                           value="{{ filters.demandeur }}">
+                </div>
+                {% endif %}
+
+                {# Fournisseur #}
+                <div class="d-flex flex-column" style="min-width: 160px;">
+                    <label class="form-label fw-semibold">
+                        🏭 Fournisseur
+                    </label>
+                    <input type="text"
+                           name="fournisseur"
+                           class="form-control form-control-sm"
+                           placeholder="Nom partiel…"
+                           value="{{ filters.fournisseur }}">
+                </div>
+
+                {# Numéro écriture EBP #}
+                <div class="d-flex flex-column" style="min-width: 160px;">
+                    <label class="form-label fw-semibold">
+                        🧾 N° écriture EBP
+                    </label>
+                    <input type="text"
+                           name="numero_ecriture_ebp"
+                           class="form-control form-control-sm"
+                           placeholder="Numéro partiel…"
+                           value="{{ filters.numero_ecriture_ebp }}">
+                </div>
+
+                {# Pôle #}
+                <div class="d-flex flex-column" style="min-width: 160px;">
+                    <label class="form-label fw-semibold">
+                        🏢 Pôle
+                    </label>
+                    <select name="pole_id"
+                            class="form-select form-select-sm">
+                        <option value="">Tous les pôles</option>
+                        {% for pole in poles %}
+                        <option value="{{ pole.id }}"
+                            {% if filters.pole_id == pole.id|string %}
+                            selected
+                            {% endif %}>
+                            {{ pole.nom_affiche }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                {# Rubrique #}
+                <div class="d-flex flex-column" style="min-width: 160px;">
+                    <label class="form-label fw-semibold">
+                        🏷️ Rubrique
+                    </label>
+                    <select name="rubrique"
+                            class="form-select form-select-sm">
+                        <option value="">Toutes rubriques</option>
+                        {% for r in rubriques %}
+                        <option value="{{ r.rubrique }}"
+                            {% if filters.rubrique == r.rubrique %}
+                            selected
+                            {% endif %}>
+                            {{ r.rubrique }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                {# Subvention / budget #}
+                <div class="d-flex flex-column" style="min-width: 200px;">
+                    <label class="form-label fw-semibold">
+                        💰 Financement
+                    </label>
+                    <select name="subvention_id"
+                            class="form-select form-select-sm">
+                        <option value="">Tous</option>
+                        <option value="budget"
+                            {% if filters.subvention_id == "budget" %}
+                            selected
+                            {% endif %}>
+                            Budget propre (sans subvention)
+                        </option>
+                        {% for s in subventions %}
+                        <option value="{{ s.id }}"
+                            {% if filters.subvention_id == s.id|string %}
+                            selected
+                            {% endif %}>
+                            {{ s.nom_subvention }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                {# Statut #}
+                <div class="d-flex flex-column" style="min-width: 140px;">
+                    <label class="form-label fw-semibold">
+                        ⚙️ Statut
+                    </label>
+                    <select name="statut"
+                            class="form-select form-select-sm">
+                        <option value="">Tous statuts</option>
+                        {% for code, label in statuts.items() %}
+                        <option value="{{ code }}"
+                            {% if filters.statut == code %}
+                            selected
+                            {% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+            </div>{# /flex filtres #}
+
+            <div class="mt-3 d-flex gap-2">
+                <button type="submit"
+                        class="btn btn-primary btn-sm">
+                    🔍 Rechercher
+                </button>
+                <a href="{{ url_for('engagements.engagements_reporting') }}"
+                   class="btn btn-outline-secondary btn-sm">
+                    ✖ Réinitialiser
+                </a>
+            </div>
+
+        </form>
+    </div>
+</div>
+
+
+{# ============================================================ #}
+{# RÉSULTATS                                                     #}
+{# ============================================================ #}
+
+{% if has_search %}
+
+    {# ======================================================== #}
+    {# ÉTAT DU FINANCEMENT SÉLECTIONNÉ                           #}
+    {# ======================================================== #}
+
+    {% if financement_selectionne %}
+
+    <div class="card mb-4 shadow-sm border-info">
+        <div class="card-header bg-info text-white fw-bold">
+            💰 État du financement — {{ financement_selectionne.nom_subvention }}
+        </div>
+        <div class="card-body">
+
+            <div class="row g-3 text-center mb-3">
+                <div class="col-md-3">
+                    <div class="text-muted small">Montant prévu</div>
+                    <div class="fw-bold">
+                        {{ "%.2f"|format(financement_selectionne.montant_prevu|float) }} €
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-muted small">Montant reçu</div>
+                    <div class="fw-bold">
+                        {{ "%.2f"|format(financement_selectionne.montant_recu|float) }} €
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-muted small">Montant utilisé</div>
+                    <div class="fw-bold text-danger">
+                        {{ "%.2f"|format(financement_selectionne.montant_utilise|float) }} €
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-muted small">Reste à utiliser</div>
+                    <div class="fw-bold text-success">
+                        {{ "%.2f"|format(financement_selectionne.montant_restant|float) }} €
+                    </div>
+                </div>
+            </div>
+
+            {% if financement_selectionne.pct_utilisation is not none %}
+            <div class="progress" style="height: 22px;">
+                <div class="progress-bar
+                    {% if financement_selectionne.pct_utilisation >= 100 %}
+                        bg-danger
+                    {% elif financement_selectionne.pct_utilisation >= 80 %}
+                        bg-warning
+                    {% else %}
+                        bg-success
+                    {% endif %}"
+                    role="progressbar"
+                    style="width: {{ financement_selectionne.pct_largeur }}%;">
+                    {{ financement_selectionne.pct_utilisation }} % utilisé
+                </div>
+            </div>
+            <div class="text-muted small mt-1">
+                Calculé sur le montant {{ financement_selectionne.base_calcul }}.
+            </div>
+            {% else %}
+            <div class="text-muted small">
+                Montant prévu et reçu non renseignés — pourcentage d'utilisation indisponible.
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+
+    {% endif %}{# /financement_selectionne #}
+
+    {# ======================================================== #}
+    {# AGRÉGATS                                                  #}
+    {# ======================================================== #}
+
+    {% if agregats %}
+
+    <div class="row g-3 mb-4">
+
+        {# Total global #}
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 text-center">
+                <div class="card-body">
+                    <div class="text-muted small">Engagements</div>
+                    <div class="fs-3 fw-bold text-dark">
+                        {{ agregats.nb_engagements }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 text-center">
+                <div class="card-body">
+                    <div class="text-muted small">Montant total</div>
+                    <div class="fs-3 fw-bold text-primary">
+                        {{ "%.2f"|format(agregats.total_global|float) }} €
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Par pôle #}
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small mb-2 fw-bold">Par pôle</div>
+                    {% for pole, mt in agregats.par_pole.items() %}
+                    <div class="d-flex justify-content-between
+                                border-bottom py-1 small">
+                        <span>{{ pole }}</span>
+                        <span class="fw-semibold">
+                            {{ "%.2f"|format(mt|float) }} €
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        {# Par rubrique #}
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small mb-2 fw-bold">Par rubrique</div>
+                    {% for rub, mt in agregats.par_rubrique.items() %}
+                    <div class="d-flex justify-content-between
+                                border-bottom py-1 small">
+                        <span>{{ rub }}</span>
+                        <span class="fw-semibold">
+                            {{ "%.2f"|format(mt|float) }} €
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        {# Par financement #}
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small mb-2 fw-bold">Par financement</div>
+                    {% for cle, info in agregats.par_financement.items() %}
+                    <div class="border-bottom py-1 small">
+                        <div class="d-flex justify-content-between">
+                            <span>{{ info.nom }}</span>
+                            <span class="fw-semibold">
+                                {{ "%.2f"|format(info.montant|float) }} €
+                            </span>
+                        </div>
+                        {% if info.pct_utilisation is not none %}
+                        <div class="d-flex justify-content-between text-muted">
+                            <span>Utilisé : {{ info.pct_utilisation }} %</span>
+                            <span>Reste : {{ "%.2f"|format(info.montant_restant|float) }} €</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    {# ======================================================== #}
+    {# BOUTONS EXPORT                                            #}
+    {# ======================================================== #}
+
+    <div class="d-flex gap-2 mb-3">
+
+        <form method="POST"
+              action="{{ url_for('engagements.engagements_reporting_excel') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {# Repasse tous les filtres #}
+            <input type="hidden" name="date_debut"    value="{{ filters.date_debut }}">
+            <input type="hidden" name="date_fin"      value="{{ filters.date_fin }}">
+            <input type="hidden" name="demandeur"     value="{{ filters.demandeur }}">
+            <input type="hidden" name="fournisseur"   value="{{ filters.fournisseur }}">
+            <input type="hidden" name="numero_ecriture_ebp" value="{{ filters.numero_ecriture_ebp }}">
+            <input type="hidden" name="pole_id"       value="{{ filters.pole_id }}">
+            <input type="hidden" name="rubrique"      value="{{ filters.rubrique }}">
+            <input type="hidden" name="subvention_id" value="{{ filters.subvention_id }}">
+            <input type="hidden" name="statut"        value="{{ filters.statut }}">
+            <button type="submit"
+                    class="btn btn-success btn-sm">
+                📥 Export Excel
+            </button>
+        </form>
+
+        <form method="POST"
+              action="{{ url_for('engagements.engagements_reporting_pdf') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="date_debut"    value="{{ filters.date_debut }}">
+            <input type="hidden" name="date_fin"      value="{{ filters.date_fin }}">
+            <input type="hidden" name="demandeur"     value="{{ filters.demandeur }}">
+            <input type="hidden" name="fournisseur"   value="{{ filters.fournisseur }}">
+            <input type="hidden" name="numero_ecriture_ebp" value="{{ filters.numero_ecriture_ebp }}">
+            <input type="hidden" name="pole_id"       value="{{ filters.pole_id }}">
+            <input type="hidden" name="rubrique"      value="{{ filters.rubrique }}">
+            <input type="hidden" name="subvention_id" value="{{ filters.subvention_id }}">
+            <input type="hidden" name="statut"        value="{{ filters.statut }}">
+            <button type="submit"
+                    class="btn btn-danger btn-sm">
+                📄 Export PDF
+            </button>
+        </form>
+
+    </div>
+
+    {% endif %}{# /if agregats #}
+
+    {# ======================================================== #}
+    {# TABLEAU DÉTAILLÉ                                          #}
+    {# ======================================================== #}
+
+    {% if rows %}
+
+    <div class="table-responsive">
+        <table class="table table-sm table-striped
+                       table-bordered table-hover mt-2"
+               id="table-reporting">
+            <thead class="table-dark">
+                <tr>
+                    <th>ID</th>
+                    <th>Date</th>
+                    {% if voir_tout %}
+                    <th>Demandeur</th>
+                    {% endif %}
+                    <th>Pôle</th>
+                    <th>Objet</th>
+                    <th>Rubrique</th>
+                    <th>Bénéficiaire / Fournisseur</th>
+                    <th>Financement</th>
+                    <th>Statut</th>
+                    <th>N° écriture EBP</th>
+                    <th class="text-end">Montant (€)</th>
+                    <th class="text-center">Détail</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr {% if r.statut == 'refuse' %}
+                        class="table-danger"
+                    {% elif r.statut == 'reglee' %}
+                        class="table-success"
+                    {% endif %}>
+
+                    <td>{{ r.id }}</td>
+
+                    <td class="text-nowrap">
+                        {{ r.cree_le[8:10] }}/{{ r.cree_le[5:7] }}/{{ r.cree_le[0:4] }}
+                    </td>
+
+                    {% if voir_tout %}
+                    <td>{{ r.demandeur_nom }}</td>
+                    {% endif %}
+
+                    <td>{{ r.pole or "—" }}</td>
+
+                    <td>{{ r.objet or "—" }}</td>
+
+                    <td>
+                        <span class="badge bg-secondary">
+                            {{ r.rubrique or "—" }}
+                        </span>
+                    </td>
+
+                    <td>
+                        {% if r.fournisseur_nom %}
+                            🏢 {{ r.fournisseur_nom }}
+                        {% elif r.beneficiaire_nom %}
+                            👤 {{ r.beneficiaire_nom }}
+                        {% else %}
+                            👤 {{ r.demandeur_nom }}
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        {% if r.nom_subvention %}
+                            <span class="badge bg-info text-dark">
+                                {{ r.nom_subvention }}
+                            </span>
+                        {% else %}
+                            <span class="text-muted small">
+                                Budget propre
+                            </span>
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        {% set s = r.statut %}
+                        {% if s == 'validation_pole' %}
+                            <span class="badge bg-warning text-dark">
+                                🟡 Att. pôle
+                            </span>
+                        {% elif s == 'validation_presidence' %}
+                            <span class="badge bg-primary">
+                                🔵 Att. bureau
+                            </span>
+                        {% elif s == 'valide' %}
+                            <span class="badge bg-success">
+                                🟢 Validé
+                            </span>
+                        {% elif s == 'a_payer' %}
+                            <span class="badge bg-warning text-dark">
+                                🟠 À payer
+                            </span>
+                        {% elif s == 'reglee' %}
+                            <span class="badge bg-info text-white">
+                                💶 Réglé
+                            </span>
+                        {% elif s == 'termine' %}
+                            <span class="badge bg-secondary">
+                                📦 Terminé
+                            </span>
+                        {% elif s == 'refuse' %}
+                            <span class="badge bg-danger">
+                                🔴 Refusé
+                            </span>
+                        {% else %}
+                            <span class="badge bg-light text-dark">
+                                {{ s }}
+                            </span>
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        {% if r.numero_ecriture_ebp %}
+                            <code>{{ r.numero_ecriture_ebp }}</code>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+
+                    <td class="text-end fw-semibold">
+                        {{ "%.2f"|format(r.montant_total|float) }} €
+                    </td>
+
+                    <td class="text-center">
+                        <a href="{{ url_for('engagements.detail_engagement',
+                                            engagement_id=r.id) }}"
+                           class="btn btn-outline-primary btn-sm"
+                           target="_blank">
+                            👁
+                        </a>
+                    </td>
+
+                </tr>
+                {% endfor %}
+            </tbody>
+
+            <tfoot class="table-dark">
+                <tr>
+                    <td colspan="{% if voir_tout %}10{% else %}9{% endif %}"
+                        class="fw-bold">
+                        Total — {{ rows|length }} engagement(s)
+                    </td>
+                    <td class="text-end fw-bold">
+                        {{ "%.2f"|format(agregats.total_global|float) }} €
+                    </td>
+                    <td></td>
+                </tr>
+            </tfoot>
+
+        </table>
+    </div>
+
+    {% else %}
+
+    <div class="alert alert-warning mt-3">
+        Aucun engagement ne correspond aux critères sélectionnés.
+    </div>
+
+    {% endif %}{# /if rows #}
+
+{% elif not has_search %}
+
+    <div class="alert alert-light border mt-2 text-muted">
+        Sélectionnez vos critères et cliquez sur
+        <strong>Rechercher</strong> pour lancer le reporting.
+    </div>
+
+{% endif %}{# /if has_search #}
+
+{% endblock %}

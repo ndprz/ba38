@@ -17,6 +17,7 @@
         {% for camion in camions %}
         <tr>
             <form method="post" action="{{ url_for('planning_tournees.maj_camions') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="action" value="modifier">
                 <input type="hidden" name="id" value="{{ camion.id }}">
                 <td>
@@ -30,6 +31,7 @@
                         <button type="submit" class="btn btn-sm btn-primary">Modifier</button>
             </form>
             <form method="post" action="{{ url_for('planning_tournees.maj_camions') }}" onsubmit="return confirm('Supprimer ce camion ?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="action" value="supprimer">
                 <input type="hidden" name="id" value="{{ camion.id }}">
                         <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
@@ -44,6 +46,7 @@
 <!-- Formulaire d'ajout -->
 <h5>Ajouter un camion</h5>
 <form method="post" action="{{ url_for('planning_tournees.maj_camions') }}" class="row g-2 mb-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="ajouter">
     <div class="col-md-5">
         <input type="text" class="form-control" name="nom" placeholder="Nom" required>

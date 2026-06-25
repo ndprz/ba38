@@ -1,4 +1,5 @@
 <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="mb-3">
     <label>Sujet</label>
     <input type="text" name="sujet" class="form-control"
