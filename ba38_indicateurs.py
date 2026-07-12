@@ -284,6 +284,8 @@ def index():
             WHERE validite = 'oui'
         """).fetchall()
 
+        codes_db = {normalize_code(a["code_VIF"]).lstrip("0") for a in associations}
+
         count_insert = 0
 
         for assoc in associations:
@@ -311,6 +313,13 @@ def index():
             ))
 
             count_insert += 1
+
+        # Codes présents dans le CSV mais absents de notre base
+        codes_csv_inconnus = sorted(set(index_csv.keys()) - codes_db)
+        if codes_csv_inconnus:
+            msg = "⚠️ Codes VIF du CSV non trouvés dans notre base : " + ", ".join(codes_csv_inconnus)
+            write_log(msg)
+            flash(msg, "warning")
 
         write_log(f"📊 {count_insert} lignes insérées dans indicateurs_suivi")
 
@@ -364,8 +373,12 @@ def resultats(campagne_id):
         SELECT
             a.nom_association,
             a.code_VIF,
+            a.courriel_resp_IE1,
+            a.courriel_resp_IE2,
+            s.id AS suivi_id,
             s.statut_csv,
-            s.present_csv
+            s.present_csv,
+            s.exclure_envoi_mail
         FROM associations a
         LEFT JOIN indicateurs_suivi s
             ON s.association_id = a.id
@@ -415,6 +428,24 @@ def get_mois_trimestre(trimestre):
     return mapping.get(trimestre, ("", "", ""))
 
 
+
+
+@indicateurs_bp.route("/indicateurs/toggle_exclusion/<int:suivi_id>", methods=["POST"])
+@login_required
+@require_access("indicateurs", "ecriture")
+def toggle_exclusion(suivi_id):
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE indicateurs_suivi
+            SET exclure_envoi_mail = CASE WHEN exclure_envoi_mail = 1 THEN 0 ELSE 1 END
+            WHERE id = ?
+        """, (suivi_id,))
+        conn.commit()
+        row = cur.execute(
+            "SELECT exclure_envoi_mail FROM indicateurs_suivi WHERE id = ?", (suivi_id,)
+        ).fetchone()
+    return jsonify({"exclure": row["exclure_envoi_mail"]})
 
 
 @indicateurs_bp.route("/check_campagne")

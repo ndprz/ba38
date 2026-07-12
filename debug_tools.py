@@ -30,7 +30,7 @@ import sqlite3
 import sys
 import json
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from utils import (
     write_log,
@@ -38,7 +38,10 @@ from utils import (
     get_db_path_by_env,
     get_log_path,
     get_git_commits,
-    is_admin_global
+    is_admin_global,
+    envoyer_mail,
+    render_modele_email,
+    copier_modele_email_vers_prod
 )
 
 # ============================================================================
@@ -408,6 +411,10 @@ def run_sync_test_schemas():
         - copy_data=False → ne touche pas aux données anonymisées
         - seules les tables listées ci-dessous sont remplacées volontairement
     """
+    if session.get("test_user"):
+        flash("🔒 Action désactivée en mode test.", "warning")
+        return redirect(url_for("debug_bp.admin_scripts"))
+
     from dotenv import load_dotenv
     import os
 
@@ -545,6 +552,10 @@ def restaurer_version():
     if session.get("user_role") != "admin":
         flash("⛔ Accès réservé aux administrateurs", "danger")
         return redirect(url_for("index"))
+
+    if session.get("test_user"):
+        flash("🔒 Action désactivée en mode test.", "warning")
+        return redirect(url_for("debug_bp.admin_scripts"))
 
     BASE_DIR = os.getenv("BA38_BASE_DIR", "/srv/ba38")
     PROD_DIR = os.path.join(BASE_DIR, "prod")
@@ -759,6 +770,10 @@ def get_active_sessions(env):
     Les sessions Flask-Session sont sérialisées en msgpack (pas en JSON), et DEV/PROD
     partagent le même Redis (db=0) : on doit donc décoder avec le serializer de
     l'app et filtrer sur le champ "environment" stocké dans la session à la connexion.
+
+    Le champ "last_activity" est mis à jour à chaque requête authentifiée (voir
+    set_user_roles dans ba38.py) : il sert à distinguer une session présente en
+    Redis (donc non expirée) d'une session réellement utilisée en ce moment.
     """
     redis_client = Redis(host="127.0.0.1", port=6379)
     serializer = current_app.session_interface.serializer
@@ -782,20 +797,76 @@ def get_active_sessions(env):
                 continue
 
             ttl = redis_client.ttl(key)
-            last_seen = f"expire dans {ttl // 3600}h{(ttl % 3600) // 60:02d}" if ttl and ttl > 0 else "?"
+            expire_in = f"{ttl // 3600}h{(ttl % 3600) // 60:02d}" if ttl and ttl > 0 else "?"
+
+            last_activity_raw = data.get("last_activity") or data.get("login_time")
+            actif = "non"
+            if last_activity_raw:
+                try:
+                    last_activity_dt = datetime.strptime(last_activity_raw, "%Y-%m-%d %H:%M:%S")
+                    if datetime.now() - last_activity_dt < timedelta(minutes=5):
+                        actif = "oui"
+                except ValueError:
+                    pass
 
             sessions.append({
+                "key": key.decode() if isinstance(key, bytes) else key,
                 "username": data.get("username", "?"),
                 "email": data.get("email", "?"),
                 "connexion_time": data.get("login_time", "?"),
-                "last_seen": last_seen,
-                "actif": "oui",
+                "last_activity": last_activity_raw or "?",
+                "expire_in": expire_in,
+                "actif": actif,
             })
 
         except Exception:
             continue
 
     return sessions
+
+
+@debug_bp.route("/close_session", methods=["POST"])
+@login_required
+def close_session():
+    """
+    Ferme (supprime) une session Redis active, depuis la page admin_scripts.
+    """
+    if session.get("user_role") != "admin":
+        flash("⛔ Accès interdit", "danger")
+        return redirect(url_for("index"))
+
+    if session.get("test_user"):
+        flash("🔒 Action désactivée en mode test.", "warning")
+        return redirect(url_for("debug_bp.admin_scripts"))
+
+    session_key = request.form.get("session_key", "")
+
+    if not session_key.startswith("session:"):
+        flash("⛔ Clé de session invalide", "danger")
+        return redirect(url_for("debug_bp.admin_scripts"))
+
+    redis_client = Redis(host="127.0.0.1", port=6379)
+    deleted = redis_client.delete(session_key)
+
+    if deleted:
+        write_log(f"🔒 Session fermée par {current_user.email} : {session_key}")
+        flash("✅ Session fermée.", "success")
+    else:
+        flash("ℹ️ Session déjà expirée ou introuvable.", "warning")
+
+    return redirect(url_for("debug_bp.admin_scripts"))
+
+
+# ============================================================================
+# 🔐 VÉRIFICATION D'ACCÈS POUR LE REVERSE-PROXY COCKPIT (nginx auth_request)
+# ============================================================================
+@debug_bp.route("/cockpit_authcheck")
+def cockpit_authcheck():
+    if not current_user.is_authenticated:
+        return "", 401
+    if not is_admin_global():
+        return "", 403
+    return "", 200
 
 
 # ============================================================================
@@ -809,6 +880,15 @@ def admin_scripts():
     if session.get("user_role") != "admin":
         flash("⛔ Accès interdit", "danger")
         return redirect(url_for("index"))
+
+    # 🔒 Compte en mode test : le menu reste visible mais aucune action
+    # n'est exécutée (ces scripts touchent des fichiers/process réels du
+    # serveur, indépendamment de la bascule base test/réelle).
+    test_locked = bool(session.get("test_user"))
+
+    if test_locked and request.method == "POST":
+        flash("🔒 Panneau en lecture seule en mode test : aucune action n'a été exécutée.", "warning")
+        return redirect(url_for("debug_bp.admin_scripts"))
 
     output = session.pop("admin_output", None)
     script_name = session.pop("admin_script_name", None)
@@ -832,6 +912,7 @@ def admin_scripts():
         "fix_line_endings.sh": "fix_line_endings.sh",
         "update_benevoles_schema_prod.py": "update_benevoles_schema_prod.py",
         "update_associations_schema_prod.py": "update_associations_schema_prod.py",
+        "update_engagements_schema_prod.py": "update_engagements_schema_prod.py",
         "verify_env_consistency.py": "verify_env_consistency.py",
         "restore_prod.sh": "restore_prod.sh",
         "cleanup_backups.py": "cleanup_backups.py",
@@ -986,7 +1067,8 @@ def admin_scripts():
         connexions_dev=connexions_dev,
         connexions_prod=connexions_prod,
         connexions_historiques=[],
-        connexions_log=[]
+        connexions_log=[],
+        test_locked=test_locked
     )
 
 
@@ -1122,3 +1204,140 @@ def admin_conv_chatgpt():
     except FileNotFoundError:
         conversations = []
     return render_template('admin/admin_conv_chatgpt.html', conversations=conversations)
+
+
+# ============================================================================
+# 📧 Envoi de mail aux utilisateurs
+# ============================================================================
+
+@debug_bp.route("/admin/mail_utilisateurs", methods=["GET", "POST"])
+@login_required
+def mail_utilisateurs():
+    if session.get("user_role") != "admin":
+        flash("⛔ Accès interdit", "danger")
+        return redirect(url_for("index"))
+
+    db_path = get_db_path()
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        modeles = conn.execute(
+            "SELECT id, code_modele, sujet FROM modeles_emails ORDER BY code_modele"
+        ).fetchall()
+        users = conn.execute(
+            "SELECT email, username FROM users WHERE actif = 1 AND email IS NOT NULL AND email != ''"
+        ).fetchall()
+
+    if request.method == "POST":
+        modele_id = request.form.get("modele_id")
+        mode_test = request.form.get("mode_test") == "on"
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            modele = conn.execute(
+                "SELECT * FROM modeles_emails WHERE id = ?", (modele_id,)
+            ).fetchone()
+
+        if not modele:
+            flash("❌ Modèle introuvable", "danger")
+            return redirect(url_for("debug_bp.mail_utilisateurs"))
+
+        destinataires = [u["email"] for u in users if u["email"] and "@" in u["email"]]
+
+        if mode_test:
+            destinataires = ["ba380.informatique2@banquealimentaire.org"]
+
+        envoyes = 0
+        erreurs = []
+
+        for email in destinataires:
+            user_row = next((u for u in users if u["email"] == email), None)
+            contexte = {
+                "username": user_row["username"] if user_row else "",
+                "email": email,
+            }
+            sujet = render_modele_email(modele["sujet"], contexte)
+            corps = render_modele_email(modele["corps"], contexte)
+
+            try:
+                envoyer_mail(
+                    sujet=sujet,
+                    destinataires=[email],
+                    texte=corps,
+                    is_html=False
+                )
+                envoyes += 1
+            except Exception as e:
+                write_log(f"❌ Erreur envoi mail à {email} : {e}")
+                erreurs.append(email)
+
+        if mode_test:
+            flash(f"🧪 TEST : mail envoyé à ba380.informatique2@banquealimentaire.org", "warning")
+        elif erreurs:
+            flash(f"⚠️ {envoyes} mails envoyés, {len(erreurs)} erreur(s) : {', '.join(erreurs)}", "warning")
+        else:
+            flash(f"✅ {envoyes} mails envoyés aux utilisateurs actifs", "success")
+
+        return redirect(url_for("debug_bp.mail_utilisateurs"))
+
+    return render_template(
+        "admin/mail_utilisateurs.html",
+        modeles=modeles,
+        users=users
+    )
+
+
+@debug_bp.route("/admin/modeles/new", methods=["GET", "POST"])
+@debug_bp.route("/admin/modeles/<int:modele_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_modele_admin(modele_id=None):
+    if session.get("user_role") != "admin":
+        flash("⛔ Accès interdit", "danger")
+        return redirect(url_for("index"))
+
+    db_path = get_db_path()
+
+    if request.method == "POST":
+        code = request.form.get("code_modele", "").strip()
+        sujet = request.form.get("sujet", "").strip()
+        corps = request.form.get("corps", "").strip()
+        action = request.form.get("action", "save")
+
+        with sqlite3.connect(db_path) as conn:
+            if modele_id:
+                conn.execute(
+                    "UPDATE modeles_emails SET code_modele = ?, sujet = ?, corps = ?, date_modification = ? WHERE id = ?",
+                    (code, sujet, corps, datetime.now().isoformat(), modele_id)
+                )
+                flash("✅ Modèle mis à jour.", "success")
+            else:
+                cur = conn.execute(
+                    "INSERT INTO modeles_emails (code_modele, sujet, corps, date_modification) VALUES (?, ?, ?, ?)",
+                    (code, sujet, corps, datetime.now().isoformat())
+                )
+                modele_id = cur.lastrowid
+                flash("✅ Modèle créé.", "success")
+            conn.commit()
+
+        if action == "save_both" and os.getenv("ENVIRONMENT", "DEV").upper() == "DEV":
+            ok, err = copier_modele_email_vers_prod(code, sujet, corps)
+            if ok:
+                flash("Modèle également enregistré en PROD", "success")
+            else:
+                flash(f"⚠️ Échec de la copie vers PROD : {err}", "danger")
+
+        return redirect(url_for("debug_bp.edit_modele_admin", modele_id=modele_id))
+
+    modele = None
+    if modele_id:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            modele = conn.execute(
+                "SELECT * FROM modeles_emails WHERE id = ?", (modele_id,)
+            ).fetchone()
+
+        if not modele:
+            flash("❌ Modèle introuvable.", "danger")
+            return redirect(url_for("debug_bp.mail_utilisateurs"))
+
+    return render_template("admin/edit_modele_admin.html", modele=modele)

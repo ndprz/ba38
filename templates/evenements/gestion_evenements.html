@@ -1,10 +1,20 @@
 {% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}Gestion des événements écran{% endblock %}
 
 
 {% block content %}
 <div class="table-responsive" style="overflow-x:auto;">
   <h2>🎬 Gestion des événements écran</h2>
+
+  <button class="btn btn-outline-info mb-3"
+          type="button"
+          data-bs-toggle="modal"
+          data-bs-target="#modalAideEvenements">
+      ℹ️ Aide utilisateur
+  </button>
 
   {% set lecture_seule = not has_access("evenements", "ecriture") %}
 
@@ -13,6 +23,44 @@
     🔒 Mode lecture seule – modifications non autorisées
   </div>
   {% endif %}
+
+  <!-- ============================================= -->
+  <!-- 🗓️ RÉGLAGES DU PLANNING AUTO DES PASSAGES -->
+  <!-- ============================================= -->
+  <form method="post" class="card p-3 mt-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="config_planning">
+
+    <h5 class="mb-3">🗓️ Planning automatique des passages associations</h5>
+
+    <div class="row g-3 align-items-end">
+      <div class="col-md-4">
+        <div class="form-check form-switch">
+          <input type="checkbox" class="form-check-input" role="switch" id="planning_actif"
+            name="planning_actif" {% if planning_config.actif %}checked{% endif %}
+            {% if lecture_seule %}disabled{% endif %}>
+          <label class="form-check-label" for="planning_actif">Affichage activé</label>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Durée d'affichage (s)</label>
+        <input type="number" name="planning_duree_affichage" class="form-control"
+          value="{{ planning_config.duree_affichage }}" min="5" {% if lecture_seule %}disabled{% endif %}>
+      </div>
+
+      <div class="col-md-4">
+        <button class="btn btn-primary" type="submit" {% if lecture_seule %}disabled{% endif %}>
+          💾 Enregistrer
+        </button>
+      </div>
+    </div>
+
+    <small class="text-muted d-block mt-2">
+      Généré automatiquement chaque jour à partir de la fiche associations (jour/heure de passage, emplacement) —
+      n'apparaît pas dans la liste ci-dessous, seuls ces réglages sont modifiables.
+    </small>
+  </form>
 
   <!-- ============================================= -->
   <!-- 🧾 FORMULAIRE D'AJOUT D'UN NOUVEL ÉVÉNEMENT -->
@@ -96,9 +144,7 @@
                         evenement_id=evenement_actif.id) }}" class="btn btn-outline-dark" target="_blank">
         🖥️ Ouvrir l’affichage (nouvelle fenêtre)
       </a>
-      <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
-        ↩️ Retour à l'accueil
-      </a>
+      {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
       {% else %}
       <span class="text-danger">⚠️ Aucun événement actif</span>
       {% endif %}
@@ -235,6 +281,42 @@
         {% endfor %}
       </tbody>
     </table>
+  </div>
+</div>
+
+<!-- ============================================== -->
+<!-- ℹ️ MODALE D'AIDE UTILISATEUR -->
+<!-- ============================================== -->
+<div class="modal fade" id="modalAideEvenements" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">🎬 Aide – Gestion des événements écran</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_Evenements_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAideEvenements')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
   </div>
 </div>
 

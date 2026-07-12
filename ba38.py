@@ -29,7 +29,7 @@ import logging
 # --------------------------------------------------
 
 from datetime import datetime, timedelta
-from utils import get_db_connection, write_log, send_reset_email, get_user_roles, get_db_path, get_db_info, upload_database, get_version, get_all_users, format_tel, get_param_value
+from utils import get_db_connection, write_log, send_reset_email, get_user_roles, get_db_path, get_db_info, upload_database, get_version, get_all_users, format_tel, get_param_value, get_real_db_connection
 from utils import get_user_info,has_access, is_admin_global, format_date_fr, build_menu, require_admin_global
 from utils import is_blocked, record_attempt, reset_attempts, is_suspicious_ip, is_suspicious_ua, get_attempt_count, require_access
 from utils import date_fr
@@ -42,7 +42,7 @@ from wtforms import StringField, PasswordField, SubmitField, SelectField
 from wtforms.validators import Optional, DataRequired, Email, Length, EqualTo, ValidationError
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from werkzeug.exceptions import MethodNotAllowed
+from werkzeug.exceptions import MethodNotAllowed, HTTPException
 from docx import Document
 from fpdf import FPDF
 from weasyprint import HTML
@@ -77,6 +77,7 @@ from ba38_export import export_data_bp
 from ba38_fournisseurs import fournisseurs_bp
 from ba38_tresorerie import tresorerie_bp
 from ba38_fiches_visite import fiches_visite_bp
+from ba38_annexe1bis import annexe1bis_bp, webhook_yousign
 from ba38_evenements import evenements_bp
 from ba38_factures import factures_bp
 from ba38_planning_report import planning_report_bp
@@ -86,6 +87,7 @@ from ba38_droit_image import droit_image_bp
 from ba38_indicateurs import indicateurs_bp
 from ba38_emails import emails_bp
 from ba38_applications import applications_bp
+from ba38_routes_vif_comparaison import vif_bp
 
 
 
@@ -96,8 +98,13 @@ app = Flask(__name__)
 # 🔒 Protection CSRF globale
 csrf = CSRFProtect(app)
 
+# Webhook Yousign : appelé par un serveur externe, pas de token CSRF possible
+# (authentification propre par signature HMAC, cf. ba38_annexe1bis.webhook_yousign)
+csrf.exempt(webhook_yousign)
+
 @app.errorhandler(CSRFError)
 def handle_csrf_error(e):
+    write_log(f"⚠️ CSRF rejeté sur {request.path} : {e.description}")
     flash("Session expirée ou requête invalide. Veuillez réessayer.", "warning")
     return redirect(request.referrer or url_for('login'))
 
@@ -348,6 +355,7 @@ app.register_blueprint(export_data_bp)
 app.register_blueprint(fournisseurs_bp)
 app.register_blueprint(tresorerie_bp)
 app.register_blueprint(fiches_visite_bp)
+app.register_blueprint(annexe1bis_bp)
 app.register_blueprint(evenements_bp)
 app.register_blueprint(factures_bp)
 app.register_blueprint(planning_report_bp)
@@ -357,7 +365,22 @@ app.register_blueprint(droit_image_bp)
 app.register_blueprint(indicateurs_bp)
 app.register_blueprint(emails_bp)
 app.register_blueprint(applications_bp)
+app.register_blueprint(vif_bp)
 
+
+# Migration : ajout colonne email_verifie si absente
+def _migrate_email_verifie():
+    try:
+        conn = get_db_connection()
+        conn.execute("ALTER TABLE users ADD COLUMN email_verifie INTEGER DEFAULT 0")
+        conn.commit()
+        write_log("✅ Migration: colonne email_verifie ajoutée")
+    except Exception:
+        pass  # colonne déjà présente
+    finally:
+        conn.close()
+
+_migrate_email_verifie()
 
 
 # Enregistrement de la fonction has_access dans l’environnement Jinja
@@ -482,12 +505,13 @@ def validate_email(self, email):
 
 # ✅ Définition de la classe User manquante
 class User(UserMixin):
-    def __init__(self, id, username, email, password_hash, role):
+    def __init__(self, id, username, email, password_hash, role, test_only=False):
         self.id = id
         self.username = username
         self.email = email
         self.password_hash = password_hash
         self.role = role
+        self.test_only = bool(test_only)
 
     def get_id(self):
         return str(self.id)
@@ -503,6 +527,8 @@ def test_tri():
 
 @app.errorhandler(Exception)
 def handle_exception(e):
+    if isinstance(e, HTTPException):
+        return e
     logging.exception("❌ Exception capturée dans Flask :")
     return "Une erreur est survenue", 500
 
@@ -671,6 +697,15 @@ def set_user_roles():
     if not current_user.is_authenticated:
         return
 
+    # 🕒 Horodatage de la dernière interaction réelle (cf. admin_scripts → connexions actives)
+    session["last_activity"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # =====================================================
+    # 🔒 COMPTE RESTREINT AU MODE TEST → verrouillage permanent
+    # =====================================================
+    if getattr(current_user, "test_only", False):
+        session["test_user"] = True
+
     # =====================================================
     # 🧪 MODE TEST → bypass des droits DB anonymisée
     # =====================================================
@@ -786,12 +821,21 @@ def get_user_role():
 
 @login_manager.user_loader
 def load_user(user_id):
-    conn = get_db_connection()
+    # ⚠️ Toujours la base réelle (pas get_db_connection) : l'identité d'un
+    # utilisateur ne doit jamais dépendre de session['test_user'], sous
+    # peine de déconnexion automatique si son compte n'existe pas (encore)
+    # dans la base de test, ou de blocage au login si le flag reste
+    # incohérent après une déconnexion automatique.
+    conn = get_real_db_connection()
     user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     conn.close()
 
     if user:
-        return User(user['id'], user['username'], user['email'], user['password_hash'], user['role'])
+        return User(
+            user['id'], user['username'], user['email'],
+            user['password_hash'], user['role'],
+            test_only=user['test_only']
+        )
 
     return None  # 🔥 Important : Retourner None si l'utilisateur n'est pas trouvé
 
@@ -804,6 +848,10 @@ def set_test_user():
 
 @app.route('/unset_test_user', methods=['POST'])
 def unset_test_user():
+    if current_user.is_authenticated and getattr(current_user, "test_only", False):
+        flash("⛔ Ce compte est restreint au mode test, impossible de le désactiver.", "danger")
+        return redirect(url_for('index'))
+
     session.pop('test_user', None)
     flash("Mode test désactivé : retour à la base de production.", "info")
     return redirect(url_for('index'))
@@ -811,80 +859,50 @@ def unset_test_user():
 
 
 
-# 🔐 Route pour l'inscription d'un utilisateur
+# Route d'inscription publique (email ba380*@banquealimentaire.org requis)
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    from utils import send_verification_email
     write_log("🚀 Route /register appelée")
     form = RegistrationForm()
 
     if form.validate_on_submit():
         try:
+            email = form.email.data.strip().lower()
             conn = get_db_connection()
 
-            # Vérifie si l'email est déjà utilisé
-            user = conn.execute("SELECT * FROM users WHERE email = ?", (form.email.data,)).fetchone()
-            if user:
+            existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+            if existing:
+                conn.close()
                 flash("Email déjà utilisé.", "danger")
-                return redirect(url_for('register'))
-
-            # Mot de passe requis à la création
-            if not form.password.data:
-                flash("Le mot de passe est requis pour l'inscription.", "danger")
                 return redirect(url_for('register'))
 
             hashed_password = generate_password_hash(form.password.data)
 
-            # ✅ Lecture des champs hors-formulaire
-            try:
-                app_bene = int(request.form.get("app_bene", 0))
-                app_assos = int(request.form.get("app_assos", 0))
-            except ValueError:
-                flash("Erreur dans les droits d'accès sélectionnés.", "danger")
-                return redirect(url_for('register'))
-
-            # Insertion en base
             cursor = conn.execute(
                 """
-                INSERT INTO users (username, email, password_hash, role, actif, app_bene, app_assos)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO users (username, email, password_hash, role, actif, app_bene, app_assos, email_verifie)
+                VALUES (?, ?, ?, 'user', 'Non', 0, 0, 0)
                 """,
-                (
-                    form.username.data,
-                    form.email.data,
-                    hashed_password,
-                    form.role.data,
-                    form.actif.data,
-                    app_bene,
-                    app_assos
-                )
+                (form.username.data, email, hashed_password)
             )
             conn.commit()
+            conn.close()
 
             if cursor.rowcount == 0:
                 write_log("⚠️ Échec de l'insertion SQL")
                 flash("Erreur lors de l'inscription.", "danger")
                 return redirect(url_for('register'))
 
-            # Vérification post-insertion
-            user = conn.execute("SELECT * FROM users WHERE email = ?", (form.email.data,)).fetchone()
-            conn.close()
+            write_log(f"✅ Compte créé (inactif) : {email}")
 
-            if not user:
-                write_log("❌ Utilisateur non retrouvé après insertion.")
-                flash("Erreur après l'insertion : utilisateur non trouvé.", "danger")
-                return redirect(url_for('register'))
+            token = generate_reset_token(email)
+            send_verification_email(email, token)
 
-            write_log(f"✅ Utilisateur enregistré : ID={user['id']}, Email={user['email']}, Rôle={user['role']}")
-            flash("Inscription réussie. L'utilisateur peut maintenant se connecter.", "success")
-
-            # Sauvegarde Drive
-            upload_database()
-            write_log("✅ Base de données sauvegardée sur Google Drive après l'inscription.")
-
-            return redirect(url_for('index'))
+            return redirect(url_for('register_attente', email=email))
 
         except Exception as e:
-            write_log(f"❌ Exception SQL ou autre : {e}")
+            write_log(f"❌ Exception inscription : {e}")
             flash(f"Erreur lors de l'inscription : {e}", "danger")
             return redirect(url_for('register'))
 
@@ -893,6 +911,44 @@ def register():
             write_log(f"❌ Validation échouée : {form.errors}")
 
     return render_template("register.html", form=form)
+
+
+@app.route('/register/attente')
+def register_attente():
+    email = request.args.get('email', '')
+    return render_template("email_verifie_attente.html", email=email)
+
+
+@app.route('/verify_email/<token>')
+def verify_email(token):
+    email = verify_reset_token(token)
+    if email is None:
+        flash("Ce lien de vérification est invalide ou expiré.", "danger")
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    if not user:
+        conn.close()
+        flash("Compte introuvable.", "danger")
+        return redirect(url_for('login'))
+
+    if user["email_verifie"]:
+        conn.close()
+        flash("Votre email est déjà vérifié. Vous pouvez vous connecter.", "info")
+        return redirect(url_for('login'))
+
+    conn.execute(
+        "UPDATE users SET actif = 'Oui', email_verifie = 1 WHERE email = ?",
+        (email,)
+    )
+    conn.commit()
+    conn.close()
+
+    upload_database()
+    write_log(f"✅ Email vérifié, compte activé : {email}")
+    flash("Votre email est confirmé. Votre compte est maintenant actif — vous pouvez vous connecter.", "success")
+    return redirect(url_for('login'))
 
 def get_real_ip():
     forwarded = request.headers.get("X-Forwarded-For")
@@ -979,8 +1035,15 @@ def login():
 
         write_log(f"🔐 LOGIN tentative {username} | IP={ip}")
 
-        # 🔎 Recherche utilisateur
-        conn = get_db_connection()
+        # 🧹 Une tentative de connexion repart toujours de zéro : si un
+        # session['test_user'] est resté accroché (ex. déconnexion
+        # automatique Flask-Login suite à un compte introuvable en base de
+        # test), on ne veut surtout pas vérifier le mot de passe contre la
+        # mauvaise base.
+        session.pop("test_user", None)
+
+        # 🔎 Recherche utilisateur (toujours la base réelle, cf. load_user)
+        conn = get_real_db_connection()
         user = conn.execute(
             "SELECT * FROM users WHERE LOWER(email) = ?",
             (username,)
@@ -1026,10 +1089,15 @@ def login():
                 user["username"],
                 user["email"],
                 user["password_hash"],
-                user["role"]
+                user["role"],
+                test_only=user["test_only"]
             )
 
             login_user(user_obj)
+
+            # 🔒 Compte restreint au mode test → verrouillage immédiat
+            if user_obj.test_only:
+                session["test_user"] = True
 
             # 🔴 IMPORTANT : session persistante
             session.permanent = True
@@ -1132,7 +1200,7 @@ def login_2fa():
     if not user_id:
         return redirect(url_for("login"))
 
-    conn = get_db_connection()
+    conn = get_real_db_connection()
     user = conn.execute(
         "SELECT * FROM users WHERE id=?",
         (user_id,)
@@ -1156,10 +1224,15 @@ def login_2fa():
                 user["username"],
                 user["email"],
                 user["password_hash"],
-                user["role"]
+                user["role"],
+                test_only=user["test_only"]
             )
 
             login_user(user_obj)
+
+            # 🔒 Compte restreint au mode test → verrouillage immédiat
+            if user_obj.test_only:
+                session["test_user"] = True
 
             session.permanent = True
             session.modified = True

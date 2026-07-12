@@ -6,28 +6,65 @@
 
 {% block content %}
 
+<style>
+    .ged-sticky-top {
+        position: sticky;
+        top: 0;
+        z-index: 1030;
+        background: #fff;
+        padding-top: 0.5rem;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+    }
+    .ged-sticky-top .card { margin-bottom: 0.5rem !important; }
+
+    /* Défilement propre au tableau, indépendant du défilement
+       de la page : l'en-tête de colonnes reste figé en haut de
+       cette zone de défilement interne. */
+    #table-ged-scroll {
+        max-height: 65vh;
+        overflow-y: auto;
+    }
+
+    #table-ged thead th {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background-color: #343a40;
+        color: #fff;
+    }
+</style>
+
+<div class="ged-sticky-top">
+
 {# ============================================================ #}
 {# TITRE                                                         #}
 {# ============================================================ #}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <div>
-        <h2 class="mb-0">🗂️ GED — Engagements de dépenses</h2>
-        <div class="text-muted small mt-1">
-            Gestion Électronique des Documents — Vue révision comptable
-        </div>
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <h5 class="mb-0">🗂️ GED — Engagements de dépenses</h5>
+        <span class="text-muted small">
+            🔒 Vue admin / trésorerie / CAC — tous les engagements visibles
+        </span>
     </div>
-    {% call action_buttons() %}
-        {{ action_button("↩️ Retour", href=url_for('engagements.engagements_main'), color="outline-dark") }}
-    {% endcall %}
-</div>
 
-<div class="alert alert-info py-2 mb-3 d-flex align-items-center gap-2">
-    <span>🔒</span>
-    <span>
-        Accès restreint — Vue administrateur / trésorerie / commissaire aux comptes.
-        Tous les engagements sont visibles.
-    </span>
+    {% set buttons = [] %}
+
+    {% set _ = buttons.append({
+        'label': "❓ Aide",
+        'color': 'outline-info',
+        'onclick': "new bootstrap.Modal(document.getElementById('modalAideEngagements')).show()"
+    }) %}
+
+
+    {% set _ = buttons.append({
+        'label': "↩️ Retour",
+        'url': url_for('engagements.engagements_main'),
+        'color': 'outline-dark'
+    }) %}
+
+    {{ action_buttons(buttons) }}
+
 </div>
 
 
@@ -35,11 +72,20 @@
 {# FILTRES                                                       #}
 {# ============================================================ #}
 
-<div class="card mb-4 shadow-sm">
-    <div class="card-header bg-dark text-white fw-bold">
-        🔍 Filtres
+<div class="card shadow-sm">
+    <div class="card-header bg-dark text-white fw-bold py-1">
+        <a class="text-white text-decoration-none d-block"
+           data-bs-toggle="collapse"
+           href="#collapseFiltresGed"
+           role="button"
+           aria-expanded="{{ 'false' if has_search else 'true' }}"
+           aria-controls="collapseFiltresGed">
+            🔍 Filtres ▼
+        </a>
     </div>
-    <div class="card-body">
+    <div class="collapse {{ '' if has_search else 'show' }}"
+         id="collapseFiltresGed">
+    <div class="card-body py-2">
 
         <form method="POST"
               action="{{ url_for('engagements.engagements_ged') }}"
@@ -141,6 +187,16 @@
                     </select>
                 </div>
 
+                {# Recherche par n° EBP #}
+                <div style="min-width:170px;">
+                    <label class="form-label fw-semibold small">🔍 Rechercher n° EBP</label>
+                    <input type="text"
+                           name="numero_ebp"
+                           class="form-control form-control-sm"
+                           placeholder="Ex : 2026-000123"
+                           value="{{ filters.numero_ebp }}">
+                </div>
+
                 {# Complétude #}
                 <div style="min-width:170px;">
                     <label class="form-label fw-semibold small">📋 Complétude</label>
@@ -154,6 +210,10 @@
                             {% if filters.completude == "incomplet" %}selected{% endif %}>
                             ⚠️ Incomplets
                         </option>
+                        <option value="en_attente_compta"
+                            {% if filters.completude == "en_attente_compta" %}selected{% endif %}>
+                            🔷 Réglés, en attente compta
+                        </option>
                         <option value="en_cours"
                             {% if filters.completude == "en_cours" %}selected{% endif %}>
                             🔵 En cours
@@ -161,6 +221,25 @@
                         <option value="refuse"
                             {% if filters.completude == "refuse" %}selected{% endif %}>
                             🔴 Refusés
+                        </option>
+                    </select>
+                </div>
+
+                {# Archivés #}
+                <div style="min-width:170px;">
+                    <label class="form-label fw-semibold small">🗑 Archivés</label>
+                    <select name="archive" class="form-select form-select-sm">
+                        <option value=""
+                            {% if filters.archive == "" %}selected{% endif %}>
+                            Tous (archivés inclus)
+                        </option>
+                        <option value="actifs"
+                            {% if filters.archive == "actifs" %}selected{% endif %}>
+                            Actifs uniquement
+                        </option>
+                        <option value="archives"
+                            {% if filters.archive == "archives" %}selected{% endif %}>
+                            Archivés uniquement
                         </option>
                     </select>
                 </div>
@@ -174,6 +253,46 @@
 
         </form>
     </div>
+    </div>{# /collapse #}
+</div>{# /card #}
+
+</div>{# /ged-sticky-top #}
+
+<!-- Modale AIDE (hors de .ged-sticky-top : un ancêtre position+z-index
+     y créerait un nouveau contexte d'empilement qui piègerait la
+     modale derrière le fond noir de Bootstrap) -->
+<div class="modal fade" id="modalAideEngagements" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📄 Aide – Module Engagements GED</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_GED_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary"
+                onclick="printModal('modalAideEngagements')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
 </div>
 
 
@@ -284,7 +403,9 @@
             <input type="hidden" name="subvention_id" value="{{ filters.subvention_id }}">
             <input type="hidden" name="statut"        value="{{ filters.statut }}">
             <input type="hidden" name="avec_ebp"      value="{{ filters.avec_ebp }}">
+            <input type="hidden" name="numero_ebp"    value="{{ filters.numero_ebp }}">
             <input type="hidden" name="completude"    value="{{ filters.completude }}">
+            <input type="hidden" name="archive"       value="{{ filters.archive }}">
             <button type="submit" class="btn btn-success btn-sm">
                 📥 Export Excel CAC
             </button>
@@ -300,7 +421,7 @@
 
     {% if rows %}
 
-    <div class="table-responsive">
+    <div class="table-responsive" id="table-ged-scroll">
         <table class="table table-sm table-bordered table-hover"
                id="table-ged"
                style="font-size:0.85rem;">
@@ -376,7 +497,7 @@
                         {% endif %}
                         {% if r.nom_subvention %}
                         <div class="mt-1">
-                            <span class="badge bg-info text-dark"
+                            <span class="badge bg-info text-white"
                                   style="font-size:0.7rem;">
                                 {{ r.nom_subvention }}
                             </span>
@@ -386,7 +507,7 @@
 
                     {# Rubrique #}
                     <td class="small">
-                        <span class="badge bg-secondary">
+                        <span class="badge bg-secondary text-white">
                             {{ r.rubrique or "—" }}
                         </span>
                         {% if r.sous_type_depense == "deplacement" %}
@@ -424,18 +545,29 @@
                             <span class="badge bg-info text-white" style="font-size:0.7rem;">
                                 💶 Réglé
                             </span>
+                        {% elif s == 'comptabilise' %}
+                            <span class="badge bg-dark text-white" style="font-size:0.7rem;">
+                                🧮 Comptabilisé
+                            </span>
                         {% elif s == 'termine' %}
-                            <span class="badge bg-secondary" style="font-size:0.7rem;">
+                            <span class="badge bg-secondary text-white" style="font-size:0.7rem;">
                                 📦 Terminé
                             </span>
                         {% elif s == 'refuse' %}
-                            <span class="badge bg-danger" style="font-size:0.7rem;">
+                            <span class="badge bg-danger text-white" style="font-size:0.7rem;">
                                 🔴 Refusé
                             </span>
                         {% else %}
                             <span class="badge bg-light text-dark" style="font-size:0.7rem;">
                                 {{ s }}
                             </span>
+                        {% endif %}
+
+                        {% if r.deleted == 1 %}
+                        <br>
+                        <span class="badge bg-dark text-white" style="font-size:0.65rem;">
+                            🗑 Archivé
+                        </span>
                         {% endif %}
                     </td>
 
@@ -454,9 +586,9 @@
                             <code class="small text-dark fw-semibold">
                                 {{ r.numero_ecriture_ebp }}
                             </code>
-                        {% elif r.statut in ('reglee', 'termine') %}
-                            {# Réglé mais sans EBP = anomalie #}
-                            <span class="badge bg-danger"
+                        {% elif r.statut in ('comptabilise', 'termine') %}
+                            {# Comptabilisé/terminé mais sans EBP = anomalie #}
+                            <span class="badge bg-danger text-white"
                                   title="Engagement réglé sans N° EBP">
                                 ❌ Manquant
                             </span>
@@ -542,11 +674,15 @@
             Dossier réglé avec manques documentaires
         </span>
         <span class="d-flex align-items-center gap-1">
-            <span class="badge bg-secondary">🔵 En cours</span>
+            <span class="badge bg-info text-white">🔷 En attente compta</span>
+            Réglé, pièces complètes, en attente de comptabilisation (N° EBP)
+        </span>
+        <span class="d-flex align-items-center gap-1">
+            <span class="badge bg-secondary text-white">🔵 En cours</span>
             Workflow non terminé — complétude non évaluée
         </span>
         <span class="d-flex align-items-center gap-1">
-            <span class="badge bg-danger">🔴 Refusé</span>
+            <span class="badge bg-danger text-white">🔴 Refusé</span>
             Engagement refusé
         </span>
     </div>

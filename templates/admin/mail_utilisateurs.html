@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Envoi mail utilisateurs{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>📧 Envoyer un mail aux utilisateurs</h2>
+  <p class="text-muted">Envoie le modèle d'email sélectionné à tous les utilisateurs actifs ({{ users|length }} comptes).</p>
+
+  <a href="{{ url_for('debug_bp.admin_scripts') }}" class="btn btn-outline-secondary btn-sm mb-3">
+    ← Retour à l'administration
+  </a>
+
+  <form method="POST" onsubmit="return confirm('Envoyer ce mail à {{ users|length }} utilisateur(s) ?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">Modèle d'email</label>
+      <select name="modele_id" class="form-select" required>
+        <option value="">-- Sélectionner un modèle --</option>
+        {% for m in modeles %}
+        <option value="{{ m.id }}">{{ m.code_modele }} — {{ m.sujet }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-check mb-3">
+      <input class="form-check-input" type="checkbox" name="mode_test" id="mode_test">
+      <label class="form-check-label" for="mode_test">
+        🧪 Mode test (envoie uniquement à ba380.informatique2@banquealimentaire.org)
+      </label>
+    </div>
+
+    <button type="submit" class="btn btn-primary">📤 Envoyer</button>
+  </form>
+
+  <hr class="mt-4">
+  <div class="d-flex justify-content-between align-items-center">
+    <h5 class="mb-0">Modèles disponibles</h5>
+    <a href="{{ url_for('debug_bp.edit_modele_admin') }}" class="btn btn-sm btn-success">➕ Nouveau modèle</a>
+  </div>
+  <table class="table table-sm table-bordered mt-2">
+    <thead class="table-light">
+      <tr><th>Code</th><th>Sujet</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for m in modeles %}
+      <tr>
+        <td>{{ m.code_modele }}</td>
+        <td>{{ m.sujet }}</td>
+        <td>
+          <a href="{{ url_for('debug_bp.edit_modele_admin', modele_id=m.id) }}"
+             class="btn btn-sm btn-outline-primary">✏️ Modifier</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <hr class="mt-4">
+  <h5>Destinataires ({{ users|length }} utilisateurs actifs)</h5>
+  <table class="table table-sm table-bordered mt-2">
+    <thead class="table-light">
+      <tr><th>Utilisateur</th><th>Email</th></tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr><td>{{ u.username }}</td><td>{{ u.email }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

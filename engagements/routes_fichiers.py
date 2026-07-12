@@ -45,7 +45,7 @@ def upload_fichier_engagement(engagement_id):
             WHERE id = ?
         """, (engagement_id,)).fetchone()
 
-        if engagement["statut"] == "reglee":
+        if engagement["statut"] in ("reglee", "comptabilise", "termine"):
 
             flash(
                 "⚠️ Cet engagement est déjà réglé.",

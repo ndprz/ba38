@@ -8,7 +8,7 @@ import logging
 import subprocess
 import base64
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from collections import defaultdict
 
@@ -17,8 +17,9 @@ from collections import defaultdict
 # =========================
 import requests
 import gspread
+import jwt
 from dotenv import load_dotenv
-from flask import current_app, session, url_for, request
+from flask import current_app, session, url_for, request, has_request_context
 from google.oauth2.service_account import Credentials
 
 # =========================
@@ -82,7 +83,7 @@ def build_menu():
             JOIN roles_utilisateurs r
                 ON r.appli = a.appli
             WHERE r.user_email = ?
-              AND r.droit IN ('lecture', 'ecriture')
+              AND r.droit IN ('lecture', 'ecriture', 'admin')
               and a.menu_visible = 1
             ORDER BY a.ordre_groupe, a.ordre
         """, (current_user.email,)).fetchall()
@@ -346,6 +347,40 @@ def get_db_path():
         raise RuntimeError(f"Base SQLite inexistante : {path}")
 
     return path
+
+
+def get_real_db_path():
+    """
+    Retourne le chemin de la base SQLite "réelle" (SQLITE_DB), en ignorant
+    délibérément `session['test_user']`.
+
+    À utiliser pour tout ce qui touche à l'identité/authentification
+    (recherche d'utilisateur, vérification de mot de passe) : ces
+    opérations ne doivent jamais dépendre d'un flag de session qui pourrait
+    être incohérent (ex. laissé à True après une déconnexion automatique
+    Flask-Login), sous peine de bloquer un utilisateur hors du compte
+    "test_only" qui ne serait pas trouvé dans la base de test.
+    """
+    filename = os.getenv("SQLITE_DB")
+    if not filename:
+        raise RuntimeError("SQLITE_DB non défini dans le .env")
+
+    base_dir = os.getenv("BA38_BASE_DIR")
+    if not base_dir:
+        raise RuntimeError("BA38_BASE_DIR non défini")
+
+    path = os.path.join(base_dir, filename)
+
+    if not os.path.exists(path):
+        raise RuntimeError(f"Base SQLite inexistante : {path}")
+
+    return path
+
+
+def get_real_db_connection():
+    conn = sqlite3.connect(get_real_db_path())
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 def get_db_path_by_env(env: str, *, force_base_dir: str | None = None) -> str:
@@ -855,9 +890,27 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
     mail_test_to = os.getenv("MAIL_TEST_TO")
 
     # -----------------------------
-    # Mode TEST
+    # Mode TEST (session utilisateur) → priorité sur MAIL_MODE
+    # Redirige vers l'email de l'utilisateur connecté plutôt qu'une
+    # adresse fixe, pour permettre de tester en toute sécurité
+    # (comptes "test_only" notamment) sans jamais écrire à un vrai
+    # destinataire.
     # -----------------------------
-    if mail_mode == "TEST":
+    session_test_mode = False
+    if has_request_context():
+        session_test_mode = bool(session.get("test_user"))
+
+    if session_test_mode:
+        sujet = f"[TEST] {sujet}"
+        repli = current_user.email if (current_user and current_user.is_authenticated) else mail_test_to
+        destinataires = [repli] if repli else []
+
+    # -----------------------------
+    # Mode TEST (global, MAIL_MODE=TEST dans .env) → utilisé hors
+    # contexte de requête (scripts planifiés) ou si aucun utilisateur
+    # n'est disponible pour la redirection ci-dessus.
+    # -----------------------------
+    elif mail_mode == "TEST":
         sujet = f"[TEST] {sujet}"
 
         # on redirige seulement les destinataires
@@ -995,6 +1048,56 @@ L’équipe BA380
 
     except Exception as e:
         write_log(f"❌ Erreur send_reset_email({email}) : {e}")
+
+
+def send_verification_email(email, token):
+    """Envoie un email de vérification de compte via Mailjet."""
+    from flask import url_for
+    api_key = os.getenv("MAILJET_API_KEY")
+    api_secret = os.getenv("MAILJET_API_SECRET")
+    sender = os.getenv("MAILJET_SENDER")
+
+    if not all([api_key, api_secret, sender]):
+        write_log("❌ Mailjet mal configuré (clé/secret/sender manquant)")
+        return
+
+    verify_link = url_for("verify_email", token=token, _external=True)
+
+    data = {
+        "Messages": [
+            {
+                "From": {"Email": sender, "Name": "BA380"},
+                "To": [{"Email": email}],
+                "Subject": "Vérification de votre adresse email - BA380",
+                "TextPart": f"""Bonjour,
+
+Vous venez de créer un compte sur l'application BA380.
+
+Cliquez sur le lien ci-dessous pour activer votre compte :
+{verify_link}
+
+Ce lien est valable 24 heures.
+
+Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.
+
+L'équipe BA380
+"""
+            }
+        ]
+    }
+
+    try:
+        response = requests.post(
+            "https://api.mailjet.com/v3.1/send",
+            auth=(api_key, api_secret),
+            json=data,
+            timeout=15
+        )
+        write_log(f"📧 Email de vérification envoyé à {email} (status={response.status_code})")
+        response.raise_for_status()
+    except Exception as e:
+        write_log(f"❌ Erreur send_verification_email({email}) : {e}")
+
 
 # ============================================================================
 # 🧰 UTILITAIRES
@@ -1482,6 +1585,37 @@ def get_contacts(param_name):
         """, (param_name,)).fetchall()
 
 
+PROD_DB_PATH_MODELES_EMAILS = "/srv/ba38/prod/instance/ba380.sqlite"
+
+
+def copier_modele_email_vers_prod(code, sujet, corps):
+    """Crée ou met à jour (par code_modele) le modèle d'email dans la base
+    PROD, en plus de l'enregistrement déjà fait par l'appelant dans la base
+    courante. Utilisé par les deux pages d'édition de modèles (ba38_emails.py
+    et debug_tools.py)."""
+    try:
+        with sqlite3.connect(PROD_DB_PATH_MODELES_EMAILS) as prod_conn:
+            existant = prod_conn.execute(
+                "SELECT id FROM modeles_emails WHERE code_modele = ?", (code,)
+            ).fetchone()
+            if existant:
+                prod_conn.execute("""
+                    UPDATE modeles_emails
+                    SET sujet=?, corps=?, date_modification=datetime('now')
+                    WHERE code_modele=?
+                """, (sujet, corps, code))
+            else:
+                prod_conn.execute("""
+                    INSERT INTO modeles_emails (code_modele, sujet, corps, date_modification)
+                    VALUES (?, ?, ?, datetime('now'))
+                """, (code, sujet, corps))
+            prod_conn.commit()
+        return True, None
+    except Exception as e:
+        write_log(f"❌ Copie modèle email vers PROD échouée ({code}) : {e}")
+        return False, str(e)
+
+
 def render_modele_email(texte, contexte):
     """
     Remplace les variables <<xxx>> par leur valeur
@@ -1551,5 +1685,55 @@ def is_valid_iban(iban):
         return int(iban_numeric) % 97 == 1
 
     except Exception:
-
         return False
+
+
+# ============================================================
+# TOKEN VALIDATION POLE (lien sécurisé sans connexion)
+# ============================================================
+
+VALIDATION_POLE_TOKEN_VALIDITE_JOURS = 14
+
+
+def generer_token_validation_pole(engagement_id, user_id):
+    """Génère un token signé permettant à user_id de valider
+    l'engagement engagement_id depuis le lien reçu par mail,
+    sans avoir à se connecter à l'application."""
+
+    payload = {
+        "action": "valider_pole",
+        "engagement_id": engagement_id,
+        "user_id": user_id,
+        "exp": datetime.utcnow() + timedelta(
+            days=VALIDATION_POLE_TOKEN_VALIDITE_JOURS
+        )
+    }
+
+    return jwt.encode(
+        payload,
+        current_app.secret_key,
+        algorithm="HS256"
+    )
+
+
+def verifier_token_validation_pole(token):
+    """Vérifie le token du lien de validation pôle.
+    Retourne le payload si valide, sinon None."""
+
+    try:
+        payload = jwt.decode(
+            token,
+            current_app.secret_key,
+            algorithms=["HS256"]
+        )
+
+    except jwt.ExpiredSignatureError:
+        return None
+
+    except jwt.InvalidTokenError:
+        return None
+
+    if payload.get("action") != "valider_pole":
+        return None
+
+    return payload

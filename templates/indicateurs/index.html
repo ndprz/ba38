@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "macros/forms.html" import input_date %}
+{% from "macros/buttons.html" import action_button, action_buttons %}
 
 {% block content %}
 
@@ -42,9 +43,7 @@
 
     <button class="btn btn-primary">Créer campagne</button>
 
-    <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
-        ↩️ Retour à l'accueil
-    </a>
+    {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
 
 
 </form>
@@ -103,7 +102,6 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
 
-      <!-- 👇 C’EST ICI -->
       <div class="modal-body" style="
           max-height: 70vh;
           overflow:auto;
@@ -116,6 +114,9 @@
       </div>
 
       <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAide')">
+            🖨️ Imprimer
+        </button>
         <button class="btn btn-secondary" data-bs-dismiss="modal">
             Fermer
         </button>

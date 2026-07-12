@@ -6,6 +6,7 @@ from flask_login import login_required, current_user
 from utils import get_db_path, get_db_connection, has_access, write_log, require_access
 from utils import get_real_ip
 from utils import envoyer_mail, is_valid_iban
+from utils import generer_token_validation_pole
 from openpyxl import Workbook
 from io import BytesIO
 from datetime import datetime
@@ -290,6 +291,7 @@ def engagements_main():
                 FROM engagements_workflow
                 WHERE engagement_id IN ({placeholders})
                 AND nouveau_statut IS NOT NULL
+                AND nouveau_statut != 'supprime'
                 ORDER BY engagement_id, date_action ASC, id ASC
             """, ids).fetchall()
 
@@ -473,9 +475,40 @@ def nouvelle_depense():
 
             signature_user_agent = request.headers.get("User-Agent")
 
+            if (
+                sous_type_depense == "achat"
+                and type_engagement in (
+                    "benevole_self",
+                    "benevole_other"
+                )
+                and rubrique == "achats_denrees"
+            ):
+
+                flash(
+                    "⚠️ Achat denrées réservé aux achats "
+                    "avec paiement fournisseur.",
+                    "warning"
+                )
+
+                return render_template(
+                    "engagements/nouvelle_depense.html",
+                    poles=poles,
+                    paliers=paliers,
+                    benevoles=benevoles,
+                    subventions=subventions,
+                    fournisseurs=fournisseurs
+                )
+
             if not pole_id or not objet or not montant_total:
                 flash("⚠️ Merci de remplir les champs obligatoires.", "warning")
-                return render_template("engagements/nouvelle_depense.html", poles=poles)
+                return render_template(
+                    "engagements/nouvelle_depense.html",
+                    poles=poles,
+                    paliers=paliers,
+                    benevoles=benevoles,
+                    subventions=subventions,
+                    fournisseurs=fournisseurs
+                )
 
             if not signature:
 
@@ -486,7 +519,11 @@ def nouvelle_depense():
 
                 return render_template(
                     "engagements/nouvelle_depense.html",
-                    poles=poles
+                    poles=poles,
+                    paliers=paliers,
+                    benevoles=benevoles,
+                    subventions=subventions,
+                    fournisseurs=fournisseurs
                 )
 
             # =====================================================
@@ -564,17 +601,17 @@ def nouvelle_depense():
                 LIMIT 1
             """, (str(montant),)).fetchone()
 
-            write_log("===================================")
+            # write_log("===================================")
 
-            write_log("[ENGAGEMENTS] DEBUG WORKFLOW")
+            # write_log("[ENGAGEMENTS] DEBUG WORKFLOW")
 
-            write_log(f"Montant = {montant}")
+            # write_log(f"Montant = {montant}")
 
             if not palier:
 
-                write_log("Palier = None")
+                # write_log("Palier = None")
 
-                write_log("===================================")
+                # write_log("===================================")
 
                 flash(
                     "⚠️ Aucun palier de validation configuré.",
@@ -590,21 +627,21 @@ def nouvelle_depense():
                     fournisseurs=fournisseurs
                 )
 
-            write_log(f"Palier = {dict(palier)}")
+            # write_log(f"Palier = {dict(palier)}")
 
-            write_log(
-                f"un_devis = {palier['un_devis']}"
-            )
+            # write_log(
+            #     f"un_devis = {palier['un_devis']}"
+            # )
 
-            write_log(
-                f"deux_devis = {palier['deux_devis']}"
-            )
+            # write_log(
+            #     f"deux_devis = {palier['deux_devis']}"
+            # )
 
-            write_log(
-                f"accord_presidence = {palier['accord_presidence']}"
-            )
+            # write_log(
+            #     f"accord_presidence = {palier['accord_presidence']}"
+            # )
 
-            write_log("===================================")
+            # write_log("===================================")
 
             # =====================================================
             # REGLES DEVIS
@@ -936,6 +973,10 @@ def nouvelle_depense():
                 SELECT
                     p.nom_affiche,
 
+                    p.responsable_id,
+                    p.suppleant1_id,
+                    p.suppleant2_id,
+
                     u1.email AS responsable_email,
                     u2.email AS supp1_email,
                     u3.email AS supp2_email
@@ -954,32 +995,106 @@ def nouvelle_depense():
                 WHERE p.id = ?
             """, (pole_id,)).fetchone()
 
-            destinataires = []
+            sujet = f"Nouvelle demande d'engagement #{engagement_id}"
 
-            if pole["responsable_email"]:
-                destinataires.append(pole["responsable_email"])
-
-            if pole["supp1_email"]:
-                destinataires.append(pole["supp1_email"])
-
-            if pole["supp2_email"]:
-                destinataires.append(pole["supp2_email"])
-
-            # suppression doublons
-            destinataires = list(set(destinataires))
-
-            # ============================
-            # ENVOI MAIL NOTIFICATION
-            # ============================
             lien = url_for(
                 "engagements.detail_engagement",
                 engagement_id=engagement_id,
                 _external=True
             )
 
-            sujet = f"Nouvelle demande d'engagement #{engagement_id}"
+            if statut == "validation_pole":
 
-            texte = f"""
+                # ============================
+                # ENVOI MAIL PERSONNALISE
+                # (lien de validation sécurisé, sans connexion)
+                # ============================
+
+                # Si le demandeur est le responsable de pôle,
+                # seul le suppléant 1 valide (conflit d'intérêt).
+                if current_user.id == pole["responsable_id"]:
+                    destinataires_pole = list(filter(None, [
+                        (pole["suppleant1_id"], pole["supp1_email"])
+                        if pole["suppleant1_id"] and pole["supp1_email"] else None,
+                    ]))
+                else:
+                    destinataires_pole = list(set(filter(None, [
+                        (pole["responsable_id"], pole["responsable_email"])
+                        if pole["responsable_id"] and pole["responsable_email"] else None,
+                        (pole["suppleant1_id"], pole["supp1_email"])
+                        if pole["suppleant1_id"] and pole["supp1_email"] else None,
+                        (pole["suppleant2_id"], pole["supp2_email"])
+                        if pole["suppleant2_id"] and pole["supp2_email"] else None,
+                    ])))
+
+                for user_id, user_email in destinataires_pole:
+
+                    token = generer_token_validation_pole(
+                        engagement_id,
+                        user_id
+                    )
+
+                    lien_validation = url_for(
+                        "engagements.valider_engagement_pole_lien",
+                        engagement_id=engagement_id,
+                        token=token,
+                        _external=True
+                    )
+
+                    texte = f"""
+            Bonjour,
+
+            Une nouvelle demande d'engagement nécessite votre validation.
+
+            Pôle :
+            {pole["nom_affiche"]}
+
+            Demandeur :
+            {current_user.username}
+
+            Objet :
+            {objet}
+
+            Montant :
+            {montant:.2f} €
+
+            Valider directement, sans vous connecter :
+            {lien_validation}
+
+            Ou en vous connectant à l'application :
+            {lien}
+
+            ---
+            BA38
+            """
+
+                    envoyer_mail(
+                        sujet=sujet,
+                        destinataires=[user_email],
+                        texte=texte
+                    )
+
+            else:
+
+                # ============================
+                # ENVOI MAIL NOTIFICATION (générique)
+                # ============================
+
+                destinataires = []
+
+                if pole["responsable_email"]:
+                    destinataires.append(pole["responsable_email"])
+
+                if pole["supp1_email"]:
+                    destinataires.append(pole["supp1_email"])
+
+                if pole["supp2_email"]:
+                    destinataires.append(pole["supp2_email"])
+
+                # suppression doublons
+                destinataires = list(set(destinataires))
+
+                texte = f"""
             Bonjour,
 
             Une nouvelle demande d'engagement nécessite votre validation.
@@ -1003,11 +1118,11 @@ def nouvelle_depense():
             BA38
             """
 
-            envoyer_mail(
-                sujet=sujet,
-                destinataires=destinataires,
-                texte=texte
-            )
+                envoyer_mail(
+                    sujet=sujet,
+                    destinataires=destinataires,
+                    texte=texte
+                )
 
             # ============================
             # 2️⃣ INSERT ENGAGEMENT WORKFLOW
@@ -1146,20 +1261,42 @@ def nouvelle_depense():
             # =====================================================
             # GENERATION AUTO NOTE DE FRAIS
             # =====================================================
+            # Note de frais générée pour tout remboursement à un
+            # bénévole (vous-même ou autre bénévole), que ce soit
+            # un achat ou un déplacement. Également pour un déplacement
+            # avec paiement fournisseur (au nom du fournisseur).
 
-            if sous_type_depense == "deplacement":
+            generer_frais = (
+                type_engagement in ("benevole_self", "benevole_other")
+                or (
+                    type_engagement == "fournisseur"
+                    and sous_type_depense == "deplacement"
+                )
+            )
+
+            if generer_frais:
 
                 from .routes_notes_frais import generer_note_frais_auto
+
+                nom_beneficiaire = (
+                    fournisseur_nom
+                    if type_engagement == "fournisseur"
+                    else None
+                )
 
                 generer_note_frais_auto(
                     conn=conn,
                     engagement_id=engagement_id,
                     objet=objet,
+                    montant_total=montant,
                     date_frais=date_frais,
                     kms=kms,
                     peages=peages,
                     repas=repas,
-                    commentaire=""
+                    rubrique=rubrique,
+                    precision_rubrique=precision_rubrique,
+                    commentaire="",
+                    nom_beneficiaire=nom_beneficiaire
                 )
 
             conn.commit()
@@ -1366,10 +1503,16 @@ def detail_engagement(engagement_id):
 
             engagement["montant_utilise"] = montant_utilise
 
-            if engagement["montant_recu"]:
-                engagement["montant_restant"] = (
-                    engagement["montant_recu"] - montant_utilise
-                )
+            # Base de calcul : le reçu si dispo, sinon le prévu
+            base_restant = (
+                engagement["montant_recu"]
+                or engagement["montant_prevu"]
+                or 0
+            )
+
+            engagement["montant_restant"] = (
+                base_restant - montant_utilise
+            )
 
         # =====================================================
         # WORKFLOW / HISTORIQUE

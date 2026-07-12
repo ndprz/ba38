@@ -1,13 +1,15 @@
 {% extends "base.html" %}
 
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}Création Planning VIF{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2>Création du Planning VIF</h2>
-    <a href="{{ url_for('planning.planning_main') }}" class="btn btn-outline-secondary">
-        ⬅️ Retour au menu Planning
-    </a>
+    {% call action_buttons() %}
+        {{ action_button("⬅️ Retour au menu Planning", href=url_for('planning.planning_main'), color="outline-dark") }}
+    {% endcall %}
 </div>
 
 <!-- 🗓️ Choix de la semaine -->
@@ -29,28 +31,26 @@
     ⚠️ Un planning existe déjà pour la semaine {{ semaine }}.<br>
     Que souhaitez-vous faire ?
   </div>
-  <form method="POST" action="{{ url_for('planning_vif.creation_planning_vif') }}" class="d-inline">
+  <form method="POST" action="{{ url_for('planning_vif.creation_planning_vif') }}" class="m-0">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="semaine" value="{{ semaine }}">
     <input type="hidden" name="action" value="forcer_generation">
-    <button type="submit" class="btn btn-danger me-2">
-      🔁 Régénérer le planning (attention : écrasera les données)
-    </button>
+    {% call action_buttons() %}
+      {{ action_button("🔁 Régénérer le planning (attention : écrasera les données)", type="submit", color="danger") }}
+      {{ action_button("✏️ Modifier le planning existant", href=url_for('planning_vif.gestion_planning_vif', semaine=semaine), color="success") }}
+    {% endcall %}
   </form>
-  <a href="{{ url_for('planning_vif.gestion_planning_vif', semaine=semaine) }}" class="btn btn-success">
-    ✏️ Modifier le planning existant
-  </a>
 </div>
 {% endif %}
 
 <!-- 🗓 Affichage du planning généré -->
 {% if planning %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h3 class="m-0">Planning généré pour la semaine {{ semaine }}</h3>
-  <a href="{{ url_for('planning_vif.apercu_planning_vif', semaine=semaine) }}" target="_blank" class="btn btn-outline-secondary">
-    🔈️ Aperçu imprimable Pré_planning (A3)
-  </a>
-</div>
+<h3 class="m-0 mb-3">Planning généré pour la semaine {{ semaine }}</h3>
+{% call action_buttons() %}
+    <a href="{{ url_for('planning_vif.apercu_planning_vif', semaine=semaine) }}" target="_blank" class="btn btn-outline-secondary">
+        🔈️ Aperçu imprimable Pré_planning (A3)
+    </a>
+{% endcall %}
 
 <table class="table table-bordered table-sm">
     <thead class="table-light">
@@ -91,19 +91,11 @@
             <input type="hidden" name="vif{{ "%02d"|format(i) }}_remplacant[]" value="{{ row['vif%02d_remplacant' % i] or '' }}">
         {% endfor %}
     {% endfor %}
-    <div class="d-flex align-items-center mt-3">
-        <button type="submit" class="btn btn-primary">
-            💾 Enregistrer ce planning
-        </button>
-
-        <a href="{{ url_for('planning_vif.gestion_planning_vif', semaine=semaine) }}" class="btn btn-warning ms-2">
-            🛠️ Modifier ce planning
-        </a>
-
-        <a href="{{ url_for('planning.planning_main') }}" class="btn btn-outline-secondary ms-2">
-            ⬅️ Retour au menu Planning
-        </a>
-    </div>
+    {% call action_buttons() %}
+        {{ action_button("💾 Enregistrer ce planning", type="submit", color="primary") }}
+        {{ action_button("🛠️ Modifier ce planning", href=url_for('planning_vif.gestion_planning_vif', semaine=semaine), color="warning") }}
+        {{ action_button("⬅️ Retour au menu Planning", href=url_for('planning.planning_main'), color="outline-dark") }}
+    {% endcall %}
 </form>
 {% endif %}
 

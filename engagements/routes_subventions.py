@@ -104,8 +104,11 @@ def gestion_subventions():
                     calculer_montant_utilise(conn, int(sub_id))
                 )
 
+                # Base de calcul : le reçu si dispo, sinon le prévu
+                base_restant = montant_recu or float(montant_prevu)
+
                 montant_restant = float(
-                    Decimal(str(montant_recu))
+                    Decimal(str(base_restant))
                     - Decimal(str(montant_utilise))
                 )
 
@@ -213,8 +216,11 @@ def gestion_subventions():
                 calculer_montant_utilise(conn, s["id"])
             )
 
+            # Base de calcul : le reçu si dispo, sinon le prévu
+            base_restant = s["montant_recu"] or s["montant_prevu"] or 0
+
             s["montant_restant"] = float(
-                Decimal(str(s["montant_recu"] or 0))
+                Decimal(str(base_restant))
                 - Decimal(str(s["montant_utilise"]))
             )
 

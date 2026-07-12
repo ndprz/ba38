@@ -45,7 +45,8 @@ document.addEventListener("DOMContentLoaded", function () {
 <div class="container mt-4">
 
     <h2>
-        🚗 Note de frais
+        {% if engagement.sous_type_depense == "deplacement" %}🚗{% else %}🧾{% endif %}
+        Note de frais
     </h2>
 
     <form method="POST">
@@ -86,6 +87,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 </div>
 
                 <div class="row mb-3">
+
+                    {% if engagement.sous_type_depense == "deplacement" %}
 
                     <div class="col-md-3">
 
@@ -142,6 +145,39 @@ document.addEventListener("DOMContentLoaded", function () {
                                value="0">
 
                     </div>
+
+                    {% else %}
+
+                    <div class="col-md-4">
+
+                        <label class="form-label">
+                            Date
+                        </label>
+
+                        <input type="text"
+                               name="date_frais"
+                               class="form-control date-fr"
+                               placeholder="ex: 1003 ou 10/03/2026"
+                               value="{{ engagement.date_frais or '' }}">
+
+                    </div>
+
+                    <div class="col-md-4">
+
+                        <label class="form-label">
+                            Montant total (€)
+                        </label>
+
+                        <input type="text"
+                               inputmode="decimal"
+                               name="montant"
+                               class="form-control"
+                               value="{{ '%.2f'|format(engagement.montant_total or 0) }}"
+                               required>
+
+                    </div>
+
+                    {% endif %}
 
                 </div>
 

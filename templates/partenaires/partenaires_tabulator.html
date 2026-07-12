@@ -474,6 +474,12 @@ fieldset legend{
     {% call action_buttons() %}
 
     {{ action_button(
+        "📊 Comparaison VIF",
+        href=url_for('vif.comparaison_vif'),
+        color="primary"
+    ) }}
+
+    {{ action_button(
         "➕ Créer un nouveau partenaire",
         href=url_for('partenaires.create_partner'),
         color="success"

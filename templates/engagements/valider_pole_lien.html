@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}
+Validation pôle #{{ engagement.id }}
+{% endblock %}
+
+{% block content %}
+
+<div class="container mt-4" style="max-width: 700px;">
+
+    <h2 class="mb-4">
+        ✅ Validation pôle — Engagement #{{ engagement.id }}
+    </h2>
+
+    {% if erreur %}
+
+    <div class="alert alert-danger">
+        ⚠️ {{ erreur }}
+    </div>
+
+    {% elif nouveau_statut %}
+
+    <div class="alert alert-success">
+
+        Validation enregistrée avec succès.
+
+        {% if nouveau_statut == "validation_presidence" %}
+        La demande est maintenant en attente de validation présidence.
+        {% elif nouveau_statut == "a_payer" %}
+        La demande a été transmise à la trésorerie pour règlement.
+        {% else %}
+        La demande est validée.
+        {% endif %}
+
+    </div>
+
+    {% elif deja_traite %}
+
+    <div class="alert alert-info">
+        Cette demande a déjà été traitée
+        (statut actuel : <strong>{{ engagement.statut }}</strong>).
+        Aucune action supplémentaire n'est nécessaire.
+    </div>
+
+    {% else %}
+
+    <div class="card mb-4">
+
+        <div class="card-header bg-primary text-white">
+            Demande à valider
+        </div>
+
+        <div class="card-body">
+
+            <p><strong>Pôle :</strong> {{ pole.nom_affiche }}</p>
+            <p><strong>Demandeur :</strong> {{ engagement.demandeur_nom }}</p>
+            <p><strong>Objet :</strong> {{ engagement.objet }}</p>
+            <p><strong>Montant :</strong> {{ "%.2f"|format(engagement.montant_total or 0) }} €</p>
+            <p class="mb-0">
+                <strong>Vous validez en tant que :</strong>
+                {{ user.username or user.email }}
+            </p>
+
+        </div>
+
+    </div>
+
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <button type="submit" class="btn btn-success">
+            ✅ Confirmer la validation
+        </button>
+    </form>
+
+    {% endif %}
+
+</div>
+
+{% endblock %}

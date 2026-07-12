@@ -754,30 +754,6 @@ Nouvelle demande d'engagement
                 Achats denrées
 
             </option>
-
-            <option value="deplacements"
-                {% if request.form.get(
-                    'rubrique'
-                ) == 'deplacements' %}
-                    selected
-                {% endif %}>
-
-                Déplacements
-
-            </option>
-
-            <option value="fonctionnement"
-                {% if request.form.get(
-                    'rubrique'
-                ) == 'fonctionnement' %}
-                    selected
-                {% endif %}>
-
-                Fonctionnement
-
-            </option>
-
-
             <option value="fournitures_entretien"
                 {% if request.form.get(
                     'rubrique'
@@ -788,7 +764,6 @@ Nouvelle demande d'engagement
                 Fournitures entretien & petit matériel
 
             </option>
-
             <option value="fournitures_administratives"
                 {% if request.form.get(
                     'rubrique'
@@ -799,7 +774,26 @@ Nouvelle demande d'engagement
                 Fournitures administratives
 
             </option>
+            <option value="deplacements_administratifs"
+                {% if request.form.get(
+                    'rubrique'
+                ) == 'deplacements_administratifs' %}
+                    selected
+                {% endif %}>
 
+                Déplacements administratifs
+
+            </option>
+            <option value="deplacements_institutions"
+                {% if request.form.get(
+                    'rubrique'
+                ) == 'deplacements_institutions' %}
+                    selected
+                {% endif %}>
+
+                Déplacements relations avec institutions
+
+            </option>
             <option value="vie_associative"
                 {% if request.form.get(
                     'rubrique'
@@ -807,10 +801,29 @@ Nouvelle demande d'engagement
                     selected
                 {% endif %}>
 
-                Vie associative
+                Vie associative (denrées repas location salles, etc.)
 
             </option>
+            <option value="deplacements"
+                {% if request.form.get(
+                    'rubrique'
+                ) == 'deplacements' %}
+                    selected
+                {% endif %}>
 
+                Frais déplacement visite Association
+
+            </option>
+            <option value="formation"
+                {% if request.form.get(
+                    'rubrique'
+                ) == 'formation' %}
+                    selected
+                {% endif %}>
+
+                Frais de formation (frais formateur, repas, salle)
+
+            </option>
             <option value="collecte_annuelle"
                 {% if request.form.get(
                     'rubrique'
@@ -821,15 +834,34 @@ Nouvelle demande d'engagement
                 Collecte annuelle
 
             </option>
+            <option value="autres"
+                {% if request.form.get(
+                    'rubrique'
+                ) == 'autres' %}
+                    selected
+                {% endif %}>
+
+                Autres (précisez)
+
+            </option>
+
 
         </select>
+
+        <div id="alerte_achat_denrees"
+             class="alert alert-danger mt-2 d-none">
+
+            ⚠️ Achat denrées réservé aux achats
+            avec paiement fournisseur.
+
+        </div>
 
     </div>
     <div class="col-md-6">
 
         <label class="form-label">
 
-            Précision rubrique
+            Précision rubrique (Autres)
 
         </label>
 
@@ -928,16 +960,15 @@ Nouvelle demande d'engagement
 
 
     <!-- ================================================== -->
-    <!-- JUSTIFICATIFS DEPLACEMENT -->
+    <!-- PIECES JOINTES / JUSTIFICATIFS -->
     <!-- ================================================== -->
 
     <div id="bloc-justificatifs"
-        class="card mb-2"
-        style="display:none;">
+        class="card mb-2">
 
         <div class="card-header bg-light">
 
-            📎 Justificatifs du déplacement
+            📎 Pièces jointes / justificatifs
 
         </div>
 
@@ -951,6 +982,7 @@ Nouvelle demande d'engagement
 
             <ul>
 
+                <li>Factures / tickets de caisse</li>
                 <li>Péages</li>
                 <li>Repas</li>
                 <li>Hôtel</li>
@@ -1100,21 +1132,10 @@ Nouvelle demande d'engagement
     <!-- BOUTONS -->
     <!-- ================================================== -->
 
-    <button type="submit"
-            class="btn btn-success">
-
-        💾 Enregistrer la demande
-
-    </button>
-
-    <a href="{{ url_for(
-            'engagements.engagements_main'
-       ) }}"
-       class="btn btn-secondary">
-
-        ⬅ Retour
-
-    </a>
+    {% call action_buttons() %}
+        {{ action_button("💾 Enregistrer la demande", type="submit", color="success") }}
+        {{ action_button("⬅ Retour", href=url_for('engagements.engagements_main'), color="outline-dark") }}
+    {% endcall %}
 
 </form>
 
@@ -1156,6 +1177,37 @@ function updateTypeEngagement() {
 }
 
 // =====================================================
+// BLOCAGE ACHAT DENREES + BENEVOLE
+// =====================================================
+
+function verifierAchatDenrees() {
+
+    const sousType = document.querySelector(
+        'input[name="sous_type_depense"]:checked'
+    )?.value;
+
+    const typeEngagement = document.querySelector(
+        'input[name="type_engagement"]:checked'
+    )?.value;
+
+    const rubrique = document.querySelector(
+        'select[name="rubrique"]'
+    )?.value;
+
+    const bloque = (
+        sousType === "achat"
+        && ["benevole_self", "benevole_other"].includes(typeEngagement)
+        && rubrique === "achats_denrees"
+    );
+
+    document.getElementById(
+        "alerte_achat_denrees"
+    ).classList.toggle("d-none", !bloque);
+
+    return bloque;
+}
+
+// =====================================================
 // CALCUL NOTE DE FRAIS
 // =====================================================
 
@@ -1168,11 +1220,6 @@ function updateNoteFrais() {
     const bloc =
         document.getElementById(
             "bloc-note-frais"
-        );
-
-    const blocJustificatifs =
-        document.getElementById(
-            "bloc-justificatifs"
         );
 
     const champMontant =
@@ -1188,8 +1235,6 @@ function updateNoteFrais() {
 
         bloc.style.display = "none";
 
-        blocJustificatifs.style.display = "none";
-
         champMontant.readOnly = false;
 
         champMontant.classList.remove(
@@ -1204,8 +1249,6 @@ function updateNoteFrais() {
     // ================================================
 
     bloc.style.display = "block";
-
-    blocJustificatifs.style.display = "block";
 
     champMontant.readOnly = true;
 
@@ -1520,6 +1563,7 @@ document.addEventListener(
         updateTypeEngagement();
         updateNoteFrais();
         updateDevis();
+        verifierAchatDenrees();
         initFournisseurSelect();
         initNouveauFournisseur();
 
@@ -1548,7 +1592,10 @@ document.addEventListener(
 
             el.addEventListener(
                 "change",
-                updateTypeEngagement
+                function() {
+                    updateTypeEngagement();
+                    verifierAchatDenrees();
+                }
             );
 
         });
@@ -1566,10 +1613,22 @@ document.addEventListener(
                 function() {
                     updateNoteFrais();
                     updateDevis();
+                    verifierAchatDenrees();
                 }
             );
 
         });
+
+        // ============================================
+        // RUBRIQUE
+        // ============================================
+
+        document.querySelector(
+            'select[name="rubrique"]'
+        )?.addEventListener(
+            "change",
+            verifierAchatDenrees
+        );
 
         // ============================================
         // CHAMPS NOTE DE FRAIS
@@ -1736,6 +1795,31 @@ function supprimerFichier(index) {
 
     afficherListe();
 }
+
+// ===========================================
+// Blocage achat denrées + bénévole
+// ===========================================
+
+document.querySelector("form")
+.addEventListener(
+    "submit",
+    function(e) {
+
+        if (verifierAchatDenrees()) {
+
+            e.preventDefault();
+
+            document.getElementById(
+                "alerte_achat_denrees"
+            ).scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
+
+        }
+
+    }
+);
 
 // ===========================================
 // Réinjecte tous les fichiers sélectionnés

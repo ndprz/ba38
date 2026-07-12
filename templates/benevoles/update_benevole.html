@@ -130,6 +130,23 @@
                             {% endfor %}
                         </select>
 
+                        {% elif field['type_champ'] == 'situation_benevole' %}
+                        {% set current = (field['value'] or '')|lower %}
+                        <select name="{{ field['field_name'] }}" id="{{ field['field_name'] }}"
+                            class="form-select {% if champs_invalides and field['field_name'] in champs_invalides %}is-invalid{% endif %}"
+                            {% if lecture_seule %}disabled{% endif %}>
+                            <option value="">-- Choisir --</option>
+                            <option value="Actif" {% if current=='actif' %}selected{% endif %}>Actif</option>
+                            <option value="Retraité" {% if current=='retraité' %}selected{% endif %}>Retraité</option>
+                        </select>
+
+                        {% elif field['type_champ'] == 'date' %}
+                        {% set v=field['value'] if field['value'] is not none and field['value'] !='None' else '' %}
+                        <input type="date" id="{{ field['field_name'] }}" name="{{ field['field_name'] }}"
+                            value="{{ v }}"
+                            class="form-control {% if champs_invalides and field['field_name'] in champs_invalides %}is-invalid{% endif %}"
+                            {% if lecture_seule %}readonly{% endif %}>
+
                         {% elif field['type_champ'] == 'oui_non' %}
                         <select name="{{ field['field_name'] }}" id="{{ field['field_name'] }}"
                             class="form-control {% if champs_invalides and field['field_name'] in champs_invalides %}is-invalid{% endif %}"

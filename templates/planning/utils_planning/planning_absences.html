@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}Gestion des Absences{% endblock %}
 
 {% block content %}
@@ -10,11 +12,9 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2>🔝 Gestion des Absences</h2>
 
-    <div class="d-flex gap-2">
-        <a href="{{ url_for('planning.planning_main') }}" class="btn btn-outline-secondary">
-            🏠 Retour au menu Planning
-        </a>
-    </div>
+    {% call action_buttons() %}
+        {{ action_button("🏠 Retour au menu Planning", href=url_for('planning.planning_main'), color="outline-dark") }}
+    {% endcall %}
 </div>
 
 
@@ -101,34 +101,31 @@
 {# ============================== #
 # 🔙 Bouton de retour au menu principal (bas de page)
 # ============================== #}
-<a href="{{ url_for('planning.planning_main') }}" class="btn btn-outline-secondary mb-3">
-    ⬅️ Retour au menu Planning
-</a>
+{% call action_buttons() %}
+    {{ action_button("⬅️ Retour au menu Planning", href=url_for('planning.planning_main'), color="outline-dark") }}
+{% endcall %}
 
 <hr>
 
 {# ============================== #
 # ⚙️ Outils de filtrage et de purge
 # ============================== #}
-<div class="d-flex" style="gap: 20px; margin-top: 20px;">
-    <form method="GET">
+{% call action_buttons() %}
+    <form method="GET" class="m-0">
         {% if voir_toutes %}
-        <button type="submit" class="btn btn-outline-primary">🔙 Revenir au filtrage</button>
+        {{ action_button("🔙 Revenir au filtrage", type="submit", color="outline-primary") }}
         {% else %}
         <input type="hidden" name="voir_toutes" value="1">
-        <button type="submit" class="btn btn-outline-primary">👁️ Voir toutes les absences</button>
+        {{ action_button("👁️ Voir toutes les absences", type="submit", color="outline-primary") }}
         {% endif %}
     </form>
 
-    <form method="POST">
+    <form method="POST" class="m-0">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="purger_absences">
-        <button type="submit" class="btn btn-outline-danger"
-            onclick="return confirm('Êtes-vous sûr de vouloir purger les anciennes absences ? Cette action est irréversible.')">
-            🧹 Purger les absences closes
-        </button>
+        {{ action_button("🧹 Purger les absences closes", type="submit", color="outline-danger", onclick="return confirm('Êtes-vous sûr de vouloir purger les anciennes absences ? Cette action est irréversible.')") }}
     </form>
-</div>
+{% endcall %}
 
 
 {# ============================== #

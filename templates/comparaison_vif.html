@@ -1,0 +1,724 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Comparaison VIF / Base Asso{% endblock %}
+
+{% block extra_css %}
+
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css"
+      rel="stylesheet">
+
+<style>
+
+html, body{
+    height:100%;
+}
+
+.vif-tabulator-page{
+    display:flex;
+    flex-direction:column;
+    height:calc(100vh - 135px);
+}
+
+.page-header{
+    flex:0 0 auto;
+    background:white;
+    border:1px solid #ddd;
+    border-radius:6px;
+    padding:8px 10px;
+    margin-bottom:6px;
+}
+
+.page-header h1{
+    font-size:1.1rem;
+    margin:0;
+    font-weight:600;
+}
+
+.legende-badge{
+    font-size:0.82rem;
+    padding:5px 10px;
+}
+
+.table-zone{
+    flex:1 1 auto;
+    min-height:0;
+    overflow:hidden;
+    border:1px solid #ccc;
+    border-radius:6px;
+    background:white;
+    margin-top:6px;
+}
+
+#tableau_vif{
+    height:100%;
+}
+
+.tabulator{
+    height:100% !important;
+    font-size:13px !important;
+    border:none !important;
+}
+
+.tabulator .tabulator-header{
+    background:#212529 !important;
+}
+
+.tabulator .tabulator-header .tabulator-col{
+    background:#212529 !important;
+    color:#fff !important;
+    border-right:1px solid #495057 !important;
+    text-align:center;
+}
+
+.tabulator .tabulator-col-group .tabulator-col-group-cols{
+    border-top:1px solid #495057 !important;
+}
+
+.tabulator-col-title{
+    text-align:center;
+    width:100%;
+    white-space:normal !important;
+    padding:0 4px;
+}
+
+.tabulator-row .tabulator-cell{
+    padding:5px 14px !important;
+    border-right:1px solid #e0e0e0 !important;
+    white-space:normal;
+}
+
+.tabulator-row:nth-child(even){
+    background:#fafafa;
+}
+
+.tabulator-row.ligne-diff{
+    background-color:#fff8e1 !important;
+}
+
+.tabulator-row.ligne-absent{
+    background-color:#fde8e8 !important;
+}
+
+.cell-diff{
+    background-color:#fff3cd !important;
+    cursor:pointer;
+    text-decoration:underline dotted #f0ad4e;
+}
+
+.cell-clearable{
+    background-color:rgba(220,53,69,0.07) !important;
+    cursor:pointer;
+    text-decoration:underline dotted #dc3545;
+}
+
+.badge-nom-vif{
+    display:inline-block;
+    background:#dc3545;
+    color:#fff;
+    font-size:0.6rem;
+    font-weight:700;
+    padding:1px 5px;
+    border-radius:3px;
+    vertical-align:middle;
+    cursor:help;
+    margin-left:5px;
+    letter-spacing:0.02em;
+}
+
+/* Sous-colonnes Base / VIF */
+.tabulator-col.col-vif,
+.tabulator-cell.col-vif{
+    background-color:rgba(13,110,253,0.05) !important;
+}
+.tabulator-col.col-base,
+.tabulator-cell.col-base{
+    background-color:rgba(0,0,0,0.02) !important;
+}
+/* Priorité à cell-diff sur col-vif */
+.tabulator-cell.col-vif.cell-diff{
+    background-color:#fff3cd !important;
+}
+
+</style>
+
+{% endblock %}
+
+{% block content %}
+
+<div class="vif-tabulator-page">
+
+<div class="page-header">
+
+    <!-- ─── Ligne 1 : Titre + Boutons ─── -->
+    <div class="d-flex align-items-center justify-content-between mb-2" style="gap:0.75rem;">
+        <h1>📋 Comparaison planning VIF / Base association</h1>
+        {% call action_buttons() %}
+        <button type="button" class="btn btn-outline-success btn-sm" id="btn-export-xlsx">
+            📥 Export Excel
+        </button>
+        <button type="button" class="btn btn-outline-primary btn-sm"
+                data-bs-toggle="modal" data-bs-target="#modal-upload-vif">
+            📂 Charger fichiers VIF
+        </button>
+        {{ action_button("↩️ Accueil", href=url_for('index'), color="outline-dark") }}
+        {{ action_button("⬅️ Retour", href=url_for('partenaires.partenaires'), color="outline-primary") }}
+        {% endcall %}
+    </div>
+
+    <!-- ─── Ligne 2 : Légende + Filtres ─── -->
+    <div class="d-flex align-items-center flex-wrap" style="gap:1rem;">
+        <span class="badge legende-badge" style="background:#ffc107;color:#212529;">⚠️ Différence VIF / base</span>
+        <span class="badge legende-badge" style="background:#dc3545;color:#fff;">✖ Pas de planification VIF</span>
+
+        <span style="display:inline-block;width:1px;height:1.4rem;background:#ccc;flex-shrink:0;"></span>
+
+        <label class="form-label mb-0" style="font-weight:600;white-space:nowrap;flex-shrink:0;">Afficher :</label>
+        <div class="btn-group btn-group-sm" role="group" id="groupe-filtre" style="flex-shrink:0;">
+            <button type="button" class="btn btn-secondary btn-sm" data-filtre="tous">Tous</button>
+            <button type="button" class="btn btn-outline-warning btn-sm" data-filtre="diff">Différences uniquement</button>
+            <button type="button" class="btn btn-outline-danger btn-sm" data-filtre="absent">Pas de planification VIF</button>
+        </div>
+
+        <div style="position:relative;flex-shrink:0;">
+            <input type="text" id="recherche" class="form-control form-control-sm"
+                   style="max-width:210px;padding-right:22px;" placeholder="🔍 Code ou nom...">
+            <button type="button" id="btn-effacer-recherche"
+                    style="display:none;position:absolute;top:50%;right:4px;transform:translateY(-50%);
+                           background:none;border:none;padding:0;line-height:1;font-size:0.75rem;
+                           color:#6c757d;cursor:pointer;" aria-label="Effacer">✕</button>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:0.35rem;white-space:nowrap;flex-shrink:0;cursor:pointer;font-size:0.82rem;">
+            <input type="checkbox" id="toggle-ignores" checked>
+            Masquer les ignorées
+        </label>
+
+        <span class="text-muted small" style="margin-left:auto;" id="compteur_lignes"></span>
+    </div>
+
+    <!-- ─── Source fichiers VIF ─── -->
+    <div style="margin-top:4px;">
+        <small class="text-muted">
+            Données VIF :
+            <em>planning_partenaires.txt</em>{% if date_partenaires %} <span class="text-secondary">({{ date_partenaires }})</span>{% endif %}
+            ·
+            <em>planning_par_date.txt</em>{% if date_par_date %} <span class="text-secondary">({{ date_par_date }})</span>{% endif %}
+        </small>
+    </div>
+
+    <!-- ─── Alertes ─── -->
+    {% if fichiers_vif_absents %}
+    <div class="alert alert-warning py-2 px-3 mb-0 mt-2">
+        ⚠️ Aucun fichier VIF trouvé : déposez <code>planning_partenaires.txt</code>
+        et <code>planning_par_date.txt</code> dans <code>{{ vif_dir }}</code>
+        pour activer la comparaison.
+    </div>
+    {% endif %}
+
+    {% if erreur_vif %}
+    <div class="alert alert-danger py-2 px-3 mb-0 mt-2">
+        ❌ Erreur lors de la lecture des fichiers VIF : {{ erreur_vif }}
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- ─── Tableau ─── -->
+<div class="table-zone">
+    <div id="tableau_vif"></div>
+</div>
+
+</div><!-- /vif-tabulator-page -->
+
+<!-- ─── Modal upload fichiers VIF ─── -->
+<div class="modal fade" id="modal-upload-vif" tabindex="-1" aria-labelledby="modal-upload-vif-titre" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modal-upload-vif-titre">📂 Charger les fichiers VIF</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    Sélectionnez un ou deux fichiers à mettre à jour. Seuls les fichiers
+                    <code>.txt</code> sont acceptés. Le fichier sera écrasé s'il existe déjà.
+                </p>
+                <div class="mb-3">
+                    <label class="form-label" for="fichier-partenaires">
+                        <strong>planning_partenaires.txt</strong>
+                        {% if date_partenaires %}
+                        <span class="text-muted small">(actuel : {{ date_partenaires }})</span>
+                        {% endif %}
+                    </label>
+                    <input type="file" class="form-control form-control-sm" id="fichier-partenaires" accept=".txt">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label" for="fichier-par-date">
+                        <strong>planning_par_date.txt</strong>
+                        {% if date_par_date %}
+                        <span class="text-muted small">(actuel : {{ date_par_date }})</span>
+                        {% endif %}
+                    </label>
+                    <input type="file" class="form-control form-control-sm" id="fichier-par-date" accept=".txt">
+                </div>
+                <div id="upload-message" class="mt-2" style="display:none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-envoyer-vif">Envoyer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+
+<script>
+
+const tableData = {{ rows | tojson }};
+const csrfToken = "{{ csrf_token() }}";
+
+// ======================================================
+// UTILITAIRES
+// ======================================================
+
+function escapeHtml(value){
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+function normalizeSearch(text){
+    return (text || "")
+        .toString()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+}
+
+function videFormatter(){
+    return '<span class="text-muted">—</span>';
+}
+
+// ======================================================
+// FORMATTERS
+// ======================================================
+
+function nomFormatter(cell){
+    const data  = cell.getRow().getData();
+    const value = escapeHtml(cell.getValue() || "");
+    if (!data.diff_nom) return value;
+    return value
+        + `<span class="badge-nom-vif" title="Nom VIF : ${escapeHtml(data.vif_nom)}">VIF</span>`;
+}
+
+function codeFormatter(cell){
+    const data = cell.getRow().getData();
+    const value = cell.getValue();
+    const label = (value === null || value === undefined || value === "")
+        ? "—" : escapeHtml(value);
+
+    if (data.absent_vif){
+        return `<span class="badge bg-danger">${label}</span>`;
+    }
+    if (data.has_diff){
+        return `<span class="badge bg-warning text-dark">${label}</span>`;
+    }
+    return label;
+}
+
+function baseFieldFormatter(diffField, suffix){
+    return function(cell){
+        const value    = cell.getValue();
+        const data     = cell.getRow().getData();
+        const diff     = diffField ? data[diffField] : false;
+        const hasValue = (value !== null && value !== undefined && value !== "");
+        const clearable = data.absent_vif && hasValue;
+
+        cell.getElement().classList.toggle("cell-diff",      !!diff);
+        cell.getElement().classList.toggle("cell-clearable", !!clearable && !diff);
+
+        if (diff){
+            cell.getElement().title = "Cliquer pour adopter la valeur VIF";
+        } else if (clearable){
+            cell.getElement().title = "Cliquer pour effacer (Pas de planification VIF)";
+        } else {
+            cell.getElement().removeAttribute("title");
+        }
+
+        if (!hasValue){
+            return diff
+                ? '<span class="text-muted">— <span title="Valeur VIF disponible">⚠️</span></span>'
+                : videFormatter();
+        }
+
+        const text = escapeHtml(value) + (suffix || "");
+        if (diff)      return `${text} <span title="Différence VIF">⚠️</span>`;
+        if (clearable) return `${text} <span title="Effacer" style="font-size:0.75em;">🗑</span>`;
+        return text;
+    };
+}
+
+function vifFieldFormatter(diffField, suffix){
+    return function(cell){
+        const data = cell.getRow().getData();
+
+        if (data.absent_vif){
+            return '<span class="text-danger fw-bold">✖ Absent</span>';
+        }
+
+        const value = cell.getValue();
+        const diff = diffField ? data[diffField] : false;
+
+        cell.getElement().classList.toggle("cell-diff", !!diff);
+
+        if (value === null || value === undefined || value === ""){
+            return videFormatter();
+        }
+
+        const text = escapeHtml(value) + (suffix || "");
+        return diff ? `${text} <span title="Différence VIF">⚠️</span>` : text;
+    };
+}
+
+// ======================================================
+// MISE À JOUR DEPUIS VIF
+// ======================================================
+
+function _envoyerMaj(assocId, dbColumn, value, el, onSuccess){
+    el.style.opacity = "0.4";
+    fetch("/vif/update_field", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ assoc_id: assocId, db_column: dbColumn, value: value }),
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(resp){
+        el.style.opacity = "";
+        if (!resp.success){
+            alert("❌ " + (resp.error || "Opération échouée"));
+        } else {
+            onSuccess();
+        }
+    })
+    .catch(function(){
+        el.style.opacity = "";
+        alert("❌ Erreur réseau");
+    });
+}
+
+function makeUpdateHandler(baseField, vifField, diffField, dbColumn){
+    return function(e, cell){
+        const data = cell.getRow().getData();
+        const nom  = data.nom_association || data.code || "?";
+        const el   = cell.getElement();
+
+        // ── Cas 1 : différence base / VIF ────────────────────
+        if (data[diffField]){
+            const vifValue = data[vifField];
+            const ancien   = data[baseField] ?? "—";
+            const nouveau  = (vifValue !== null && vifValue !== undefined && vifValue !== "")
+                ? String(vifValue) : "—";
+
+            if (!confirm(`Mettre à jour « ${nom} » ?\n\nActuel : ${ancien}\n→ VIF  : ${nouveau}`)) return;
+
+            _envoyerMaj(data.id_assoc, dbColumn, vifValue, el, function(){
+                const update = {};
+                update[baseField] = vifValue;
+                update[diffField] = false;
+                const merged = Object.assign({}, data, update);
+                update.has_diff = ["diff_jour","diff_msec","diff_mfrais","diff_freq","diff_benef"]
+                    .some(function(k){ return !!merged[k]; });
+                const row = cell.getRow();
+                row.update(update).then(function(){ row.reformat(); });
+            });
+            return;
+        }
+
+        // ── Cas 2 : Pas de planification VIF → effacer la valeur en base ─
+        if (data.absent_vif){
+            const ancien = data[baseField];
+            if (ancien === null || ancien === undefined || ancien === "") return;
+
+            if (!confirm(`Effacer « ${ancien} » pour « ${nom} » ?\n(association absente du planning VIF)`)) return;
+
+            _envoyerMaj(data.id_assoc, dbColumn, null, el, function(){
+                const update = {};
+                update[baseField] = null;
+                const row = cell.getRow();
+                row.update(update).then(function(){ row.reformat(); });
+            });
+        }
+    };
+}
+
+// ======================================================
+// TABULATOR
+// ======================================================
+
+let table = new Tabulator("#tableau_vif", {
+
+    data: tableData,
+
+    layout: "fitColumns",
+
+    resizableColumnFit: true,
+
+    height: "100%",
+
+    placeholder: "Aucune donnée disponible",
+
+    reactiveData: false,
+
+    virtualDom: true,
+
+    columnHeaderVertAlign: "middle",
+
+    rowFormatter: function(row){
+        const data = row.getData();
+        const el = row.getElement();
+        el.classList.remove("ligne-absent", "ligne-diff");
+        if (data.absent_vif){
+            el.classList.add("ligne-absent");
+        } else if (data.has_diff){
+            el.classList.add("ligne-diff");
+        }
+    },
+
+    columns: [
+        { title: "Code VIF",        field: "code",            formatter: codeFormatter, headerFilter: false, minWidth: 80 },
+        { title: "Nom association", field: "nom_association", formatter: nomFormatter,  headerFilter: false, minWidth: 150 },
+        {
+            title: "Jour passage BAI",
+            columns: [
+                { title: "Base", field: "base_jour_passage", formatter: baseFieldFormatter("diff_jour"), minWidth: 85,
+                  cssClass: "col-base",
+                  cellClick: makeUpdateHandler("base_jour_passage","vif_jours","diff_jour","jour_de_passage_a_la_BAI") },
+                { title: "VIF",  field: "vif_jours",         formatter: vifFieldFormatter("diff_jour"),  minWidth: 85,
+                  cssClass: "col-vif" },
+            ],
+        },
+        {
+            title: "Menu sec",
+            columns: [
+                { title: "Base", field: "base_menu_sec",  formatter: baseFieldFormatter("diff_msec"), minWidth: 85,
+                  cssClass: "col-base",
+                  cellClick: makeUpdateHandler("base_menu_sec","vif_menu_sec","diff_msec","menu_sec") },
+                { title: "VIF",  field: "vif_menu_sec",   formatter: vifFieldFormatter("diff_msec"),  minWidth: 85,
+                  cssClass: "col-vif" },
+            ],
+        },
+        {
+            title: "Menu frais",
+            columns: [
+                { title: "Base", field: "base_menu_frais",  formatter: baseFieldFormatter("diff_mfrais"), minWidth: 85,
+                  cssClass: "col-base",
+                  cellClick: makeUpdateHandler("base_menu_frais","vif_menu_frais","diff_mfrais","menu_frais") },
+                { title: "VIF",  field: "vif_menu_frais",   formatter: vifFieldFormatter("diff_mfrais"),  minWidth: 85,
+                  cssClass: "col-vif" },
+            ],
+        },
+        {
+            title: "Fréquence",
+            columns: [
+                { title: "Base", field: "base_frequence",  formatter: baseFieldFormatter("diff_freq"), minWidth: 80,
+                  cssClass: "col-base",
+                  cellClick: makeUpdateHandler("base_frequence","vif_frequence","diff_freq","frequence") },
+                { title: "VIF",  field: "vif_frequence",   formatter: vifFieldFormatter("diff_freq"),  minWidth: 80,
+                  cssClass: "col-vif" },
+            ],
+        },
+        {
+            title: "Nbre bénéf.",
+            columns: [
+                { title: "Base", field: "base_nbre_benef",  formatter: baseFieldFormatter("diff_benef"), minWidth: 65,
+                  cssClass: "col-base",
+                  cellClick: makeUpdateHandler("base_nbre_benef","vif_nbre_benef","diff_benef","nbre_beneficiaires_vif") },
+                { title: "VIF",  field: "vif_nbre_benef",   formatter: vifFieldFormatter("diff_benef"),  minWidth: 65,
+                  cssClass: "col-vif" },
+            ],
+        },
+    ],
+});
+
+// ======================================================
+// COMPTEUR
+// ======================================================
+
+function majCompteur(){
+    const total = tableData.length;
+    const visibles = table.getDataCount("active");
+    document.getElementById("compteur_lignes").textContent =
+        visibles + " association(s) affichée(s) sur " + total;
+}
+
+table.on("tableBuilt", function(){
+    table.redraw(true);
+    majCompteur();
+});
+table.on("dataFiltered", majCompteur);
+
+// ======================================================
+// FILTRES
+// ======================================================
+
+let filtreActif = "tous";
+
+const FILTRE_STYLES = {
+    tous:   { active: "btn-secondary",       outline: "btn-outline-secondary" },
+    diff:   { active: "btn-warning",         outline: "btn-outline-warning"   },
+    absent: { active: "btn-danger",          outline: "btn-outline-danger"    },
+};
+
+document.querySelectorAll("#groupe-filtre button").forEach(function(btn){
+    btn.addEventListener("click", function(){
+        filtreActif = this.dataset.filtre;
+        document.querySelectorAll("#groupe-filtre button").forEach(function(b){
+            const s = FILTRE_STYLES[b.dataset.filtre];
+            b.classList.remove(s.active, s.outline);
+            b.classList.add(b === btn ? s.active : s.outline);
+        });
+        appliquerFiltres();
+    });
+});
+
+function appliquerFiltres(){
+    const recherche       = normalizeSearch(document.getElementById("recherche").value);
+    const masquerIgnorees = document.getElementById("toggle-ignores").checked;
+
+    table.setFilter(function(data){
+        if (masquerIgnorees && data.ignorer_vif) return false;
+        if (filtreActif === "diff"   && !data.has_diff && !data.absent_vif) return false;
+        if (filtreActif === "absent" && !data.absent_vif) return false;
+
+        if (recherche){
+            const code = normalizeSearch(data.code);
+            const nom  = normalizeSearch(data.nom_association);
+            if (!code.includes(recherche) && !nom.includes(recherche)) return false;
+        }
+
+        return true;
+    });
+}
+const inputRecherche = document.getElementById("recherche");
+const btnEffacer     = document.getElementById("btn-effacer-recherche");
+
+function miseAJourBoutonEffacer(){
+    btnEffacer.style.display = inputRecherche.value ? "" : "none";
+}
+
+inputRecherche.addEventListener("input", function(){
+    appliquerFiltres();
+    miseAJourBoutonEffacer();
+});
+
+inputRecherche.addEventListener("keydown", function(e){
+    if (e.key === "Escape"){
+        this.value = "";
+        appliquerFiltres();
+        miseAJourBoutonEffacer();
+        this.blur();
+    }
+});
+
+btnEffacer.addEventListener("click", function(){
+    inputRecherche.value = "";
+    appliquerFiltres();
+    miseAJourBoutonEffacer();
+    inputRecherche.focus();
+});
+
+document.getElementById("toggle-ignores").addEventListener("change", appliquerFiltres);
+
+// ======================================================
+// EXPORT EXCEL
+// ======================================================
+
+document.getElementById("btn-export-xlsx").addEventListener("click", function(){
+    const today = new Date().toISOString().slice(0, 10);
+    const filtre = filtreActif === "tous" ? "tous"
+                 : filtreActif === "diff" ? "differences"
+                 : "absents";
+    const nom = "comparaison_vif_" + filtre + "_" + today + ".xlsx";
+
+    table.download("xlsx", nom, {
+        sheetName: "Comparaison VIF",
+        documentProcessing: function(workbook){
+            return workbook;
+        },
+    });
+});
+
+window.addEventListener("resize", function(){
+    table.redraw(true);
+});
+
+// ======================================================
+// UPLOAD FICHIERS VIF
+// ======================================================
+
+document.getElementById("btn-envoyer-vif").addEventListener("click", function(){
+    const f1 = document.getElementById("fichier-partenaires").files[0];
+    const f2 = document.getElementById("fichier-par-date").files[0];
+    const msgDiv = document.getElementById("upload-message");
+
+    if (!f1 && !f2){
+        msgDiv.innerHTML = '<div class="alert alert-warning py-1 px-2 mb-0">Veuillez sélectionner au moins un fichier.</div>';
+        msgDiv.style.display = "";
+        return;
+    }
+
+    const formData = new FormData();
+    if (f1) formData.append("planning_partenaires", f1);
+    if (f2) formData.append("planning_par_date",    f2);
+
+    const btn = this;
+    btn.disabled = true;
+    btn.textContent = "Envoi en cours…";
+    msgDiv.style.display = "none";
+
+    fetch("/vif/upload_fichiers", {
+        method: "POST",
+        headers: { "X-CSRFToken": csrfToken },
+        body: formData,
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(resp){
+        if (resp.success){
+            const noms = resp.sauvegardes.join(", ");
+            msgDiv.innerHTML = '<div class="alert alert-success py-1 px-2 mb-0">✅ Fichier(s) enregistré(s) : ' + noms + '. Rechargement…</div>';
+            msgDiv.style.display = "";
+            setTimeout(function(){ location.reload(); }, 1200);
+        } else {
+            msgDiv.innerHTML = '<div class="alert alert-danger py-1 px-2 mb-0">❌ ' + (resp.error || "Erreur") + '</div>';
+            msgDiv.style.display = "";
+            btn.disabled = false;
+            btn.textContent = "Envoyer";
+        }
+    })
+    .catch(function(){
+        msgDiv.innerHTML = '<div class="alert alert-danger py-1 px-2 mb-0">❌ Erreur réseau</div>';
+        msgDiv.style.display = "";
+        btn.disabled = false;
+        btn.textContent = "Envoyer";
+    });
+});
+
+// Réinitialiser la modal à chaque ouverture
+document.getElementById("modal-upload-vif").addEventListener("show.bs.modal", function(){
+    document.getElementById("fichier-partenaires").value = "";
+    document.getElementById("fichier-par-date").value    = "";
+    document.getElementById("upload-message").style.display = "none";
+    const btn = document.getElementById("btn-envoyer-vif");
+    btn.disabled    = false;
+    btn.textContent = "Envoyer";
+});
+
+</script>
+
+{% endblock %}

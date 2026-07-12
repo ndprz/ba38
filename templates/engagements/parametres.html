@@ -89,6 +89,21 @@
 
     </div>
 
+    {% if has_access('engagement_parametres', 'lecture') %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">🔁 Abonnements récurrents</h5>
+            <p class="card-text">
+                Engagements de dépense reconduits automatiquement chaque
+                mois (abonnements, factures récurrentes...).
+            </p>
+            <a href="{{ url_for('engagements.gestion_abonnements') }}" class="btn btn-primary">
+                Gérer les abonnements
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
 </div>
 
 {% endblock %}

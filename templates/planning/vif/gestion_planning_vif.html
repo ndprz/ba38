@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}Gestion Planning VIF{% endblock %}
 
 
@@ -13,7 +16,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2>Gestion du planning VIF</h2>
 
-  <div class="d-flex gap-2">
+  {% call action_buttons() %}
     <button type="submit"
             name="action"
             value="enregistrer"
@@ -22,15 +25,9 @@
       💾 Enregistrer le planning
     </button>
 
-    <a href="{{ url_for('planning_vif.creation_planning_vif', semaine=semaine) }}"
-       class="btn btn-outline-primary">
-      ⬅️ Retour à la création
-    </a>
+    {{ action_button("⬅️ Retour à la création", href=url_for('planning_vif.creation_planning_vif', semaine=semaine), color="outline-dark") }}
 
-    <a href="{{ url_for('planning.planning_main') }}"
-       class="btn btn-outline-secondary">
-      🏠 Menu Planning
-    </a>
+    {{ action_button("🏠 Menu Planning", href=url_for('planning.planning_main'), color="outline-secondary") }}
 
     <a id="apercu-link"
        href="{{ url_for('planning_vif.apercu_planning_vif', semaine=semaine) }}"
@@ -38,7 +35,7 @@
        class="btn btn-outline-secondary">
       🔈️ Aperçu imprimable (A3)
     </a>
-  </div>
+  {% endcall %}
 </div>
 
 {# ⚠️ Indicateur modifications non enregistrées #}
@@ -171,7 +168,7 @@
 {# ============================== #
 # 🔚 Bandeau inférieur : mêmes boutons, alignés à droite
 # ============================== #}
-<div class="d-flex justify-content-end gap-2 mt-3">
+{% call action_buttons() %}
   <button type="submit"
           name="action"
           value="enregistrer"
@@ -180,15 +177,9 @@
     💾 Enregistrer le planning
   </button>
 
-  <a href="{{ url_for('planning_vif.creation_planning_vif', semaine=semaine) }}"
-     class="btn btn-outline-primary">
-    ⬅️ Retour à la création
-  </a>
+  {{ action_button("⬅️ Retour à la création", href=url_for('planning_vif.creation_planning_vif', semaine=semaine), color="outline-dark") }}
 
-  <a href="{{ url_for('planning.planning_main') }}"
-     class="btn btn-outline-secondary">
-    🏠 Menu Planning
-  </a>
+  {{ action_button("🏠 Menu Planning", href=url_for('planning.planning_main'), color="outline-secondary") }}
 
   <a id="apercu-link-bottom"
      href="{{ url_for('planning_vif.apercu_planning_vif', semaine=semaine) }}"
@@ -196,7 +187,7 @@
      class="btn btn-outline-secondary">
     🔈️ Aperçu imprimable (A3)
   </a>
-</div>
+{% endcall %}
 
 </form>
 

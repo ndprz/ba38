@@ -24,34 +24,6 @@ from flask import send_file
 from io import BytesIO
 
 
-def header_footer(canvas, doc, title, nom_association):
-    # --- EN-TÊTE ---
-    canvas.saveState()
-
-    # Logo
-    logo_path = "static/images/logo.png"
-    if os.path.exists(logo_path):
-        canvas.drawImage(logo_path, x=40, y=A4[1] - 60, width=1.5*cm, height=1.5*cm)
-
-    # Titre centré
-    canvas.setFont("Helvetica-Bold", 11)
-    canvas.drawCentredString(A4[0]/2, A4[1] - 40, title)
-
-    # Nom de l'association
-    if nom_association:
-        canvas.setFont("Helvetica-Bold", 14)
-        canvas.setFillColorRGB(0, 0, 1)  # Bleu
-        canvas.drawCentredString(A4[0]/2, A4[1] - 55, nom_association)
-        canvas.setFillColorRGB(0, 0, 0)  # Réinitialiser en noir
-
-
-    # --- PIED DE PAGE ---
-    page_num = canvas.getPageNumber()
-    canvas.setFont("Helvetica", 8)
-    canvas.drawRightString(A4[0] - 40, 20, f"Page {page_num}")
-
-    canvas.restoreState()
-
 def checkbox(checked=False):
     """Retourne une case à cocher en texte."""
     return "☑" if checked else "☐"
@@ -616,6 +588,9 @@ def create_partner():
             )
 
         # ✅ Insertion en base si tout est valide
+        next_id = cursor.execute("SELECT COALESCE(MAX(Id), 0) + 1 FROM associations").fetchone()[0]
+        valeurs["Id"] = next_id
+
         now = datetime.now()
         valeurs["date_modif"] = now.strftime("%Y-%m-%d")
         valeurs["heure_modif"] = now.strftime("%H:%M:%S")
@@ -702,6 +677,7 @@ def duplicate_partner(partner_id):
 
     # --- surcharges ---
     from datetime import datetime
+    data["Id"] = cur.execute("SELECT COALESCE(MAX(Id), 0) + 1 FROM associations").fetchone()[0]
     data["nom_association"] = new_name_raw
     now = datetime.now()
     data["date_modif"] = now.strftime("%Y-%m-%d")
@@ -715,7 +691,7 @@ def duplicate_partner(partner_id):
     try:
         cur.execute(f"INSERT INTO associations ({champs}) VALUES ({placeholders})", values)
         conn.commit()
-        new_id = cur.lastrowid
+        new_id = data["Id"]
         try:
             upload_database()
         except Exception:
@@ -1074,46 +1050,14 @@ def update_partner(partner_id):
         erreurs = []
 
         # ========================================================
-        # CHAMPS MULTIPLES
-        # ========================================================
-
-        produits_souhaites = ",".join(
-            request.form.getlist(
-                "produits_souhaites"
-            )
-        )
-
-        autres_approvisionnements = ",".join(
-            request.form.getlist(
-                "autres_approvisionnements"
-            )
-        )
-
-        if produits_souhaites:
-
-            updates[
-                "produits_souhaites"
-            ] = produits_souhaites
-
-        if autres_approvisionnements:
-
-            updates[
-                "autres_approvisionnements"
-            ] = autres_approvisionnements
-
-        # ========================================================
-        # AUTRES CHAMPS
+        # CHAMPS
         # ========================================================
 
         for field in fields_data:
 
             fname = field["field_name"]
 
-            if fname in (
-                "id",
-                "produits_souhaites",
-                "autres_approvisionnements"
-            ):
+            if fname == "id":
 
                 continue
 
@@ -1239,6 +1183,19 @@ def update_partner(partner_id):
                     []
                 ).append(field)
 
+            besoins_historique = [
+                dict(h) for h in cursor.execute(
+                    """
+                    SELECT contenu, date_creation,
+                           date_remplacement, user_saisie
+                    FROM besoins_particuliers_historique
+                    WHERE association_id = ?
+                    ORDER BY date_creation DESC
+                    """,
+                    (partner_id,)
+                ).fetchall()
+            ]
+
             conn.close()
 
             return render_template(
@@ -1279,7 +1236,8 @@ def update_partner(partner_id):
                     ""
                 ),
                 data=dict(partner),
-                can_edit_any_field=can_edit_any_field
+                can_edit_any_field=can_edit_any_field,
+                besoins_historique=besoins_historique
             )
 
         # ========================================================
@@ -1328,6 +1286,49 @@ def update_partner(partner_id):
             # ====================================================
 
             if updates:
+
+                # ------------------------------------------------
+                # HISTORIQUE BESOINS PARTICULIERS
+                # ------------------------------------------------
+
+                if "besoins_particuliers" in updates:
+
+                    old_val = (
+                        partner_dict.get("besoins_particuliers") or ""
+                    ).strip()
+
+                    new_val = (
+                        updates.get("besoins_particuliers") or ""
+                    ).strip()
+
+                    if old_val != new_val:
+
+                        today = datetime.now().strftime("%Y-%m-%d")
+
+                        cursor.execute(
+                            """
+                            UPDATE besoins_particuliers_historique
+                            SET date_remplacement = ?
+                            WHERE association_id = ?
+                              AND date_remplacement IS NULL
+                            """,
+                            (today, partner_id)
+                        )
+
+                        cursor.execute(
+                            """
+                            INSERT INTO besoins_particuliers_historique
+                            (association_id, contenu, date_creation,
+                             date_remplacement, user_saisie)
+                            VALUES (?, ?, ?, NULL, ?)
+                            """,
+                            (
+                                partner_id,
+                                new_val or None,
+                                today,
+                                current_user.username
+                            )
+                        )
 
                 set_clause = ", ".join([
                     f"`{k}` = ?"
@@ -1444,6 +1445,19 @@ def update_partner(partner_id):
 
         heure_fr = date_modif
 
+    besoins_historique = [
+        dict(h) for h in cursor.execute(
+            """
+            SELECT contenu, date_creation,
+                   date_remplacement, user_saisie
+            FROM besoins_particuliers_historique
+            WHERE association_id = ?
+            ORDER BY date_creation DESC
+            """,
+            (partner_id,)
+        ).fetchall()
+    ]
+
     conn.close()
 
     return render_template(
@@ -1472,7 +1486,8 @@ def update_partner(partner_id):
         champs_invalides=[],
         form_hash=form_hash,
         can_edit_any_field=can_edit_any_field,
-        data=dict(partner)
+        data=dict(partner),
+        besoins_historique=besoins_historique
     )
 
 
@@ -1628,14 +1643,6 @@ def edition_tableau_associations():
         number_fields=number_fields,
         filtered_ids=filtered_ids
     )
-
-
-@partenaires_bp.route('/generate_annexe1/<int:partner_id>', methods=['POST'])
-@login_required
-@require_access("associations", "lecture")
-def generate_annexe1(partner_id):
-    """ Génère un PDF pour Annexe 1 avec mise en page, logos et entêtes de groupes. """
-    return generate_pdf_annexe1bis(partner_id, ['coordonnées principales', 'annexe 1 bis'], "ANNEXE 1 BIS")
 
 
 @partenaires_bp.route("/update_associations_table", methods=["POST"])
@@ -1939,779 +1946,6 @@ def generate_pdf(partner_id, groups, title):
 
 
 
-# Nouvelle version generate_pdf_annexe1bis
-
-class CheckBox(Flowable):
-    def __init__(self, checked=False, size=9):
-        super().__init__()
-        self.checked = checked
-        self.size = size
-        self.width = self.size
-        self.height = self.size  # Centrage vertical
-
-    def draw(self):
-        self.canv.rect(0, 0, self.size, self.size)
-        if self.checked:
-            self.canv.line(0, 0, self.size, self.size)
-            self.canv.line(0, self.size, self.size, 0)
-
-
-
-def safe_paragraph_value(value):
-    """Retourne une chaîne vide si value est None, sinon la valeur convertie en str."""
-    return str(value) if value is not None else ""
-
-
-def generate_pdf_annexe1bis(partner_id, groups=None, title="Annexe 1 bis : Informations sur le Partenaire"):
-    # --- Connexion et récupération des données ---
-    conn = get_db_connection()
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    partner = cursor.execute("SELECT * FROM associations WHERE id = ?", (partner_id,)).fetchone()
-    conn.close()
-    if not partner:
-        return "Partenaire introuvable", 404
-
-    data = dict(partner)
-
-    # --- Styles PDF ---
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2.5 * cm, bottomMargin=2 * cm)
-    styles = getSampleStyleSheet()
-    cell_style = styles["Normal"]
-    style_h1 = ParagraphStyle('h1', parent=styles['Heading1'], alignment=1, fontSize=14, textColor=colors.darkblue)
-    style_h2 = ParagraphStyle('h2', parent=styles['Heading2'], textColor=colors.darkblue, spaceBefore=12)
-    style_h_partner = ParagraphStyle('h_partner', parent=styles['Heading1'], alignment=1, fontSize=14, textColor=colors.darkblue, spaceAfter=12)
-    style_n = ParagraphStyle('centered', parent=styles['Normal'], alignment=1)
-    # Style normal aligné à gauche explicitement (sécurise l’alignement)
-    style_n_left = ParagraphStyle(
-        'Normal_Left',
-        parent=styles['Normal'],
-        alignment=TA_LEFT,
-        fontName='Helvetica',
-        fontSize=10,
-        leading=12,
-        spaceAfter=6,
-    )
-    # Style titre (gras, bleu foncé)
-    style_title = ParagraphStyle(
-        'Title',
-        parent=styles['Heading2'],
-        fontName='Helvetica-Bold',
-        fontSize=12,
-        textColor=colors.darkblue,
-        spaceAfter=6,
-        leading=14,
-    )
-
-    # Style header tableau (fond beige, centré, gras)
-    style_header = ParagraphStyle(
-        'Header',
-        parent=styles['Normal'],
-        alignment=1,  # centré
-        backColor=colors.beige,
-        fontName='Helvetica-Bold'
-    )
-
-    elements = []
-
-
-    # --- Libellés centrés ---
-    elements.append(Paragraph("Une fiche par point de distribution", style_n))
-    elements.append(Spacer(1, 0.2 * cm))
-    date_visite = data.get("date_de_la_visite") or datetime.today().strftime('%d/%m/%Y')
-    elements.append(Paragraph(f"Date de mise à jour : {safe_paragraph_value(date_visite)}", style_n))
-    elements.append(Spacer(1, 0.4 * cm))
-
-    # ==============================================================================================================
-    # === 1. Informations principales ===
-    # ==============================================================================================================
-
-    elements.append(Spacer(1, 0.5 * cm))
-    elements.append(Paragraph("1. Informations sur le partenaire", style_h2))
-    elements.append(Paragraph(f"Numéro de SIRET : {safe_paragraph_value(data.get('code_SIRET'))}", style_n_left))
-    elements.append(Paragraph(f"Adresse e-mail : {safe_paragraph_value(data.get('courriel_association'))}", style_n_left))
-    adresse = " ".join(filter(None, [
-        safe_paragraph_value(data.get('adresse_association_1')),
-        safe_paragraph_value(data.get('adresse_association_2')),
-        safe_paragraph_value(data.get('CP')),
-        safe_paragraph_value(data.get('COMMUNE'))
-    ]))
-    elements.append(Paragraph(f"Adresse lieu de distribution : {adresse}", style_n_left))
-    elements.append(Paragraph(f"Téléphone : {safe_paragraph_value(data.get('tel_association'))}", style_n_left))
-    elements.append(Paragraph(f"Adresse du siège : {safe_paragraph_value(data.get('adresse_siege_complete'))}", style_n_left))
-    elements.append(Paragraph(f"Adresse courrier : {safe_paragraph_value(data.get('adresse_courrier_complete'))}", style_n_left))
-    elements.append(Paragraph(f"Secteur Géographique : {safe_paragraph_value(data.get('secteur_geographique'))}", style_n_left))
-    elements.append(Paragraph(f"Nombre de Bénévoles : {safe_paragraph_value(data.get('combien_de_benevoles'))}", style_n_left))
-    elements.append(Paragraph(f"Nombre de Salariés : {safe_paragraph_value(data.get('combien_de_salaries'))}", style_n_left))
-    elements.append(Spacer(1, 0.5 * cm))
-
-    # Interlocuteurs ===
-    style_h2_sous = ParagraphStyle('h2_sous', parent=style_h2, textColor=colors.darkblue, fontSize=12, leftIndent=0)
-    elements.append(Paragraph("Interlocuteurs chez le partenaire", style_h2_sous))
-
-    # Présence d’un travailleur social (alignement horizontal parfait)
-    presence = safe_paragraph_value(data.get('presence_travailleur_social', 'non'))
-
-    block_oui = Table([[CheckBox(presence == 'oui', size=9), Paragraph("Oui", style_n_left)]],
-                    colWidths=[0.6 * cm, 1.5 * cm])
-    block_non = Table([[CheckBox(presence == 'non', size=9), Paragraph("Non", style_n_left)]],
-                    colWidths=[0.6 * cm, 1.5 * cm])
-
-    presence_paragraph = [
-        CheckBox(presence == 'oui', size=9),
-        Spacer(0.2 * cm, 0),
-        Paragraph("Oui", style_n_left),
-        Spacer(0.5 * cm, 0),
-        CheckBox(presence == 'non', size=9),
-        Spacer(0.2 * cm, 0),
-        Paragraph("Non", style_n_left)
-    ]
-
-    presence = safe_paragraph_value(data.get('presence_travailleur_social', 'non'))
-
-    presence_line = Table(
-        [[
-            Paragraph("Présence d’un travailleur social :", style_n_left),
-            CheckBox(presence == 'oui', size=9), Paragraph("Oui", style_n_left),
-            CheckBox(presence == 'non', size=9), Paragraph("Non", style_n_left)
-        ]],
-        colWidths=[6 * cm, 0.7 * cm, 2 * cm, 0.7 * cm, 2 * cm],
-        rowHeights=[0.5 * cm]
-    )
-    presence_line.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 0), (1, 0), 'CENTER'),
-        ('ALIGN', (3, 0), (3, 0), 'CENTER')
-    ]))
-    elements.append(presence_line)
-    elements.append(Spacer(1, 0.3 * cm))
-
-
-    # Tableau des interlocuteurs
-    interlocuteurs = [
-        [
-            Paragraph("Rôle", cell_style),
-            Paragraph("Nom / Prénom", cell_style),
-            Paragraph("Téléphone", cell_style),
-            Paragraph("Courriel", cell_style),
-            Paragraph("Statut", cell_style)
-        ],
-        [
-            Paragraph("Président", cell_style),
-            Paragraph(safe_paragraph_value(data.get("nom_president_ou_officiel")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("tel_president_officiel_1")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("courriel_president")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("statut_president")), cell_style)
-        ],
-        [
-            Paragraph("Distribution", cell_style),
-            Paragraph(safe_paragraph_value(data.get("responsable_distribution")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("tel_resp_distribution_1")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("courriel_distribution")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("statut_resp_distribution")), cell_style)
-        ],
-        [
-            Paragraph("Trésorerie", cell_style),
-            Paragraph(safe_paragraph_value(data.get("responsable_tresorerie")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("tel_resp_tresorerie_1")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("courriel_resp_tresorerie")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("statut_resp_tresorerie")), cell_style)
-        ],
-        [
-            Paragraph("Hygiène / Sécurité", cell_style),
-            Paragraph(safe_paragraph_value(data.get("responsable_HySA")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("tel_resp_Hysa_1")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("courriel_resp_Hysa")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("statut_resp_hysa")), cell_style)
-        ],
-        [
-            Paragraph("TIXADI/Indicateurs État", cell_style),
-            Paragraph(safe_paragraph_value(data.get("responsable_IE")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("tel_resp_IE")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("courriel_resp_IE1")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("statut_resp_ie")), cell_style)
-        ],
-        [
-            Paragraph("Chargé Accueil/accompagnement social", cell_style),
-            Paragraph(safe_paragraph_value(data.get("responsable_accueil")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("tel_resp_accueil")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("courriel_resp_accueil")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("statut_resp_accueil")), cell_style)
-        ],
-        [
-            Paragraph("Contact Collecte", cell_style),
-            Paragraph(safe_paragraph_value(data.get("responsable_collecte")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("tel_resp_collecte")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("courriel_resp_collecte")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("statut_resp_collecte")), cell_style)
-        ],
-        [
-            Paragraph("Contact Proxidon", cell_style),
-            Paragraph(safe_paragraph_value(data.get("responsable_proxidon")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("tel_resp_proxidon")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("courriel_resp_proxidon")), cell_style),
-            Paragraph(safe_paragraph_value(data.get("statut_resp_proxidon")), cell_style)
-        ]
-    ]
-
-    table = Table(interlocuteurs, colWidths=[3 * cm, 4.5 * cm, 3 * cm, 5 * cm, 2.5 * cm])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-        ('GRID', (0, 0), (-1, -1), 0.25, colors.black),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP')
-    ]))
-    elements.append(table)
-    elements.append(Spacer(1, 0.5 * cm))
-
-
-    # Saut de page avant la section 2
-    elements.append(PageBreak())
-
-
-    # ==============================================================================================================
-    # === 2. Habilitation ===
-    # ==============================================================================================================
-
-    elements.append(Spacer(1, 0.5 * cm))
-    elements.append(Paragraph("2. Habilitation", style_h2))
-    statut = safe_paragraph_value(data.get("statut"))
-
-    habilitation_table = [
-        ["Statut :",
-        CheckBox(statut == 'Association', size=9), "Association",
-        CheckBox(statut == 'CCAS/CIAS', size=9), "CCAS/CIAS",
-        CheckBox(statut == 'Autres', size=9), "Autres"]
-    ]
-
-    table_hab = Table(
-        habilitation_table,
-        colWidths=[2.5 * cm, 0.9 * cm, 3 * cm, 0.9 * cm, 3 * cm, 0.9 * cm, 3 * cm],
-        rowHeights=[0.7 * cm]
-    )
-    table_hab.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 0), (1, 0), 'CENTER'),
-        ('ALIGN', (3, 0), (3, 0), 'CENTER'),
-        ('ALIGN', (5, 0), (5, 0), 'CENTER'),
-    ]))
-    elements.append(table_hab)
-
-    if statut == "Autres":
-        elements.append(Paragraph(f"Précisions : {safe_paragraph_value(data.get('statut_autre'))}", style_n_left))
-
-    # Texte en italique
-    style_italique = ParagraphStyle('italique', parent=styles['Normal'], fontName='Helvetica-Oblique')
-    elements.append(Spacer(1, 0.5 * cm))
-    elements.append(Paragraph(
-        "A noter : Les CCAS, CIAS et Mairies sont des personnes morales de droit public "
-        "et ne sont pas concernés par l’habilitation", style_italique))
-
-    elements.append(Spacer(1, 0.5 * cm))
-
-    # Champ 'Appartient Grand Réseau Habilitation Nationale'
-    appartient_reseau = safe_paragraph_value(data.get('appartient_grand_reseau_habilitation_nationale', 'non'))
-    reseau_national = safe_paragraph_value(data.get('reseau_national', ''))
-
-    elements.append(Spacer(1, 0.3 * cm))
-    elements.append(Paragraph(
-        "Le Partenaire appartient à un grand réseau ayant une habilitation nationale :", style_n_left))
-
-    # Tableau Oui/Non pour l'appartenance au réseau
-    table_reseau = Table(
-        [[
-            CheckBox(appartient_reseau == 'oui', size=9), Paragraph("Oui", style_n_left),
-            CheckBox(appartient_reseau != 'oui', size=9), Paragraph("Non", style_n_left)
-        ]],
-        colWidths=[0.7 * cm, 2 * cm, 0.7 * cm, 2 * cm],
-        rowHeights=[0.5 * cm]
-    )
-    table_reseau.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
-        ('ALIGN', (2, 0), (2, -1), 'CENTER')
-    ]))
-    elements.append(table_reseau)
-
-    # Affichage du réseau national si 'oui'
-    if appartient_reseau == 'oui' and reseau_national:
-        elements.append(Spacer(1, 0.2 * cm))
-        elements.append(Paragraph(f"Réseau national : {reseau_national}", style_n_left))
-
-    # Si non, le Partenaire a une habilitation régionale
-    elements.append(Spacer(1, 0.3 * cm))
-    elements.append(Paragraph(
-        "Si non, le Partenaire a une habilitation régionale "
-        "(pour trouver l’Arrêté Préfectoral, saisir sur internet “le nom de la région” suivi de “habilitation aide alimentaire”)",
-        style_n_left
-    ))
-
-    # Ligne : Habilitation régionale
-    habilitation_reg = safe_paragraph_value(data.get('habilitation_regionale', 'non'))
-    date_agrement = safe_paragraph_value(data.get('date_agrement_regional', ''))
-    date_fin = safe_paragraph_value(data.get('date_FIN_habilitation', ''))
-
-    table_hab_reg = Table(
-        [[
-            CheckBox(habilitation_reg == 'oui', size=9),
-            Paragraph("Oui", style_n_left),
-            CheckBox(habilitation_reg != 'oui', size=9),
-            Paragraph("Non", style_n_left),
-            Paragraph(f"Date Arrêté : {date_agrement}", style_n_left),
-            Paragraph(f"Date Fin : {date_fin}", style_n_left)
-        ]],
-        colWidths=[0.7 * cm, 1.5 * cm, 0.7 * cm, 1.5 * cm, 4.5 * cm, 4.5 * cm]
-    )
-    table_hab_reg.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE')
-    ]))
-    elements.append(table_hab_reg)
-
-    # Ligne suivante : Habilitation régionale en cours
-    elements.append(Spacer(1, 0.1 * cm))  # Pas d'espace supplémentaire
-    elements.append(Paragraph(
-    "Habilitation en cours d'instruction ")),
-    style_n_left
-    habilitation_encours = safe_paragraph_value(data.get('habilitation_regionale_encours', 'non'))
-    date_prochaine = safe_paragraph_value(data.get('habilitation_regionale_en_cours_prochaine_session', ''))
-
-    table_hab_encours = Table(
-        [[
-            CheckBox(habilitation_encours == 'oui', size=9),
-            Paragraph("Oui", style_n_left),
-            CheckBox(habilitation_encours != 'oui', size=9),
-            Paragraph("Non", style_n_left),
-            Paragraph(f"Prochaine session : {date_prochaine}", style_n_left)
-        ]],
-        colWidths=[0.7 * cm, 1.5 * cm, 0.7 * cm, 1.5 * cm, 9 * cm]
-    )
-    table_hab_encours.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE')
-    ]))
-    elements.append(table_hab_encours)
-
-    # Ligne suivante : Catégorie 1 ou 2
-    categorie = safe_paragraph_value(data.get('categorie', ''))
-
-    elements.append(Spacer(1, 0.3 * cm))
-    elements.append(Paragraph("Catégorie du partenaire (à remplir par la B.A.) :", style_n_left))
-
-    table_categorie = Table(
-        [[
-            CheckBox(categorie == 'Catégorie 1', size=9),
-            Paragraph("Catégorie 1", style_n_left),
-            CheckBox(categorie == 'Catégorie 2', size=9),
-            Paragraph("Catégorie 2", style_n_left)
-        ]],
-        colWidths=[0.7 * cm, 3 * cm, 0.7 * cm, 3 * cm]
-    )
-    table_categorie.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE')
-    ]))
-    elements.append(table_categorie)
-
-    elements.append(Paragraph("Rappel : ", style_n_left))
-    elements.append(Paragraph("- Les partenaires dits de catégorie 1 sont les autres associations et les CCAS.", style_n_left))
-    elements.append(Paragraph("- Les partenaires dits de catégorie 2 sont : les unités locales Croix-Rouge française, les comités du Secours Populaire, les Restaurants du Cœur.", style_n_left))
-
-
-
-
-    # Saut de page avant la section 3
-    elements.append(PageBreak())
-
-    # ==============================================================================================================
-    # === 3 Activité du Partenaire ===
-    # ==============================================================================================================
-
-
-    elements.append(Spacer(1, 0.5 * cm))
-    elements.append(Paragraph("3. Activité du partenaire (plusieurs réponses possibles)", style_h2))
-    # === Modes de distribution de l’aide alimentaire ===
-    elements.append(Spacer(1, 0.4 * cm))
-    elements.append(Paragraph("Modes de distribution de l’aide alimentaire", style_h2))
-
-    modes_table = Table([[
-        CheckBox(data.get('mode_distrib_colis') == 'oui', size=9),
-        Paragraph("Colis", style_n_left),
-        CheckBox(data.get('mode_distrib_maraude') == 'oui', size=9),
-        Paragraph("Maraude", style_n_left),
-        CheckBox(data.get('mode_distrib_repas') == 'oui', size=9),
-        Paragraph("Repas", style_n_left),
-        CheckBox(data.get('mode_distrib_petit_dejeuner') == 'oui', size=9),
-        Paragraph("Petit Déjeuner/Collation", style_n_left),
-    ]], colWidths=[0.7 * cm, 3 * cm, 0.7 * cm, 3 * cm, 0.7 * cm, 2 * cm, 0.7 * cm, 5 * cm])
-    modes_table.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'MIDDLE')]))
-    elements.append(modes_table)
-
-    # === Particularité ===
-    elements.append(Spacer(1, 0.4 * cm))
-    elements.append(Paragraph("Particularité", style_h2))
-
-    part_table = Table([
-        [
-            CheckBox(data.get('particularite_hebergement_longue_duree') == 'oui', size=9),
-            Paragraph("Hébergement longue durée (ex : CHRS)", style_n_left),
-            CheckBox(data.get('particularite_hebergement_urgence') == 'oui', size=9),
-            Paragraph("Hébergement d’urgence", style_n_left),
-        ],
-        [
-            CheckBox(data.get('particularite_dispositif_itinerant') == 'oui', size=9),
-            Paragraph("Dispositif itinérant", style_n_left),
-            CheckBox(data.get('particularite_livraison_domicile') == 'oui', size=9),
-            Paragraph("Livraison au domicile des personnes", style_n_left),
-        ],
-        [
-            CheckBox(data.get('activite_principale_aide_alimentaire') == 'oui', size=9),
-            Paragraph("L’aide alimentaire est-elle votre activité dominante ?", style_n_left),
-            "", ""  # Colonnes vides pour aligner
-        ]
-    ], colWidths=[0.7 * cm, 6.5 * cm, 0.7 * cm, 8 * cm])
-    part_table.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'MIDDLE')]))
-    elements.append(part_table)
-
-    # === Publics majoritairement accueillis ===
-    elements.append(Spacer(1, 0.4 * cm))
-    elements.append(Paragraph("Publics majoritairement accueillis", style_h2))
-
-    publics_table = Table([
-        [
-            CheckBox(data.get('public_accueilli_enfants_bas_age') == 'oui', size=9),
-            Paragraph("Enfants bas âge (0-3 ans)", style_n_left),
-        ],
-        [
-            CheckBox(data.get('public_accueilli_mineurs_isoles') == 'oui', size=9),
-            Paragraph("Mineurs isolés", style_n_left),
-        ],
-        [
-            CheckBox(data.get('public_accueilli_jeunes_travailleurs_etudiants') == 'oui', size=9),
-            Paragraph("Dispositif jeunes travailleurs/étudiants", style_n_left),
-        ],
-        [
-            CheckBox(data.get('public_accueilli_femmes_victimes_violence') == 'oui', size=9),
-            Paragraph("Femmes victimes de violences conjugales", style_n_left),
-        ]
-    ], colWidths=[0.7 * cm, 12 * cm])
-    publics_table.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'MIDDLE')]))
-    elements.append(publics_table)
-
-    # Saut de page avant la section 4
-    elements.append(PageBreak())
-
-    # ==============================================================================================================
-    # == 4. APPROVISIONNEMENTS =====================================================================================
-    # ==============================================================================================================
-
-    elements.append(Spacer(1, 0.5 * cm))
-    elements.append(Paragraph("4. Approvisionnements", style_h2))
-    elements.append(Spacer(1, 0.3 * cm))
-
-    # Produits souhaités (sous forme de puces)
-    produits_souhaites = safe_paragraph_value(data.get('produits_souhaites', ''))
-    if produits_souhaites:
-        produits_list = [p.strip() for p in produits_souhaites.split(",") if p.strip()]
-        if produits_list:
-            elements.append(Paragraph("Produits de la BA souhaités par le partenaire :", style_n_left))
-            for prod in produits_list:
-                elements.append(Paragraph(f"• {prod}", style_n_left))
-            elements.append(Spacer(1, 0.2 * cm))
-
-    # Autres approvisionnements
-    autres_appro = safe_paragraph_value(data.get('autres_approvisionnements', ''))
-    if autres_appro:
-        autres_list = [p.strip() for p in autres_appro.split(",") if p.strip()]
-        if autres_list:
-            elements.append(Paragraph("Autres approvisionnements :", style_n_left))
-            for prod in autres_list:
-                elements.append(Paragraph(f"• {prod}", style_n_left))
-            elements.append(Spacer(1, 0.2 * cm))
-
-    # Souhaits de conventionnement (trois lignes explicites avec texte + case à droite)
-    # elements.append(Paragraph("Souhaits de conventionnement / projets :", style_n_left))
-    # elements.append(Spacer(1, 0.1 * cm))
-
-    wishes = [
-        ("Le partenaire souhaite des produits FSE :", safe_paragraph_value(data.get('partenaire_souhaite_FSE')) == "oui"),
-        ("Le partenaire souhaite une convention délégation-retrait :", safe_paragraph_value(data.get('partenaire_souhaite_convention_delegation_retrait')) == "oui"),
-        ("Le partenaire souhaite une convention PROXIDON :", safe_paragraph_value(data.get('partenaire_souhaite_convention_PROXIDON')) == "oui"),
-    ]
-    for texte, coche in wishes:
-        elements.append(
-            Table(
-                [[Paragraph(texte, style_n_left), CheckBox(coche, size=9)]],
-                colWidths=[11.5 * cm, 1 * cm],
-                style=[
-                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ]
-            )
-        )
-
-
-
-    # Saut de page avant la section 5
-    elements.append(PageBreak())
-
-    # ==============================================================================================================
-    # == 5. DISTRIBUTION ===========================================================================================
-    # ==============================================================================================================
-
-    elements.append(Spacer(1, 0.5 * cm))
-    elements.append(Paragraph("5. DISTRIBUTION", style_h2))
-    elements.append(Spacer(1, 0.2 * cm))
-
-    # Fonctionnement toute l'année : Oui / Non (case à cocher sur la même ligne)
-
-    fonctionnement_toute_annee = safe_paragraph_value(data.get('distribution_toute_annee', '')).lower()
-
-
-
-    style_left_no_indent = ParagraphStyle(
-        'left_no_indent',
-        parent=style_n_left,
-        leftIndent=0,
-        spaceBefore=0,
-    spaceAfter=0,
-    )
-
-    elements.append(
-        Table(
-            [[
-                Paragraph("Fonctionnement toute l’année :", style_left_no_indent),
-                CheckBox(fonctionnement_toute_annee == "oui", size=9), Paragraph("Oui", style_left_no_indent),
-                CheckBox(fonctionnement_toute_annee == "non", size=9), Paragraph("Non", style_left_no_indent)
-            ]],
-            colWidths=[8 * cm, 0.7 * cm, 1.2 * cm, 0.7 * cm, 1.2 * cm],
-            style=[
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                ('TOPPADDING', (0, 0), (-1, -1), 0),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-            ]
-        )
-    )
-
-    elements.append(Spacer(1, 0.2 * cm))
-
-
-    # Si non, période de fermeture
-    periode_fermeture = safe_paragraph_value(data.get('periode_de_fermeture', ''))
-    if periode_fermeture:
-        elements.append(Paragraph(f"Sinon, période de fermeture : {periode_fermeture}", style_n_left))
-
-    # Alternative à la fermeture
-    alternative_fermeture = safe_paragraph_value(data.get('alternative_fermeture', ''))
-    if alternative_fermeture:
-        elements.append(Paragraph(f"Alternative à la fermeture : {alternative_fermeture}", style_n_left))
-    elements.append(Spacer(1, 0.2 * cm))
-
-    # Fréquence de passage souhaitée à la BA
-    elements.append(Paragraph("Fréquence de passage souhaitée à la Banque Alimentaire :", style_n_left))
-    freq_ba = safe_paragraph_value(data.get('frequence', ''))
-    if freq_ba:
-        elements.append(Paragraph(freq_ba, style_n_left))
-    elements.append(Spacer(1, 0.2 * cm))
-
-    # Jours et horaires d'enlèvement convenus avec la BA (et entrepôt)
-    jour_enl = safe_paragraph_value(data.get('jour_de_passage_a_la_BAI', ''))
-    heure_enl = safe_paragraph_value(data.get('heure_de_passage', ''))
-    emplacement_enl = safe_paragraph_value(data.get('Emplacement', ''))
-    elements.append(Paragraph("Jours et horaires d’enlèvement convenus avec la BA (précisez l’entrepôt d’enlèvement) :", style_n_left))
-    if any([jour_enl, heure_enl, emplacement_enl]):
-        txt = " / ".join([s for s in [jour_enl, heure_enl, emplacement_enl] if s])
-        elements.append(Paragraph(txt, style_n_left))
-    elements.append(Spacer(1, 0.2 * cm))
-
-    # Livraison par la BAI (champ à créer oui/non)
-    livraison_bai = safe_paragraph_value(data.get('livraison_par_bai', '')).lower()
-    elements.append(
-        Table([[
-            Paragraph("Livraison par la BAI :", style_n_left),
-            CheckBox(livraison_bai == "oui", size=9), Paragraph("Oui", style_n_left),
-            CheckBox(livraison_bai == "non", size=9), Paragraph("Non", style_n_left)
-        ]], colWidths=[5*cm, 0.7*cm, 1.2*cm, 0.7*cm, 1.2*cm],
-        style=[('VALIGN', (0,0), (-1,-1), 'MIDDLE')])
-    )
-    elements.append(Spacer(1, 0.2 * cm))
-
-    # Jours et horaires de distribution alimentaire
-    jour_dist = safe_paragraph_value(data.get('jour_distribution', ''))
-    heure_dist = safe_paragraph_value(data.get('heure', ''))
-    freq_dist = safe_paragraph_value(data.get('frequence', ''))
-    elements.append(Paragraph("Jours et horaires de distribution alimentaire :", style_n_left))
-    txt_dist = " / ".join([s for s in [jour_dist, heure_dist, freq_dist] if s])
-    if txt_dist:
-        elements.append(Paragraph(txt_dist, style_n_left))
-    elements.append(Spacer(1, 0.5 * cm))
-
-
-    # Saut de page avant la section 6
-    elements.append(PageBreak())
-
-    # ==============================================================================================================
-    # == 6. BESOINS ET MOYENS DU PARTENAIRE ========================================================================
-    # ==============================================================================================================
-
-    elements.append(Spacer(1, 0.5 * cm))
-    elements.append(Paragraph("6. BESOINS ET MOYENS DU PARTENAIRE :", style_title))
-    elements.append(Paragraph("Équipements/Locaux :", style_n_left))
-    elements.append(Spacer(1, 0.1 * cm))
-
-    equipements = [
-        ("Pièce d’accueil", "piece_accueil_nbre", "piece_accueil_volume_surface"),
-        ("Cuisine", "cuisine_nbre", "cuisine_volume_surface"),
-        ("Local de distribution", "local_de_distribution_nbre", "local_de_distribution_volume_surface"),
-        ("Local d’entreposage", "local_entreposage_nbre", "local_entreposage_volume_surface"),
-        ("Chambre froide positive*", "chambre_froide_positive_nbre", "chambre_froide_positive_volume_surface"),
-        ("Chambre froide négative*", "chambre_froide_negative_nbre", "chambre_froide_negative_volume_surface"),
-        ("Congélateur*", "congelateur_nbre", "congelateur_volume_surface"),
-        ("Réfrigérateur*", "refrigerateur_nbre", "refrigerateur_volume_surface"),
-        ("Container isotherme agréé", "container_isotherme_agree_nbre", "container_isotherme_agree_volume_surface"),
-        ("Glacière", "glaciere_nbre", "glaciere_volume_surface"),
-        ("Plaques eutectiques", "plaques_eutectiques_nbre", "plaques_eutectiques_volume_surface"),
-        ("Véhicule frigorifique*", "vehicule_frigorifique_nbre", "vehicule_frigorifique_volume_surface"),
-        ("Véhicule isotherme", "vehicule_isotherme_nbre", "vehicule_isotherme_volume_surface"),
-        ("Autre véhicule (préciser)", "autre_vehicule_nbre", "autre_vehicule_volume_surface"),
-    ]
-
-    table_data = [
-        [Paragraph("Équipements/Locaux", style_header),
-        Paragraph("Nombre", style_header),
-        Paragraph("Volume ou Surface", style_header)]
-    ]
-
-    for label, champ_nb, champ_vol in equipements:
-        val_nb = safe_paragraph_value(data.get(champ_nb))
-        val_vol = safe_paragraph_value(data.get(champ_vol))
-        table_data.append([
-            Paragraph(label, style_n_left),
-            Paragraph(val_nb, style_n_left),
-            Paragraph(val_vol, style_n_left),
-        ])
-
-    table = Table(table_data, colWidths=[8 * cm, 3 * cm, 5 * cm])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.beige),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-    ]))
-
-    elements.append(table)
-    elements.append(Spacer(1, 0.3 * cm))
-    elements.append(Paragraph("*avec thermomètre et procédure de relevé ou d’enregistrement des températures", style_n_left))
-    elements.append(Spacer(1, 0.3 * cm))
-
-
-    # Récupérer les valeurs dans la base
-    logiciel_autre = safe_paragraph_value(data.get("Logiciel_autre", "non")).lower()
-    logiciel_autre_lequel = safe_paragraph_value(data.get("Logiciel_autre_lequel", ""))
-    logiciel_ticadi_utilise = safe_paragraph_value(data.get("logiciel_Ticadi_utilise", ""))
-
-    # Titre et question logiciel autre
-    elements.append(Spacer(1, 0.5 * cm))
-    elements.append(Paragraph("Logiciel de gestion de l’activité :", style_title))
-
-    elements.append(
-        Table(
-            [[
-                Paragraph("Présence d’un logiciel de gestion de l’activité d’aide alimentaire mis à disposition par un autre réseau d’aide alimentaire :", style_n_left),
-                CheckBox(logiciel_autre == "oui", size=9), Paragraph("Oui", style_n_left),
-                CheckBox(logiciel_autre == "non", size=9), Paragraph("Non", style_n_left),
-            ]],
-            colWidths=[11 * cm, 0.7 * cm, 1.0 * cm, 0.7 * cm, 1.0 * cm],
-            style=[('VALIGN', (0, 0), (-1, -1), 'MIDDLE')]
-        )
-    )
-    elements.append(Spacer(1, 0.2 * cm))
-
-    # Si oui lequel ?
-    elements.append(Paragraph(f"Si oui, lequel ? {logiciel_autre_lequel}", style_n_left))
-    elements.append(Spacer(1, 0.3 * cm))
-
-    # Note sur TICADI
-    elements.append(Paragraph(
-        "Si le Partenaire ne dispose pas d’un logiciel de gestion porté par un réseau national, "
-        "le Partenaire accepte d’installer TICADI et signera la convention TICADI.", style_n_left))
-    elements.append(Spacer(1, 0.2 * cm))
-
-    # Champ logiciel_Ticadi_utilise (existant)
-    elements.append(Paragraph(f"Logiciel TICADI utilisé : {logiciel_ticadi_utilise}", style_n_left))
-    elements.append(Spacer(1, 0.3 * cm))
-
-
-
-
-    # Saut de page avant la section 7
-    elements.append(PageBreak())
-
-    # ==============================================================================================================
-    # == 7. LES PERSONNES ACCUILLIES ===============================================================================
-    # ==============================================================================================================
-
-    elements.append(Spacer(1, 0.5 * cm))
-    elements.append(Paragraph("7. LES PERSONNES ACCUEILLIES", style_title))
-
-    # Existence d’une procédure d’éligibilité
-    crit_eligibilite = safe_paragraph_value(data.get("criteres_d_eligibilite_de_l_aide_par_ecrit", "")).lower()
-
-    elements.append(
-        Table(
-            [[
-                Paragraph("Existence d’une procédure d’éligibilité :", style_n_left),
-                CheckBox(crit_eligibilite == "oui", size=9), Paragraph("Oui", style_n_left),
-                CheckBox(crit_eligibilite == "non", size=9), Paragraph("Non, en cours de réalisation", style_n_left),
-            ]],
-            colWidths=[9 * cm, 0.7 * cm, 2 * cm, 0.7 * cm, 5.5 * cm],
-            style=[('VALIGN', (0, 0), (-1, -1), 'MIDDLE')]
-        )
-    )
-    elements.append(Spacer(1, 0.3 * cm))
-
-    # Nombre de bénéficiaires et foyers
-    nb_annuel = safe_paragraph_value(data.get("nbre_beneficiaires_annuel_previsionnel", ""))
-    nb_trimestriel = safe_paragraph_value(data.get("nbre_beneficiaires_trimestriels_previsionnel", ""))
-    nb_foyers = safe_paragraph_value(data.get("nbre_foyers", ""))
-
-    elements.append(Paragraph(f"❖ Nombre de bénéficiaires annuel (prévisionnel) : {nb_annuel}", style_n_left))
-    elements.append(Paragraph(f"❖ Nombre de bénéficiaires trimestriel (prévisionnel) : {nb_trimestriel}", style_n_left))
-    elements.append(Paragraph(f"❖ Nombre de foyers : {nb_foyers}", style_n_left))
-    elements.append(Spacer(1, 0.5 * cm))
-
-    # Date et signature
-    elements.append(Spacer(5, 0.5 * cm))
-    table_signature = Table(
-        [[
-            Paragraph("Date :", style_n_left),
-            "",
-            Paragraph("Signature responsable association :", style_n_left)
-        ]],
-        colWidths=[3 * cm, 7 * cm, 7 * cm]
-    )
-    elements.append(table_signature)
-
-
-    # --- Pied de page ---
-    def footer(canvas, doc):
-        canvas.setFont("Helvetica", 8)
-        date_du_jour = datetime.today().strftime('%d/%m/%Y')
-        canvas.drawString(1.5 * cm, 1 * cm, "Banque Alimentaire de l'Isère - Service Partenariat")
-        canvas.drawRightString(A4[0] - 1.5 * cm, 1 * cm, f"{date_du_jour} - Page {doc.page}")
-        canvas.restoreState()
-
-    doc.build(
-        elements,
-        onFirstPage=lambda c, d: header_footer(c, d, title, data.get("nom_association", "")),
-        onLaterPages=lambda c, d: header_footer(c, d, title, data.get("nom_association", ""))
-    )
-    buffer.seek(0)
-    return send_file(buffer, as_attachment=True, download_name=f"annexe1bis_{partner_id}.pdf", mimetype='application/pdf')
-
-
 
 from flask import flash
 
@@ -2961,3 +2195,6 @@ def beautify_title(name):
         .strip()
         .title()
     )
+
+
+

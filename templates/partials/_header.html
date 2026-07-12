@@ -9,14 +9,7 @@
     <!-- ================= LEFT ================= -->
     <div class="header-left">
 
-        <img src="{{ url_for('static', filename='images/logo-circle-orange.svg') }}" class="header-logo">
-
-        <div class="header-text">
-            <strong>BA38</strong>
-            <span class="header-subtitle">
-                {{ header_subtitle or "Plateforme BA38" }}
-            </span>
-        </div>
+        <img src="{{ url_for('static', filename='images/basilic_logo.png') }}" class="header-logo">
 
         {% if env_name == "dev" %}
         <span class="badge bg-danger ms-2">DEV</span>

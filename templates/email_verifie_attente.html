@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}Vérifiez votre email{% endblock %}
+
+{% block content %}
+<div class="text-center mt-5" style="max-width:500px; margin:auto">
+    <h2>Vérifiez votre email</h2>
+    <p class="mt-3">
+        Un email de confirmation vient d'être envoyé à<br>
+        <strong>{{ email }}</strong>
+    </p>
+    <p>Cliquez sur le lien dans cet email pour activer votre compte.</p>
+    <p class="text-muted small">Le lien est valable 30 minutes. Vérifiez aussi vos spams.</p>
+    <a href="{{ url_for('login') }}" class="btn btn-outline-secondary mt-3">Retour à la connexion</a>
+</div>
+{% endblock %}

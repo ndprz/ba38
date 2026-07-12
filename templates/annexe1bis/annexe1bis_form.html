@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+{% block title %}Annexe 1 bis{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  {% if last_date %}
+  <div class="alert alert-danger text-center fw-bold fs-4">
+    ⚠️ Nouvelle annexe chargée avec les renseignements de la dernière annexe du
+    {{ last_date | datetimeformat }}.<br>
+    Veuillez modifier ou supprimer les valeurs des champs nécessaires.
+  </div>
+  {% endif %}
+
+  {% if annexe.get('statut_signature') == 'signee' %}
+  <div class="alert alert-success text-center fw-bold">
+    🔒 Cette annexe est signée (le {{ annexe.get('date_signature') | datetimeformat }}) et n'est plus modifiable.
+  </div>
+  {% endif %}
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+    <h2 class="mb-0">
+      {% if lecture_seule %}
+      👁️ Consultation de l'annexe 1 bis – {{ partenaire.get("nom_association","") }}
+      {% else %}
+      📝 {{ "Édition" if annexe_id else "Nouvelle annexe" }} de l'annexe 1 bis – {{ partenaire.get("nom_association","") }}
+      {% endif %}
+    </h2>
+    <div>
+      {% if annexe_id %}
+      <a href="{{ url_for('annexe1bis.pdf', annexe_id=annexe_id) }}" class="btn btn-danger ms-2" target="_blank">
+        📄 Export PDF
+      </a>
+      {% else %}
+      <button class="btn btn-secondary ms-2" disabled>📄 Export PDF</button>
+      {% endif %}
+
+      {% if not lecture_seule %}
+      <button type="submit" form="annexeForm" class="btn btn-primary">💾 Enregistrer</button>
+      {% endif %}
+      <a href="{{ url_for('annexe1bis.liste', partner_id=partner_id) }}" class="btn btn-secondary">⬅️ Annuler</a>
+    </div>
+  </div>
+
+  {% if not lecture_seule %}
+  <form id="annexeForm" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% endif %}
+
+    <!-- 🔹 Suivi de signature -->
+    <fieldset class="mb-3">
+      <legend class="group-title bg-light p-2 rounded">Suivi de signature</legend>
+      <div class="group-content p-3 border rounded bg-white">
+        <div class="row mb-2">
+          <div class="col-md-4 fw-bold text-end">Date de création</div>
+          <div class="col-md-8">
+            <input type="date" class="form-control" name="date_creation" value="{{ annexe.get('date_creation') or '' }}" {% if lecture_seule %}readonly{% endif %}>
+          </div>
+        </div>
+        <div class="row mb-2">
+          <div class="col-md-4 fw-bold text-end">Statut</div>
+          <div class="col-md-8">
+            <select name="statut_signature" id="statut_signature" class="form-control" onchange="toggleSignatureDates()" {% if lecture_seule or annexe.get('statut_signature') == 'envoyee' %}disabled{% endif %}>
+              <option value="brouillon" {% if annexe.get('statut_signature', 'brouillon') == 'brouillon' %}selected{% endif %}>📝 Brouillon</option>
+              {% if annexe.get('statut_signature') == 'envoyee' %}
+              <option value="envoyee" selected>✉️ Envoyée pour signature</option>
+              {% endif %}
+              <option value="signee" {% if annexe.get('statut_signature') == 'signee' %}selected{% endif %}>🔒 Signée</option>
+              <option value="refusee" {% if annexe.get('statut_signature') == 'refusee' %}selected{% endif %}>❌ Refusée</option>
+            </select>
+            {% if annexe.get('statut_signature') == 'envoyee' %}
+            <p class="text-muted small mt-1">
+              ✉️ Envoyée pour signature via Yousign — le statut n'est plus modifiable ici ; utilisez "Vérifier le statut" ci-dessous.
+            </p>
+            {% endif %}
+          </div>
+        </div>
+        <div class="row mb-2" id="row_date_envoi_signature">
+          <div class="col-md-4 fw-bold text-end">Date d'envoi en signature</div>
+          <div class="col-md-8">
+            <input type="date" class="form-control" name="date_envoi_signature" value="{{ annexe.get('date_envoi_signature') or '' }}" {% if lecture_seule %}readonly{% endif %}>
+          </div>
+        </div>
+        <div class="row mb-2" id="row_date_signature">
+          <div class="col-md-4 fw-bold text-end">Date de signature</div>
+          <div class="col-md-8">
+            <input type="date" class="form-control" name="date_signature" value="{{ annexe.get('date_signature') or '' }}" {% if lecture_seule %}readonly{% endif %}>
+          </div>
+        </div>
+
+        {% if annexe_id %}
+        <hr>
+        <div class="row mb-2">
+          <div class="col-md-4 fw-bold text-end">Yousign</div>
+          <div class="col-md-8">
+
+            {% if annexe.get('destinataire_signature_email') %}
+            <p class="mb-2 text-muted small">
+              Envoyée à {{ annexe.get('destinataire_signature_nom') }}
+              ({{ annexe.get('destinataire_signature_email') }})
+              le {{ annexe.get('date_envoi_signature') | datetimeformat }}.
+            </p>
+            {% endif %}
+
+            {% if not lecture_seule and annexe.get('statut_signature') in ('brouillon', 'refusee') %}
+            <button type="submit" class="btn btn-primary" form="annexeForm"
+                    formmethod="POST"
+                    formaction="{{ url_for('annexe1bis.envoyer_signature', annexe_id=annexe_id) }}"
+                    onclick="return confirm('Envoyer cette annexe pour signature au président de l\'association ?');">
+              📤 Envoyer pour signature via Yousign
+            </button>
+            {% if not partenaire.get('courriel_president') %}
+            <p class="text-danger small mt-1">
+              ⚠️ Aucun email de président renseigné sur la fiche partenaire — l'envoi échouera.
+            </p>
+            {% endif %}
+            {% endif %}
+
+            {% if annexe.get('yousign_signature_request_id') and annexe.get('statut_signature') == 'envoyee' %}
+            <button type="submit" class="btn btn-outline-secondary" form="annexeForm"
+                    formmethod="POST"
+                    formaction="{{ url_for('annexe1bis.verifier_statut', annexe_id=annexe_id) }}">
+              🔄 Vérifier le statut auprès de Yousign
+            </button>
+            {% endif %}
+
+            {% if annexe.get('nom_signataire_saisi') %}
+            <p class="mb-2 small">
+              Signé par : <strong>{{ annexe.get('nom_signataire_saisi') }}</strong>
+              {% if partenaire.get('nom_president_ou_officiel') and annexe.get('nom_signataire_saisi') != partenaire.get('nom_president_ou_officiel') %}
+              <span class="text-warning">⚠️ Différent du président connu en base ({{ partenaire.get('nom_president_ou_officiel') }}) — pensez à mettre à jour la fiche partenaire.</span>
+              {% endif %}
+            </p>
+            {% endif %}
+
+            {% if annexe.get('document_signe_path') %}
+            <a href="{{ url_for('annexe1bis.telecharger_signe', annexe_id=annexe_id) }}" class="btn btn-outline-success">
+              📥 Télécharger le PDF signé
+            </a>
+            {% if partenaire.get('drive_link') %}
+            <form method="POST" action="{{ url_for('annexe1bis.enregistrer_drive', annexe_id=annexe_id) }}" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-outline-primary">
+                📁 Enregistrer dans le Drive de l'association
+              </button>
+            </form>
+            {% else %}
+            <p class="text-muted small mt-1">Aucun dossier Drive renseigné sur la fiche partenaire.</p>
+            {% endif %}
+            {% endif %}
+
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </fieldset>
+
+    <!-- 🔹 Champs de l'annexe 1 bis -->
+    <fieldset class="mb-3">
+      <legend class="group-title bg-light p-2 rounded">Annexe 1 bis</legend>
+      <div class="group-content p-3 border rounded bg-white">
+        {% for field in fields %}
+
+          {% if field['field_name'] == 'produits_souhaites' %}
+          {% set selected = (field['value'] or '').split(',') %}
+          <div class="row mb-2">
+            <div class="col-md-4 fw-bold text-end">Produits souhaités</div>
+            <div class="col-md-8">
+              {% for opt in ['Sec', 'Frais', 'Surgelés'] %}
+              <div class="form-check">
+                <input type="checkbox" class="form-check-input" name="produits_souhaites" value="{{ opt }}" {% if opt in selected %}checked{% endif %} {% if lecture_seule %}disabled{% endif %}>
+                <label class="form-check-label">{{ opt }}</label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          {% elif field['field_name'] == 'autres_approvisionnements' %}
+          {% set selected = (field['value'] or '').split(',') %}
+          <div class="row mb-2">
+            <div class="col-md-4 fw-bold text-end">Autres approvisionnements</div>
+            <div class="col-md-8">
+              {% for opt in ['Ramasse', 'Dons', 'Achats', 'Jardin Partagé'] %}
+              <div class="form-check">
+                <input type="checkbox" class="form-check-input" name="autres_approvisionnements" value="{{ opt }}" {% if opt in selected %}checked{% endif %} {% if lecture_seule %}disabled{% endif %}>
+                <label class="form-check-label">{{ opt }}</label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          {% else %}
+          <div class="row mb-2" id="row_{{ field['field_name'] }}">
+            <div class="col-md-4 fw-bold text-end">
+              {{ field['field_name'] | format_label }}
+              {% if field['is_required'] %}<span class="text-danger">*</span>{% endif %}
+            </div>
+            <div class="col-md-8">
+
+              {% if field['type_champ'] == 'oui_non' %}
+              <select name="{{ field['field_name'] }}" id="{{ field['field_name'] }}" class="form-control"
+                      onchange="toggleReseauNational(); toggleStatutAutre();" {% if lecture_seule %}disabled{% endif %}>
+                <option value="">-- Choisir --</option>
+                <option value="oui" {% if field['value'] == 'oui' %}selected{% endif %}>Oui</option>
+                <option value="non" {% if field['value'] == 'non' %}selected{% endif %}>Non</option>
+              </select>
+
+              {% elif field['type_champ'] == 'statut_liste' %}
+              <select name="{{ field['field_name'] }}" id="statut" class="form-control" onchange="toggleStatutAutre()" {% if lecture_seule %}disabled{% endif %}>
+                <option value="">-- Choisir --</option>
+                <option value="Association" {% if field['value'] == 'Association' %}selected{% endif %}>Association</option>
+                <option value="CCAS/CIAS" {% if field['value'] == 'CCAS/CIAS' %}selected{% endif %}>CCAS/CIAS</option>
+                <option value="Autres" {% if field['value'] == 'Autres' %}selected{% endif %}>Autres</option>
+              </select>
+
+              {% elif field['field_name'] == 'statut_autre' %}
+              <input type="text" id="statut_autre" name="statut_autre" value="{{ field['value'] or '' }}" class="form-control"
+                     {% if lecture_seule %}readonly{% endif %}
+                     style="{% if annexe.get('statut') != 'Autres' %}display:none;{% endif %}">
+
+              {% elif field['field_name'] == 'reseau_national' %}
+              <select name="reseau_national" id="reseau_national" class="form-control" {% if lecture_seule %}disabled{% endif %}
+                      style="{% if annexe.get('appartient_grand_reseau_habilitation_nationale') != 'oui' %}display:none;{% endif %}">
+                <option value="">-- Sélectionnez un réseau national --</option>
+                {% for reseau in liste_reseaux %}
+                <option value="{{ reseau }}" {% if reseau == field['value'] %}selected{% endif %}>{{ reseau }}</option>
+                {% endfor %}
+              </select>
+
+              {% elif field['field_name'] == 'categorie' %}
+              <select name="categorie" id="categorie" class="form-control" {% if lecture_seule %}disabled{% endif %}>
+                <option value="">-- Choisir --</option>
+                <option value="Catégorie 1" {% if field['value'] == 'Catégorie 1' %}selected{% endif %}>Catégorie 1</option>
+                <option value="Catégorie 2" {% if field['value'] == 'Catégorie 2' %}selected{% endif %}>Catégorie 2</option>
+              </select>
+
+              {% elif field['type_champ'] == 'date' %}
+              <input type="text" id="{{ field['field_name'] }}" name="{{ field['field_name'] }}" value="{{ field['value'] or '' }}"
+                     class="form-control" onblur="formatDateInput(this)" placeholder="JJMMAAAA ou JJMM ou JJMMAA"
+                     {% if lecture_seule %}readonly{% endif %}>
+
+              {% elif field['type_champ'] == 'number' %}
+              <input type="number" step="any" id="{{ field['field_name'] }}" name="{{ field['field_name'] }}" value="{{ field['value'] or '' }}"
+                     class="form-control" {% if lecture_seule %}readonly{% endif %}>
+
+              {% else %}
+              <input type="text" id="{{ field['field_name'] }}" name="{{ field['field_name'] }}" value="{{ field['value'] or '' }}"
+                     class="form-control" {% if lecture_seule %}readonly{% endif %}>
+              {% endif %}
+
+            </div>
+          </div>
+          {% endif %}
+
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    {% if not lecture_seule %}
+    <div class="text-center mt-4">
+      <button type="submit" class="btn btn-success">💾 Enregistrer</button>
+      <a href="{{ url_for('annexe1bis.liste', partner_id=partner_id) }}" class="btn btn-secondary">⬅️ Annuler</a>
+    </div>
+    {% endif %}
+
+  {% if not lecture_seule %}
+  </form>
+  {% endif %}
+</div>
+
+<script>
+function toggleStatutAutre() {
+  var statut = document.getElementById("statut");
+  var champAutre = document.getElementById("statut_autre");
+  if (champAutre && statut) {
+    champAutre.style.display = (statut.value === "Autres") ? "block" : "none";
+  }
+}
+
+function toggleReseauNational() {
+  var selectAppartient = document.getElementById('appartient_grand_reseau_habilitation_nationale');
+  var selectReseau = document.getElementById('reseau_national');
+  if (selectAppartient && selectReseau) {
+    selectReseau.style.display = (selectAppartient.value === 'oui') ? 'block' : 'none';
+  }
+}
+
+function toggleSignatureDates() {
+  var statut = document.getElementById("statut_signature");
+  var rowEnvoi = document.getElementById("row_date_envoi_signature");
+  var rowSignature = document.getElementById("row_date_signature");
+  if (!statut) return;
+  rowEnvoi.style.display = (statut.value === "envoyee" || statut.value === "signee") ? "flex" : "none";
+  rowSignature.style.display = (statut.value === "signee") ? "flex" : "none";
+}
+
+function formatDateInput(input) {
+  let val = input.value.replace(/\D/g, "");
+  if (val.length === 4) {
+    input.value = `${val.slice(0,2)}/${val.slice(2,4)}/${new Date().getFullYear()}`;
+  } else if (val.length === 6) {
+    input.value = `${val.slice(0,2)}/${val.slice(2,4)}/20${val.slice(4,6)}`;
+  } else if (val.length === 8) {
+    input.value = `${val.slice(0,2)}/${val.slice(2,4)}/${val.slice(4,8)}`;
+  }
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  toggleSignatureDates();
+});
+</script>
+{% endblock %}

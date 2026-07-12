@@ -1,0 +1,128 @@
+<h1 id="présentation-de-lapplication-ba38">Présentation de l’application
+BA38</h1>
+<p>BA38 est l’outil de gestion développé en interne par la Banque
+Alimentaire de l’Isère (application web Flask/Python, base SQLite),
+utilisé au quotidien par les salariés et bénévoles responsables de
+l’administration, du partenariat, de la logistique et de la
+trésorerie.</p>
+<h2 id="gestion">1. Gestion</h2>
+<h3 id="bénévoles">Bénévoles</h3>
+<ul>
+<li><p>Fiche complète par bénévole (coordonnées, fonction, engagement
+dans la vie associative, cotisations)</p></li>
+<li><p>Vue tableau (Tabulator) avec filtres par colonne, recherche,
+choix des colonnes affichées</p></li>
+<li><p>Modification en masse (édition de plusieurs bénévoles en une
+seule validation)</p></li>
+<li><p>Gestion du droit à l’image (photo + consentement)</p></li>
+<li><p>Désactivation / réactivation (au lieu d’une suppression
+définitive, avec historique)</p></li>
+<li><p>Envoi de mail groupé aux bénévoles, avec messages
+prédéfinis</p></li>
+<li><p>Export pour publipostage</p></li>
+</ul>
+<h3 id="associations-partenaires">Associations partenaires</h3>
+<ul>
+<li><p>Fiche complète par association (coordonnées, interlocuteurs,
+habilitation, activité, équipements)</p></li>
+<li><p><strong>Annexe 1 bis</strong> : formulaire réglementaire dédié,
+historisé (une version par visite), avec workflow de signature
+(brouillon → envoyée pour signature → signée), export PDF</p></li>
+<li><p><strong>Fiches de visite</strong> : compte-rendu de visite
+terrain, historisées par association, export PDF</p></li>
+<li><p>Duplication d’une fiche partenaire, comparaison avec les données
+VIF (réseau national)</p></li>
+<li><p>Accès restreint par secteur pour les responsables CAR (un CAR ne
+voit/modifie que les associations de son secteur)</p></li>
+<li><p>Vue tableau avec modification en masse, export Excel paramétrable
+par colonnes</p></li>
+</ul>
+<h3 id="fournisseurs">Fournisseurs</h3>
+<ul>
+<li><p>Fiche fournisseur avec contacts multiples</p></li>
+<li><p>Suivi dans le cadre de la ramasse</p></li>
+</ul>
+<h3 id="indicateurs">Indicateurs</h3>
+<ul>
+<li>Import et suivi des indicateurs trimestriels et annuels par
+association (fichiers réseau national)</li>
+</ul>
+<h3 id="exports">Exports</h3>
+<ul>
+<li>Génération d’exports Excel personnalisés (sélection des
+colonnes/filtres) pour bénévoles, associations, fournisseurs</li>
+</ul>
+<h2 id="exploitation">2. Exploitation</h2>
+<h3 id="distribution">Distribution</h3>
+<ul>
+<li>Organisation de la distribution alimentaire vers les associations
+(embryonnaire uniquement mouvement de stocks 02&gt;03)</li>
+</ul>
+<h3 id="plannings-pour-les-différents-postes-de-travail-ba38">Plannings
+pour les différents postes de travail (BA38)</h3>
+<ul>
+<li><p>Planning de ramasse (tournées, chauffeurs, points de
+collecte)</p></li>
+<li><p>Planning distribution</p></li>
+<li><p>Planning palettes</p></li>
+<li><p>Planning pesée</p></li>
+<li><p>Planning VIF</p></li>
+<li><p>Impression des plannings</p></li>
+</ul>
+<h2 id="finance">3. Finance</h2>
+<h3 id="trésorerie">Trésorerie</h3>
+<ul>
+<li>Suivi financier de l’association</li>
+</ul>
+<h3 id="facturation">Facturation</h3>
+<ul>
+<li>Émission et suivi des factures de participation (parsol2)</li>
+<li>Émission et suivi des factures de cotisation annuelle</li>
+<li>Emission de CERFA bénévoles annuels</li>
+</ul>
+<h2 id="engagements-dépenses">4. Engagements (dépenses)</h2>
+<ul>
+<li><p>Saisie de notes de frais (déplacements, achats) avec génération
+automatique du PDF justificatif</p></li>
+<li><p>Saisie d’achats (frais ou marchandises), suivi budgetaire de
+subventions ou de budgets internes</p></li>
+<li><p>Workflow de validation par pôle (un responsable ne peut pas
+valider sa propre demande)</p></li>
+<li><p>Gestion des abonnements de dépenses récurrentes (génération
+automatique mensuelle)</p></li>
+<li><p>Reporting et suivi budgétaire par pôle</p></li>
+<li><p>GED utilisable en révision des comptes</p></li>
+</ul>
+<h2 id="média">5. Média</h2>
+<h3 id="droit-à-limage">Droit à l’image</h3>
+<ul>
+<li>Registre centralisé du consentement photo par bénévole</li>
+</ul>
+<h3 id="événements">Événements</h3>
+<ul>
+<li><p>Création et gestion d’événements (texte, images, vidéos,
+PDF/PowerPoint convertis automatiquement)</p></li>
+<li><p>Diffusion sur écrans d’affichage (mode kiosque), avec plages
+horaires de diffusion configurables</p></li>
+</ul>
+<h3 id="photos-bénévoles">Photos bénévoles</h3>
+<ul>
+<li>Gestion des photos associées aux fiches bénévoles</li>
+</ul>
+<h2 id="administration">6. Administration</h2>
+<ul>
+<li><p>Gestion des utilisateurs et des rôles (droits lecture/écriture
+par module)</p></li>
+<li><p>Authentification à deux facteurs (2FA/TOTP) pour les comptes
+sensibles</p></li>
+<li><p>Paramétrage des listes de référence (CAR, réseaux nationaux,
+types de bénévoles…)</p></li>
+<li><p><strong>Mode test dédié à l’audit</strong> : bases de données
+anonymisées séparées, comptes à accès restreint (voient l’application en
+conditions réelles sans toucher aux vraies données ni pouvoir déclencher
+d’action serveur sensible), redirection automatique des emails vers
+l’utilisateur connecté</p></li>
+<li><p>Sécurité : protection anti brute-force sur la connexion,
+protection CSRF sur tous les formulaires, en-têtes de sécurité HTTP,
+journalisation des connexions</p></li>
+</ul>

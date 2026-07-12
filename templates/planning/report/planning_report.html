@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}Rapport activité bénévoles{% endblock %}
 
 {% block content %}
@@ -34,15 +36,10 @@
     </div>
   </div>
 
-  <div class="mt-4 d-flex gap-3 justify-content-between">
-    <button type="submit" class="btn btn-primary">
-      📄 Générer le rapport
-    </button>
-
-    <a href="{{ url_for('planning.planning_main') }}" class="btn btn-secondary">
-      ⬅️ Retour au planning
-    </a>
-  </div>
+  {% call action_buttons() %}
+    {{ action_button("📄 Générer le rapport", type="submit", color="primary") }}
+    {{ action_button("⬅️ Retour au planning", href=url_for('planning.planning_main'), color="outline-dark") }}
+  {% endcall %}
 
 
 </form>

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Abonnements récurrents{% endblock %}
+{% block content %}
+
+<div class="container mt-4">
+
+    <h2>🔁 Abonnements récurrents</h2>
+
+    <p class="text-muted">
+        Un abonnement recopie chaque mois un engagement de dépense existant
+        (même objet, montant, fournisseur, pôle) et le remet dans le circuit
+        de validation habituel. Pour créer un nouvel abonnement, ouvrez
+        l'engagement de dépense concerné puis utilisez le bouton
+        « 🔁 Transformer en abonnement ».
+    </p>
+
+    {% call action_buttons() %}
+        {{ action_button("⬅ Retour", href=url_for('engagements.engagements_parametres_main'), color="outline-dark") }}
+
+        <form method="POST"
+              action="{{ url_for('engagements.abonnement_generer_maintenant') }}"
+              class="m-0"
+              onsubmit="return confirm('Lancer la génération des abonnements dus aujourd\'hui ?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {{ action_button("▶️ Générer maintenant", type="submit", color="warning") }}
+        </form>
+    {% endcall %}
+
+    <div class="table-responsive">
+
+    <table class="table table-bordered table-striped">
+
+        <thead class="table-dark">
+            <tr>
+                <th>Objet</th>
+                <th>Pôle</th>
+                <th>Montant</th>
+                <th>Fournisseur</th>
+                <th>Jour du mois</th>
+                <th>Statut</th>
+                <th>Dernière génération</th>
+                <th>Générés</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+            {% for a in abonnements %}
+            <tr>
+                <td>
+                    <a href="{{ url_for('engagements.detail_engagement', engagement_id=a.id) }}">
+                        {{ a.objet }}
+                    </a>
+                </td>
+                <td>{{ a.pole_nom }}</td>
+                <td>{{ "%.2f"|format(a.montant_total or 0) }} €</td>
+                <td>{{ a.fournisseur_nom or "—" }}</td>
+                <td>{{ a.abonnement_jour_mois }}</td>
+                <td>
+                    {% if a.abonnement_actif %}
+                        <span class="badge bg-success">Actif</span>
+                    {% else %}
+                        <span class="badge bg-secondary">En pause</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ a.abonnement_derniere_generation_le[:10] if a.abonnement_derniere_generation_le else "—" }}
+                </td>
+                <td>{{ a.nb_generes }}</td>
+                <td>
+                    <form method="POST"
+                          action="{{ url_for('engagements.abonnement_toggle', engagement_id=a.id) }}"
+                          class="d-inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        {% if a.abonnement_actif %}
+                            {{ action_button("⏸️ Pause", type="submit", color="outline-secondary") }}
+                        {% else %}
+                            {{ action_button("▶️ Reprendre", type="submit", color="outline-success") }}
+                        {% endif %}
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="9" class="text-center text-muted">
+                    Aucun abonnement configuré.
+                </td>
+            </tr>
+            {% endfor %}
+
+        </tbody>
+
+    </table>
+
+    </div>
+
+</div>
+
+{% endblock %}

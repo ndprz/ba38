@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 import sqlite3
 import os
-from utils import get_db_path, require_access, write_log, envoyer_mail, render_modele_email, get_templates_pdf_dir
+from utils import get_db_path, require_access, write_log, envoyer_mail, render_modele_email, get_templates_pdf_dir, copier_modele_email_vers_prod
 from utils_pdf_form import remplir_pdf_indicateurs
 
 emails_bp = Blueprint("emails", __name__, template_folder="templates")
@@ -45,6 +45,7 @@ def edit_modele(id=None):
             code = request.form.get("code_modele")
             sujet = request.form.get("sujet")
             corps = request.form.get("corps")
+            action = request.form.get("action", "save")
 
             if id:
                 conn.execute("""
@@ -62,6 +63,14 @@ def edit_modele(id=None):
                 flash("Modèle créé", "success")
 
             conn.commit()
+
+            if action == "save_both" and os.getenv("ENVIRONMENT", "DEV").upper() == "DEV":
+                ok, err = copier_modele_email_vers_prod(code, sujet, corps)
+                if ok:
+                    flash("Modèle également enregistré en PROD", "success")
+                else:
+                    flash(f"⚠️ Échec de la copie vers PROD : {err}", "danger")
+
             return redirect(url_for("emails.liste_modeles"))
 
     return render_template("emails/edit_modele.html", modele=modele)
@@ -138,6 +147,7 @@ def envoyer_mails(campagne_id):
             JOIN associations a ON i.association_id = a.id
             WHERE i.campagne_id = ?
             AND LOWER(TRIM(i.statut_csv)) LIKE 'non%'
+            AND (i.exclure_envoi_mail IS NULL OR i.exclure_envoi_mail = 0)
         """, (campagne_id,)).fetchall()
 
     # ============================================================================

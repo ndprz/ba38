@@ -29,18 +29,7 @@ class RegistrationForm(FlaskForm):
         DataRequired(), 
         EqualTo('password', message="Les mots de passe ne correspondent pas")
     ])
-    role = SelectField('Rôle', choices=[
-        ('admin', 'Administrateur'),
-        ('gestionnaire', 'Gestionnaire'),
-        ('car', 'Car'),
-        ('user', 'Utilisateur')
-    ], validators=[DataRequired()])
-    actif = SelectField('Actif', choices=[
-        ('Oui', 'Oui'),
-        ('Non', 'Non')
-    ], validators=[DataRequired()])
-
-    submit = SubmitField("Créer le compte")  # ✅ Ajout nécessaire
+    submit = SubmitField("Créer le compte")
 
     def validate_email(self, email):
         """ Vérifie si l'email est conforme et déjà utilisé """

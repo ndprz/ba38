@@ -16,7 +16,7 @@ from pathlib import Path
 from flask import Blueprint, request, render_template, flash, redirect, url_for, send_file,abort,current_app, session
 from flask_login import login_required
 from utils import get_google_services, write_log, envoyer_mail,get_db_path,upload_file_to_drive_path,slugify_filename
-from utils import get_drive_folder_id_from_path, require_access
+from utils import get_drive_folder_id_from_path, require_access, render_modele_email
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from threading import Thread
@@ -218,7 +218,7 @@ def delete_drive_folder_contents(drive_path, wait_until_empty=True, timeout=30):
 @require_access("tresorerie", "ecriture")
 def traitement_participation():
     """
-    - Lit les .txt dans le dossier Drive défini par DOSSIER_PARTICIPATION (.env)
+    - Lit le .txt envoyé depuis le poste de l'utilisateur (upload local)
     - Supprime les lignes ven/sam/dim, recalcule les totaux
     - Crée/choisit un sous-dossier TrimN_YYYY sous DOSSIER_PARTICIPATION
       * S'il existe déjà : on le garde, on SUPPRIME TOUT SON CONTENU
@@ -323,38 +323,21 @@ def traitement_participation():
 
         return folder_id
 
-    # -------- 1) Lister les .txt dans le dossier d’origine --------
-    results = service.files().list(
-        q=f"'{DOSSIER_PARTICIPATION}' in parents and trashed=false and name contains '.txt'",
-        fields="files(id, name, mimeType)",
-        supportsAllDrives=True,
-        includeItemsFromAllDrives=True,
-    ).execute()
-
-    fichiers = results.get("files", [])
-
     if request.method == "POST":
-        file_id = request.form.get("file_id")
-        if not file_id:
+        uploaded_file = request.files.get("fichier")
+        if not uploaded_file or not uploaded_file.filename:
             flash("❌ Aucun fichier sélectionné", "danger")
             return redirect(url_for("tresorerie.traitement_participation"))
 
-        # -------- 2) Télécharger le fichier source --------
-        request_dl = service.files().get_media(fileId=file_id, supportsAllDrives=True)
-        fh = io.BytesIO()
-        from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
-        downloader = MediaIoBaseDownload(fh, request_dl)
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
-        fh.seek(0)
+        from werkzeug.utils import secure_filename
+        fichier_nom = secure_filename(uploaded_file.filename) or "parsol2l.txt"
 
-        # -------- 3) Lecture contenu (UTF-8, fallback CP1252) --------
+        # -------- 2) Lecture contenu (UTF-8, fallback CP1252) --------
+        contenu_bytes = uploaded_file.read()
         try:
-            contenu = fh.read().decode("utf-8")
+            contenu = contenu_bytes.decode("utf-8")
         except UnicodeDecodeError:
-            fh.seek(0)
-            contenu = fh.read().decode("cp1252")
+            contenu = contenu_bytes.decode("cp1252")
 
         lignes = contenu.splitlines(keepends=True)
 
@@ -381,8 +364,8 @@ def traitement_participation():
         folder_id_cible = DOSSIER_PARTICIPATION
         if premiere_date:
             trimestre = (premiere_date.month - 1) // 3 + 1
-            suffixe = f"_Trim{trimestre}_{premiere_date.year}"
-            folder_name = f"Trim{trimestre}_{premiere_date.year}"
+            suffixe = f"_{premiere_date.year}_T{trimestre}"
+            folder_name = f"{premiere_date.year}_T{trimestre}"
             # 👉 Ici on n’efface plus/ recrée pas le dossier : on le nettoie et supprime les doublons
             folder_id_cible = ensure_clean_trim_folder(DOSSIER_PARTICIPATION, folder_name)
         else:
@@ -481,9 +464,21 @@ def traitement_participation():
                 body=meta, media_body=media, fields="id", supportsAllDrives=True
             ).execute()
 
-        fichier_nom = next((f["name"] for f in fichiers if f["id"] == file_id), "parsol2l.txt")
+        def upload_bytes(nom: str, data: bytes, folder_id: str):
+            chemin_tmp = f"/tmp/{nom}"
+            with open(chemin_tmp, "wb") as f:
+                f.write(data)
+            media = MediaFileUpload(chemin_tmp, mimetype="text/plain", resumable=False)
+            meta = {"name": nom, "parents": [folder_id]}
+            service.files().create(
+                body=meta, media_body=media, fields="id", supportsAllDrives=True
+            ).execute()
+
         base = fichier_nom[:-4] if fichier_nom.lower().endswith(".txt") else fichier_nom
 
+        # Le dossier cible vient d'être purgé (ensure_clean_trim_folder) : on y
+        # redépose le fichier original pour qu'il reste disponible à côté des sorties.
+        upload_bytes(fichier_nom, contenu_bytes, folder_id_cible)
         upload_txt(f"{base}_corrigé{suffixe}.txt", txt_corrige, folder_id_cible)
         upload_txt(f"{base}_lignes_supprimees{suffixe}.txt", txt_suppr, folder_id_cible)
         upload_txt(f"{base}_analyse{suffixe}.txt", txt_analyse, folder_id_cible)
@@ -495,7 +490,7 @@ def traitement_participation():
         )
         return redirect(url_for("tresorerie.traitement_participation"))
 
-    return render_template("tresorerie/traitement_participation.html", fichiers=fichiers)
+    return render_template("tresorerie/traitement_participation.html")
 
 # ===============================
 # 🗑️ Ancienne fonction simple (conservée pour tests)
@@ -2998,6 +2993,15 @@ def factures_pdf():
         "ba380.comptable@banquealimentaire.org"
     )
 
+    conn_modeles = sqlite3.connect(get_db_path())
+    conn_modeles.row_factory = sqlite3.Row
+    modeles_facture = conn_modeles.execute(
+        "SELECT * FROM modeles_emails WHERE type_periode = 'facture' ORDER BY code_modele"
+    ).fetchall()
+    conn_modeles.close()
+
+    periode = session.get("factures_periode", "")
+
     preview = []
 
 
@@ -3022,7 +3026,7 @@ def factures_pdf():
     # ==========================================================
     # 🚀 ENVOI BACKGROUND
     # ==========================================================
-    def envoyer_background(pages, pdf_path, mail_mode, mail_test_to, mail_sender):
+    def envoyer_background(pages, pdf_path, mail_mode, mail_test_to, mail_sender, sujet_modele, corps_modele, periode):
 
         reader = PdfReader(pdf_path)
 
@@ -3051,22 +3055,12 @@ def factures_pdf():
 
             fichier = build_pdf(reader, p["pages"])
 
+            contexte = {"nom_association": p["nom"], "periode": periode}
+
             envoyer_mail(
-                sujet=f"Participation de solidarité du 1er trimestre 2026 – {p['nom']} 2eme envoi",
+                sujet=render_modele_email(sujet_modele, contexte).strip(),
                 destinataires=[email],
-                texte="""Bonjour,
-
-                    Suite à un probleme technique, un certain nombre d'emails de factures ne sont pas partis.
-                    Nous faisons un deuxième envoi aujourd'hui, veuillez nous excuser pour ce désagrément si vous aviez déjà reçu la facture.
-
-
-                    Vous trouverez ci-joint, en fichier attaché, votre facture de participation de solidarité du 1er  trimestre 2026.
-
-                    Pour les C.C.A.S. : Votre Participation de Solidarité est déposée sur le site ChorusPro. Vous recevez ce mail à titre d’information.
-
-                    Bonne réception
-                    La Trésorerie de la Banque Alimentaire de l’Isère
-                    """,
+                texte=render_modele_email(corps_modele, contexte),
                 sender_override=mail_sender,
                 attachment_path=fichier,
                 bcc=[mail_sender]
@@ -3098,18 +3092,32 @@ def factures_pdf():
 
             if not pdf_path or not os.path.exists(pdf_path):
                 flash("❌ Fichier introuvable", "danger")
-                return redirect(url_for("tresorerie.factures_upload"))
+                return redirect(url_for("tresorerie.factures_pdf"))
+
+            modele_id = session.get("factures_modele_id")
+
+            conn_modeles = sqlite3.connect(get_db_path())
+            conn_modeles.row_factory = sqlite3.Row
+            modele = conn_modeles.execute(
+                "SELECT * FROM modeles_emails WHERE id = ?", (modele_id,)
+            ).fetchone()
+            conn_modeles.close()
+
+            if not modele:
+                flash("❌ Modèle de mail introuvable, merci de le resélectionner.", "danger")
+                return redirect(url_for("tresorerie.factures_pdf"))
 
             pages = extract_pages(pdf_path)
 
             Thread(
                 target=envoyer_background,
-                args=(pages, pdf_path, mail_mode, mail_test_to, mail_sender)
+                args=(pages, pdf_path, mail_mode, mail_test_to, mail_sender,
+                      modele["sujet"], modele["corps"], periode)
             ).start()
 
             flash(f"📧 Envoi lancé en arrière-plan (expéditeur : {mail_sender})", "info")
 
-            return redirect(url_for("tresorerie.factures_upload"))
+            return redirect(url_for("tresorerie.factures_pdf"))
 
         # ======================================================
         # ANALYSE PDF
@@ -3117,10 +3125,19 @@ def factures_pdf():
         else:
 
             file = request.files.get("pdf_file")
+            modele_id = request.form.get("modele_id")
+            periode = request.form.get("periode", "").strip()
 
             if not file:
                 flash("❌ Fichier manquant", "danger")
-                return redirect(url_for("tresorerie.factures_upload"))
+                return redirect(url_for("tresorerie.factures_pdf"))
+
+            if not modele_id:
+                flash("❌ Aucun modèle de mail sélectionné", "danger")
+                return redirect(url_for("tresorerie.factures_pdf"))
+
+            session["factures_modele_id"] = modele_id
+            session["factures_periode"] = periode
 
             tmp_path = os.path.join(os.getenv("TMP_DIR", "/srv/ba38/tmp"), f"factures_{int(time.time())}.pdf")
             file.save(tmp_path)
@@ -3154,22 +3171,83 @@ def factures_pdf():
                     "pdf": pdf_file
                 })
 
+            modele_courant = next((m for m in modeles_facture if str(m["id"]) == str(modele_id)), None)
+
             return render_template(
                 "tresorerie/factures_preview.html",
                 preview=preview,
                 mail_mode=mail_mode,
                 mail_test_to=mail_test_to,
-                mail_sender=mail_sender
+                mail_sender=mail_sender,
+                modele_courant=modele_courant,
+                periode=periode
             )
 
     return render_template(
         "tresorerie/factures_upload.html",
         mail_mode=mail_mode,
         mail_test_to=mail_test_to,
-        mail_sender=mail_sender
+        mail_sender=mail_sender,
+        modeles_facture=modeles_facture,
+        periode=periode
     )
 
 
+
+
+@tresorerie_bp.route('/factures_modele_save', methods=['POST'])
+@login_required
+@require_access("tresorerie", "ecriture")
+def factures_modele_save():
+
+    modele_id = request.form.get("id")
+    code_modele = request.form.get("code_modele", "").strip()
+    sujet = request.form.get("sujet", "").strip()
+    corps = request.form.get("corps", "").strip()
+
+    if not code_modele or not sujet or not corps:
+        flash("❌ Code, sujet et corps sont obligatoires.", "danger")
+        return redirect(url_for("tresorerie.factures_pdf"))
+
+    conn = sqlite3.connect(get_db_path())
+
+    if modele_id:
+        conn.execute("""
+            UPDATE modeles_emails
+            SET code_modele = ?, sujet = ?, corps = ?, date_modification = ?
+            WHERE id = ? AND type_periode = 'facture'
+        """, (code_modele, sujet, corps, datetime.now().isoformat(), modele_id))
+        flash("✅ Modèle mis à jour.", "success")
+    else:
+        conn.execute("""
+            INSERT INTO modeles_emails (code_modele, sujet, corps, date_modification, type_periode)
+            VALUES (?, ?, ?, ?, 'facture')
+        """, (code_modele, sujet, corps, datetime.now().isoformat()))
+        flash("✅ Modèle créé.", "success")
+
+    conn.commit()
+    conn.close()
+
+    return redirect(url_for("tresorerie.factures_pdf"))
+
+
+@tresorerie_bp.route('/factures_modele_delete', methods=['POST'])
+@login_required
+@require_access("tresorerie", "ecriture")
+def factures_modele_delete():
+
+    modele_id = request.form.get("id")
+
+    conn = sqlite3.connect(get_db_path())
+    conn.execute(
+        "DELETE FROM modeles_emails WHERE id = ? AND type_periode = 'facture'",
+        (modele_id,)
+    )
+    conn.commit()
+    conn.close()
+
+    flash("🗑️ Modèle supprimé.", "warning")
+    return redirect(url_for("tresorerie.factures_pdf"))
 
 
 @tresorerie_bp.route('/factures_preview_pdf')
@@ -3199,7 +3277,7 @@ def factures_toggle_mode():
         session["MAIL_MODE"] = "TEST"
         flash("🧪 Mode TEST activé", "warning")
 
-    return redirect(url_for("tresorerie.factures_upload"))
+    return redirect(url_for("tresorerie.factures_pdf"))
 
 
 def envoyer_factures_background(pages, pdf_path, mail_mode, mail_test_to):

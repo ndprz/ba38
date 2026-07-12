@@ -1,0 +1,200 @@
+<p><strong>Application BA38 – Engagements</strong><br />
+Version de la documentation : 29/06/2026</p>
+<h1 id="objectif-du-module">1. Objectif du module</h1>
+<p>Le module « GED » (Gestion Électronique des Documents) est une vue de
+consultation et d’audit de l’ensemble des engagements de dépenses
+enregistrés dans l’application.</p>
+<p>Il permet notamment :<br />
+- de visualiser tous les dossiers d’engagement (actifs et
+archivés),<br />
+- d’évaluer la complétude documentaire de chaque dossier (devis,
+factures, justificatifs, notes de frais),<br />
+- de vérifier le rapprochement comptable avec EBP (numéro
+d’écriture),<br />
+- d’identifier les dossiers incomplets ou présentant une anomalie,<br />
+- d’exporter les données en Excel pour analyse ou audit externe.</p>
+<p><strong>Important : la GED ne permet pas d’ajouter ou de supprimer
+des documents. Les fichiers sont déposés directement depuis les
+engagements (création, validation, règlement). La GED est une interface
+de consultation uniquement.</strong></p>
+<h1 id="accès">2. Accès</h1>
+<p>L’accès à la GED nécessite le droit « lecture » (ou supérieur) sur «
+Paramètres engagements ». Ce module est destiné au trésorier, à la
+présidence et au commissaire aux comptes (CAC).</p>
+<p>Il n’y a pas de restriction par pôle : un utilisateur autorisé voit
+l’ensemble des engagements de tous les pôles, y compris les engagements
+archivés.</p>
+<h1 id="accéder-à-la-ged">3. Accéder à la GED</h1>
+<p>Menu → Engagements → GED.<br />
+Le bouton « ↩︎️ Retour » permet de revenir à la liste des engagements
+depuis la GED.</p>
+<h1 id="filtrer-les-dossiers">4. Filtrer les dossiers</h1>
+<p>Avant d’afficher des résultats, il faut sélectionner des critères
+puis cliquer sur « 🔍 Rechercher ». Par défaut, les dates proposées
+couvrent l’exercice en cours (du 1er janvier à aujourd’hui).</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Filtre</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>📅 Date début / 📅 Date fin</td>
+<td>Période de création des engagements à afficher</td>
+</tr>
+<tr class="even">
+<td>🏢 Pôle</td>
+<td>Limite l’affichage aux engagements d’un pôle donné</td>
+</tr>
+<tr class="odd">
+<td>🏷️ Rubrique</td>
+<td>Limite l’affichage à une rubrique comptable</td>
+</tr>
+<tr class="even">
+<td>💰 Financement</td>
+<td>« Budget propre » ou une subvention précise</td>
+</tr>
+<tr class="odd">
+<td>⚙️ Statut</td>
+<td>Un des statuts du circuit de validation (voir § 7)</td>
+</tr>
+<tr class="even">
+<td>🔢 N° EBP</td>
+<td>« Avec » ou « Sans » numéro d’écriture comptable EBP</td>
+</tr>
+<tr class="odd">
+<td>🔍 Rechercher n° EBP</td>
+<td>Recherche un numéro EBP précis (ou partiel)</td>
+</tr>
+<tr class="even">
+<td>📋 Complétude</td>
+<td>Complets / Incomplets / En cours / Refusés</td>
+</tr>
+<tr class="odd">
+<td>🗑 Archivés</td>
+<td>Tous / Actifs uniquement / Archivés uniquement</td>
+</tr>
+</tbody>
+</table>
+<p>Le bouton « ✖ Réinitialiser » permet de revenir aux filtres par
+défaut.</p>
+<h1 id="tableau-de-bord">5. Tableau de bord</h1>
+<p>Après une recherche, quatre indicateurs s’affichent en haut de page
+:</p>
+<p>- Dossiers : nombre total de dossiers trouvés et montant total
+cumulé,<br />
+- Complets ✅ : nombre et pourcentage de dossiers complets,<br />
+- Incomplets ⚠️ : nombre de dossiers incomplets, avec le décompte des
+dossiers réglés sans numéro EBP s’il y en a,<br />
+- Avec N° EBP 🔢 : nombre de dossiers rapprochés comptablement et
+montant réglé correspondant.</p>
+<h1 id="tableau-des-dossiers">6. Tableau des dossiers</h1>
+<p>Pour chaque engagement trouvé, le tableau affiche : le numéro de
+dossier, la date de création, le demandeur, le pôle, l’objet et le
+bénéficiaire (avec le financement associé le cas échéant), la rubrique,
+le montant, le statut, la date de règlement, le numéro EBP, le nombre de
+pièces jointes, l’indicateur de complétude, et un bouton « 👁 » pour
+ouvrir le détail du dossier dans un nouvel onglet.</p>
+<p>Les lignes sont colorées selon la complétude : vert pour un dossier
+complet, orange pour un dossier incomplet, rouge pour un dossier
+refusé.</p>
+<p>Le pied du tableau indique le nombre total de dossiers affichés et le
+montant cumulé.</p>
+<h1 id="indicateur-de-complétude">7. Indicateur de complétude</h1>
+<p>Depuis le passage du règlement en deux phases (voir la documentation
+du module Engagements), le numéro d’écriture EBP n’est plus exigé dès
+qu’un dossier est réglé : il n’est attendu qu’à partir de la
+comptabilisation. Chaque dossier reçoit automatiquement l’un des cinq
+statuts de complétude suivants :</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Badge</th>
+<th>Signification</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>✅ Complet</td>
+<td>Dossier comptabilisé ou terminé, avec numéro EBP et toutes les
+pièces attendues</td>
+</tr>
+<tr class="even">
+<td>⚠️ Incomplet</td>
+<td>Dossier réglé, comptabilisé ou terminé, avec des pièces manquantes
+(devis, facture/justificatif, note de frais) ou, à partir de la
+comptabilisation, sans numéro EBP</td>
+</tr>
+<tr class="odd">
+<td>🔷 En attente compta</td>
+<td>Dossier réglé, pièces complètes, en attente de comptabilisation
+(numéro EBP pas encore exigé)</td>
+</tr>
+<tr class="even">
+<td>🔵 En cours</td>
+<td>Le circuit de validation n’est pas terminé ; la complétude n’est pas
+encore évaluée</td>
+</tr>
+<tr class="odd">
+<td>🔴 Refusé</td>
+<td>L’engagement a été refusé</td>
+</tr>
+</tbody>
+</table>
+<p>Survoler le badge de complétude dans le tableau affiche le détail des
+pièces manquantes lorsqu’il y en a.</p>
+<h1 id="export-excel">8. Export Excel</h1>
+<p>Le bouton « 📥 Export Excel CAC » génère un fichier Excel contenant
+exactement les dossiers affichés par la recherche en cours, avec les
+mêmes filtres. Ce fichier est destiné à être transmis à un commissaire
+aux comptes ou utilisé pour une analyse hors application.</p>
+<h1 id="règles-métier-importantes">9. Règles métier importantes</h1>
+<ul>
+<li><p>La complétude est calculée automatiquement ; elle ne se déclare
+pas manuellement.</p></li>
+<li><p>Un dossier réglé sans numéro EBP n’est pas une anomalie : c’est
+l’état normal avant comptabilisation. Seul un dossier comptabilisé ou
+terminé sans numéro d’écriture EBP est signalé par un badge « ❌
+Manquant ».</p></li>
+<li><p>Les pièces exigées (devis, facture/justificatif, note de frais)
+dépendent du montant de l’engagement et des paliers de validation
+configurés dans le module Engagements.</p></li>
+<li><p>Les engagements archivés restent visibles par défaut dans la GED,
+qui est une vue d’audit complète.</p></li>
+</ul>
+<h1 id="conseils-dutilisation">10. Conseils d’utilisation</h1>
+<ul>
+<li><p>Toujours vérifier les dossiers « ⚠️ Incomplets » avant une
+clôture comptable.</p></li>
+<li><p>Utiliser le filtre N° EBP → « Sans N° EBP » pour retrouver
+rapidement les dossiers réglés non rapprochés.</p></li>
+<li><p>Exporter en Excel avant toute transmission au commissaire aux
+comptes.</p></li>
+<li><p>Le bouton « 👁 » ouvre le dossier complet (justificatifs,
+historique) dans un nouvel onglet, sans perdre les filtres en cours dans
+la GED.</p></li>
+</ul>
+<h1 id="informations-techniques">11. Informations techniques</h1>
+<p>Le module repose principalement sur les éléments suivants :<br />
+<br />
+- Blueprint Flask : engagements_bp<br />
+- Module Python : engagements/routes_ged.py<br />
+- Template HTML : engagements/ged.html<br />
+- Tables SQLite : engagements, engagements_depenses,
+engagements_fichiers, engagement_poles, engagement_subventions,
+engagements_parametres</p>
+<h1 id="support">12. Support</h1>
+<p>En cas de problème :<br />
+- vérifier les filtres sélectionnés (dates, pôle, statut),<br />
+- vérifier le numéro EBP saisi en trésorerie,<br />
+- contacter le service informatique BA38.</p>

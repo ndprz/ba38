@@ -23,9 +23,16 @@
         <textarea name="corps" class="form-control" rows="10">{{ modele.corps if modele else '' }}</textarea>
     </div>
 
-    <button class="btn btn-success">💾 Enregistrer</button>
+    <button type="submit" name="action" value="save" class="btn btn-success">💾 Enregistrer</button>
 
-    <a href="{{ url_for('emails.liste_modeles') }}" 
+    {% if env_name|upper == 'DEV' %}
+    <button type="submit" name="action" value="save_both" class="btn btn-primary"
+            onclick="return confirm('Enregistrer ce modèle à la fois en DEV et en PROD ?');">
+        💾 Enregistrer en DEV et PROD
+    </button>
+    {% endif %}
+
+    <a href="{{ url_for('emails.liste_modeles') }}"
     target="emails_window"
     class="btn btn-secondary">
         Retour

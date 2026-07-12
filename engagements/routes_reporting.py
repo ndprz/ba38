@@ -240,9 +240,14 @@ STATUTS_LABELS = {
     "valide":                "Validé",
     "a_payer":               "À payer",
     "reglee":                "Réglé",
+    "comptabilise":          "Comptabilisé",
     "termine":               "Terminé",
     "refuse":                "Refusé",
 }
+
+# Statuts pour lesquels l'argent a été réglé (paiement fournisseur
+# ou remboursement bénévole effectué), comptabilisé ou non.
+STATUTS_REGLES = {"reglee", "comptabilise", "termine"}
 
 
 # ============================================================
@@ -919,7 +924,7 @@ def engagements_reporting_pdf():
     ]
 
     nb_a_payer   = sum(1 for r in rows if r["statut"] == "a_payer")
-    nb_reglees   = sum(1 for r in rows if r["statut"] == "reglee")
+    nb_reglees   = sum(1 for r in rows if r["statut"] in STATUTS_REGLES)
     mt_a_payer   = sum(
         float(r["montant_total"] or 0)
         for r in rows

@@ -1,3 +1,4 @@
+{% from "macros/buttons.html" import action_button, action_buttons %}
 <div class="mb-4 d-flex flex-wrap justify-content-end" style="gap: 1rem;">
 
     <!-- 🔙 Bouton Précédent -->
@@ -19,11 +20,7 @@
     {% endif %}
 
     <!-- 🗂️ Retour -->
-    <button type="button"
-            class="btn btn-outline-secondary"
-            onclick="handleReturn('{{ url_for('fournisseurs.liste_fournisseurs') }}?{{ next_url|replace('&', '&amp;') }}')">
-        🗂️ Retour Fournisseurs
-    </button>
+    {{ action_button("🗂️ Retour Fournisseurs", onclick="handleReturn('" ~ url_for('fournisseurs.liste_fournisseurs') ~ "?" ~ next_url|replace('&', '&amp;') ~ "')", color="outline-dark") }}
 
 
     <!-- ✅ Enregistrer -->
@@ -31,7 +28,5 @@
         ✅ Enregistrer les modifications
     </button>
 
-    <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
-      ↩️ Retour à l'accueil
-    </a>
+    {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
 </div>

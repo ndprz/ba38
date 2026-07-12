@@ -1,0 +1,383 @@
+<p><strong>Application BA38 – Engagements (dépenses, déplacements, notes
+de frais)</strong><br />
+Version de la documentation : 08/07/2026</p>
+<h1 id="objectif-du-module">1. Objectif du module</h1>
+<p>Le module « Engagements » permet de gérer l’ensemble des demandes de
+dépense de l’association, depuis leur création jusqu’à leur règlement et
+leur archivage.</p>
+<p>Il couvre quatre types de demandes :<br />
+- l’achat ou la dépense (avec ou sans fournisseur),<br />
+- le déplacement (note de frais kilométrique),<br />
+- le remboursement d’un bénévole ou salarié ayant avancé des
+frais,<br />
+- le paiement direct à un fournisseur référencé.</p>
+<p>Selon le montant de la demande, le circuit de validation passe
+automatiquement par le responsable de pôle, puis si nécessaire par la
+présidence, avant transmission à la trésorerie pour règlement.</p>
+<h1 id="les-acteurs-du-circuit">2. Les acteurs du circuit</h1>
+<p>- Demandeur : bénévole ou salarié qui crée la demande.<br />
+- Responsable de pôle (et ses suppléants) : valide les demandes de son
+pôle d’activité.<br />
+- Présidence / bureau : valide les demandes dépassant un certain
+montant.<br />
+- Trésorier : enregistre le règlement et le numéro d’écriture comptable
+(EBP).<br />
+- Administrateur du module : configure les pôles et les seuils de
+validation, peut archiver, restaurer ou supprimer définitivement un
+dossier.</p>
+<h1 id="principe-général-de-fonctionnement">3. Principe général de
+fonctionnement</h1>
+<h2 id="les-pôles-dactivité">3.1 Les pôles d’activité</h2>
+<p>Chaque demande est rattachée à un pôle d’activité (ex : Collecte,
+Distribution, Action sociale...). Un pôle possède un responsable,
+jusqu’à deux suppléants, éventuellement un trésorier dédié, et une ou
+plusieurs adresses mail pour la validation présidence.</p>
+<h2 id="les-paliers-de-validation">3.2 Les paliers de validation</h2>
+<p>Le circuit de validation d’une demande dépend de son montant, comparé
+à des « paliers » configurés dans les paramètres du module. Pour chaque
+palier, on définit :<br />
+- le montant maximum concerné,<br />
+- si un ou deux devis PDF sont obligatoires,<br />
+- si une attestation de comparaison est exigée,<br />
+- si l’accord du responsable de pôle est requis,<br />
+- si l’accord de la présidence est requis.</p>
+<p><strong>Le palier appliqué est le plus petit dont le montant maximum
+est supérieur ou égal au montant de la demande. Plus le montant est
+élevé, plus le circuit de validation est exigeant.</strong></p>
+<h2 id="cycle-de-vie-dun-engagement">3.3 Cycle de vie d’un
+engagement</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Statut</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>En attente pôle</td>
+<td>La demande attend la validation du responsable de pôle ou d’un
+suppléant.</td>
+</tr>
+<tr class="even">
+<td>En attente bureau</td>
+<td>La demande, déjà validée par le pôle, attend la validation de la
+présidence (uniquement si le palier l’exige).</td>
+</tr>
+<tr class="odd">
+<td>Validé</td>
+<td>La demande a franchi toutes les étapes de validation requises ; elle
+attend d’être transmise à la trésorerie.</td>
+</tr>
+<tr class="even">
+<td>À payer</td>
+<td>La demande est entre les mains de la trésorerie, en attente de
+règlement.</td>
+</tr>
+<tr class="odd">
+<td>Réglé</td>
+<td>Le fournisseur a été payé ou le bénévole remboursé. Le numéro
+d’écriture comptable n’est pas encore connu à ce stade.</td>
+</tr>
+<tr class="even">
+<td>Comptabilisé</td>
+<td>Le règlement a été rapproché du relevé bancaire et rattaché à une
+écriture comptable (numéro EBP).</td>
+</tr>
+<tr class="odd">
+<td>Refusé</td>
+<td>La demande a été rejetée, avec un motif. Seul le demandeur peut la
+corriger et la retransmettre.</td>
+</tr>
+<tr class="even">
+<td>Terminé</td>
+<td>Le dossier est clôturé après comptabilisation.</td>
+</tr>
+<tr class="odd">
+<td>Archivé</td>
+<td>Le dossier est masqué de la liste courante (rien n’est supprimé). Il
+peut être restauré à tout moment par un administrateur.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Cas particulier des déplacements : une fois validée par le
+pôle, une note de frais de déplacement part automatiquement « À payer »
+vers la trésorerie, sans passer par l’étape « Validé » ni nécessiter de
+devis.</strong></p>
+<h1 id="créer-une-demande-dengagement">4. Créer une demande
+d’engagement</h1>
+<p>Menu → Engagements → ➕ Demande d’engagement.</p>
+<p>Le formulaire demande de préciser :<br />
+- la nature de la dépense : 🛒 Achat / dépense ou 🚗 Déplacement,<br />
+- le mode de paiement : 👤 Vous-même (remboursement), 👥 Autre bénévole
+ou salarié, ou 🏢 Paiement fournisseur BA38,<br />
+- le pôle d’activité et l’objet de la demande (obligatoires),<br />
+- une description libre, la rubrique comptable concernée et, le cas
+échéant, le projet ou la subvention sur lequel imputer la dépense,<br />
+- le montant total prévu (obligatoire),<br />
+- les pièces justificatives (factures, tickets, devis...).</p>
+<p>Si le mode de paiement est « Paiement fournisseur BA38 », il faut
+choisir un fournisseur existant ou en créer un nouveau directement
+depuis le formulaire (bouton « ➕ Nouveau »), en renseignant au minimum
+son nom, son adresse, son email et son IBAN.</p>
+<p>Selon le palier de validation correspondant au montant saisi, un ou
+deux devis PDF peuvent être exigés avant de pouvoir valider le
+formulaire.</p>
+<p><strong>La demande ne peut être envoyée qu’après avoir coché la case
+de signature électronique confirmant l’exactitude des
+informations.</strong></p>
+<p>Une fois la demande enregistrée, un mail est automatiquement envoyé
+au responsable de pôle (et à ses suppléants) pour l’inviter à valider la
+demande.</p>
+<h1 id="abonnements-récurrents-génération-automatique-mensuelle">5.
+Abonnements récurrents (génération automatique mensuelle)</h1>
+<p>Certaines dépenses reviennent chaque mois à l’identique (ex :
+abonnement logiciel, hébergement...). Plutôt que de ressaisir une
+nouvelle demande chaque mois, un engagement de dépense peut être
+transformé en « abonnement » : un nouvel engagement identique est alors
+créé automatiquement chaque mois.</p>
+<p>Menu → ouvrir un engagement de dépense déjà créé → bouton « 🔁
+Transformer en abonnement » (visible aux utilisateurs disposant du
+paramétrage des engagements).<br />
+Il suffit d’indiquer le jour du mois (entre 1 et 28) auquel le nouvel
+engagement doit être généré.</p>
+<p>Chaque mois, à la date choisie, un nouvel engagement est créé
+automatiquement avec le même objet, le même montant, le même fournisseur
+et le même pôle que l’engagement d’origine.<br />
+Un abonnement n’est jamais validé automatiquement : le nouvel engagement
+repart dans le circuit de validation habituel (mail au responsable de
+pôle avec lien de validation sécurisé, puis présidence si le palier
+l’exige).<br />
+Si aucun palier de validation ne correspond au montant, la génération de
+ce mois-là est simplement ignorée (rien n’est créé).</p>
+<p>Sur la fiche de l’engagement généré automatiquement, un bandeau
+rappelle qu’il provient d’un abonnement et permet de retrouver
+l’engagement d’origine.</p>
+<p>Menu Paramétrage → Abonnements récurrents : cette page liste tous les
+abonnements configurés (objet, pôle, montant, jour du mois, dernière
+génération, nombre d’engagements déjà générés). Elle permet de :</p>
+<p>- mettre en pause / reprendre un abonnement, sans perdre sa
+configuration,<br />
+- retirer définitivement l’abonnement (les engagements déjà générés
+restent inchangés, seules les générations futures s’arrêtent),<br />
+- déclencher une génération immédiate (bouton « ▶️ Générer maintenant
+»), utile pour rattraper un abonnement ou vérifier son fonctionnement
+sans attendre la date prévue.</p>
+<p>La génération automatique tourne chaque nuit sur le serveur ; elle ne
+crée jamais deux fois le même mois pour un même abonnement, même si elle
+est relancée manuellement le même jour.</p>
+<h1 id="cas-particulier-déplacements-et-notes-de-frais">6. Cas
+particulier : déplacements et notes de frais</h1>
+<p>Lorsque la nature de la dépense est « 🚗 Déplacement », un bloc de
+calcul automatique s’affiche pour saisir :<br />
+- la date du déplacement,<br />
+- le nombre de kilomètres parcourus,<br />
+- les péages et les frais de repas.</p>
+<p>Le montant est calculé automatiquement selon le barème kilométrique
+en vigueur (0,529 €/km), auquel s’ajoutent péages et repas ; il reste
+modifiable manuellement si besoin.</p>
+<p>Une note de frais PDF est générée automatiquement avec ces
+informations dès l’enregistrement de la demande. Elle peut être
+régénérée à tout moment avant le règlement depuis la fiche de
+l’engagement, bouton « 🚗 Régénérer la note de frais » (uniquement si le
+dossier n’est pas encore réglé).</p>
+<p><strong>Aucun devis n’est jamais exigé pour un déplacement, quel que
+soit le montant.</strong></p>
+<h1 id="validation-par-le-responsable-de-pôle">7. Validation par le
+responsable de pôle</h1>
+<p>La demande est soumise au responsable du pôle concerné (ou à l’un de
+ses suppléants), qui peut :<br />
+- la valider (bouton « ✅ Valider pôle » sur la fiche de
+l’engagement),<br />
+- la refuser, en indiquant un motif.</p>
+<p>Pour faciliter la validation, le mail envoyé au responsable contient
+un lien de validation sécurisé qui permet de valider la demande
+directement depuis un smartphone, sans avoir à se connecter à
+l’application. Le lien affiche d’abord un récapitulatif de la demande
+(objet, montant, demandeur) avec un bouton « Confirmer la validation » ;
+rien n’est validé tant que ce bouton n’a pas été cliqué. Ce lien reste
+valable 14 jours et ne peut être utilisé qu’une seule fois : si la
+demande a déjà été traitée, un message l’indique simplement.</p>
+<p>Selon le palier applicable, la validation pôle fait ensuite passer la
+demande :<br />
+- en attente de validation présidence, si le montant le requiert,<br />
+- directement à « Validé », sinon,<br />
+- directement « À payer » pour un déplacement (transmission automatique
+à la trésorerie).</p>
+<h1 id="validation-par-la-présidence-le-bureau">8. Validation par la
+présidence / le bureau</h1>
+<p>Si le palier de validation l’exige, la demande passe en attente de
+validation présidence après l’accord du pôle. Un mail est envoyé à
+l’adresse (ou aux adresses) de validation présidence configurées sur le
+pôle.</p>
+<p>La validation présidence est effectuée depuis l’application : cette
+étape ne dispose pas, à ce jour, d’un lien de validation sans connexion
+comme pour le pôle. Une fois validée, la demande passe au statut «
+Validé ».</p>
+<h1 id="refus-et-retransmission-dune-demande">9. Refus et retransmission
+d’une demande</h1>
+<p>À tout moment du circuit, un responsable de pôle ou un administrateur
+peut refuser une demande en indiquant un motif obligatoire. Le demandeur
+reçoit alors un mail l’informant du refus et du motif.</p>
+<p><strong>Seul le demandeur peut ensuite retransmettre sa demande
+(bouton « Retransmettre », visible uniquement par lui sur sa propre
+demande). La retransmission renvoie directement la demande à la
+trésorerie, sans repasser par une nouvelle validation du pôle ou de la
+présidence — il est donc important de corriger le dossier (pièces,
+montant) avant de retransmettre.</strong></p>
+<h1 id="trésorerie-transmission-règlement-et-comptabilisation">10.
+Trésorerie : transmission, règlement et comptabilisation</h1>
+<p>Une fois validée, une demande passe « À payer » et apparaît dans le
+périmètre de la trésorerie, soit automatiquement (déplacements), soit
+par transmission manuelle.</p>
+<p><strong>Le traitement par la trésorerie se fait en deux phases
+distinctes, séparées dans le temps :</strong></p>
+<p>1. Règlement — la comptable paie le fournisseur ou rembourse le
+bénévole, puis clique sur « ✅ Marquer réglé » sur la fiche de
+l’engagement. Le numéro d’écriture EBP n’est pas encore demandé à cette
+étape, puisqu’il n’est généralement pas encore connu.<br />
+<br />
+2. Comptabilisation — plusieurs jours plus tard, à réception du relevé
+bancaire, la comptable rapproche le paiement et clique sur « 🧮 Marquer
+comptabilisé » : c’est à ce moment qu’elle renseigne le numéro
+d’écriture EBP correspondant (obligatoire). Si ce numéro est déjà
+utilisé par un autre engagement, une confirmation supplémentaire est
+demandée avant de valider le doublon volontaire.</p>
+<h1 id="clôture-archivage-et-restauration">11. Clôture, archivage et
+restauration</h1>
+<p>Une fois la comptabilisation effectuée, le dossier peut être clôturé
+(statut « Terminé ») pour indiquer qu’il est définitivement traité.</p>
+<p>Un administrateur peut à tout moment archiver un ou plusieurs
+engagements (individuellement ou en sélection multiple depuis la liste).
+L’archivage est réversible : aucun fichier ni aucune information n’est
+supprimé, le dossier est simplement masqué de la liste courante et peut
+être restauré en un clic. Une case à cocher « 🗑 Afficher les engagements
+archivés » permet de les retrouver dans la liste.</p>
+<p><strong>La suppression définitive (« purge ») d’un engagement est
+réservée à l’administration système : elle efface physiquement le
+dossier, ses pièces jointes et son historique, et demande une double
+confirmation si une écriture comptable EBP est déjà rattachée au
+dossier. Cette action est irréversible.</strong></p>
+<h1 id="gestion-des-pôles-dactivité">12. Gestion des pôles
+d’activité</h1>
+<p>Menu Paramétrage → Gestion des pôles.</p>
+<p>Pour chaque pôle, on configure :<br />
+- son nom affiché,<br />
+- son responsable (obligatoire),<br />
+- jusqu’à deux suppléants,<br />
+- l’adresse (ou les adresses, séparées par un point-virgule) de
+validation présidence,<br />
+- son trésorier dédié, le cas échéant.</p>
+<p>Un pôle déjà utilisé par au moins un engagement ne peut pas être
+supprimé.</p>
+<h1 id="paramétrage-des-paliers-de-validation">13. Paramétrage des
+paliers de validation</h1>
+<p>Menu Paramétrage → Paliers de validation.</p>
+<p>Pour chaque palier, on configure le montant maximum concerné et les
+exigences associées : devis (un ou deux), attestation de comparaison,
+accord du responsable de pôle, accord de la présidence. Le moins élevé
+des paliers couvrant le montant de la demande est celui qui
+s’applique.</p>
+<h1 id="subventions-et-budgets">14. Subventions et budgets</h1>
+<p>Menu Paramétrage → Subventions.</p>
+<p>Une subvention (ou un budget dédié) regroupe : son nom, l’organisme
+financeur, les dates de validité, le montant prévu, le montant reçu et
+sa date de réception. Le montant déjà utilisé et le montant restant
+disponible sont calculés automatiquement à partir des engagements qui
+lui sont rattachés (les demandes refusées ou archivées n’entrent pas
+dans ce calcul).</p>
+<p>Lors de la création d’une demande, il est possible de l’associer à
+une subvention via le champ « Projet subventionné », afin de suivre la
+consommation du budget correspondant.</p>
+<h1 id="pièces-jointes-devis-et-justificatifs">15. Pièces jointes, devis
+et justificatifs</h1>
+<p>Les devis et justificatifs sont à joindre au format PDF (devis) ou
+PDF/JPG/PNG (justificatifs). Des documents complémentaires peuvent être
+ajoutés à tout moment depuis la fiche de l’engagement, tant que le
+dossier n’est pas réglé. Chaque fichier ajouté est conservé et reste
+consultable/téléchargeable depuis la fiche du dossier.</p>
+<h1 id="reporting-et-exports">16. Reporting et exports</h1>
+<p>Menu Engagements → 📊 Reporting (réservé aux administrateurs pour
+voir l’ensemble des dossiers ; un utilisateur standard ne voit que ses
+propres demandes).</p>
+<p>Les résultats peuvent être filtrés par période, demandeur,
+fournisseur, numéro d’écriture EBP, pôle, rubrique, financement (budget
+propre ou subvention) et statut. Le tableau affiche le détail des
+engagements correspondants, avec des totaux par pôle, par rubrique et
+par financement.</p>
+<p>Deux exports sont disponibles :<br />
+- « Export Excel » : détail complet plus deux feuilles de synthèse (par
+pôle, par rubrique),<br />
+- « Export PDF » : document de synthèse avec récapitulatifs et liste
+détaillée, prêt à être imprimé ou archivé.</p>
+<h1 id="liste-des-engagements-page-principale">17. Liste des engagements
+(page principale)</h1>
+<p>La page principale affiche, pour un utilisateur standard, ses propres
+demandes ; pour un administrateur, l’ensemble des demandes de
+l’association, avec un tableau de synthèse récapitulant le nombre de
+dossiers par statut et les montants restant à payer ou à rembourser.</p>
+<p>Chaque ligne indique la date, le demandeur, le pôle, l’objet, le mode
+de paiement, le montant et le statut (sous forme de badge coloré), avec
+un bouton « 👁 Ouvrir » pour accéder au détail complet du dossier
+(historique, pièces jointes, actions disponibles).</p>
+<h1 id="règles-métier-importantes">18. Règles métier importantes</h1>
+<ul>
+<li><p>Le circuit de validation (pôle, présidence) dépend uniquement du
+montant de la demande et des paliers configurés.</p></li>
+<li><p>Un déplacement ne nécessite jamais de devis et part
+automatiquement à la trésorerie après validation pôle.</p></li>
+<li><p>La rubrique « achats de denrées » est réservée aux demandes en
+paiement fournisseur, pas aux remboursements de bénévoles.</p></li>
+<li><p>Le règlement (paiement/remboursement) et la comptabilisation
+(saisie du numéro d’écriture EBP) sont deux étapes distinctes et
+séparées dans le temps : le numéro EBP n’est jamais demandé au moment du
+règlement.</p></li>
+<li><p>Seul le demandeur peut retransmettre sa propre demande
+refusée.</p></li>
+<li><p>L’archivage d’un engagement ne supprime jamais ses données ni ses
+fichiers ; seule la purge (réservée à l’administration système) est
+définitive.</p></li>
+</ul>
+<h1 id="conseils-dutilisation">19. Conseils d’utilisation</h1>
+<ul>
+<li><p>Préparer les devis et justificatifs avant de créer la demande
+pour éviter un blocage en cours de saisie.</p></li>
+<li><p>Vérifier les coordonnées (email, IBAN) d’un fournisseur avant de
+valider sa création.</p></li>
+<li><p>En cas de refus, corriger le dossier avant de le retransmettre :
+la retransmission part directement à la trésorerie sans repasser par une
+nouvelle validation.</p></li>
+<li><p>Le lien de validation pôle reçu par mail permet de valider une
+demande en quelques secondes depuis un smartphone, sans avoir besoin de
+se connecter à l’application.</p></li>
+<li><p>Toujours vérifier qu’un numéro d’écriture EBP n’est pas déjà
+utilisé avant de confirmer un doublon volontaire.</p></li>
+</ul>
+<h1 id="informations-techniques">20. Informations techniques</h1>
+<p>Le module repose principalement sur les éléments suivants :<br />
+<br />
+- Blueprint Flask : engagements_bp<br />
+- Modules Python : routes_main.py, routes_workflow.py,
+routes_parametres.py, routes_subventions.py, routes_fichiers.py,
+routes_tresorerie.py, routes_notes_frais.py, routes_reporting.py,
+utils_financement.py<br />
+- Templates HTML principaux : main.html, nouvelle_depense.html,
+detail_engagement.html, gestion_poles.html, gestion_subventions.html,
+engagements_parametres.html, note_frais.html, reporting.html<br />
+- Tables SQLite principales : engagements, engagements_depenses,
+engagements_fichiers, engagements_workflow, engagement_poles,
+engagement_subventions, engagements_parametres<br />
+- Le lien de validation pôle sans connexion repose sur un token signé
+(valable 14 jours, usage unique par demande).</p>
+<h1 id="support">21. Support</h1>
+<p>En cas de problème :<br />
+- vérifier le statut actuel du dossier et son historique (bloc «
+workflow » de la fiche),<br />
+- vérifier que le palier de validation est correctement configuré pour
+le montant concerné,<br />
+- vérifier le pôle d’activité et son responsable,<br />
+- contacter le service informatique BA38.</p>

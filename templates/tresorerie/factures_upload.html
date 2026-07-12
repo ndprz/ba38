@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}Factures PDF{% endblock %}
 
 {% block content %}
@@ -56,16 +59,122 @@
         </div>
 
         <div class="mb-3">
+            <label class="form-label d-flex justify-content-between align-items-center">
+                <span>Modèle de mail</span>
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#modelesModal">
+                    🛠️ Gérer les modèles
+                </button>
+            </label>
+            <select name="modele_id" class="form-select" required>
+                <option value="" disabled {% if not periode %}selected{% endif %}>-- Choisir un modèle --</option>
+                {% for m in modeles_facture %}
+                <option value="{{ m.id }}" {% if session.get('factures_modele_id')|string == m.id|string %}selected{% endif %}>
+                    {{ m.code_modele }}
+                </option>
+                {% endfor %}
+            </select>
+            <div class="form-text">Placeholders disponibles dans le modèle : <code>&lt;&lt;nom_association&gt;&gt;</code>, <code>&lt;&lt;periode&gt;&gt;</code></div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Période (ex : 2ème trimestre 2026)</label>
+            <input type="text" name="periode" class="form-control" value="{{ periode }}" placeholder="ex : 2ème trimestre 2026">
+        </div>
+
+        <div class="mb-3">
             <label class="form-label">Fichier PDF</label>
             <input type="file" name="pdf_file" class="form-control" accept="application/pdf" required>
         </div>
 
         <div class="d-flex justify-content-between">
             <button class="btn btn-primary">🔍 Analyser</button>
-            <a href="{{ url_for('tresorerie.tresorerie') }}" class="btn btn-secondary">⬅ Retour</a>
+            {{ action_button("⬅ Retour", href=url_for('tresorerie.tresorerie'), color="outline-dark") }}
         </div>
 
     </form>
 
+</div>
+
+<!-- ================= MODALE GESTION DES MODELES ================= -->
+<div class="modal fade" id="modelesModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">🛠️ Modèles de mail — Envoi des factures</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+
+        {% for m in modeles_facture %}
+        <div class="card mb-3">
+          <div class="card-body">
+            <form method="post" action="{{ url_for('tresorerie.factures_modele_save') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="id" value="{{ m.id }}">
+
+              <div class="mb-2">
+                <label class="form-label">Code du modèle</label>
+                <input type="text" name="code_modele" class="form-control" value="{{ m.code_modele }}" required>
+              </div>
+
+              <div class="mb-2">
+                <label class="form-label">Sujet</label>
+                <input type="text" name="sujet" class="form-control" value="{{ m.sujet }}" required>
+              </div>
+
+              <div class="mb-2">
+                <label class="form-label">Corps</label>
+                <textarea name="corps" class="form-control" rows="8" required>{{ m.corps }}</textarea>
+              </div>
+
+              <div class="d-flex justify-content-end gap-2">
+                <button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer</button>
+              </div>
+
+            </form>
+
+            <form method="post" action="{{ url_for('tresorerie.factures_modele_delete') }}"
+                  onsubmit="return confirm('Supprimer ce modèle ?');" class="mt-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="id" value="{{ m.id }}">
+              <button type="submit" class="btn btn-outline-danger btn-sm">🗑️ Supprimer</button>
+            </form>
+
+          </div>
+        </div>
+        {% else %}
+        <p class="text-muted">Aucun modèle pour l'instant.</p>
+        {% endfor %}
+
+        <hr>
+
+        <h6>➕ Nouveau modèle</h6>
+        <form method="post" action="{{ url_for('tresorerie.factures_modele_save') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="mb-2">
+            <label class="form-label">Code du modèle</label>
+            <input type="text" name="code_modele" class="form-control" placeholder="ex : facture_relance" required>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label">Sujet</label>
+            <input type="text" name="sujet" class="form-control" placeholder="ex : Participation de solidarité <<periode>> – <<nom_association>>" required>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label">Corps</label>
+            <textarea name="corps" class="form-control" rows="8" required></textarea>
+          </div>
+
+          <div class="d-flex justify-content-end">
+            <button type="submit" class="btn btn-success btn-sm">➕ Créer</button>
+          </div>
+
+        </form>
+
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}

@@ -4,7 +4,7 @@ import sqlite3
 import unicodedata
 
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, current_app, abort, send_from_directory
+from flask import Blueprint, render_template, render_template_string, request, redirect, url_for, flash, session, jsonify, current_app, abort, send_from_directory
 from flask_login import login_required, current_user
 from utils import get_db_connection, upload_database, write_log, has_access, is_valid_email, is_valid_phone, require_access, get_db_path
 from werkzeug.security import generate_password_hash
@@ -1176,11 +1176,14 @@ def update_benevoles_table():
     erreurs = []
     lignes_modifiees = 0
     benevoles_data = []
+    edited_ids = []
 
     for i in range(total):
         bene_id = request.form.get(f"id_{i}")
         if not bene_id:
             continue
+
+        edited_ids.append(bene_id)
 
         old_row = cursor.execute("SELECT * FROM benevoles WHERE id = ?", (bene_id,)).fetchone()
         if not old_row:
@@ -1292,12 +1295,26 @@ def update_benevoles_table():
     if lignes_modifiees == 0:
         flash("ℹ️ Aucune modification détectée.", "info")
 
-    return redirect(
-        url_for(
-            "benevoles.edition_tableau_benevoles",
-            **request.args,
-            columns=columns
-        )
+    # Repost en POST plutôt qu'un redirect GET classique : avec beaucoup de
+    # bénévoles filtrés, l'URL générée (benevole_ids + columns) peut dépasser
+    # la taille de ligne de requête autorisée (même bug déjà corrigé côté
+    # partenaires/edition_tableau_associations).
+    return render_template_string(
+        """
+        <form id="repost-edition-tableau" method="POST"
+              action="{{ url_for('benevoles.edition_tableau_benevoles') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% for col in columns %}
+            <input type="hidden" name="columns" value="{{ col }}">
+            {% endfor %}
+            {% for bid in benevole_ids %}
+            <input type="hidden" name="benevole_ids" value="{{ bid }}">
+            {% endfor %}
+        </form>
+        <script>document.getElementById('repost-edition-tableau').submit();</script>
+        """,
+        columns=columns,
+        benevole_ids=edited_ids
     )
 
 

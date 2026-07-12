@@ -284,6 +284,38 @@
               </option>
           </select>
 
+          {% elif field['field_name'] == 'besoins_particuliers' %}
+
+          <input
+              type="text"
+              id="{{ field['field_name'] }}"
+              name="{{ field['field_name'] }}"
+              value="{{ field['value'] or '' }}"
+              class="{{ css }}"
+              {% if field.readonly %}readonly{% endif %}
+          >
+
+          {% if besoins_historique %}
+          <details class="mt-2">
+            <summary class="text-muted small" style="cursor:pointer;">
+              Historique ({{ besoins_historique|length }} version{% if besoins_historique|length > 1 %}s{% endif %})
+            </summary>
+            <ul class="list-unstyled mt-1 small border-start ps-2">
+              {% for h in besoins_historique %}
+              <li class="mb-1 text-muted">
+                {% if h.date_remplacement %}
+                  Du {{ h.date_creation }} au {{ h.date_remplacement }}
+                {% else %}
+                  Depuis le {{ h.date_creation }}
+                {% endif %}
+                {% if h.user_saisie %}<span class="text-secondary">({{ h.user_saisie }})</span>{% endif %}
+                : <em>{{ h.contenu or '(vide)' }}</em>
+              </li>
+              {% endfor %}
+            </ul>
+          </details>
+          {% endif %}
+
           {% else %}
 
           <input
@@ -332,12 +364,6 @@
       ➕ Dupliquer
     </button>
     {% endif %}
-
-
-    <form method="post" action="{{ url_for('partenaires.generate_annexe1', partner_id=partner_id) }}" style="display:inline;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn btn-secondary">📄 Annexe 1 bis</button>
-    </form>
   </div>
 </div>
 

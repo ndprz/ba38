@@ -16,7 +16,8 @@ import re
 import glob
 import sqlite3
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import shutil
 
 from flask import (
@@ -149,6 +150,25 @@ def gestion_evenements():
             return redirect(url_for("evenements.gestion_evenements"))
 
         # ------------------------------------------------------------------
+        # 🗓️ RÉGLAGES DU PLANNING AUTO DES PASSAGES
+        # ------------------------------------------------------------------
+        if action == "config_planning":
+
+            actif = request.form.get("planning_actif") == "on"
+
+            try:
+                duree = int(request.form.get("planning_duree_affichage") or 30)
+            except ValueError:
+                duree = 30
+            duree = max(5, duree)
+
+            set_planning_config(actif, duree)
+
+            flash("🗓️ Réglages du planning des passages mis à jour.", "success")
+
+            return redirect(url_for("evenements.gestion_evenements"))
+
+        # ------------------------------------------------------------------
         # CHAMPS COMMUNS (ajout / modification)
         # ------------------------------------------------------------------
         type_ev = request.form.get("type")
@@ -177,10 +197,7 @@ def gestion_evenements():
 
                 bid = int(benevole_id)
 
-                src_dir = os.path.join(
-                    os.path.dirname(get_static_event_dir()),
-                    "photos_benevoles"
-                )
+                src_dir = os.getenv("PHOTOS_BENEVOLES_DIR", "/srv/ba38/photos_benevoles")
 
                 for ext in (".jpg", ".jpeg", ".png"):
 
@@ -351,7 +368,8 @@ def gestion_evenements():
         "evenements/gestion_evenements.html",
         evenements=evenements,
         evenement_actif=evenement_actif,
-        benevoles=benevoles
+        benevoles=benevoles,
+        planning_config=get_planning_config()
     )
 
 
@@ -603,6 +621,132 @@ def get_benevole_photo_path(benevole_id) -> str | None:
 
 
 # ============================================================
+# 🗓️ Planning des passages associations (généré à la volée)
+# ============================================================
+
+JOURS_SEMAINE_FR = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+
+
+def _minutes_depuis_heure(heure: str):
+    """Extrait les minutes depuis minuit d'un texte type '14h30' ou '14h-14h20'.
+    Retourne None si le texte n'est pas exploitable (ex: 'matin', 'au quai')."""
+    if not heure:
+        return None
+    m = re.search(r"(\d{1,2})\s*[hH]\s*(\d{2})?", heure)
+    if not m:
+        return None
+    h = int(m.group(1))
+    mn = int(m.group(2)) if m.group(2) else 0
+    if h > 23 or mn > 59:
+        return None
+    return h * 60 + mn
+
+
+def get_planning_config() -> dict:
+    """Réglages (actif / durée d'affichage) du planning auto des passages,
+    modifiables depuis gestion_evenements. Table créée à la volée si absente."""
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS planning_passages_config (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            actif INTEGER NOT NULL DEFAULT 1,
+            duree_affichage INTEGER NOT NULL DEFAULT 30
+        )
+    """)
+    cur.execute(
+        "INSERT OR IGNORE INTO planning_passages_config (id, actif, duree_affichage) VALUES (1, 1, 30)"
+    )
+    conn.commit()
+    row = cur.execute(
+        "SELECT actif, duree_affichage FROM planning_passages_config WHERE id = 1"
+    ).fetchone()
+    conn.close()
+
+    return {"actif": bool(row[0]), "duree_affichage": row[1]}
+
+
+def set_planning_config(actif: bool, duree_affichage: int) -> None:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS planning_passages_config (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            actif INTEGER NOT NULL DEFAULT 1,
+            duree_affichage INTEGER NOT NULL DEFAULT 30
+        )
+    """)
+    cur.execute("""
+        INSERT INTO planning_passages_config (id, actif, duree_affichage)
+        VALUES (1, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET actif = excluded.actif, duree_affichage = excluded.duree_affichage
+    """, (int(bool(actif)), duree_affichage))
+    conn.commit()
+    conn.close()
+
+
+def _rang_heure(heure: str):
+    """Ordre d'affichage : le matin d'abord, puis les heures connues triées
+    chronologiquement, puis le reste (texte non exploitable) à la fin."""
+    h = heure.lower()
+    if "matin" in h:
+        return (0, 0, heure)
+    minutes = _minutes_depuis_heure(heure)
+    if minutes is not None:
+        return (1, minutes, heure)
+    return (2, 0, heure)
+
+
+def generer_planning_du_jour(jour: str, duree_affichage: int = 30) -> dict | None:
+    """Construit un événement 'planning' virtuel (non stocké en base) listant les
+    associations dont jour_de_passage_a_la_BAI correspond au jour donné, regroupées
+    par heure_de_passage et triées au mieux chronologiquement."""
+
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("""
+        SELECT nom_association, heure_de_passage, Emplacement
+        FROM associations
+        WHERE jour_de_passage_a_la_BAI IS NOT NULL
+          AND LOWER(jour_de_passage_a_la_BAI) LIKE ?
+          AND (validite IS NULL OR LOWER(TRIM(validite)) != 'non')
+    """, (f"%{jour}%",)).fetchall()
+    conn.close()
+
+    groupes = {}
+
+    for r in rows:
+        nom = (r["nom_association"] or "").strip()
+        if not nom:
+            continue
+
+        emplacement = (r["Emplacement"] or "").strip()
+        libelle = f"{nom} ({emplacement})" if emplacement else nom
+
+        heure = (r["heure_de_passage"] or "").strip()
+        cle = heure.lower() or "￿"
+
+        if cle not in groupes:
+            groupes[cle] = {"heure": heure or "—", "lignes": []}
+
+        groupes[cle]["lignes"].append(libelle)
+
+    if not groupes:
+        return None
+
+    passages = sorted(groupes.values(), key=lambda g: _rang_heure(g["heure"]))
+
+    return {
+        "id": f"planning_{jour}",
+        "type": "planning",
+        "titre": f"Passages {jour.capitalize()}",
+        "duree_affichage": duree_affichage,
+        "passages": passages,
+    }
+
+
+# ============================================================
 # 🌍 API : événements actifs
 # ============================================================
 
@@ -611,7 +755,8 @@ def get_benevole_photo_path(benevole_id) -> str | None:
 @require_access("evenements", "lecture")
 def api_evenements_actifs():
 
-    now = (datetime.utcnow() + timedelta(hours=2)).isoformat(timespec="minutes")
+    now_dt = datetime.now(ZoneInfo("Europe/Paris"))
+    now = now_dt.strftime("%Y-%m-%dT%H:%M")
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
     rows = conn.execute("""
@@ -651,6 +796,14 @@ def api_evenements_actifs():
         if images:
             d["images"] = images
         data.append(d)
+
+    planning_config = get_planning_config()
+    if planning_config["actif"]:
+        jour_courant = JOURS_SEMAINE_FR[now_dt.weekday()]
+        planning = generer_planning_du_jour(jour_courant, planning_config["duree_affichage"])
+        if planning:
+            data.append(planning)
+
     return jsonify(data)
 
 

@@ -115,6 +115,106 @@
       display: none !important;
     }
 
+    .planning {
+      width: 92vw;
+      height: 92vh;
+      text-align: center;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .planning h1 {
+      flex: 0 0 auto;
+      font-size: 3rem;
+      color: #ff7f00;
+      margin: 0 0 1.5rem;
+    }
+
+    .planGrid {
+      flex: 1 1 auto;
+      min-height: 0;
+      column-count: 2;
+      column-gap: 3rem;
+      column-fill: auto;
+      text-align: left;
+      overflow: hidden;
+    }
+
+    .planRow {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.2rem;
+      break-inside: avoid;
+    }
+
+    .planHeure {
+      flex: 0 0 auto;
+      min-width: 4.5rem;
+      max-width: 9rem;
+      min-height: 4.5rem;
+      padding: 0.3rem 0.6rem;
+      border-radius: 50%;
+      border: 4px solid #7a1f2d;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-weight: bold;
+      font-size: 1.2rem;
+      color: #000;
+      background: #fff;
+      overflow-wrap: break-word;
+    }
+
+    .planBox {
+      flex: 1 1 auto;
+      min-width: 0;
+      background: #f5a041;
+      border: 3px solid #b56b1a;
+      border-radius: 12px;
+      padding: 0.8rem 1.2rem;
+      font-weight: bold;
+      font-size: 1.4rem;
+      color: #1a1a1a;
+      line-height: 1.3;
+      overflow-wrap: break-word;
+    }
+
+    .planning.dense .planRow {
+      margin-bottom: 0.7rem;
+    }
+
+    .planning.dense .planHeure {
+      min-width: 3.4rem;
+      min-height: 3.4rem;
+      font-size: 0.9rem;
+    }
+
+    .planning.dense .planBox {
+      font-size: 1.05rem;
+      padding: 0.5rem 0.8rem;
+      line-height: 1.2;
+    }
+
+    .planning.denser .planRow {
+      margin-bottom: 0.35rem;
+    }
+
+    .planning.denser .planHeure {
+      min-width: 2.6rem;
+      min-height: 2.6rem;
+      font-size: 0.75rem;
+      border-width: 3px;
+    }
+
+    .planning.denser .planBox {
+      font-size: 0.85rem;
+      padding: 0.35rem 0.6rem;
+      line-height: 1.15;
+    }
+
     .badge {
       position: fixed;
       right: 8px;
@@ -243,6 +343,34 @@
     }
 
     // =========================================================
+    // 🗓️ AJUSTEMENT AUTO DU PLANNING (fait tenir le contenu à l'écran)
+    // =========================================================
+    function ajusterPlanning(zone) {
+      const container = zone.querySelector(".planning");
+      const grid = zone.querySelector(".planGrid");
+      if (!container || !grid) return;
+
+      container.classList.remove("dense", "denser");
+
+      // en colonnes CSS (column-count fixe), un contenu trop long ne grandit
+      // pas la hauteur : il déborde en largeur via des colonnes implicites.
+      const deborde = () =>
+        grid.scrollWidth > grid.clientWidth + 2 ||
+        grid.scrollHeight > grid.clientHeight + 2;
+
+      let colonnes = 2;
+      grid.style.columnCount = colonnes;
+
+      while (deborde() && colonnes < 5) {
+        colonnes++;
+        grid.style.columnCount = colonnes;
+      }
+
+      if (deborde()) container.classList.add("dense");
+      if (deborde()) container.classList.add("denser");
+    }
+
+    // =========================================================
     // 🧩 HTML GENERATION
     // =========================================================
     function htmlPour(e) {
@@ -280,6 +408,26 @@
         }
 
         return `<iframe class="fullscreen" src="${e.fichier_path}"></iframe>`;
+      }
+
+      // 🗓️ PLANNING (passages associations)
+      if (e.type === "planning") {
+
+        const passages = e.passages || [];
+
+        const rows = passages.map(p => `
+          <div class="planRow">
+            <div class="planHeure">${p.heure}</div>
+            <div class="planBox">${p.lignes.join("<br>")}</div>
+          </div>
+        `).join("");
+
+        return `
+      <div class="planning">
+        <h1>${e.titre || ""}</h1>
+        <div class="planGrid">${rows}</div>
+      </div>
+    `;
       }
 
       // 💬 MESSAGE + IMAGE
@@ -324,6 +472,10 @@
 
         zone.innerHTML = prochainHTML || htmlPour(ev);
         prechargerSuivant();
+
+        if (ev.type === "planning") {
+          ajusterPlanning(zone);
+        }
 
         zone.classList.remove("hidden");
 

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Annexe 1 bis{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>📋 Annexe 1 bis – {{ partenaire['nom_association'] or "—" }}</h2>
+
+  <div class="mb-3">
+    {% from "macros/buttons.html" import action_button %}
+    {{ action_button("⬅️ Retour partenaire", href=url_for('partenaires.update_partner', partner_id=partner_id), color="outline-dark") }}
+
+    {% if annexes %}
+    <a href="{{ url_for('annexe1bis.nouvelle', partner_id=partner_id) }}" class="btn btn-primary">
+      📋 Nouvelle annexe (reprendre les dernières valeurs)
+    </a>
+    <a href="{{ url_for('annexe1bis.nouvelle', partner_id=partner_id, vierge=1) }}" class="btn btn-outline-primary">
+      ➕ Nouvelle annexe vierge
+    </a>
+    {% else %}
+    <a href="{{ url_for('annexe1bis.nouvelle', partner_id=partner_id) }}" class="btn btn-primary">➕ Nouvelle annexe</a>
+    {% endif %}
+  </div>
+
+  {% if annexes %}
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>Date de création</th>
+        <th>Statut</th>
+        <th>Date d'envoi signature</th>
+        <th>Date de signature</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for annexe in annexes %}
+      <tr>
+        <td>{{ annexe.get('date_creation') | datetimeformat }}</td>
+        <td>
+          {% if annexe['statut_signature'] == 'signee' %}
+          <span class="badge bg-success">🔒 Signée</span>
+          {% elif annexe['statut_signature'] == 'envoyee' %}
+          <span class="badge bg-warning text-dark">✉️ Envoyée pour signature</span>
+          {% elif annexe['statut_signature'] == 'refusee' %}
+          <span class="badge bg-danger">❌ Refusée</span>
+          {% elif annexe['statut_signature'] == 'expiree' %}
+          <span class="badge bg-dark">⌛ Expirée</span>
+          {% else %}
+          <span class="badge bg-secondary">📝 Brouillon</span>
+          {% endif %}
+        </td>
+        <td>{{ annexe.get('date_envoi_signature') | datetimeformat if annexe.get('date_envoi_signature') else "—" }}</td>
+        <td>{{ annexe.get('date_signature') | datetimeformat if annexe.get('date_signature') else "—" }}</td>
+        <td>
+          <a href="{{ url_for('annexe1bis.view', annexe_id=annexe['id']) }}" class="btn btn-sm btn-outline-info">👁️ Voir</a>
+
+          {% if annexe['statut_signature'] != 'signee' %}
+          <a href="{{ url_for('annexe1bis.modifier', annexe_id=annexe['id']) }}" class="btn btn-sm btn-warning">✏️ Modifier</a>
+          {% endif %}
+
+          <a href="{{ url_for('annexe1bis.pdf', annexe_id=annexe['id']) }}" class="btn btn-outline-danger btn-sm" target="_blank">
+            📄 PDF
+          </a>
+
+          <form method="POST" action="{{ url_for('annexe1bis.supprimer', annexe_id=annexe['id']) }}"
+            style="display:inline;" onsubmit="return confirmDelete();">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-danger">🗑️ Supprimer</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted">Aucune annexe 1 bis enregistrée pour ce partenaire.</p>
+  {% endif %}
+</div>
+
+<script>
+  function confirmDelete() {
+    if (!confirm("❗ Voulez-vous vraiment supprimer cette annexe ?")) {
+      return false;
+    }
+    const confirmation = prompt("⚠️ Tapez SUPPRIMER pour confirmer");
+    if (confirmation !== "SUPPRIMER") {
+      alert("Suppression annulée");
+      return false;
+    }
+    return true;
+  }
+</script>
+{% endblock %}

@@ -84,11 +84,11 @@
             <td class="text-center">
                 <input type="checkbox"
                     name="selections[]"
-                    value="{{ p.table }}|{{ p.semaine }}"
+                    value="{{ p.table }}|{{ p.annee }}|{{ p.semaine }}"
                     class="row-check"
                     onclick="updateDeleteButton()">
             </td>
-            <td data-value="{{ p.semaine }}"><strong>{{ p.semaine }}</strong></td>
+            <td data-value="{{ p.semaine_iso }}"><strong>{{ p.semaine_iso }}</strong></td>
             <td data-value="{{ p.type }}">{{ p.type }}</td>
             <td>
                 <a href="{{ p.url }}"

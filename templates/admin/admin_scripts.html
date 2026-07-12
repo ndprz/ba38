@@ -13,9 +13,31 @@
 
   <p>Cette page permet d'exécuter des scripts système depuis l'interface web (réservée aux admins).</p>
 
+  {% if test_locked %}
+  <div class="alert alert-warning">
+    🔒 <strong>Mode test :</strong> ce panneau est affiché à titre informatif mais toutes les actions
+    ci-dessous sont désactivées (aucun script ne peut être exécuté depuis un compte restreint au mode test).
+  </div>
+  {% endif %}
+
   <a href="{{ url_for('admin.documentation') }}" class="dropdown-item">
     📚 Documentation technique
   </a>
+
+  <div class="card mt-3 mb-3">
+    <div class="card-body d-flex justify-content-between align-items-center">
+      <div>
+        <b>🖥️ Supervision serveur (Cockpit)</b><br>
+        <small class="text-muted">
+          CPU, RAM, disque, services systemd, mises à jour — vue système complète du serveur
+        </small>
+      </div>
+      <a href="https://{{ request.host }}/cockpit-admin/" target="_blank" rel="noopener"
+        class="btn btn-outline-info">
+        🔗 Ouvrir Cockpit
+      </a>
+    </div>
+  </div>
 
   <h3 class="mt-4">
     📡 Connexions actives
@@ -29,8 +51,10 @@
         <th>Utilisateur</th>
         <th>Email</th>
         <th>Connexion</th>
+        <th>Dernière interaction</th>
         <th>Expire dans</th>
         <th>Actif</th>
+        <th>Action</th>
       </tr>
     </thead>
     <tbody>
@@ -39,8 +63,17 @@
         <td>{{ ligne.username }}</td>
         <td>{{ ligne.email }}</td>
         <td>{{ ligne.connexion_time }}</td>
-        <td>{{ ligne.last_seen }}</td>
-        <td class="text-center">✅</td>
+        <td>{{ ligne.last_activity }}</td>
+        <td>{{ ligne.expire_in }}</td>
+        <td class="text-center">{% if ligne.actif == 'oui' %}🟢 Actif{% else %}⚪ Inactif{% endif %}</td>
+        <td>
+          <form method="POST" action="{{ url_for('debug_bp.close_session') }}"
+                onsubmit="return confirm('Fermer la session de {{ ligne.username }} ?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="session_key" value="{{ ligne.key }}">
+            <button class="btn btn-outline-danger btn-sm" type="submit">🔒 Fermer</button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -61,8 +94,10 @@
         <th>Utilisateur</th>
         <th>Email</th>
         <th>Connexion</th>
+        <th>Dernière interaction</th>
         <th>Expire dans</th>
         <th>Actif</th>
+        <th>Action</th>
       </tr>
     </thead>
     <tbody>
@@ -71,8 +106,17 @@
         <td>{{ ligne.username }}</td>
         <td>{{ ligne.email }}</td>
         <td>{{ ligne.connexion_time }}</td>
-        <td>{{ ligne.last_seen }}</td>
-        <td class="text-center">✅</td>
+        <td>{{ ligne.last_activity }}</td>
+        <td>{{ ligne.expire_in }}</td>
+        <td class="text-center">{% if ligne.actif == 'oui' %}🟢 Actif{% else %}⚪ Inactif{% endif %}</td>
+        <td>
+          <form method="POST" action="{{ url_for('debug_bp.close_session') }}"
+                onsubmit="return confirm('Fermer la session de {{ ligne.username }} ?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="session_key" value="{{ ligne.key }}">
+            <button class="btn btn-outline-danger btn-sm" type="submit">🔒 Fermer</button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -82,7 +126,7 @@
   {% endif %}
 
 
-  <div class="row mt-4">
+  <div class="row mt-4" {% if test_locked %}style="pointer-events:none; opacity:0.5;" inert{% endif %}>
     <div class="col-md-6">
       <form method="POST">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="script_name" value="backup_prod.sh">
@@ -136,7 +180,10 @@
         <button class="btn btn-warning mb-2 w-100">🔁 Synchroniser les nouvelles tables DEV → PROD</button>
       </form>
       <a class="btn btn-outline-dark mb-2 w-100" href="{{ url_for('test_email_api') }}">
-        📤 Tester l’envoi de mail (API Mailjet)
+        📤 Tester l'envoi de mail (API Mailjet)
+      </a>
+      <a class="btn btn-outline-primary mb-2 w-100" href="{{ url_for('debug_bp.mail_utilisateurs') }}">
+        📧 Envoyer un mail aux utilisateurs
       </a>
       <a href="{{ url_for('debug_bp.run_sync_test_schemas') }}" class="btn btn-outline-primary mb-2 w-100">
         🔄 Synchroniser les bases TEST (schéma + données)
@@ -197,7 +244,7 @@
       </form>
       <a href="{{ url_for('static', filename='docs/Documentation_Admin_BA380.pdf') }}"
         class="btn btn-outline-primary mb-2 w-100" download>
-        📄 Télécharger la documentation d’administration
+        📄 Télécharger la documentation d'administration
       </a>
       <a href="{{ url_for('debug_bp.deploy_log') }}" class="btn btn-outline-secondary mb-2 w-100">
         📋 Historique des déploiements

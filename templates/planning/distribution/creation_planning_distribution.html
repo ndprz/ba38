@@ -129,21 +129,11 @@
         {% endfor %}
     {% endfor %}
 
-    <div class="d-flex align-items-center mt-3">
-        <button type="submit" class="btn btn-primary">
-            💾 Enregistrer ce planning
-        </button>
-
-        <a href="{{ url_for('planning_dist.gestion_planning_distribution', semaine=semaine) }}"
-           class="btn btn-warning ms-2">
-            🛠️ Modifier ce planning
-        </a>
-
-        <a href="{{ url_for('planning.planning_main') }}"
-           class="btn btn-outline-secondary ms-2">
-            ⬅️ Retour au menu Planning
-        </a>
-    </div>
+    {% call action_buttons() %}
+        {{ action_button("💾 Enregistrer ce planning", type="submit", color="primary") }}
+        {{ action_button("🛠️ Modifier ce planning", href=url_for('planning_dist.gestion_planning_distribution', semaine=semaine), color="warning") }}
+        {{ action_button("⬅️ Retour au menu Planning", href=url_for('planning.planning_main'), color="outline-dark") }}
+    {% endcall %}
 </form>
 {% endif %}
 

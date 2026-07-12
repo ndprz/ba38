@@ -11,7 +11,8 @@ Fonctionnalités :
 - Consultation et régénération depuis un engagement.
 
 Ce module est utilisé automatiquement lors de la création
-d'un engagement de type déplacement.
+d'un engagement remboursé à un bénévole (vous-même ou autre
+bénévole), qu'il s'agisse d'un achat ou d'un déplacement.
 """
 
 from flask import (
@@ -45,6 +46,39 @@ import uuid
 
 
 # =====================================================
+# CORRESPONDANCE RUBRIQUE -> CASE A COCHER DU PDF
+# =====================================================
+# Chaque rubrique correspond à une case à cocher et à
+# son champ "Montant" associé sur la même ligne du PDF.
+
+RUBRIQUE_CASE_PDF = {
+    "fournitures_entretien":
+        ("6063 Fournitures entretien  petit matériel", "Montant1"),
+    "fournitures_administratives":
+        ("6064 Fournitures administratives", "Montant2"),
+    "deplacements_administratifs":
+        ("62511 Déplacements administratifs", "Montant3"),
+    "deplacements_institutions":
+        ("62504 Déplacement relations avec institutions", "Montant4"),
+    "vie_associative":
+        ("62571 Vie associative denrées repas location salle", "Montant5"),
+    "deplacements":
+        ("62561 Frais déplacement visite Association", "Montant6"),
+    "formation":
+        ("62572 Frais de formation frais formateur repas salle", "Montant7"),
+    "collecte_annuelle":
+        ("62381 Collecte annuelle précisez", "Montant8"),
+    "autres":
+        ("Autres précisez", "Montant9"),
+}
+
+# Case cochée par défaut si la rubrique demandée ne correspond
+# à aucune case du PDF (ex : "achats_denrees", qui n'a pas de
+# ligne dédiée sur la note de frais).
+RUBRIQUE_CASE_PDF_DEFAUT = ("Autres précisez", "Montant9")
+
+
+# =====================================================
 # GENERATION AUTOMATIQUE NOTE DE FRAIS
 # =====================================================
 
@@ -52,24 +86,32 @@ def generer_note_frais_auto(
     conn,
     engagement_id,
     objet,
-    date_frais,
-    kms,
-    peages,
-    repas,
-    commentaire=""
+    montant_total,
+    date_frais=None,
+    kms=0,
+    peages=0,
+    repas=0,
+    rubrique=None,
+    precision_rubrique=None,
+    commentaire="",
+    nom_beneficiaire=None
 ):
     """
     Génère automatiquement une note de frais PDF.
 
     Paramètres :
-        conn            : connexion SQLite active
-        engagement_id   : identifiant engagement
-        objet           : objet du déplacement
-        date_frais      : date du déplacement
-        kms             : kilomètres parcourus
-        peages          : montant péages
-        repas           : montant repas
-        commentaire     : commentaire libre
+        conn                : connexion SQLite active
+        engagement_id       : identifiant engagement
+        objet               : objet de la dépense
+        montant_total       : montant à rembourser
+        date_frais          : date du déplacement (achat / non concerné : None)
+        kms                 : kilomètres parcourus (déplacement uniquement)
+        peages              : montant péages (déplacement uniquement)
+        repas               : montant repas (déplacement uniquement)
+        rubrique            : rubrique sélectionnée (case à cocher du PDF)
+        precision_rubrique  : précision libre (case "Autres")
+        commentaire         : commentaire libre
+        nom_beneficiaire    : nom figurant sur la note (fournisseur ou demandeur)
     """
 
     conn.row_factory = sqlite3.Row
@@ -99,15 +141,15 @@ def generer_note_frais_auto(
         kms * tarif_km
     ).quantize(Decimal("0.01"))
 
-    total = (
-        montant_ik + peages + repas
+    total = Decimal(
+        str(montant_total or 0)
     ).quantize(Decimal("0.01"))
 
     template_pdf = os.path.join(
         current_app.root_path,
         "templates",
         "pdf",
-        "note de frais_voyage.pdf"
+        "note_de_frais.pdf"
     )
 
     if not os.path.exists(template_pdf):
@@ -115,49 +157,58 @@ def generer_note_frais_auto(
             f"Template PDF introuvable : {template_pdf}"
         )
 
+    case_pdf, montant_champ_pdf = RUBRIQUE_CASE_PDF.get(
+        rubrique,
+        RUBRIQUE_CASE_PDF_DEFAUT
+    )
+
     reader = PdfReader(template_pdf)
 
     writer = PdfWriter()
     writer.append(reader)
     writer.set_need_appearances_writer()
 
+    champs = {
+        "Frais engagés par Nom Prénom":
+            nom_beneficiaire or engagement["demandeur_nom"],
+
+        "Objet":
+            objet,
+
+        case_pdf:
+            "/On",
+
+        montant_champ_pdf:
+            str(total),
+
+        "Total à Rembourser":
+            str(total),
+
+        "date":
+            date_frais or datetime.now().strftime("%d/%m/%Y"),
+
+        "Signature_ba380":
+            f"Document généré électroniquement dans BA380\n"
+            f"Par : {engagement['demandeur_nom']}\n"
+            f"Courriel : {engagement['demandeur_email']}\n"
+            f"Date : {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
+    }
+
+    # Détail kilométrique : uniquement pertinent pour un déplacement
+    if kms:
+        champs["kilometres"] = str(kms)
+        champs["Mt /km"] = str(tarif_km)
+        champs["Montant IK"] = str(montant_ik)
+
+    if peages or repas:
+        champs["Montant Frais"] = str(peages + repas)
+
+    if case_pdf == "Autres précisez" and precision_rubrique:
+        champs["Autres à préciser"] = precision_rubrique
+
     writer.update_page_form_field_values(
         writer.pages[0],
-        {
-            "Frais engagés par Nom Prénom":
-                engagement["demandeur_nom"],
-
-            "Objet":
-                objet,
-
-            "62561 Frais déplacement visite Association":
-                "/On",
-
-            "kilometres":
-                str(kms),
-
-            "date":
-                date_frais,
-
-            "Montant IK":
-                str(montant_ik),
-
-            "Montant Frais":
-                str(peages + repas),
-
-            "Total à Rembourser":
-                str(total),
-
-            "Mt /km":
-                str(tarif_km),
-
-            "Signature_ba380":
-                f"Document généré électroniquement dans BA380\n"
-                f"Par : {engagement['demandeur_nom']}\n"
-                f"Courriel : {engagement['demandeur_email']}\n"
-                f"Date : {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
-
-        }
+        champs
     )
 
     upload_dir = os.path.join(
@@ -288,7 +339,7 @@ def note_frais_engagement(engagement_id):
             WHERE id = ?
         """, (engagement_id,)).fetchone()
 
-        if engagement["statut"] == "reglee":
+        if engagement["statut"] in ("reglee", "comptabilise", "termine"):
 
             flash(
                 "⚠️ Cet engagement est déjà réglé.",
@@ -310,7 +361,12 @@ def note_frais_engagement(engagement_id):
                 d.objet,
                 d.description,
                 d.montant_total,
-                d.sous_type_depense
+                d.sous_type_depense,
+                d.type_engagement,
+                d.rubrique,
+                d.precision_rubrique,
+                d.date_frais,
+                d.fournisseur_nom
             FROM engagements e
             LEFT JOIN engagements_depenses d
                 ON d.engagement_id = e.id
@@ -322,10 +378,19 @@ def note_frais_engagement(engagement_id):
         if not engagement:
             abort(404)
 
-        if engagement["sous_type_depense"] != "deplacement":
+        type_eng = engagement["type_engagement"]
+        sous_type = engagement["sous_type_depense"]
+
+        note_autorisee = (
+            type_eng in ("benevole_self", "benevole_other")
+            or (type_eng == "fournisseur" and sous_type == "deplacement")
+        )
+
+        if not note_autorisee:
 
             flash(
-                "⚠️ Cet engagement n'est pas un déplacement.",
+                "⚠️ La note de frais n'est disponible que pour un "
+                "remboursement bénévole ou un déplacement fournisseur.",
                 "warning"
             )
 
@@ -347,42 +412,64 @@ def note_frais_engagement(engagement_id):
                 "date_frais"
             )
 
-            kms = Decimal(
-                request.form.get("kms") or "0"
-            )
-
-            peages = Decimal(
-                request.form.get("peages") or "0"
-            )
-
-            repas = Decimal(
-                request.form.get("repas") or "0"
-            )
-
             commentaire = request.form.get(
                 "commentaire",
                 ""
             ).strip()
 
-            tarif_km = Decimal("0.529")
+            if engagement["sous_type_depense"] == "deplacement":
 
-            montant_ik = (
-                kms * tarif_km
-            ).quantize(Decimal("0.01"))
+                kms = Decimal(
+                    request.form.get("kms") or "0"
+                )
 
-            total = (
-                montant_ik + peages + repas
-            ).quantize(Decimal("0.01"))
+                peages = Decimal(
+                    request.form.get("peages") or "0"
+                )
+
+                repas = Decimal(
+                    request.form.get("repas") or "0"
+                )
+
+                tarif_km = Decimal("0.529")
+
+                montant_ik = (
+                    kms * tarif_km
+                ).quantize(Decimal("0.01"))
+
+                total = (
+                    montant_ik + peages + repas
+                ).quantize(Decimal("0.01"))
+
+            else:
+
+                kms = Decimal("0")
+                peages = Decimal("0")
+                repas = Decimal("0")
+
+                total = Decimal(
+                    request.form.get("montant") or "0"
+                ).quantize(Decimal("0.01"))
+
+            nom_beneficiaire = (
+                engagement["fournisseur_nom"]
+                if engagement["type_engagement"] == "fournisseur"
+                else None
+            )
 
             generer_note_frais_auto(
                 conn=conn,
                 engagement_id=engagement_id,
                 objet=objet,
+                montant_total=total,
                 date_frais=date_frais,
                 kms=kms,
                 peages=peages,
                 repas=repas,
-                commentaire=commentaire
+                rubrique=engagement["rubrique"],
+                precision_rubrique=engagement["precision_rubrique"],
+                commentaire=commentaire,
+                nom_beneficiaire=nom_beneficiaire
             )
 
             # ====================================================

@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Suivi budgétaire{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">📈 Suivi budgétaire</h2>
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('engagements.engagements_main'), color="outline-dark") }}
+    {% endcall %}
+</div>
+
+{% if voir_tout %}
+    <div class="alert alert-info py-2 mb-3">
+        🌍 Mode administrateur — toutes les dépenses sont visibles.
+    </div>
+{% else %}
+    <div class="alert alert-secondary py-2 mb-3">
+        👤 Affichage limité à vos propres dépenses.
+    </div>
+{% endif %}
+
+{# ============================================================ #}
+{# FORMULAIRE FILTRES                                           #}
+{# ============================================================ #}
+
+<div class="card mb-4 shadow-sm">
+    <div class="card-header bg-dark text-white fw-bold">
+        🔍 Période
+    </div>
+    <div class="card-body">
+        <form method="POST"
+              action="{{ url_for('engagements.suivi_budgetaire') }}"
+              id="form-suivi-budgetaire">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="d-flex flex-wrap align-items-end gap-4">
+
+                <div class="form-check">
+                    <input class="form-check-input"
+                           type="radio"
+                           name="mode"
+                           id="mode_annee"
+                           value="annee"
+                           {% if mode == 'annee' %}checked{% endif %}>
+                    <label class="form-check-label" for="mode_annee">
+                        📅 Année calendaire
+                    </label>
+                </div>
+
+                <div class="d-flex flex-column" style="min-width: 120px;">
+                    <label class="form-label fw-semibold" for="annee">
+                        Année
+                    </label>
+                    <input type="number"
+                           name="annee"
+                           id="annee"
+                           class="form-control form-control-sm"
+                           value="{{ annee }}">
+                </div>
+
+                <div class="form-check">
+                    <input class="form-check-input"
+                           type="radio"
+                           name="mode"
+                           id="mode_duree"
+                           value="duree"
+                           {% if mode == 'duree' %}checked{% endif %}>
+                    <label class="form-check-label" for="mode_duree">
+                        📆 Durée totale du budget/subvention
+                    </label>
+                </div>
+
+                {{ action_button("🔍 Afficher", type="submit", color="primary") }}
+
+            </div>
+
+        </form>
+
+        <div class="d-flex gap-2 mt-3">
+
+            <form method="POST"
+                  action="{{ url_for('engagements.suivi_budgetaire_excel') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="mode" value="{{ mode }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <button type="submit" class="btn btn-success btn-sm">
+                    📥 Export Excel
+                </button>
+            </form>
+
+            <form method="POST"
+                  action="{{ url_for('engagements.suivi_budgetaire_pdf') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="mode" value="{{ mode }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <button type="submit" class="btn btn-danger btn-sm">
+                    📄 Export PDF
+                </button>
+            </form>
+
+        </div>
+
+    </div>
+</div>
+
+{# ============================================================ #}
+{# BLOCS PAR SUBVENTION / BUDGET                                #}
+{# ============================================================ #}
+
+{% for item in subventions_data %}
+
+{% set s = item.subvention %}
+
+<div class="card mb-4 shadow-sm">
+
+    <div class="card-header bg-dark text-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <span class="fw-bold">
+                💰 {{ s.nom_subvention }}
+                {% if s.nom_organisme %}
+                    <span class="fw-normal text-white-50">— {{ s.nom_organisme }}</span>
+                {% endif %}
+            </span>
+            <span class="small text-white-50">
+                {{ item.periode.debut or "—" }} → {{ item.periode.fin or "—" }}
+            </span>
+        </div>
+    </div>
+
+    <div class="card-body">
+
+        <div class="row text-center mb-3">
+            <div class="col">
+                <div class="text-muted small">Prévu</div>
+                <div class="fw-bold">{{ "%.2f"|format(s.montant_prevu or 0) }} €</div>
+            </div>
+            <div class="col">
+                <div class="text-muted small">Reçu</div>
+                <div class="fw-bold">{{ "%.2f"|format(s.montant_recu or 0) }} €</div>
+            </div>
+            <div class="col">
+                <div class="text-muted small">Dépensé</div>
+                <div class="fw-bold">{{ "%.2f"|format(item.total_depense) }} €</div>
+            </div>
+            <div class="col">
+                <div class="text-muted small">Restant</div>
+                <div class="fw-bold {% if item.total_restant < 0 %}text-danger{% else %}text-success{% endif %}">
+                    {{ "%.2f"|format(item.total_restant) }} €
+                </div>
+            </div>
+        </div>
+
+        {% if item.depenses %}
+
+        <div class="table-responsive">
+            <table class="table table-sm table-striped table-bordered table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Objet</th>
+                        <th>Bénéficiaire / Fournisseur</th>
+                        <th>Statut</th>
+                        <th class="text-end">Montant (€)</th>
+                        <th class="text-center">Détail</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for d in item.depenses %}
+                    <tr>
+                        <td class="text-nowrap">
+                            {{ d.cree_le[8:10] }}/{{ d.cree_le[5:7] }}/{{ d.cree_le[0:4] }}
+                        </td>
+                        <td>{{ d.objet or "—" }}</td>
+                        <td>
+                            {% if d.fournisseur_nom %}
+                                🏢 {{ d.fournisseur_nom }}
+                            {% elif d.beneficiaire_nom %}
+                                👤 {{ d.beneficiaire_nom }}
+                            {% else %}
+                                👤 {{ d.demandeur_nom }}
+                            {% endif %}
+                        </td>
+                        <td>{{ statuts_labels.get(d.statut, d.statut) }}</td>
+                        <td class="text-end fw-semibold">
+                            {{ "%.2f"|format(d.montant_total|float) }} €
+                        </td>
+                        <td class="text-center">
+                            <a href="{{ url_for('engagements.detail_engagement', engagement_id=d.engagement_id) }}"
+                               class="btn btn-outline-primary btn-sm"
+                               target="_blank">
+                                👁
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% else %}
+
+        <div class="alert alert-light border mb-0">
+            Aucune dépense sur la période.
+        </div>
+
+        {% endif %}
+
+    </div>
+
+</div>
+
+{% else %}
+
+<div class="alert alert-warning">
+    Aucune subvention ou budget paramétré.
+</div>
+
+{% endfor %}
+
+{% endblock %}

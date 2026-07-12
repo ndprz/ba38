@@ -7,7 +7,9 @@
 <!-- =====================================================
      MODE TEST
 ===================================================== -->
-{% if session.get('test_user') %}
+{% if current_user.is_authenticated and current_user.test_only %}
+<span class="badge bg-secondary mb-3">🧪 Compte restreint au mode test</span>
+{% elif session.get('test_user') %}
 <form action="{{ url_for('unset_test_user') }}" method="post" style="display: inline;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn btn-danger mb-3">
@@ -23,6 +25,12 @@
 </form>
 {% endif %}
 
+<button class="btn btn-outline-info mb-3 ms-2"
+        type="button"
+        data-bs-toggle="modal"
+        data-bs-target="#modalAideFonctionnalites">
+    ℹ️ Aide utilisateur — Vue d'ensemble des fonctionnalités
+</button>
 
 <!-- =====================================================
      MENU DYNAMIQUE (GROUPES + MODULES)
@@ -120,6 +128,40 @@
     <p>Vous n'êtes pas connecté.</p>
     {% endif %}
 
+</div>
+
+<!-- Modale AIDE — Vue d'ensemble des fonctionnalités -->
+<div class="modal fade" id="modalAideFonctionnalites" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">ℹ️ Aide – Vue d'ensemble des fonctionnalités</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Apercu_Fonctionnalites_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAideFonctionnalites')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
 </div>
 
 {% endblock %}

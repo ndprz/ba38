@@ -5,6 +5,7 @@ from flask_login import login_required
 import sqlite3
 from utils import get_db_connection, upload_database
 
+
 planning_utils_bp = Blueprint('planning_utils', __name__)
 
 def get_etat_plannings(conn):
@@ -15,7 +16,8 @@ def get_etat_plannings(conn):
             "type": "Ramasse",
             "type_code": "ramasse",
             "table": "plannings_ramasse",
-            "semaine": 48
+            "semaine": 48,
+            "annee": 2025
         },
         ...
     ]
@@ -25,13 +27,13 @@ def get_etat_plannings(conn):
 
     def semaines(table):
         rows = cursor.execute(
-            f"SELECT DISTINCT semaine FROM {table}"
+            f"SELECT DISTINCT semaine, annee FROM {table}"
         ).fetchall()
 
         result = []
         for r in rows:
             try:
-                result.append(int(r["semaine"]))
+                result.append((int(r["semaine"]), int(r["annee"])))
             except Exception:
                 continue
         return result
@@ -47,16 +49,17 @@ def get_etat_plannings(conn):
     data = []
 
     for label, code, table in configs:
-        for sem in semaines(table):
+        for sem, annee in semaines(table):
             data.append({
                 "type": label,
                 "type_code": code,
                 "table": table,
-                "semaine": sem
+                "semaine": sem,
+                "annee": annee
             })
 
-    # Tri par défaut : semaine décroissante, puis type
-    data.sort(key=lambda x: (-x["semaine"], x["type"]))
+    # Tri par défaut : année puis semaine décroissantes, puis type
+    data.sort(key=lambda x: (-x["annee"], -x["semaine"], x["type"]))
 
     return data
 
@@ -64,7 +67,6 @@ def get_etat_plannings(conn):
 @login_required
 def etat_plannings():
     import sqlite3
-    from datetime import datetime
     from flask import url_for
 
     conn = get_db_connection()
@@ -72,11 +74,8 @@ def etat_plannings():
 
     data = get_etat_plannings(conn)
 
-    # Année courante pour ISO week
-    annee = datetime.now().year
-
     for d in data:
-        d["semaine_iso"] = f"{annee}-W{int(d['semaine']):02d}"
+        d["semaine_iso"] = f"{d['annee']}-W{int(d['semaine']):02d}"
 
         # 🔗 URLs centralisées ICI (logique globale)
         if d["type_code"] == "ramasse":
@@ -132,11 +131,15 @@ def etat_plannings_delete():
 
     try:
         for sel in selections:
-            # format attendu : table|semaine
-            table, semaine = sel.split("|")
+            # format attendu : table|annee|semaine
+            table, annee, semaine = sel.split("|")
+            annee = int(annee)
             semaine = int(semaine)
 
-            cur.execute(f"DELETE FROM {table} WHERE semaine = ?", (semaine,))
+            cur.execute(
+                f"DELETE FROM {table} WHERE semaine = ? AND annee = ?",
+                (semaine, annee)
+            )
             total += cur.rowcount
 
         conn.commit()

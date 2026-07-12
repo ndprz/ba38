@@ -1,0 +1,238 @@
+<p><strong>Application BA38 – Gestion des événements écran</strong>
+Version de la documentation : 02/07/2026</p>
+<h1 id="objectif-du-module">1. Objectif du module</h1>
+<p>Le module « Gestion des événements écran » permet de composer le
+contenu diffusé sur l’écran d’affichage de l’entrepôt (messages, vidéos,
+documents) et intègre un planning automatique des passages des
+associations partenaires.</p>
+<p>Il permet notamment :</p>
+<ul>
+<li>de créer, modifier, activer/désactiver et supprimer des événements
+(messages, vidéos, documents),</li>
+<li>de programmer une plage de diffusion (date/heure de début et de fin)
+et une durée d’affichage,</li>
+<li>d’associer automatiquement la photo d’un bénévole à un message,</li>
+<li>de générer automatiquement des sous-titres pour les vidéos,</li>
+<li>de consulter et régler le planning automatique des passages
+associations.</li>
+</ul>
+<h1 id="accès">2. Accès</h1>
+<p>L’accès à ce module nécessite le droit « lecture » (ou supérieur) sur
+« Événements ». La création, la modification et la suppression
+nécessitent le droit « écriture ». Sans ce droit, la page s’affiche en
+mode lecture seule (bandeau d’avertissement, boutons désactivés).</p>
+<h1 id="accéder-à-la-page">3. Accéder à la page</h1>
+<p>Menu → Événements → Gestion des événements écran.</p>
+<p>Le bouton « 🖥️ Ouvrir l’affichage » (visible lorsqu’un événement est
+actif) ouvre dans un nouvel onglet l’écran tel qu’il est diffusé en
+salle.</p>
+<h1 id="créer-un-événement">4. Créer un événement</h1>
+<p>Le formulaire du haut permet d’ajouter un nouvel événement. Trois
+types sont disponibles :</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Message</td>
+<td>Texte libre, avec image facultative (upload direct ou photo bénévole
+automatique)</td>
+</tr>
+<tr class="even">
+<td>Vidéo</td>
+<td>Fichier .mp4/.webm ; sous-titres générables automatiquement</td>
+</tr>
+<tr class="odd">
+<td>Document</td>
+<td>PDF ou PPTX ; converti automatiquement en diaporama d’images</td>
+</tr>
+</tbody>
+</table>
+<p>Champs du formulaire :</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Champ</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Type</td>
+<td>Message / Vidéo / Document</td>
+</tr>
+<tr class="even">
+<td>Titre</td>
+<td>Titre affiché en haut de l’écran</td>
+</tr>
+<tr class="odd">
+<td>Bénévole (pour photo auto)</td>
+<td>Si renseigné et qu’aucune image n’est fournie, la photo du bénévole
+est automatiquement copiée et associée à l’événement</td>
+</tr>
+<tr class="even">
+<td>Contenu</td>
+<td>Texte du message (facultatif pour vidéo/document)</td>
+</tr>
+<tr class="odd">
+<td>Fichier</td>
+<td>Vidéo ou PDF/PPTX à déposer</td>
+</tr>
+<tr class="even">
+<td>Image</td>
+<td>Chemin d’une image (<code>/static/...</code>), sinon utilisez la
+photo bénévole automatique</td>
+</tr>
+<tr class="odd">
+<td>Début / Fin</td>
+<td>Plage de dates et heures pendant laquelle l’événement est
+diffusé</td>
+</tr>
+<tr class="even">
+<td>Durée affichage (s)</td>
+<td>Temps d’affichage à l’écran avant de passer à l’événement suivant
+(ignoré pour les vidéos, qui se jouent en entier)</td>
+</tr>
+<tr class="odd">
+<td>Récurrence</td>
+<td>Champ informatif (Aucune / Quotidienne / Hebdomadaire), non encore
+exploité automatiquement</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Important : les dates de début et de fin utilisent l’heure
+locale (Europe/Paris). Un événement n’est diffusé que si l’heure
+actuelle est comprise entre ces deux bornes.</strong></p>
+<h1 id="gérer-les-événements-existants">5. Gérer les événements
+existants</h1>
+<p>Le tableau « Événements planifiés » liste tous les événements créés,
+avec pour chacun :</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Action</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>ON / OFF</td>
+<td>Active ou désactive l’événement sans le supprimer</td>
+</tr>
+<tr class="even">
+<td>✏️</td>
+<td>Ouvre la fenêtre de modification (mêmes champs qu’à la
+création)</td>
+</tr>
+<tr class="odd">
+<td>🗑️</td>
+<td>Supprime définitivement l’événement et ses fichiers associés (image,
+vidéo, sous-titres, pages converties)</td>
+</tr>
+<tr class="even">
+<td>🎙 (vidéos uniquement)</td>
+<td>Génère automatiquement les sous-titres de la vidéo</td>
+</tr>
+<tr class="odd">
+<td>✏️ (vidéos uniquement)</td>
+<td>Permet de relire et corriger les sous-titres générés</td>
+</tr>
+</tbody>
+</table>
+<p>Seuls les événements actifs (ON) et dans leur plage de dates sont
+diffusés à l’écran.</p>
+<h1 id="planning-automatique-des-passages-associations">6. Planning
+automatique des passages associations</h1>
+<p>Depuis juillet 2026, l’écran affiche également, chaque jour, un
+planning « Passages [Jour] » généré <strong>automatiquement</strong> à
+partir de la fiche de chaque association partenaire (jour de passage à
+la BAI, heure de passage, emplacement). Ce planning n’apparaît
+<strong>pas</strong> dans le tableau ci-dessus : il n’existe aucune
+ligne à créer ou modifier, il est recalculé à chaque actualisation de
+l’écran directement depuis les fiches associations.</p>
+<p>Pour que le passage d’une association apparaisse correctement, sa
+fiche doit contenir un jour reconnu (« lundi », « mardi », etc.) dans le
+champ « Jour de passage à la BAI ». Les associations dont la fiche est
+marquée invalide n’apparaissent pas.</p>
+<p>Le tri à l’écran place d’abord les créneaux du matin, puis les heures
+précises par ordre chronologique ; les libellés d’heure non standard
+(texte libre, fautes de saisie) sont affichés tels quels et triés en
+dernier. Plus la fiche associations est renseignée proprement (heure au
+format « 14h » ou « 14h30 »), meilleur est le tri.</p>
+<p>En haut de la page « Gestion des événements écran », le bloc « 🗓️
+Planning automatique des passages associations » permet de :</p>
+<ul>
+<li><strong>activer/désactiver</strong> l’affichage de ce planning sur
+l’écran,</li>
+<li>régler sa <strong>durée d’affichage</strong> (en secondes) avant de
+passer à l’événement suivant.</li>
+</ul>
+<h1 id="règles-métier-importantes">7. Règles métier importantes</h1>
+<ul>
+<li>Un événement inactif (OFF) ou hors de sa plage de dates n’est jamais
+diffusé, même s’il existe en base.</li>
+<li>Pour une vidéo, le champ « Durée affichage » est ignoré : la vidéo
+se joue entièrement puis passe à l’événement suivant.</li>
+<li>La photo bénévole n’est copiée automatiquement que si le champ Image
+est vide au moment de la création ou modification ; elle n’est pas
+remise à jour ensuite si la photo du bénévole change.</li>
+<li>Le planning des passages ne se règle pas événement par événement :
+ses seuls réglages sont le bloc activé/désactivé et la durée d’affichage
+en haut de page (voir § 6).</li>
+<li>La suppression d’un événement supprime aussi ses fichiers (vidéo,
+image, pages converties, sous-titres) : cette action est
+irréversible.</li>
+</ul>
+<h1 id="conseils-dutilisation">8. Conseils d’utilisation</h1>
+<ul>
+<li>Utiliser « 🖥️ Ouvrir l’affichage » après chaque modification
+importante pour vérifier le rendu réel à l’écran.</li>
+<li>Pour un document PowerPoint ou PDF multi-pages, la conversion en
+images peut prendre quelques secondes après l’envoi : rafraîchir la page
+si les pages n’apparaissent pas immédiatement.</li>
+<li>Si le planning des passages d’un jour semble incomplet ou mal trié,
+corriger en priorité les champs « Jour de passage à la BAI » et « Heure
+de passage » sur la fiche de l’association concernée (module
+Associations/Partenaires), plutôt que dans ce module.</li>
+<li>Désactiver (OFF) plutôt que supprimer un événement que l’on pourrait
+vouloir réutiliser plus tard.</li>
+</ul>
+<h1 id="informations-techniques">9. Informations techniques</h1>
+<p>Le module repose principalement sur les éléments suivants :</p>
+<ul>
+<li>Blueprint Flask : <code>evenements_bp</code></li>
+<li>Module Python : <code>ba38_evenements.py</code></li>
+<li>Templates :
+<code>templates/evenements/gestion_evenements.html</code>,
+<code>templates/evenements/affichage_evenement.html</code></li>
+<li>Table SQLite : <code>evenements</code></li>
+<li>Planning automatique : calculé à la volée depuis la table
+<code>associations</code> (aucune donnée stockée), réglages dans la
+table <code>planning_passages_config</code></li>
+</ul>
+<h1 id="support">10. Support</h1>
+<p>En cas de problème :</p>
+<ul>
+<li>vérifier que l’événement est bien ON et dans sa plage de dates,</li>
+<li>vérifier les droits d’accès (lecture/écriture) sur « Événements
+»,</li>
+<li>pour un problème de planning des passages, vérifier d’abord la fiche
+de l’association concernée,</li>
+<li>contacter le service informatique BA38.</li>
+</ul>

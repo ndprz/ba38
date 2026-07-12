@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
 {% block title %}Résultats du rapport{% endblock %}
 
 {% block content %}
@@ -37,49 +39,31 @@
   </tbody>
 </table>
 
-<div class="mt-4 d-flex gap-3 justify-content-between">
+{% set periode_safe = first.strftime('%Y-%m-%d') ~ '_to_' ~ last.strftime('%Y-%m-%d') %}
 
-  <!-- Bouton retour -->
-  <a href="{{ url_for('planning_report.planning_report_run') }}"
-     class="btn btn-secondary">
-    ⬅️ Retour
-  </a>
+{% call action_buttons() %}
+  {{ action_button("⬅️ Retour", href=url_for('planning_report.planning_report_run'), color="outline-dark") }}
 
-  {% set periode_safe = first.strftime('%Y-%m-%d') ~ '_to_' ~ last.strftime('%Y-%m-%d') %}
+  {{ action_button("📊 Télécharger Excel de contrôle", href=url_for('planning_report.planning_report_excel'), color="success") }}
 
-  <!-- Excel de controle -->
-  <a class="btn btn-success"
-    href="{{ url_for('planning_report.planning_report_excel') }}">
-    📊 Télécharger Excel de contrôle
-  </a>
-
-  <!-- Export CSV -->
-  <a class="btn btn-outline-success"
-     href="{{ url_for('planning_report.planning_report_csv',
+  {{ action_button("📄 Export CSV", href=url_for('planning_report.planning_report_csv',
                       periode=periode_safe,
                       ram=total_ram,
                       dist=total_dist,
                       pal=total_pal,
                       pes=total_pes,
                       vif=total_vif,
-                      total=total_general) }}">
-    📄 Export CSV
-  </a>
+                      total=total_general), color="outline-success") }}
 
-  <!-- Export PDF -->
-  <a class="btn btn-outline-danger"
-     href="{{ url_for('planning_report.planning_report_pdf',
+  {{ action_button("🖨️ Export PDF", href=url_for('planning_report.planning_report_pdf',
                       periode=periode_safe,
                       ram=total_ram,
                       dist=total_dist,
                       pal=total_pal,
                       pes=total_pes,
                       vif=total_vif,
-                      total=total_general) }}">
-    🖨️ Export PDF
-  </a>
-
-</div>
+                      total=total_general), color="outline-danger") }}
+{% endcall %}
 
 
 {% endblock %}

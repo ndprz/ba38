@@ -1,3 +1,4 @@
+{% from "macros/buttons.html" import action_button, action_buttons %}
 <!DOCTYPE html>
 <html lang="fr">
 
@@ -28,9 +29,7 @@
         {% endfor %}
       </select>
       <button type="submit" class="btn btn-primary w-100 mt-2">🔍 Afficher</button>
-      <a href="{{ url_for('index') }}" class="btn btn-outline-dark">
-        ↩️ Retour à l'accueil
-      </a>
+      {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
 
     </form>
 

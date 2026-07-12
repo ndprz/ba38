@@ -67,12 +67,22 @@ STATUTS_LABELS = {
     "valide":                "Validé",
     "a_payer":               "À payer",
     "reglee":                "Réglé",
+    "comptabilise":          "Comptabilisé",
     "termine":               "Terminé",
     "refuse":                "Refusé",
 }
 
-# Statuts considérés comme "terminés" pour la complétude
-STATUTS_TERMINES = {"reglee", "termine"}
+# Statuts pour lesquels l'argent a été réglé (paiement fournisseur
+# ou remboursement bénévole effectué), qu'il soit déjà comptabilisé
+# ou non. Utilisé pour les pièces justificatives attendues et les
+# montants "réglés".
+STATUTS_TERMINES = {"reglee", "comptabilise", "termine"}
+
+# Statuts pour lesquels le N° d'écriture EBP est exigible.
+# Depuis le passage en deux phases, le règlement (reglee) ne
+# comporte plus le N° EBP : il n'est saisi qu'à la comptabilisation,
+# à réception du relevé bancaire.
+STATUTS_EBP_EXIGIBLE = {"comptabilise", "termine"}
 
 # Statuts considérés comme "en cours" (workflow actif)
 STATUTS_EN_COURS = {
@@ -95,9 +105,26 @@ def _est_admin_ged():
     return has_access("engagement_parametres", "lecture")
 
 
-def _calculer_completude(engagement, fichiers):
+def _trouver_palier(montant, paliers):
+    """
+    Retrouve le palier applicable à un montant donné.
+    Reprend la même logique que le JS de nouvelle_depense.html :
+    le premier palier (trié par montant_max croissant) dont le
+    montant_max est >= au montant de la dépense.
+    """
+    for p in paliers:
+        if montant <= p["montant_max"]:
+            return p
+    return None
+
+
+def _calculer_completude(engagement, fichiers, paliers):
     """
     Calcule l'indicateur de complétude documentaire d'un engagement.
+
+    paliers : liste des paliers actifs (engagements_parametres),
+              utilisée pour ne réclamer un devis que lorsque le
+              montant de la dépense le rend effectivement obligatoire.
 
     Retourne un dict :
         statut      : 'complet' | 'incomplet' | 'en_cours' | 'refuse'
@@ -140,8 +167,10 @@ def _calculer_completude(engagement, fichiers):
     # Dossier terminé ou réglé → on vérifie la complétude
     # ----------------------------------------------------------
 
-    # 1. Numéro EBP obligatoire pour les dossiers réglés
-    if statut_eng in STATUTS_TERMINES:
+    # 1. Numéro EBP obligatoire uniquement à partir de la
+    #    comptabilisation (saisi à réception du relevé bancaire,
+    #    pas au moment du règlement lui-même).
+    if statut_eng in STATUTS_EBP_EXIGIBLE:
         if not engagement.get("numero_ecriture_ebp"):
             manques.append("N° écriture EBP manquant")
 
@@ -162,7 +191,19 @@ def _calculer_completude(engagement, fichiers):
             or "facture" in types_docs
         )
 
-        if nb_devis == 0:
+        # Devis exigé uniquement si le palier correspondant au
+        # montant de la dépense l'impose (cf. nouvelle_depense.html)
+        montant = float(engagement.get("montant_total") or 0)
+        palier = _trouver_palier(montant, paliers)
+
+        un_devis_obligatoire = bool(palier) and palier["un_devis"] == "o"
+        deux_devis_obligatoires = bool(palier) and palier["deux_devis"] == "o"
+
+        if deux_devis_obligatoires and nb_devis < 2:
+            manques.append(
+                f"Devis incomplet ({nb_devis}/2 requis)"
+            )
+        elif un_devis_obligatoire and nb_devis == 0:
             manques.append("Aucun devis joint")
 
         if not a_justificatif:
@@ -172,6 +213,19 @@ def _calculer_completude(engagement, fichiers):
     # Résultat
     # ----------------------------------------------------------
     if not manques:
+
+        # Réglé, pièces complètes, mais pas encore comptabilisé :
+        # ce n'est pas une anomalie, juste une étape normale en
+        # attente de réception du relevé bancaire.
+        if statut_eng == "reglee":
+            return {
+                "statut":  "en_attente_compta",
+                "label":   "Réglé (en attente compta)",
+                "badge":   "bg-info text-white",
+                "icone":   "🔷",
+                "detail":  [],
+            }
+
         return {
             "statut":  "complet",
             "label":   "Complet",
@@ -193,10 +247,19 @@ def _build_ged_query(filters):
     """
     Construit la requête SQL pour la GED.
     Toujours en mode admin (vision complète).
+
+    Par défaut, les engagements archivés sont inclus : la GED
+    sert de registre comptable/audit, ils doivent rester
+    consultables sans action particulière.
     """
 
-    where  = ["COALESCE(e.deleted, 0) = 0"]
+    where  = ["1=1"]
     params = []
+
+    if filters.get("archive") == "actifs":
+        where.append("COALESCE(e.deleted, 0) = 0")
+    elif filters.get("archive") == "archives":
+        where.append("COALESCE(e.deleted, 0) = 1")
 
     if filters.get("date_debut"):
         where.append("DATE(e.cree_le) >= ?")
@@ -236,6 +299,10 @@ def _build_ged_query(filters):
             "OR e.numero_ecriture_ebp = '')"
         )
 
+    if filters.get("numero_ebp"):
+        where.append("e.numero_ecriture_ebp LIKE ?")
+        params.append(f"%{filters['numero_ebp']}%")
+
     # Le filtre completude est appliqué en Python après calcul
     sql = f"""
         SELECT
@@ -246,6 +313,7 @@ def _build_ged_query(filters):
             e.demandeur_email,
             e.paye_le,
             e.numero_ecriture_ebp,
+            e.deleted,
 
             p.nom_affiche AS pole,
 
@@ -348,7 +416,9 @@ def engagements_ged():
         "subvention_id":request.form.get("subvention_id", "").strip(),
         "statut":       request.form.get("statut",        "").strip(),
         "avec_ebp":     request.form.get("avec_ebp",      "").strip(),
+        "numero_ebp":   request.form.get("numero_ebp",    "").strip(),
         "completude":   request.form.get("completude",    "").strip(),
+        "archive":      request.form.get("archive",       "").strip(),
     }
 
     rows        = []
@@ -382,6 +452,13 @@ def engagements_ged():
             ORDER BY nom_subvention
         """).fetchall()
 
+        paliers = conn.execute("""
+            SELECT *
+            FROM engagements_parametres
+            WHERE actif = 1
+            ORDER BY montant_max
+        """).fetchall()
+
         # --------------------------------------------------
         # Requête principale
         # --------------------------------------------------
@@ -401,7 +478,7 @@ def engagements_ged():
                 fichiers_eng = fichiers_map.get(eng["id"], [])
                 eng["fichiers"]    = fichiers_eng
                 eng["nb_fichiers"] = len(fichiers_eng)
-                eng["completude"]  = _calculer_completude(eng, fichiers_eng)
+                eng["completude"]  = _calculer_completude(eng, fichiers_eng, paliers)
 
             # Filtre complétude (appliqué en Python)
             filtre_completude = filters.get("completude")
@@ -427,7 +504,7 @@ def engagements_ged():
             )
             nb_sans_ebp_reglee = sum(
                 1 for r in rows
-                if r["statut"] in STATUTS_TERMINES
+                if r["statut"] in STATUTS_EBP_EXIGIBLE
                 and not r.get("numero_ecriture_ebp")
             )
 
@@ -501,12 +578,22 @@ def engagements_ged_excel():
         "subvention_id":request.form.get("subvention_id", "").strip(),
         "statut":       request.form.get("statut",        "").strip(),
         "avec_ebp":     request.form.get("avec_ebp",      "").strip(),
+        "numero_ebp":   request.form.get("numero_ebp",    "").strip(),
         "completude":   request.form.get("completude",    "").strip(),
+        "archive":      request.form.get("archive",       "").strip(),
     }
 
     with sqlite3.connect(db_path) as conn:
 
         conn.row_factory = sqlite3.Row
+
+        paliers = conn.execute("""
+            SELECT *
+            FROM engagements_parametres
+            WHERE actif = 1
+            ORDER BY montant_max
+        """).fetchall()
+
         sql, params = _build_ged_query(filters)
         raw = conn.execute(sql, params).fetchall()
         engagements_raw = [dict(r) for r in raw]
@@ -518,7 +605,7 @@ def engagements_ged_excel():
             fichiers_eng       = fichiers_map.get(eng["id"], [])
             eng["fichiers"]    = fichiers_eng
             eng["nb_fichiers"] = len(fichiers_eng)
-            eng["completude"]  = _calculer_completude(eng, fichiers_eng)
+            eng["completude"]  = _calculer_completude(eng, fichiers_eng, paliers)
 
         if filters.get("completude"):
             engagements_raw = [
@@ -562,7 +649,7 @@ def engagements_ged_excel():
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
     # Titre
-    ws.merge_cells("A1:O1")
+    ws.merge_cells("A1:P1")
     titre_cell = ws["A1"]
     titre_cell.value = (
         f"GED Engagements BA38 — "
@@ -577,7 +664,7 @@ def engagements_ged_excel():
     if filters["date_debut"]: filtres_txt.append(f"Du {filters['date_debut']}")
     if filters["date_fin"]:   filtres_txt.append(f"au {filters['date_fin']}")
 
-    ws.merge_cells("A2:O2")
+    ws.merge_cells("A2:P2")
     filtre_cell = ws["A2"]
     filtre_cell.value = (
         "  |  ".join(filtres_txt) if filtres_txt
@@ -605,6 +692,7 @@ def engagements_ged_excel():
         ("N° EBP",               18),   # ← clé CAC
         ("Nb fichiers",          10),
         ("Complétude",           14),
+        ("Archivé",              10),
     ]
 
     ROW_H = 4
@@ -649,6 +737,7 @@ def engagements_ged_excel():
             eng.get("numero_ecriture_ebp") or "",
             eng["nb_fichiers"],
             completude["label"],
+            "Oui" if eng.get("deleted") == 1 else "Non",
         ]
 
         # Couleur de ligne selon complétude
@@ -680,7 +769,7 @@ def engagements_ged_excel():
         for e in engagements_raw
     )
 
-    for col_idx in range(1, 16):
+    for col_idx in range(1, 17):
         cell        = ws.cell(row=row_total, column=col_idx)
         cell.font   = font_total
         cell.fill   = PatternFill("solid", start_color=BLEU)

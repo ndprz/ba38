@@ -19,7 +19,7 @@ Détail engagement #{{ engagement.id }}
     <div class="alert alert-danger mb-4">
 
         <strong>
-            ⚠️ Engagement supprimé
+            ⚠️ Engagement archivé
         </strong>
 
         <br>
@@ -32,15 +32,74 @@ Détail engagement #{{ engagement.id }}
 
     {% endif %}
 
+    {% if engagement.abonnement_parent_id %}
+
+    <div class="alert alert-info mb-4">
+        🔁 Engagement généré automatiquement depuis l'abonnement
+        <a href="{{ url_for('engagements.detail_engagement', engagement_id=engagement.abonnement_parent_id) }}">
+            #{{ engagement.abonnement_parent_id }}
+        </a>.
+    </div>
+
+    {% endif %}
+
     <div class="d-flex justify-content-between align-items-center mb-3">
 
         <h2>
             📄 Engagement #{{ engagement.id }}
         </h2>
 
-        {% call action_buttons() %}
-            {{ action_button("⬅ Retour", href=url_for('engagements.engagements_main'), color="outline-dark") }}
-        {% endcall %}
+        {% set buttons = [] %}
+
+        {% set _ = buttons.append({
+            'label': "❓ Aide",
+            'color': 'outline-info',
+            'onclick': "new bootstrap.Modal(document.getElementById('modalAideEngagements')).show()"
+        }) %}
+
+        {% set _ = buttons.append({
+            'url': url_for('engagements.engagements_main'),
+            'label': "↩️ Retour aux engagements",
+            'color': 'outline-dark'
+        }) %}
+
+        {{ action_buttons(buttons) }}
+
+        <!-- Modale AIDE -->
+        <div class="modal fade" id="modalAideEngagements" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title">📄 Aide – Module Engagements</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body" style="
+                max-height: 70vh;
+                overflow:auto;
+                font-size: 0.9rem;
+                line-height: 1.4;
+            ">
+
+                {% include "docsHtml/Documentation_Utilisateur_Module_Engagements_BA38.html" %}
+
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-outline-primary"
+                        onclick="printModal('modalAideEngagements')">
+                    🖨️ Imprimer
+                </button>
+                <button class="btn btn-secondary" data-bs-dismiss="modal">
+                    Fermer
+                </button>
+            </div>
+
+            </div>
+        </div>
+        </div>
+
 
     </div>
 
@@ -89,8 +148,13 @@ Détail engagement #{{ engagement.id }}
                             </span>
 
                         {% elif engagement.statut == "reglee" %}
-                            <span class="badge bg-info">
+                            <span class="badge bg-info text-white">
                                 💶 Réglé
+                            </span>
+
+                        {% elif engagement.statut == "comptabilise" %}
+                            <span class="badge bg-dark text-white">
+                                🧮 Comptabilisé
                             </span>
 
                         {% elif engagement.statut == "refuse" %}
@@ -99,7 +163,7 @@ Détail engagement #{{ engagement.id }}
                             </span>
 
                         {% elif engagement.statut == "termine" %}
-                            <span class="badge bg-secondary">
+                            <span class="badge bg-secondary text-white">
                                 📦 Terminé
                             </span>
                         {% endif %}
@@ -529,7 +593,7 @@ Détail engagement #{{ engagement.id }}
 
         <div class="card-body">
 
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            {% call action_buttons() %}
 
                 <!-- ============================================== -->
                 <!-- VALIDATION POLE -->
@@ -542,15 +606,11 @@ Détail engagement #{{ engagement.id }}
                         action="{{ url_for(
                                 'engagements.valider_engagement_pole',
                                 engagement_id=engagement.id
-                        ) }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        ) }}"
+                        class="m-0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                        <button type="submit"
-                                class="btn btn-success">
-
-                            ✅ Valider pôle
-
-                        </button>
+                        {{ action_button("✅ Valider pôle", type="submit", color="success") }}
 
                     </form>
 
@@ -567,16 +627,10 @@ Détail engagement #{{ engagement.id }}
                             'engagements.retransmettre_engagement',
                             engagement_id=engagement.id
                     ) }}"
-                    class="d-inline">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    class="m-0">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                    <button
-                        type="submit"
-                        class="btn btn-warning">
-
-                        📤 Retransmettre
-
-                    </button>
+                    {{ action_button("📤 Retransmettre", type="submit", color="warning") }}
 
                 </form>
 
@@ -589,21 +643,14 @@ Détail engagement #{{ engagement.id }}
                 {% if peut_valider_presidence
                     and engagement.statut == "validation_presidence" %}
 
-                <form method="POST"
-                    action="{{ url_for(
-                            'engagements.valider_engagement_presidence',
-                            engagement_id=engagement.id
-                    ) }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="button"
+                        class="btn btn-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalValidationPresidence">
 
-                    <button type="submit"
-                            class="btn btn-primary">
+                    ✅ Validation présidence
 
-                        ✅ Validation présidence
-
-                    </button>
-
-                </form>
+                </button>
 
                 {% endif %}
 
@@ -618,16 +665,10 @@ Détail engagement #{{ engagement.id }}
                             'engagements.transmettre_tresorerie',
                             engagement_id=engagement.id
                     ) }}"
+                    class="m-0">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                    style="display:inline;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                    <button type="submit"
-                            class="btn btn-warning">
-
-                        💶 Transmettre à la trésorerie
-
-                    </button>
+                    {{ action_button("💶 Transmettre à la trésorerie", type="submit", color="warning") }}
 
                 </form>
 
@@ -639,12 +680,41 @@ Détail engagement #{{ engagement.id }}
 
                 {% if engagement.statut == "a_payer" %}
 
-                <button type="button"
-                        class="btn btn-info text-white"
-                        data-bs-toggle="modal"
-                        data-bs-target="#modalReglement">
+                <form method="POST"
+                    action="{{ url_for(
+                            'engagements.marquer_reglee',
+                            engagement_id=engagement.id
+                    ) }}"
 
-                    ✅ Marquer réglé
+                    onsubmit="return confirm(
+                            'Marquer cet engagement comme réglé '
+                            + '(paiement fournisseur ou remboursement '
+                            + 'bénévole effectué) ?'
+                    );"
+
+                    class="m-0">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <button type="submit" class="btn btn-info text-white">
+                        ✅ Marquer réglé
+                    </button>
+
+                </form>
+
+                {% endif %}
+
+                <!-- ============================================== -->
+                <!-- COMPTABILISATION (SAISIE N° EBP) -->
+                <!-- ============================================== -->
+
+                {% if engagement.statut == "reglee" %}
+
+                <button type="button"
+                        class="btn btn-dark text-white"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalComptabilisation">
+
+                    🧮 Marquer comptabilisé
 
                 </button>
 
@@ -685,82 +755,191 @@ Détail engagement #{{ engagement.id }}
                                 'Archiver cette demande ?'
                         );"
 
-                        style="display:inline;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        class="m-0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                        <button type="submit"
-                                class="btn btn-outline-danger">
+                        {{ action_button("🗑 Archiver", type="submit", color="outline-danger") }}
 
-                            🗑 Archiver
+                    </form>
 
-                        </button>
+                    {% else %}
+
+                    <form method="POST"
+                        action="{{ url_for(
+                                'engagements.restaurer_engagement',
+                                engagement_id=engagement.id
+                        ) }}"
+
+                        onsubmit="return confirm(
+                                'Désarchiver cette demande ?'
+                        );"
+
+                        class="m-0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                        {{ action_button("♻️ Désarchiver", type="submit", color="outline-success") }}
 
                     </form>
 
                     {% endif %}
 
-
-
                     <!-- ============================================== -->
                     <!-- CLOTURE DOSSIER -->
                     <!-- ============================================== -->
-                    {% if engagement.statut == "reglee" %}
+                    {% if engagement.statut == "comptabilise" %}
                         <form method="POST"
                             action="{{ url_for(
                                     'engagements.cloturer_engagement',
                                     engagement_id=engagement.id
                             ) }}"
+                            class="m-0">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                            style="display:inline;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                            <button type="submit"
-                                    class="btn btn-dark">
-
-                                📦 Clôturer dossier
-
-                            </button>
+                            {{ action_button("📦 Clôturer dossier", type="submit", color="dark") }}
 
                         </form>
                     {% endif %}
 
                 {% endif %}
 
-                                    <!-- ============================================== -->
-                    <!-- PURGE PHYSIQUE -->
-                    <!-- ============================================== -->
+                <!-- ============================================== -->
+                <!-- PURGE PHYSIQUE -->
+                <!-- ============================================== -->
 
-                    {% if engagement.deleted == 1 %}
+                {% if engagement.deleted == 1 %}
 
-                    <form method="POST"
-                        action="{{ url_for(
-                                'engagements.purge_engagement',
-                                engagement_id=engagement.id
-                        ) }}"
+                <button type="button"
+                        class="btn btn-danger"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalPurge">
 
-                        onsubmit="return confirm(
-                                'ATTENTION : suppression définitive irréversible ?'
-                        );"
+                    💥 Purge définitive
 
-                        style="display:inline;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                </button>
 
-                        <button type="submit"
-                                class="btn btn-danger">
+                {% endif %}
 
-                            💥 Purge définitive
-
-                        </button>
-
-                    </form>
-
-                    {% endif %}
-
-            </div>
+            {% endcall %}
 
         </div>
 
     </div>
+
+    <!-- ================================================== -->
+    <!-- ABONNEMENT RECURRENT -->
+    <!-- ================================================== -->
+
+    {% if has_access('engagement_parametres', 'ecriture')
+        and engagement.type == "depense"
+        and not engagement.abonnement_parent_id %}
+
+    <div class="card mb-4">
+
+        <div class="card-header bg-secondary text-white">
+            🔁 Abonnement récurrent
+        </div>
+
+        <div class="card-body">
+
+            {% if engagement.est_modele_abonnement %}
+
+                <p>
+                    Cet engagement est reconduit automatiquement chaque
+                    mois, le
+                    <strong>{{ engagement.abonnement_jour_mois }}</strong>
+                    du mois
+                    ({% if engagement.abonnement_actif %}
+                        <span class="badge bg-success">actif</span>
+                    {% else %}
+                        <span class="badge bg-secondary">en pause</span>
+                    {% endif %}).
+                    {% if engagement.abonnement_derniere_generation_le %}
+                    Dernière génération le
+                    {{ engagement.abonnement_derniere_generation_le[:10] }}.
+                    {% endif %}
+                </p>
+
+                {% call action_buttons() %}
+
+                    <form method="POST"
+                        action="{{ url_for(
+                                'engagements.abonnement_toggle',
+                                engagement_id=engagement.id
+                        ) }}"
+                        class="m-0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        {% if engagement.abonnement_actif %}
+                            {{ action_button("⏸️ Mettre en pause", type="submit", color="outline-secondary") }}
+                        {% else %}
+                            {{ action_button("▶️ Reprendre", type="submit", color="outline-success") }}
+                        {% endif %}
+                    </form>
+
+                    <form method="POST"
+                        action="{{ url_for(
+                                'engagements.abonnement_supprimer',
+                                engagement_id=engagement.id
+                        ) }}"
+                        onsubmit="return confirm(
+                                'Retirer cet engagement des abonnements '
+                                + 'récurrents ? Les engagements déjà '
+                                + 'générés sont conservés.'
+                        );"
+                        class="m-0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        {{ action_button("🗑 Retirer l'abonnement", type="submit", color="outline-danger") }}
+                    </form>
+
+                    {{ action_button(
+                        "📋 Voir tous les abonnements",
+                        href=url_for('engagements.gestion_abonnements'),
+                        color="outline-dark"
+                    ) }}
+
+                {% endcall %}
+
+            {% else %}
+
+                <p class="text-muted">
+                    Transformez cet engagement en abonnement pour qu'un
+                    nouvel engagement identique (même objet, montant,
+                    fournisseur, pôle) soit créé et soumis à validation
+                    automatiquement chaque mois.
+                </p>
+
+                <form method="POST"
+                    action="{{ url_for(
+                            'engagements.abonnement_configurer',
+                            engagement_id=engagement.id
+                    ) }}"
+                    class="d-flex align-items-end gap-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <div>
+                        <label class="form-label" for="abonnement_jour_mois">
+                            Jour du mois (1 à 28)
+                        </label>
+                        <input type="number"
+                            id="abonnement_jour_mois"
+                            name="abonnement_jour_mois"
+                            class="form-control"
+                            min="1"
+                            max="28"
+                            value="1"
+                            required>
+                    </div>
+
+                    {{ action_button("🔁 Transformer en abonnement", type="submit", color="primary") }}
+
+                </form>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+    {% endif %}
 
     <!-- ================================================== -->
     <!-- HISTORIQUE -->
@@ -856,7 +1035,7 @@ Détail engagement #{{ engagement.id }}
 
                 </h5>
 
-                {% if engagement.sous_type_depense == "deplacement" %}
+                {% if engagement.type_engagement in ("benevole_self", "benevole_other") %}
 
                 <a href="{{ url_for(
                         'engagements.note_frais_engagement',
@@ -1125,11 +1304,11 @@ Détail engagement #{{ engagement.id }}
 
 
 <!-- ================================================== -->
-<!-- MODALE REGLEMENT -->
+<!-- MODALE VALIDATION PRESIDENCE -->
 <!-- ================================================== -->
 
 <div class="modal fade"
-     id="modalReglement"
+     id="modalValidationPresidence"
      tabindex="-1">
 
     <div class="modal-dialog">
@@ -1138,16 +1317,113 @@ Détail engagement #{{ engagement.id }}
 
             <form method="POST"
                   action="{{ url_for(
-                        'engagements.marquer_reglee',
+                        'engagements.valider_engagement_presidence',
                         engagement_id=engagement.id
                   ) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                <div class="modal-header bg-info text-white">
+                <div class="modal-header bg-primary text-white">
 
                     <h5 class="modal-title">
 
-                        ✅ Marquer réglé
+                        ✅ Validation présidence
+
+                    </h5>
+
+                    <button type="button"
+                            class="btn-close btn-close-white"
+                            data-bs-dismiss="modal"></button>
+
+                </div>
+
+                <div class="modal-body">
+
+                    <label class="form-label">
+
+                        Décision du bureau
+
+                    </label>
+
+                    <textarea name="commentaire"
+                              id="commentaire_validation_presidence"
+                              class="form-control"
+                              rows="4"
+                              required>Décision du bureau du : </textarea>
+
+                    <small class="text-muted">
+                        Indiquez la date de la décision et tout
+                        commentaire utile.
+                    </small>
+
+                </div>
+
+                <div class="modal-footer">
+
+                    <button type="button"
+                            class="btn btn-secondary"
+                            data-bs-dismiss="modal">
+
+                        Annuler
+
+                    </button>
+
+                    <button type="submit"
+                            class="btn btn-primary">
+
+                        ✅ Confirmer la validation
+
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+document.getElementById("modalValidationPresidence")
+.addEventListener("shown.bs.modal", function () {
+
+    const champ =
+        document.getElementById("commentaire_validation_presidence");
+
+    champ.focus();
+    champ.setSelectionRange(champ.value.length, champ.value.length);
+
+});
+</script>
+
+
+<!-- ================================================== -->
+<!-- MODALE COMPTABILISATION (SAISIE N° EBP) -->
+<!-- ================================================== -->
+
+<div class="modal fade"
+     id="modalComptabilisation"
+     tabindex="-1">
+
+    <div class="modal-dialog">
+
+        <div class="modal-content">
+
+            <form method="POST"
+                  id="form_comptabilisation"
+                  action="{{ url_for(
+                        'engagements.marquer_comptabilise',
+                        engagement_id=engagement.id
+                  ) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="confirmer_doublon" id="confirmer_doublon_input" value="0">
+
+                <div class="modal-header bg-dark text-white">
+
+                    <h5 class="modal-title">
+
+                        🧮 Marquer comptabilisé
 
                     </h5>
 
@@ -1167,13 +1443,15 @@ Détail engagement #{{ engagement.id }}
 
                     <input type="text"
                            name="numero_ecriture_ebp"
+                           id="numero_ecriture_ebp_input"
                            class="form-control"
                            placeholder="Ex : 2026-000123"
                            required>
 
                     <small class="text-muted">
-                        Numéro de l'écriture comptable saisie dans EBP,
-                        permettant de retrouver le règlement.
+                        Numéro de l'écriture comptable saisie dans EBP
+                        à réception du relevé bancaire, permettant de
+                        retrouver le règlement.
                     </small>
 
                 </div>
@@ -1189,9 +1467,9 @@ Détail engagement #{{ engagement.id }}
                     </button>
 
                     <button type="submit"
-                            class="btn btn-info text-white">
+                            class="btn btn-dark text-white">
 
-                        ✅ Confirmer le règlement
+                        🧮 Confirmer la comptabilisation
 
                     </button>
 
@@ -1205,5 +1483,201 @@ Détail engagement #{{ engagement.id }}
 
 </div>
 
+<script>
+document.getElementById("form_comptabilisation")
+.addEventListener("submit", function (e) {
+
+    const champConfirme =
+        document.getElementById("confirmer_doublon_input");
+
+    // Si l'utilisateur a déjà confirmé le doublon, on laisse
+    // passer la soumission sans re-vérifier.
+    if (champConfirme.value === "1") {
+        return;
+    }
+
+    e.preventDefault();
+
+    const numero =
+        document.getElementById("numero_ecriture_ebp_input").value.trim();
+
+    const url = new URL(
+        "{{ url_for('engagements.api_verifier_numero_ebp') }}",
+        window.location.origin
+    );
+
+    url.searchParams.set("numero_ecriture_ebp", numero);
+    url.searchParams.set("engagement_id", "{{ engagement.id }}");
+
+    fetch(url, { credentials: "same-origin" })
+        .then(res => res.json())
+        .then(json => {
+
+            if (!json.doublon) {
+                e.target.submit();
+                return;
+            }
+
+            const liste = json.engagements
+                .map(eng => `#${eng.id}${eng.objet ? " (" + eng.objet + ")" : ""}`)
+                .join(", ");
+
+            const accepte = window.confirm(
+                `⚠️ Le numéro d'écriture EBP « ${numero} » est déjà ` +
+                `utilisé par l'engagement ${liste}.\n\n` +
+                `Voulez-vous réutiliser ce même numéro ?`
+            );
+
+            if (accepte) {
+                champConfirme.value = "1";
+                e.target.submit();
+            }
+
+        })
+        .catch(() => {
+            // En cas d'erreur réseau, on laisse le contrôle
+            // côté serveur gérer le doublon.
+            e.target.submit();
+        });
+
+});
+</script>
+
+
+<!-- ================================================== -->
+<!-- MODALE PURGE DEFINITIVE -->
+<!-- ================================================== -->
+
+{% if engagement.deleted == 1 %}
+
+<div class="modal fade"
+     id="modalPurge"
+     tabindex="-1">
+
+    <div class="modal-dialog">
+
+        <div class="modal-content">
+
+            <form method="POST"
+                  id="form_purge"
+                  action="{{ url_for(
+                        'engagements.purge_engagement',
+                        engagement_id=engagement.id
+                  ) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="modal-header bg-danger text-white">
+
+                    <h5 class="modal-title">
+                        💥 Purge définitive
+                    </h5>
+
+                    <button type="button"
+                            class="btn-close btn-close-white"
+                            data-bs-dismiss="modal"></button>
+
+                </div>
+
+                <div class="modal-body">
+
+                    <div class="alert alert-danger">
+
+                        <strong>⚠️ Action irréversible.</strong>
+                        Cette opération supprime définitivement
+                        l'engagement, son historique, ses
+                        commentaires et tous les fichiers associés
+                        (notes de frais, devis, justificatifs).
+                        Aucune restauration ne sera possible.
+
+                    </div>
+
+                    {% if engagement.numero_ecriture_ebp %}
+
+                    <div class="alert alert-warning">
+
+                        <strong>🔢 Écriture comptable EBP existante :</strong>
+                        <code>{{ engagement.numero_ecriture_ebp }}</code>
+                        <br>
+                        Cette référence comptable sera perdue.
+
+                        <div class="form-check mt-2">
+
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   name="confirmer_ebp"
+                                   value="1"
+                                   id="confirmer_ebp_purge"
+                                   required>
+
+                            <label class="form-check-label"
+                                   for="confirmer_ebp_purge">
+
+                                Je confirme vouloir supprimer malgré
+                                cette écriture EBP existante.
+
+                            </label>
+
+                        </div>
+
+                    </div>
+
+                    {% endif %}
+
+                    <label class="form-label">
+
+                        Tapez <strong>SUPPRIMER</strong> pour confirmer
+
+                    </label>
+
+                    <input type="text"
+                           name="confirmation"
+                           id="confirmation_purge"
+                           class="form-control"
+                           autocomplete="off"
+                           required>
+
+                </div>
+
+                <div class="modal-footer">
+
+                    <button type="button"
+                            class="btn btn-secondary"
+                            data-bs-dismiss="modal">
+
+                        Annuler
+
+                    </button>
+
+                    <button type="submit"
+                            id="btn_confirmer_purge"
+                            class="btn btn-danger"
+                            disabled>
+
+                        💥 Supprimer définitivement
+
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+document.getElementById("confirmation_purge")
+.addEventListener("input", function () {
+
+    document.getElementById("btn_confirmer_purge").disabled = (
+        this.value.trim().toUpperCase() !== "SUPPRIMER"
+    );
+
+});
+</script>
+
+{% endif %}
 
 {% endblock %}
