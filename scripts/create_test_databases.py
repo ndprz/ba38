@@ -21,7 +21,7 @@ from utils import write_log
 # CONFIG
 # -------------------------------------------------------------------
 LIMIT = 10
-NO_LIMIT_TABLES = {"field_groups", "parametres"}
+NO_LIMIT_TABLES = {"field_groups", "parametres", "applications"}
 
 SUMMARY = []
 

@@ -42,6 +42,10 @@
   </div>
   {% endif %}
 
+  {% call action_buttons() %}
+    {{ action_button("↩️ Retour au menu trésorerie", href=url_for('tresorerie.tresorerie'), color="outline-dark") }}
+  {% endcall %}
+
   <form method="post" action="{{ url_for('tresorerie.cotisations_toggle_test_mode') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if mail_mode == "TEST" %}
@@ -248,7 +252,7 @@
 
     <!-- Retour -->
     <div class="col">
-      {{ action_button("⬅️ Retour aux menu trésorerie", href=url_for('tresorerie.cotisations_quit'), color="outline-dark") }}
+      {{ action_button("↩️ Retour aux menu trésorerie", href=url_for('tresorerie.cotisations_quit'), color="outline-dark") }}
     </div>
 
   </div>

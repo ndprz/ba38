@@ -1,7 +1,5 @@
 {% extends "base.html" %}
 
-{% from "macros/buttons.html" import action_button %}
-
 {% block title %}Résultats facturation participation{% endblock %}
 
 {% block content %}
@@ -29,7 +27,9 @@
                 📤 Retraiter un nouveau fichier
             </a>
 
-            {{ action_button("⬅️ Retour à la sélection", href=url_for('participation.selection'), color="outline-dark btn-sm") }}
+            <a href="{{ url_for('participation.selection') }}" class="btn btn-outline-dark btn-sm">
+                ↩️ Retour à la sélection
+            </a>
         </div>
 
     </div>

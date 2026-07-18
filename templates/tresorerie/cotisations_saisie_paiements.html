@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_buttons %}
+
 {% block title %}Saisie des paiements{% endblock %}
 
 {% block content %}
@@ -27,29 +30,22 @@
     <!-- Boutons outils -->
     <div class="d-flex justify-content-between align-items-center mb-3">
 
-      <div class="d-flex gap-2">
-
-        <a href="{{ url_for('tresorerie.cotisations_saisie_paiements', annee=annee, impayes=1) }}"
-          class="btn btn-outline-danger btn-sm">
+      {% call action_buttons() %}
+        <a href="{{ url_for('tresorerie.cotisations_saisie_paiements', annee=annee, impayes=1) }}" class="btn btn-outline-danger btn-sm">
           🔎 Impayés uniquement
         </a>
-
-        <a href="{{ url_for('tresorerie.cotisations_saisie_paiements', annee=annee) }}"
-          class="btn btn-outline-secondary btn-sm">
+        <a href="{{ url_for('tresorerie.cotisations_saisie_paiements', annee=annee) }}" class="btn btn-outline-secondary btn-sm">
           📄 Tous
         </a>
-
         {% if annee %}
         <a href="{{ url_for('tresorerie.export_cotisations_excel', annee=annee) }}" class="btn btn-success btn-sm">
           📊 Export Excel
         </a>
         {% endif %}
-
         <a href="{{ url_for('tresorerie.tresorerie') }}" class="btn btn-outline-dark btn-sm" id="btnRetour">
           ↩️ Retour menu
         </a>
-
-      </div>
+      {% endcall %}
 
       {% if resultats %}
       <button type="submit" form="formPaiements" class="btn btn-success">

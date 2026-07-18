@@ -1,7 +1,5 @@
 {% extends "base.html" %}
 
-{% from "macros/buttons.html" import action_button %}
-
 {% block title %}Résultats envoi factures{% endblock %}
 
 {% block content %}
@@ -37,7 +35,9 @@
             </a>
             {% endif %}
 
-            {{ action_button("⬅️ Retour à la sélection", href=url_for('tresorerie.factures_selection'), color="outline-dark btn-sm") }}
+            <a href="{{ url_for('tresorerie.factures_selection') }}" class="btn btn-outline-dark btn-sm">
+                ↩️ Retour à la sélection
+            </a>
         </div>
 
     </div>

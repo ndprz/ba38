@@ -1,15 +1,34 @@
-<form method="post">
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Modifier le modèle de relance{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width:800px;">
+
+  <h2>✏️ Modifier le modèle de relance</h2>
+
+  <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <div class="mb-3">
-    <label>Sujet</label>
-    <input type="text" name="sujet" class="form-control"
-           value="{{ modele.sujet }}">
-  </div>
 
-  <div class="mb-3">
-    <label>Corps du mail</label>
-    <textarea name="corps" rows="12" class="form-control">{{ modele.corps }}</textarea>
-  </div>
+    <div class="mb-3">
+      <label>Sujet</label>
+      <input type="text" name="sujet" class="form-control"
+             value="{{ modele.sujet }}">
+    </div>
 
-  <button class="btn btn-primary">Enregistrer</button>
-</form>
+    <div class="mb-3">
+      <label>Corps du mail</label>
+      <textarea name="corps" rows="12" class="form-control">{{ modele.corps }}</textarea>
+    </div>
+
+    {% call action_buttons() %}
+      {{ action_button("💾 Enregistrer", type="submit", color="primary") }}
+      {{ action_button("↩️ Retour", href=url_for('tresorerie.cotisations_relance_start'), color="outline-dark") }}
+    {% endcall %}
+
+  </form>
+
+</div>
+{% endblock %}
