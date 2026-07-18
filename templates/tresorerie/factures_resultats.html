@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button %}
+
+{% block title %}Résultats envoi factures{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 1600px;">
+
+    <div class="page-sticky-header d-flex justify-content-between align-items-center">
+
+        <h2 class="mb-0">📊 Résultats — Factures {{ lot.periode or '' }}</h2>
+
+        <div class="btn-group-ba38">
+            {% if reste_a_envoyer %}
+            <form method="POST" action="{{ url_for('tresorerie.factures_envoyer', lot_id=lot.id) }}" class="d-inline"
+                  {% if mail_mode != "TEST" %}
+                  onsubmit="return confirm('⚠️ Mode PROD actif : vous allez envoyer les factures non encore traitées de ce lot aux associations. Continuer ?');"
+                  {% endif %}>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-success btn-sm">
+                    📧 Envoyer les mails {% if mail_mode == "TEST" %}(mode TEST){% endif %}
+                </button>
+            </form>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('tresorerie.factures_verifier_statut_mailjet', lot_id=lot.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-primary btn-sm">
+                    🔄 Vérifier statut Mailjet
+                </button>
+            </form>
+
+            {% if lot.annee and lot.trimestre %}
+            <a href="{{ url_for('tresorerie.factures_pdf') }}?annee={{ lot.annee }}&trimestre={{ lot.trimestre }}" class="btn btn-outline-danger btn-sm">
+                📤 Importer un nouveau PDF pour ce trimestre
+            </a>
+            {% endif %}
+
+            {{ action_button("⬅️ Retour à la sélection", href=url_for('tresorerie.factures_selection'), color="outline-dark btn-sm") }}
+        </div>
+
+    </div>
+
+    <!-- Bandeau statut du dernier envoi -->
+    {% if lot.dernier_envoi_le %}
+        {% if lot.dernier_envoi_mode_test %}
+        <div class="alert alert-warning py-2 my-2">
+            🧪 Dernier envoi : <strong>Mode TEST</strong> le {{ lot.dernier_envoi_le }} par {{ lot.dernier_envoi_par or '—' }}
+            ({{ lot.dernier_envoi_nb_ok }} envoyé(s), {{ lot.dernier_envoi_nb_erreur }} erreur(s))
+            — <strong>aucune facture réelle n'a été envoyée.</strong>
+        </div>
+        {% else %}
+        <div class="alert alert-success py-2 my-2">
+            📤 Dernier envoi réel : le {{ lot.dernier_envoi_le }} par {{ lot.dernier_envoi_par or '—' }}
+            — {{ lot.dernier_envoi_nb_ok }} envoyé(s){% if lot.dernier_envoi_nb_erreur %}, ⚠️ {{ lot.dernier_envoi_nb_erreur }} erreur(s){% endif %}
+        </div>
+        {% endif %}
+    {% elif reste_a_envoyer %}
+    <div class="alert alert-secondary py-2 my-2">
+        📝 Lot créé, <strong>pas encore envoyé</strong> — vérifiez la liste ci-dessous puis cliquez « Envoyer les mails ».
+    </div>
+    {% else %}
+    <div class="alert alert-secondary py-2 my-2">
+        📭 Envoi : <strong>en cours</strong> — actualisez la page dans quelques instants.
+    </div>
+    {% endif %}
+
+    <div class="table-container-fixe">
+        <table class="table table-striped table-auto-width">
+            <thead>
+                <tr>
+                    <th>Association</th>
+                    <th>Email</th>
+                    <th>PDF</th>
+                    <th>Mail envoyé</th>
+                    <th>Statut Mailjet</th>
+                    <th title="Renvoyer via Gmail (ba380@) en cas de rebond Mailjet">🔁 Gmail</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for e in envois %}
+                <tr>
+                    <td>{{ e.nom }}</td>
+                    <td class="small">{{ e.email or '—' }}</td>
+                    <td class="small text-center align-middle">
+                        <a href="{{ url_for('tresorerie.factures_voir_pdf', envoi_id=e.id) }}" target="_blank">👁️ Voir</a>
+                    </td>
+                    <td class="small text-center align-middle">
+                        {% if e.mail_envoye_le %}
+                            {% if e.mail_erreur %}
+                            <span class="badge bg-danger" title="{{ e.mail_erreur }}">⚠️ échec</span>
+                            {% elif e.mail_mode_test %}
+                            <span class="badge bg-warning text-dark" title="Mode TEST">🧪 {{ e.mail_envoye_le }}</span>
+                            {% else %}
+                            <span class="badge bg-success">✔ {{ e.mail_envoye_le }}</span>
+                            {% endif %}
+                        {% elif e.mail_erreur %}
+                        <span class="badge bg-danger" title="{{ e.mail_erreur }}">⚠️ {{ e.mail_erreur }}</span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="small text-center align-middle">
+                        {% if e.mail_statut_final %}
+                            {% if e.mail_statut_final in ['sent', 'opened', 'delivered'] %}
+                            <span class="badge bg-success">{{ e.mail_statut_final }}</span>
+                            {% elif e.mail_statut_final in ['bounce', 'blocked', 'spam', 'hardbounced', 'softbounced'] %}
+                            <span class="badge bg-danger">{{ e.mail_statut_final }}</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ e.mail_statut_final }}</span>
+                            {% endif %}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="small text-center align-middle">
+                        {% if e.email and e.mail_envoye_le and not e.mail_mode_test %}
+                        <form method="POST" action="{{ url_for('tresorerie.factures_renvoyer_gmail', envoi_id=e.id) }}"
+                              onsubmit="return confirm('Renvoyer la facture à {{ e.nom }} via Gmail (ba380@banquealimentaire.org) ?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Renvoyer via Gmail">🔁</button>
+                        </form>
+                        {% if e.mail_renvoi_gmail_le %}
+                        <div class="text-muted" style="font-size: 0.75em;">{{ e.mail_renvoi_gmail_le }}</div>
+                        {% endif %}
+                        {% elif e.email and e.mail_envoye_le and e.mail_mode_test %}
+                        <span class="text-muted" title="Dernier envoi en Mode TEST — pas de renvoi Gmail possible">🧪</span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+</div>
+{% endblock %}

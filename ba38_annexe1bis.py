@@ -488,13 +488,13 @@ def _dossier_signe(annexe_id):
 
 
 # ========================================
-# 📤 Envoyer pour signature via Yousign
+# 📤 Envoyer pour signature via LibreSign
 # ========================================
 @annexe1bis_bp.route("/annexe1bis/envoyer_signature/<int:annexe_id>", methods=["POST"])
 @login_required
 @require_access("associations", "ecriture")
 def envoyer_signature(annexe_id):
-    from utils_yousign import envoyer_signature_request, YousignError
+    from utils_libresign import envoyer_signature_request, LibreSignError
 
     data = charger_donnees_pdf_annexe1bis(annexe_id)
     if data is None:
@@ -525,9 +525,9 @@ def envoyer_signature(annexe_id):
             signataire_nom=nom,
             signataire_email=courriel_president,
         )
-    except YousignError as e:
-        write_log(f"❌ Yousign envoyer_signature annexe {annexe_id} : {e}")
-        flash(f"❌ Erreur lors de l'envoi à Yousign : {e}", "danger")
+    except LibreSignError as e:
+        write_log(f"❌ LibreSign envoyer_signature annexe {annexe_id} : {e}")
+        flash(f"❌ Erreur lors de l'envoi à LibreSign : {e}", "danger")
         return redirect(url_for("annexe1bis.modifier", annexe_id=annexe_id))
 
     conn = get_db_connection()
@@ -536,16 +536,18 @@ def envoyer_signature(annexe_id):
         UPDATE annexe1bis
         SET statut_signature = 'envoyee',
             date_envoi_signature = ?,
-            yousign_signature_request_id = ?,
-            yousign_document_id = ?,
+            libresign_uuid = ?,
+            libresign_file_id = ?,
+            libresign_sign_request_id = ?,
             destinataire_signature_nom = ?,
             destinataire_signature_email = ?
         WHERE id = ?
         """,
         (
             date.today().strftime("%Y-%m-%d"),
-            resultat["signature_request_id"],
-            resultat["document_id"],
+            resultat["uuid"],
+            resultat["file_id"],
+            resultat["sign_request_id"],
             f"{prenom} {nom}",
             courriel_president,
             annexe_id,
@@ -560,78 +562,64 @@ def envoyer_signature(annexe_id):
 
 
 # ========================================
-# 🔄 Vérifier le statut auprès de Yousign (sans webhook)
+# 🔄 Vérifier le statut auprès de LibreSign (pas de webhook configuré)
 # ========================================
 @annexe1bis_bp.route("/annexe1bis/verifier_statut/<int:annexe_id>", methods=["POST"])
 @login_required
 @require_access("associations", "ecriture")
 def verifier_statut(annexe_id):
-    from utils_yousign import recuperer_statut, telecharger_document_signe, lister_champs_document, YousignError
+    from utils_libresign import recuperer_statut, telecharger_document_signe, LibreSignError
 
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
     annexe = conn.execute("SELECT * FROM annexe1bis WHERE id = ?", (annexe_id,)).fetchone()
 
-    if not annexe or not annexe["yousign_signature_request_id"]:
+    if not annexe or not annexe["libresign_file_id"]:
         conn.close()
-        flash("ℹ️ Aucune demande de signature Yousign associée à cette annexe.", "info")
+        flash("ℹ️ Aucune demande de signature LibreSign associée à cette annexe.", "info")
         return redirect(url_for("annexe1bis.modifier", annexe_id=annexe_id))
 
-    request_id = annexe["yousign_signature_request_id"]
+    file_id = annexe["libresign_file_id"]
 
     try:
-        statut_yousign = recuperer_statut(request_id)["status"]
-    except YousignError as e:
+        statut_data = recuperer_statut(file_id)
+    except LibreSignError as e:
         conn.close()
-        write_log(f"❌ Yousign verifier_statut annexe {annexe_id} : {e}")
-        flash(f"❌ Erreur lors de la vérification auprès de Yousign : {e}", "danger")
+        write_log(f"❌ LibreSign verifier_statut annexe {annexe_id} : {e}")
+        flash(f"❌ Erreur lors de la vérification auprès de LibreSign : {e}", "danger")
         return redirect(url_for("annexe1bis.modifier", annexe_id=annexe_id))
 
-    mapping = {"done": "signee", "declined": "refusee", "rejected": "refusee", "expired": "expiree"}
-    nouveau_statut = mapping.get(statut_yousign)
+    # Codes confirmés le 2026-07-16 : 0=Brouillon, 1=Prêt à signer, 3=Signés.
+    # Refus/expiration non testés en conditions réelles — pas de mapping pour
+    # l'instant, à ajuster dès qu'un cas réel sera observé.
+    mapping = {3: "signee"}
+    nouveau_statut = mapping.get(statut_data.get("status"))
 
     if not nouveau_statut:
         conn.close()
-        flash(f"ℹ️ Statut Yousign actuel : « {statut_yousign} » (pas encore de changement).", "info")
+        flash(f"ℹ️ Statut LibreSign actuel : « {statut_data.get('statusText')} » (pas encore de changement).", "info")
         return redirect(url_for("annexe1bis.modifier", annexe_id=annexe_id))
 
     document_signe_path = None
-    nom_signataire_saisi = None
     if nouveau_statut == "signee":
         try:
-            pdf_signe = telecharger_document_signe(request_id)
+            pdf_signe = telecharger_document_signe(annexe["libresign_uuid"])
             chemin = os.path.join(_dossier_signe(annexe_id), f"signe_{int(datetime.now().timestamp())}.pdf")
             with open(chemin, "wb") as f:
                 f.write(pdf_signe)
             document_signe_path = chemin
-        except YousignError as e:
+        except LibreSignError as e:
             write_log(f"⚠️ Téléchargement document signé échoué (annexe {annexe_id}) : {e}")
-
-        try:
-            champs = lister_champs_document(request_id, annexe["yousign_document_id"])
-            # Structure exacte non confirmée par la doc Yousign : on logge la
-            # réponse brute pour vérifier/ajuster ce parsing au premier essai réel.
-            write_log(f"ℹ️ Yousign champs annexe {annexe_id} : {champs}")
-            liste_champs = champs if isinstance(champs, list) else champs.get("data", champs.get("items", []))
-            for champ in liste_champs:
-                if champ.get("name") == "nom_signataire":
-                    nom_signataire_saisi = (
-                        champ.get("value") or champ.get("answer") or champ.get("default_value")
-                    )
-                    break
-        except YousignError as e:
-            write_log(f"⚠️ Lecture des champs Yousign échouée (annexe {annexe_id}) : {e}")
 
     conn.execute(
         """
         UPDATE annexe1bis
         SET statut_signature = ?,
             date_signature = CASE WHEN ? = 'signee' THEN ? ELSE date_signature END,
-            document_signe_path = COALESCE(?, document_signe_path),
-            nom_signataire_saisi = COALESCE(?, nom_signataire_saisi)
+            document_signe_path = COALESCE(?, document_signe_path)
         WHERE id = ?
         """,
-        (nouveau_statut, nouveau_statut, date.today().strftime("%Y-%m-%d"), document_signe_path, nom_signataire_saisi, annexe_id)
+        (nouveau_statut, nouveau_statut, date.today().strftime("%Y-%m-%d"), document_signe_path, annexe_id)
     )
     conn.commit()
     conn.close()
@@ -1559,65 +1547,22 @@ def _build_pdf_bytes(data):
 
     elements.append(Spacer(5, 0.5 * cm))
 
-    # Ancre Yousign "Smart Anchor" : texte invisible (blanc sur fond blanc),
-    # détecté par Yousign à l'activation pour positionner automatiquement le
-    # cadre de signature du signataire n°1 (le président), sans configuration
-    # manuelle côté Yousign. Cf. utils_yousign.py / docs Yousign "Smart Anchors".
-    style_ancre_yousign = ParagraphStyle(
-        'AncreYousign',
-        parent=style_n_left,
-        textColor=colors.white,
-        fontSize=8,
-        spaceAfter=0,
-    )
-
-    # Ancre "text" : demande au signataire de taper lui-même son nom et prénom
-    # (plutôt que de réafficher le président connu de notre base, qui peut être
-    # obsolète en cas de changement de président non signalé à la BA).
-    # Police volontairement minuscule (texte invisible de toute façon) : le
-    # motif {{...}} doit tenir sur une seule ligne dans la cellule, sinon
-    # ReportLab le coupe et Yousign ne le détecte plus (constaté le 2026-07-11 :
-    # avec fontSize=8 la même ancre que "signature", plus longue, n'était pas
-    # détectée du tout — 1 seul champ 'signature' retourné par l'API).
-    style_ancre_yousign_texte = ParagraphStyle(
-        'AncreYousignTexte',
-        parent=style_ancre_yousign,
-        fontSize=3,
-    )
-    ancre_nom_signataire = (
-        "{{s1|text|80|170|25|Nom et prénom du signataire|"
-        "Merci d'indiquer vos nom et prénom actuels|f|nom_signataire}}"
-    )
-
-    # Champ "Date de signature" : si elle est déjà connue en base (export/
-    # consultation après coup), on l'affiche telle quelle. Sinon (document en
-    # cours de génération pour un envoi Yousign), on pose une ancre
-    # "signature_date" auto-remplie par Yousign à la signature — évite le champ
-    # qui restait vide sur le PDF envoyé (la date n'est par définition pas
-    # encore connue au moment de l'envoi).
-    if data.get("date_signature"):
-        cellule_date_signature = Paragraph(f"Date de signature : {date_signature_fmt}", style_n_left)
-    else:
-        cellule_date_signature = Paragraph(
-            'Date de signature : <font color="white" size="3">{{s1|signature_date|dd/MM/yyyy|||date_signature}}</font>',
-            style_n_left
-        )
-
+    # Le pavé de signature lui-même est positionné par LibreSign via des
+    # coordonnées passées à l'API (cf. utils_libresign.py), pas par une ancre
+    # texte embarquée dans le PDF (contrairement à l'ancien système Yousign,
+    # abandonné le 2026-07-16 — voir mémoire ba38_annexe1bis_migration). Le
+    # tableau ci-dessous ne contient donc plus que du texte visible normal.
     table_signature = Table(
         [[
             Paragraph(f"Date de création : {date_creation_fmt}", style_n_left),
-            cellule_date_signature,
+            Paragraph(f"Date de signature : {date_signature_fmt}", style_n_left),
         ],
         [
             Paragraph("Signature responsable association :", style_n_left),
-            Paragraph("{{s1|signature|85|37}}", style_ancre_yousign),
-        ],
-        [
-            Paragraph("Nom et prénom du signataire :", style_n_left),
-            Paragraph(ancre_nom_signataire, style_ancre_yousign_texte),
+            Paragraph("", style_n_left),
         ]],
         colWidths=[8.5 * cm, 8.5 * cm],
-        rowHeights=[0.7 * cm, 1.8 * cm, 0.7 * cm]
+        rowHeights=[0.7 * cm, 1.8 * cm]
     )
     table_signature.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),

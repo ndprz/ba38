@@ -142,6 +142,18 @@
 
   {% if lignes %}
 
+  {% if not preview %}
+  <form method="post"
+        action="{{ url_for('tresorerie.cotisations_relance_verifier_statut_mailjet') }}"
+        class="mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="annee" value="{{ annee }}">
+    <button class="btn btn-outline-secondary btn-sm">
+      🔄 Vérifier statut Mailjet
+    </button>
+  </form>
+  {% endif %}
+
   <div class="alert alert-danger">
     ⚠ {{ lignes|length }} relances vont être envoyées.
   </div>
@@ -164,6 +176,11 @@
           <th>Email utilisé</th>
           <th class="text-end">Montant (€)</th>
           <th>Relance actuelle</th>
+          <th>Dernière relance</th>
+          <th>Statut Mailjet</th>
+          {% if not preview %}
+          <th>Actions</th>
+          {% endif %}
         </tr>
       </thead>
       <tbody>
@@ -176,6 +193,37 @@
           <td>{{ row.courriel_resp_tresorerie or row.courriel_association }}</td>
           <td class="text-end">{{ "%.2f"|format(row.montant) }}</td>
           <td>{{ row.relance_niveau or 0 }}</td>
+          <td>
+            {% if row.date_derniere_relance %}
+              {{ row.date_derniere_relance[:16].replace("T", " ") }}
+              {% if row.mode_test_relance %}
+                <span class="badge bg-warning text-dark">🧪 TEST</span>
+              {% endif %}
+              {% if row.relance_mail_erreur %}
+                <span class="badge bg-danger" title="{{ row.relance_mail_erreur }}">❌ Erreur</span>
+              {% endif %}
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {{ row.relance_statut_final or row.relance_mailjet_status or "—" }}
+            {% if row.relance_renvoi_gmail_le %}
+              <span class="badge bg-info text-dark">🔁 Gmail</span>
+            {% endif %}
+          </td>
+          {% if not preview %}
+          <td>
+            {% if row.relance_sujet and not row.mode_test_relance %}
+            <form method="post"
+                  action="{{ url_for('tresorerie.cotisations_relance_renvoyer_gmail', cotisation_id=row.id) }}"
+                  onsubmit="return confirm('Renvoyer cette relance via Gmail à {{ row.nom_association }} ?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-outline-info btn-sm">🔁 Gmail</button>
+            </form>
+            {% endif %}
+          </td>
+          {% endif %}
         </tr>
         {% endfor %}
       </tbody>

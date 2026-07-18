@@ -999,6 +999,31 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
 
     response.raise_for_status()
 
+    return response.json()
+
+
+def mailjet_get_message_status(message_id):
+    """
+    Interroge l'API Mailjet pour le statut réel d'un message déjà envoyé
+    (sent / opened / bounce / blocked / spam / queued...).
+    Retourne None si le statut n'a pas pu être récupéré.
+    """
+    api_key = os.getenv("MAILJET_API_KEY")
+    api_secret = os.getenv("MAILJET_API_SECRET")
+
+    try:
+        response = requests.get(
+            f"https://api.mailjet.com/v3/REST/message/{message_id}",
+            auth=(api_key, api_secret),
+            timeout=10
+        )
+        response.raise_for_status()
+        data = response.json().get("Data", [])
+        return data[0].get("Status") if data else None
+    except Exception as e:
+        write_log(f"⚠️ Erreur vérification statut Mailjet (id={message_id}) : {e}")
+        return None
+
 
 def send_reset_email(email, token):
     """
@@ -1588,7 +1613,7 @@ def get_contacts(param_name):
 PROD_DB_PATH_MODELES_EMAILS = "/srv/ba38/prod/instance/ba380.sqlite"
 
 
-def copier_modele_email_vers_prod(code, sujet, corps):
+def copier_modele_email_vers_prod(code, sujet, corps, type_periode=None):
     """Crée ou met à jour (par code_modele) le modèle d'email dans la base
     PROD, en plus de l'enregistrement déjà fait par l'appelant dans la base
     courante. Utilisé par les deux pages d'édition de modèles (ba38_emails.py
@@ -1601,14 +1626,14 @@ def copier_modele_email_vers_prod(code, sujet, corps):
             if existant:
                 prod_conn.execute("""
                     UPDATE modeles_emails
-                    SET sujet=?, corps=?, date_modification=datetime('now')
+                    SET sujet=?, corps=?, type_periode=?, date_modification=datetime('now')
                     WHERE code_modele=?
-                """, (sujet, corps, code))
+                """, (sujet, corps, type_periode, code))
             else:
                 prod_conn.execute("""
-                    INSERT INTO modeles_emails (code_modele, sujet, corps, date_modification)
-                    VALUES (?, ?, ?, datetime('now'))
-                """, (code, sujet, corps))
+                    INSERT INTO modeles_emails (code_modele, sujet, corps, type_periode, date_modification)
+                    VALUES (?, ?, ?, ?, datetime('now'))
+                """, (code, sujet, corps, type_periode))
             prod_conn.commit()
         return True, None
     except Exception as e:

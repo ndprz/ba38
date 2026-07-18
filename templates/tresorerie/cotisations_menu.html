@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button %}
+
+{% block title %}Cotisations — Choix de l'année{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width:500px;">
+
+    <h2>{{ icone }} {{ titre }}</h2>
+    <p class="text-muted">Choisissez d'abord l'année de cotisation concernée.</p>
+
+    <div class="mb-3">
+        <label class="form-label">Année</label>
+        <input type="number" id="annee" class="form-control" placeholder="{{ annee_defaut }}" value="{{ annee_defaut }}">
+    </div>
+
+    <div class="d-flex gap-2">
+        <button id="btn-continuer" class="btn btn-primary">Continuer</button>
+        {{ action_button("⬅ Retour", href=url_for('tresorerie.tresorerie'), color="outline-dark") }}
+    </div>
+
+</div>
+
+<script>
+document.getElementById("btn-continuer").addEventListener("click", function () {
+
+    const annee = document.getElementById("annee").value;
+    if (!annee) return;
+
+    const cibles = {
+        facturation: "{{ url_for('tresorerie.cotisations') }}",
+        relance: "{{ url_for('tresorerie.cotisations_relance_start') }}",
+        paiements: "{{ url_for('tresorerie.cotisations_saisie_paiements') }}"
+    };
+
+    window.location.href = `${cibles["{{ action }}"]}?annee=${annee}`;
+});
+</script>
+
+{% endblock %}

@@ -4,6 +4,11 @@
 
 {% block title %}Gestion des Absences{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+{% endblock %}
+
 {% block content %}
 
 {# ============================== #
@@ -26,8 +31,8 @@
     <div class="row">
         <!-- Sélection du bénévole -->
         <div class="col-md-4">
-            <label for="benevole_id">Choisir un bénévole</label>
-            <select name="benevole_id" id="benevole_id" class="form-control" required>
+            <label for="benevole_id">🔎 Rechercher un bénévole à ajouter</label>
+            <select name="benevole_id" id="benevole_id" class="form-control select2" required>
                 <option value="">-- Sélectionner --</option>
                 {% for b in benevoles %}
                 <option value="{{ b.id }}">{{ b.nom }} {{ b.prenom }}</option>
@@ -64,7 +69,11 @@
 # 📋 Tableau des absences enregistrées
 # ============================== #}
 <h5>📄 Absences enregistrées</h5>
-<table class="table table-bordered table-sm align-middle">
+<div class="mb-2 col-md-4">
+    <label for="recherche_absent">🔎 Rechercher un bénévole absent</label>
+    <input type="text" id="recherche_absent" class="form-control" placeholder="Nom ou prénom...">
+</div>
+<table class="table table-bordered table-sm align-middle" id="table-absences">
     <thead>
         <tr>
             <th>ID</th>
@@ -76,7 +85,7 @@
     </thead>
     <tbody>
         {% for a in absences %}
-        <tr>
+        <tr data-nom="{{ (a['nom'] ~ ' ' ~ a['prenom'])|lower }}">
             <form method="POST" action="{{ url_for('planning_utils.modifier_absence', absence_id=a['id']) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <td class="text-muted">{{ a['benevole_id'] }}</td>
@@ -193,7 +202,49 @@
 
         const inputBenevole = document.querySelector("input[name='benevole']");
         if (inputBenevole) inputBenevole.focus();
+
+        // Filtrage en direct du tableau des absents (nom / prénom)
+        const rechercheAbsent = document.getElementById('recherche_absent');
+        if (rechercheAbsent) {
+            const filtrerAbsents = () => {
+                const q = rechercheAbsent.value.trim().toLowerCase();
+                document.querySelectorAll('#table-absences tbody tr').forEach(tr => {
+                    tr.style.display = tr.dataset.nom.includes(q) ? '' : 'none';
+                });
+            };
+
+            rechercheAbsent.addEventListener('input', filtrerAbsents);
+
+            rechercheAbsent.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    rechercheAbsent.value = '';
+                    filtrerAbsents();
+                }
+            });
+        }
     });
+</script>
+
+<script src="{{ url_for('static', filename='js/jquery-3.5.1.min.js') }}"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+    // Recherche du bénévole à ajouter via select2
+    (function initBenevoleSelect2() {
+        if (!window.jQuery || typeof window.jQuery.fn.select2 !== "function") {
+            setTimeout(initBenevoleSelect2, 100);
+            return;
+        }
+        window.jQuery('#benevole_id').select2({
+            placeholder: "-- Sélectionner --",
+            allowClear: true,
+            width: '100%',
+            language: {
+                noResults: function () {
+                    return "Aucun bénévole trouvé.";
+                }
+            }
+        });
+    })();
 </script>
 
 {% endblock %}

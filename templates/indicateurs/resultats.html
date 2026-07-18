@@ -19,10 +19,48 @@
             📤 Envoyer mails
         </a>
 
+        <form method="POST" action="{{ url_for('indicateurs.verifier_statut_mailjet', campagne_id=campagne.id) }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-primary btn-sm">
+                🔄 Vérifier statut Mailjet
+            </button>
+        </form>
+
         {{ action_button("⬅️ Retour", href=url_for('indicateurs.index'), color="outline-dark btn-sm") }}
     </div>
 
 </div>
+
+<!-- Date limite (modifiable) -->
+<form method="POST" action="{{ url_for('indicateurs.modifier_date_limite', campagne_id=campagne.id) }}"
+      class="d-flex align-items-center gap-2 my-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="date_limite" class="mb-0">📅 Date limite :</label>
+    <input type="text" name="date_limite" id="date_limite" class="form-control date-fr"
+           style="max-width: 150px;" placeholder="jj/mm ou jjmmaaaa" autocomplete="off"
+           value="{{ campagne.date_limite or '' }}">
+    <button type="submit" class="btn btn-outline-secondary btn-sm">💾 Enregistrer</button>
+</form>
+
+<!-- Bandeau statut du dernier envoi -->
+{% if campagne.dernier_envoi_le %}
+    {% if campagne.dernier_envoi_mode_test %}
+    <div class="alert alert-warning py-2 my-2">
+        🧪 Dernier envoi : <strong>Mode TEST</strong> le {{ campagne.dernier_envoi_le }} par {{ campagne.dernier_envoi_par or '—' }}
+        ({{ campagne.dernier_envoi_nb_ok }} envoyé(s), {{ campagne.dernier_envoi_nb_erreur }} erreur(s))
+        — <strong>aucun mail réel n'a été envoyé aux associations.</strong>
+    </div>
+    {% else %}
+    <div class="alert alert-success py-2 my-2">
+        📤 Dernier envoi réel : le {{ campagne.dernier_envoi_le }} par {{ campagne.dernier_envoi_par or '—' }}
+        — {{ campagne.dernier_envoi_nb_ok }} envoyé(s){% if campagne.dernier_envoi_nb_erreur %}, ⚠️ {{ campagne.dernier_envoi_nb_erreur }} erreur(s){% endif %}
+    </div>
+    {% endif %}
+{% else %}
+<div class="alert alert-secondary py-2 my-2">
+    📭 Dernier envoi réel : <strong>jamais</strong>
+</div>
+{% endif %}
 
 
 <!-- Affichage recap des STATUTS -->
@@ -96,6 +134,9 @@
                 <th>Statut</th>
                 <th>Répondu</th>
                 <th title="Exclure de l'envoi mail">✉️ Exclu</th>
+                <th>Mail envoyé</th>
+                <th>Statut Mailjet</th>
+                <th title="Renvoyer via Gmail (ba380@) en cas de rebond Mailjet">🔁 Gmail</th>
             </tr>
         </thead>
 
@@ -143,6 +184,48 @@
                         title="{% if l.exclure_envoi_mail %}Exclu de l'envoi{% else %}Inclus dans l'envoi{% endif %}">
                         {% if l.exclure_envoi_mail %}🚫{% else %}✉️{% endif %}
                     </button>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td class="small text-center align-middle">
+                    {% if l.mail_envoye_le %}
+                        {% if l.mail_erreur %}
+                        <span class="badge bg-danger" title="{{ l.mail_erreur }}">⚠️ échec</span>
+                        {% elif l.mail_mode_test %}
+                        <span class="badge bg-warning text-dark" title="Mode TEST">🧪 {{ l.mail_envoye_le }}</span>
+                        {% else %}
+                        <span class="badge bg-success">✔ {{ l.mail_envoye_le }}</span>
+                        {% endif %}
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td class="small text-center align-middle">
+                    {% if l.mail_statut_final %}
+                        {% if l.mail_statut_final in ['sent', 'opened', 'delivered'] %}
+                        <span class="badge bg-success">{{ l.mail_statut_final }}</span>
+                        {% elif l.mail_statut_final in ['bounce', 'blocked', 'spam', 'hardbounced', 'softbounced'] %}
+                        <span class="badge bg-danger">{{ l.mail_statut_final }}</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ l.mail_statut_final }}</span>
+                        {% endif %}
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td class="small text-center align-middle">
+                    {% if l.suivi_id and l.mail_envoye_le and not l.mail_mode_test %}
+                    <form method="POST" action="{{ url_for('indicateurs.renvoyer_gmail', suivi_id=l.suivi_id) }}"
+                          onsubmit="return confirm('Renvoyer le mail à {{ l.nom_association }} via Gmail (ba380@banquealimentaire.org) ?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Renvoyer via Gmail">🔁</button>
+                    </form>
+                    {% if l.mail_renvoi_gmail_le %}
+                    <div class="text-muted" style="font-size: 0.75em;">{{ l.mail_renvoi_gmail_le }}</div>
+                    {% endif %}
+                    {% elif l.suivi_id and l.mail_envoye_le and l.mail_mode_test %}
+                    <span class="text-muted" title="Dernier envoi en Mode TEST — pas de renvoi Gmail possible">🧪</span>
                     {% else %}
                     <span class="text-muted">—</span>
                     {% endif %}

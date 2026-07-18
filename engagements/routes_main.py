@@ -1012,20 +1012,18 @@ def nouvelle_depense():
 
                 # Si le demandeur est le responsable de pôle,
                 # seul le suppléant 1 valide (conflit d'intérêt).
+                # Le suppléant 1 est enregistré comme secours pour ce
+                # seul cas et n'est donc pas sollicité en temps normal.
                 if current_user.id == pole["responsable_id"]:
                     destinataires_pole = list(filter(None, [
                         (pole["suppleant1_id"], pole["supp1_email"])
                         if pole["suppleant1_id"] and pole["supp1_email"] else None,
                     ]))
                 else:
-                    destinataires_pole = list(set(filter(None, [
+                    destinataires_pole = list(filter(None, [
                         (pole["responsable_id"], pole["responsable_email"])
                         if pole["responsable_id"] and pole["responsable_email"] else None,
-                        (pole["suppleant1_id"], pole["supp1_email"])
-                        if pole["suppleant1_id"] and pole["supp1_email"] else None,
-                        (pole["suppleant2_id"], pole["supp2_email"])
-                        if pole["suppleant2_id"] and pole["supp2_email"] else None,
-                    ])))
+                    ]))
 
                 for user_id, user_email in destinataires_pole:
 

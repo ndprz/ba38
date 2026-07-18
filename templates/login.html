@@ -30,12 +30,56 @@
                 </button>
             </div>
         </div>
+        <div class="form-check my-3">
+            {{ form.activer_2fa(class="form-check-input") }}
+            {{ form.activer_2fa.label(class="form-check-label") }}
+            <div class="form-text">
+                À cocher pour activer la double authentification sur votre compte
+                (à faire une seule fois — un QR code à scanner avec une application
+                d'authentification vous sera proposé après connexion).
+                <a href="#" data-bs-toggle="modal" data-bs-target="#modalAide2FA">Comment faire ?</a>
+            </div>
+        </div>
         <div>
             {{ form.submit() }}
         </div>
     </form>
     <p>Pas encore de compte ? <a href="{{ url_for('register') }}">Inscrivez-vous ici</a>.</p>
     <p><a href="{{ url_for('reset_password_request') }}">Mot de passe oublié ?</a></p>
+
+<!-- Modale AIDE — Activation du 2FA -->
+<div class="modal fade" id="modalAide2FA" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">ℹ️ Aide – Activer la double authentification (2FA)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Activation_2FA_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAide2FA')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
 
 {% endblock %}
 

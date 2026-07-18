@@ -70,7 +70,7 @@
             </select>
             {% if annexe.get('statut_signature') == 'envoyee' %}
             <p class="text-muted small mt-1">
-              ✉️ Envoyée pour signature via Yousign — le statut n'est plus modifiable ici ; utilisez "Vérifier le statut" ci-dessous.
+              ✉️ Envoyée pour signature via LibreSign — le statut n'est plus modifiable ici ; utilisez "Vérifier le statut" ci-dessous.
             </p>
             {% endif %}
           </div>
@@ -91,7 +91,7 @@
         {% if annexe_id %}
         <hr>
         <div class="row mb-2">
-          <div class="col-md-4 fw-bold text-end">Yousign</div>
+          <div class="col-md-4 fw-bold text-end">LibreSign</div>
           <div class="col-md-8">
 
             {% if annexe.get('destinataire_signature_email') %}
@@ -107,7 +107,7 @@
                     formmethod="POST"
                     formaction="{{ url_for('annexe1bis.envoyer_signature', annexe_id=annexe_id) }}"
                     onclick="return confirm('Envoyer cette annexe pour signature au président de l\'association ?');">
-              📤 Envoyer pour signature via Yousign
+              📤 Envoyer pour signature via LibreSign
             </button>
             {% if not partenaire.get('courriel_president') %}
             <p class="text-danger small mt-1">
@@ -116,11 +116,11 @@
             {% endif %}
             {% endif %}
 
-            {% if annexe.get('yousign_signature_request_id') and annexe.get('statut_signature') == 'envoyee' %}
+            {% if annexe.get('libresign_file_id') and annexe.get('statut_signature') == 'envoyee' %}
             <button type="submit" class="btn btn-outline-secondary" form="annexeForm"
                     formmethod="POST"
                     formaction="{{ url_for('annexe1bis.verifier_statut', annexe_id=annexe_id) }}">
-              🔄 Vérifier le statut auprès de Yousign
+              🔄 Vérifier le statut auprès de LibreSign
             </button>
             {% endif %}
 

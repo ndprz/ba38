@@ -744,14 +744,22 @@ select:disabled {
     max-height: calc(100vh - 160px);
     overflow: auto;
     display: flex;
-    justify-content: center;
-    /* 🔥 centre horizontal */
+    justify-content: flex-start;
+    /* flex-start (pas center) : avec overflow:auto, justify-content:center
+       démarre le scroll horizontal au milieu et coupe le bord gauche du
+       tableau (1ère colonne/en-tête tronqués) dès que le tableau est plus
+       large que le conteneur — visible sur les tableaux à beaucoup de
+       colonnes (résultats indicateurs/factures/participation). */
 }
 
 
 
-/* Optionnel : ligne plus visible */
+/* En-tête figé pendant le défilement vertical du tableau */
 .table-container-fixe thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-color: #fff;
     box-shadow: 0 2px 2px rgba(0, 0, 0, 0.05);
 }
 

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button %}
+
+{% block title %}Factures participation — Sélection{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width:700px;">
+
+    <h2>📄 Factures participation</h2>
+
+    <div class="mb-3">
+        <label>Trimestre</label>
+        <select id="trimestre" class="form-select">
+            <option value="" selected disabled>-- Choisir un trimestre --</option>
+            {% for annee, trimestre in periodes %}
+            <option value="{{ annee }}|{{ trimestre }}">T{{ trimestre }} {{ annee }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    {{ action_button("⬅ Retour", href=url_for('tresorerie.tresorerie'), color="outline-dark") }}
+
+</div>
+
+<!-- MODAL LOT EXISTANT -->
+<div class="modal fade" id="modalLotExistant" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📊 Factures déjà traitées</h5>
+      </div>
+
+      <div class="modal-body">
+        <p>Un lot de factures existe déjà pour ce trimestre.</p>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <a href="#" id="btnVoirFactures" class="btn btn-primary">📊 Voir les factures</a>
+        <a href="#" id="btnNouveauPdf" class="btn btn-outline-danger">📤 Importer un nouveau PDF</a>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById("trimestre").addEventListener("change", function () {
+
+    const [annee, trimestre] = this.value.split("|");
+    if (!annee || !trimestre) return;
+
+    fetch(`{{ url_for('tresorerie.factures_check_trimestre') }}?annee=${annee}&trimestre=${trimestre}`)
+        .then(response => response.json())
+        .then(data => {
+
+            if (data.exists) {
+                const modalEl = document.getElementById("modalLotExistant");
+                const modal = new bootstrap.Modal(modalEl);
+
+                document.getElementById("btnVoirFactures").href = `/factures/resultats/${data.id}`;
+
+                document.getElementById("btnNouveauPdf").href =
+                    `{{ url_for('tresorerie.factures_pdf') }}?annee=${annee}&trimestre=${trimestre}`;
+
+                modal.show();
+
+            } else {
+                window.location.href = `{{ url_for('tresorerie.factures_pdf') }}?annee=${annee}&trimestre=${trimestre}`;
+            }
+
+        })
+        .catch(err => console.error("Erreur check trimestre:", err));
+
+});
+</script>
+
+{% endblock %}

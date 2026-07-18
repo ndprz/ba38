@@ -29,11 +29,20 @@
             <!-- ================= FILTRES ================= -->
             <div class="d-flex justify-content-between align-items-center mb-3">
 
-                <div>
-                    <strong>Dépôts :</strong>
-                    <span id="depotFilterBtn" style="cursor:pointer;">
-                        ⚙️ Filtrer
-                    </span>
+                <div class="d-flex align-items-center gap-3">
+
+                    <div>
+                        <strong>Dépôts :</strong>
+                        <span id="depotFilterBtn" style="cursor:pointer;">
+                            ⚙️ Filtrer
+                        </span>
+                    </div>
+
+                    <input type="text" id="searchArticle"
+                           class="form-control form-control-sm champ-recherche"
+                           placeholder="🔍 Code article ou libellé"
+                           style="max-width:260px;">
+
                 </div>
 
                 {% call action_buttons() %}
@@ -77,6 +86,7 @@
                         <th>DLC</th>
                         <th>DDM</th>
                         <th>Dépôt</th>
+                        <th>Emplacement</th>
                         <th>Kgn ERP</th>
                         <th>Δ</th>
                         <th>Kgn final</th>
@@ -113,12 +123,30 @@
     z-index: 5000;
 }
 
+html, body {
+    height: 100%;
+}
+
 #mvt-v2-root {
     display: flex;
     flex-direction: column;
+    height: calc(100vh - 135px);
+}
+
+#mvt-v2-root .page-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+#mvt-v2-root .page-header {
+    flex: 0 0 auto;
 }
 
 #mvt-v2-root .table-container {
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     position: relative; /* 🔥 important */
 }
@@ -139,9 +167,11 @@
     let stocks = {};
     let mouvements = [];
     let selectedDepots = [];
+    let searchQuery = "";
     let lastSavedNumMvt =
     {{ last_num_mvt | tojson }};
 
+    const csrfToken = "{{ csrf_token() }}";
     const STORAGE_KEY = "stock_filter_depots_mvt_v2";
 
     function formatDate(d) {
@@ -163,6 +193,12 @@
 
     initDepotFilter();
 
+    document.getElementById("searchArticle")
+        .addEventListener("input", (e) => {
+            searchQuery = e.target.value.trim().toLowerCase();
+            renderTable();
+        });
+
     renderTable();
 
 
@@ -173,10 +209,25 @@
         const m = mouvements.find(x =>
             x.article === article &&
             (x.lot || "") === lot &&
-            x.from === depot
+            x.from === depot &&
+            x.statut !== "EXPORTE"
         );
 
         return m ? m.kgn : "";
+    }
+
+    function getExportedQuantity(article, lot, depot) {
+
+        lot = lot || "";
+
+        const m = mouvements.find(x =>
+            x.article === article &&
+            (x.lot || "") === lot &&
+            x.from === depot &&
+            x.statut === "EXPORTE"
+        );
+
+        return m ? m.kgn : null;
     }
 
     async function loadExistingBrouillon() {
@@ -210,6 +261,7 @@
                 lot: l.lot || "",
                 from: l.depot_from,
                 to: l.depot_to,
+                statut: l.statut,
 
                 kgn:
                     (parseFloat(l.qte_kgn || 0))
@@ -249,6 +301,12 @@
                 );
             if (!matchDepot) return;
 
+            const matchSearch =
+                !searchQuery ||
+                String(s.article || "").toLowerCase().includes(searchQuery) ||
+                String(s.libelle || "").toLowerCase().includes(searchQuery);
+            if (!matchSearch) return;
+
             if (!grouped[s.famille]) grouped[s.famille] = [];
             grouped[s.famille].push(s);
         });
@@ -258,7 +316,7 @@
             // ligne famille
             const trFam = document.createElement("tr");
             trFam.style.background = "#eee";
-            trFam.innerHTML = `<td colspan="11">📁 ${fam}</td>`;
+            trFam.innerHTML = `<td colspan="12">📁 ${fam}</td>`;
             if (grouped[fam].length > 0) {
                 tbody.appendChild(trFam);
             }
@@ -281,6 +339,10 @@
 
                     let defaultTo = s.depot === "02" ? "03" : "02";
 
+                    const exportedQte = getExportedQuantity(
+                        s.article, s.lot, s.depot
+                    );
+
                     tr.dataset.article = s.article;
                     tr.dataset.lot = s.lot || "";
                     tr.dataset.from = s.depot;
@@ -292,6 +354,7 @@
                         <td>${s.dlc ? formatDate(s.dlc) : ""}</td>
                         <td>${s.ddm ? formatDate(s.ddm) : ""}</td>
                         <td>${s.depot}</td>
+                        <td>${s.emplacement || ""}</td>
                         <td>
                             ${s.kg.toFixed(3)}<br>
                             <small class="text-muted">
@@ -309,10 +372,15 @@
                             </small>
                         </td>
                         <td>
+                            ${exportedQte !== null ? `
+                            <div class="small text-success mb-1">
+                                ✅ ${exportedQte.toFixed(3)} déjà exporté
+                            </div>` : ""}
                             <input type="number" class="input-pal" placeholder="PAL" style="width:60px;" value="">
                             <input type="number" class="input-col" placeholder="COL" style="width:60px;" value="">
                             <input type="number" step="0.01" class="input-kgn" placeholder="Kg" style="width:80px;"
-                                value="${getMouvementValue(s.article, s.lot, s.depot)}">
+                                value="${getMouvementValue(s.article, s.lot, s.depot)}"
+                                title="${exportedQte !== null ? 'Nouveau mouvement (le précédent est déjà exporté)' : ''}">
                         </td>
 
                         <td>
@@ -393,6 +461,7 @@
                 dlc: a.dlc || "",
                 ddm: a.ddm || "",
                 depot: a.depot,
+                emplacement: a.emplacement || "",
                 famille: a.famille || "Sans famille",
                 kg: parseFloat(a.kg_net || 0),
                 delta: 0,
@@ -410,10 +479,13 @@
 
         lot = lot || "";
 
+        // on ne modifie jamais un mouvement déjà exporté : on cherche
+        // (ou on crée) un mouvement encore modifiable sur cette ligne
         let m = mouvements.find(x =>
             x.article === article &&
             (x.lot || "") === lot &&
-            x.from === from
+            x.from === from &&
+            x.statut !== "EXPORTE"
         );
 
         if (!m) {
@@ -687,50 +759,6 @@ function initDepotFilter() {
 }
 
     /* =========================================================
-    SAVE
-    ========================================================= */
-
-    function saveMvt() {
-
-        console.log("MOUVEMENTS ENVOYÉS :", mouvements);
-
-        fetch("{{ url_for('distribution.save_mvt_v2') }}", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                mouvements,
-                num_mvt: lastSavedNumMvt
-            })
-        })
-            .then(async r => {
-
-                const text = await r.text();
-
-                console.log("REPONSE BRUTE :", text);
-
-                try {
-
-                    const data = JSON.parse(text);
-
-                    console.log("SAVE OK :", data);
-
-                    lastSavedNumMvt = data.num_mvt;
-
-                    console.log("NUM MVT =", lastSavedNumMvt);
-
-                    alert("✅ Sauvegardé : " + (data.num_mvt || ""));
-
-                } catch (e) {
-
-                    console.error(e);
-
-                    alert("❌ Erreur serveur (voir console)");
-                }
-
-            });
-    }
-
-    /* =========================================================
     TRAITEMENT DES UNITES
     ========================================================= */
     function formatStockUnites(kgn, cdt3, cdt4) {
@@ -766,8 +794,8 @@ function initDepotFilter() {
 
     function updateRowDisplay(tr, s, total) {
 
-        const deltaCell = tr.children[7];
-        const finalCell = tr.children[8];
+        const deltaCell = tr.children[8];
+        const finalCell = tr.children[9];
 
         const newDelta = -total;
         const newFinal = s.kg + newDelta;
@@ -820,39 +848,59 @@ function initDepotFilter() {
     `;
     }
 
-function resizeTable() {
+});
 
-    const root = document.getElementById("mvt-v2-root");
-    const header = root.querySelector(".page-header");
-    const table = root.querySelector(".table-container");
+/* =========================================================
+SAVE / EXPORT
+(fonctions globales : appelées depuis les attributs onclick des
+boutons, qui s'exécutent dans le scope global et ne peuvent donc
+pas voir les fonctions déclarées à l'intérieur du DOMContentLoaded)
+========================================================= */
 
-    const footer = document.getElementById("main-footer");
-    const alert = document.querySelector(".alert.alert-warning");
+function saveMvt() {
 
-    const windowHeight = window.innerHeight;
+    // les mouvements déjà exportés vers VIF ne doivent pas être
+    // renvoyés : save_mvt_v2 les réinsérerait comme nouveaux
+    // brouillons et dupliquerait le mouvement
+    const aEnregistrer = mouvements.filter(m => m.statut !== "EXPORTE");
 
-    const headerHeight = header.offsetHeight;
-    const offsetTop = root.getBoundingClientRect().top;
+    console.log("MOUVEMENTS ENVOYÉS :", aEnregistrer);
 
-    const footerHeight = footer ? footer.offsetHeight : 0;
-    const alertHeight = alert ? alert.offsetHeight : 0;
+    fetch("{{ url_for('distribution.save_mvt_v2') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({
+            mouvements: aEnregistrer,
+            num_mvt: lastSavedNumMvt
+        })
+    })
+        .then(async r => {
 
-    const safeMargin = 30;
+            const text = await r.text();
 
-    const available =
-        windowHeight
-        - offsetTop
-        - headerHeight
-        - footerHeight
-        - alertHeight
-        - safeMargin;
+            console.log("REPONSE BRUTE :", text);
 
-    table.style.height = available + "px";
-    document.body.style.overflow = "hidden";document.body.style.overflow = "hidden";
+            try {
+
+                const data = JSON.parse(text);
+
+                console.log("SAVE OK :", data);
+
+                lastSavedNumMvt = data.num_mvt;
+
+                console.log("NUM MVT =", lastSavedNumMvt);
+
+                alert("✅ Sauvegardé : " + (data.num_mvt || ""));
+
+            } catch (e) {
+
+                console.error(e);
+
+                alert("❌ Erreur serveur (voir console)");
+            }
+
+        });
 }
-
-    window.addEventListener("load", resizeTable);
-    window.addEventListener("resize", resizeTable);
 
 function exportVIF() {
 
@@ -873,7 +921,6 @@ function exportVIF() {
     window.location =
         `/confirm_export_mvt_v2/${numMvt}`;
 }
-});
 
 </script>
 

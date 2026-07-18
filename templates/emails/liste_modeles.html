@@ -28,6 +28,7 @@
         <tr>
             <th>Code</th>
             <th>Sujet</th>
+            <th>Catégorie</th>
             <th>Actions</th>
         </tr>
     </thead>
@@ -37,6 +38,13 @@
         <tr>
             <td>{{ m.code_modele }}</td>
             <td>{{ m.sujet }}</td>
+            <td>
+                {% if m.type_periode %}
+                <span class="badge bg-secondary">{{ m.type_periode }}</span>
+                {% else %}
+                <span class="text-muted small">—</span>
+                {% endif %}
+            </td>
             <td>
                 <a href="{{ url_for('emails.edit_modele', id=m.id) }}" 
                    target="emails_window"

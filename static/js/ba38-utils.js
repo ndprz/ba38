@@ -250,4 +250,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
     });
 
+    // =========================================================
+    // 🔍 CHAMP DE RECHERCHE (.champ-recherche)
+    // Échap → réinitialise le champ (règle générale de l'application)
+    // =========================================================
+    document.querySelectorAll(".champ-recherche").forEach(input => {
+
+        input.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+                input.value = "";
+                // déclenche le listener "input" existant de la page
+                // (pas de logique de filtre à dupliquer ici)
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+        });
+
+    });
+
 });

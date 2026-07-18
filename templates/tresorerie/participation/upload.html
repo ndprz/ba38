@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button %}
+
+{% block title %}Traitement fichier participation{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width:700px;">
+
+    <h2>📂 Traitement du fichier PARSOL participation</h2>
+
+    {% if annee and trimestre %}
+    <p class="text-muted">Trimestre : <strong>T{{ trimestre }} {{ annee }}</strong></p>
+    {% endif %}
+
+    <form method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+        <input type="hidden" name="trimestre" value="{{ trimestre }}">
+
+        <div class="mb-3">
+            <label class="form-label">Fichier PARSOL (.txt)</label>
+            <input type="file" name="parsol_file" class="form-control" accept=".txt" required>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Numéro de facture de départ</label>
+            <input type="number" name="numero_facture_depart" class="form-control" required min="1">
+            <div class="form-text">
+                Les factures seront numérotées à partir de ce numéro, dans l'ordre du compte comptable
+                (comme pour les cotisations).
+            </div>
+        </div>
+
+        <div class="alert alert-info small">
+            Les passages du vendredi/samedi/dimanche (non facturés) sont automatiquement retirés,
+            comme pour l'ancien traitement.
+        </div>
+
+        <div class="d-flex justify-content-between">
+            <button class="btn btn-primary">🔍 Analyser et générer</button>
+            {{ action_button("⬅ Retour", href=url_for('participation.selection'), color="outline-dark") }}
+        </div>
+
+    </form>
+
+</div>
+{% endblock %}

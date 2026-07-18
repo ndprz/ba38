@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField, HiddenField, SelectField
+from wtforms import StringField, PasswordField, SubmitField, HiddenField, SelectField, BooleanField
 from wtforms.validators import DataRequired, Email, Length, EqualTo, Optional, ValidationError
 from flask import request
 from utils import get_db_connection  # ✅ connexion centralisée
@@ -8,6 +8,7 @@ from utils import get_db_connection  # ✅ connexion centralisée
 class LoginForm(FlaskForm):
     email = StringField("Email", validators=[DataRequired(), Email()])
     password = PasswordField("Mot de passe", validators=[DataRequired()])
+    activer_2fa = BooleanField("Activer la double authentification (2FA) sur mon compte")
     submit = SubmitField("Se connecter")
 
 # 📌 Formulaire d'inscription

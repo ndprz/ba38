@@ -8,9 +8,33 @@ Export VIF mouvements
 
 {% block content %}
 
+<style>
+.print-title {
+    display: none;
+}
+
+@media print {
+    header.main-header,
+    #main-footer,
+    .no-print {
+        display: none !important;
+    }
+
+    .print-title {
+        display: block !important;
+    }
+}
+</style>
+
 <div class="container mt-4">
 
-    <h2>📤 Export VIF des mouvements</h2>
+    <h2 class="no-print">📤 Export VIF des mouvements</h2>
+
+    <div class="print-title mb-3">
+        <h3>🖨️ Mouvements de stocks du jour</h3>
+        <div>Mouvement : {{ num_mvt }}</div>
+        <div>Imprimé le : <span id="print-date"></span></div>
+    </div>
 
     <div class="card mt-4 shadow-sm">
 
@@ -20,17 +44,17 @@ Export VIF mouvements
             <!-- ENTETE -->
             <!-- ===================================================== -->
 
-            <h5 class="card-title mb-3">
+            <h5 class="card-title mb-3 no-print">
                 Mouvement : {{ num_mvt }}
             </h5>
 
-            <hr>
+            <hr class="no-print">
 
             <!-- ===================================================== -->
             <!-- STATISTIQUES -->
             <!-- ===================================================== -->
 
-            <div class="row mb-3">
+            <div class="row mb-3 no-print">
 
                 <div class="col-md-4">
                     <div class="alert alert-warning mb-2">
@@ -64,7 +88,7 @@ Export VIF mouvements
 
             {% if nb_brouillon == 0 and nb_exporte > 0 %}
 
-                <div class="alert alert-warning">
+                <div class="alert alert-warning no-print">
 
                     ⚠️ Tous les mouvements ont déjà été exportés.
 
@@ -84,6 +108,11 @@ Export VIF mouvements
 
                         <tr>
 
+                            <th class="no-print">
+                                <input type="checkbox" id="select-all-lignes"
+                                       title="Tout sélectionner">
+                            </th>
+
                             <th>Statut</th>
 
                             <th>Article</th>
@@ -91,6 +120,8 @@ Export VIF mouvements
                             <th>Lot</th>
 
                             <th>Dépôt départ</th>
+
+                            <th>Emplacement</th>
 
                             <th>Dépôt arrivée</th>
 
@@ -102,7 +133,7 @@ Export VIF mouvements
 
                             <th>Date mouvement</th>
 
-                            <tg>Action</tg>
+                            <th class="no-print">Action</th>
 
                         </tr>
 
@@ -123,6 +154,16 @@ Export VIF mouvements
                                     table-success
                                 {% endif %}
                             ">
+
+                                <!-- ========================================= -->
+                                <!-- SELECTION -->
+                                <!-- ========================================= -->
+
+                                <td class="text-center no-print">
+                                    <input type="checkbox"
+                                           value="{{ m.id }}"
+                                           class="select-ligne-mvt">
+                                </td>
 
                                 <!-- ========================================= -->
                                 <!-- STATUT -->
@@ -171,6 +212,10 @@ Export VIF mouvements
                                 </td>
 
                                 <td class="text-center">
+                                    {{ m.emplacement or "" }}
+                                </td>
+
+                                <td class="text-center">
                                     {{ m.depot_to }}
                                 </td>
 
@@ -204,7 +249,7 @@ Export VIF mouvements
 
                                 </td>
 
-                                <td style="white-space: nowrap;">
+                                <td class="no-print" style="white-space: nowrap;">
 
                                     {% if m.statut == 'BROUILLON' %}
 
@@ -242,7 +287,7 @@ Export VIF mouvements
 
                         <tr>
 
-                            <th colspan="5" class="text-end">
+                            <th colspan="7" class="text-end">
                                 Total Kgn :
                             </th>
 
@@ -260,12 +305,23 @@ Export VIF mouvements
 
             </div>
 
-            <hr class="mt-4">
+            <div class="mt-3 no-print">
+
+                {{ action_button(
+                    "🔁 Réexporter la sélection",
+                    onclick="reexportSelection()",
+                    color="warning"
+                ) }}
+
+            </div>
+
+            <hr class="mt-4 no-print">
 
             <!-- ===================================================== -->
             <!-- BOUTONS -->
             <!-- ===================================================== -->
 
+            <div class="no-print">
             {% call action_buttons() %}
 
                 {% if nb_brouillon > 0 %}
@@ -283,13 +339,9 @@ Export VIF mouvements
                 {% endif %}
 
                 {{ action_button(
-                    "♻️ Réexporter TOUS les mouvements",
-                    href=url_for(
-                        'distribution.export_mvt_vif_v2',
-                        num_mvt=num_mvt,
-                        mode='all'
-                    ),
-                    color="warning"
+                    "🖨️ Imprimer les mouvements du jour",
+                    onclick="imprimerMouvements()",
+                    color="secondary"
                 ) }}
 
                 {{ action_button(
@@ -299,11 +351,69 @@ Export VIF mouvements
                 ) }}
 
             {% endcall %}
+            </div>
 
         </div>
 
     </div>
 
 </div>
+
+<script>
+
+const numMvtExport = {{ num_mvt | tojson }};
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    const selectAll = document.getElementById("select-all-lignes");
+
+    selectAll.addEventListener("change", () => {
+        document.querySelectorAll(".select-ligne-mvt")
+            .forEach(cb => cb.checked = selectAll.checked);
+    });
+
+    document.getElementById("print-date").innerText =
+        new Date().toLocaleString("fr-FR");
+
+});
+
+function imprimerMouvements() {
+
+    if (!document.querySelector("tbody tr")) {
+        alert("⚠️ Aucun mouvement à imprimer.");
+        return;
+    }
+
+    window.print();
+}
+
+function reexportSelection() {
+
+    const ids = Array.from(
+        document.querySelectorAll(".select-ligne-mvt:checked")
+    ).map(cb => cb.value);
+
+    if (ids.length === 0) {
+        alert("⚠️ Sélectionnez au moins une ligne à réexporter.");
+        return;
+    }
+
+    const confirmed = confirm(
+        "Réimporter ce fichier dans VIF réappliquera " +
+        ids.length +
+        " mouvement(s) de stock, y compris ceux déjà exportés.\n\n" +
+        "Continuer ?"
+    );
+
+    if (!confirmed) return;
+
+    const params = ids
+        .map(id => "ids=" + encodeURIComponent(id))
+        .join("&");
+
+    window.location =
+        `/export_mvt_vif_v2/${numMvtExport}?mode=selected&${params}`;
+}
+</script>
 
 {% endblock %}

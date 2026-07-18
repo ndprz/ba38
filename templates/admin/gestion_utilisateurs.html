@@ -143,9 +143,8 @@
               <button
                 type="button"
                 class="btn btn-sm btn-warning mt-1"
-                onclick="if(confirm('Réinitialiser le 2FA ?')) {
-                  window.location.href='{{ url_for('admin.reset_2fa_user', user_id=user.id) }}';
-                }"
+                data-reset-url="{{ url_for('admin.reset_2fa_user', user_id=user.id) }}"
+                onclick="confirmerReset2FA(this)"
               >
                 🔄 Reset
               </button>
@@ -490,6 +489,22 @@ function confirmerSuppression(btn) {
   const email = btn.dataset.email;
   const url = btn.dataset.deleteUrl;
   if (!confirm(`Supprimer l'utilisateur "${email}" ?\n\nCette action est irréversible.`)) return;
+  const csrf = document.querySelector('input[name="csrf_token"]');
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = url;
+  const csrfInput = document.createElement('input');
+  csrfInput.type = 'hidden';
+  csrfInput.name = 'csrf_token';
+  csrfInput.value = csrf ? csrf.value : '';
+  form.appendChild(csrfInput);
+  document.body.appendChild(form);
+  form.submit();
+}
+
+function confirmerReset2FA(btn) {
+  const url = btn.dataset.resetUrl;
+  if (!confirm('Réinitialiser le 2FA ?')) return;
   const csrf = document.querySelector('input[name="csrf_token"]');
   const form = document.createElement('form');
   form.method = 'POST';

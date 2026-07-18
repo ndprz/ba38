@@ -77,8 +77,15 @@
         </div>
 
         <div class="mb-3">
-            <label class="form-label">Période (ex : 2ème trimestre 2026)</label>
-            <input type="text" name="periode" class="form-control" value="{{ periode }}" placeholder="ex : 2ème trimestre 2026">
+            <label class="form-label">Période</label>
+            <input type="text" class="form-control" value="{{ periode or '—' }}" readonly>
+            <input type="hidden" name="annee" value="{{ annee }}">
+            <input type="hidden" name="trimestre" value="{{ trimestre }}">
+            {% if not annee or not trimestre %}
+            <div class="form-text text-warning">
+                ⚠️ Aucun trimestre sélectionné — <a href="{{ url_for('tresorerie.factures_selection') }}">passer par la sélection de trimestre</a>.
+            </div>
+            {% endif %}
         </div>
 
         <div class="mb-3">
@@ -88,7 +95,7 @@
 
         <div class="d-flex justify-content-between">
             <button class="btn btn-primary">🔍 Analyser</button>
-            {{ action_button("⬅ Retour", href=url_for('tresorerie.tresorerie'), color="outline-dark") }}
+            {{ action_button("⬅ Retour", href=url_for('tresorerie.factures_selection'), color="outline-dark") }}
         </div>
 
     </form>

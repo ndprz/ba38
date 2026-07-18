@@ -25,6 +25,13 @@
   </div>
   {% endif %}
 
+  {% if manque and not resultats %}
+  <div class="alert alert-warning">
+    ⚠️ Aucune campagne de cotisations pour <strong>{{ annee }}</strong> —
+    importez le fichier PARSOL2L annuel ci-dessous pour la créer.
+  </div>
+  {% endif %}
+
   {% if mail_mode == "TEST" %}
   <div class="alert alert-warning d-flex align-items-center">
     <strong class="me-2">🧪 MODE TEST ACTIF</strong>
@@ -50,9 +57,18 @@
 
 
   {% if not mode_relance %}
+
+  {% if resultats %}
+  <button class="btn btn-outline-secondary btn-sm mb-3" type="button"
+          data-bs-toggle="collapse" data-bs-target="#formImportCotisations">
+    🔁 Recalculer / importer un nouveau fichier
+  </button>
+  {% endif %}
+
   <!-- ========================= -->
   <!-- FORMULAIRE FACTURATION    -->
   <!-- ========================= -->
+  <div class="collapse {{ 'show' if not resultats }}" id="formImportCotisations">
   <form method="post" enctype="multipart/form-data" class="mb-4">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="row g-3 align-items-end">
@@ -80,6 +96,7 @@
 
     </div>
   </form>
+  </div>
   {% endif %}
 
   <!-- <hr class="my-5"> -->

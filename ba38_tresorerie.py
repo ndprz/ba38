@@ -13,8 +13,8 @@ from PyPDF2 import PdfReader, PdfWriter
 from datetime import datetime
 from collections import defaultdict
 from pathlib import Path
-from flask import Blueprint, request, render_template, flash, redirect, url_for, send_file,abort,current_app, session
-from flask_login import login_required
+from flask import Blueprint, request, render_template, flash, redirect, url_for, send_file,abort,current_app, session, jsonify
+from flask_login import login_required, current_user
 from utils import get_google_services, write_log, envoyer_mail,get_db_path,upload_file_to_drive_path,slugify_filename
 from utils import get_drive_folder_id_from_path, require_access, render_modele_email
 from openpyxl import Workbook
@@ -1013,7 +1013,8 @@ def cotisations():
         mail_mode=mail_mode,
         mail_test_to=mail_test_to,
         job_done=False,
-        mode_relance=False
+        mode_relance=False,
+        manque=(request.args.get("manque") == "1")
     )
 
 
@@ -1263,7 +1264,8 @@ def cotisations_envoyer_mails():
             a.adresse_association_2,
             a.CP,
             a.COMMUNE,
-            a.courriel_association
+            a.courriel_association,
+            a.courriel_resp_tresorerie
         FROM cotisations c
         JOIN associations a
             ON a.Id = c.id_association
@@ -1283,7 +1285,9 @@ def cotisations_envoyer_mails():
 
     for ligne in lignes:
 
-        if not ligne["courriel_association"]:
+        email_asso = ligne["courriel_resp_tresorerie"] or ligne["courriel_association"]
+
+        if not email_asso:
             continue
 
         # --------------------------------------------------
@@ -1332,7 +1336,7 @@ def cotisations_envoyer_mails():
                 f"{ligne['nom_association']}"
             )
         else:
-            destinataires = [ligne["courriel_association","courriel_resp_tresorerie"]]
+            destinataires = [email_asso]
             sujet = (
                 f"Appel de cotisation {annee} – "
                 f"{ligne['nom_association']}"
@@ -1850,6 +1854,33 @@ def wait_until_drive_folder_empty(service, folder_id, drive_id, timeout=30):
 
         time.sleep(1)
 
+COTISATIONS_MENU_ACTIONS = {
+    "facturation": ("💰", "Facturation des cotisations"),
+    "relance": ("🔔", "Relance des cotisations"),
+    "paiements": ("💳", "Saisie des paiements de cotisations"),
+}
+
+
+@tresorerie_bp.route("/cotisations/menu/<action>")
+@login_required
+@require_access("tresorerie", "ecriture")
+def cotisations_menu(action):
+    from datetime import datetime
+
+    if action not in COTISATIONS_MENU_ACTIONS:
+        abort(404)
+
+    icone, titre = COTISATIONS_MENU_ACTIONS[action]
+
+    return render_template(
+        "tresorerie/cotisations_menu.html",
+        action=action,
+        icone=icone,
+        titre=titre,
+        annee_defaut=datetime.now().year
+    )
+
+
 @tresorerie_bp.route("/cotisations/start")
 @login_required
 @require_access("tresorerie", "ecriture")
@@ -1861,6 +1892,10 @@ def cotisations_start():
 
     session.pop("COTISATIONS_JOB_ID", None)
     session.pop("COTISATIONS_ANNEE", None)
+
+    annee = request.args.get("annee")
+    if annee:
+        return redirect(url_for("tresorerie.cotisations", annee=annee))
 
     return redirect(url_for("tresorerie.cotisations"))
 
@@ -1925,6 +1960,21 @@ def cotisations_relance_start():
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
+        cursor.execute(
+            "SELECT 1 FROM cotisations WHERE annee = ? LIMIT 1",
+            (annee,)
+        )
+        if not cursor.fetchone():
+            conn.close()
+            flash(
+                f"⚠️ Aucune campagne de cotisations pour {annee} — "
+                "importez d'abord le fichier PARSOL2L annuel.",
+                "warning"
+            )
+            return redirect(
+                url_for("tresorerie.cotisations", annee=annee, manque=1)
+            )
+
         cursor.execute("""
             SELECT
                 c.*,
@@ -1954,6 +2004,132 @@ def cotisations_relance_start():
         lignes=lignes,
         preview=False   # ✅ AJOUT
     )
+
+
+def envoyer_relances_background(app, db_path, items, sujet_modele, corps_modele,
+                                 numero_relance, annee, mail_sender, mail_mode,
+                                 mail_test_to, folder_id_factures):
+    """
+    Envoi des relances de cotisations en arrière-plan (Thread).
+
+    Reproduit le dispositif déjà en place pour indicateurs/factures/
+    participation : sort le lot du cycle requête/réponse HTTP synchrone
+    (évite les timeouts nginx/gunicorn sur beaucoup d'associations) et
+    persiste, ligne par ligne, le statut Mailjet (succès/échec) — un échec
+    Mailjet sur une association n'arrête plus l'envoi des suivantes.
+    """
+    with app.app_context():
+        from datetime import datetime
+
+        client, drive_service, creds = get_google_services()
+
+        nb_mails = 0
+        nb_pdf_introuvables = 0
+        nb_erreurs = 0
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+
+        lignes_traitement = items
+        if mail_mode == "TEST":
+            lignes_traitement = items[:2]
+
+        for item in lignes_traitement:
+
+            try:
+                code_vif_8 = str(item["code_vif"]).zfill(8)
+
+                file_id, nom_pdf = get_pdf_by_code_vif(
+                    drive_service,
+                    folder_id_factures,
+                    code_vif_8
+                ) if drive_service else (None, None)
+
+                if not file_id:
+                    nb_pdf_introuvables += 1
+                    continue
+
+                lien_drive = f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
+
+                sujet = sujet_modele.format(
+                    numero_relance=numero_relance + 1,
+                    annee=annee
+                )
+
+                texte_mail = corps_modele.format(
+                    numero_relance=numero_relance + 1,
+                    annee=annee,
+                    nom_association=item["nom_association"],
+                    lien_drive=lien_drive,
+                    montant="{:.2f}".format(item["montant"] or 0)
+                )
+
+                if mail_mode == "TEST":
+                    destinataire = [mail_test_to]
+                    sujet_envoi = f"🧪 [TEST] {sujet}"
+                else:
+                    destinataire = [item["email"]]
+                    sujet_envoi = sujet
+
+                resultat = envoyer_mail(
+                    sujet=sujet_envoi,
+                    destinataires=destinataire,
+                    texte=texte_mail,
+                    sender_override=mail_sender,
+                    is_html=True,
+                    bcc=[mail_sender]
+                )
+
+                mj_status, mj_ids = None, None
+                if resultat and resultat.get("Messages"):
+                    mj_message = resultat["Messages"][0]
+                    mj_status = mj_message.get("Status")
+                    mj_ids = ",".join(
+                        str(t["MessageID"]) for t in mj_message.get("To", []) if "MessageID" in t
+                    ) or None
+
+                conn.execute("""
+                    UPDATE cotisations
+                    SET relance_niveau = COALESCE(relance_niveau,0)+1,
+                        date_derniere_relance = ?,
+                        mode_test_relance = ?,
+                        relance_sujet = ?,
+                        relance_corps = ?,
+                        relance_mail_erreur = NULL,
+                        relance_mailjet_status = ?,
+                        relance_mailjet_message_ids = ?
+                    WHERE id = ?
+                """, (
+                    datetime.now().isoformat(timespec="seconds"),
+                    1 if mail_mode == "TEST" else 0,
+                    sujet_envoi,
+                    texte_mail,
+                    mj_status,
+                    mj_ids,
+                    item["id"]
+                ))
+                conn.commit()
+
+                nb_mails += 1
+
+            except Exception as e:
+                write_log(f"❌ Erreur relance cotisation (id={item['id']}) : {e}")
+                nb_erreurs += 1
+                conn.execute("""
+                    UPDATE cotisations
+                    SET relance_mail_erreur = ?
+                    WHERE id = ?
+                """, (str(e), item["id"]))
+                conn.commit()
+
+        conn.close()
+
+        write_log(
+            f"📤 Relances cotisations {annee} (arrière-plan) terminées : "
+            f"{nb_mails} envoyée(s), {nb_erreurs} erreur(s), "
+            f"{nb_pdf_introuvables} PDF introuvable(s)."
+        )
+
 
 @tresorerie_bp.route("/cotisations/relance", methods=["POST"])
 @login_required
@@ -2105,120 +2281,42 @@ def cotisations_relance():
             )
 
         # ======================================================
-        # Connexion Google Drive
+        # Préparation des items + envoi en arrière-plan
         # ======================================================
-        client, drive_service, creds = get_google_services()
-
-        if not drive_service:
-            conn.close()
-            flash("❌ Impossible de se connecter à Google Drive.", "danger")
-            return redirect(
-                url_for("tresorerie.cotisations_relance_start",
-                        annee=annee)
-            )
-
-        service = drive_service
-
-        nb_mails = 0
-        nb_pdf_introuvables = 0
-
-        # ======================================================
-        # Détermination lignes à traiter
-        # ======================================================
-        if mail_mode == "TEST":
-            mode_test_flag = 1
-            lignes_traitement = [cotisations_a_relancer[0]]
-        else:
-            mode_test_flag = 0
-            lignes_traitement = cotisations_a_relancer
-
-        # ======================================================
-        # Envoi
-        # ======================================================
-        for ligne in lignes_traitement:
-
-            code_vif_8 = str(ligne["code_vif"]).zfill(8)
-
-            file_id, nom_pdf = get_pdf_by_code_vif(
-                service,
-                FOLDER_ID_FACTURES,
-                code_vif_8
-            )
-
-            if not file_id:
-                nb_pdf_introuvables += 1
-                continue
-
-            lien_drive = f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
-
-            # ==================================================
-            # Construction dynamique
-            # ==================================================
-            sujet = sujet_modele.format(
-                numero_relance=numero_relance + 1,
-                annee=annee
-            )
-
-            texte_mail = corps_modele.format(
-                numero_relance=numero_relance + 1,
-                annee=annee,
-                nom_association=ligne["nom_association"],
-                lien_drive=lien_drive,
-                montant="{:.2f}".format(ligne["montant"] or 0)
-            )
-
-            # ==============================
-            # Détermination destinataire
-            # ==============================
-            email = (
-                ligne["courriel_resp_tresorerie"]
-                or ligne["courriel_association"]
-            )
-
-            if not email:
-                write_log(f"❌ Aucun email pour {ligne['nom_association']}")
-                continue
-
-            destinataire = (
-                [mail_test_to]
-                if mail_mode == "TEST"
-                else [email]
-            )
-
-            envoyer_mail(
-                sujet=sujet,
-                destinataires=destinataire,
-                texte=texte_mail,
-                sender_override=mail_sender,
-                is_html=True,
-                bcc=[mail_sender]
-            )
-
-            if mail_mode != "TEST":
-                cursor.execute("""
-                    UPDATE cotisations
-                    SET relance_niveau = COALESCE(relance_niveau,0)+1,
-                        date_derniere_relance = ?,
-                        mode_test_relance = ?
-                    WHERE id = ?
-                """, (
-                    datetime.now().isoformat(),
-                    mode_test_flag,
-                    ligne["id"]
-                ))
-
-            nb_mails += 1
-
-        conn.commit()
         conn.close()
 
-        if nb_pdf_introuvables:
-            flash(
-                f"⚠ {nb_pdf_introuvables} PDF introuvables sur Drive.",
-                "warning"
+        items = [
+            {
+                "id": ligne["id"],
+                "code_vif": ligne["code_vif"],
+                "nom_association": ligne["nom_association"],
+                "montant": ligne["montant"],
+                "email": ligne["courriel_resp_tresorerie"] or ligne["courriel_association"],
+            }
+            for ligne in cotisations_a_relancer
+            if (ligne["courriel_resp_tresorerie"] or ligne["courriel_association"])
+        ]
+
+        if not items:
+            flash("❌ Aucune association avec une adresse email valide à relancer.", "danger")
+            return redirect(
+                url_for("tresorerie.cotisations_relance_start", annee=annee)
             )
 
-        flash(f"✅ {nb_mails} relances envoyées.", "success")
+        app_reel = current_app._get_current_object()
+        db_path = get_db_path()
+
+        Thread(
+            target=envoyer_relances_background,
+            args=(app_reel, db_path, items, sujet_modele, corps_modele,
+                  numero_relance, annee, mail_sender, mail_mode,
+                  mail_test_to, FOLDER_ID_FACTURES)
+        ).start()
+
+        if mail_mode == "TEST":
+            flash("🧪 Envoi TEST des relances lancé en arrière-plan (2 mails max vers l'adresse de test).", "warning")
+        else:
+            flash(f"🚀 Envoi des relances lancé en arrière-plan pour {len(items)} association(s).", "info")
 
         return redirect(
             url_for("tresorerie.cotisations_relance_start",
@@ -2232,6 +2330,131 @@ def cotisations_relance():
             url_for("tresorerie.cotisations_relance_start",
                     annee=annee)
         )
+
+
+@tresorerie_bp.route("/cotisations/relance/verifier_statut_mailjet", methods=["POST"])
+@login_required
+@require_access("tresorerie", "ecriture")
+def cotisations_relance_verifier_statut_mailjet():
+    from utils import mailjet_get_message_status
+
+    annee = request.form.get("annee")
+    if not annee:
+        flash("Année manquante", "danger")
+        return redirect(url_for("tresorerie.cotisations_relance_start"))
+
+    annee = int(annee)
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+
+    lignes = conn.execute("""
+        SELECT id, relance_mailjet_message_ids
+        FROM cotisations
+        WHERE annee = ?
+          AND relance_mailjet_message_ids IS NOT NULL
+          AND relance_mailjet_message_ids != ''
+    """, (annee,)).fetchall()
+
+    counts = {}
+    verifies = 0
+
+    for ligne in lignes:
+        premier_id = ligne["relance_mailjet_message_ids"].split(",")[0]
+        statut = mailjet_get_message_status(premier_id)
+
+        if not statut:
+            continue
+
+        verifies += 1
+        counts[statut] = counts.get(statut, 0) + 1
+
+        conn.execute("""
+            UPDATE cotisations
+            SET relance_statut_final = ?, relance_statut_verifie_le = ?
+            WHERE id = ?
+        """, (statut, datetime.now().isoformat(timespec="seconds"), ligne["id"]))
+
+    conn.commit()
+    conn.close()
+
+    if verifies:
+        detail = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
+        flash(f"🔄 Statut Mailjet vérifié pour {verifies} mail(s) : {detail}", "info")
+    else:
+        flash("ℹ️ Aucune relance avec un identifiant Mailjet à vérifier pour cette année.", "warning")
+
+    return redirect(url_for("tresorerie.cotisations_relance_start", annee=annee))
+
+
+@tresorerie_bp.route("/cotisations/relance/renvoyer_gmail/<int:cotisation_id>", methods=["POST"])
+@login_required
+@require_access("tresorerie", "ecriture")
+def cotisations_relance_renvoyer_gmail(cotisation_id):
+    from utils_gmail_send import envoyer_mail_gmail, GmailSendError
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+
+    ligne = conn.execute("""
+        SELECT c.*, a.nom_association, a.courriel_association, a.courriel_resp_tresorerie
+        FROM cotisations c
+        JOIN associations a ON a.Id = c.id_association
+        WHERE c.id = ?
+    """, (cotisation_id,)).fetchone()
+
+    if not ligne:
+        conn.close()
+        flash("❌ Ligne introuvable", "danger")
+        return redirect(url_for("tresorerie.cotisations_relance_start"))
+
+    email = ligne["courriel_resp_tresorerie"] or ligne["courriel_association"]
+
+    if not email:
+        conn.close()
+        flash(f"❌ Aucune adresse email pour {ligne['nom_association']}", "danger")
+        return redirect(url_for("tresorerie.cotisations_relance_start", annee=ligne["annee"]))
+
+    if not ligne["relance_sujet"] or not ligne["relance_corps"]:
+        conn.close()
+        flash(
+            f"⛔ Aucune relance précédente connue pour {ligne['nom_association']} — "
+            "utilisez d'abord l'envoi normal des relances.",
+            "danger"
+        )
+        return redirect(url_for("tresorerie.cotisations_relance_start", annee=ligne["annee"]))
+
+    if ligne["mode_test_relance"]:
+        conn.close()
+        flash(
+            f"⛔ La dernière relance pour {ligne['nom_association']} était en Mode TEST — "
+            "un renvoi Gmail partirait, lui, pour de vrai. Refaites d'abord une relance réelle.",
+            "danger"
+        )
+        return redirect(url_for("tresorerie.cotisations_relance_start", annee=ligne["annee"]))
+
+    try:
+        envoyer_mail_gmail(
+            sujet=ligne["relance_sujet"],
+            destinataires=[email],
+            texte=ligne["relance_corps"]
+        )
+
+        conn.execute("""
+            UPDATE cotisations SET relance_renvoi_gmail_le = ? WHERE id = ?
+        """, (datetime.now().isoformat(timespec="seconds"), cotisation_id))
+        conn.commit()
+
+        flash(f"📧 Relance renvoyée via Gmail à {email} pour {ligne['nom_association']}", "success")
+
+    except GmailSendError as e:
+        write_log(f"❌ Erreur renvoi Gmail relance cotisation pour {ligne['nom_association']} : {e}")
+        flash(f"❌ Échec du renvoi via Gmail : {e}", "danger")
+
+    finally:
+        conn.close()
+
+    return redirect(url_for("tresorerie.cotisations_relance_start", annee=ligne["annee"]))
 
 
 @tresorerie_bp.route("/parametres/modele-relance", methods=["GET", "POST"])
@@ -2333,6 +2556,25 @@ def cotisations_saisie_paiements():
 
         conn.commit()
         flash("Modifications enregistrées.", "success")
+
+    else:
+        # ==========================================================
+        # GET → GARDE : campagne inexistante pour cette année
+        # ==========================================================
+        cursor.execute(
+            "SELECT 1 FROM cotisations WHERE annee = ? LIMIT 1",
+            (annee,)
+        )
+        if not cursor.fetchone():
+            conn.close()
+            flash(
+                f"⚠️ Aucune campagne de cotisations pour {annee} — "
+                "importez d'abord le fichier PARSOL2L annuel.",
+                "warning"
+            )
+            return redirect(
+                url_for("tresorerie.cotisations", annee=annee, manque=1)
+            )
 
     # ==========================================================
     # GET → AFFICHAGE
@@ -2958,6 +3200,173 @@ def extract_infos_facture(text):
     return nom, email
 
 
+# ==========================================================
+# 🔧 BUILD PDF (extraction d'un sous-ensemble de pages)
+# ==========================================================
+def build_pdf(reader, pages):
+
+    import tempfile
+    from PyPDF2 import PdfWriter
+
+    writer = PdfWriter()
+
+    for p in pages:
+        writer.add_page(reader.pages[p - 1])
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+
+    with open(tmp.name, "wb") as f:
+        writer.write(f)
+
+    return tmp.name
+
+
+# ==========================================================
+# 🚀 ENVOI FACTURES — TRAITEMENT ARRIÈRE-PLAN
+# ==========================================================
+# Tourne dans un Thread séparé (même pattern que
+# ba38_emails.py::envoyer_indicateurs_background). Persiste chaque tentative
+# en base (factures_envois) pour permettre le suivi, le statut Mailjet et le
+# renvoi manuel via Gmail. Un try/except par facture évite qu'une erreur sur
+# l'une d'elles n'interrompe l'envoi des suivantes (bug de l'ancienne version
+# non persistante).
+def envoyer_factures_background(app, db_path, lot_id, items, pdf_path,
+                                 mail_mode, mail_test_to, mail_sender,
+                                 current_user_email):
+    with app.app_context():
+        reader = PdfReader(pdf_path)
+
+        envoyes = 0
+        nb_erreurs = 0
+        count_test = 0
+        now_iso = datetime.now().isoformat(timespec="seconds")
+
+        conn = sqlite3.connect(db_path)
+
+        for item in items:
+
+            envoi_id = item["envoi_id"]
+            pages = item["pages"]
+            email = item["email"]
+            sujet = item["sujet"]
+            corps = item["corps"]
+
+            if mail_mode == "TEST":
+                if count_test >= 2:
+                    break
+                count_test += 1
+                email_envoi = mail_test_to
+                sujet = f"🧪 [TEST] {sujet}"
+            else:
+                email_envoi = email
+
+            try:
+                fichier = build_pdf(reader, pages)
+
+                write_log(f"📧 Envoi facture à {email_envoi} | envoi_id={envoi_id}")
+
+                resultat = envoyer_mail(
+                    sujet=sujet,
+                    destinataires=[email_envoi],
+                    texte=corps,
+                    sender_override=mail_sender,
+                    attachment_path=fichier,
+                    bcc=[mail_sender]
+                )
+
+                mj_status, mj_ids = None, None
+                if resultat and resultat.get("Messages"):
+                    mj_message = resultat["Messages"][0]
+                    mj_status = mj_message.get("Status")
+                    mj_ids = ",".join(
+                        str(t["MessageID"]) for t in mj_message.get("To", []) if "MessageID" in t
+                    ) or None
+
+                conn.execute("""
+                    UPDATE factures_envois
+                    SET mail_envoye_le = ?, mail_mode_test = ?, mail_erreur = NULL,
+                        mail_mailjet_status = ?, mail_mailjet_message_ids = ?
+                    WHERE id = ?
+                """, (now_iso, 1 if mail_mode == "TEST" else 0, mj_status, mj_ids, envoi_id))
+                conn.commit()
+
+                envoyes += 1
+
+                if os.path.exists(fichier):
+                    os.remove(fichier)
+
+            except Exception as e:
+                write_log(f"❌ Erreur envoi facture (envoi_id={envoi_id}) : {e}")
+                nb_erreurs += 1
+
+                conn.execute("""
+                    UPDATE factures_envois
+                    SET mail_envoye_le = ?, mail_mode_test = ?, mail_erreur = ?,
+                        mail_mailjet_status = NULL, mail_mailjet_message_ids = NULL
+                    WHERE id = ?
+                """, (now_iso, 1 if mail_mode == "TEST" else 0, str(e), envoi_id))
+                conn.commit()
+
+        conn.execute("""
+            UPDATE factures_lots
+            SET dernier_envoi_le = ?, dernier_envoi_par = ?, dernier_envoi_mode_test = ?,
+                dernier_envoi_nb_ok = ?, dernier_envoi_nb_erreur = ?
+            WHERE id = ?
+        """, (now_iso, current_user_email, 1 if mail_mode == "TEST" else 0, envoyes, nb_erreurs, lot_id))
+        conn.commit()
+        conn.close()
+
+        write_log(f"📤 Envoi factures (background) terminé : {envoyes} envoyés, {nb_erreurs} erreur(s), mode_test={mail_mode == 'TEST'}")
+
+
+# ============================
+# 📅 SÉLECTION DU TRIMESTRE (FACTURES PARTICIPATION)
+# ============================
+@tresorerie_bp.route('/factures')
+@login_required
+@require_access("tresorerie", "ecriture")
+def factures_selection():
+
+    annee_now = datetime.now().year
+
+    periodes = [
+        (annee_now, 1), (annee_now, 2), (annee_now, 3), (annee_now, 4),
+    ]
+
+    return render_template(
+        "tresorerie/factures_selection.html",
+        periodes=periodes,
+        annee_now=annee_now
+    )
+
+
+@tresorerie_bp.route('/factures/check_trimestre')
+@login_required
+@require_access("tresorerie", "ecriture")
+def factures_check_trimestre():
+
+    try:
+        annee = int(request.args.get("annee"))
+        trimestre = int(request.args.get("trimestre"))
+    except (TypeError, ValueError):
+        return jsonify({"exists": False, "id": None})
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+
+    lot = conn.execute("""
+        SELECT id FROM factures_lots
+        WHERE annee = ? AND trimestre = ?
+        ORDER BY id DESC LIMIT 1
+    """, (annee, trimestre)).fetchone()
+
+    conn.close()
+
+    return jsonify({
+        "exists": lot is not None,
+        "id": lot["id"] if lot else None
+    })
+
 
 # ============================
 # ENVOI PARTICIPATION PAR MAIL
@@ -3000,188 +3409,98 @@ def factures_pdf():
     ).fetchall()
     conn_modeles.close()
 
+    # Arrivée depuis l'écran de sélection (§ /factures) : annee/trimestre en
+    # query string prévalent sur ce qui traînait en session d'un lot précédent.
+    annee_qs = request.args.get("annee")
+    trimestre_qs = request.args.get("trimestre")
+
+    if annee_qs and trimestre_qs:
+        session["factures_annee"] = annee_qs
+        session["factures_trimestre"] = trimestre_qs
+        session["factures_periode"] = f"T{trimestre_qs} {annee_qs}"
+
     periode = session.get("factures_periode", "")
-
-    preview = []
-
-
+    annee = session.get("factures_annee", "")
+    trimestre = session.get("factures_trimestre", "")
 
     # ==========================================================
-    # 🔧 BUILD PDF
-    # ==========================================================
-    def build_pdf(reader, pages):
-
-        writer = PdfWriter()
-
-        for p in pages:
-            writer.add_page(reader.pages[p - 1])
-
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-
-        with open(tmp.name, "wb") as f:
-            writer.write(f)
-
-        return tmp.name
-
-    # ==========================================================
-    # 🚀 ENVOI BACKGROUND
-    # ==========================================================
-    def envoyer_background(pages, pdf_path, mail_mode, mail_test_to, mail_sender, sujet_modele, corps_modele, periode):
-
-        reader = PdfReader(pdf_path)
-
-        count = 0
-        count_test = 0
-        MAX_ENVOI = 9999
-
-        for p in pages:
-
-            if not p["email"]:
-                continue
-
-            # ----------------------------
-            # TEST
-            # ----------------------------
-            if mail_mode == "TEST":
-                if count_test >= 2:
-                    break
-                count_test += 1
-                email = mail_test_to
-            else:
-                email = p["email"]
-
-            if count >= MAX_ENVOI:
-                break
-
-            fichier = build_pdf(reader, p["pages"])
-
-            contexte = {"nom_association": p["nom"], "periode": periode}
-
-            envoyer_mail(
-                sujet=render_modele_email(sujet_modele, contexte).strip(),
-                destinataires=[email],
-                texte=render_modele_email(corps_modele, contexte),
-                sender_override=mail_sender,
-                attachment_path=fichier,
-                bcc=[mail_sender]
-            )
-
-            count += 1
-
-        write_log(f"FACTURES TOTAL détectées : {len(pages)}")
-        write_log(f"FACTURES envoyées (background) : {count}")
-
-    # ==========================================================
-    # POST
+    # POST → ANALYSE PDF (crée un lot "brouillon", pas encore envoyé)
     # ==========================================================
     if request.method == "POST":
 
-        # 🔧 récupération expéditeur
         sender = request.form.get("mail_sender")
-
         if sender:
             session["factures_sender"] = sender
             mail_sender = sender
 
-        # ======================================================
-        # ENVOI
-        # ======================================================
-        if request.form.get("confirm") == "1":
+        file = request.files.get("pdf_file")
+        modele_id = request.form.get("modele_id")
+        annee = request.form.get("annee", "").strip()
+        trimestre = request.form.get("trimestre", "").strip()
+        periode = f"T{trimestre} {annee}" if annee and trimestre else request.form.get("periode", "").strip()
 
-            pdf_path = session.get("factures_pdf_path")
-
-            if not pdf_path or not os.path.exists(pdf_path):
-                flash("❌ Fichier introuvable", "danger")
-                return redirect(url_for("tresorerie.factures_pdf"))
-
-            modele_id = session.get("factures_modele_id")
-
-            conn_modeles = sqlite3.connect(get_db_path())
-            conn_modeles.row_factory = sqlite3.Row
-            modele = conn_modeles.execute(
-                "SELECT * FROM modeles_emails WHERE id = ?", (modele_id,)
-            ).fetchone()
-            conn_modeles.close()
-
-            if not modele:
-                flash("❌ Modèle de mail introuvable, merci de le resélectionner.", "danger")
-                return redirect(url_for("tresorerie.factures_pdf"))
-
-            pages = extract_pages(pdf_path)
-
-            Thread(
-                target=envoyer_background,
-                args=(pages, pdf_path, mail_mode, mail_test_to, mail_sender,
-                      modele["sujet"], modele["corps"], periode)
-            ).start()
-
-            flash(f"📧 Envoi lancé en arrière-plan (expéditeur : {mail_sender})", "info")
-
+        if not file:
+            flash("❌ Fichier manquant", "danger")
             return redirect(url_for("tresorerie.factures_pdf"))
 
-        # ======================================================
-        # ANALYSE PDF
-        # ======================================================
-        else:
+        if not modele_id:
+            flash("❌ Aucun modèle de mail sélectionné", "danger")
+            return redirect(url_for("tresorerie.factures_pdf"))
 
-            file = request.files.get("pdf_file")
-            modele_id = request.form.get("modele_id")
-            periode = request.form.get("periode", "").strip()
+        db_path = get_db_path()
+        conn_modeles = sqlite3.connect(db_path)
+        conn_modeles.row_factory = sqlite3.Row
+        modele = conn_modeles.execute(
+            "SELECT * FROM modeles_emails WHERE id = ?", (modele_id,)
+        ).fetchone()
+        conn_modeles.close()
 
-            if not file:
-                flash("❌ Fichier manquant", "danger")
-                return redirect(url_for("tresorerie.factures_pdf"))
+        if not modele:
+            flash("❌ Modèle de mail introuvable, merci de le resélectionner.", "danger")
+            return redirect(url_for("tresorerie.factures_pdf"))
 
-            if not modele_id:
-                flash("❌ Aucun modèle de mail sélectionné", "danger")
-                return redirect(url_for("tresorerie.factures_pdf"))
+        session["factures_modele_id"] = modele_id
+        session["factures_periode"] = periode
+        session["factures_annee"] = annee
+        session["factures_trimestre"] = trimestre
 
-            session["factures_modele_id"] = modele_id
-            session["factures_periode"] = periode
+        tmp_path = os.path.join(os.getenv("TMP_DIR", "/srv/ba38/tmp"), f"factures_{int(time.time())}.pdf")
+        file.save(tmp_path)
 
-            tmp_path = os.path.join(os.getenv("TMP_DIR", "/srv/ba38/tmp"), f"factures_{int(time.time())}.pdf")
-            file.save(tmp_path)
+        pages = extract_pages(tmp_path)
 
-            session["factures_pdf_path"] = tmp_path
+        # ==================================================
+        # 📝 Création du lot (brouillon) + des lignes
+        # ==================================================
+        conn_lot = sqlite3.connect(db_path)
+        cur = conn_lot.execute("""
+            INSERT INTO factures_lots
+            (periode, annee, trimestre, sender, modele_id, pdf_path, date_creation, cree_par)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (periode, int(annee) if annee else None, int(trimestre) if trimestre else None, mail_sender, modele_id, tmp_path,
+              datetime.now().isoformat(timespec="seconds"), current_user.email))
+        lot_id = cur.lastrowid
 
-            reader = PdfReader(tmp_path)
-            pages = extract_pages(tmp_path)
+        for p in pages:
+            contexte = {"nom_association": p["nom"], "periode": periode}
+            sujet = render_modele_email(modele["sujet"], contexte).strip()
+            corps = render_modele_email(modele["corps"], contexte)
 
-            count_test = 0
+            erreur_initiale = None if p["email"] else "Aucune adresse email détectée dans le PDF"
 
-            for p in pages:
+            conn_lot.execute("""
+                INSERT INTO factures_envois
+                (lot_id, nom, email, pages, sujet, corps, mail_erreur, mail_modele_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (lot_id, p["nom"], p["email"], ",".join(str(n) for n in p["pages"]),
+                  sujet, corps, erreur_initiale, modele_id))
 
-                if not p["email"]:
-                    continue
+        conn_lot.commit()
+        conn_lot.close()
 
-                if mail_mode == "TEST":
-                    if count_test >= 2:
-                        break
-                    count_test += 1
-                    email = mail_test_to
-                else:
-                    email = p["email"]
+        flash(f"📊 {len(pages)} facture(s) détectée(s) — vérifiez la liste puis cliquez « Envoyer les mails » quand vous êtes prêt.", "info")
 
-                pdf_file = build_pdf(reader, p["pages"])
-
-                preview.append({
-                    "nom": p["nom"],
-                    "email_reel": p["email"],
-                    "email_envoi": email,
-                    "pdf": pdf_file
-                })
-
-            modele_courant = next((m for m in modeles_facture if str(m["id"]) == str(modele_id)), None)
-
-            return render_template(
-                "tresorerie/factures_preview.html",
-                preview=preview,
-                mail_mode=mail_mode,
-                mail_test_to=mail_test_to,
-                mail_sender=mail_sender,
-                modele_courant=modele_courant,
-                periode=periode
-            )
+        return redirect(url_for("tresorerie.factures_resultats", lot_id=lot_id))
 
     return render_template(
         "tresorerie/factures_upload.html",
@@ -3189,7 +3508,9 @@ def factures_pdf():
         mail_test_to=mail_test_to,
         mail_sender=mail_sender,
         modeles_facture=modeles_facture,
-        periode=periode
+        periode=periode,
+        annee=annee,
+        trimestre=trimestre
     )
 
 
@@ -3250,16 +3571,6 @@ def factures_modele_delete():
     return redirect(url_for("tresorerie.factures_pdf"))
 
 
-@tresorerie_bp.route('/factures_preview_pdf')
-def factures_preview_pdf():
-
-    path = request.args.get("path")
-
-    if not path or not os.path.exists(path):
-        return "Fichier introuvable", 404
-
-    return send_file(path, mimetype="application/pdf")
-
 @tresorerie_bp.route('/factures_toggle_mode', methods=['POST'])
 @login_required
 @require_access("tresorerie", "ecriture")
@@ -3277,46 +3588,264 @@ def factures_toggle_mode():
         session["MAIL_MODE"] = "TEST"
         flash("🧪 Mode TEST activé", "warning")
 
+    # Ce toggle est partagé par les 2 écrans d'envoi de factures participation
+    # (ancien flux upload-PDF + V2) — retour sur l'écran d'où le clic vient.
+    if request.referrer and request.host_url.rstrip("/") in request.referrer:
+        return redirect(request.referrer)
+
     return redirect(url_for("tresorerie.factures_pdf"))
 
 
-def envoyer_factures_background(pages, pdf_path, mail_mode, mail_test_to):
+# ============================
+# 📊 ÉCRAN RÉSULTATS D'UN LOT DE FACTURES
+# ============================
+@tresorerie_bp.route('/factures/resultats/<int:lot_id>')
+@login_required
+@require_access("tresorerie", "ecriture")
+def factures_resultats(lot_id):
 
-    reader = PdfReader(pdf_path)
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
 
-    count = 0
-    count_test = 0
+    lot = conn.execute("SELECT * FROM factures_lots WHERE id = ?", (lot_id,)).fetchone()
 
-    for p in pages:
+    if not lot:
+        conn.close()
+        flash("❌ Lot introuvable", "danger")
+        return redirect(url_for("tresorerie.factures_pdf"))
 
-        if not p["email"]:
+    envois = conn.execute("""
+        SELECT * FROM factures_envois
+        WHERE lot_id = ?
+        ORDER BY nom
+    """, (lot_id,)).fetchall()
+
+    conn.close()
+
+    reste_a_envoyer = any(e["email"] and not e["mail_envoye_le"] for e in envois)
+    mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
+
+    return render_template(
+        "tresorerie/factures_resultats.html",
+        lot=lot,
+        envois=envois,
+        reste_a_envoyer=reste_a_envoyer,
+        mail_mode=mail_mode
+    )
+
+
+# ============================
+# 📧 ENVOYER LES MAILS D'UN LOT (depuis l'écran Résultats)
+# ============================
+@tresorerie_bp.route('/factures/envoyer/<int:lot_id>', methods=['POST'])
+@login_required
+@require_access("tresorerie", "ecriture")
+def factures_envoyer(lot_id):
+
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    lot = conn.execute("SELECT * FROM factures_lots WHERE id = ?", (lot_id,)).fetchone()
+
+    if not lot:
+        conn.close()
+        flash("❌ Lot introuvable", "danger")
+        return redirect(url_for("tresorerie.factures_pdf"))
+
+    if not lot["pdf_path"] or not os.path.exists(lot["pdf_path"]):
+        conn.close()
+        flash("❌ Le PDF source de ce lot n'existe plus sur le serveur.", "danger")
+        return redirect(url_for("tresorerie.factures_resultats", lot_id=lot_id))
+
+    a_envoyer = conn.execute("""
+        SELECT id, email, pages, sujet, corps
+        FROM factures_envois
+        WHERE lot_id = ? AND email IS NOT NULL AND mail_envoye_le IS NULL
+    """, (lot_id,)).fetchall()
+
+    conn.close()
+
+    if not a_envoyer:
+        flash("ℹ️ Rien à envoyer : toutes les factures de ce lot ont déjà été traitées.", "warning")
+        return redirect(url_for("tresorerie.factures_resultats", lot_id=lot_id))
+
+    mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
+    mail_test_to = os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org")
+
+    items = [{
+        "envoi_id": r["id"],
+        "pages": [int(n) for n in r["pages"].split(",") if n],
+        "email": r["email"],
+        "sujet": r["sujet"],
+        "corps": r["corps"],
+    } for r in a_envoyer]
+
+    app_reel = current_app._get_current_object()
+    current_user_email = current_user.email
+
+    Thread(
+        target=envoyer_factures_background,
+        args=(app_reel, db_path, lot_id, items, lot["pdf_path"],
+              mail_mode, mail_test_to, lot["sender"], current_user_email)
+    ).start()
+
+    if mail_mode == "TEST":
+        flash("🧪 Envoi TEST lancé en arrière-plan (2 mails max vers l'adresse de test).", "warning")
+    else:
+        flash(f"🚀 Envoi réel lancé en arrière-plan pour {len(items)} facture(s) (expéditeur : {lot['sender']}).", "info")
+
+    return redirect(url_for("tresorerie.factures_resultats", lot_id=lot_id))
+
+
+# ============================
+# 👁️ VOIR LE PDF D'UNE FACTURE (régénéré à la demande)
+# ============================
+@tresorerie_bp.route('/factures/voir_pdf/<int:envoi_id>')
+@login_required
+@require_access("tresorerie", "ecriture")
+def factures_voir_pdf(envoi_id):
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+
+    envoi = conn.execute("SELECT * FROM factures_envois WHERE id = ?", (envoi_id,)).fetchone()
+
+    if not envoi:
+        conn.close()
+        return "Ligne introuvable", 404
+
+    lot = conn.execute("SELECT * FROM factures_lots WHERE id = ?", (envoi["lot_id"],)).fetchone()
+    conn.close()
+
+    if not lot or not lot["pdf_path"] or not os.path.exists(lot["pdf_path"]):
+        return "PDF source introuvable sur le serveur", 404
+
+    pages = [int(n) for n in envoi["pages"].split(",") if n]
+    reader = PdfReader(lot["pdf_path"])
+    fichier = build_pdf(reader, pages)
+
+    return send_file(fichier, mimetype="application/pdf")
+
+
+# ============================
+# 🔄 VÉRIFIER STATUT MAILJET (FACTURES)
+# ============================
+@tresorerie_bp.route('/factures/verifier_statut_mailjet/<int:lot_id>', methods=['POST'])
+@login_required
+@require_access("tresorerie", "ecriture")
+def factures_verifier_statut_mailjet(lot_id):
+    from utils import mailjet_get_message_status
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+
+    lignes = conn.execute("""
+        SELECT id, mail_mailjet_message_ids
+        FROM factures_envois
+        WHERE lot_id = ?
+          AND mail_mailjet_message_ids IS NOT NULL
+          AND mail_mailjet_message_ids != ''
+    """, (lot_id,)).fetchall()
+
+    counts = {}
+    verifies = 0
+
+    for ligne in lignes:
+        premier_id = ligne["mail_mailjet_message_ids"].split(",")[0]
+        statut = mailjet_get_message_status(premier_id)
+
+        if not statut:
             continue
 
-        email = p["email"]
+        verifies += 1
+        counts[statut] = counts.get(statut, 0) + 1
 
-        # 🧪 TEST
-        if mail_mode == "TEST":
-            if count_test >= 2:
-                break
-            count_test += 1
-            email = mail_test_to
+        conn.execute("""
+            UPDATE factures_envois
+            SET mail_statut_final = ?, mail_statut_verifie_le = ?
+            WHERE id = ?
+        """, (statut, datetime.now().isoformat(timespec="seconds"), ligne["id"]))
 
-        fichier = build_pdf(reader, p["pages"])
+    conn.commit()
+    conn.close()
 
-        envoyer_mail(
-            sujet=f"Facture participation – {p['nom']}",
-            destinataires=[email],
-            texte="""Bonjour,
+    if verifies:
+        detail = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
+        flash(f"🔄 Statut Mailjet vérifié pour {verifies} mail(s) : {detail}", "info")
+    else:
+        flash("ℹ️ Aucun mail avec un identifiant Mailjet à vérifier pour ce lot.", "warning")
 
-Veuillez trouver votre facture en pièce jointe.
+    return redirect(url_for("tresorerie.factures_resultats", lot_id=lot_id))
 
-BA38""",
+
+# ============================
+# 🔁 RENVOYER VIA GMAIL (FACTURES)
+# ============================
+@tresorerie_bp.route('/factures/renvoyer_gmail/<int:envoi_id>', methods=['POST'])
+@login_required
+@require_access("tresorerie", "ecriture")
+def factures_renvoyer_gmail(envoi_id):
+    from utils_gmail_send import envoyer_mail_gmail, GmailSendError
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+
+    envoi = conn.execute("SELECT * FROM factures_envois WHERE id = ?", (envoi_id,)).fetchone()
+
+    if not envoi:
+        conn.close()
+        flash("❌ Ligne introuvable", "danger")
+        return redirect(url_for("tresorerie.factures_pdf"))
+
+    lot = conn.execute("SELECT * FROM factures_lots WHERE id = ?", (envoi["lot_id"],)).fetchone()
+
+    if not envoi["email"]:
+        conn.close()
+        flash(f"❌ Aucune adresse email pour {envoi['nom']}", "danger")
+        return redirect(url_for("tresorerie.factures_resultats", lot_id=envoi["lot_id"]))
+
+    if envoi["mail_mode_test"]:
+        conn.close()
+        flash("⛔ Le dernier envoi pour cette ligne était en Mode TEST — un renvoi Gmail partirait, lui, pour de vrai. Refaites d'abord un envoi réel.", "danger")
+        return redirect(url_for("tresorerie.factures_resultats", lot_id=envoi["lot_id"]))
+
+    if not lot["pdf_path"] or not os.path.exists(lot["pdf_path"]):
+        conn.close()
+        flash("❌ Le PDF source de ce lot n'existe plus sur le serveur, impossible de régénérer la facture.", "danger")
+        return redirect(url_for("tresorerie.factures_resultats", lot_id=envoi["lot_id"]))
+
+    pages = [int(n) for n in envoi["pages"].split(",") if n]
+
+    try:
+        reader = PdfReader(lot["pdf_path"])
+        fichier = build_pdf(reader, pages)
+
+        envoyer_mail_gmail(
+            sujet=envoi["sujet"],
+            destinataires=[envoi["email"]],
+            texte=envoi["corps"],
             attachment_path=fichier
         )
 
-        count += 1
+        conn.execute("""
+            UPDATE factures_envois
+            SET mail_renvoi_gmail_le = ?
+            WHERE id = ?
+        """, (datetime.now().isoformat(timespec="seconds"), envoi_id))
+        conn.commit()
 
-    write_log(f"FACTURES envoyées (background) : {count}")
+        flash(f"📧 Facture renvoyée via Gmail à {envoi['email']} pour {envoi['nom']}", "success")
+
+        if os.path.exists(fichier):
+            os.remove(fichier)
+
+    except GmailSendError as e:
+        write_log(f"❌ Erreur renvoi Gmail facture pour {envoi['nom']} : {e}")
+        flash(f"❌ Échec du renvoi via Gmail : {e}", "danger")
+
+    conn.close()
+    return redirect(url_for("tresorerie.factures_resultats", lot_id=envoi["lot_id"]))
 
 
 

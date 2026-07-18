@@ -86,6 +86,7 @@ from engagements import engagements_bp
 from ba38_droit_image import droit_image_bp
 from ba38_indicateurs import indicateurs_bp
 from ba38_emails import emails_bp
+from ba38_participation import participation_bp
 from ba38_applications import applications_bp
 from ba38_routes_vif_comparaison import vif_bp
 
@@ -364,6 +365,7 @@ app.register_blueprint(engagements_bp)
 app.register_blueprint(droit_image_bp)
 app.register_blueprint(indicateurs_bp)
 app.register_blueprint(emails_bp)
+app.register_blueprint(participation_bp)
 app.register_blueprint(applications_bp)
 app.register_blueprint(vif_bp)
 
@@ -1061,7 +1063,10 @@ def login():
             # ============================================================================
             # 🔐 Gestion 2FA
             # ============================================================================
-            if user["force_2fa"] == 1:
+            # Le 2FA est demandé si : imposé par un admin (force_2fa), déjà activé
+            # par l'utilisateur (totp_enabled, quel que soit force_2fa), ou activé
+            # volontairement via la case à cocher de l'écran de connexion.
+            if user["force_2fa"] == 1 or user["totp_enabled"] or form.activer_2fa.data:
 
                 session["pre_2fa_user"] = user["id"]
                 session.modified = True

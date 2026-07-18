@@ -58,7 +58,7 @@
 
     <!-- ================= ACTIONS ================= -->
     <div class="d-flex gap-2">
-        <button class="btn btn-success">
+        <button class="btn btn-success" id="btnEnvoyer">
             📤 Envoyer
         </button>
 
@@ -68,5 +68,19 @@
     </div>
 
 </form>
+
+<script>
+    document.querySelector("form").addEventListener("submit", function (e) {
+        const modeTest = document.getElementById("testMode").checked;
+        if (!modeTest) {
+            const ok = confirm(
+                "⚠️ Mode TEST décoché : vous allez envoyer {{ nb }} vrais emails aux associations (avec pièce jointe PDF).\n\nContinuer ?"
+            );
+            if (!ok) {
+                e.preventDefault();
+            }
+        }
+    });
+</script>
 
 {% endblock %}

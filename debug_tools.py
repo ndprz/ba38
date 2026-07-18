@@ -1301,26 +1301,27 @@ def edit_modele_admin(modele_id=None):
         code = request.form.get("code_modele", "").strip()
         sujet = request.form.get("sujet", "").strip()
         corps = request.form.get("corps", "").strip()
+        type_periode = request.form.get("type_periode", "").strip() or None
         action = request.form.get("action", "save")
 
         with sqlite3.connect(db_path) as conn:
             if modele_id:
                 conn.execute(
-                    "UPDATE modeles_emails SET code_modele = ?, sujet = ?, corps = ?, date_modification = ? WHERE id = ?",
-                    (code, sujet, corps, datetime.now().isoformat(), modele_id)
+                    "UPDATE modeles_emails SET code_modele = ?, sujet = ?, corps = ?, type_periode = ?, date_modification = ? WHERE id = ?",
+                    (code, sujet, corps, type_periode, datetime.now().isoformat(), modele_id)
                 )
                 flash("✅ Modèle mis à jour.", "success")
             else:
                 cur = conn.execute(
-                    "INSERT INTO modeles_emails (code_modele, sujet, corps, date_modification) VALUES (?, ?, ?, ?)",
-                    (code, sujet, corps, datetime.now().isoformat())
+                    "INSERT INTO modeles_emails (code_modele, sujet, corps, type_periode, date_modification) VALUES (?, ?, ?, ?, ?)",
+                    (code, sujet, corps, type_periode, datetime.now().isoformat())
                 )
                 modele_id = cur.lastrowid
                 flash("✅ Modèle créé.", "success")
             conn.commit()
 
         if action == "save_both" and os.getenv("ENVIRONMENT", "DEV").upper() == "DEV":
-            ok, err = copier_modele_email_vers_prod(code, sujet, corps)
+            ok, err = copier_modele_email_vers_prod(code, sujet, corps, type_periode)
             if ok:
                 flash("Modèle également enregistré en PROD", "success")
             else:

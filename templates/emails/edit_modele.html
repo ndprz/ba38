@@ -19,6 +19,19 @@
     </div>
 
     <div class="mb-3">
+        <label>Catégorie</label>
+        <select name="type_periode" class="form-select">
+            <option value="" {% if not modele or not modele.type_periode %}selected{% endif %}>-- Aucune (n'apparaîtra dans aucun envoi) --</option>
+            <option value="trimestriel" {% if modele and modele.type_periode == 'trimestriel' %}selected{% endif %}>Indicateurs trimestriels</option>
+            <option value="annuel" {% if modele and modele.type_periode == 'annuel' %}selected{% endif %}>Indicateurs annuels</option>
+            <option value="facture" {% if modele and modele.type_periode == 'facture' %}selected{% endif %}>Facturation (participation, cotisations)</option>
+        </select>
+        <small class="form-text text-muted">
+            Détermine sur quel écran d'envoi (« Envoyer mails » d'une campagne indicateurs) ce modèle apparaît dans la liste déroulante.
+        </small>
+    </div>
+
+    <div class="mb-3">
         <label>Corps</label>
         <textarea name="corps" class="form-control" rows="10">{{ modele.corps if modele else '' }}</textarea>
     </div>

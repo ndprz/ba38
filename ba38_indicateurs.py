@@ -378,7 +378,14 @@ def resultats(campagne_id):
             s.id AS suivi_id,
             s.statut_csv,
             s.present_csv,
-            s.exclure_envoi_mail
+            s.exclure_envoi_mail,
+            s.mail_envoye_le,
+            s.mail_mode_test,
+            s.mail_erreur,
+            s.mail_statut_final,
+            s.mail_statut_verifie_le,
+            s.mail_modele_id,
+            s.mail_renvoi_gmail_le
         FROM associations a
         LEFT JOIN indicateurs_suivi s
             ON s.association_id = a.id
@@ -430,6 +437,24 @@ def get_mois_trimestre(trimestre):
 
 
 
+@indicateurs_bp.route("/indicateurs/modifier_date_limite/<int:campagne_id>", methods=["POST"])
+@login_required
+@require_access("indicateurs", "ecriture")
+def modifier_date_limite(campagne_id):
+    date_limite = request.form.get("date_limite", "").strip()
+
+    with get_db_connection() as conn:
+        conn.execute("""
+            UPDATE indicateurs_campagnes
+            SET date_limite = ?
+            WHERE id = ?
+        """, (date_limite, campagne_id))
+        conn.commit()
+
+    flash(f"📅 Date limite mise à jour : {date_limite or '—'}", "success")
+    return redirect(url_for("indicateurs.resultats", campagne_id=campagne_id))
+
+
 @indicateurs_bp.route("/indicateurs/toggle_exclusion/<int:suivi_id>", methods=["POST"])
 @login_required
 @require_access("indicateurs", "ecriture")
@@ -446,6 +471,148 @@ def toggle_exclusion(suivi_id):
             "SELECT exclure_envoi_mail FROM indicateurs_suivi WHERE id = ?", (suivi_id,)
         ).fetchone()
     return jsonify({"exclure": row["exclure_envoi_mail"]})
+
+
+@indicateurs_bp.route("/indicateurs/verifier_statut_mailjet/<int:campagne_id>", methods=["POST"])
+@login_required
+@require_access("indicateurs", "ecriture")
+def verifier_statut_mailjet(campagne_id):
+    from utils import mailjet_get_message_status
+
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+
+        lignes = cur.execute("""
+            SELECT id, mail_mailjet_message_ids
+            FROM indicateurs_suivi
+            WHERE campagne_id = ?
+              AND mail_mailjet_message_ids IS NOT NULL
+              AND mail_mailjet_message_ids != ''
+        """, (campagne_id,)).fetchall()
+
+        counts = {}
+        verifies = 0
+
+        for ligne in lignes:
+            premier_id = ligne["mail_mailjet_message_ids"].split(",")[0]
+            statut = mailjet_get_message_status(premier_id)
+
+            if not statut:
+                continue
+
+            verifies += 1
+            counts[statut] = counts.get(statut, 0) + 1
+
+            cur.execute("""
+                UPDATE indicateurs_suivi
+                SET mail_statut_final = ?, mail_statut_verifie_le = ?
+                WHERE id = ?
+            """, (statut, datetime.now().isoformat(timespec="seconds"), ligne["id"]))
+
+        conn.commit()
+
+    if verifies:
+        detail = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
+        flash(f"🔄 Statut Mailjet vérifié pour {verifies} mail(s) : {detail}", "info")
+    else:
+        flash("ℹ️ Aucun mail avec un identifiant Mailjet à vérifier pour cette campagne.", "warning")
+
+    return redirect(url_for("indicateurs.resultats", campagne_id=campagne_id))
+
+
+@indicateurs_bp.route("/indicateurs/renvoyer_gmail/<int:suivi_id>", methods=["POST"])
+@login_required
+@require_access("indicateurs", "ecriture")
+def renvoyer_gmail(suivi_id):
+    """
+    Renvoie le mail indicateurs d'une association précise directement via
+    l'API Gmail (compte ba380@banquealimentaire.org), en contournement des
+    rebonds temporaires Microsoft/mail.ru liés à l'absence d'authentification
+    SPF/DKIM du domaine côté Mailjet. Réutilise le même modèle et le même PDF
+    que l'envoi initial (mail_modele_id enregistré à ce moment-là).
+    """
+    from utils import get_templates_pdf_dir, render_modele_email
+    from utils_pdf_form import remplir_pdf_indicateurs
+    from utils_gmail_send import envoyer_mail_gmail, GmailSendError
+
+    with get_db_connection() as conn:
+        suivi = conn.execute("""
+            SELECT s.*, a.nom_association, a.code_VIF AS code_vif,
+                   a.courriel_resp_IE1, a.courriel_resp_IE2,
+                   a.responsable_IE, a.tel_resp_IE, a.CAR
+            FROM indicateurs_suivi s
+            JOIN associations a ON s.association_id = a.id
+            WHERE s.id = ?
+        """, (suivi_id,)).fetchone()
+
+        if not suivi:
+            flash("❌ Ligne introuvable", "danger")
+            return redirect(url_for("indicateurs.index"))
+
+        campagne = conn.execute(
+            "SELECT * FROM indicateurs_campagnes WHERE id = ?", (suivi["campagne_id"],)
+        ).fetchone()
+
+        if not suivi["mail_modele_id"]:
+            flash("⛔ Aucun modèle connu pour cet envoi précédent — utilisez d'abord « Envoyer mails ».", "danger")
+            return redirect(url_for("indicateurs.resultats", campagne_id=suivi["campagne_id"]))
+
+        if suivi["mail_mode_test"]:
+            flash("⛔ Le dernier envoi pour cette ligne était en Mode TEST (jamais parti à la vraie adresse) — un renvoi Gmail partirait, lui, pour de vrai. Refaites d'abord un envoi réel via « Envoyer mails ».", "danger")
+            return redirect(url_for("indicateurs.resultats", campagne_id=suivi["campagne_id"]))
+
+        modele = conn.execute(
+            "SELECT * FROM modeles_emails WHERE id = ?", (suivi["mail_modele_id"],)
+        ).fetchone()
+
+        emails = list({e for e in [suivi["courriel_resp_IE1"], suivi["courriel_resp_IE2"]] if e})
+        if not emails:
+            flash(f"❌ Aucune adresse email pour {suivi['nom_association']}", "danger")
+            return redirect(url_for("indicateurs.resultats", campagne_id=suivi["campagne_id"]))
+
+        periode = campagne["periode"]
+        type_periode = "annuel" if periode.lower().startswith("année") else "trimestriel"
+
+        pdf_path = f"/tmp/indicateurs_gmail_{suivi['association_id']}.pdf"
+        template = os.path.join(
+            get_templates_pdf_dir(),
+            "indicateurs_annuels.pdf" if type_periode == "annuel" else "indicateurs_trimestriels.pdf"
+        )
+        remplir_pdf_indicateurs(template, pdf_path, dict(suivi), campagne)
+
+        date_limite = campagne["date_limite"]
+        contexte = {
+            "nom_association": suivi["nom_association"],
+            "periode": periode,
+            "trimestre": periode.split()[0],
+            "annee": periode.split()[1],
+            "date_limite": date_limite,
+        }
+
+        sujet = render_modele_email(modele["sujet"], contexte).strip()
+        corps = render_modele_email(modele["corps"], contexte)
+
+        try:
+            envoyer_mail_gmail(sujet=sujet, destinataires=emails, texte=corps, attachment_path=pdf_path)
+
+            conn.execute("""
+                UPDATE indicateurs_suivi
+                SET mail_renvoi_gmail_le = ?
+                WHERE id = ?
+            """, (datetime.now().isoformat(timespec="seconds"), suivi_id))
+            conn.commit()
+
+            flash(f"📧 Mail renvoyé via Gmail à {', '.join(emails)} pour {suivi['nom_association']}", "success")
+
+        except GmailSendError as e:
+            write_log(f"❌ Erreur renvoi Gmail pour {suivi['nom_association']} : {e}")
+            flash(f"❌ Échec du renvoi via Gmail : {e}", "danger")
+
+        finally:
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+
+    return redirect(url_for("indicateurs.resultats", campagne_id=suivi["campagne_id"]))
 
 
 @indicateurs_bp.route("/check_campagne")

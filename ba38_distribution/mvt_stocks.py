@@ -2,7 +2,7 @@
 
 from flask import render_template, send_file, request, jsonify, redirect, url_for, flash
 from flask import Response
-from flask_login import login_required, current_user
+from flask_login import login_required
 from utils import get_db_path, get_db_connection, require_access
 from openpyxl import Workbook
 from io import BytesIO
@@ -303,10 +303,13 @@ def mouvements_stocks_v2():
 
             # =====================================================
             # DERNIER BROUILLON UTILISATEUR
+            # (uniquement si daté d'aujourd'hui : un nouveau jour
+            # doit repartir sur un num_mvt neuf, pas réutiliser
+            # indéfiniment le dernier mouvement jamais enregistré)
             # =====================================================
 
             cur.execute("""
-                SELECT num_mvt
+                SELECT num_mvt, date_mvt
                 FROM mvt_stocks_v2
                 ORDER BY id DESC
                 LIMIT 1
@@ -314,7 +317,12 @@ def mouvements_stocks_v2():
 
             row = cur.fetchone()
 
-            last_num_mvt = row["num_mvt"] if row else None
+            aujourdhui = datetime.now().strftime("%Y-%m-%d")
+
+            if row and row["date_mvt"] and row["date_mvt"].startswith(aujourdhui):
+                last_num_mvt = row["num_mvt"]
+            else:
+                last_num_mvt = None
 
     return render_template(
         "distribution/mvt_stocks/mvt_stocks_v2.html",
@@ -350,10 +358,10 @@ def get_mvt_brouillon():
                 depot_to,
                 qte_kgn,
                 qte_col,
-                qte_pal
+                qte_pal,
+                statut
             FROM mvt_stocks_v2
             WHERE num_mvt = ?
-            AND statut = 'BROUILLON'
             ORDER BY id
         """, (num_mvt,))
 
@@ -474,19 +482,24 @@ def confirm_export_mvt_v2(num_mvt):
 
         cur.execute("""
             SELECT
-                id,
-                statut,
-                article,
-                lot,
-                depot_from,
-                depot_to,
-                qte_kgn,
-                qte_col,
-                qte_pal,
-                date_mvt
-            FROM mvt_stocks_v2
-            WHERE num_mvt = ?
-            ORDER BY id
+                m.id,
+                m.statut,
+                m.article,
+                m.lot,
+                m.depot_from,
+                m.depot_to,
+                m.qte_kgn,
+                m.qte_col,
+                m.qte_pal,
+                m.date_mvt,
+                s.emplacement
+            FROM mvt_stocks_v2 m
+            LEFT JOIN stocks s
+                ON s.article = m.article
+                AND COALESCE(s.lot, '') = COALESCE(m.lot, '')
+                AND s.depot = m.depot_from
+            WHERE m.num_mvt = ?
+            ORDER BY m.id
         """, (num_mvt,))
 
         mouvements = [dict(r) for r in cur.fetchall()]
@@ -517,11 +530,34 @@ def export_mvt_vif_v2(num_mvt):
 
         mode = request.args.get("mode", "new")
 
+        ids = []
+
         # =====================================================
         # LECTURE MOUVEMENTS
         # =====================================================
 
-        if mode == "all":
+        if mode == "selected":
+
+            ids = request.args.getlist("ids", type=int)
+
+            if not ids:
+                flash("⚠️ Aucune ligne sélectionnée.", "warning")
+                return redirect(url_for(
+                    "distribution.confirm_export_mvt_v2",
+                    num_mvt=num_mvt
+                ))
+
+            placeholders = ",".join("?" * len(ids))
+
+            cur.execute(f"""
+                SELECT *
+                FROM mvt_stocks_v2
+                WHERE num_mvt = ?
+                AND id IN ({placeholders})
+                ORDER BY article, lot
+            """, (num_mvt, *ids))
+
+        elif mode == "all":
 
             cur.execute("""
                 SELECT *
@@ -543,7 +579,29 @@ def export_mvt_vif_v2(num_mvt):
         lignes = cur.fetchall()
 
         if not lignes:
-            return "Aucun mouvement trouvé", 404
+            flash("ℹ️ Aucun mouvement à exporter.", "info")
+            return redirect(url_for(
+                "distribution.confirm_export_mvt_v2",
+                num_mvt=num_mvt
+            ))
+
+        # =====================================================
+        # EMPLACEMENTS REELS (table stocks)
+        # =====================================================
+
+        cur.execute("""
+            SELECT article, lot, depot, emplacement
+            FROM stocks
+        """)
+
+        emplacements_stock = {
+            (
+                str(r["article"]),
+                r["lot"] or "",
+                str(r["depot"]).zfill(2)
+            ): (r["emplacement"] or "")
+            for r in cur.fetchall()
+        }
 
         # =====================================================
         # ENTETE CSV VIF
@@ -616,7 +674,9 @@ def export_mvt_vif_v2(num_mvt):
             "Valeur du critère 3"
         ]
 
-        rows = [header]
+        # header conservé ci-dessus comme documentation des colonnes,
+        # mais pas inclus dans le CSV : VIF n'attend pas de ligne d'entête
+        rows = []
 
         # =====================================================
         # DATE
@@ -625,7 +685,6 @@ def export_mvt_vif_v2(num_mvt):
         now = datetime.now()
 
         date_vif = now.strftime("%d/%m/%Y")
-        heure_vif = now.strftime("%H:%M:%S")
 
         # =====================================================
         # LIGNES CSV
@@ -646,15 +705,13 @@ def export_mvt_vif_v2(num_mvt):
             # EMPLACEMENTS
             # =================================================
 
-            emplacement_entree = ""
-            emplacement_sortie = ""
+            emplacement_entree = emplacements_stock.get(
+                (article, lot, depot_to), ""
+            )
 
-            # dépôt 02 = gestion emplacement
-            if depot_to == "02":
-                emplacement_entree = "B011"
-
-            if depot_from == "02":
-                emplacement_sortie = "B011"
+            emplacement_sortie = emplacements_stock.get(
+                (article, lot, depot_from), ""
+            )
 
             # =================================================
             # LIGNE
@@ -675,7 +732,7 @@ def export_mvt_vif_v2(num_mvt):
                 "TRANSCO",
 
                 date_vif,
-                heure_vif,
+                "",
 
                 "Transfert",
 
@@ -728,9 +785,10 @@ def export_mvt_vif_v2(num_mvt):
 
                 # =============================================
                 # UTILISATEUR
+                # (champ conservé pour le format VIF, valeur vidée)
                 # =============================================
 
-                current_user.email,
+                "",
 
                 # =============================================
                 # EVOLUTIONS FUTURES
@@ -763,7 +821,17 @@ def export_mvt_vif_v2(num_mvt):
         # MARQUAGE EXPORTE
         # =====================================================
 
-        if mode != "all":
+        if mode == "selected":
+
+            cur.execute(f"""
+                UPDATE mvt_stocks_v2
+                SET statut = 'EXPORTE'
+                WHERE num_mvt = ?
+                AND statut = 'BROUILLON'
+                AND id IN ({placeholders})
+            """, (num_mvt, *ids))
+
+        elif mode != "all":
 
             cur.execute("""
                 UPDATE mvt_stocks_v2
