@@ -589,6 +589,14 @@ def benevoles_tabulator():
 
             col["formatter"] = "emailFormatter"
 
+        # ========================================================
+        # FORMAT DATE
+        # ========================================================
+
+        if "date" in normalized:
+
+            col["formatter"] = "dateFormatter"
+
         columns.append(col)
 
 

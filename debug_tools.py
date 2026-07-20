@@ -817,6 +817,8 @@ def get_active_sessions(env):
                 "last_activity": last_activity_raw or "?",
                 "expire_in": expire_in,
                 "actif": actif,
+                "ip": data.get("last_ip") or data.get("login_ip") or "?",
+                "user_agent": data.get("user_agent", "?"),
             })
 
         except Exception:
@@ -918,6 +920,7 @@ def admin_scripts():
         "cleanup_backups.py": "cleanup_backups.py",
         "recreer_table_benevoles_inactifs.py": "recreer_table_benevoles_inactifs.py",
         "create_test_databases.py": "create_test_databases.py",
+        "sync_dev_from_prod.py": "sync_dev_from_prod.py",
         "git_commit_push.sh": "git_commit_push.sh",
     }
     if request.method == "POST":
@@ -1066,8 +1069,6 @@ def admin_scripts():
         version=version,
         connexions_dev=connexions_dev,
         connexions_prod=connexions_prod,
-        connexions_historiques=[],
-        connexions_log=[],
         test_locked=test_locked
     )
 

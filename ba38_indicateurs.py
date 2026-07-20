@@ -235,6 +235,13 @@ def index():
                 WHERE campagne_id = ?
             """, (campagne_id,))
 
+            if date_limite:
+                cur.execute("""
+                    UPDATE indicateurs_campagnes
+                    SET date_limite = ?
+                    WHERE id = ?
+                """, (date_limite, campagne_id))
+
             write_log(f"♻️ Rechargement campagne {campagne_id}")
 
         else:

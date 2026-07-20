@@ -701,6 +701,8 @@ def set_user_roles():
 
     # 🕒 Horodatage de la dernière interaction réelle (cf. admin_scripts → connexions actives)
     session["last_activity"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    session["last_ip"] = get_real_ip()
+    session["user_agent"] = request.headers.get("User-Agent", "")
 
     # =====================================================
     # 🔒 COMPTE RESTREINT AU MODE TEST → verrouillage permanent
@@ -1117,6 +1119,9 @@ def login():
             session["email"] = email
             session["environment"] = os.getenv("ENVIRONMENT", "prod").lower()
             session["login_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            session["login_ip"] = ip
+            session["last_ip"] = ip
+            session["user_agent"] = ua
             session["roles_utilisateurs"] = get_user_roles(email)
 
             # 🔑 Admin → droits complets
@@ -1247,6 +1252,9 @@ def login_2fa():
             session["email"] = user["email"]
             session["environment"] = os.getenv("ENVIRONMENT", "prod").lower()
             session["login_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            session["login_ip"] = ip
+            session["last_ip"] = ip
+            session["user_agent"] = ua
             session["user_role"] = user["role"]
             session["roles_utilisateurs"] = get_user_roles(user["email"])
 

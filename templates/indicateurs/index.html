@@ -168,6 +168,13 @@ document.addEventListener("DOMContentLoaded", function () {
                             return;
                         }
 
+                        const dateLimiteInput = document.getElementById("date_limite");
+                        if (!dateLimiteInput.value.trim()) {
+                            alert("⚠️ Veuillez saisir une date limite");
+                            dateLimiteInput.focus();
+                            return;
+                        }
+
                         // 🔥 Copier le fichier de la modale vers le form principal
                         mainFileInput.files = fileInputModal.files;
 

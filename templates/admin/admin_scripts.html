@@ -54,6 +54,8 @@
         <th>Dernière interaction</th>
         <th>Expire dans</th>
         <th>Actif</th>
+        <th>IP</th>
+        <th>Appareil / Navigateur</th>
         <th>Action</th>
       </tr>
     </thead>
@@ -66,6 +68,8 @@
         <td>{{ ligne.last_activity }}</td>
         <td>{{ ligne.expire_in }}</td>
         <td class="text-center">{% if ligne.actif == 'oui' %}🟢 Actif{% else %}⚪ Inactif{% endif %}</td>
+        <td>{{ ligne.ip }}</td>
+        <td class="text-truncate" style="max-width: 220px;" title="{{ ligne.user_agent }}">{{ ligne.user_agent }}</td>
         <td>
           <form method="POST" action="{{ url_for('debug_bp.close_session') }}"
                 onsubmit="return confirm('Fermer la session de {{ ligne.username }} ?');">
@@ -97,6 +101,8 @@
         <th>Dernière interaction</th>
         <th>Expire dans</th>
         <th>Actif</th>
+        <th>IP</th>
+        <th>Appareil / Navigateur</th>
         <th>Action</th>
       </tr>
     </thead>
@@ -109,6 +115,8 @@
         <td>{{ ligne.last_activity }}</td>
         <td>{{ ligne.expire_in }}</td>
         <td class="text-center">{% if ligne.actif == 'oui' %}🟢 Actif{% else %}⚪ Inactif{% endif %}</td>
+        <td>{{ ligne.ip }}</td>
+        <td class="text-truncate" style="max-width: 220px;" title="{{ ligne.user_agent }}">{{ ligne.user_agent }}</td>
         <td>
           <form method="POST" action="{{ url_for('debug_bp.close_session') }}"
                 onsubmit="return confirm('Fermer la session de {{ ligne.username }} ?');">
@@ -203,6 +211,18 @@
       <form method="POST">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="script_name" value="create_test_databases.py">
         <button class="btn btn-outline-primary mb-2 w-100">🧩 Créer les bases de test anonymisées</button>
+      </form>
+
+      <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="script_name" value="sync_dev_from_prod.py">
+        <button onclick="return confirm('⚠️ Remplacer la base DEV (ba380dev.sqlite) par une copie complète de la base PROD ? Toutes les données DEV actuelles seront perdues.')"
+          class="btn btn-outline-danger mb-2 w-100">
+          🧬 Synchroniser la base DEV avec la base PROD
+        </button>
+        <small class="text-muted d-block mb-2">
+          Écrase entièrement ba380dev.sqlite avec le contenu réel de PROD (données personnelles incluses).
+          À utiliser de préférence juste après un déploiement, quand les schémas DEV et PROD sont identiques.
+        </small>
       </form>
 
 
@@ -306,41 +326,6 @@
       style="max-height: 400px; overflow-y: auto; background: #f8f9fa; padding: 1em; border: 1px solid #ccc;">{{ output }}</pre>
   </div>
   {% endif %}
-
-
-
-  <hr>
-  <h4>📜 Journal des connexions (fichier brut)</h4>
-  <pre style="max-height: 400px; overflow-y: auto; background-color: #f8f9fa; padding: 10px; border: 1px solid #ccc;">
-{% for ligne in connexions_log %}
-{{ ligne.strip() }}
-{% endfor %}
-  </pre>
-  <hr>
-  <h4>🧾 Historique des connexions / déconnexions</h4>
-  <table class="table table-striped table-sm mt-2">
-    <thead class="table-light">
-      <tr>
-        <th>Email</th>
-        <th>Utilisateur</th>
-        <th>Action</th>
-        <th>Horodatage</th>
-        <th>IP</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for ligne in connexions_historiques %}
-      <tr>
-        <td>{{ ligne.email }}</td>
-        <td>{{ ligne.username }}</td>
-        <td>{{ ligne.action|upper }}</td>
-        <td>{{ ligne.timestamp.replace("T", " ")[:19] }}</td>
-        <td>{{ ligne.ip or "?" }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
 
 </div>
 {% endblock %}

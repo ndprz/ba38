@@ -588,6 +588,29 @@ function photoFormatter(cell){
 }
 
 // ======================================================
+// DATE (affichage JJ/MM/AAAA)
+// ======================================================
+
+function dateFormatter(cell){
+
+    const value = cell.getValue();
+
+    if (!value){
+
+        return "";
+    }
+
+    const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+    if (!m){
+
+        return value;
+    }
+
+    return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+// ======================================================
 // MODIFIER
 // ======================================================
 
@@ -637,49 +660,59 @@ function normalizeSearch(text){
 // TABULATOR
 // ======================================================
 
+function resolveColumns(cols){
+
+    return cols.map(col => {
+
+        if (col.formatter === "buttonCross"){
+
+            col.formatter = modifierFormatter;
+        }
+
+        if (col.formatter === "emailFormatter"){
+
+            col.formatter = emailFormatter;
+        }
+
+        if (col.formatter === "photoFormatter"){
+
+            col.formatter = photoFormatter;
+        }
+
+        if (col.formatter === "dateFormatter"){
+
+            col.formatter = dateFormatter;
+        }
+        // ======================================================
+        // FORCE FILTRE LISTE TYPE EXCEL
+        // ======================================================
+
+        if (
+            col.headerFilter === "list"
+        ){
+
+            col.headerFilter = "list";
+
+            col.headerFilterParams = {
+
+                valuesLookup:true,
+
+                clearable:true,
+
+                autocomplete:true
+            };
+        }
+        return col;
+    });
+}
+
 function getTabulatorConfig(data){
 
     return {
 
         data:data,
 
-        columns:getVisibleColumns().map(col => {
-
-            if (col.formatter === "buttonCross"){
-
-                col.formatter = modifierFormatter;
-            }
-
-            if (col.formatter === "emailFormatter"){
-
-                col.formatter = emailFormatter;
-            }
-
-            if (col.formatter === "photoFormatter"){
-
-                col.formatter = photoFormatter;
-            }
-            // ======================================================
-            // FORCE FILTRE LISTE TYPE EXCEL
-            // ======================================================
-
-            if (
-                col.headerFilter === "list"
-            ){
-
-                col.headerFilter = "list";
-
-                col.headerFilterParams = {
-
-                    valuesLookup:true,
-
-                    clearable:true,
-
-                    autocomplete:true
-                };
-            }
-            return col;
-        }),
+        columns:resolveColumns(getVisibleColumns()),
 
         layout:"fitColumns",
 
@@ -846,7 +879,7 @@ function refreshColumns(){
     saveState();
 
     table.setColumns(
-        getVisibleColumns()
+        resolveColumns(getVisibleColumns())
     );
     setTimeout(() => {
 

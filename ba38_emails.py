@@ -194,7 +194,7 @@ def liste_modeles():
         conn.row_factory = sqlite3.Row
         modeles = conn.execute("""
             SELECT * FROM modeles_emails
-            ORDER BY code_modele
+            ORDER BY TRIM(code_modele) COLLATE NOCASE
         """).fetchall()
 
     return render_template(
@@ -311,7 +311,7 @@ def envoyer_mails(campagne_id):
         modeles = conn.execute("""
             SELECT * FROM modeles_emails
             WHERE type_periode = ?
-            ORDER BY code_modele
+            ORDER BY TRIM(code_modele) COLLATE NOCASE
         """, (type_periode,)).fetchall()
         write_log(f"📧 campagne_id utilisé = {campagne_id}")
 

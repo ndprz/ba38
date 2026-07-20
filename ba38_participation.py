@@ -697,7 +697,7 @@ def resultats(campagne_id):
     """, (campagne_id,)).fetchall()
 
     modeles = conn.execute("""
-        SELECT * FROM modeles_emails WHERE type_periode = 'facture' ORDER BY code_modele
+        SELECT * FROM modeles_emails WHERE type_periode = 'facture' ORDER BY TRIM(code_modele) COLLATE NOCASE
     """).fetchall()
 
     conn.close()

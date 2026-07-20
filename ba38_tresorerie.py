@@ -3405,7 +3405,7 @@ def factures_pdf():
     conn_modeles = sqlite3.connect(get_db_path())
     conn_modeles.row_factory = sqlite3.Row
     modeles_facture = conn_modeles.execute(
-        "SELECT * FROM modeles_emails WHERE type_periode = 'facture' ORDER BY code_modele"
+        "SELECT * FROM modeles_emails WHERE type_periode = 'facture' ORDER BY TRIM(code_modele) COLLATE NOCASE"
     ).fetchall()
     conn_modeles.close()
 

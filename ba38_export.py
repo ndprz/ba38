@@ -217,6 +217,11 @@ def generateur_excel():
     # ===================================================================
     if request.method == "POST" and not just_switching:
         df = pd.read_sql_query(query, conn, params=params)
+
+        date_fields = {f["field_name"] for f in fields_data if f["type_champ"] == "date"}
+        for col in date_fields & set(df.columns):
+            df[col] = pd.to_datetime(df[col], errors="coerce").dt.date
+
         total_count = len(df)
         # write_log(f"📈 {total_count} lignes trouvées")
 
@@ -303,7 +308,15 @@ def generateur_excel():
         if action == "export":
             # write_log("📤 Export Excel demandé")
             output = io.BytesIO()
-            df.to_excel(output, index=False, engine="openpyxl")
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                df.to_excel(writer, index=False)
+
+                worksheet = writer.sheets["Sheet1"]
+                for col_idx, col in enumerate(df.columns, 1):
+                    if col in date_fields:
+                        col_letter = worksheet.cell(row=1, column=col_idx).column_letter
+                        for cell in worksheet[col_letter][1:]:
+                            cell.number_format = "DD/MM/YYYY"
             output.seek(0)
             conn.close()
             return send_file(
@@ -472,6 +485,16 @@ def generation_fichiers():
         query = f"SELECT {columns_sql} FROM {table} {where_clause}"
 
         df = pd.read_sql_query(query, conn)
+
+        date_fields = {
+            r["field_name"] for r in cursor.execute(
+                "SELECT field_name FROM field_groups WHERE appli=? AND type_champ='date'",
+                (appli,),
+            ).fetchall()
+        }
+        for col in date_fields & set(df.columns):
+            df[col] = pd.to_datetime(df[col], errors="coerce").dt.date
+
         conn.close()
 
         # ======================================================
@@ -508,6 +531,15 @@ def generation_fichiers():
             for cell in worksheet[1]:
                 cell.font = bold_font
                 cell.fill = fill
+
+            # ======================================================
+            # 📅 1bis. Format date JJ/MM/AAAA pour les colonnes de type date
+            # ======================================================
+            for col_idx, col in enumerate(df.columns, 1):
+                if col in date_fields:
+                    col_letter = get_column_letter(col_idx)
+                    for cell in worksheet[col_letter][1:]:
+                        cell.number_format = "DD/MM/YYYY"
 
             # ======================================================
             # 📏 2. Largeur automatique des colonnes
