@@ -113,6 +113,24 @@ html, body{
     text-decoration:underline dotted #dc3545;
 }
 
+.btn-ignorer{
+    display:inline-block;
+    background:none;
+    border:1px solid #adb5bd;
+    border-radius:3px;
+    color:#6c757d;
+    font-size:0.6rem;
+    padding:1px 5px;
+    cursor:pointer;
+    margin-left:5px;
+    vertical-align:middle;
+    line-height:1.4;
+    white-space:nowrap;
+}
+.btn-ignorer:hover{ background:#f8f9fa; border-color:#6c757d; }
+.btn-ignorer.actif{ background:#fff3cd; border-color:#ffc107; color:#856404; }
+.btn-ignorer.actif:hover{ background:#ffe69c; }
+
 .badge-nom-vif{
     display:inline-block;
     background:#dc3545;
@@ -191,7 +209,7 @@ html, body{
         </div>
 
         <label style="display:flex;align-items:center;gap:0.35rem;white-space:nowrap;flex-shrink:0;cursor:pointer;font-size:0.82rem;">
-            <input type="checkbox" id="toggle-ignores" checked>
+            <input type="checkbox" id="toggle-ignores">
             Masquer les ignorées
         </label>
 
@@ -245,6 +263,17 @@ html, body{
                     Sélectionnez un ou deux fichiers à mettre à jour. Seuls les fichiers
                     <code>.txt</code> sont acceptés. Le fichier sera écrasé s'il existe déjà.
                 </p>
+                <p class="text-muted small mb-3">
+                    placez les exports vif dans : G:\Drive partagés\BA380 - Public\Exports VIF
+                </p>
+                <p class="text-muted small mb-3">
+                    Pour le fichier planning_partenaires : dans VIF, lancer  : PREPA - DISTRIBUTION / Préparation /Edition du planning /Edition du planning par partenaire (selectionner un semestre) / Exporter le planning par partenaire
+                </p>
+                <p class="text-muted small mb-3">
+                    pour le fichier planning_par_date : dans VIF, lancer  : REFERENTIELS / partenaires / Edition des Partenaires. Choisir #PLANPAD, Mettre dans prochaine date un semestre
+                </p>
+
+
                 <div class="mb-3">
                     <label class="form-label" for="fichier-partenaires">
                         <strong>planning_partenaires.txt</strong>
@@ -312,9 +341,23 @@ function videFormatter(){
 function nomFormatter(cell){
     const data  = cell.getRow().getData();
     const value = escapeHtml(cell.getValue() || "");
-    if (!data.diff_nom) return value;
-    return value
-        + `<span class="badge-nom-vif" title="Nom VIF : ${escapeHtml(data.vif_nom)}">VIF</span>`;
+
+    cell.getElement().classList.toggle("cell-diff", !!data.diff_nom);
+    if (data.diff_nom){
+        cell.getElement().title = "Cliquer pour adopter le nom VIF";
+    } else {
+        cell.getElement().removeAttribute("title");
+    }
+
+    const badgeNom = data.diff_nom
+        ? ` <span class="badge-nom-vif" title="Nom VIF : ${escapeHtml(data.vif_nom)}">VIF</span>`
+        : "";
+
+    const btnIgn = data.ignorer_vif
+        ? `<button class="btn-ignorer actif" title="Réactiver les comparaisons">✓ Ignoré</button>`
+        : `<button class="btn-ignorer" title="Ignorer les différences pour cette association">Ignorer</button>`;
+
+    return value + badgeNom + btnIgn;
 }
 
 function codeFormatter(cell){
@@ -492,7 +535,23 @@ let table = new Tabulator("#tableau_vif", {
 
     columns: [
         { title: "Code VIF",        field: "code",            formatter: codeFormatter, headerFilter: false, minWidth: 80 },
-        { title: "Nom association", field: "nom_association", formatter: nomFormatter,  headerFilter: false, minWidth: 150 },
+        { title: "Nom association", field: "nom_association", formatter: nomFormatter, headerFilter: false, minWidth: 150,
+          cellClick: function(e, cell){
+            // Clic sur bouton Ignorer / Ignoré
+            if (e.target.classList.contains("btn-ignorer")){
+                e.stopPropagation();
+                const data    = cell.getRow().getData();
+                const newVal  = data.ignorer_vif ? null : "oui";
+                _envoyerMaj(data.id_assoc, "ignorer_differences_planif_vif", newVal, e.target, function(){
+                    cell.getRow().update({ ignorer_vif: !!newVal })
+                        .then(function(){ cell.getRow().reformat(); appliquerFiltres(); });
+                });
+                return;
+            }
+            // Clic sur la cellule pour adopter le nom VIF
+            makeUpdateHandler("nom_association", "vif_nom", "diff_nom", "nom_association")(e, cell);
+          }
+        },
         {
             title: "Jour passage BAI",
             columns: [

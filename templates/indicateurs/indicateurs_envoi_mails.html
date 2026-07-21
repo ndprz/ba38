@@ -3,6 +3,13 @@
 
 <h2>📤 Envoi des mails</h2>
 
+<button class="btn btn-outline-info btn-sm mb-3"
+        type="button"
+        data-bs-toggle="modal"
+        data-bs-target="#modalAide">
+    ℹ️ Aide utilisateur
+</button>
+
 <p><strong>{{ nb }}</strong> associations à relancer (Non reçu)</p>
 
 <form method="POST">
@@ -82,5 +89,39 @@
         }
     });
 </script>
+
+<!-- Modeale AIDE -->
+<div class="modal fade" id="modalAide" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📊 Aide – Module Indicateurs ÉTAT</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/indicateurs_aide.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAide')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
 
 {% endblock %}

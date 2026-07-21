@@ -26,6 +26,13 @@
             </button>
         </form>
 
+        <button class="btn btn-outline-info btn-sm"
+                type="button"
+                data-bs-toggle="modal"
+                data-bs-target="#modalAide">
+            ℹ️ Aide utilisateur
+        </button>
+
         {{ action_button("⬅️ Retour", href=url_for('indicateurs.index'), color="outline-dark btn-sm") }}
     </div>
 
@@ -65,7 +72,7 @@
 
 <!-- Affichage recap des STATUTS -->
 
-{% set ns = namespace(valid=0, non=0, revoir=0, absent=0, total=0) %}
+{% set ns = namespace(valid=0, avalider=0, non=0, revoir=0, absent=0, total=0) %}
 
 {% for l in lignes %}
 {% set statut = (l.statut_csv or '')|lower %}
@@ -74,13 +81,16 @@
 {% if l.present_csv == 0 %}
 {% set ns.absent = ns.absent + 1 %}
 
-{% elif "valid" in statut %}
+{% elif statut == "validé" %}
 {% set ns.valid = ns.valid + 1 %}
 
-{% elif "non" in statut %}
+{% elif statut == "a valider" %}
+{% set ns.avalider = ns.avalider + 1 %}
+
+{% elif statut == "non reçu" %}
 {% set ns.non = ns.non + 1 %}
 
-{% elif "revoir" in statut or "valider" in statut %}
+{% elif statut == "a revoir" %}
 {% set ns.revoir = ns.revoir + 1 %}
 {% endif %}
 {% endfor %}
@@ -90,6 +100,11 @@
     <div class="kpi-box kpi-valid" onclick="filterStatut('valide')">
         <div class="kpi-value">{{ ns.valid }}</div>
         <div class="kpi-label">✔ Validés</div>
+    </div>
+
+    <div class="kpi-box kpi-avalider" onclick="filterStatut('avalider')">
+        <div class="kpi-value">{{ ns.avalider }}</div>
+        <div class="kpi-label">🕓 À valider</div>
     </div>
 
     <div class="kpi-box kpi-non" onclick="filterStatut('non')">
@@ -283,15 +298,19 @@
             }
 
             else if (type === "valide") {
-                show = statut.includes("valid");
+                show = (statut === "validé");
+            }
+
+            else if (type === "avalider") {
+                show = (statut === "a valider");
             }
 
             else if (type === "non") {
-                show = statut.includes("non");
+                show = (statut === "non reçu");
             }
 
             else if (type === "revoir") {
-                show = statut.includes("revoir") || statut.includes("valider");
+                show = (statut === "a revoir");
             }
 
             row.style.display = show ? "" : "none";
@@ -301,6 +320,38 @@
 
 </script>
 
+<!-- Modeale AIDE -->
+<div class="modal fade" id="modalAide" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
 
+      <div class="modal-header">
+        <h5 class="modal-title">📊 Aide – Module Indicateurs ÉTAT</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/indicateurs_aide.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAide')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
 
 {% endblock %}

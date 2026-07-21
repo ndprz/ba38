@@ -1,3 +1,3 @@
-VERSION=1.4.41
-MESSAGE=Connexions actives : ajout IP/appareil, suppression journal connexions mort ; nouveau script admin sync base DEV depuis PROD
-DATE=2026-07-20 11:58
+VERSION=1.4.47
+MESSAGE=Comparaison VIF Modale explications VIF
+DATE=2026-07-21 10:16

@@ -21,11 +21,13 @@ vif_bp = Blueprint("vif", __name__)
 
 # Colonnes DB autorisées pour la mise à jour depuis VIF (whitelist anti-injection)
 UPDATABLE_FIELDS = {
-    "jour_de_passage_a_la_BAI": str,
-    "menu_sec":                 str,
-    "menu_frais":               str,
-    "frequence":                str,
-    "nbre_beneficiaires_vif":   int,
+    "jour_de_passage_a_la_BAI":          str,
+    "menu_sec":                          str,
+    "menu_frais":                        str,
+    "frequence":                         str,
+    "nbre_beneficiaires_vif":            int,
+    "nom_association":                   str,
+    "ignorer_differences_planif_vif":    str,
 }
 
 # ─────────────────────────────────────────────────────────────

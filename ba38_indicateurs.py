@@ -635,12 +635,13 @@ def check_campagne():
         cur = conn.cursor()
 
         campagne = cur.execute("""
-            SELECT id 
+            SELECT id, date_limite
             FROM indicateurs_campagnes
             WHERE periode = ?
         """, (periode,)).fetchone()
 
     return jsonify({
         "exists": campagne is not None,
-        "id": campagne["id"] if campagne else None
+        "id": campagne["id"] if campagne else None,
+        "date_limite": campagne["date_limite"] if campagne else None
     })

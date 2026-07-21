@@ -913,6 +913,10 @@ let table = new Tabulator("#tabulator-table", {
     columnHeaderVertAlign: "middle",
 });
 
+requestAnimationFrame(() => {
+    document.getElementById("filtre-association").focus();
+});
+
 
 // ======================================================
 // COLONNES VISIBLES

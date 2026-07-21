@@ -834,6 +834,10 @@ select:disabled {
     color: #ff9800;
 }
 
+.kpi-avalider .kpi-value {
+    color: #0d6efd;
+}
+
 .kpi-absent .kpi-value {
     color: #6c757d;
 }
