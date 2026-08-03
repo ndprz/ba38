@@ -26,6 +26,15 @@
             </button>
         </form>
 
+        <form method="POST" action="{{ url_for('indicateurs.importer_tonnage', campagne_id=campagne.id) }}"
+              enctype="multipart/form-data" class="d-flex align-items-center gap-1">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="file" name="tonnage_file" class="form-control form-control-sm" style="max-width: 220px;" required>
+            <button type="submit" class="btn btn-outline-primary btn-sm" title="Import export VIF (Client / Kg Net / Kg Brut)">
+                📦 Importer tonnage
+            </button>
+        </form>
+
         <button class="btn btn-outline-info btn-sm"
                 type="button"
                 data-bs-toggle="modal"
@@ -148,7 +157,9 @@
                 <th>Email IE 2</th>
                 <th>Statut</th>
                 <th>Répondu</th>
+                <th title="Import export VIF (Kg Net)">VIF kgn Trimestre</th>
                 <th title="Exclure de l'envoi mail">✉️ Exclu</th>
+                <th>PDF</th>
                 <th>Mail envoyé</th>
                 <th>Statut Mailjet</th>
                 <th title="Renvoyer via Gmail (ba380@) en cas de rebond Mailjet">🔁 Gmail</th>
@@ -178,17 +189,27 @@
                     {% if l.present_csv == 0 %}
                     <span class="badge bg-danger statut-badge">✖</span>
 
-                    {% elif "valid" in statut %}
+                    {% elif statut == "validé" %}
                     <span class="badge bg-success statut-badge">✔</span>
 
-                    {% elif "non" in statut %}
+                    {% elif statut == "non reçu" %}
                     <span class="badge bg-danger statut-badge">✖</span>
 
-                    {% elif "revoir" in statut or "valider" in statut %}
+                    {% elif statut == "a revoir" %}
                     <span class="badge bg-warning text-dark statut-badge">⚠</span>
+
+                    {% elif statut == "a valider" %}
+                    <span class="badge badge-avalider statut-badge">🕓</span>
 
                     {% else %}
                     <span class="badge bg-secondary statut-badge">—</span>
+                    {% endif %}
+                </td>
+                <td class="small text-end align-middle">
+                    {% if l.tonnage_kg_net is not none %}
+                    {{ "{:,.0f}".format(l.tonnage_kg_net).replace(",", " ") }} kg
+                    {% else %}
+                    <span class="text-muted">—</span>
                     {% endif %}
                 </td>
                 <td class="text-center align-middle">
@@ -199,6 +220,13 @@
                         title="{% if l.exclure_envoi_mail %}Exclu de l'envoi{% else %}Inclus dans l'envoi{% endif %}">
                         {% if l.exclure_envoi_mail %}🚫{% else %}✉️{% endif %}
                     </button>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td class="small text-center align-middle">
+                    {% if l.suivi_id %}
+                    <a href="{{ url_for('indicateurs.voir_pdf', suivi_id=l.suivi_id) }}" target="_blank">👁️ Voir</a>
                     {% else %}
                     <span class="text-muted">—</span>
                     {% endif %}
@@ -239,8 +267,22 @@
                     {% if l.mail_renvoi_gmail_le %}
                     <div class="text-muted" style="font-size: 0.75em;">{{ l.mail_renvoi_gmail_le }}</div>
                     {% endif %}
-                    {% elif l.suivi_id and l.mail_envoye_le and l.mail_mode_test %}
-                    <span class="text-muted" title="Dernier envoi en Mode TEST — pas de renvoi Gmail possible">🧪</span>
+                    {% elif l.suivi_id and (l.courriel_resp_IE1 or l.courriel_resp_IE2) %}
+                    <form method="POST" action="{{ url_for('indicateurs.renvoyer_gmail', suivi_id=l.suivi_id) }}"
+                          class="d-flex gap-1 justify-content-center"
+                          onsubmit="return confirm('Envoyer le mail à {{ l.nom_association }} via Gmail (ba380@banquealimentaire.org) ?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <select name="modele_id" class="form-select form-select-sm" style="max-width: 90px;" required>
+                            <option value="" disabled selected>Modèle</option>
+                            {% for m in modeles %}
+                            <option value="{{ m.id }}">{{ m.code_modele }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-sm btn-outline-primary" title="Envoyer via Gmail">✉️</button>
+                    </form>
+                    {% if l.mail_mode_test %}
+                    <div class="text-muted" style="font-size: 0.75em;">🧪 dernier envoi test seulement</div>
+                    {% endif %}
                     {% else %}
                     <span class="text-muted">—</span>
                     {% endif %}

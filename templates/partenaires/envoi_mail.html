@@ -68,7 +68,7 @@
         ✅ Message prêt à envoyer.
       </div>
       {% call action_buttons() %}
-        {{ action_button("✉️ Ouvrir Gmail", href=gmail_url, color="success") }}
+        <a href="{{ gmail_url }}" target="_blank" rel="noopener" class="btn btn-success">✉️ Ouvrir Gmail</a>
         {{ action_button("⬅️ Retour", href=retour_url, color="outline-dark") }}
       {% endcall %}
     {% else %}

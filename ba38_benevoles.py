@@ -344,7 +344,7 @@ def benevoles_tabulator():
         {
             "title": "Action",
             "field": "id",
-            "width": 165,
+            "width": 130,
             "frozen": True,
             "hozAlign": "center",
             "headerSort": False,

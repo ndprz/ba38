@@ -745,23 +745,6 @@ function emailFormatter(cell){
 
 
 // ======================================================
-// FORMATTER MODIFIER
-// ======================================================
-
-function modifierFormatter(cell){
-
-    const id = cell.getValue();
-
-    return `
-        <a href="/update_partner/${id}"
-           class="btn btn-warning btn-sm">
-           Modifier
-        </a>
-    `;
-}
-
-
-// ======================================================
 // NORMALISATION RECHERCHE
 // ======================================================
 
@@ -842,17 +825,6 @@ let table = new Tabulator("#tabulator-table", {
     columns: allColumns.map(col => {
 
         // ==========================================
-        // BOUTON MODIFIER
-        // ==========================================
-
-        if (col.formatter === "buttonCross"){
-
-            col.formatter = modifierFormatter;
-
-            return col;
-        }
-
-        // ==========================================
         // EMAIL
         // ==========================================
 
@@ -911,6 +883,28 @@ let table = new Tabulator("#tabulator-table", {
     persistence: false,
 
     columnHeaderVertAlign: "middle",
+
+    rowFormatter: function(row){
+
+        row.getElement().style.cursor = "pointer";
+    },
+});
+
+// ======================================================
+// CLIC LIGNE → MODIFIER
+// (sauf sur un lien : Drive, courriel/email…)
+// ======================================================
+
+table.on("rowClick", function(e, row){
+
+    if (e.target.closest("a")){
+
+        return;
+    }
+
+    const id = row.getData().id;
+
+    window.location.href = "/update_partner/" + id;
 });
 
 requestAnimationFrame(() => {

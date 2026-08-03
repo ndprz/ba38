@@ -56,6 +56,22 @@ def is_valid_email(email):
 
     return bool(re.match(pattern, email))
 
+
+def split_emails(raw):
+    """
+    Découpe une valeur de champ email pouvant contenir plusieurs adresses
+    séparées par ';' (ex: courriel_association = "a@x.fr;b@y.fr").
+    Retourne la liste des sous-valeurs non vides, sans validation
+    (la validation is_valid_email reste appliquée par l'appelant sur
+    chaque élément, pour continuer à alimenter emails_invalides).
+    """
+    if raw is None:
+        return []
+    raw = str(raw)
+    if raw.strip().lower() == "none":
+        return []
+    return [part.strip() for part in raw.split(";") if part.strip()]
+
 @export_bp.route("/trigger", methods=["POST"])
 def trigger_publipostage_cron():
     try:
@@ -157,23 +173,27 @@ def export_all_publipostage_job():
             nom = str(row["nom_association"])
 
             for col in all_columns:
-                email = row[col]
+                email_brut = row[col]
 
-                if is_valid_email(email):
-                    email_clean = str(email).strip().lower()
+                # Une valeur peut contenir plusieurs adresses séparées par
+                # ';' (ex: courriel_association = "a@x.fr;b@y.fr")
+                for email in split_emails(email_brut) or [email_brut]:
 
-                    if email_clean not in emails_uniques:
-                        emails_uniques.add(email_clean)
+                    if is_valid_email(email):
+                        email_clean = str(email).strip().lower()
 
-                        rows.append({
-                            "nom_association": nom,
-                            "email": email_clean
-                        })
+                        if email_clean not in emails_uniques:
+                            emails_uniques.add(email_clean)
 
-                elif email and str(email).strip().lower() != "none":
-                    emails_invalides.setdefault(
-                        "Publipostage_Assos_Tous_Les_Mails", []
-                    ).append(f"{nom} → {email}")
+                            rows.append({
+                                "nom_association": nom,
+                                "email": email_clean
+                            })
+
+                    elif email and str(email).strip().lower() != "none":
+                        emails_invalides.setdefault(
+                            "Publipostage_Assos_Tous_Les_Mails", []
+                        ).append(f"{nom} → {email}")
 
         df_final = pd.DataFrame(rows)
 
@@ -212,6 +232,17 @@ def export_all_publipostage_job():
             )
 
             df["email"] = df["email"].astype(str).str.strip()
+
+            # Une valeur peut contenir plusieurs adresses séparées par ';'
+            # (ex: "a@x.fr;b@y.fr") : on éclate en une ligne par adresse.
+            rows_expanded = []
+            for _, row in df.iterrows():
+                for email in split_emails(row["email"]) or [row["email"]]:
+                    rows_expanded.append({
+                        "nom_association": row["nom_association"],
+                        "email": email
+                    })
+            df = pd.DataFrame(rows_expanded, columns=["nom_association", "email"])
 
             for _, row in df.iterrows():
                 if not is_valid_email(row["email"]) and row["email"].lower() != "none":

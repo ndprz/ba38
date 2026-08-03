@@ -2,7 +2,7 @@
 # 📊 Module Indicateurs
 # =========================================
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_login import login_required
 from utils import get_db_connection, write_log, require_access, get_db_path
 import os
@@ -56,6 +56,54 @@ def normalize_code(code):
         code = code[:-2]
 
     return code
+
+
+# =========================================
+# 📦 Import tonnage VIF (Kg Net par association)
+# =========================================
+def parser_tonnage_vif(contenu):
+    """
+    Parse un export VIF de tonnages (cp1252, tabulations) : après la ligne
+    d'en-tête "Client\tLivré à (Libellé)\tKg Net\tKg Brut", une ligne par
+    association "code_VIF\tnom\tkg_net\tkg_brut", jusqu'à une ligne vide ou
+    "TOTAL GENERAL". Contrairement au CSV AMS (statut), le code ici est déjà
+    au format exact de associations.code_VIF (zéros de tête inclus) — pas de
+    lstrip("0"). Si plusieurs sections "Etat du BL" contiennent le même
+    code (ex. "A facturer" + "Facturé"), les montants sont additionnés.
+    Retourne {code_vif_normalisé: kg_net (float)}.
+    """
+    tonnages = {}
+    dans_section = False
+
+    for ligne in contenu.splitlines():
+        cols = ligne.split("\t")
+        premiere_col = cols[0].strip()
+
+        if premiere_col == "Client":
+            dans_section = True
+            continue
+
+        if not dans_section:
+            continue
+
+        if not ligne.strip() or premiere_col.upper().startswith("TOTAL GENERAL"):
+            dans_section = False
+            continue
+
+        if len(cols) < 3:
+            continue
+
+        code_vif = normalize_code(premiere_col)
+        kg_net_str = cols[2].strip().replace(" ", "").replace(",", ".")
+
+        try:
+            kg_net = float(kg_net_str)
+        except ValueError:
+            continue
+
+        tonnages[code_vif] = tonnages.get(code_vif, 0) + kg_net
+
+    return tonnages
 
 
 
@@ -230,11 +278,6 @@ def index():
         if existing and action == "reload":
             campagne_id = existing["id"]
 
-            cur.execute("""
-                DELETE FROM indicateurs_suivi
-                WHERE campagne_id = ?
-            """, (campagne_id,))
-
             if date_limite:
                 cur.execute("""
                     UPDATE indicateurs_campagnes
@@ -279,14 +322,8 @@ def index():
 
         index_csv = build_csv_index(df, col_statut)
 
-        # 🔥 sécurité anti doublons
-        cur.execute("""
-            DELETE FROM indicateurs_suivi
-            WHERE campagne_id = ?
-        """, (campagne_id,))
-
         associations = cur.execute("""
-            SELECT id, code_VIF
+            SELECT id, code_VIF, exclusion_mails_indicateurs
             FROM associations
             WHERE validite = 'oui'
         """).fetchall()
@@ -307,16 +344,31 @@ def index():
             if not statut:
                 write_log(f"⚠️ Code absent du CSV : {code_vif}")
 
+            # Exclusion par défaut : reprise du réglage permanent de la fiche
+            # partenaire (associations.exclusion_mails_indicateurs), utilisé
+            # uniquement à la création de la ligne de suivi (nouvelle campagne).
+            exclu_par_defaut = 1 if assoc["exclusion_mails_indicateurs"] == "oui" else 0
+
+            # UPSERT : si une ligne existe déjà pour cette campagne+association
+            # (rechargement d'un CSV plus récent), on ne touche qu'au statut/
+            # présence issus du CSV — on préserve exclure_envoi_mail et tout
+            # l'historique d'envoi (mail_envoye_le, statut Mailjet, renvois
+            # Gmail...), qui ne doivent jamais être perdus par un rechargement.
             cur.execute("""
                 INSERT INTO indicateurs_suivi
-                (campagne_id, association_id, statut_csv, present_csv, date_import)
-                VALUES (?, ?, ?, ?, ?)
+                (campagne_id, association_id, statut_csv, present_csv, date_import, exclure_envoi_mail)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(campagne_id, association_id) DO UPDATE SET
+                    statut_csv = excluded.statut_csv,
+                    present_csv = excluded.present_csv,
+                    date_import = excluded.date_import
             """, (
                 campagne_id,
                 assoc["id"],
                 statut,
                 present,
-                datetime.now()
+                datetime.now(),
+                exclu_par_defaut
             ))
 
             count_insert += 1
@@ -392,7 +444,8 @@ def resultats(campagne_id):
             s.mail_statut_final,
             s.mail_statut_verifie_le,
             s.mail_modele_id,
-            s.mail_renvoi_gmail_le
+            s.mail_renvoi_gmail_le,
+            s.tonnage_kg_net
         FROM associations a
         LEFT JOIN indicateurs_suivi s
             ON s.association_id = a.id
@@ -418,16 +471,125 @@ def resultats(campagne_id):
         if l["present_csv"] == 0
     )
 
+    type_periode = "annuel" if campagne["periode"].lower().startswith("année") else "trimestriel"
+    modeles = cur.execute("""
+        SELECT * FROM modeles_emails WHERE type_periode = ? ORDER BY TRIM(code_modele) COLLATE NOCASE
+    """, (type_periode,)).fetchall()
+
     return render_template(
         "indicateurs/resultats.html",
         campagne=campagne,
         lignes=lignes,
         total=total,
         repondu=repondu,
-        non_repondu=non_repondu
+        non_repondu=non_repondu,
+        modeles=modeles
     )
 
 
+@indicateurs_bp.route("/indicateurs/importer_tonnage/<int:campagne_id>", methods=["POST"])
+@login_required
+@require_access("indicateurs", "ecriture")
+def importer_tonnage(campagne_id):
+    """
+    Importe un export VIF de tonnages (Kg Net par association) pour cette
+    campagne — colonne "Tonnage Trimestre" du tableau Résultats. N'écrase
+    que tonnage_kg_net, préserve tout le reste (statut, historique d'envoi).
+    """
+    fichier = request.files.get("tonnage_file")
+    if not fichier or not fichier.filename:
+        flash("⛔ Fichier tonnage manquant", "danger")
+        return redirect(url_for("indicateurs.resultats", campagne_id=campagne_id))
+
+    filename = secure_filename(fichier.filename)
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    fichier.save(filepath)
+
+    with open(filepath, "rb") as f:
+        contenu_bytes = f.read()
+    try:
+        contenu = contenu_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        contenu = contenu_bytes.decode("cp1252")
+
+    tonnages = parser_tonnage_vif(contenu)
+
+    if not tonnages:
+        flash("⛔ Aucune ligne de tonnage détectée dans le fichier — vérifiez le format.", "danger")
+        return redirect(url_for("indicateurs.resultats", campagne_id=campagne_id))
+
+    with get_db_connection() as conn:
+        associations = conn.execute(
+            "SELECT id, code_VIF FROM associations WHERE validite = 'oui'"
+        ).fetchall()
+
+        codes_db = {}
+        nb_maj = 0
+        for assoc in associations:
+            code_vif = normalize_code(assoc["code_VIF"])
+            codes_db[code_vif] = True
+            if code_vif not in tonnages:
+                continue
+            conn.execute("""
+                INSERT INTO indicateurs_suivi (campagne_id, association_id, tonnage_kg_net)
+                VALUES (?, ?, ?)
+                ON CONFLICT(campagne_id, association_id) DO UPDATE SET
+                    tonnage_kg_net = excluded.tonnage_kg_net
+            """, (campagne_id, assoc["id"], tonnages[code_vif]))
+            nb_maj += 1
+
+        conn.commit()
+
+    codes_inconnus = sorted(set(tonnages.keys()) - set(codes_db.keys()))
+    if codes_inconnus:
+        flash(
+            "⚠️ Codes VIF du fichier tonnage non trouvés dans notre base : " + ", ".join(codes_inconnus),
+            "warning"
+        )
+
+    flash(f"📦 Tonnage importé pour {nb_maj} association(s).", "success")
+    return redirect(url_for("indicateurs.resultats", campagne_id=campagne_id))
+
+
+@indicateurs_bp.route("/indicateurs/voir_pdf/<int:suivi_id>")
+@login_required
+@require_access("indicateurs", "lecture")
+def voir_pdf(suivi_id):
+    """
+    Régénère à la volée et affiche le PDF indicateurs d'une association
+    (même PDF que celui joint au mail envoyé/à envoyer) — pas de fichier
+    persisté, recalculé depuis la base à chaque consultation.
+    """
+    from utils import get_templates_pdf_dir
+    from utils_pdf_form import remplir_pdf_indicateurs
+
+    with get_db_connection() as conn:
+        suivi = conn.execute("""
+            SELECT s.*, a.nom_association, a.code_VIF AS code_vif,
+                   a.responsable_IE, a.tel_resp_IE, a.CAR
+            FROM indicateurs_suivi s
+            JOIN associations a ON s.association_id = a.id
+            WHERE s.id = ?
+        """, (suivi_id,)).fetchone()
+
+        if not suivi:
+            return "Ligne introuvable", 404
+
+        campagne = conn.execute(
+            "SELECT * FROM indicateurs_campagnes WHERE id = ?", (suivi["campagne_id"],)
+        ).fetchone()
+
+    type_periode = "annuel" if campagne["periode"].lower().startswith("année") else "trimestriel"
+    template = os.path.join(
+        get_templates_pdf_dir(),
+        "indicateurs_annuels.pdf" if type_periode == "annuel" else "indicateurs_trimestriels.pdf"
+    )
+
+    pdf_path = f"/tmp/indicateurs_voir_{suivi_id}.pdf"
+    remplir_pdf_indicateurs(template, pdf_path, dict(suivi), campagne)
+
+    return send_file(pdf_path, mimetype="application/pdf")
 
 
 
@@ -532,11 +694,14 @@ def verifier_statut_mailjet(campagne_id):
 @require_access("indicateurs", "ecriture")
 def renvoyer_gmail(suivi_id):
     """
-    Renvoie le mail indicateurs d'une association précise directement via
-    l'API Gmail (compte ba380@banquealimentaire.org), en contournement des
-    rebonds temporaires Microsoft/mail.ru liés à l'absence d'authentification
-    SPF/DKIM du domaine côté Mailjet. Réutilise le même modèle et le même PDF
-    que l'envoi initial (mail_modele_id enregistré à ce moment-là).
+    Envoie (ou renvoie) le mail indicateurs d'une association précise
+    directement via l'API Gmail (compte ba380@banquealimentaire.org) — soit
+    en contournement des rebonds temporaires Microsoft/mail.ru liés à
+    l'absence d'authentification SPF/DKIM du domaine côté Mailjet (renvoi
+    d'un mail déjà parti réellement, réutilise alors le même modèle que
+    l'envoi initial), soit pour envoyer individuellement à une association
+    qui n'a jamais reçu de mail réel pour cette campagne (modèle choisi
+    explicitement dans le formulaire, via le paramètre modele_id).
     """
     from utils import get_templates_pdf_dir, render_modele_email
     from utils_pdf_form import remplir_pdf_indicateurs
@@ -560,17 +725,23 @@ def renvoyer_gmail(suivi_id):
             "SELECT * FROM indicateurs_campagnes WHERE id = ?", (suivi["campagne_id"],)
         ).fetchone()
 
-        if not suivi["mail_modele_id"]:
-            flash("⛔ Aucun modèle connu pour cet envoi précédent — utilisez d'abord « Envoyer mails ».", "danger")
-            return redirect(url_for("indicateurs.resultats", campagne_id=suivi["campagne_id"]))
+        deja_envoye_reel = suivi["mail_envoye_le"] and not suivi["mail_mode_test"]
+        modele_id_choisi = request.form.get("modele_id")
+        modele_id = suivi["mail_modele_id"] if deja_envoye_reel else (
+            int(modele_id_choisi) if modele_id_choisi else None
+        )
 
-        if suivi["mail_mode_test"]:
-            flash("⛔ Le dernier envoi pour cette ligne était en Mode TEST (jamais parti à la vraie adresse) — un renvoi Gmail partirait, lui, pour de vrai. Refaites d'abord un envoi réel via « Envoyer mails ».", "danger")
+        if not modele_id:
+            flash("⛔ Choisissez un modèle de mail pour cet envoi.", "danger")
             return redirect(url_for("indicateurs.resultats", campagne_id=suivi["campagne_id"]))
 
         modele = conn.execute(
-            "SELECT * FROM modeles_emails WHERE id = ?", (suivi["mail_modele_id"],)
+            "SELECT * FROM modeles_emails WHERE id = ?", (modele_id,)
         ).fetchone()
+
+        if not modele:
+            flash("❌ Modèle introuvable", "danger")
+            return redirect(url_for("indicateurs.resultats", campagne_id=suivi["campagne_id"]))
 
         emails = list({e for e in [suivi["courriel_resp_IE1"], suivi["courriel_resp_IE2"]] if e})
         if not emails:
@@ -602,14 +773,33 @@ def renvoyer_gmail(suivi_id):
         try:
             envoyer_mail_gmail(sujet=sujet, destinataires=emails, texte=corps, attachment_path=pdf_path)
 
-            conn.execute("""
-                UPDATE indicateurs_suivi
-                SET mail_renvoi_gmail_le = ?
-                WHERE id = ?
-            """, (datetime.now().isoformat(timespec="seconds"), suivi_id))
+            now_iso = datetime.now().isoformat(timespec="seconds")
+
+            if deja_envoye_reel:
+                # Renvoi d'un mail déjà réellement parti : on ne touche pas
+                # à mail_envoye_le/mail_modele_id, on garde la trace de
+                # l'envoi d'origine.
+                conn.execute("""
+                    UPDATE indicateurs_suivi
+                    SET mail_renvoi_gmail_le = ?
+                    WHERE id = ?
+                """, (now_iso, suivi_id))
+            else:
+                # Premier envoi réel (jamais envoyé, ou envoyé seulement en
+                # mode TEST jusqu'ici) : cet envoi devient le vrai.
+                conn.execute("""
+                    UPDATE indicateurs_suivi
+                    SET mail_renvoi_gmail_le = ?,
+                        mail_envoye_le = ?,
+                        mail_mode_test = 0,
+                        mail_modele_id = ?,
+                        mail_erreur = NULL
+                    WHERE id = ?
+                """, (now_iso, now_iso, modele_id, suivi_id))
             conn.commit()
 
-            flash(f"📧 Mail renvoyé via Gmail à {', '.join(emails)} pour {suivi['nom_association']}", "success")
+            verbe = "renvoyé" if deja_envoye_reel else "envoyé"
+            flash(f"📧 Mail {verbe} via Gmail à {', '.join(emails)} pour {suivi['nom_association']}", "success")
 
         except GmailSendError as e:
             write_log(f"❌ Erreur renvoi Gmail pour {suivi['nom_association']} : {e}")

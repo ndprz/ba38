@@ -29,7 +29,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from pathlib import Path
 
-from utils import get_db_path, require_access, write_log, envoyer_mail, render_modele_email, mailjet_get_message_status
+from utils import get_db_path, require_access, write_log, envoyer_mail, render_modele_email, mailjet_get_message_status, split_emails
 from utils_gmail_send import envoyer_mail_gmail, GmailSendError
 from ba38_tresorerie import BAI_NOM, BAI_ADRESSE, BAI_TEL, BAI_MAIL, BAI_IBAN, BAI_BIC
 
@@ -401,14 +401,21 @@ def envoyer_participation_background(app, db_path, campagne_id, items, mail_mode
                 if count_test >= 2:
                     break
                 count_test += 1
+                destinataires = [mail_test_to]
                 email_envoi = mail_test_to
                 sujet_envoi = f"🧪 [TEST] {sujet_envoi}"
             else:
-                email_envoi = item["email"]
+                destinataires = split_emails(item["email"])
+                email_envoi = ", ".join(destinataires) if destinataires else item["email"]
 
             pdf_path = f"/tmp/participation_{item['facture_id']}.pdf"
 
             try:
+                if not destinataires:
+                    raise ValueError(
+                        f"Aucune adresse email valide pour {item['nom_association']}"
+                    )
+
                 assoc = conn.execute(
                     "SELECT * FROM associations WHERE Id = ?", (item["association_id"],)
                 ).fetchone()
@@ -435,7 +442,7 @@ def envoyer_participation_background(app, db_path, campagne_id, items, mail_mode
 
                 resultat = envoyer_mail(
                     sujet=sujet_envoi,
-                    destinataires=[email_envoi],
+                    destinataires=destinataires,
                     texte=item["corps"],
                     sender_override="ba380.comptable@banquealimentaire.org",
                     attachment_path=pdf_path,
@@ -642,7 +649,7 @@ def traiter():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (campagne_id, assoc["Id"], b["code_vif"], numero_facture_depart + i, assoc["nom_association"],
               b["montant_total"], json.dumps(b["lignes_gardees"]), json.dumps(b["lignes_supprimees"]),
-              assoc["courriel_association"]))
+              assoc["courriel_resp_tresorerie"] or assoc["courriel_association"]))
 
     for b in orphelines:
         conn.execute("""
@@ -910,9 +917,10 @@ def renvoyer_gmail(facture_id):
         flash("❌ Ligne introuvable", "danger")
         return redirect(url_for("participation.selection"))
 
-    if not f["email"]:
+    destinataires = split_emails(f["email"])
+    if not destinataires:
         conn.close()
-        flash(f"❌ Aucune adresse email pour {f['nom_association']}", "danger")
+        flash(f"❌ Aucune adresse email valide pour {f['nom_association']}", "danger")
         return redirect(url_for("participation.resultats", campagne_id=f["campagne_id"]))
 
     if not f["sujet"] or not f["corps"]:
@@ -955,7 +963,7 @@ def renvoyer_gmail(facture_id):
     try:
         envoyer_mail_gmail(
             sujet=f["sujet"],
-            destinataires=[f["email"]],
+            destinataires=destinataires,
             texte=f["corps"],
             attachment_path=pdf_path
         )

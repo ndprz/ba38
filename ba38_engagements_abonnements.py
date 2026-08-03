@@ -57,13 +57,16 @@ def _notifier_pole(conn, modele, engagement_id, statut, montant):
             p.responsable_id,
             p.suppleant1_id,
             p.suppleant2_id,
+            p.tresorier_user_id,
             u1.email AS responsable_email,
             u2.email AS supp1_email,
-            u3.email AS supp2_email
+            u3.email AS supp2_email,
+            u4.email AS tresorier_email
         FROM engagement_poles p
         LEFT JOIN users u1 ON u1.id = p.responsable_id
         LEFT JOIN users u2 ON u2.id = p.suppleant1_id
         LEFT JOIN users u3 ON u3.id = p.suppleant2_id
+        LEFT JOIN users u4 ON u4.id = p.tresorier_user_id
         WHERE p.id = ?
     """, (modele["pole_id"],)).fetchone()
 
@@ -71,7 +74,7 @@ def _notifier_pole(conn, modele, engagement_id, statut, montant):
         return
 
     sujet = f"Engagement récurrent généré automatiquement #{engagement_id}"
-    lien = f"{_base_url()}/detail_engagement/{engagement_id}"
+    lien = f"{_base_url()}/engagements/detail_engagement/{engagement_id}"
 
     if statut == "validation_pole":
 
@@ -118,6 +121,38 @@ BA38
 """
 
             envoyer_mail(sujet=sujet, destinataires=[user_email], texte=texte)
+
+    elif statut == "a_payer":
+
+        if pole["tresorier_email"]:
+
+            texte = f"""
+Bonjour,
+
+Un engagement récurrent (abonnement) est prêt pour règlement.
+La validation pôle a été reconduite automatiquement.
+
+Pôle :
+{pole["nom_affiche"]}
+
+Objet :
+{modele["objet"]}
+
+Montant :
+{montant:.2f} €
+
+Accéder à la demande :
+{lien}
+
+---
+BA38
+"""
+
+            envoyer_mail(
+                sujet=sujet,
+                destinataires=[pole["tresorier_email"]],
+                texte=texte
+            )
 
     else:
 
@@ -166,10 +201,18 @@ def _creer_engagement_enfant(conn, modele, aujourdhui):
         )
         return None
 
-    if palier["accord_resp_pole"] == "o":
+    # Si le modèle parent a déjà été validé au niveau pôle,
+    # les enfants sautent cette étape (accord tacite reconduit)
+    # et partent directement à la trésorerie.
+    pole_deja_valide = bool(modele["valide_par_pole_le"])
+    saute_pole = pole_deja_valide and palier["accord_resp_pole"] == "o"
+
+    if palier["accord_resp_pole"] == "o" and not pole_deja_valide:
         statut = "validation_pole"
     elif palier["accord_presidence"] == "o":
         statut = "validation_presidence"
+    elif saute_pole:
+        statut = "a_payer"
     else:
         statut = "valide"
 
@@ -248,6 +291,16 @@ def _creer_engagement_enfant(conn, modele, aujourdhui):
         modele["sous_type_depense"],
     ))
 
+    commentaire_workflow = (
+        f"Génération automatique mensuelle à partir de "
+        f"l'abonnement #{modele['engagement_id']}"
+        + (
+            " — validation pôle ignorée (déjà validée sur le modèle)"
+            if saute_pole
+            else ""
+        )
+    )
+
     conn.execute("""
         INSERT INTO engagements_workflow (
             engagement_id,
@@ -262,9 +315,24 @@ def _creer_engagement_enfant(conn, modele, aujourdhui):
     """, (
         engagement_id,
         statut,
-        f"Génération automatique mensuelle à partir de "
-        f"l'abonnement #{modele['engagement_id']}"
+        commentaire_workflow,
     ))
+
+    if statut == "a_payer":
+        conn.execute("""
+            INSERT INTO engagements_workflow (
+                engagement_id,
+                action,
+                ancien_statut,
+                nouveau_statut,
+                commentaire,
+                user_id,
+                user_email
+            )
+            VALUES (?, 'transmission_tresorerie', 'valide', 'a_payer',
+                    'Transmission automatique à la trésorerie (abonnement récurrent)',
+                    NULL, 'system')
+        """, (engagement_id,))
 
     _notifier_pole(conn, modele, engagement_id, statut, montant)
 
@@ -305,6 +373,7 @@ def generer_engagements_abonnements(db_path=None, aujourdhui=None):
                 e.pole_id,
                 e.abonnement_jour_mois,
                 e.abonnement_derniere_generation_le,
+                e.valide_par_pole_le,
                 d.objet,
                 d.description,
                 d.rubrique,

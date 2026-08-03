@@ -388,6 +388,26 @@ def supprimer(annexe_id):
 @login_required
 @require_access("associations", "lecture")
 def pdf(annexe_id):
+    # Si l'annexe est signée, servir le vrai PDF signé (avec le tampon de
+    # signature) plutôt que de régénérer un PDF vierge via ReportLab — sinon
+    # ce bouton est trompeur (il montrait un document sans aucune signature
+    # visible, alors que l'annexe est bien signée).
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    annexe = conn.execute(
+        "SELECT document_signe_path FROM annexe1bis WHERE id = ?", (annexe_id,)
+    ).fetchone()
+    conn.close()
+
+    chemin_signe = annexe["document_signe_path"] if annexe else None
+    if chemin_signe and os.path.exists(chemin_signe):
+        return send_file(
+            chemin_signe,
+            as_attachment=True,
+            download_name=f"annexe1bis_{annexe_id}_signe.pdf",
+            mimetype='application/pdf'
+        )
+
     try:
         return generate_pdf_annexe1bis(annexe_id)
     except Exception as e:

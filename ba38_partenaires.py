@@ -7,7 +7,7 @@ import json
 
 from flask import Blueprint, render_template, render_template_string, request, redirect, url_for, flash
 from flask_login import login_required, current_user
-from utils import get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_phone, require_access, get_db_path
+from utils import get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_multi_email, is_valid_phone, require_access, get_db_path
 from urllib.parse import urlencode
 from flask_wtf import FlaskForm
 from wtforms import HiddenField
@@ -27,6 +27,16 @@ from io import BytesIO
 def checkbox(checked=False):
     """Retourne une case à cocher en texte."""
     return "☑" if checked else "☐"
+
+def _champ_email_valide(fname, val):
+    """
+    Valide un champ email : courriel_association accepte plusieurs adresses
+    séparées par ';' (ex: "a@x.fr;b@y.fr"), les autres champs email restent
+    limités à une seule adresse.
+    """
+    if (fname or "").lower() == "courriel_association":
+        return is_valid_multi_email(val)
+    return is_valid_email(val)
 
 def _normalize_name(s: str) -> str:
     """
@@ -220,16 +230,6 @@ def partenaires_tabulator():
     # ============================================================
 
     columns = [
-
-        {
-            "title": "Action",
-            "field": "id",
-            "width": 110,
-            "frozen": True,
-            "hozAlign": "center",
-            "headerSort": False,
-            "formatter": "buttonCross"
-        },
 
         {
             "title": "ID",
@@ -541,13 +541,20 @@ def create_partner():
                 champs_invalides.append(fname)
 
             # 📧 Validation email
-            if raw_value and "email" in fname.lower() and not is_valid_email(raw_value):
+            if raw_value and "email" in fname.lower() and not _champ_email_valide(fname, raw_value):
                 erreurs.append(f"Adresse email invalide dans « {fname} » ➜ « {raw_value} »")
                 champs_invalides.append(fname)
 
             # ☎️ Validation téléphone
             if ftype == "tel" and raw_value and not is_valid_phone(cleaned_value):
                 erreurs.append(f"Téléphone invalide dans « {fname} » ➜ « {raw_value} »")
+                champs_invalides.append(fname)
+
+            # 📏 Nom d'association limité à 30 caractères (limite VIF)
+            if fname == "nom_association" and len(raw_value) > 30:
+                erreurs.append(
+                    f"Le nom de l'association « {raw_value} » dépasse 30 caractères (limite VIF)."
+                )
                 champs_invalides.append(fname)
 
             # 🔢 Validation numérique
@@ -627,6 +634,10 @@ def duplicate_partner(partner_id):
     new_name_raw = (request.form.get("new_nom_association") or "").strip()
     if not new_name_raw:
         flash("❌ Le nom de la nouvelle association est requis.", "danger")
+        return redirect(url_for("partenaires.update_partner", partner_id=partner_id))
+
+    if len(new_name_raw) > 30:
+        flash("❌ Le nom de l’association ne doit pas dépasser 30 caractères (limite VIF).", "danger")
         return redirect(url_for("partenaires.update_partner", partner_id=partner_id))
 
     conn = get_db_connection()
@@ -1106,7 +1117,7 @@ def update_partner(partner_id):
 
                 if (
                     field.get("type_champ") == "email"
-                    and not is_valid_email(val)
+                    and not _champ_email_valide(fname, val)
                 ):
 
                     erreurs.append(
@@ -1126,6 +1137,20 @@ def update_partner(partner_id):
                         f"Champ invalide dans {group} : "
                         f"{label} ➜ « {val} » "
                         f"n’est pas un numéro valide."
+                    )
+
+                    champs_invalides.append(fname)
+
+                if (
+                    fname == "nom_association"
+                    and len(val) > 30
+                    and val != (partner_dict.get(fname) or "").strip()
+                ):
+
+                    erreurs.append(
+                        f"Champ invalide dans {group} : "
+                        f"{label} ➜ « {val} » "
+                        f"dépasse 30 caractères (limite VIF)."
                     )
 
                     champs_invalides.append(fname)
@@ -1495,6 +1520,8 @@ def update_partner(partner_id):
 @login_required
 @require_access("associations", "ecriture")
 def delete_partner(partner_id):
+    confirmation = request.form.get("confirm")
+    second_confirmation = request.form.get("confirm_final")
 
     if confirmation == "oui" and second_confirmation == "supprimer":
         conn = get_db_connection()
@@ -1725,7 +1752,7 @@ def update_associations_table():
                 new_val = request.form.get(f"{col}_{i}", "").strip()
 
             if new_val != old_val:
-                if "email" in col.lower() and new_val and not is_valid_email(new_val):
+                if "email" in col.lower() and new_val and not _champ_email_valide(col, new_val):
                     erreurs.append(f"Ligne {i + 1}, champ {col} : adresse email invalide « {new_val} »")
                     champs_invalides.append(col)
                 elif "tel" in col.lower() and new_val and not is_valid_phone(new_val):
@@ -1818,7 +1845,11 @@ def update_associations_table():
 
 def get_neighbor_ids_alphabetically(conn, current_id):
     cursor = conn.cursor()
-    cursor.execute("SELECT id, nom_association FROM associations ORDER BY nom_association COLLATE NOCASE")
+    cursor.execute(
+        "SELECT id, nom_association FROM associations "
+        "WHERE validite IS NULL OR validite != 'non' "
+        "ORDER BY nom_association COLLATE NOCASE"
+    )
     rows = cursor.fetchall()
     ids = [row[0] for row in rows]
 

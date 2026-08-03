@@ -15,7 +15,7 @@ from collections import defaultdict
 from pathlib import Path
 from flask import Blueprint, request, render_template, flash, redirect, url_for, send_file,abort,current_app, session, jsonify
 from flask_login import login_required, current_user
-from utils import get_google_services, write_log, envoyer_mail,get_db_path,upload_file_to_drive_path,slugify_filename
+from utils import get_google_services, write_log, envoyer_mail,get_db_path,upload_file_to_drive_path,slugify_filename,split_emails
 from utils import get_drive_folder_id_from_path, require_access, render_modele_email
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
@@ -601,7 +601,7 @@ def calculer_cotisations_par_annee(db_path, benef_par_vif):
         SELECT
             Id AS id_association,
             code_VIF,
-            vif_regroup,
+            vif_regroup_cotisation,
             nom_association,
             compte_comptable,
             adresse_association_1,
@@ -630,7 +630,7 @@ def calculer_cotisations_par_annee(db_path, benef_par_vif):
             benef_sans_asso[code_vif] += nb
             continue
 
-        code_facture = asso["vif_regroup"] or code_vif
+        code_facture = asso["vif_regroup_cotisation"] or code_vif
         cumuls[code_facture] += nb
         rattachements[code_facture].append(code_vif)
 
@@ -1336,7 +1336,9 @@ def cotisations_envoyer_mails():
                 f"{ligne['nom_association']}"
             )
         else:
-            destinataires = [email_asso]
+            destinataires = split_emails(email_asso)
+            if not destinataires:
+                continue
             sujet = (
                 f"Appel de cotisation {annee} – "
                 f"{ligne['nom_association']}"
@@ -2068,7 +2070,11 @@ def envoyer_relances_background(app, db_path, items, sujet_modele, corps_modele,
                     destinataire = [mail_test_to]
                     sujet_envoi = f"🧪 [TEST] {sujet}"
                 else:
-                    destinataire = [item["email"]]
+                    destinataire = split_emails(item["email"])
+                    if not destinataire:
+                        raise ValueError(
+                            f"Aucune adresse email valide pour {item['nom_association']}"
+                        )
                     sujet_envoi = sujet
 
                 resultat = envoyer_mail(
@@ -2409,10 +2415,11 @@ def cotisations_relance_renvoyer_gmail(cotisation_id):
         return redirect(url_for("tresorerie.cotisations_relance_start"))
 
     email = ligne["courriel_resp_tresorerie"] or ligne["courriel_association"]
+    destinataires = split_emails(email)
 
-    if not email:
+    if not destinataires:
         conn.close()
-        flash(f"❌ Aucune adresse email pour {ligne['nom_association']}", "danger")
+        flash(f"❌ Aucune adresse email valide pour {ligne['nom_association']}", "danger")
         return redirect(url_for("tresorerie.cotisations_relance_start", annee=ligne["annee"]))
 
     if not ligne["relance_sujet"] or not ligne["relance_corps"]:
@@ -2436,7 +2443,7 @@ def cotisations_relance_renvoyer_gmail(cotisation_id):
     try:
         envoyer_mail_gmail(
             sujet=ligne["relance_sujet"],
-            destinataires=[email],
+            destinataires=destinataires,
             texte=ligne["relance_corps"]
         )
 
@@ -2445,7 +2452,7 @@ def cotisations_relance_renvoyer_gmail(cotisation_id):
         """, (datetime.now().isoformat(timespec="seconds"), cotisation_id))
         conn.commit()
 
-        flash(f"📧 Relance renvoyée via Gmail à {email} pour {ligne['nom_association']}", "success")
+        flash(f"📧 Relance renvoyée via Gmail à {', '.join(destinataires)} pour {ligne['nom_association']}", "success")
 
     except GmailSendError as e:
         write_log(f"❌ Erreur renvoi Gmail relance cotisation pour {ligne['nom_association']} : {e}")

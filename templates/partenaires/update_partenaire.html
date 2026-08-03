@@ -324,6 +324,7 @@
               name="{{ field['field_name'] }}"
               value="{{ field['value'] or '' }}"
               class="{{ css }}"
+              {% if field['field_name'] == 'nom_association' %}maxlength="30"{% endif %}
               {% if field.readonly %}readonly{% endif %}
           >
 
@@ -381,9 +382,9 @@
         <div class="modal-body">
           <div class="mb-3">
             <label for="new_nom_association" class="form-label">Nouveau nom de l’association</label>
-            <input type="text" class="form-control" id="new_nom_association" name="new_nom_association" required>
+            <input type="text" class="form-control" id="new_nom_association" name="new_nom_association" maxlength="30" required>
           </div>
-          <p class="text-muted small">⚠️ Le nouveau nom doit être différent et unique.</p>
+          <p class="text-muted small">⚠️ Le nouveau nom doit être différent, unique, et ne pas dépasser 30 caractères (limite VIF).</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>

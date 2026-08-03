@@ -626,12 +626,6 @@ function modifierFormatter(cell){
             align-items:center;
         ">
 
-            <a href="/update_benevole/${id}"
-               class="btn btn-warning btn-sm px-2 py-0">
-
-               Modifier
-            </a>
-
             <a href="/desactiver_benevole/${id}"
                class="btn btn-outline-secondary btn-sm px-2 py-0">
 
@@ -726,7 +720,12 @@ function getTabulatorConfig(data){
 
         columnHeaderVertAlign:"middle",
 
-        placeholder:"Aucune donnée"
+        placeholder:"Aucune donnée",
+
+        rowFormatter: function(row){
+
+            row.getElement().style.cursor = "pointer";
+        }
     };
 }
 
@@ -734,6 +733,26 @@ let table = new Tabulator(
     "#tabulator-table",
     getTabulatorConfig(tableData)
 );
+
+// ======================================================
+// CLIC LIGNE → MODIFIER
+// (sauf sur un lien : Drive, courriel/email, Désactiver…)
+// ======================================================
+table.on("rowClick", function(e, row){
+
+    if (e.target.closest("a")){
+
+        return;
+    }
+
+    const id = row.getData().id;
+
+    window.location.href = "/update_benevole/" + id;
+});
+
+requestAnimationFrame(() => {
+    document.getElementById("filtre-benevole").focus();
+});
 
 // ======================================================
 // RECHERCHE

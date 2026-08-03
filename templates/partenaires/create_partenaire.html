@@ -50,6 +50,7 @@
             value="{{ field.value or '' }}"
             class="{{ css }}"
             placeholder="Saisir {{ field.field_name }}"
+            {% if field.field_name == 'nom_association' %}maxlength="30"{% endif %}
             {% if field.is_required %}required{% endif %}
           >
           {% endif %}

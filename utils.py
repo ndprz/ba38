@@ -639,6 +639,26 @@ def is_valid_email(email: str) -> bool:
     return re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email) is not None
 
 
+def split_emails(raw: str) -> list:
+    """Découpe une valeur pouvant contenir plusieurs emails séparés par ';'
+    et ne garde que les adresses valides."""
+    if not raw:
+        return []
+    return [e.strip() for e in str(raw).split(";") if is_valid_email(e.strip())]
+
+
+def is_valid_multi_email(value: str) -> bool:
+    """Comme is_valid_email, mais accepte aussi plusieurs adresses séparées
+    par ';' (ex: courriel_association = "a@x.fr;b@y.fr"). Chaque partie doit
+    être une adresse valide."""
+    if not value:
+        return False
+    parts = [p.strip() for p in str(value).split(";")]
+    if any(not p for p in parts):
+        return False
+    return all(is_valid_email(p) for p in parts)
+
+
 def is_valid_phone(phone: str) -> bool:
     if not phone:
         return True

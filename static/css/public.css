@@ -838,6 +838,14 @@ select:disabled {
     color: #0d6efd;
 }
 
+/* Bleu dédié pour "À valider" — .bg-primary Bootstrap est personnalisé en
+   orange dans cette appli (--primary: #f27830), donc inutilisable ici pour
+   se distinguer du orange "À revoir" (.bg-warning). */
+.badge-avalider {
+    background-color: #0d6efd;
+    color: #fff;
+}
+
 .kpi-absent .kpi-value {
     color: #6c757d;
 }
