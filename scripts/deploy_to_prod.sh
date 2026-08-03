@@ -238,5 +238,11 @@ echo "DATE=$DATE_NOW" >> "$DEV_DIR/VERSION"
 echo "🔄 Redémarrage ba38-prod"
 sudo systemctl restart ba38-prod.service
 
+# ============================================================================
+# 📦 COMMIT GIT
+# ============================================================================
+echo "📦 Commit git"
+"$SCRIPTS_DIR/git_commit_push.sh" "v$VERSION - $VERSION_MSG"
+
 echo "🎉 Déploiement terminé avec succès"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
