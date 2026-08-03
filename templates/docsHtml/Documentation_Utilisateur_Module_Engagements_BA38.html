@@ -1,6 +1,6 @@
 <p><strong>Application BA38 – Engagements (dépenses, déplacements, notes
 de frais)</strong><br />
-Version de la documentation : 08/07/2026</p>
+Version de la documentation : 03/08/2026</p>
 <h1 id="objectif-du-module">1. Objectif du module</h1>
 <p>Le module « Engagements » permet de gérer l’ensemble des demandes de
 dépense de l’association, depuis leur création jusqu’à leur règlement et
@@ -29,9 +29,9 @@ dossier.</p>
 fonctionnement</h1>
 <h2 id="les-pôles-dactivité">3.1 Les pôles d’activité</h2>
 <p>Chaque demande est rattachée à un pôle d’activité (ex : Collecte,
-Distribution, Action sociale...). Un pôle possède un responsable,
-jusqu’à deux suppléants, éventuellement un trésorier dédié, et une ou
-plusieurs adresses mail pour la validation présidence.</p>
+Distribution, Action sociale…). Un pôle possède un responsable, jusqu’à
+deux suppléants, éventuellement un trésorier dédié, et une ou plusieurs
+adresses mail pour la validation présidence.</p>
 <h2 id="les-paliers-de-validation">3.2 Les paliers de validation</h2>
 <p>Le circuit de validation d’une demande dépend de son montant, comparé
 à des « paliers » configurés dans les paramètres du module. Pour chaque
@@ -119,7 +119,7 @@ ou salarié, ou 🏢 Paiement fournisseur BA38,<br />
 - une description libre, la rubrique comptable concernée et, le cas
 échéant, le projet ou la subvention sur lequel imputer la dépense,<br />
 - le montant total prévu (obligatoire),<br />
-- les pièces justificatives (factures, tickets, devis...).</p>
+- les pièces justificatives (factures, tickets, devis…).</p>
 <p>Si le mode de paiement est « Paiement fournisseur BA38 », il faut
 choisir un fournisseur existant ou en créer un nouveau directement
 depuis le formulaire (bouton « ➕ Nouveau »), en renseignant au minimum
@@ -136,10 +136,10 @@ demande.</p>
 <h1 id="abonnements-récurrents-génération-automatique-mensuelle">5.
 Abonnements récurrents (génération automatique mensuelle)</h1>
 <p>Certaines dépenses reviennent chaque mois à l’identique (ex :
-abonnement logiciel, hébergement...). Plutôt que de ressaisir une
-nouvelle demande chaque mois, un engagement de dépense peut être
-transformé en « abonnement » : un nouvel engagement identique est alors
-créé automatiquement chaque mois.</p>
+abonnement logiciel, hébergement…). Plutôt que de ressaisir une nouvelle
+demande chaque mois, un engagement de dépense peut être transformé en «
+abonnement » : un nouvel engagement identique est alors créé
+automatiquement chaque mois.</p>
 <p>Menu → ouvrir un engagement de dépense déjà créé → bouton « 🔁
 Transformer en abonnement » (visible aux utilisateurs disposant du
 paramétrage des engagements).<br />
@@ -147,26 +147,40 @@ Il suffit d’indiquer le jour du mois (entre 1 et 28) auquel le nouvel
 engagement doit être généré.</p>
 <p>Chaque mois, à la date choisie, un nouvel engagement est créé
 automatiquement avec le même objet, le même montant, le même fournisseur
-et le même pôle que l’engagement d’origine.<br />
-Un abonnement n’est jamais validé automatiquement : le nouvel engagement
-repart dans le circuit de validation habituel (mail au responsable de
-pôle avec lien de validation sécurisé, puis présidence si le palier
-l’exige).<br />
-Si aucun palier de validation ne correspond au montant, la génération de
-ce mois-là est simplement ignorée (rien n’est créé).</p>
+et le même pôle que l’engagement d’origine.</p>
+<p><strong>Circuit de validation des engagements générés automatiquement
+:</strong></p>
+<ul>
+<li><p><strong>Premier mois (engagement d’origine)</strong> : le circuit
+de validation complet s’applique – validation pôle si le palier l’exige,
+puis présidence si nécessaire. Le responsable de pôle reçoit un mail
+avec un lien de validation sécurisé.</p></li>
+<li><p><strong>Mois suivants (engagements générés
+automatiquement)</strong> : si l’engagement d’origine a déjà été validé
+par le pôle, la validation pôle est reconduite tacitement. Le nouvel
+engagement est transmis directement à la trésorerie (statut « À payer »)
+sans repasser par le circuit de validation pôle. Le trésorier reçoit un
+mail l’informant qu’un engagement récurrent est prêt pour règlement. Si
+le palier exige également une validation présidence, celle-ci reste
+obligatoire même pour les mois suivants.</p></li>
+</ul>
+<p>Si aucun palier de validation ne correspond au montant, la génération
+de ce mois-là est simplement ignorée (rien n’est créé).</p>
 <p>Sur la fiche de l’engagement généré automatiquement, un bandeau
 rappelle qu’il provient d’un abonnement et permet de retrouver
 l’engagement d’origine.</p>
 <p>Menu Paramétrage → Abonnements récurrents : cette page liste tous les
 abonnements configurés (objet, pôle, montant, jour du mois, dernière
 génération, nombre d’engagements déjà générés). Elle permet de :</p>
-<p>- mettre en pause / reprendre un abonnement, sans perdre sa
-configuration,<br />
-- retirer définitivement l’abonnement (les engagements déjà générés
-restent inchangés, seules les générations futures s’arrêtent),<br />
-- déclencher une génération immédiate (bouton « ▶️ Générer maintenant
+<ul>
+<li>mettre en pause / reprendre un abonnement, sans perdre sa
+configuration,</li>
+<li>retirer définitivement l’abonnement (les engagements déjà générés
+restent inchangés, seules les générations futures s’arrêtent),</li>
+<li>déclencher une génération immédiate (bouton « ▶️ Générer maintenant
 »), utile pour rattraper un abonnement ou vérifier son fonctionnement
-sans attendre la date prévue.</p>
+sans attendre la date prévue.</li>
+</ul>
 <p>La génération automatique tourne chaque nuit sur le serveur ; elle ne
 crée jamais deux fois le même mois pour un même abonnement, même si elle
 est relancée manuellement le même jour.</p>
@@ -202,6 +216,12 @@ l’application. Le lien affiche d’abord un récapitulatif de la demande
 rien n’est validé tant que ce bouton n’a pas été cliqué. Ce lien reste
 valable 14 jours et ne peut être utilisé qu’une seule fois : si la
 demande a déjà été traitée, un message l’indique simplement.</p>
+<p><strong>Cas particulier – conflit d’intérêt :</strong> si le
+demandeur est lui-même le responsable du pôle, il ne peut pas valider sa
+propre demande. Dans ce cas, seul le suppléant 1 est habilité à
+effectuer la validation pôle. Le mail de validation est adressé
+uniquement au suppléant 1 ; le responsable ne reçoit pas de lien de
+validation pour sa propre demande.</p>
 <p>Selon le palier applicable, la validation pôle fait ensuite passer la
 demande :<br />
 - en attente de validation présidence, si le montant le requiert,<br />
@@ -232,7 +252,8 @@ montant) avant de retransmettre.</strong></p>
 <h1 id="trésorerie-transmission-règlement-et-comptabilisation">10.
 Trésorerie : transmission, règlement et comptabilisation</h1>
 <p>Une fois validée, une demande passe « À payer » et apparaît dans le
-périmètre de la trésorerie, soit automatiquement (déplacements), soit
+périmètre de la trésorerie, soit automatiquement (déplacements,
+abonnements récurrents dont la validation pôle est déjà acquise), soit
 par transmission manuelle.</p>
 <p><strong>Le traitement par la trésorerie se fait en deux phases
 distinctes, séparées dans le temps :</strong></p>
@@ -341,6 +362,15 @@ refusée.</p></li>
 <li><p>L’archivage d’un engagement ne supprime jamais ses données ni ses
 fichiers ; seule la purge (réservée à l’administration système) est
 définitive.</p></li>
+<li><p><strong>Si le demandeur est le responsable de son pôle</strong>,
+la validation pôle est confiée au suppléant 1 uniquement (prévention des
+conflits d’intérêt) ; le responsable ne peut pas valider sa propre
+demande.</p></li>
+<li><p><strong>Pour les abonnements récurrents</strong>, dès que
+l’engagement d’origine a été validé par le pôle, les mois suivants sont
+transmis directement à la trésorerie (statut « À payer ») sans nouvelle
+validation pôle. La validation présidence reste obligatoire si le palier
+l’exige.</p></li>
 </ul>
 <h1 id="conseils-dutilisation">19. Conseils d’utilisation</h1>
 <ul>
@@ -364,7 +394,7 @@ utilisé avant de confirmer un doublon volontaire.</p></li>
 - Modules Python : routes_main.py, routes_workflow.py,
 routes_parametres.py, routes_subventions.py, routes_fichiers.py,
 routes_tresorerie.py, routes_notes_frais.py, routes_reporting.py,
-utils_financement.py<br />
+utils_financement.py, ba38_engagements_abonnements.py<br />
 - Templates HTML principaux : main.html, nouvelle_depense.html,
 detail_engagement.html, gestion_poles.html, gestion_subventions.html,
 engagements_parametres.html, note_frais.html, reporting.html<br />

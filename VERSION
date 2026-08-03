@@ -1,3 +1,3 @@
-VERSION=1.4.62
-MESSAGE=Abonnements : transmission trésorerie automatique quand validation pôle déjà acquise
-DATE=2026-08-03 11:14
+VERSION=1.4.63
+MESSAGE=Doc engagements : abonnements récurrents circuit trésorerie auto + règle suppléant1 si demandeur=responsable
+DATE=2026-08-03 11:29
