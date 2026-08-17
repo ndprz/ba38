@@ -8,6 +8,18 @@ Détail engagement #{{ engagement.id }}
 
 {% block content %}
 
+<style>
+.engagement-sticky-header {
+    position: sticky;
+    top: var(--header-global, 60px);
+    z-index: 900;
+    background: #fff;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #ddd;
+}
+</style>
+
 <div class="container mt-4">
 
     <!-- ================================================== -->
@@ -43,64 +55,303 @@ Détail engagement #{{ engagement.id }}
 
     {% endif %}
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="engagement-sticky-header mb-4">
 
-        <h2>
-            📄 Engagement #{{ engagement.id }}
-        </h2>
+        <div class="d-flex justify-content-between align-items-center mb-2">
 
-        {% set buttons = [] %}
+            <h2 class="mb-0">
+                📄 Engagement #{{ engagement.id }}
+            </h2>
 
-        {% set _ = buttons.append({
-            'label': "❓ Aide",
-            'color': 'outline-info',
-            'onclick': "new bootstrap.Modal(document.getElementById('modalAideEngagements')).show()"
-        }) %}
+            {% set buttons = [] %}
 
-        {% set _ = buttons.append({
-            'url': url_for('engagements.engagements_main'),
-            'label': "↩️ Retour aux engagements",
-            'color': 'outline-dark'
-        }) %}
+            {% set _ = buttons.append({
+                'label': "❓ Aide",
+                'color': 'outline-info',
+                'onclick': "new bootstrap.Modal(document.getElementById('modalAideEngagements')).show()"
+            }) %}
 
-        {{ action_buttons(buttons) }}
+            {% set _ = buttons.append({
+                'url': url_for('engagements.engagements_main'),
+                'label': "↩️ Retour aux engagements",
+                'color': 'outline-dark'
+            }) %}
 
-        <!-- Modale AIDE -->
-        <div class="modal fade" id="modalAideEngagements" tabindex="-1">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
+            {{ action_buttons(buttons) }}
 
-            <div class="modal-header">
-                <h5 class="modal-title">📄 Aide – Module Engagements</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-
-            <div class="modal-body" style="
-                max-height: 70vh;
-                overflow:auto;
-                font-size: 0.9rem;
-                line-height: 1.4;
-            ">
-
-                {% include "docsHtml/Documentation_Utilisateur_Module_Engagements_BA38.html" %}
-
-            </div>
-
-            <div class="modal-footer">
-                <button class="btn btn-outline-primary"
-                        onclick="printModal('modalAideEngagements')">
-                    🖨️ Imprimer
-                </button>
-                <button class="btn btn-secondary" data-bs-dismiss="modal">
-                    Fermer
-                </button>
-            </div>
-
-            </div>
-        </div>
         </div>
 
+        <!-- ================================================== -->
+        <!-- ACTIONS WORKFLOW -->
+        <!-- ================================================== -->
 
+        <div class="pt-2 border-top">
+
+            {% call action_buttons() %}
+
+                <!-- ============================================== -->
+                <!-- VALIDATION POLE -->
+                <!-- ============================================== -->
+
+                {% if peut_valider_pole
+                    and engagement.statut == "validation_pole" %}
+
+                    <form method="POST"
+                        action="{{ url_for(
+                                'engagements.valider_engagement_pole',
+                                engagement_id=engagement.id
+                        ) }}"
+                        class="m-0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                        {{ action_button("✅ Valider pôle", type="submit", color="success") }}
+
+                    </form>
+
+                {% endif %}
+
+                <!-- ============================================== -->
+                <!-- TRAITEMENT REFUS PAR L'USER -->
+                <!-- ============================================== -->
+                {% if engagement.statut == "refuse"
+                    and engagement.demandeur_id == current_user.id %}
+
+                <form method="POST"
+                    action="{{ url_for(
+                            'engagements.retransmettre_engagement',
+                            engagement_id=engagement.id
+                    ) }}"
+                    class="m-0">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    {{ action_button("📤 Retransmettre", type="submit", color="warning") }}
+
+                </form>
+
+                {% endif %}
+
+                <!-- ============================================== -->
+                <!-- VALIDATION PRESIDENCE -->
+                <!-- ============================================== -->
+
+                {% if peut_valider_presidence
+                    and engagement.statut == "validation_presidence" %}
+
+                <button type="button"
+                        class="btn btn-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalValidationPresidence">
+
+                    ✅ Validation présidence
+
+                </button>
+
+                {% endif %}
+
+                <!-- ============================================== -->
+                <!-- TRANSMISSION TRESORERIE -->
+                <!-- ============================================== -->
+
+                {% if engagement.statut == "valide" %}
+
+                <form method="POST"
+                    action="{{ url_for(
+                            'engagements.transmettre_tresorerie',
+                            engagement_id=engagement.id
+                    ) }}"
+                    class="m-0">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    {{ action_button("💶 Transmettre à la trésorerie", type="submit", color="warning") }}
+
+                </form>
+
+                {% endif %}
+
+                <!-- ============================================== -->
+                <!-- REGLEMENT -->
+                <!-- ============================================== -->
+
+                {% if engagement.statut == "a_payer" %}
+
+                <form method="POST"
+                    action="{{ url_for(
+                            'engagements.marquer_reglee',
+                            engagement_id=engagement.id
+                    ) }}"
+
+                    onsubmit="return confirm(
+                            'Marquer cet engagement comme réglé '
+                            + '(paiement fournisseur ou remboursement '
+                            + 'bénévole effectué) ?'
+                    );"
+
+                    class="m-0">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <button type="submit" class="btn btn-info text-white">
+                        ✅ Marquer réglé
+                    </button>
+
+                </form>
+
+                {% endif %}
+
+                <!-- ============================================== -->
+                <!-- COMPTABILISATION (SAISIE N° EBP) -->
+                <!-- ============================================== -->
+
+                {% if engagement.statut == "reglee" %}
+
+                <button type="button"
+                        class="btn btn-dark text-white"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalComptabilisation">
+
+                    🧮 Marquer comptabilisé
+
+                </button>
+
+                {% endif %}
+
+                <!-- ============================================== -->
+                <!-- REFUS -->
+                <!-- ============================================== -->
+
+                {% if engagement.statut != "valide" %}
+
+                <button type="button"
+                        class="btn btn-danger"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalRefus">
+
+                    ❌ Refuser
+
+                </button>
+
+                {% endif %}
+
+                {% if has_access('engagements', 'admin') %}
+
+                    <!-- ============================================== -->
+                    <!-- ARCHIVAGE LOGIQUE -->
+                    <!-- ============================================== -->
+
+                    {% if engagement.deleted != 1 %}
+
+                    <form method="POST"
+                        action="{{ url_for(
+                                'engagements.delete_engagement',
+                                engagement_id=engagement.id
+                        ) }}"
+
+                        onsubmit="return confirm(
+                                'Archiver cette demande ?'
+                        );"
+
+                        class="m-0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                        {{ action_button("🗑 Archiver", type="submit", color="outline-danger") }}
+
+                    </form>
+
+                    {% else %}
+
+                    <form method="POST"
+                        action="{{ url_for(
+                                'engagements.restaurer_engagement',
+                                engagement_id=engagement.id
+                        ) }}"
+
+                        onsubmit="return confirm(
+                                'Désarchiver cette demande ?'
+                        );"
+
+                        class="m-0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                        {{ action_button("♻️ Désarchiver", type="submit", color="outline-success") }}
+
+                    </form>
+
+                    {% endif %}
+
+                    <!-- ============================================== -->
+                    <!-- CLOTURE DOSSIER -->
+                    <!-- ============================================== -->
+                    {% if engagement.statut == "comptabilise" %}
+                        <form method="POST"
+                            action="{{ url_for(
+                                    'engagements.cloturer_engagement',
+                                    engagement_id=engagement.id
+                            ) }}"
+                            class="m-0">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                            {{ action_button("📦 Clôturer dossier", type="submit", color="dark") }}
+
+                        </form>
+                    {% endif %}
+
+                {% endif %}
+
+                <!-- ============================================== -->
+                <!-- PURGE PHYSIQUE -->
+                <!-- ============================================== -->
+
+                {% if engagement.deleted == 1 %}
+
+                <button type="button"
+                        class="btn btn-danger"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalPurge">
+
+                    💥 Purge définitive
+
+                </button>
+
+                {% endif %}
+
+            {% endcall %}
+
+        </div>
+
+    </div>
+
+    <!-- Modale AIDE -->
+    <div class="modal fade" id="modalAideEngagements" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+
+        <div class="modal-header">
+            <h5 class="modal-title">📄 Aide – Module Engagements</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body" style="
+            max-height: 70vh;
+            overflow:auto;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        ">
+
+            {% include "docsHtml/Documentation_Utilisateur_Module_Engagements_BA38.html" %}
+
+        </div>
+
+        <div class="modal-footer">
+            <button class="btn btn-outline-primary"
+                    onclick="printModal('modalAideEngagements')">
+                🖨️ Imprimer
+            </button>
+            <button class="btn btn-secondary" data-bs-dismiss="modal">
+                Fermer
+            </button>
+        </div>
+
+        </div>
+    </div>
     </div>
 
     <!-- ================================================== -->
@@ -579,250 +830,6 @@ Détail engagement #{{ engagement.id }}
         {% endif %}
 
     </div>
-    </div>
-
-    <!-- ================================================== -->
-    <!-- ACTIONS -->
-    <!-- ================================================== -->
-
-    <div class="card mb-4">
-
-        <div class="card-header bg-warning">
-            Workflow
-        </div>
-
-        <div class="card-body">
-
-            {% call action_buttons() %}
-
-                <!-- ============================================== -->
-                <!-- VALIDATION POLE -->
-                <!-- ============================================== -->
-
-                {% if peut_valider_pole
-                    and engagement.statut == "validation_pole" %}
-
-                    <form method="POST"
-                        action="{{ url_for(
-                                'engagements.valider_engagement_pole',
-                                engagement_id=engagement.id
-                        ) }}"
-                        class="m-0">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                        {{ action_button("✅ Valider pôle", type="submit", color="success") }}
-
-                    </form>
-
-                {% endif %}
-
-                <!-- ============================================== -->
-                <!-- TRAITEMENT REFUS PAR L'USER -->
-                <!-- ============================================== -->
-                {% if engagement.statut == "refuse"
-                    and engagement.demandeur_id == current_user.id %}
-
-                <form method="POST"
-                    action="{{ url_for(
-                            'engagements.retransmettre_engagement',
-                            engagement_id=engagement.id
-                    ) }}"
-                    class="m-0">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                    {{ action_button("📤 Retransmettre", type="submit", color="warning") }}
-
-                </form>
-
-                {% endif %}
-
-                <!-- ============================================== -->
-                <!-- VALIDATION PRESIDENCE -->
-                <!-- ============================================== -->
-
-                {% if peut_valider_presidence
-                    and engagement.statut == "validation_presidence" %}
-
-                <button type="button"
-                        class="btn btn-primary"
-                        data-bs-toggle="modal"
-                        data-bs-target="#modalValidationPresidence">
-
-                    ✅ Validation présidence
-
-                </button>
-
-                {% endif %}
-
-                <!-- ============================================== -->
-                <!-- TRANSMISSION TRESORERIE -->
-                <!-- ============================================== -->
-
-                {% if engagement.statut == "valide" %}
-
-                <form method="POST"
-                    action="{{ url_for(
-                            'engagements.transmettre_tresorerie',
-                            engagement_id=engagement.id
-                    ) }}"
-                    class="m-0">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                    {{ action_button("💶 Transmettre à la trésorerie", type="submit", color="warning") }}
-
-                </form>
-
-                {% endif %}
-
-                <!-- ============================================== -->
-                <!-- REGLEMENT -->
-                <!-- ============================================== -->
-
-                {% if engagement.statut == "a_payer" %}
-
-                <form method="POST"
-                    action="{{ url_for(
-                            'engagements.marquer_reglee',
-                            engagement_id=engagement.id
-                    ) }}"
-
-                    onsubmit="return confirm(
-                            'Marquer cet engagement comme réglé '
-                            + '(paiement fournisseur ou remboursement '
-                            + 'bénévole effectué) ?'
-                    );"
-
-                    class="m-0">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                    <button type="submit" class="btn btn-info text-white">
-                        ✅ Marquer réglé
-                    </button>
-
-                </form>
-
-                {% endif %}
-
-                <!-- ============================================== -->
-                <!-- COMPTABILISATION (SAISIE N° EBP) -->
-                <!-- ============================================== -->
-
-                {% if engagement.statut == "reglee" %}
-
-                <button type="button"
-                        class="btn btn-dark text-white"
-                        data-bs-toggle="modal"
-                        data-bs-target="#modalComptabilisation">
-
-                    🧮 Marquer comptabilisé
-
-                </button>
-
-                {% endif %}
-
-                <!-- ============================================== -->
-                <!-- REFUS -->
-                <!-- ============================================== -->
-
-                {% if engagement.statut != "valide" %}
-
-                <button type="button"
-                        class="btn btn-danger"
-                        data-bs-toggle="modal"
-                        data-bs-target="#modalRefus">
-
-                    ❌ Refuser
-
-                </button>
-
-                {% endif %}
-
-                {% if has_access('engagements', 'admin') %}
-
-                    <!-- ============================================== -->
-                    <!-- ARCHIVAGE LOGIQUE -->
-                    <!-- ============================================== -->
-
-                    {% if engagement.deleted != 1 %}
-
-                    <form method="POST"
-                        action="{{ url_for(
-                                'engagements.delete_engagement',
-                                engagement_id=engagement.id
-                        ) }}"
-
-                        onsubmit="return confirm(
-                                'Archiver cette demande ?'
-                        );"
-
-                        class="m-0">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                        {{ action_button("🗑 Archiver", type="submit", color="outline-danger") }}
-
-                    </form>
-
-                    {% else %}
-
-                    <form method="POST"
-                        action="{{ url_for(
-                                'engagements.restaurer_engagement',
-                                engagement_id=engagement.id
-                        ) }}"
-
-                        onsubmit="return confirm(
-                                'Désarchiver cette demande ?'
-                        );"
-
-                        class="m-0">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                        {{ action_button("♻️ Désarchiver", type="submit", color="outline-success") }}
-
-                    </form>
-
-                    {% endif %}
-
-                    <!-- ============================================== -->
-                    <!-- CLOTURE DOSSIER -->
-                    <!-- ============================================== -->
-                    {% if engagement.statut == "comptabilise" %}
-                        <form method="POST"
-                            action="{{ url_for(
-                                    'engagements.cloturer_engagement',
-                                    engagement_id=engagement.id
-                            ) }}"
-                            class="m-0">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                            {{ action_button("📦 Clôturer dossier", type="submit", color="dark") }}
-
-                        </form>
-                    {% endif %}
-
-                {% endif %}
-
-                <!-- ============================================== -->
-                <!-- PURGE PHYSIQUE -->
-                <!-- ============================================== -->
-
-                {% if engagement.deleted == 1 %}
-
-                <button type="button"
-                        class="btn btn-danger"
-                        data-bs-toggle="modal"
-                        data-bs-target="#modalPurge">
-
-                    💥 Purge définitive
-
-                </button>
-
-                {% endif %}
-
-            {% endcall %}
-
-        </div>
-
     </div>
 
     <!-- ================================================== -->
