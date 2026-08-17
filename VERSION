@@ -1,3 +1,3 @@
-VERSION=1.4.65
-MESSAGE=UX engagements : boutons workflow remontés sous le titre + en-tête sticky (visibles sans scroller)
-DATE=2026-08-17 12:16
+VERSION=1.4.66
+MESSAGE=UX engagements : correctif du décalage/interstice de l'en-tête sticky lors du scroll
+DATE=2026-08-17 13:03
