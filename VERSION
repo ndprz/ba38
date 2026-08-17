@@ -1,3 +1,3 @@
-VERSION=1.4.63
-MESSAGE=Doc engagements : abonnements récurrents circuit trésorerie auto + règle suppléant1 si demandeur=responsable
-DATE=2026-08-03 11:29
+VERSION=1.4.64
+MESSAGE=Trésorerie : correction du montant d'un engagement lors de la comptabilisation (+ option d'appliquer aux prochains prélèvements d'un abonnement)
+DATE=2026-08-17 11:46

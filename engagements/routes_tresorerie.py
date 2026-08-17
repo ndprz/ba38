@@ -10,7 +10,7 @@ from openpyxl import Workbook
 from io import BytesIO
 from datetime import datetime
 from werkzeug.utils import secure_filename
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pypdf import PdfReader, PdfWriter
 
 import sqlite3
@@ -349,11 +349,36 @@ def marquer_comptabilise(engagement_id):
         "confirmer_doublon"
     ) == "1"
 
+    appliquer_futurs = request.form.get(
+        "appliquer_futurs"
+    ) == "1"
+
     if not numero_ecriture_ebp:
 
         flash(
             "⚠️ Le numéro d'écriture EBP est obligatoire "
             "pour marquer l'engagement comptabilisé.",
+            "warning"
+        )
+
+        return redirect(
+            url_for(
+                "engagements.detail_engagement",
+                engagement_id=engagement_id
+            )
+        )
+
+    try:
+        nouveau_montant = Decimal(
+            request.form.get("montant_total", "")
+        )
+    except (InvalidOperation, ValueError):
+        nouveau_montant = None
+
+    if nouveau_montant is None or nouveau_montant <= 0:
+
+        flash(
+            "⚠️ Le montant saisi est invalide.",
             "warning"
         )
 
@@ -378,6 +403,14 @@ def marquer_comptabilise(engagement_id):
 
         if not engagement:
             abort(404)
+
+        depense = conn.execute("""
+            SELECT montant_total
+            FROM engagements_depenses
+            WHERE engagement_id = ?
+        """, (engagement_id,)).fetchone()
+
+        ancien_montant = Decimal(str(depense["montant_total"]))
 
         if engagement["statut"] != "reglee":
 
@@ -477,6 +510,107 @@ def marquer_comptabilise(engagement_id):
             current_user.email
         ))
 
+        # =====================================================
+        # CORRECTION DU MONTANT (rapprochement bancaire)
+        # =====================================================
+
+        montant_modifie = nouveau_montant != ancien_montant
+
+        if montant_modifie:
+
+            conn.execute("""
+                UPDATE engagements_depenses
+                SET montant_total = ?
+                WHERE engagement_id = ?
+            """, (float(nouveau_montant), engagement_id))
+
+            conn.execute("""
+                INSERT INTO engagements_workflow (
+                    engagement_id,
+                    action,
+                    ancien_statut,
+                    nouveau_statut,
+                    commentaire,
+                    user_id,
+                    user_email
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                engagement_id,
+
+                "modification_montant",
+
+                nouveau_statut,
+                nouveau_statut,
+
+                f"Montant corrigé de {ancien_montant}€ à "
+                f"{nouveau_montant}€ lors de la comptabilisation",
+
+                current_user.id,
+                current_user.email
+            ))
+
+        # =====================================================
+        # REPERCUSSION SUR LES PROCHAINS PRELEVEMENTS DE
+        # L'ABONNEMENT (si l'engagement est une occurrence
+        # générée depuis un modèle d'abonnement récurrent)
+        # =====================================================
+
+        if (
+            montant_modifie
+            and appliquer_futurs
+            and engagement["abonnement_parent_id"]
+        ):
+
+            modele_id = engagement["abonnement_parent_id"]
+
+            depense_modele = conn.execute("""
+                SELECT montant_total
+                FROM engagements_depenses
+                WHERE engagement_id = ?
+            """, (modele_id,)).fetchone()
+
+            if depense_modele:
+
+                ancien_montant_modele = Decimal(
+                    str(depense_modele["montant_total"])
+                )
+
+                conn.execute("""
+                    UPDATE engagements_depenses
+                    SET montant_total = ?
+                    WHERE engagement_id = ?
+                """, (float(nouveau_montant), modele_id))
+
+                conn.execute("""
+                    INSERT INTO engagements_workflow (
+                        engagement_id,
+                        action,
+                        ancien_statut,
+                        nouveau_statut,
+                        commentaire,
+                        user_id,
+                        user_email
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    modele_id,
+
+                    "modification_montant_abonnement",
+
+                    None,
+                    None,
+
+                    f"Montant de l'abonnement ajusté de "
+                    f"{ancien_montant_modele}€ à {nouveau_montant}€ "
+                    f"pour les prochaines échéances (suite à "
+                    f"comptabilisation de l'engagement "
+                    f"#{engagement_id})",
+
+                    current_user.id,
+                    current_user.email
+                ))
+
         conn.commit()
 
         # =====================================================
@@ -488,10 +622,20 @@ def marquer_comptabilise(engagement_id):
             f"#{engagement_id} -> {nouveau_statut}"
         )
 
-    flash(
-        "✅ Engagement comptabilisé.",
-        "success"
-    )
+    if montant_modifie:
+
+        flash(
+            f"✅ Engagement comptabilisé, montant corrigé à "
+            f"{nouveau_montant}€.",
+            "success"
+        )
+
+    else:
+
+        flash(
+            "✅ Engagement comptabilisé.",
+            "success"
+        )
 
     return redirect(
         url_for(
