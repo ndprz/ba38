@@ -449,6 +449,7 @@
 <script>
 
   const LECTURE_SEULE = {{ lecture_seule | tojson }};
+  const CSRF_TOKEN = "{{ csrf_token() }}";
 
   function gererDuree() {
 
@@ -551,7 +552,7 @@
       const resp = await fetch(`/evenements/generer_sous_titres/${eventId}`, {
         method: "POST",
         signal: controller.signal,
-        headers: { "Accept": "application/json" }
+        headers: { "Accept": "application/json", "X-CSRFToken": CSRF_TOKEN }
       });
 
       // Essaie JSON, sinon lis le texte brut (utile si erreur 500 HTML)
@@ -633,7 +634,7 @@
     const contenu = document.getElementById("contenu_srt").value;
     fetch(`/evenements/save_srt/${currentSrtId}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-CSRFToken": CSRF_TOKEN },
       body: JSON.stringify({ contenu })
     })
       .then(r => r.ok ? r.text() : Promise.reject("Erreur serveur"))

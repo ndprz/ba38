@@ -809,28 +809,21 @@ def api_evenements_actifs():
 
 
 # ============================================================
-# 🎙 Génération automatique des sous-titres (API Whisper)
+# 🎙 Génération automatique des sous-titres (Whisper local, hors-ligne)
 # ============================================================
 from flask import jsonify
-from openai import OpenAI
 import os
+import subprocess
+import sys
 from utils import write_log, get_db_connection, get_static_event_dir
+
+TRANSCRIPTION_SCRIPT = os.path.join(os.path.dirname(__file__), "scripts", "transcrire_video.py")
+TRANSCRIPTION_TIMEOUT = 170  # < 180s du AbortController côté front
 
 @evenements_bp.route("/evenements/generer_sous_titres/<int:event_id>", methods=["POST"])
 @login_required
 @require_access("evenements", "ecriture")
 def generer_sous_titres(event_id):
-
-    api_key = os.getenv("OPENAI_API_KEY")
-    write_log(f"🔑 OPENAI_API_KEY utilisée = {api_key[:8]}...{api_key[-4:]}")
-
-    if not api_key:
-        write_log("❌ OPENAI_API_KEY absente – génération sous-titres impossible")
-        return jsonify({"error": "Service de sous-titres indisponible"}), 503
-
-    write_log(f"🔑 OPENAI_API_KEY chargée ? {'OUI' if api_key else 'NON'}")
-
-    client = OpenAI(api_key=api_key)
 
     conn = get_db_connection()
     row = conn.execute("SELECT fichier_path FROM evenements WHERE id = ?", (event_id,)).fetchone()
@@ -846,22 +839,26 @@ def generer_sous_titres(event_id):
     if not os.path.exists(video_abs):
         return jsonify({"error": f"Fichier introuvable : {video_abs}"}), 404
 
-    try:
-        write_log(f"🎙 Génération sous-titres Whisper pour : {video_abs}")
-        with open(video_abs, "rb") as f:
-            transcription = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=f,
-                response_format="vtt",
-                language="fr"
-            )
+    vtt_path = os.path.splitext(video_abs)[0] + ".vtt"
 
-        vtt_path = os.path.splitext(video_abs)[0] + ".vtt"
-        with open(vtt_path, "w", encoding="utf-8") as out:
-            out.write(transcription)  # ✅ transcription est déjà une chaîne
+    try:
+        write_log(f"🎙 Génération sous-titres (Whisper local) pour : {video_abs}")
+        result = subprocess.run(
+            [sys.executable, TRANSCRIPTION_SCRIPT, video_abs, vtt_path],
+            capture_output=True,
+            text=True,
+            timeout=TRANSCRIPTION_TIMEOUT,
+        )
+
+        if result.returncode != 0 or not os.path.exists(vtt_path):
+            write_log(f"❌ Erreur génération sous-titres : {result.stderr}")
+            return jsonify({"error": result.stderr.strip()[-500:] or "Échec de la transcription"})
 
         write_log(f"✅ Sous-titres générés : {vtt_path}")
         return jsonify({"status": "ok", "path": vtt_path})
+    except subprocess.TimeoutExpired:
+        write_log(f"❌ Erreur génération sous-titres : délai dépassé pour {video_abs}")
+        return jsonify({"error": "Délai de transcription dépassé"})
     except Exception as e:
         import traceback
         err = traceback.format_exc()
