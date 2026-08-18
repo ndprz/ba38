@@ -751,10 +751,13 @@ def analyse(analyse_id):
 
     scenarios = json.loads(analyse_row["resultat"]) if analyse_row["resultat"] else []
     prompt_analyse = _construire_prompt_analyse(analyse_row["annee"], scenarios) if scenarios else None
-    redaction_html = (
-        markdown.markdown(analyse_row["redaction_texte"], extensions=["tables"])
-        if analyse_row["redaction_texte"] else None
-    )
+    redaction_html = None
+    if analyse_row["redaction_texte"]:
+        redaction_html = markdown.markdown(analyse_row["redaction_texte"], extensions=["tables"])
+        # Tableaux larges (8 scénarios en colonnes) → scroll horizontal contenu
+        # dans la carte plutôt que débordement de toute la page.
+        redaction_html = redaction_html.replace("<table>", '<div class="table-responsive"><table>')
+        redaction_html = redaction_html.replace("</table>", "</table></div>")
 
     return render_template(
         "collecte/analyse.html",

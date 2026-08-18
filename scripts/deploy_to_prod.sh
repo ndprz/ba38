@@ -215,13 +215,6 @@ rsync -av --delete \
 # ============================================================================
 echo "📝 Mise à jour VERSION"
 
-touch "$PROD_ENV"
-sed -i '/^VERSION=/d' "$PROD_ENV"
-sed -i '/^VERSION_MSG=/d' "$PROD_ENV"
-
-echo "VERSION=\"$VERSION\"" >> "$PROD_ENV"
-echo "VERSION_MSG=\"$VERSION_MSG\"" >> "$PROD_ENV"
-
 DATE_NOW=$(date '+%Y-%m-%d %H:%M')
 
 echo "VERSION=$VERSION" > "$PROD_DIR/VERSION"

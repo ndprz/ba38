@@ -13,8 +13,16 @@
     .grp-max4 { background-color: #e2efda; }
     .grp-max5 { background-color: #ddebf7; }
     .redaction-ia table { width: 100%; margin: 1rem 0; border-collapse: collapse; }
-    .redaction-ia table th, .redaction-ia table td { border: 1px solid #dee2e6; padding: 0.4rem 0.6rem; font-size: 0.9rem; }
+    .redaction-ia table th, .redaction-ia table td { border: 1px solid #dee2e6; padding: 0.4rem 0.6rem; font-size: 0.9rem; white-space: nowrap; }
     .redaction-ia table th { background-color: #f1f3f5; }
+
+    @media print {
+        header, nav, .no-print { display: none !important; }
+        .accordion-collapse { display: block !important; }
+        .accordion-button::after { display: none !important; }
+        .table-responsive { overflow: visible !important; }
+        body { font-size: 11px; }
+    }
 </style>
 {% endblock %}
 
@@ -25,6 +33,9 @@
 
     {% call action_buttons() %}
         {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+        {% if analyse.statut != 'en_cours' %}
+        <button type="button" class="btn btn-outline-dark no-print" onclick="window.print()">🖨️ Imprimer</button>
+        {% endif %}
     {% endcall %}
 
     {% if analyse.statut == 'en_cours' or analyse.redaction_statut == 'en_cours' %}
@@ -179,22 +190,24 @@
     </div>
     {% endif %}
 
-    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-        <form method="POST" action="{{ url_for('collecte.generer_redaction', analyse_id=analyse.id) }}" class="d-inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-warning btn-sm" {% if analyse.redaction_statut == 'en_cours' %}disabled{% endif %}>
-                🤖 {{ "Régénérer" if redaction_html else "Générer" }} avec Claude
-            </button>
-        </form>
-        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copierPrompt()">📋 Copier le prompt</button>
-        <span id="copie-confirmee" class="text-success small" style="display:none;">✅ Copié</span>
+    <div class="no-print">
+        <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+            <form method="POST" action="{{ url_for('collecte.generer_redaction', analyse_id=analyse.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-warning btn-sm" {% if analyse.redaction_statut == 'en_cours' %}disabled{% endif %}>
+                    🤖 {{ "Régénérer" if redaction_html else "Générer" }} avec Claude
+                </button>
+            </form>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copierPrompt()">📋 Copier le prompt</button>
+            <span id="copie-confirmee" class="text-success small" style="display:none;">✅ Copié</span>
+        </div>
+        <p class="small text-muted">
+            Le prompt copiable reste disponible pour coller manuellement dans Claude.ai ou ChatGPT si besoin
+            (relecture, autre modèle, ajustement du texte généré).
+        </p>
+        <textarea id="prompt-analyse" class="form-control" rows="10" readonly
+                  style="font-family: monospace; font-size: 0.8rem;">{{ prompt_analyse }}</textarea>
     </div>
-    <p class="small text-muted">
-        Le prompt copiable reste disponible pour coller manuellement dans Claude.ai ou ChatGPT si besoin
-        (relecture, autre modèle, ajustement du texte généré).
-    </p>
-    <textarea id="prompt-analyse" class="form-control" rows="10" readonly
-              style="font-family: monospace; font-size: 0.8rem;">{{ prompt_analyse }}</textarea>
 
     {% endif %}
 

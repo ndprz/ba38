@@ -868,7 +868,7 @@ def export_ramasses_vif_mensuel():
 
         lignes_csv.append(";".join(map(str, ligne)))
 
-    output = "\n".join(lignes_csv)
+    output = "\n".join(lignes_csv) + "\n" if lignes_csv else ""
 
     # 🔹 trace
     cur.execute("""
