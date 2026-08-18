@@ -20,6 +20,9 @@ logs/
 # Backups
 backup/
 
+# Documents utilisateurs (PDF uploadés/signés, contenu sensible ou volumineux)
+uploads/
+
 # Sessions Flask
 flask_sessions/
 
