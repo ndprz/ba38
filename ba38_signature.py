@@ -10,6 +10,7 @@ paramètre coordonnees=None).
 """
 
 import os
+import shutil
 import sqlite3
 from datetime import date, datetime
 
@@ -86,10 +87,10 @@ def envoyer():
     try:
         coordonnees = {
             "page": int(request.form["sig_page"]),
-            "top": float(request.form["sig_top"]),
-            "left": float(request.form["sig_left"]),
-            "width": float(request.form["sig_width"]),
-            "height": float(request.form["sig_height"]),
+            "top": round(float(request.form["sig_top"])),
+            "left": round(float(request.form["sig_left"])),
+            "width": round(float(request.form["sig_width"])),
+            "height": round(float(request.form["sig_height"])),
         }
     except (KeyError, ValueError):
         flash("❌ Merci de positionner la signature sur le document avant l'envoi.", "danger")
@@ -249,3 +250,33 @@ def telecharger(signature_id, variante):
     suffixe = "_signe" if variante == "signe" else ""
     nom_fichier = f"{demande['nom_document']}{suffixe}.pdf"
     return send_file(chemin, as_attachment=True, download_name=nom_fichier, mimetype="application/pdf")
+
+
+# ========================================
+# 🗑️ Supprimer une demande (base + fichiers)
+# ========================================
+@signature_bp.route("/signature/supprimer/<int:signature_id>", methods=["POST"])
+@login_required
+@require_access("signature_electronique", "ecriture")
+def supprimer(signature_id):
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    demande = conn.execute(
+        "SELECT * FROM signatures_electroniques WHERE id = ? AND user_creation = ?",
+        (signature_id, current_user.email)
+    ).fetchone()
+
+    if not demande:
+        conn.close()
+        flash("❌ Demande de signature introuvable.", "danger")
+        return redirect(url_for("signature.index"))
+
+    conn.execute("DELETE FROM signatures_electroniques WHERE id = ?", (signature_id,))
+    conn.commit()
+    conn.close()
+
+    shutil.rmtree(_dossier(signature_id), ignore_errors=True)
+
+    upload_database()
+    flash("🗑️ Demande de signature supprimée.", "success")
+    return redirect(url_for("signature.index"))

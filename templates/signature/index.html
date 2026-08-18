@@ -119,6 +119,10 @@
           {% if demande['document_signe_path'] %}
           <a href="{{ url_for('signature.telecharger', signature_id=demande['id'], variante='signe') }}" class="btn btn-sm btn-outline-success">📥 Signé</a>
           {% endif %}
+          <form method="POST" action="{{ url_for('signature.supprimer', signature_id=demande['id']) }}" class="d-inline" onsubmit="return confirmDeleteSignature();">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-danger">🗑️ Supprimer</button>
+          </form>
         </td>
       </tr>
       {% endfor %}
@@ -131,6 +135,18 @@
 
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script>
+  function confirmDeleteSignature() {
+    if (!confirm("❗ Voulez-vous vraiment supprimer cette demande de signature (base + fichiers) ?")) {
+      return false;
+    }
+    const confirmation = prompt("⚠️ Tapez SUPPRIMER pour confirmer");
+    if (confirmation !== "SUPPRIMER") {
+      alert("Suppression annulée");
+      return false;
+    }
+    return true;
+  }
+
   function toggleDestinataire() {
     const tiers = document.getElementById("type_tiers").checked;
     document.getElementById("bloc_destinataire").style.display = tiers ? "flex" : "none";
@@ -230,10 +246,10 @@
     positionChoisie = { page: pageNum, top: top, left: left, width: PAVE_WIDTH, height: PAVE_HEIGHT };
 
     document.getElementById("sig_page").value = positionChoisie.page;
-    document.getElementById("sig_top").value = positionChoisie.top.toFixed(1);
-    document.getElementById("sig_left").value = positionChoisie.left.toFixed(1);
-    document.getElementById("sig_width").value = positionChoisie.width;
-    document.getElementById("sig_height").value = positionChoisie.height;
+    document.getElementById("sig_top").value = Math.round(positionChoisie.top);
+    document.getElementById("sig_left").value = Math.round(positionChoisie.left);
+    document.getElementById("sig_width").value = Math.round(positionChoisie.width);
+    document.getElementById("sig_height").value = Math.round(positionChoisie.height);
 
     labelPosition.textContent = "📍 Signature positionnée : page " + pageNum;
     labelPosition.classList.remove("text-danger");
