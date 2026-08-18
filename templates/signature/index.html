@@ -6,6 +6,13 @@
 <div class="container mt-4">
   <h2>✍️ Signature électronique</h2>
 
+  <button class="btn btn-outline-info mb-3"
+          type="button"
+          data-bs-toggle="modal"
+          data-bs-target="#modalAideSignature">
+      ℹ️ Aide utilisateur
+  </button>
+
   <div class="card mb-4">
     <div class="card-header">📤 Nouvelle demande de signature</div>
     <div class="card-body">
@@ -131,6 +138,42 @@
   {% else %}
   <p class="text-muted">Aucune demande de signature pour l'instant.</p>
   {% endif %}
+</div>
+
+<!-- ============================================== -->
+<!-- ℹ️ MODALE D'AIDE UTILISATEUR -->
+<!-- ============================================== -->
+<div class="modal fade" id="modalAideSignature" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">✍️ Aide – Signature électronique</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_SignatureElectronique_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAideSignature')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>

@@ -1,0 +1,88 @@
+<p>Documentation Utilisateur — Module Signature Électronique BA38</p>
+<p>Objectif</p>
+<p>Faire signer électroniquement n’importe quel document PDF (bon de
+commande, courrier, attestation…) directement depuis BA38, sans passer
+par un logiciel externe. Deux cas d’usage :</p>
+<ul>
+<li>Vous signez vous-même le document.</li>
+<li>Vous envoyez le document à quelqu’un d’autre (fournisseur,
+partenaire, collègue) pour qu’il le signe.</li>
+</ul>
+<p>La signature est réalisée via LibreSign, un outil de signature
+électronique. Un email est envoyé au signataire avec un lien pour
+accéder au document et le signer en ligne.</p>
+<ol type="1">
+<li>Accéder au module</li>
+</ol>
+<p>Menu → Signature électronique.</p>
+<ol start="2" type="1">
+<li>Envoyer un document pour signature</li>
+</ol>
+<ul>
+<li>Choisir le fichier PDF à faire signer (uniquement des PDF).</li>
+<li>Donner un nom au document (par exemple “Bon de commande -
+Fournisseur X”). Si ce champ est laissé vide, le nom du fichier est
+utilisé.</li>
+<li>Choisir le signataire :
+<ul>
+<li>“Je signe moi-même” : vous recevrez l’email de signature à votre
+propre adresse.</li>
+<li>“Envoyer à quelqu’un d’autre” : indiquer le nom et l’email du
+destinataire.</li>
+</ul></li>
+<li>Positionner la signature : un aperçu du document s’affiche
+automatiquement après avoir choisi le fichier. Cliquez à l’endroit de la
+page où le pavé de signature doit apparaître. Un rectangle bleu confirme
+l’emplacement choisi. Si le document comporte plusieurs pages, utilisez
+les boutons “Page précédente” / “Page suivante” pour naviguer avant de
+cliquer.</li>
+<li>Cliquer sur “Envoyer pour signature via LibreSign”.</li>
+</ul>
+<p>Le document apparaît alors dans la liste “Mes demandes de signature”
+avec le statut “Envoyée pour signature”.</p>
+<ol start="3" type="1">
+<li>Suivre une demande</li>
+</ol>
+<p>Le signataire reçoit un email avec un lien vers le document. Une fois
+qu’il a signé (ou si vous voulez vérifier l’avancement), cliquez sur le
+bouton “🔄 Vérifier le statut” sur la ligne correspondante. Le statut
+passe alors à “Signée” si la signature a bien été effectuée.</p>
+<p>Les statuts possibles :</p>
+<ul>
+<li>Envoyée pour signature : en attente du signataire.</li>
+<li>Signée : le document a été signé, le PDF signé est disponible au
+téléchargement.</li>
+<li>Erreur : l’envoi vers LibreSign a échoué (voir le message affiché au
+moment de l’envoi).</li>
+</ul>
+<ol start="4" type="1">
+<li>Télécharger les documents</li>
+</ol>
+<p>Deux boutons sont disponibles sur chaque ligne dès que les fichiers
+existent :</p>
+<ul>
+<li>“📄 Original” : le PDF tel qu’envoyé, avant signature.</li>
+<li>“📥 Signé” : le PDF signé, disponible une fois le statut passé à
+“Signée”.</li>
+</ul>
+<ol start="5" type="1">
+<li>Supprimer une demande</li>
+</ol>
+<p>Le bouton “🗑️ Supprimer” retire définitivement la demande de la liste
+: la ligne est effacée de la base et les fichiers associés (original et
+signé) sont supprimés du serveur. Une double confirmation est demandée
+avant suppression. Cette action est irréversible.</p>
+<ol start="6" type="1">
+<li>Points d’attention</li>
+</ol>
+<ul>
+<li>Seuls les fichiers PDF sont acceptés.</li>
+<li>La position du pavé de signature doit être choisie avant l’envoi ;
+sans clic sur l’aperçu, le bouton d’envoi reste désactivé.</li>
+<li>Le texte apposé par LibreSign sur le document signé peut
+actuellement afficher les accents de façon incorrecte (par exemple
+“Sign??” au lieu de “Signé”) ; ceci n’affecte pas la validité de la
+signature, un correctif est prévu.</li>
+<li>Chaque utilisateur ne voit que ses propres demandes de
+signature.</li>
+</ul>
