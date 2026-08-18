@@ -112,7 +112,17 @@ def envoyer():
 
     chemin_original = os.path.join(_dossier(signature_id), secure_filename(fichier.filename))
     fichier.save(chemin_original)
-    pdf_bytes = open(chemin_original, "rb").read()
+    with open(chemin_original, "rb") as f:
+        pdf_bytes = f.read()
+
+    # Certains PDF (scanners, pilotes d'impression) ont des octets parasites
+    # avant l'en-tête %PDF : tolérés par la plupart des lecteurs, mais rejetés
+    # par le validateur strict de LibreSign ("Fichier Base64 invalide").
+    debut_pdf = pdf_bytes.find(b"%PDF")
+    if debut_pdf > 0:
+        pdf_bytes = pdf_bytes[debut_pdf:]
+        with open(chemin_original, "wb") as f:
+            f.write(pdf_bytes)
 
     prenom, *reste = destinataire_nom.split(" ", 1)
     nom = reste[0] if reste else ""
