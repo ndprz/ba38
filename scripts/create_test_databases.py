@@ -8,7 +8,6 @@ import sqlite3
 import random
 import string
 from pathlib import Path
-from werkzeug.security import generate_password_hash
 
 # -------------------------------------------------------------------
 # PYTHONPATH
@@ -253,27 +252,6 @@ def anonymize_database(db_path: Path):
                     aid
                 ))
 
-            conn.commit()
-
-        # ---------------- USERS (identité seulement, droits préservés) ----------------
-        elif table == "users":
-            summary("👤 Anonymisation users")
-            comptes = [dict(r) for r in c.execute("SELECT id, email FROM users").fetchall()]
-            for compte in comptes:
-                nouvel_email = rnd_email()
-                c.execute("""
-                    UPDATE users SET email=?, username=?, password_hash=?
-                    WHERE id=?
-                """, (
-                    nouvel_email, rnd_txt("User"),
-                    generate_password_hash(rnd_txt("PWD")),
-                    compte["id"]
-                ))
-                # garder roles_utilisateurs.user_email cohérent avec le nouvel email
-                c.execute("""
-                    UPDATE roles_utilisateurs SET user_email=?
-                    WHERE user_email=?
-                """, (nouvel_email, compte["email"]))
             conn.commit()
 
         # ---------------- FOURNISSEURS ----------------

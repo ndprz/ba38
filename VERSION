@@ -1,3 +1,3 @@
-VERSION=1.4.70
-MESSAGE=Admin users : sync complet users/droits + anonymisation bases TEST (sync_test_schemas.py, create_test_databases.py)
-DATE=2026-08-18 13:55
+VERSION=1.4.71
+MESSAGE=Fix v1.4.70 : retrait anonymisation users/roles_utilisateurs en base TEST
+DATE=2026-08-18 14:04
