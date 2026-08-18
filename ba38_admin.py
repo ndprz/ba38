@@ -3,7 +3,8 @@ from flask_login import login_required
 from utils import (
     get_db_connection, upload_database, write_log, get_version,
     get_db_info, get_all_users, has_access, get_db_info_display,
-    require_admin_global, get_version_full
+    require_admin_global, get_version_full,
+    synchroniser_utilisateur_vers_base_test
 )
 from forms import RegistrationForm
 from werkzeug.security import generate_password_hash
@@ -90,6 +91,7 @@ def gestion_roles_matrice(email):
                     """, (email, appli, droit))
 
             conn.commit()
+            synchroniser_utilisateur_vers_base_test(email)
             flash("Droits mis à jour avec succès.", "success")
 
             if action == "save_return":
@@ -208,12 +210,18 @@ def gestion_roles():
                         VALUES (?, ?, ?)
                     """, (email, appli, droit))
                     conn.commit()
+                    synchroniser_utilisateur_vers_base_test(email)
                     flash("✅ Rôle ajouté avec succès.", "success")
 
             elif action.startswith("supprimer_"):
                 role_id = int(action.replace("supprimer_", ""))
+                role_row = cursor.execute(
+                    "SELECT user_email FROM roles_utilisateurs WHERE id = ?", (role_id,)
+                ).fetchone()
                 cursor.execute("DELETE FROM roles_utilisateurs WHERE id = ?", (role_id,))
                 conn.commit()
+                if role_row:
+                    synchroniser_utilisateur_vers_base_test(role_row["user_email"])
                 flash("🗑️ Rôle supprimé.", "info")
 
         if filtre:
@@ -283,7 +291,8 @@ def gestion_utilisateurs():
                 username,
                 role,
                 actif,
-                force_2fa
+                force_2fa,
+                test_only
             FROM users
             ORDER BY email
         """)
@@ -401,6 +410,7 @@ def update_user():
 
         conn.commit()
 
+    synchroniser_utilisateur_vers_base_test(email)
     return redirect(url_for("admin.gestion_utilisateurs"))
 
 # --- Suppression utilisateur (avec rôles) ---
@@ -425,6 +435,9 @@ def supprimer_utilisateur(user_id):
         cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
         conn.commit()
 
+    if email_row:
+        synchroniser_utilisateur_vers_base_test(email, supprime=True)
+
     upload_database()
     flash("🗑️ Utilisateur et rôles associés supprimés.", "success")
     return redirect(url_for('admin.gestion_utilisateurs'))
@@ -445,6 +458,7 @@ def ajouter_utilisateur():
     password = request.form.get("password", "")
     role = request.form.get("role", "user")
     actif = request.form.get("actif", "Oui")
+    test_only = 1 if request.form.get("test_only") == "1" else 0
 
     # --- Validation minimale ---
     if not email or not password:
@@ -470,12 +484,13 @@ def ajouter_utilisateur():
             hashed_password = generate_password_hash(password)
 
             cur.execute("""
-                INSERT INTO users (username, email, password_hash, role, actif)
-                VALUES (?, ?, ?, ?, ?)
-            """, (username, email, hashed_password, role, actif_db))
+                INSERT INTO users (username, email, password_hash, role, actif, test_only)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (username, email, hashed_password, role, actif_db, test_only))
 
             conn.commit()
 
+        synchroniser_utilisateur_vers_base_test(email)
         upload_database()
 
         flash("✅ Utilisateur ajouté avec succès.", "success")
@@ -499,6 +514,8 @@ def update_users_batch():
 
     users_data = request.form.to_dict(flat=False)
 
+    emails_modifies = []
+
     with get_db_connection() as conn:
         cur = conn.cursor()
 
@@ -516,6 +533,7 @@ def update_users_batch():
             actif = request.form.get(f"users[{idx}][actif]", "Oui")
             new_password = request.form.get(f"users[{idx}][new_password]", "").strip()
             force_2fa = request.form.get(f"users[{idx}][force_2fa]") == "1"
+            test_only = 1 if request.form.get(f"users[{idx}][test_only]") == "1" else 0
 
 
             if not user_id:
@@ -527,9 +545,9 @@ def update_users_batch():
             # Mise à jour des champs standards
             cur.execute("""
                 UPDATE users
-                SET username = ?, role = ?, actif = ?, force_2fa = ?
+                SET username = ?, role = ?, actif = ?, force_2fa = ?, test_only = ?
                 WHERE id = ?
-            """, (username, role, actif_db, force_2fa, user_id))
+            """, (username, role, actif_db, force_2fa, test_only, user_id))
 
             # Mot de passe (si fourni)
             if new_password:
@@ -540,7 +558,14 @@ def update_users_batch():
                     WHERE id = ?
                 """, (password_hash, user_id))
 
+            email_row = cur.execute("SELECT email FROM users WHERE id = ?", (user_id,)).fetchone()
+            if email_row:
+                emails_modifies.append(email_row["email"])
+
         conn.commit()
+
+    for email in emails_modifies:
+        synchroniser_utilisateur_vers_base_test(email)
 
         if action == "save_return":
             return redirect(url_for("admin.gestion_utilisateurs"))
@@ -785,6 +810,7 @@ def reset_2fa_user(user_id):
 
         conn.commit()
 
+    synchroniser_utilisateur_vers_base_test(user["email"])
     write_log(f"🔄 RESET 2FA user_id={user_id} ({user['email']})")
 
     # 📧 Envoi mail
@@ -1130,6 +1156,9 @@ def gestion_roles_par_appli():
                     """, (email, appli_selectionnee, droit))
 
             conn.commit()
+
+            for email in emails:
+                synchroniser_utilisateur_vers_base_test(email)
 
             flash(
                 f"✅ Droits mis à jour pour "

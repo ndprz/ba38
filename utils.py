@@ -1661,6 +1661,73 @@ def copier_modele_email_vers_prod(code, sujet, corps, type_periode=None):
         return False, str(e)
 
 
+def get_current_env_test_db_path():
+    """Chemin de la base TEST (ba380dev_test.sqlite / ba380_test.sqlite) de
+    l'environnement courant, indépendamment de session['test_user']."""
+    env = os.getenv("ENVIRONMENT", "dev").lower()
+    filename = os.getenv("SQLITE_DB_DEV_TEST") if env == "dev" else os.getenv("SQLITE_DB_PROD_TEST")
+    if not filename:
+        raise RuntimeError(f"Base test non définie pour l'environnement {env}")
+    base_dir = os.getenv("BA38_BASE_DIR")
+    if not base_dir:
+        raise RuntimeError("BA38_BASE_DIR non défini")
+    return os.path.join(base_dir, filename)
+
+
+def synchroniser_utilisateur_vers_base_test(email, supprime=False):
+    """Reflète la fiche utilisateur (users) et ses droits (roles_utilisateurs)
+    depuis la base réelle vers la base TEST de l'environnement courant, pour
+    que les comptes test_only (ex. compte DSI FFBA) aient les mêmes droits en
+    mode test qu'en mode réel. supprime=True : supprime aussi la fiche côté
+    base test (utilisateur supprimé côté réel)."""
+    try:
+        test_db_path = get_current_env_test_db_path()
+    except RuntimeError as e:
+        write_log(f"⚠️ Synchronisation utilisateur→test ignorée : {e}")
+        return False, str(e)
+
+    try:
+        with sqlite3.connect(test_db_path) as conn_test:
+            if supprime:
+                conn_test.execute("DELETE FROM roles_utilisateurs WHERE user_email=?", (email,))
+                conn_test.execute("DELETE FROM users WHERE email=?", (email,))
+                conn_test.commit()
+                return True, None
+
+            conn_real = get_real_db_connection()
+            user_row = conn_real.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+            roles_rows = conn_real.execute(
+                "SELECT * FROM roles_utilisateurs WHERE user_email=?", (email,)
+            ).fetchall()
+            conn_real.close()
+
+            if not user_row:
+                return False, f"Utilisateur {email} introuvable en base réelle"
+
+            for table, rows, key_col in (
+                ("users", [user_row], "email"),
+                ("roles_utilisateurs", roles_rows, "user_email"),
+            ):
+                conn_test.execute(f"DELETE FROM {table} WHERE {key_col}=?", (email,))
+                if not rows:
+                    continue
+                # n'insère que les colonnes présentes dans les deux bases : le
+                # schéma des bases TEST peut être légèrement en retard sur le réel
+                dest_cols = {r[1] for r in conn_test.execute(f"PRAGMA table_info({table})")}
+                common_cols = [c for c in rows[0].keys() if c in dest_cols]
+                placeholders = ", ".join(["?"] * len(common_cols))
+                conn_test.executemany(
+                    f"INSERT INTO {table} ({', '.join(common_cols)}) VALUES ({placeholders})",
+                    [tuple(r[c] for c in common_cols) for r in rows],
+                )
+
+            conn_test.commit()
+        return True, None
+    except Exception as e:
+        write_log(f"❌ Synchronisation utilisateur {email} vers base test échouée : {e}")
+        return False, str(e)
+
+
 def render_modele_email(texte, contexte):
     """
     Remplace les variables <<xxx>> par leur valeur
