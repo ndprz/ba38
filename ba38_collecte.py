@@ -295,7 +295,15 @@ def _compter_secteurs(secteur_str):
 
 
 def _calculer_indicateurs_scenario(df_t, camions_supp, max_magasins):
-    cols_mag = [f"Magasin {i}" for i in range(1, 7)]
+    # Colonnes "Magasin N" dynamiques : le moteur ne crée "Magasin 6" (ou plus)
+    # que si une tournée de CE scénario atteint réellement ce nombre de
+    # magasins (tolérance de surcharge) — un range(1, 7) fixe plante avec
+    # "['Magasin 6'] not in index" dès qu'un scénario n'a aucune surcharge
+    # aussi élevée (cas rencontré en PROD, absent des données de test DEV).
+    cols_mag = sorted(
+        (c for c in df_t.columns if re.fullmatch(r"Magasin \d+", c)),
+        key=lambda c: int(c.split(" ")[1])
+    )
 
     df = df_t[df_t["Demi-journee"].isin(DJ_VS)].copy()
     df = df[~df["Camion"].astype(str).isin(moteur.VEHICULES_FIGES)]
