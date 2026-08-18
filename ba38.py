@@ -78,6 +78,7 @@ from ba38_fournisseurs import fournisseurs_bp
 from ba38_tresorerie import tresorerie_bp
 from ba38_fiches_visite import fiches_visite_bp
 from ba38_annexe1bis import annexe1bis_bp, webhook_yousign
+from ba38_signature import signature_bp
 from ba38_evenements import evenements_bp
 from ba38_factures import factures_bp
 from ba38_planning_report import planning_report_bp
@@ -358,6 +359,7 @@ app.register_blueprint(fournisseurs_bp)
 app.register_blueprint(tresorerie_bp)
 app.register_blueprint(fiches_visite_bp)
 app.register_blueprint(annexe1bis_bp)
+app.register_blueprint(signature_bp)
 app.register_blueprint(evenements_bp)
 app.register_blueprint(factures_bp)
 app.register_blueprint(planning_report_bp)

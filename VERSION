@@ -1,3 +1,3 @@
-VERSION=1.4.72
-MESSAGE=Sous-titres video: Whisper local (faster-whisper) remplace API OpenAI + fix CSRF bouton generation sous-titres
-DATE=2026-08-18 14:46
+VERSION=1.4.73
+MESSAGE=Signature electronique (LibreSign generique) + fix infra SMTP/domaine public LibreSign
+DATE=2026-08-18 23:17

@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block title %}Signature électronique{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>✍️ Signature électronique</h2>
+
+  <div class="card mb-4">
+    <div class="card-header">📤 Nouvelle demande de signature</div>
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('signature.envoyer') }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Document PDF</label>
+            <input type="file" name="fichier" id="fichier_input" accept="application/pdf" class="form-control" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Nom du document</label>
+            <input type="text" name="nom_document" class="form-control" placeholder="ex. Bon de commande - Fournisseur X">
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-bold d-block">Signataire</label>
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="type_signataire" id="type_moi_meme" value="moi_meme" checked onchange="toggleDestinataire()">
+            <label class="form-check-label" for="type_moi_meme">Je signe moi-même</label>
+          </div>
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="type_signataire" id="type_tiers" value="tiers" onchange="toggleDestinataire()">
+            <label class="form-check-label" for="type_tiers">Envoyer à quelqu'un d'autre</label>
+          </div>
+        </div>
+
+        <div class="row mb-3" id="bloc_destinataire" style="display:none;">
+          <div class="col-md-6">
+            <label class="form-label">Nom du destinataire</label>
+            <input type="text" name="destinataire_nom" class="form-control">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Email du destinataire</label>
+            <input type="email" name="destinataire_email" class="form-control">
+          </div>
+        </div>
+
+        <div class="mb-3" id="bloc_positionnement" style="display:none;">
+          <label class="form-label fw-bold d-block">Emplacement de la signature</label>
+          <p class="text-muted small mb-2">Cliquez sur la page à l'endroit où le pavé de signature doit apparaître.</p>
+          <div class="mb-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_page_prec">◀ Page précédente</button>
+            <span id="label_page" class="mx-2">Page 1 / 1</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_page_suiv">Page suivante ▶</button>
+          </div>
+          <div style="position:relative; display:inline-block; border:1px solid #ccc;">
+            <canvas id="pdf_canvas"></canvas>
+            <canvas id="overlay_canvas" style="position:absolute; top:0; left:0; cursor:crosshair;"></canvas>
+          </div>
+          <p id="label_position" class="mt-2 fw-bold text-danger">⚠️ Cliquez sur la page pour positionner la signature.</p>
+        </div>
+
+        <input type="hidden" name="sig_page" id="sig_page">
+        <input type="hidden" name="sig_top" id="sig_top">
+        <input type="hidden" name="sig_left" id="sig_left">
+        <input type="hidden" name="sig_width" id="sig_width">
+        <input type="hidden" name="sig_height" id="sig_height">
+
+        <button type="submit" class="btn btn-primary" id="btn_envoyer" disabled>📤 Envoyer pour signature via LibreSign</button>
+      </form>
+    </div>
+  </div>
+
+  <h4>📋 Mes demandes de signature</h4>
+  {% if demandes %}
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Document</th>
+        <th>Signataire</th>
+        <th>Statut</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for demande in demandes %}
+      <tr>
+        <td>{{ demande['date_creation'] }}</td>
+        <td>{{ demande['nom_document'] }}</td>
+        <td>
+          {{ demande['destinataire_nom'] }} ({{ demande['destinataire_email'] }})
+          {% if demande['type_signataire'] == 'moi_meme' %}<span class="text-muted small">— moi-même</span>{% endif %}
+        </td>
+        <td>
+          {% if demande['statut'] == 'signee' %}
+          <span class="badge bg-success">🔒 Signée{% if demande['date_signature'] %} le {{ demande['date_signature'] }}{% endif %}</span>
+          {% elif demande['statut'] == 'envoyee' %}
+          <span class="badge bg-warning text-dark">✉️ Envoyée pour signature</span>
+          {% elif demande['statut'] == 'refusee' %}
+          <span class="badge bg-danger">❌ Refusée</span>
+          {% elif demande['statut'] == 'expiree' %}
+          <span class="badge bg-dark">⌛ Expirée</span>
+          {% else %}
+          <span class="badge bg-secondary">⚠️ Erreur</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if demande['statut'] == 'envoyee' %}
+          <form method="POST" action="{{ url_for('signature.verifier_statut', signature_id=demande['id']) }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-secondary">🔄 Vérifier le statut</button>
+          </form>
+          {% endif %}
+          {% if demande['document_original_path'] %}
+          <a href="{{ url_for('signature.telecharger', signature_id=demande['id'], variante='original') }}" class="btn btn-sm btn-outline-info">📄 Original</a>
+          {% endif %}
+          {% if demande['document_signe_path'] %}
+          <a href="{{ url_for('signature.telecharger', signature_id=demande['id'], variante='signe') }}" class="btn btn-sm btn-outline-success">📥 Signé</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted">Aucune demande de signature pour l'instant.</p>
+  {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script>
+  function toggleDestinataire() {
+    const tiers = document.getElementById("type_tiers").checked;
+    document.getElementById("bloc_destinataire").style.display = tiers ? "flex" : "none";
+    document.querySelector("input[name='destinataire_nom']").required = tiers;
+    document.querySelector("input[name='destinataire_email']").required = tiers;
+  }
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+
+  const PAVE_WIDTH = 220;
+  const PAVE_HEIGHT = 40;
+
+  let pdfDoc = null;
+  let pageNum = 1;
+  let renderScale = 1;
+  let positionChoisie = null; // {page, top, left, width, height}
+
+  const pdfCanvas = document.getElementById("pdf_canvas");
+  const overlayCanvas = document.getElementById("overlay_canvas");
+  const btnEnvoyer = document.getElementById("btn_envoyer");
+  const labelPage = document.getElementById("label_page");
+  const labelPosition = document.getElementById("label_position");
+
+  document.getElementById("fichier_input").addEventListener("change", function (e) {
+    const fichier = e.target.files[0];
+    positionChoisie = null;
+    btnEnvoyer.disabled = true;
+    document.getElementById("bloc_positionnement").style.display = "none";
+    if (!fichier) return;
+
+    const reader = new FileReader();
+    reader.onload = function () {
+      pdfjsLib.getDocument({ data: new Uint8Array(this.result) }).promise.then(function (doc) {
+        pdfDoc = doc;
+        pageNum = 1;
+        document.getElementById("bloc_positionnement").style.display = "block";
+        renderPage(pageNum);
+      }).catch(function (err) {
+        alert("Impossible d'afficher l'aperçu de ce PDF : " + err.message);
+      });
+    };
+    reader.readAsArrayBuffer(fichier);
+  });
+
+  function renderPage(num) {
+    pdfDoc.getPage(num).then(function (page) {
+      const viewportBase = page.getViewport({ scale: 1 });
+      renderScale = Math.min(700 / viewportBase.width, 2);
+      const viewport = page.getViewport({ scale: renderScale });
+
+      pdfCanvas.width = overlayCanvas.width = viewport.width;
+      pdfCanvas.height = overlayCanvas.height = viewport.height;
+
+      page.render({ canvasContext: pdfCanvas.getContext("2d"), viewport: viewport });
+      overlayCanvas.getContext("2d").clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+      labelPage.textContent = "Page " + num + " / " + pdfDoc.numPages;
+      dessinerPositionSiPresente();
+    });
+  }
+
+  function dessinerPositionSiPresente() {
+    if (!positionChoisie || positionChoisie.page !== pageNum) return;
+    const ctx = overlayCanvas.getContext("2d");
+    ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    ctx.fillStyle = "rgba(13, 110, 253, 0.3)";
+    ctx.strokeStyle = "rgb(13, 110, 253)";
+    const x = positionChoisie.left * renderScale;
+    const y = positionChoisie.top * renderScale;
+    const w = positionChoisie.width * renderScale;
+    const h = positionChoisie.height * renderScale;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x, y, w, h);
+  }
+
+  document.getElementById("btn_page_prec").addEventListener("click", function () {
+    if (pdfDoc && pageNum > 1) { pageNum--; renderPage(pageNum); }
+  });
+  document.getElementById("btn_page_suiv").addEventListener("click", function () {
+    if (pdfDoc && pageNum < pdfDoc.numPages) { pageNum++; renderPage(pageNum); }
+  });
+
+  overlayCanvas.addEventListener("click", function (e) {
+    const rect = overlayCanvas.getBoundingClientRect();
+    const scaleX = overlayCanvas.width / rect.width;
+    const scaleY = overlayCanvas.height / rect.height;
+    const clicCanvasX = (e.clientX - rect.left) * scaleX;
+    const clicCanvasY = (e.clientY - rect.top) * scaleY;
+
+    let left = (clicCanvasX / renderScale) - PAVE_WIDTH / 2;
+    let top = (clicCanvasY / renderScale) - PAVE_HEIGHT / 2;
+    const pageWidthPts = overlayCanvas.width / renderScale;
+    const pageHeightPts = overlayCanvas.height / renderScale;
+    left = Math.max(0, Math.min(left, pageWidthPts - PAVE_WIDTH));
+    top = Math.max(0, Math.min(top, pageHeightPts - PAVE_HEIGHT));
+
+    positionChoisie = { page: pageNum, top: top, left: left, width: PAVE_WIDTH, height: PAVE_HEIGHT };
+
+    document.getElementById("sig_page").value = positionChoisie.page;
+    document.getElementById("sig_top").value = positionChoisie.top.toFixed(1);
+    document.getElementById("sig_left").value = positionChoisie.left.toFixed(1);
+    document.getElementById("sig_width").value = positionChoisie.width;
+    document.getElementById("sig_height").value = positionChoisie.height;
+
+    labelPosition.textContent = "📍 Signature positionnée : page " + pageNum;
+    labelPosition.classList.remove("text-danger");
+    labelPosition.classList.add("text-success");
+    btnEnvoyer.disabled = false;
+
+    dessinerPositionSiPresente();
+  });
+</script>
+{% endblock %}

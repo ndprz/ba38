@@ -61,11 +61,15 @@ def _raise_for_status(resp, contexte):
         raise LibreSignError(f"Erreur LibreSign ({contexte}) : {resp.status_code} — {resp.text[:300]}")
 
 
-def envoyer_signature_request(pdf_bytes, nom_document, signataire_prenom, signataire_nom, signataire_email):
+def envoyer_signature_request(pdf_bytes, nom_document, signataire_prenom, signataire_nom, signataire_email,
+                               coordonnees=None):
     """
     Crée une demande de signature LibreSign complète : création du fichier +
-    signataire (identifié par email, sans compte Nextcloud requis), puis
-    positionnement du pavé de signature par coordonnées.
+    signataire (identifié par email, sans compte Nextcloud requis), puis,
+    si `coordonnees` est fourni, positionnement du pavé de signature à cet
+    emplacement (mêmes clés que COORDONNEES_PAVE_SIGNATURE). Si `coordonnees`
+    est None, cette étape est sautée : le signataire place lui-même son pavé
+    de signature dans l'interface LibreSign.
 
     Retourne {"file_id": ..., "uuid": ..., "sign_request_id": ...}.
     """
@@ -95,26 +99,27 @@ def envoyer_signature_request(pdf_bytes, nom_document, signataire_prenom, signat
     sign_request_id = data["signers"][0]["signRequestId"]
 
     # 2) Positionnement du pavé de signature (pas d'ancre texte comme Yousign :
-    # coordonnées explicites, cf. COORDONNEES_PAVE_SIGNATURE). Ne pas envoyer
-    # `elementId` : sa présence force une recherche d'élément existant et
-    # échoue si l'id ne correspond à rien (constaté le 2026-07-15) — l'omettre
-    # fait créer un nouvel élément.
-    resp = requests.patch(
-        f"{base}/ocs/v2.php/apps/libresign/api/v1/request-signature",
-        auth=auth,
-        headers=_headers(),
-        json={
-            "uuid": file_uuid,
-            "visibleElements": [{
-                "signRequestId": sign_request_id,
-                "fileId": file_id,
-                "type": "signature",
-                "coordinates": COORDONNEES_PAVE_SIGNATURE,
-            }],
-        },
-        timeout=30,
-    )
-    _raise_for_status(resp, "positionnement pavé")
+    # coordonnées explicites). Ne pas envoyer `elementId` : sa présence force
+    # une recherche d'élément existant et échoue si l'id ne correspond à rien
+    # (constaté le 2026-07-15) — l'omettre fait créer un nouvel élément.
+    # Sauté si `coordonnees` est None (le signataire place lui-même son pavé).
+    if coordonnees is not None:
+        resp = requests.patch(
+            f"{base}/ocs/v2.php/apps/libresign/api/v1/request-signature",
+            auth=auth,
+            headers=_headers(),
+            json={
+                "uuid": file_uuid,
+                "visibleElements": [{
+                    "signRequestId": sign_request_id,
+                    "fileId": file_id,
+                    "type": "signature",
+                    "coordinates": coordonnees,
+                }],
+            },
+            timeout=30,
+        )
+        _raise_for_status(resp, "positionnement pavé")
 
     write_log(f"✅ LibreSign : demande {file_uuid} créée, signataire {signataire_email}")
 

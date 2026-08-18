@@ -514,7 +514,7 @@ def _dossier_signe(annexe_id):
 @login_required
 @require_access("associations", "ecriture")
 def envoyer_signature(annexe_id):
-    from utils_libresign import envoyer_signature_request, LibreSignError
+    from utils_libresign import envoyer_signature_request, LibreSignError, COORDONNEES_PAVE_SIGNATURE
 
     data = charger_donnees_pdf_annexe1bis(annexe_id)
     if data is None:
@@ -544,6 +544,7 @@ def envoyer_signature(annexe_id):
             signataire_prenom=prenom,
             signataire_nom=nom,
             signataire_email=courriel_president,
+            coordonnees=COORDONNEES_PAVE_SIGNATURE,
         )
     except LibreSignError as e:
         write_log(f"❌ LibreSign envoyer_signature annexe {annexe_id} : {e}")
