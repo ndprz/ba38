@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Tournées BAI 38 {{ annee }}</title>
+<style>
+    @page { size: A4 landscape; margin: 1cm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 9pt; color: #222; }
+    h1 { font-size: 14pt; margin-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; table-layout: fixed; }
+    th, td { border: 1px solid #999; padding: 3px 5px; text-align: left; vertical-align: top; word-wrap: break-word; }
+    th { background: #1F4E79; color: #fff; }
+    tr.dj { background: #DDEEFF; font-weight: bold; }
+    tr.figee td { background: #FFD7D7; }
+    col.c-camion { width: 6%; }
+    col.c-nom { width: 16%; }
+    col.c-secteur { width: 16%; }
+    col.c-magasins { width: 34%; }
+    col.c-tonnage, col.c-km { width: 7%; }
+    col.c-duree { width: 14%; }
+</style>
+</head>
+<body>
+
+<h1>Tournées de collecte BAI 38 — {{ annee }}</h1>
+
+<table>
+    <colgroup>
+        <col class="c-camion"><col class="c-nom"><col class="c-secteur">
+        <col class="c-magasins"><col class="c-tonnage"><col class="c-km"><col class="c-duree">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>Camion</th>
+            <th>Nom camion</th>
+            <th>Secteur</th>
+            <th>Magasins</th>
+            <th>Tonnage</th>
+            <th>Km</th>
+            <th>Durée</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% set ns = namespace(dj_courante=None) %}
+        {% for l in lignes %}
+        {% if l.demi_journee != ns.dj_courante %}
+        {% set ns.dj_courante = l.demi_journee %}
+        <tr class="dj"><td colspan="7">{{ l.demi_journee }}</td></tr>
+        {% endif %}
+        <tr class="{% if l.figee %}figee{% endif %}">
+            <td>{{ l.camion }}</td>
+            <td>{{ l.nom_camion }}</td>
+            <td>{{ l.secteur }}</td>
+            <td>{{ l.magasins }}</td>
+            <td>{{ "%.0f"|format(l.tonnage) }} kg</td>
+            <td>{{ l.km }}</td>
+            <td>{{ l.duree }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+</body>
+</html>

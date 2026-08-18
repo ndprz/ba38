@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Collecte{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width:900px;">
+
+    <h2>🧺 Collecte annuelle</h2>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
+    {% endcall %}
+
+    <p class="text-muted">
+        Fichiers nécessaires à la génération des tournées de collecte, extraits de go-on-web
+        et du drive collecte.
+    </p>
+
+    <div class="mb-4">
+        <label class="form-label">Année de collecte</label>
+        <select id="selectAnnee" class="form-select" style="max-width:200px;">
+            {% for a in annees_existantes %}
+            <option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="row g-3">
+        {% for type_fichier, conf in fichiers.items() %}
+        {% set le_champ = campagne[conf.champ_le] if campagne else None %}
+        {% set par_champ = campagne[conf.champ_par] if campagne else None %}
+        <div class="col-md-6">
+            <div class="card h-100 {% if le_champ %}border-success{% else %}border-warning{% endif %}">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        {% if le_champ %}✅{% else %}⚠️{% endif %}
+                        {{ conf.label }}
+                    </h5>
+                    <p class="card-text text-muted small">{{ conf.aide }}</p>
+
+                    {% if le_champ %}
+                    <p class="small mb-3">
+                        Importé le <strong>{{ le_champ|date_fr }}</strong> par {{ par_champ }}
+                    </p>
+                    {% else %}
+                    <p class="small mb-3 text-warning">Aucun fichier importé pour {{ annee }}</p>
+                    {% endif %}
+
+                    <form method="POST"
+                          action="{{ url_for('collecte.upload_fichier', type_fichier=type_fichier) }}"
+                          enctype="multipart/form-data"
+                          class="d-flex gap-2">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="annee" value="{{ annee }}">
+                        <input type="file" name="fichier" class="form-control form-control-sm" required>
+                        <button class="btn btn-sm btn-primary text-nowrap">
+                            {% if le_champ %}🔄 Remplacer{% else %}📤 Importer{% endif %}
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <hr class="my-4">
+
+    {% set prets = campagne and campagne.fichier_magasins and campagne.fichier_pdf_precedent %}
+    <div class="card {% if not prets %}bg-light{% endif %}">
+        <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h5 class="card-title mb-1">🚀 Génération des tournées {{ annee }}</h5>
+                {% if derniere_generation %}
+                <p class="card-text small text-muted mb-0">
+                    Dernière génération le <strong>{{ derniere_generation.genere_le|date_fr }}</strong>
+                    par {{ derniere_generation.genere_par }}
+                    ({{ derniere_generation.nb_tournees }} tournées, {{ derniere_generation.nb_magasins }} magasins)
+                    {% if nb_generations > 1 %}— {{ nb_generations }} versions générées{% endif %}
+                </p>
+                {% elif not prets %}
+                <p class="card-text small text-muted mb-0">
+                    Nécessite la liste des magasins et le PDF des tournées précédentes.
+                </p>
+                {% else %}
+                <p class="card-text small text-muted mb-0">Aucune génération pour l'instant.</p>
+                {% endif %}
+            </div>
+            <div class="d-flex gap-2">
+                {% if nb_generations > 1 %}
+                {{ action_button("📋 Historique (" ~ nb_generations ~ ")", href=url_for('collecte.generations', annee=annee), color="outline-secondary") }}
+                {% endif %}
+                {% if derniere_generation %}
+                {{ action_button("📊 Voir le résultat", href=url_for('collecte.resultats', generation_id=derniere_generation.id), color="outline-primary") }}
+                {% endif %}
+                {{ action_button(
+                    "🚀 Générer les tournées" if not derniere_generation else "🔄 Générer une nouvelle version",
+                    href=url_for('collecte.generer_form', annee=annee),
+                    color="success" if prets else "outline-secondary",
+                    disabled=not prets
+                ) }}
+            </div>
+        </div>
+    </div>
+
+    <hr class="my-4">
+
+    <div class="card {% if not prets %}bg-light{% endif %}">
+        <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h5 class="card-title mb-1">🔬 Analyse comparative — 8 scénarios</h5>
+                <p class="card-text small text-muted mb-0">
+                    {% if derniere_analyse %}
+                    Dernière analyse le <strong>{{ derniere_analyse.lance_le|date_fr }}</strong>
+                    par {{ derniere_analyse.lance_par }} —
+                    statut : {{ derniere_analyse.statut }}
+                    {% elif not prets %}
+                    Nécessite la liste des magasins et le PDF des tournées précédentes.
+                    {% else %}
+                    Compare 1 à 4 camions supplémentaires × 4 ou 5 magasins/tournée max (8 combinaisons).
+                    {% endif %}
+                </p>
+            </div>
+            <div class="d-flex gap-2">
+                {% if derniere_analyse %}
+                {{ action_button("📊 Voir la dernière analyse", href=url_for('collecte.analyse', analyse_id=derniere_analyse.id), color="outline-primary") }}
+                {% endif %}
+                <form method="POST" action="{{ url_for('collecte.lancer_analyse') }}" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="annee" value="{{ annee }}">
+                    <button type="submit" class="btn {{ 'btn-warning' if prets else 'btn-outline-secondary' }}" {% if not prets %}disabled{% endif %}>
+                        🔬 Lancer l'analyse des 8 scénarios
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+document.getElementById("selectAnnee").addEventListener("change", function () {
+    window.location.href = "{{ url_for('collecte.collecte_main') }}?annee=" + this.value;
+});
+</script>
+{% endblock %}

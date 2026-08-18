@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Historique {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width:1500px;">
+
+    <h2>📋 Historique des générations {{ annee }}</h2>
+
+    {% call action_buttons() %}
+        {{ action_button("🔄 Générer une nouvelle version", href=url_for('collecte.generer_form', annee=annee), color="success") }}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+    {% endcall %}
+
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle">
+            <thead class="table-dark">
+                <tr>
+                    <th>Générée le</th>
+                    <th>Par</th>
+                    <th>Paramètres</th>
+                    <th>Tournées</th>
+                    <th>Magasins</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in versions %}
+                <tr>
+                    <td>{{ v.gen.genere_le|date_fr }}</td>
+                    <td>{{ v.gen.genere_par }}</td>
+                    <td class="small">
+                        VX{{ v.params.camions_supp }}, max {{ v.params.max_magasins }} magasins,
+                        {{ v.params.poids_nouveaux }} kg nouveaux
+                        {%- if v.params.optimiser_anciens %}, opt. anciens{% endif -%}
+                        {%- if v.params.fusionner_legeres %}, fusion légères{% endif -%}
+                        {%- if v.params.corriger_mal_places %}, correction mal placés{% endif %}
+                    </td>
+                    <td>{{ v.gen.nb_tournees }}</td>
+                    <td>{{ v.gen.nb_magasins }} ({{ v.gen.nb_nouveaux_magasins }} nouveaux)</td>
+                    <td class="text-nowrap">
+                        <a href="{{ url_for('collecte.resultats', generation_id=v.gen.id) }}" class="btn btn-sm btn-outline-primary">📊 Voir</a>
+                        <a href="{{ url_for('collecte.resultats_excel', generation_id=v.gen.id) }}" class="btn btn-sm btn-outline-success">📥 Excel</a>
+                        {% if v.gen.fichier_carte_tournees %}
+                        <a href="{{ url_for('collecte.resultats_carte_tournees', generation_id=v.gen.id) }}" target="_blank" class="btn btn-sm btn-outline-warning">🚚 Tournées</a>
+                        {% endif %}
+                        {% if v.gen.fichier_carte_secteurs %}
+                        <a href="{{ url_for('collecte.resultats_carte_secteurs', generation_id=v.gen.id) }}" target="_blank" class="btn btn-sm btn-outline-info">🗺️ Secteurs</a>
+                        {% endif %}
+                        <form method="POST" action="{{ url_for('collecte.supprimer_generation', generation_id=v.gen.id) }}"
+                              class="d-inline"
+                              onsubmit="return confirm('Supprimer définitivement cette génération (Excel + cartes) du {{ v.gen.genere_le|date_fr }} ?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">🗑️ Supprimer</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+</div>
+{% endblock %}

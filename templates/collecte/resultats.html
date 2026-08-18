@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Tournées {{ annee }}{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
+<style>
+    #scroll-top-outer {
+        overflow-x: auto;
+        overflow-y: hidden;
+        height: 18px;
+        margin-bottom: 2px;
+        scrollbar-width: auto;
+        scrollbar-color: #adb5bd #eee;
+    }
+    #scroll-top-inner {
+        height: 1px;
+    }
+    /* Scrollbars natives discrètes par défaut (overlay masqué au repos sur
+       certains OS/navigateurs) — forcées visibles en permanence ici, sinon
+       la barre du haut serait invisible tant qu'on ne l'utilise pas. */
+    #scroll-top-outer::-webkit-scrollbar,
+    .tabulator-tableholder::-webkit-scrollbar {
+        height: 14px;
+    }
+    #scroll-top-outer::-webkit-scrollbar-track,
+    .tabulator-tableholder::-webkit-scrollbar-track {
+        background: #e9ecef;
+    }
+    #scroll-top-outer::-webkit-scrollbar-thumb,
+    .tabulator-tableholder::-webkit-scrollbar-thumb {
+        background: #6c757d;
+        border-radius: 7px;
+    }
+    #scroll-top-outer::-webkit-scrollbar-thumb:hover,
+    .tabulator-tableholder::-webkit-scrollbar-thumb:hover {
+        background: #495057;
+    }
+    .tabulator-tableholder {
+        scrollbar-width: auto;
+        scrollbar-color: #adb5bd #eee;
+    }
+    .tabulator-row.ligne-figee {
+        background-color: #ffd7d7 !important;
+    }
+    .tabulator-row.ligne-figee:hover {
+        background-color: #ffc4c4 !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width:1700px;">
+
+    <h2>📊 Tournées de collecte {{ annee }}</h2>
+
+    {% call action_buttons() %}
+        {{ action_button("📥 Télécharger Excel", href=url_for('collecte.resultats_excel', generation_id=generation.id), color="outline-success") }}
+        {{ action_button("📄 Télécharger PDF", href=url_for('collecte.resultats_pdf', generation_id=generation.id), color="outline-danger") }}
+        {% if generation.fichier_carte_tournees %}
+        <a href="{{ url_for('collecte.resultats_carte_tournees', generation_id=generation.id) }}" target="_blank"
+           class="btn btn-outline-warning">🚚 Carte des tournées</a>
+        {% endif %}
+        {% if generation.fichier_carte_secteurs %}
+        <a href="{{ url_for('collecte.resultats_carte_secteurs', generation_id=generation.id) }}" target="_blank"
+           class="btn btn-outline-info">🗺️ Carte des secteurs</a>
+        {% endif %}
+        {% if autres_generations|length > 1 %}
+        {{ action_button("📋 Historique des versions", href=url_for('collecte.generations', annee=annee), color="outline-secondary") }}
+        {% endif %}
+        {{ action_button("🔄 Générer une nouvelle version", href=url_for('collecte.generer_form', annee=annee), color="outline-secondary") }}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+    {% endcall %}
+
+    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+        <p class="text-muted small mb-0">
+            Générée le {{ generation.genere_le|date_fr }} par {{ generation.genere_par }} —
+            {{ generation.nb_tournees }} tournées, {{ generation.nb_magasins }} magasins
+            ({{ generation.nb_nouveaux_magasins }} nouveaux) —
+            camions supp. {{ params.camions_supp }}, max {{ params.max_magasins }} magasins/tournée,
+            {{ params.poids_nouveaux }} kg nouveaux
+            {%- if params.optimiser_anciens %}, opt. anciens{% endif -%}
+            {%- if params.fusionner_legeres %}, fusion légères{% endif -%}
+            {%- if params.corriger_mal_places %}, correction mal placés{% endif %}
+        </p>
+
+        {% if autres_generations|length > 1 %}
+        <select id="selectVersion" class="form-select form-select-sm ms-auto" style="max-width:280px;">
+            {% for g in autres_generations %}
+            <option value="{{ g.id }}" {% if g.id == generation.id %}selected{% endif %}>
+                {{ g.genere_le|date_fr }} — {{ g.nb_tournees }} tournées ({{ g.genere_par }})
+            </option>
+            {% endfor %}
+        </select>
+        {% endif %}
+    </div>
+
+    <input type="text" id="filtre-recherche" class="form-control form-control-sm mb-2" style="max-width:320px;"
+           placeholder="🔎 Rechercher (camion, secteur, magasin…)">
+
+    <div id="scroll-top-outer"><div id="scroll-top-inner"></div></div>
+    <div id="tabulator-table"></div>
+
+    <p class="small text-muted mt-2">
+        🔴 Ligne rouge : véhicule figé (jamais modifié par l'algorithme).
+    </p>
+
+</div>
+
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+const lignesTournees = {{ lignes|tojson }};
+
+function normalizeSearch(text) {
+    return String(text ?? "")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+}
+
+const table = new Tabulator("#tabulator-table", {
+    data: lignesTournees,
+    layout: "fitData",
+    height: "calc(100vh - 340px)",
+    placeholder: "Aucune tournée",
+    movableColumns: true,
+    groupBy: "demi_journee",
+    groupStartOpen: true,
+    rowFormatter: function(row) {
+        if (row.getData().figee) {
+            row.getElement().classList.add("ligne-figee");
+        }
+    },
+    columns: [
+        { title: "Camion", field: "camion", width: 90, headerFilter: "input" },
+        { title: "Nom camion", field: "nom_camion", width: 220 },
+        { title: "Secteur", field: "secteur", width: 220 },
+        { title: "Magasins", field: "magasins", width: 420, formatter: "textarea" },
+        { title: "Tonnage", field: "tonnage", width: 100, hozAlign: "right",
+          formatter: function(cell){ return Math.round(cell.getValue()) + " kg"; }, sorter: "number" },
+        { title: "Km", field: "km", width: 80, hozAlign: "right", sorter: "number" },
+        { title: "Durée", field: "duree", width: 220 },
+        { title: "Commentaire", field: "commentaire", width: 320, formatter: "textarea" },
+    ],
+});
+
+// ── Recherche globale ──────────────────────────────────────────────
+const filtreInput = document.getElementById("filtre-recherche");
+filtreInput.addEventListener("input", function () {
+    const search = normalizeSearch(this.value);
+    if (!search) { table.clearFilter(); return; }
+    table.setFilter(function (data) {
+        return Object.values(data).some(v => normalizeSearch(v).includes(search));
+    });
+});
+
+// ── Barre de défilement horizontal dupliquée en haut ───────────────
+const scrollTopOuter = document.getElementById("scroll-top-outer");
+const scrollTopInner = document.getElementById("scroll-top-inner");
+let holder = null;
+let syncing = false;
+
+function syncTopScrollWidth() {
+    holder = document.querySelector("#tabulator-table .tabulator-tableholder");
+    if (!holder) return;
+    scrollTopInner.style.width = holder.scrollWidth + "px";
+}
+
+table.on("tableBuilt", function () {
+    syncTopScrollWidth();
+    holder = document.querySelector("#tabulator-table .tabulator-tableholder");
+    holder.addEventListener("scroll", function () {
+        if (syncing) return;
+        syncing = true;
+        scrollTopOuter.scrollLeft = holder.scrollLeft;
+        syncing = false;
+    });
+    scrollTopOuter.addEventListener("scroll", function () {
+        if (syncing) return;
+        syncing = true;
+        holder.scrollLeft = scrollTopOuter.scrollLeft;
+        syncing = false;
+    });
+});
+table.on("renderComplete", syncTopScrollWidth);
+window.addEventListener("resize", syncTopScrollWidth);
+
+// ── Changement de version ──────────────────────────────────────────
+const selectVersion = document.getElementById("selectVersion");
+if (selectVersion) {
+    selectVersion.addEventListener("change", function () {
+        window.location.href = "{{ url_for('collecte.resultats', generation_id=0) }}".replace("0", this.value);
+    });
+}
+</script>
+{% endblock %}

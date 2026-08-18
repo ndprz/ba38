@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Analyse 8 scénarios {{ annee }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .tbl-analyse th, .tbl-analyse td { text-align: center; vertical-align: middle; font-size: 0.85rem; }
+    .tbl-analyse td:first-child, .tbl-analyse th:first-child { text-align: left; }
+    .val-best { background-color: #d4edda !important; font-weight: 600; }
+    .val-worst { background-color: #f8d7da !important; }
+    .grp-max4 { background-color: #e2efda; }
+    .grp-max5 { background-color: #ddebf7; }
+    .redaction-ia table { width: 100%; margin: 1rem 0; border-collapse: collapse; }
+    .redaction-ia table th, .redaction-ia table td { border: 1px solid #dee2e6; padding: 0.4rem 0.6rem; font-size: 0.9rem; }
+    .redaction-ia table th { background-color: #f1f3f5; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width:1500px;">
+
+    <h2>🔬 Analyse comparative — 8 scénarios {{ annee }}</h2>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+    {% endcall %}
+
+    {% if analyse.statut == 'en_cours' or analyse.redaction_statut == 'en_cours' %}
+    <meta http-equiv="refresh" content="5">
+    {% endif %}
+
+    {% if analyse.statut == 'en_cours' %}
+    <div class="alert alert-info">
+        ⏳ Analyse en cours (lancée le {{ analyse.lance_le|date_fr }} par {{ analyse.lance_par }})…
+        cette page se rafraîchit automatiquement toutes les 5 secondes.
+    </div>
+
+    {% elif analyse.statut == 'erreur' %}
+    <div class="alert alert-danger">
+        ❌ Échec de l'analyse : {{ analyse.erreur }}
+    </div>
+
+    {% else %}
+    <p class="text-muted small">
+        Lancée le {{ analyse.lance_le|date_fr }} par {{ analyse.lance_par }},
+        terminée le {{ analyse.termine_le|date_fr }} —
+        1 à 4 camions supplémentaires × 4 ou 5 magasins/tournée max, Vendredi/Samedi hors véhicules figés.
+        Résultats non conservés dans l'historique des générations (analyse comparative, pas une version à part entière).
+    </p>
+
+    <h4 class="mt-4">1. Indicateurs de performance</h4>
+    <p class="small text-muted">🟢 = meilleure valeur sur la ligne, 🔴 = moins bonne (surcharges, km, durée, camions VX — les seuls indicateurs où "plus petit" est sans ambiguïté "meilleur").</p>
+
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered tbl-analyse">
+            <thead class="table-dark">
+                <tr>
+                    <th rowspan="2">Indicateur</th>
+                    <th colspan="4" class="grp-max4" style="color:#1F4E79;">MAX 4 magasins/tournée</th>
+                    <th colspan="4" class="grp-max5" style="color:#1F4E79;">MAX 5 magasins/tournée</th>
+                </tr>
+                <tr>
+                    {% for s in scenarios %}
+                    <th class="{{ 'grp-max4' if s.max_magasins == 4 else 'grp-max5' }}" style="color:#1F4E79;">VX{{ s.camions_supp }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% macro ligne(label, champ, meilleur='min') %}
+                {% set valeurs = scenarios|map(attribute=champ)|list %}
+                {% set best = valeurs|min if meilleur == 'min' else valeurs|max %}
+                {% set worst = valeurs|max if meilleur == 'min' else valeurs|min %}
+                <tr>
+                    <td>{{ label }}</td>
+                    {% for v in valeurs %}
+                    <td class="{% if meilleur and v == best and best != worst %}val-best{% elif meilleur and v == worst and best != worst %}val-worst{% endif %}">
+                        {{ v }}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endmacro %}
+
+                {{ ligne("Nb tournées V/S (hors figés)", "nb_tournees", meilleur=none) }}
+                {{ ligne("Tournées à 2 magasins", "tournees_2", meilleur=none) }}
+                {{ ligne("Tournées à 3 magasins", "tournees_3", meilleur=none) }}
+                {{ ligne("Tournées à 4 magasins", "tournees_4", meilleur=none) }}
+                {{ ligne("Tournées à 5 magasins", "tournees_5", meilleur=none) }}
+                {{ ligne("Tournées à 6+ magasins (MAX+2)", "tournees_6plus", meilleur='min') }}
+                {{ ligne("Tournées > MAX (surcharges)", "surcharges", meilleur='min') }}
+                {{ ligne("Tournées à 3 secteurs", "tournees_3_secteurs", meilleur=none) }}
+                {{ ligne("Tournées à > 3 secteurs", "tournees_plus3_secteurs", meilleur='min') }}
+                {{ ligne("Km total estimé", "km_total", meilleur='min') }}
+                {{ ligne("Moy. magasins/tournée", "moy_magasins_tournee", meilleur=none) }}
+                {{ ligne("Camions VX créés", "camions_vx_crees", meilleur='min') }}
+                {{ ligne("Magasins dans les VX", "magasins_dans_vx", meilleur=none) }}
+                {{ ligne("Durée moy. estimée (min)", "duree_moy_min", meilleur='min') }}
+            </tbody>
+        </table>
+    </div>
+
+    <h4 class="mt-4">2. Kilométrage estimé par demi-journée</h4>
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered tbl-analyse">
+            <thead class="table-dark">
+                <tr>
+                    <th rowspan="2">Demi-journée</th>
+                    <th colspan="4" class="grp-max4" style="color:#1F4E79;">MAX 4</th>
+                    <th colspan="4" class="grp-max5" style="color:#1F4E79;">MAX 5</th>
+                </tr>
+                <tr>
+                    {% for s in scenarios %}
+                    <th class="{{ 'grp-max4' if s.max_magasins == 4 else 'grp-max5' }}" style="color:#1F4E79;">VX{{ s.camions_supp }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for dj in dj_vs %}
+                <tr>
+                    <td>{{ dj_vs_labels[dj] }}</td>
+                    {% for s in scenarios %}
+                    <td>{{ s.km_par_dj[dj] }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+                <tr class="fw-bold">
+                    <td>TOTAL</td>
+                    {% for s in scenarios %}
+                    <td>{{ s.km_total }}</td>
+                    {% endfor %}
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h4 class="mt-4">3. Détail des surcharges (tournées &gt; max-magasins)</h4>
+    <div class="accordion" id="accordionSurcharges">
+        {% for s in scenarios %}
+        {% if s.surcharges_detail %}
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                        data-bs-target="#surch-{{ loop.index }}">
+                    VX{{ s.camions_supp }} — MAX{{ s.max_magasins }} : {{ s.surcharges }} surcharge(s)
+                </button>
+            </h2>
+            <div id="surch-{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#accordionSurcharges">
+                <div class="accordion-body small">
+                    {% for d in s.surcharges_detail %}
+                    {{ d.camion }} ({{ d.demi_journee }}) — {{ d.nb_magasins }} magasins<br>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    <h4 class="mt-4">4. Analyse rédactionnelle (rôle des camions VX, verdicts, recommandation)</h4>
+
+    {% if analyse.redaction_statut == 'en_cours' %}
+    <div class="alert alert-info">
+        🤖 Génération en cours via l'API Claude (compter 30 à 60 secondes)… cette page se rafraîchit automatiquement.
+    </div>
+
+    {% elif analyse.redaction_statut == 'erreur' %}
+    <div class="alert alert-danger">
+        ❌ Échec de la génération : {{ analyse.redaction_erreur }}
+    </div>
+
+    {% elif redaction_html %}
+    <p class="small text-muted">
+        Générée automatiquement le {{ analyse.redaction_genere_le|date_fr }} par l'API Claude, à partir
+        exclusivement des chiffres ci-dessus — à relire avant diffusion.
+    </p>
+    <div class="card mb-3">
+        <div class="card-body redaction-ia">{{ redaction_html|safe }}</div>
+    </div>
+    {% endif %}
+
+    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+        <form method="POST" action="{{ url_for('collecte.generer_redaction', analyse_id=analyse.id) }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-warning btn-sm" {% if analyse.redaction_statut == 'en_cours' %}disabled{% endif %}>
+                🤖 {{ "Régénérer" if redaction_html else "Générer" }} avec Claude
+            </button>
+        </form>
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copierPrompt()">📋 Copier le prompt</button>
+        <span id="copie-confirmee" class="text-success small" style="display:none;">✅ Copié</span>
+    </div>
+    <p class="small text-muted">
+        Le prompt copiable reste disponible pour coller manuellement dans Claude.ai ou ChatGPT si besoin
+        (relecture, autre modèle, ajustement du texte généré).
+    </p>
+    <textarea id="prompt-analyse" class="form-control" rows="10" readonly
+              style="font-family: monospace; font-size: 0.8rem;">{{ prompt_analyse }}</textarea>
+
+    {% endif %}
+
+</div>
+
+<script>
+function copierPrompt() {
+    const zone = document.getElementById("prompt-analyse");
+    zone.select();
+    navigator.clipboard.writeText(zone.value).then(function () {
+        const confirm = document.getElementById("copie-confirmee");
+        confirm.style.display = "inline";
+        setTimeout(() => { confirm.style.display = "none"; }, 2000);
+    });
+}
+</script>
+{% endblock %}
