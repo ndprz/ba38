@@ -1,3 +1,3 @@
-VERSION=1.4.69
-MESSAGE=Analyse 8 scénarios : tableaux IA en scroll horizontal (fix débordement page) + bouton imprimer
-DATE=2026-08-18 13:42
+VERSION=1.4.70
+MESSAGE=Admin users : sync complet users/droits + anonymisation bases TEST (sync_test_schemas.py, create_test_databases.py)
+DATE=2026-08-18 13:55

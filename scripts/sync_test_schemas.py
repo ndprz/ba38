@@ -10,8 +10,12 @@ Synchronisation des bases TEST à partir de la base DEV.
 """
 
 import os
+import random
+import sqlite3
+import string
 from pathlib import Path
-from utils import migrate_schema_and_data
+from werkzeug.security import generate_password_hash
+from utils import migrate_schema_and_data, write_log
 
 # -------------------------------------------------------------------
 # Résolution des chemins
@@ -45,6 +49,73 @@ if ENV == "PROD" and ALLOW_TEST_SYNC != "YES":
         "Pour autoriser explicitement :\n"
         "  ALLOW_TEST_SYNC=YES python3 sync_test_schemas.py"
     )
+
+# -------------------------------------------------------------------
+# Générateurs pour l'anonymisation des comptes users
+# -------------------------------------------------------------------
+def _rnd_txt(prefix="TXT"):
+    return f"{prefix}_{''.join(random.choices(string.ascii_uppercase, k=5))}"
+
+def _rnd_email():
+    return ''.join(random.choices(string.ascii_lowercase, k=8)) + "@example.org"
+
+
+# -------------------------------------------------------------------
+# users / roles_utilisateurs : remplacement intégral depuis DEV (réel)
+# -------------------------------------------------------------------
+def sync_users_and_roles(dest_db_path: str):
+    """Remplace entièrement `users` et `roles_utilisateurs` dans `dest_db_path`
+    par une copie fidèle de la base DEV réelle, pour que TOUS les comptes
+    (pas seulement les comptes test_only) aient en base TEST les mêmes droits
+    qu'en réel."""
+    source_conn = sqlite3.connect(str(DEV_DB))
+    dest_conn = sqlite3.connect(dest_db_path)
+    try:
+        for table in ("users", "roles_utilisateurs"):
+            source_cols = [r[1] for r in source_conn.execute(f"PRAGMA table_info({table})")]
+            dest_cols = {r[1] for r in dest_conn.execute(f"PRAGMA table_info({table})")}
+            common_cols = [c for c in source_cols if c in dest_cols]
+
+            rows = source_conn.execute(
+                f"SELECT {', '.join(common_cols)} FROM {table}"
+            ).fetchall()
+
+            dest_conn.execute(f"DELETE FROM {table}")
+            if rows:
+                placeholders = ", ".join(["?"] * len(common_cols))
+                dest_conn.executemany(
+                    f"INSERT INTO {table} ({', '.join(common_cols)}) VALUES ({placeholders})",
+                    rows,
+                )
+            dest_conn.commit()
+            write_log(f"🔁 {table} remplacée dans {dest_db_path} ({len(rows)} lignes)")
+    finally:
+        source_conn.close()
+        dest_conn.close()
+
+
+def anonymize_users_table(dest_db_path: str):
+    """Anonymise les données personnelles de `users` (email, nom, mot de
+    passe) dans la base de test, après une synchronisation fidèle des droits
+    par sync_users_and_roles(). L'identité réelle n'y sert à rien : le login
+    interroge toujours la base réelle (get_real_db_connection), jamais la
+    base TEST. `roles_utilisateurs.user_email` est mis à jour en cohérence
+    pour ne pas casser le lien users/roles."""
+    with sqlite3.connect(dest_db_path) as conn:
+        rows = conn.execute("SELECT id, email FROM users").fetchall()
+        for user_id, real_email in rows:
+            new_email = _rnd_email()
+            conn.execute(
+                "UPDATE users SET email=?, username=?, password_hash=? WHERE id=?",
+                (new_email, _rnd_txt("User"), generate_password_hash(_rnd_txt("PWD")), user_id),
+            )
+            conn.execute(
+                "UPDATE roles_utilisateurs SET user_email=? WHERE user_email=?",
+                (new_email, real_email),
+            )
+        conn.commit()
+    write_log(f"🕶️ Table users anonymisée dans {dest_db_path} ({len(rows)} comptes)")
+
 
 # -------------------------------------------------------------------
 # API appelée par Flask

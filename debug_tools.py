@@ -428,6 +428,8 @@ def run_sync_test_schemas():
     try:
         from scripts.sync_test_schemas import (
             sync_test_databases,
+            sync_users_and_roles,
+            anonymize_users_table,
             DEV_TEST_DB,
             PROD_TEST_DB,
         )
@@ -469,8 +471,6 @@ def run_sync_test_schemas():
         ]
 
         tables_critique = [
-            "roles_utilisateurs",
-            "users",
             "parametres",
             "applications",
         ]
@@ -507,6 +507,16 @@ def run_sync_test_schemas():
                     write_log(f"✅ {test_db_path} → {table} : {len(rows)} lignes")
 
                 test_conn.commit()
+
+        # =========================================================
+        # 🔁 3. users + roles_utilisateurs : copie fidèle depuis DEV,
+        #    puis anonymisation (email / nom / mot de passe) — les droits
+        #    (role, actif, test_only, roles_utilisateurs) restent identiques
+        #    au réel, seule l'identité personnelle est effacée.
+        # =========================================================
+        for test_db_path in test_dbs:
+            sync_users_and_roles(test_db_path)
+            anonymize_users_table(test_db_path)
 
         # =========================================================
         # ✅ FIN
