@@ -11,11 +11,7 @@ import sqlite3
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
-indicateurs_bp = Blueprint(
-    "indicateurs",
-    __name__,
-    template_folder="templates/indicateurs"
-)
+indicateurs_bp = Blueprint("indicateurs", __name__)
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR_INDICATEURS", "/srv/ba38/uploads/indicateurs")
 

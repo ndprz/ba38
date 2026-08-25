@@ -76,8 +76,8 @@ from ba38_admin import admin_bp
 from ba38_export import export_data_bp
 from ba38_fournisseurs import fournisseurs_bp
 from ba38_tresorerie import tresorerie_bp
-from ba38_fiches_visite import fiches_visite_bp
-from ba38_annexe1bis import annexe1bis_bp, webhook_yousign
+from ba38_partenaires import fiches_visite_bp
+from ba38_partenaires import annexe1bis_bp, webhook_yousign
 from ba38_signature import signature_bp
 from ba38_evenements import evenements_bp
 from ba38_tresorerie import factures_bp
@@ -85,7 +85,7 @@ from ba38_planning import planning_report_bp
 from ba38_aide import aide_bp
 from ba38_engagements import engagements_bp
 from ba38_benevoles import droit_image_bp
-from ba38_indicateurs import indicateurs_bp
+from ba38_partenaires import indicateurs_bp
 from ba38_emails import emails_bp
 from ba38_tresorerie import participation_bp
 from ba38_applications import applications_bp

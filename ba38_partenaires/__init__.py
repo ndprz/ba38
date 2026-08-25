@@ -1,0 +1,4 @@
+from ba38_partenaires.routes import partenaires_bp
+from ba38_partenaires.annexe1bis import annexe1bis_bp, webhook_yousign
+from ba38_partenaires.fiches_visite import fiches_visite_bp
+from ba38_partenaires.indicateurs import indicateurs_bp
