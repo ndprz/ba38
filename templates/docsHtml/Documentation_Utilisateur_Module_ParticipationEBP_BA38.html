@@ -1,0 +1,65 @@
+<p>Documentation Utilisateur — Traitement fichier de participation pour
+EBP</p>
+<p>Objectif</p>
+<p>Préparer le fichier PARSOL2L de participation de solidarité (issu de
+VIF) avant de le transmettre au comptable pour intégration dans la
+comptabilité EBP : retirer les livraisons du vendredi, samedi et
+dimanche (non facturées) et déposer les fichiers résultants sur le Drive
+partagé.</p>
+<p>Cet écran ne génère ni facture, ni email aux associations — pour
+cela, utiliser le module “📊 Facturation participation (V2)”.</p>
+<ol type="1">
+<li>Accéder à l’écran</li>
+</ol>
+<p>Menu → Trésorerie → section “Participation” → “📂 Traitement fichier
+de participation pour EBP”.</p>
+<ol start="2" type="1">
+<li>Préparer le fichier dans VIF</li>
+</ol>
+<ul>
+<li><p>Créer, s’il n’existe pas encore, un dossier pour le trimestre
+concerné sur le Drive partagé (exemple : G:partagés - TRESORERIE\2026
+T2).</p></li>
+<li><p>Dans VIF, lancer PARSOL2L et enregistrer le fichier obtenu dans
+ce dossier (exemple : 20263T2_parsol2l.txt).</p></li>
+</ul>
+<ol start="3" type="1">
+<li>Lancer le traitement</li>
+</ol>
+<ul>
+<li><p>Sur l’écran BA38, sélectionner ce fichier .txt puis cliquer sur
+“Lancer le traitement”.</p></li>
+<li><p>Le fichier est analysé : les livraisons du vendredi, samedi et
+dimanche sont retirées, les totaux recalculés.</p></li>
+</ul>
+<ol start="4" type="1">
+<li>Résultat</li>
+</ol>
+<p>Le trimestre est déduit automatiquement de la première date trouvée
+dans le fichier. Le dossier Drive correspondant (créé s’il n’existe pas,
+nettoyé de son contenu précédent sinon) reçoit 4 fichiers :</p>
+<ul>
+<li><p>le fichier original tel qu’envoyé ;</p></li>
+<li><p><code>..._corrigé_&lt;année&gt;_T&lt;trimestre&gt;.txt</code> :
+le fichier nettoyé, à transmettre au comptable pour l’import EBP
+;</p></li>
+<li><p><code>..._lignes_supprimees_...txt</code> : le détail des
+livraisons retirées (traçabilité) ;</p></li>
+<li><p><code>..._analyse_...txt</code> : les totaux avant/après
+retrait.</p></li>
+</ul>
+<ol start="5" type="1">
+<li>Points d’attention</li>
+</ol>
+<ul>
+<li><p>Si un dossier existait déjà pour ce trimestre, son contenu
+précédent est supprimé et remplacé par le nouveau résultat — pas
+d’accumulation de versions successives.</p></li>
+<li><p>Nécessite une connexion Google Drive fonctionnelle ; le
+traitement échoue si elle n’est pas disponible au moment du
+clic.</p></li>
+<li><p>La règle de retrait (vendredi + samedi + dimanche) est identique
+à celle appliquée par le module de facturation V2 lors de la création
+d’une campagne — les deux écrans traitent chacun leur propre fichier,
+sans lien entre eux.</p></li>
+</ul>

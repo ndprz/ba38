@@ -542,42 +542,6 @@ def traiter_parsol(contenu):
 
 
 
-@tresorerie_bp.route("/aide/ba38_traitements")
-@login_required
-@require_access("tresorerie", "lecture")
-def aide_traitements():
-    """
-    Sert le fichier Markdown d'aide pour le module ba38_traitements.
-    - En DEV : /home/ndprz/dev/docstech/ba38_traitements.md
-    - En PROD : /home/ndprz/ba380/docstech/ba38_traitements.md
-    """
-    env = os.getenv("ENVIRONMENT", "prod").lower()
-    base_path = "/home/ndprz/ba380/docstech" if env == "prod" else "/home/ndprz/dev/docstech"
-    file_path = os.path.join(base_path, "ba38_traitements.md")
-
-    if not os.path.exists(file_path):
-        abort(404, f"Fichier d'aide introuvable : {file_path}")
-
-    return send_file(file_path, mimetype="text/markdown")
-
-@tresorerie_bp.route("/aide/<page>")
-@login_required
-@require_access("tresorerie", "lecture")
-def aide_page(page):
-    mapping = {
-        "traitement_participation": "ba38_traitements.md",
-        # on pourra ajouter d'autres pages ici
-    }
-    if page not in mapping:
-        abort(404)
-    env = os.getenv("ENVIRONMENT", "prod").lower()
-    base_path = "/home/ndprz/ba380/docstech" if env == "prod" else "/home/ndprz/dev/docstech"
-    file_path = os.path.join(base_path, mapping[page])
-    return send_file(file_path, mimetype="text/markdown")
-
-
-
-
 
 def calculer_cotisations_par_annee(db_path, benef_par_vif):
     """
