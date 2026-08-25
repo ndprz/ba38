@@ -83,6 +83,18 @@ def calculer_cotisations_par_annee(db_path, benef_par_vif):
             continue
 
         code_facture = asso["vif_regroup_cotisation"] or code_vif
+
+        # Garde-fou : si vif_regroup_cotisation pointe vers un code qui ne
+        # correspond à aucune association réelle (valeur invalide, ex.
+        # "SANS" saisi par erreur), on facture l'association elle-même
+        # plutôt que de la faire disparaître silencieusement du calcul.
+        if code_facture not in asso_par_vif:
+            write_log(
+                f"⚠️ vif_regroup_cotisation invalide ('{code_facture}') pour "
+                f"{code_vif} — facturée seule au lieu d'être regroupée."
+            )
+            code_facture = code_vif
+
         cumuls[code_facture] += nb
         rattachements[code_facture].append(code_vif)
 

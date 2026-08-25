@@ -1,3 +1,3 @@
-VERSION=1.4.85
-MESSAGE=Fix bug retraitement (banniere dernier envoi obsolete apres reprocessing) cotisations V2 + participation V2, largeurs colonnes tableau cotisations V2
-DATE=2026-08-25 14:45
+VERSION=1.4.86
+MESSAGE=Fix bug vif_regroup_cotisation invalide (association silencieusement non facturee) dans calculer_cotisations_par_annee
+DATE=2026-08-25 14:55
