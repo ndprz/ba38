@@ -47,21 +47,16 @@ import anthropic
 import markdown
 import pandas as pd
 from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash,
+    render_template, request, redirect, url_for, flash,
     current_app, send_file
 )
 from flask_login import login_required, current_user
 from weasyprint import HTML
 
 from utils import get_db_connection, get_db_path, require_access, write_log, date_fr
-import collecte_moteur_tournees as moteur
-import collecte_moteur_carte_secteurs as carte_secteurs
-
-collecte_bp = Blueprint(
-    "collecte",
-    __name__,
-    template_folder="templates/collecte"
-)
+from ba38_collecte import collecte_bp
+from ba38_collecte import moteur_tournees as moteur
+from ba38_collecte import moteur_carte_secteurs as carte_secteurs
 
 EXTENSIONS_EXCEL = {".xlsx", ".xls"}
 EXTENSIONS_PDF = {".pdf"}
