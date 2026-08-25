@@ -194,7 +194,6 @@ rsync -av --delete \
   --exclude ".git/" \
   --exclude ".git_OLD_ba380DEV/" \
   --exclude ".vscode/" \
-  --exclude "backup/" \
   --exclude "logs/" \
   --exclude "*.log" \
   --exclude "*.log.*" \
