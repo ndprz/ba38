@@ -709,6 +709,53 @@ def traiter():
     return redirect(url_for("participation.resultats", campagne_id=campagne_id))
 
 
+def _rattacher_orphelines(conn, campagne_id):
+    """
+    Réessaie de rapprocher les factures orphelines (code VIF sans
+    correspondance en base au moment du traitement du fichier PARSOL) avec
+    la table associations — utile quand l'association, ou son code VIF, a
+    été créée/corrigée après coup. Ne fait rien si aucune correspondance
+    n'est trouvée. Retourne la liste des (nom_association, numero_facture)
+    nouvellement rattachées.
+    """
+    orphelines = conn.execute("""
+        SELECT id, code_vif FROM participation_factures
+        WHERE campagne_id = ? AND association_id IS NULL
+    """, (campagne_id,)).fetchall()
+
+    if not orphelines:
+        return []
+
+    max_numero = conn.execute("""
+        SELECT MAX(numero_facture) FROM participation_factures WHERE campagne_id = ?
+    """, (campagne_id,)).fetchone()[0] or 0
+
+    rattachees = []
+
+    for o in orphelines:
+        assoc = conn.execute(
+            "SELECT * FROM associations WHERE code_VIF = ?", (o["code_vif"],)
+        ).fetchone()
+        if not assoc:
+            continue
+
+        max_numero += 1
+        email = assoc["courriel_resp_tresorerie"] or assoc["courriel_association"]
+
+        conn.execute("""
+            UPDATE participation_factures
+            SET association_id = ?, numero_facture = ?, nom_association = ?, email = ?
+            WHERE id = ?
+        """, (assoc["Id"], max_numero, assoc["nom_association"], email, o["id"]))
+
+        rattachees.append((assoc["nom_association"], max_numero))
+
+    if rattachees:
+        conn.commit()
+
+    return rattachees
+
+
 # ============================================================================
 # 📊 ÉCRAN RÉSULTATS
 # ============================================================================
@@ -726,6 +773,15 @@ def resultats(campagne_id):
         conn.close()
         flash("❌ Campagne introuvable", "danger")
         return redirect(url_for("participation.selection"))
+
+    rattachees = _rattacher_orphelines(conn, campagne_id)
+    if rattachees:
+        detail = ", ".join(f"{nom} (facture n°{num})" for nom, num in rattachees)
+        flash(
+            f"✅ {len(rattachees)} facture(s) orpheline(s) rattachée(s) automatiquement "
+            f"(association créée ou corrigée depuis) : {detail}",
+            "success"
+        )
 
     factures = conn.execute("""
         SELECT * FROM participation_factures
