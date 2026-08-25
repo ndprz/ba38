@@ -12,7 +12,7 @@ Synchronisation des bases TEST à partir de la base DEV.
 import os
 import sqlite3
 from pathlib import Path
-from utils import migrate_schema_and_data, write_log
+from ba38_utilitaires.core import migrate_schema_and_data, write_log
 
 # -------------------------------------------------------------------
 # Résolution des chemins

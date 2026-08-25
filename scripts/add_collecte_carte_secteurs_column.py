@@ -2,7 +2,7 @@
 """Ajoute la colonne fichier_carte_secteurs à collecte_generations : chaque
 génération de tournées produit désormais aussi sa carte des secteurs."""
 import sqlite3
-from utils import get_db_path, write_log
+from ba38_utilitaires.core import get_db_path, write_log
 
 
 def main():

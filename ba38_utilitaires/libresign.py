@@ -20,7 +20,7 @@ import base64
 import os
 import requests
 
-from utils import write_log
+from ba38_utilitaires.core import write_log
 
 
 class LibreSignError(Exception):

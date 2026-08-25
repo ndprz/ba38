@@ -4,7 +4,7 @@
 Stockage volontairement temporaire — aucun fichier Excel/carte produit, juste
 les indicateurs chiffrés en JSON, à la différence de collecte_generations."""
 import sqlite3
-from utils import get_db_path, write_log
+from ba38_utilitaires.core import get_db_path, write_log
 
 
 def main():

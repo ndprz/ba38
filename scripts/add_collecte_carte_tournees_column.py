@@ -4,7 +4,7 @@ interactive des tournées optimisées (itinéraire OSRM par demi-journée/camion
 distincte de la carte des secteurs (fichier_carte_secteurs, purement
 géographique et indépendante de l'optimisation)."""
 import sqlite3
-from utils import get_db_path, write_log
+from ba38_utilitaires.core import get_db_path, write_log
 
 
 def main():

@@ -2,7 +2,7 @@ import os
 import sqlite3
 from flask import Blueprint, request, render_template, redirect, url_for, flash
 from dotenv import dotenv_values
-from utils import write_log
+from ba38_utilitaires.core import write_log
 
 # ---------------------------------------------------------------------------
 # Chargement des deux fichiers .env (DEV et PROD)

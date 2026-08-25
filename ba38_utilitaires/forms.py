@@ -2,7 +2,7 @@ from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SubmitField, HiddenField, SelectField, BooleanField
 from wtforms.validators import DataRequired, Email, Length, EqualTo, Optional, ValidationError
 from flask import request
-from utils import get_db_connection  # ✅ connexion centralisée
+from ba38_utilitaires.core import get_db_connection  # ✅ connexion centralisée
 
 # 📌 Formulaire de connexion
 class LoginForm(FlaskForm):

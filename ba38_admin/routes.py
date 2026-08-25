@@ -1,12 +1,12 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, g,current_app, abort
 from flask_login import login_required
-from utils import (
+from ba38_utilitaires.core import (
     get_db_connection, upload_database, write_log, get_version,
     get_db_info, get_all_users, has_access, get_db_info_display,
     require_admin_global, get_version_full,
     synchroniser_utilisateur_vers_base_test
 )
-from forms import RegistrationForm
+from ba38_utilitaires.forms import RegistrationForm
 from werkzeug.security import generate_password_hash
 
 import sqlite3
@@ -786,7 +786,7 @@ def documentation_search():
 @require_admin_global
 def reset_2fa_user(user_id):
 
-    from utils import envoyer_mail
+    from ba38_utilitaires.core import envoyer_mail
 
     with get_db_connection() as conn:
         cur = conn.cursor()

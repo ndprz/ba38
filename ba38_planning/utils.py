@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required
 import sqlite3
-from utils import get_db_connection, upload_database
+from ba38_utilitaires.core import get_db_connection, upload_database
 
 
 planning_utils_bp = Blueprint('planning_utils', __name__)
@@ -441,7 +441,7 @@ def get_type_benevole_options(conn=None):
     """
     close_after = False
     if conn is None:
-        from utils import get_db_connection
+        from ba38_utilitaires.core import get_db_connection
         conn = get_db_connection()
         close_after = True
 

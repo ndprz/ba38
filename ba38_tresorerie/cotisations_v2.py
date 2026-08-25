@@ -16,7 +16,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 
-from utils import get_db_path, require_access, write_log, envoyer_mail, render_modele_email, split_emails, mailjet_get_message_status
+from ba38_utilitaires.core import get_db_path, require_access, write_log, envoyer_mail, render_modele_email, split_emails, mailjet_get_message_status
 
 from ba38_tresorerie import tresorerie_bp
 from ba38_tresorerie.constants import (
@@ -810,7 +810,7 @@ def cotisations_v2_verifier_statut_mailjet(campagne_id):
 @login_required
 @require_access("tresorerie", "ecriture")
 def cotisations_v2_renvoyer_gmail(facture_id):
-    from utils_gmail_send import envoyer_mail_gmail, GmailSendError
+    from ba38_utilitaires.gmail_send import envoyer_mail_gmail, GmailSendError
 
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row

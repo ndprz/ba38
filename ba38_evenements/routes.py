@@ -30,13 +30,13 @@ from pdf2image import convert_from_path
 import subprocess
 
 # Utils maison
-from utils import (
+from ba38_utilitaires.core import (
     get_db_connection, upload_database, write_log, get_static_event_dir,is_admin_global, require_access, has_access
 )
 
 
 
-evenements_bp = Blueprint("evenements", __name__, template_folder="templates")
+evenements_bp = Blueprint("evenements", __name__)
 
 # ============================================================
 # 🧱 Routes : gestion
@@ -815,9 +815,9 @@ from flask import jsonify
 import os
 import subprocess
 import sys
-from utils import write_log, get_db_connection, get_static_event_dir
+from ba38_utilitaires.core import write_log, get_db_connection, get_static_event_dir
 
-TRANSCRIPTION_SCRIPT = os.path.join(os.path.dirname(__file__), "scripts", "transcrire_video.py")
+TRANSCRIPTION_SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "transcrire_video.py")
 TRANSCRIPTION_TIMEOUT = 170  # < 180s du AbortController côté front
 
 @evenements_bp.route("/evenements/generer_sous_titres/<int:event_id>", methods=["POST"])

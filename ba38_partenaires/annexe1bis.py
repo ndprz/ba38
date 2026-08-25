@@ -22,7 +22,7 @@ from reportlab.platypus import (
 )
 from reportlab.lib.enums import TA_LEFT
 
-from utils import (
+from ba38_utilitaires.core import (
     get_db_connection,
     write_log,
     upload_database,
@@ -514,7 +514,7 @@ def _dossier_signe(annexe_id):
 @login_required
 @require_access("associations", "ecriture")
 def envoyer_signature(annexe_id):
-    from utils_libresign import envoyer_signature_request, LibreSignError, COORDONNEES_PAVE_SIGNATURE
+    from ba38_utilitaires.libresign import envoyer_signature_request, LibreSignError, COORDONNEES_PAVE_SIGNATURE
 
     data = charger_donnees_pdf_annexe1bis(annexe_id)
     if data is None:
@@ -589,7 +589,7 @@ def envoyer_signature(annexe_id):
 @login_required
 @require_access("associations", "ecriture")
 def verifier_statut(annexe_id):
-    from utils_libresign import recuperer_statut, telecharger_document_signe, LibreSignError
+    from ba38_utilitaires.libresign import recuperer_statut, telecharger_document_signe, LibreSignError
 
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
@@ -711,7 +711,7 @@ def webhook_yousign():
     document_signe_path = None
     if nouveau_statut == "signee":
         try:
-            from utils_yousign import telecharger_document_signe
+            from ba38_utilitaires.yousign import telecharger_document_signe
             pdf_signe = telecharger_document_signe(signature_request_id)
             chemin = os.path.join(_dossier_signe(annexe_id), f"signe_{int(datetime.now().timestamp())}.pdf")
             with open(chemin, "wb") as f:

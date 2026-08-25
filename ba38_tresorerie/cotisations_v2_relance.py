@@ -7,8 +7,8 @@ from threading import Thread
 from flask import request, render_template, flash, redirect, url_for, session, current_app
 from flask_login import login_required
 
-from utils import get_db_path, write_log, envoyer_mail, split_emails, require_access, mailjet_get_message_status
-from utils_gmail_send import envoyer_mail_gmail, GmailSendError
+from ba38_utilitaires.core import get_db_path, write_log, envoyer_mail, split_emails, require_access, mailjet_get_message_status
+from ba38_utilitaires.gmail_send import envoyer_mail_gmail, GmailSendError
 
 from ba38_tresorerie import tresorerie_bp
 from ba38_tresorerie.cotisations_v2 import generer_facture_cotisation_v2_pdf

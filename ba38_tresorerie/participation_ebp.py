@@ -7,7 +7,7 @@ from flask import request, render_template, flash, redirect, url_for
 from flask_login import login_required
 from googleapiclient.http import MediaFileUpload
 
-from utils import get_google_services, write_log, require_access
+from ba38_utilitaires.core import get_google_services, write_log, require_access
 
 from ba38_tresorerie import tresorerie_bp
 

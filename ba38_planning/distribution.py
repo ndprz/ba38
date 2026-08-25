@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for
 from flask_login import login_required, current_user
-from utils import upload_database, write_log, get_db_connection, require_access
+from ba38_utilitaires.core import upload_database, write_log, get_db_connection, require_access
 
 
 from ba38_planning.utils import (

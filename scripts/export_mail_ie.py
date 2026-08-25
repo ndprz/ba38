@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 # 🔧 Accès aux fonctions utilitaires
 sys.path.insert(0, "/home/ndprz/ba380")
-from utils import get_google_services, get_db_path, write_log
+from ba38_utilitaires.core import get_google_services, get_db_path, write_log
 
 # ✅ Charge le .env de production
 load_dotenv("/home/ndprz/ba380/.env")

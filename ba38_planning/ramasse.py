@@ -4,7 +4,7 @@ from flask import Blueprint, render_template, request, flash, redirect, url_for,
 from ba38_planning.utils import get_type_benevole_options
 from flask_login import login_required, current_user
 from datetime import datetime, timedelta
-from utils import get_db_connection, write_log, upload_database, require_access
+from ba38_utilitaires.core import get_db_connection, write_log, upload_database, require_access
 
 from ba38_planning.utils import (
     get_lundi_de_la_semaine,
@@ -602,7 +602,7 @@ def enregistrer_planning_ramasse():
 @login_required
 @require_access("planning", "lecture")
 def print_planning_ramasse():
-    from utils import get_db_connection
+    from ba38_utilitaires.core import get_db_connection
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import cm

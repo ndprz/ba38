@@ -14,7 +14,7 @@ from flask import (
 )
 from flask_login import login_required, current_user
 
-from utils import get_db_path, write_log, envoyer_mail, require_access, render_modele_email
+from ba38_utilitaires.core import get_db_path, write_log, envoyer_mail, require_access, render_modele_email
 
 from ba38_tresorerie import tresorerie_bp
 
@@ -627,7 +627,7 @@ def factures_voir_pdf(envoi_id):
 @login_required
 @require_access("tresorerie", "ecriture")
 def factures_verifier_statut_mailjet(lot_id):
-    from utils import mailjet_get_message_status
+    from ba38_utilitaires.core import mailjet_get_message_status
 
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
@@ -678,7 +678,7 @@ def factures_verifier_statut_mailjet(lot_id):
 @login_required
 @require_access("tresorerie", "ecriture")
 def factures_renvoyer_gmail(envoi_id):
-    from utils_gmail_send import envoyer_mail_gmail, GmailSendError
+    from ba38_utilitaires.gmail_send import envoyer_mail_gmail, GmailSendError
 
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row

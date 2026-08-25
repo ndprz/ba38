@@ -19,7 +19,7 @@ from reportlab.lib.utils import ImageReader
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 
-from utils import (
+from ba38_utilitaires.core import (
     get_db_path, write_log, envoyer_mail, upload_file_to_drive_path,
     slugify_filename, split_emails, require_access,
 )

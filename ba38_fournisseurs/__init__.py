@@ -1,0 +1,1 @@
+from ba38_fournisseurs.routes import fournisseurs_bp

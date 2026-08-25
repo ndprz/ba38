@@ -5,7 +5,7 @@ import sqlite3
 import pytz
 import base64
 from datetime import datetime
-from utils import get_db_path, get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_phone, row_get, require_access
+from ba38_utilitaires.core import get_db_path, get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_phone, row_get, require_access
 
 
 fournisseurs_bp = Blueprint('fournisseurs', __name__)

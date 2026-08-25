@@ -10,7 +10,7 @@ from reportlab.pdfgen import canvas
 from flask import request, render_template, flash, redirect, url_for, session
 from flask_login import login_required
 
-from utils import write_log, envoyer_mail, require_access
+from ba38_utilitaires.core import write_log, envoyer_mail, require_access
 
 from ba38_tresorerie import tresorerie_bp
 from ba38_tresorerie.constants import MAX_TEST_PREVIEW, DATE_X, DATE_Y

@@ -1,6 +1,6 @@
 import time
 
-from utils import write_log, get_drive_folder_id_from_path
+from ba38_utilitaires.core import write_log, get_drive_folder_id_from_path
 
 from ba38_tresorerie.constants import BA380_SHARED_DRIVE_ID
 
@@ -45,7 +45,7 @@ def delete_drive_folder_contents(drive_path, wait_until_empty=True, timeout=30):
 
     import os
     import time
-    from utils import write_log, SERVICE_ACCOUNT_FILE
+    from ba38_utilitaires.core import write_log, SERVICE_ACCOUNT_FILE
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
 

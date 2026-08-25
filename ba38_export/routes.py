@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, session
 from flask_login import login_required, current_user
-from utils import get_db_connection, get_db_path, write_log, has_access
+from ba38_utilitaires.core import get_db_connection, get_db_path, write_log, has_access
 from weasyprint import HTML
 from docx import Document
 import pandas as pd
@@ -15,7 +15,7 @@ import sqlite3
 # ================================================================
 export_data_bp = Blueprint("export_data", __name__)
 
-EXPORTS_DIR = os.path.join(os.path.dirname(__file__), "exports")
+EXPORTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "exports")
 
 
 # ================================================================

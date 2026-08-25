@@ -4,7 +4,7 @@
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_login import login_required
-from utils import get_db_connection, write_log, require_access, get_db_path
+from ba38_utilitaires.core import get_db_connection, write_log, require_access, get_db_path
 import os
 import pandas as pd
 import sqlite3
@@ -557,8 +557,8 @@ def voir_pdf(suivi_id):
     (même PDF que celui joint au mail envoyé/à envoyer) — pas de fichier
     persisté, recalculé depuis la base à chaque consultation.
     """
-    from utils import get_templates_pdf_dir
-    from utils_pdf_form import remplir_pdf_indicateurs
+    from ba38_utilitaires.core import get_templates_pdf_dir
+    from ba38_utilitaires.pdf_form import remplir_pdf_indicateurs
 
     with get_db_connection() as conn:
         suivi = conn.execute("""
@@ -642,7 +642,7 @@ def toggle_exclusion(suivi_id):
 @login_required
 @require_access("indicateurs", "ecriture")
 def verifier_statut_mailjet(campagne_id):
-    from utils import mailjet_get_message_status
+    from ba38_utilitaires.core import mailjet_get_message_status
 
     with get_db_connection() as conn:
         cur = conn.cursor()
@@ -699,9 +699,9 @@ def renvoyer_gmail(suivi_id):
     qui n'a jamais reçu de mail réel pour cette campagne (modèle choisi
     explicitement dans le formulaire, via le paramètre modele_id).
     """
-    from utils import get_templates_pdf_dir, render_modele_email
-    from utils_pdf_form import remplir_pdf_indicateurs
-    from utils_gmail_send import envoyer_mail_gmail, GmailSendError
+    from ba38_utilitaires.core import get_templates_pdf_dir, render_modele_email
+    from ba38_utilitaires.pdf_form import remplir_pdf_indicateurs
+    from ba38_utilitaires.gmail_send import envoyer_mail_gmail, GmailSendError
 
     with get_db_connection() as conn:
         suivi = conn.execute("""

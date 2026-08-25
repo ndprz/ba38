@@ -6,7 +6,7 @@ from threading import Thread
 from flask import request, render_template, flash, redirect, url_for, session, current_app
 from flask_login import login_required
 
-from utils import get_db_path, write_log, envoyer_mail, split_emails, require_access, get_google_services
+from ba38_utilitaires.core import get_db_path, write_log, envoyer_mail, split_emails, require_access, get_google_services
 
 from ba38_tresorerie import tresorerie_bp
 from ba38_tresorerie.drive_utils import get_pdf_by_code_vif
@@ -693,7 +693,7 @@ def cotisations_relance():
 @login_required
 @require_access("tresorerie", "ecriture")
 def cotisations_relance_verifier_statut_mailjet():
-    from utils import mailjet_get_message_status
+    from ba38_utilitaires.core import mailjet_get_message_status
 
     annee = request.form.get("annee")
     if not annee:
@@ -748,7 +748,7 @@ def cotisations_relance_verifier_statut_mailjet():
 @login_required
 @require_access("tresorerie", "ecriture")
 def cotisations_relance_renvoyer_gmail(cotisation_id):
-    from utils_gmail_send import envoyer_mail_gmail, GmailSendError
+    from ba38_utilitaires.gmail_send import envoyer_mail_gmail, GmailSendError
 
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row

@@ -9,7 +9,7 @@ import sqlite3
 from dotenv import load_dotenv
 import sys
 sys.path.insert(0, "/home/ndprz/dev")
-from utils import write_log
+from ba38_utilitaires.core import write_log
 
 
 def recreate_table(db_path, label):

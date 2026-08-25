@@ -15,7 +15,7 @@ sys.path.append("/home/ndprz/dev")  # ou /home/ndprz/ba380 en prod
 os.chdir("/home/ndprz/dev")
 
 import pandas as pd
-from utils import get_google_services, write_log
+from ba38_utilitaires.core import get_google_services, write_log
 
 # --- CONFIGURATION ---
 PARENT_FOLDER_ID = "1SOT2GopTrH4X7kkE6ENCV-h7r79TcT1C"  # BA380 - Public / FOURNISSEURS dossiers individuels

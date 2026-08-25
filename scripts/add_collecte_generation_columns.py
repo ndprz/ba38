@@ -2,7 +2,7 @@
 """Ajoute à collecte_campagnes les colonnes de suivi de la génération des
 tournées (étape 2 du module Collecte)."""
 import sqlite3
-from utils import get_db_path, write_log
+from ba38_utilitaires.core import get_db_path, write_log
 
 COLONNES = {
     "parametres_generation": "TEXT",

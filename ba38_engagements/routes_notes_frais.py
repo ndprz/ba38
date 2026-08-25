@@ -30,7 +30,7 @@ from flask_login import login_required, current_user
 from decimal import Decimal
 from pypdf import PdfReader, PdfWriter
 
-from utils import (
+from ba38_utilitaires.core import (
     get_db_path,
     write_log,
     require_access,

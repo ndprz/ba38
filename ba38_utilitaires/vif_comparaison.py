@@ -254,7 +254,7 @@ def comparaison_vif():
     #
     # Adaptez get_db_path() / la requête à votre schéma réel.
     # ─────────────────────────────────────────────────────────
-    from utils import get_db_path  # ou votre propre helper
+    from ba38_utilitaires.core import get_db_path  # ou votre propre helper
     db_path = get_db_path()
 
     rows_db = []
@@ -398,7 +398,7 @@ def comparaison_vif():
 @vif_bp.route("/vif/upload_fichiers", methods=["POST"])
 @login_required
 def upload_vif_fichiers():
-    from utils import has_access
+    from ba38_utilitaires.core import has_access
     if not has_access("associations", "ecriture"):
         return jsonify({"success": False, "error": "Accès refusé"}), 403
 
@@ -433,7 +433,7 @@ def upload_vif_fichiers():
 @vif_bp.route("/vif/update_field", methods=["POST"])
 @login_required
 def update_vif_field():
-    from utils import get_db_path, has_access
+    from ba38_utilitaires.core import get_db_path, has_access
     if not has_access("associations", "ecriture"):
         return jsonify({"success": False, "error": "Accès refusé"}), 403
 

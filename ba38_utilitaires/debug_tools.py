@@ -32,7 +32,7 @@ import json
 
 from datetime import datetime, timedelta
 
-from utils import (
+from ba38_utilitaires.core import (
     write_log,
     get_db_path,
     get_db_path_by_env,
@@ -461,7 +461,7 @@ def run_sync_test_schemas():
         # 🔁 2. Copie ciblée des tables critiques
         # =========================================================
 
-        from utils import get_db_connection, get_db_path
+        from ba38_utilitaires.core import get_db_connection, get_db_path
 
         dev_db_path = get_db_path()  # base DEV réelle
         test_dbs = [
@@ -1056,7 +1056,7 @@ def admin_scripts():
                 error = True
                 write_log(f"❌ Exception script {script_name} : {e}")
 
-    from utils import get_version_full
+    from ba38_utilitaires.core import get_version_full
 
     v = get_version_full()
 

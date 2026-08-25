@@ -18,7 +18,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
-from utils import get_db_connection, write_log, upload_database, require_access
+from ba38_utilitaires.core import get_db_connection, write_log, upload_database, require_access
 
 
 signature_bp = Blueprint("signature", __name__)
@@ -57,7 +57,7 @@ def index():
 @login_required
 @require_access("signature_electronique", "ecriture")
 def envoyer():
-    from utils_libresign import envoyer_signature_request, LibreSignError
+    from ba38_utilitaires.libresign import envoyer_signature_request, LibreSignError
 
     fichier = request.files.get("fichier")
     if not fichier or not fichier.filename:
@@ -168,7 +168,7 @@ def envoyer():
 @login_required
 @require_access("signature_electronique", "ecriture")
 def verifier_statut(signature_id):
-    from utils_libresign import recuperer_statut, telecharger_document_signe, LibreSignError
+    from ba38_utilitaires.libresign import recuperer_statut, telecharger_document_signe, LibreSignError
 
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row

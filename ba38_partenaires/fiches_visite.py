@@ -14,7 +14,7 @@ from flask import (
 from flask_login import login_required
 from weasyprint import HTML, CSS
 
-from utils import (
+from ba38_utilitaires.core import (
     get_db_connection,
     write_log,
     get_db_path,

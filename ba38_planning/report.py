@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, date
 from reportlab.platypus import SimpleDocTemplate, Table, Paragraph, Spacer
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
-from utils import get_db_connection, write_log
+from ba38_utilitaires.core import get_db_connection, write_log
 
 import sqlite3
 

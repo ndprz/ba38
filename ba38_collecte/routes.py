@@ -53,7 +53,7 @@ from flask import (
 from flask_login import login_required, current_user
 from weasyprint import HTML
 
-from utils import get_db_connection, get_db_path, require_access, write_log, date_fr
+from ba38_utilitaires.core import get_db_connection, get_db_path, require_access, write_log, date_fr
 from ba38_collecte import collecte_bp
 from ba38_collecte import moteur_tournees as moteur
 from ba38_collecte import moteur_carte_secteurs as carte_secteurs

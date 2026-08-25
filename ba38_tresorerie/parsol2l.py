@@ -9,7 +9,7 @@ from flask_login import login_required
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 
-from utils import get_db_path, require_access
+from ba38_utilitaires.core import get_db_path, require_access
 
 from ba38_tresorerie import tresorerie_bp
 

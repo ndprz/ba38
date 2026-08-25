@@ -5,7 +5,7 @@ from datetime import datetime
 # Ajoute le chemin vers le dossier où se trouve utils.py
 sys.path.append("/home/ndprz/ba380")
 
-from utils import write_log, get_drive
+from ba38_utilitaires.core import write_log, get_drive
 
 # Chemin vers la base à sauvegarder
 LOCAL_DB_PATH = "/home/ndprz/ba380/ba380.sqlite"

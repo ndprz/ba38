@@ -29,7 +29,7 @@ from flask import (
 
 from flask_login import login_required, current_user
 
-from utils import (
+from ba38_utilitaires.core import (
     get_db_path,
     has_access,
     require_access,

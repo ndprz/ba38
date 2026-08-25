@@ -29,7 +29,7 @@ from urllib.parse import quote
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from utils import write_log, get_db_path_by_env, envoyer_mail
+from ba38_utilitaires.core import write_log, get_db_path_by_env, envoyer_mail
 
 # ============================================================
 # ⚙️ À renseigner une fois le Google Form créé

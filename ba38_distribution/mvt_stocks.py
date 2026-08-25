@@ -3,7 +3,7 @@
 from flask import render_template, send_file, request, jsonify, redirect, url_for, flash
 from flask import Response
 from flask_login import login_required
-from utils import get_db_path, get_db_connection, require_access
+from ba38_utilitaires.core import get_db_path, get_db_connection, require_access
 from openpyxl import Workbook
 from io import BytesIO
 from datetime import datetime, timedelta

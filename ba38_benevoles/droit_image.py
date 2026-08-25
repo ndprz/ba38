@@ -2,7 +2,7 @@ import sqlite3
 import sqlite3
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
 from flask_login import login_required
-from utils import get_db_path, require_access
+from ba38_utilitaires.core import get_db_path, require_access
 import pandas as pd
 import io
 

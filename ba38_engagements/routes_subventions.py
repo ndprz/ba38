@@ -3,9 +3,9 @@
 from flask import Blueprint, render_template, send_file, request, jsonify, session, redirect, url_for, flash, abort
 from flask import current_app
 from flask_login import login_required, current_user
-from utils import get_db_path, get_db_connection, has_access, write_log, require_access
-from utils import get_real_ip
-from utils import envoyer_mail, is_valid_iban
+from ba38_utilitaires.core import get_db_path, get_db_connection, has_access, write_log, require_access
+from ba38_utilitaires.core import get_real_ip
+from ba38_utilitaires.core import envoyer_mail, is_valid_iban
 from openpyxl import Workbook
 from io import BytesIO
 from datetime import datetime

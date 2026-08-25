@@ -6,7 +6,7 @@ import unicodedata
 
 from flask import Blueprint, render_template, render_template_string, request, redirect, url_for, flash, session, jsonify, current_app, abort, send_from_directory
 from flask_login import login_required, current_user
-from utils import get_db_connection, upload_database, write_log, has_access, is_valid_email, is_valid_phone, require_access, get_db_path
+from ba38_utilitaires.core import get_db_connection, upload_database, write_log, has_access, is_valid_email, is_valid_phone, require_access, get_db_path
 from werkzeug.security import generate_password_hash
 from PIL import Image, ExifTags
 from urllib.parse import urlencode, quote_plus, quote

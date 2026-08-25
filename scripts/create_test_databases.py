@@ -15,7 +15,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE_DIR))
 
-from utils import write_log
+from ba38_utilitaires.core import write_log
 
 # -------------------------------------------------------------------
 # CONFIG

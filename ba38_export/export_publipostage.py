@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, current_app
-from utils import envoyer_mail, get_google_services, write_log
+from ba38_utilitaires.core import envoyer_mail, get_google_services, write_log
 import pandas as pd
 import os
 import re

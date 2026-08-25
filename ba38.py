@@ -29,10 +29,10 @@ import logging
 # --------------------------------------------------
 
 from datetime import datetime, timedelta
-from utils import get_db_connection, write_log, send_reset_email, get_user_roles, get_db_path, get_db_info, upload_database, get_version, get_all_users, format_tel, get_param_value, get_real_db_connection
-from utils import get_user_info,has_access, is_admin_global, format_date_fr, build_menu, require_admin_global
-from utils import is_blocked, record_attempt, reset_attempts, is_suspicious_ip, is_suspicious_ua, get_attempt_count, require_access
-from utils import date_fr
+from ba38_utilitaires.core import get_db_connection, write_log, send_reset_email, get_user_roles, get_db_path, get_db_info, upload_database, get_version, get_all_users, format_tel, get_param_value, get_real_db_connection
+from ba38_utilitaires.core import get_user_info,has_access, is_admin_global, format_date_fr, build_menu, require_admin_global
+from ba38_utilitaires.core import is_blocked, record_attempt, reset_attempts, is_suspicious_ip, is_suspicious_ua, get_attempt_count, require_access
+from ba38_utilitaires.core import date_fr
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, g, current_app, send_from_directory, abort
 from flask_login import current_user, LoginManager, UserMixin, login_user, logout_user, login_required
 from flask_session import Session
@@ -46,7 +46,7 @@ from werkzeug.exceptions import MethodNotAllowed, HTTPException
 from docx import Document
 from fpdf import FPDF
 from weasyprint import HTML
-from forms import LoginForm, RegistrationForm, ResetPasswordForm
+from ba38_utilitaires.forms import LoginForm, RegistrationForm, ResetPasswordForm
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from pathlib import Path
@@ -66,9 +66,9 @@ from ba38_planning import planning_palettes_bp
 from ba38_partenaires import partenaires_bp
 from ba38_planning import planning_tournees_bp
 from ba38_planning import planning_pesee_bp
-from ba38_export_publipostage import export_bp
+from ba38_export import export_bp
 from ba38_planning import planning_vif_bp
-from debug_tools import debug_bp
+from ba38_utilitaires import debug_bp
 from ba38_planning import planning_utils_bp
 from ba38_distribution import distribution_bp
 from scripts.rename_field import rename_bp
@@ -78,19 +78,19 @@ from ba38_fournisseurs import fournisseurs_bp
 from ba38_tresorerie import tresorerie_bp
 from ba38_partenaires import fiches_visite_bp
 from ba38_partenaires import annexe1bis_bp, webhook_yousign
-from ba38_signature import signature_bp
+from ba38_utilitaires import signature_bp
 from ba38_evenements import evenements_bp
 from ba38_tresorerie import factures_bp
 from ba38_planning import planning_report_bp
-from ba38_aide import aide_bp
+from ba38_utilitaires import aide_bp
 from ba38_engagements import engagements_bp
 from ba38_benevoles import droit_image_bp
 from ba38_partenaires import indicateurs_bp
-from ba38_emails import emails_bp
+from ba38_utilitaires import emails_bp
 from ba38_tresorerie import participation_bp
-from ba38_applications import applications_bp
+from ba38_admin import applications_bp
 from ba38_collecte import collecte_bp
-from ba38_routes_vif_comparaison import vif_bp
+from ba38_utilitaires import vif_bp
 
 
 
@@ -117,7 +117,7 @@ app.jinja_env.filters["date_fr"] = date_fr
 # 🔹 Injection menu global
 # =====================================================
 
-from utils import build_menu
+from ba38_utilitaires.core import build_menu
 
 @app.context_processor
 def inject_menu():
@@ -764,8 +764,8 @@ def reset_password(token):
 
 @app.route('/reset_password_request', methods=['GET', 'POST'])
 def reset_password_request():
-    from forms import RequestResetForm
-    from utils import send_reset_email
+    from ba38_utilitaires.forms import RequestResetForm
+    from ba38_utilitaires.core import send_reset_email
 
     form = RequestResetForm()
     if form.validate_on_submit():
@@ -870,7 +870,7 @@ def unset_test_user():
 # Route d'inscription publique (email ba380*@banquealimentaire.org requis)
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    from utils import send_verification_email
+    from ba38_utilitaires.core import send_verification_email
     write_log("🚀 Route /register appelée")
     form = RegistrationForm()
 
@@ -966,7 +966,7 @@ def get_real_ip():
     return request.remote_addr
 
 
-from utils import (
+from ba38_utilitaires.core import (
     get_real_ip,
     is_bad_user_agent,
     is_ip_blocked,
@@ -1143,7 +1143,7 @@ def login():
             session.pop("pre_2fa_user", None)
 
             # logs
-            from utils import write_connexion_log
+            from ba38_utilitaires.core import write_connexion_log
             write_connexion_log(user["id"], user["username"])
             log_connexion(user_obj, action="login")
 
@@ -1675,7 +1675,7 @@ def test_email_api():
     """Test d'envoi d'un email via l’API Mailjet avec affichage des valeurs lues"""
     import os
     import requests
-    from utils import write_log
+    from ba38_utilitaires.core import write_log
 
     api_key = os.getenv("MAILJET_API_KEY")
     api_secret = os.getenv("MAILJET_API_SECRET")

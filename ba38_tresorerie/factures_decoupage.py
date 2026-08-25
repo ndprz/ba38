@@ -8,7 +8,7 @@ from flask_login import login_required
 from pypdf import PdfReader, PdfWriter
 from pathlib import Path
 import re, os, unicodedata, zipfile, datetime, shutil
-from utils import get_static_factures_dir, write_log, require_access
+from ba38_utilitaires.core import get_static_factures_dir, write_log, require_access
 
 factures_bp = Blueprint('factures', __name__)
 

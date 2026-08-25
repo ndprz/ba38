@@ -3,7 +3,7 @@
 partie rédactionnelle (rôle des camions VX, verdicts, recommandation) via
 l'API Claude — en complément du prompt copiable existant, pas en remplacement."""
 import sqlite3
-from utils import get_db_path, write_log
+from ba38_utilitaires.core import get_db_path, write_log
 
 COLONNES = {
     "redaction_statut": "TEXT",

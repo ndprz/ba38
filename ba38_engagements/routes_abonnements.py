@@ -1,7 +1,7 @@
 from flask import render_template, request, redirect, url_for, flash, abort
 from flask_login import login_required
 
-from utils import get_db_path, write_log, require_access
+from ba38_utilitaires.core import get_db_path, write_log, require_access
 
 import sqlite3
 

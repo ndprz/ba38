@@ -7,7 +7,7 @@ import json
 
 from flask import Blueprint, render_template, render_template_string, request, redirect, url_for, flash
 from flask_login import login_required, current_user
-from utils import get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_multi_email, is_valid_phone, require_access, get_db_path
+from ba38_utilitaires.core import get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_multi_email, is_valid_phone, require_access, get_db_path
 from urllib.parse import urlencode
 from flask_wtf import FlaskForm
 from wtforms import HiddenField

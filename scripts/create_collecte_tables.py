@@ -3,7 +3,7 @@
 l'entrée correspondante dans la table applications (menu Exploitation, à
 droite de Plannings)."""
 import sqlite3
-from utils import get_db_path, write_log
+from ba38_utilitaires.core import get_db_path, write_log
 
 
 def main():

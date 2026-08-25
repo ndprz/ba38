@@ -9,7 +9,7 @@ from flask import (
 
 from flask_login import login_required
 
-from utils import (
+from ba38_utilitaires.core import (
     get_db_connection,
     require_admin_global,
     write_log

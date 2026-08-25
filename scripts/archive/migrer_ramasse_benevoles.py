@@ -7,7 +7,7 @@ os.environ["TEST_MODE"] = "0"  # 👈 Forcer la PROD
 sys.path.append('/home/ndprz/ba380')
 
 
-from utils import get_db_path, upload_database, write_log
+from ba38_utilitaires.core import get_db_path, upload_database, write_log
 
 import sqlite3
 

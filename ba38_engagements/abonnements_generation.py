@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import jwt
 
-from utils import get_db_path, write_log, envoyer_mail
+from ba38_utilitaires.core import get_db_path, write_log, envoyer_mail
 
 # ============================================================================
 # Configuration

@@ -20,7 +20,7 @@ from contextlib import closing
 def get_db_path_safe():
     try:
         sys.path.append("/home/ndprz/ba380")
-        from utils import get_db_path
+        from ba38_utilitaires.core import get_db_path
         return get_db_path()
     except Exception:
         return "/home/ndprz/ba380/ba380.sqlite"

@@ -21,7 +21,7 @@ import sqlite3
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from utils import write_log
+from ba38_utilitaires.core import write_log
 
 
 def log_and_print(msg: str):

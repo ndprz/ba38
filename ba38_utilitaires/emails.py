@@ -5,10 +5,10 @@ import os
 from datetime import datetime
 from functools import wraps
 from threading import Thread
-from utils import get_db_path, require_access, has_access, write_log, envoyer_mail, render_modele_email, get_templates_pdf_dir, copier_modele_email_vers_prod
-from utils_pdf_form import remplir_pdf_indicateurs
+from ba38_utilitaires.core import get_db_path, require_access, has_access, write_log, envoyer_mail, render_modele_email, get_templates_pdf_dir, copier_modele_email_vers_prod
+from ba38_utilitaires.pdf_form import remplir_pdf_indicateurs
 
-emails_bp = Blueprint("emails", __name__, template_folder="templates")
+emails_bp = Blueprint("emails", __name__)
 
 
 def require_access_modeles(niveau):

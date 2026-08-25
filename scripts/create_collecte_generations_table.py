@@ -3,7 +3,7 @@
 collecte_generations (une ligne par génération) — on veut pouvoir garder
 plusieurs versions par année, chacune avec ses propres paramètres."""
 import sqlite3
-from utils import get_db_path, write_log
+from ba38_utilitaires.core import get_db_path, write_log
 
 
 def main():
