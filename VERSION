@@ -1,3 +1,3 @@
-VERSION=1.4.77
-MESSAGE=Relance des factures de participation impayées (bouton Payé) + garde-fou email force vers adresse de test en environnement DEV
-DATE=2026-08-25 10:22
+VERSION=1.4.78
+MESSAGE=Relance participation : avertissement email manquant sur la 1ere page + fallback email association si absent sur la facture
+DATE=2026-08-25 10:55

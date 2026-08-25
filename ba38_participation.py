@@ -1026,6 +1026,23 @@ def renvoyer_gmail(facture_id):
 # ============================================================================
 # 🔔 RELANCE DES FACTURES IMPAYÉES
 # ============================================================================
+def _resoudre_lignes_email(rows):
+    """
+    Convertit les lignes SQL (jointes à associations) en dicts, et complète
+    l'email de la facture — capturé une fois au traitement PARSOL, donc
+    potentiellement obsolète si l'association n'avait pas encore d'email à
+    ce moment — par l'adresse actuelle de l'association si absent.
+    """
+    lignes = []
+    for row in rows:
+        d = dict(row)
+        assoc_email = d.pop("_assoc_tresorerie", None) or d.pop("_assoc_association", None)
+        if not d.get("email"):
+            d["email"] = assoc_email
+        lignes.append(d)
+    return lignes
+
+
 def envoyer_relances_participation_background(app, db_path, items, sujet_modele, corps_modele,
                                                numero_relance, annee, trimestre, mail_sender,
                                                mail_mode, mail_test_to):
@@ -1127,7 +1144,8 @@ def envoyer_relances_participation_background(app, db_path, items, sujet_modele,
                         relance_corps = ?,
                         relance_mail_erreur = NULL,
                         relance_mailjet_status = ?,
-                        relance_mailjet_message_ids = ?
+                        relance_mailjet_message_ids = ?,
+                        email = COALESCE(NULLIF(email, ''), ?)
                     WHERE id = ?
                 """, (
                     datetime.now().isoformat(timespec="seconds"),
@@ -1136,6 +1154,7 @@ def envoyer_relances_participation_background(app, db_path, items, sujet_modele,
                     texte_mail,
                     mj_status,
                     mj_ids,
+                    item["email"],
                     item["facture_id"]
                 ))
                 conn.commit()
@@ -1187,14 +1206,28 @@ def relance_start(campagne_id):
         return redirect(url_for("participation.selection"))
 
     lignes = conn.execute("""
-        SELECT * FROM participation_factures
-        WHERE campagne_id = ?
-          AND mail_envoye_le IS NOT NULL
-          AND date_paiement IS NULL
-        ORDER BY numero_facture
+        SELECT pf.*,
+               a.courriel_resp_tresorerie AS _assoc_tresorerie,
+               a.courriel_association AS _assoc_association
+        FROM participation_factures pf
+        LEFT JOIN associations a ON a.Id = pf.association_id
+        WHERE pf.campagne_id = ?
+          AND pf.mail_envoye_le IS NOT NULL
+          AND pf.date_paiement IS NULL
+        ORDER BY pf.numero_facture
     """, (campagne_id,)).fetchall()
 
     conn.close()
+
+    lignes = _resoudre_lignes_email(lignes)
+
+    sans_email = [l["nom_association"] for l in lignes if not l["email"]]
+    if sans_email:
+        flash(
+            f"⚠️ {len(sans_email)} association(s) sans adresse email, non relançable(s) : "
+            + ", ".join(sans_email),
+            "warning"
+        )
 
     return render_template(
         "tresorerie/participation/relance.html",
@@ -1249,17 +1282,30 @@ def relance(campagne_id):
         corps_modele = modele["corps"]
 
         lignes = conn.execute("""
-            SELECT *
-            FROM participation_factures
-            WHERE campagne_id = ?
-              AND mail_envoye_le IS NOT NULL
-              AND date_paiement IS NULL
-            ORDER BY numero_facture
+            SELECT pf.*,
+                   a.courriel_resp_tresorerie AS _assoc_tresorerie,
+                   a.courriel_association AS _assoc_association
+            FROM participation_factures pf
+            LEFT JOIN associations a ON a.Id = pf.association_id
+            WHERE pf.campagne_id = ?
+              AND pf.mail_envoye_le IS NOT NULL
+              AND pf.date_paiement IS NULL
+            ORDER BY pf.numero_facture
         """, (campagne_id,)).fetchall()
+
+        lignes = _resoudre_lignes_email(lignes)
 
         a_relancer = [l for l in lignes if (l["relance_niveau"] or 0) == numero_relance]
 
         total_relances = sum(float(l["montant_total"] or 0) for l in a_relancer)
+
+        sans_email = [l["nom_association"] for l in a_relancer if not l["email"]]
+        if sans_email:
+            flash(
+                f"⚠️ {len(sans_email)} association(s) sans adresse email, non relancée(s) : "
+                + ", ".join(sans_email),
+                "warning"
+            )
 
         if not a_relancer:
             conn.close()
