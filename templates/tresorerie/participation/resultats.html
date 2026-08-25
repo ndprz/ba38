@@ -23,6 +23,10 @@
                 </button>
             </form>
 
+            <a href="{{ url_for('participation.relance_start', campagne_id=campagne.id) }}" class="btn btn-outline-warning btn-sm">
+                🔔 Relancer les impayés
+            </a>
+
             <a href="{{ url_for('participation.traiter') }}?annee={{ campagne.annee }}&trimestre={{ campagne.trimestre }}" class="btn btn-outline-danger btn-sm">
                 📤 Retraiter un nouveau fichier
             </a>
@@ -119,6 +123,7 @@
                     <th class="sortable" data-type="text" onclick="sortTable(2, this)" style="cursor:pointer;">Code VIF ↕</th>
                     <th>Email</th>
                     <th class="sortable" data-type="num" onclick="sortTable(4, this)" style="cursor:pointer;">Montant ↕</th>
+                    <th>Payé</th>
                     <th>PDF</th>
                     <th>Mail envoyé</th>
                     <th>Statut Mailjet</th>
@@ -134,6 +139,13 @@
                     <td class="small">{{ f.code_vif }}</td>
                     <td class="small">{{ f.email or '—' }}</td>
                     <td class="small text-end">{{ "%.2f"|format(f.montant_total or 0) }} €</td>
+                    <td class="small text-center align-middle">
+                        {% if f.date_paiement %}
+                        <button type="button" class="btn btn-sm btn-success btn-paye" data-facture-id="{{ f.id }}" title="Marquer impayée">✅ Payé</button>
+                        {% else %}
+                        <button type="button" class="btn btn-sm btn-outline-secondary btn-paye" data-facture-id="{{ f.id }}" title="Marquer payée">⬜ Marquer payé</button>
+                        {% endif %}
+                    </td>
                     <td class="small text-center align-middle">
                         <a href="{{ url_for('participation.voir_pdf', facture_id=f.id) }}" target="_blank">👁️ Voir</a>
                     </td>
@@ -218,6 +230,31 @@
 </div>
 
 <script>
+    document.querySelectorAll(".btn-paye").forEach(btn => {
+        btn.addEventListener("click", function () {
+            const factureId = this.dataset.factureId;
+            fetch(`/participation/toggle_paye/${factureId}`, {
+                method: "POST",
+                headers: { "X-CSRFToken": "{{ csrf_token() }}", "Content-Type": "application/json" }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.date_paiement) {
+                    this.classList.remove("btn-outline-secondary");
+                    this.classList.add("btn-success");
+                    this.textContent = "✅ Payé";
+                    this.title = "Marquer impayée";
+                } else {
+                    this.classList.remove("btn-success");
+                    this.classList.add("btn-outline-secondary");
+                    this.textContent = "⬜ Marquer payé";
+                    this.title = "Marquer payée";
+                }
+                this.closest("tr").classList.toggle("table-secondary", !!data.date_paiement);
+            });
+        });
+    });
+
     function sortTable(colIndex, th) {
         const table = document.getElementById("tableFactures");
         const tbody = table.tBodies[0];

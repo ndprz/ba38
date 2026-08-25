@@ -910,6 +910,15 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
     mail_test_to = os.getenv("MAIL_TEST_TO")
 
     # -----------------------------
+    # 🔒 Garde-fou DEV : quel que soit le mode TEST/PROD applicatif
+    # (session, compte test_only...), l'instance DEV ne doit jamais faire
+    # partir un mail vers un vrai destinataire ni vers une copie (bcc)
+    # comptabilité — tout est forcé vers une adresse de test unique.
+    # Priment sur toute autre logique de redirection ci-dessous.
+    # -----------------------------
+    is_dev = os.getenv("ENVIRONMENT", "").upper() == "DEV"
+
+    # -----------------------------
     # Mode TEST (session utilisateur) → priorité sur MAIL_MODE
     # Redirige vers l'email de l'utilisateur connecté plutôt qu'une
     # adresse fixe, pour permettre de tester en toute sécurité
@@ -920,7 +929,12 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
     if has_request_context():
         session_test_mode = bool(session.get("test_user"))
 
-    if session_test_mode:
+    if is_dev:
+        sujet = f"🧪 [DEV] {sujet}"
+        destinataires = [mail_test_to or "ba380.informatique2@banquealimentaire.org"]
+        bcc = None
+
+    elif session_test_mode:
         sujet = f"[TEST] {sujet}"
         repli = current_user.email if (current_user and current_user.is_authenticated) else mail_test_to
         destinataires = [repli] if repli else []

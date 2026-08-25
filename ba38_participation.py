@@ -499,6 +499,42 @@ def envoyer_participation_background(app, db_path, campagne_id, items, mail_mode
 
 
 # ============================================================================
+# 💳 PAIEMENT — TOGGLE "PAYÉ"
+# ============================================================================
+@participation_bp.route("/participation/toggle_paye/<int:facture_id>", methods=["POST"])
+@login_required
+@require_access("tresorerie", "ecriture")
+def toggle_paye(facture_id):
+    """
+    Bascule le statut payé/impayé en AJAX (pas de redirect) : la liste peut
+    être longue, on évite de faire remonter la page en haut à chaque clic.
+    """
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+
+    f = conn.execute(
+        "SELECT date_paiement FROM participation_factures WHERE id = ?",
+        (facture_id,)
+    ).fetchone()
+
+    if not f:
+        conn.close()
+        return jsonify({"error": "introuvable"}), 404
+
+    nouveau = None if f["date_paiement"] else datetime.now().strftime("%Y-%m-%d")
+
+    conn.execute(
+        "UPDATE participation_factures SET date_paiement = ? WHERE id = ?",
+        (nouveau, facture_id)
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({"date_paiement": nouveau})
+
+
+# ============================================================================
 # 📅 SÉLECTION DU TRIMESTRE
 # ============================================================================
 @participation_bp.route("/participation")
@@ -985,3 +1021,449 @@ def renvoyer_gmail(facture_id):
             os.remove(pdf_path)
 
     return redirect(url_for("participation.resultats", campagne_id=f["campagne_id"]))
+
+
+# ============================================================================
+# 🔔 RELANCE DES FACTURES IMPAYÉES
+# ============================================================================
+def envoyer_relances_participation_background(app, db_path, items, sujet_modele, corps_modele,
+                                               numero_relance, annee, trimestre, mail_sender,
+                                               mail_mode, mail_test_to):
+    """
+    Envoi des relances de participation en arrière-plan (Thread).
+
+    Reproduit le dispositif déjà en place pour les relances cotisations
+    (ba38_tresorerie.py::envoyer_relances_background), avec une différence :
+    ici le PDF n'est pas cherché sur Drive, il est régénéré à la demande et
+    joint en pièce attachée (même mécanisme que envoyer_participation_background).
+    """
+    with app.app_context():
+
+        nb_mails = 0
+        nb_erreurs = 0
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+
+        lignes_traitement = items
+        if mail_mode == "TEST":
+            lignes_traitement = items[:2]
+
+        for item in lignes_traitement:
+
+            pdf_path = f"/tmp/participation_relance_{item['facture_id']}.pdf"
+
+            try:
+                sujet = sujet_modele.format(
+                    numero_relance=numero_relance + 1,
+                    annee=annee,
+                    trimestre=trimestre,
+                )
+
+                texte_mail = corps_modele.format(
+                    numero_relance=numero_relance + 1,
+                    annee=annee,
+                    trimestre=trimestre,
+                    nom_association=item["nom_association"],
+                    montant="{:.2f}".format(item["montant_total"] or 0)
+                )
+
+                if mail_mode == "TEST":
+                    destinataire = [mail_test_to]
+                    sujet_envoi = f"🧪 [TEST] {sujet}"
+                else:
+                    destinataire = split_emails(item["email"])
+                    if not destinataire:
+                        raise ValueError(
+                            f"Aucune adresse email valide pour {item['nom_association']}"
+                        )
+                    sujet_envoi = sujet
+
+                assoc = conn.execute(
+                    "SELECT * FROM associations WHERE Id = ?", (item["association_id"],)
+                ).fetchone()
+
+                adresse = "\n".join(filter(None, [
+                    assoc["adresse_association_1"] if assoc else "",
+                    assoc["adresse_association_2"] if assoc else "",
+                    " ".join(filter(None, [assoc["CP"], assoc["COMMUNE"]])) if assoc else "",
+                ]))
+
+                data_pdf = {
+                    "nom_association": item["nom_association"],
+                    "contact": (assoc["responsable_tresorerie"] if assoc else "") or "",
+                    "adresse": adresse,
+                    "email": item["email"],
+                    "numero_facture": item["numero_facture"],
+                    "lignes": json.loads(item["detail_json"]) if item["detail_json"] else [],
+                    "montant_total": item["montant_total"],
+                }
+
+                generer_facture_participation_pdf(data_pdf, pdf_path)
+
+                resultat = envoyer_mail(
+                    sujet=sujet_envoi,
+                    destinataires=destinataire,
+                    texte=texte_mail,
+                    sender_override=mail_sender,
+                    attachment_path=pdf_path,
+                    bcc=[mail_sender]
+                )
+
+                mj_status, mj_ids = None, None
+                if resultat and resultat.get("Messages"):
+                    mj_message = resultat["Messages"][0]
+                    mj_status = mj_message.get("Status")
+                    mj_ids = ",".join(
+                        str(t["MessageID"]) for t in mj_message.get("To", []) if "MessageID" in t
+                    ) or None
+
+                conn.execute("""
+                    UPDATE participation_factures
+                    SET relance_niveau = COALESCE(relance_niveau,0)+1,
+                        date_derniere_relance = ?,
+                        mode_test_relance = ?,
+                        relance_sujet = ?,
+                        relance_corps = ?,
+                        relance_mail_erreur = NULL,
+                        relance_mailjet_status = ?,
+                        relance_mailjet_message_ids = ?
+                    WHERE id = ?
+                """, (
+                    datetime.now().isoformat(timespec="seconds"),
+                    1 if mail_mode == "TEST" else 0,
+                    sujet_envoi,
+                    texte_mail,
+                    mj_status,
+                    mj_ids,
+                    item["facture_id"]
+                ))
+                conn.commit()
+
+                nb_mails += 1
+
+            except Exception as e:
+                write_log(f"❌ Erreur relance participation (facture_id={item['facture_id']}) : {e}")
+                nb_erreurs += 1
+                conn.execute("""
+                    UPDATE participation_factures
+                    SET relance_mail_erreur = ?
+                    WHERE id = ?
+                """, (str(e), item["facture_id"]))
+                conn.commit()
+
+            finally:
+                if os.path.exists(pdf_path):
+                    os.remove(pdf_path)
+
+        conn.close()
+
+        write_log(
+            f"📤 Relances participation T{trimestre} {annee} (arrière-plan) terminées : "
+            f"{nb_mails} envoyée(s), {nb_erreurs} erreur(s)."
+        )
+
+
+@participation_bp.route("/participation/relance/<int:campagne_id>", methods=["GET"])
+@login_required
+@require_access("tresorerie", "ecriture")
+def relance_start(campagne_id):
+
+    mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
+    mail_test_to = os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org")
+    mail_sender = request.args.get("mail_sender", "ba380.comptable@banquealimentaire.org")
+    numero_relance = int(request.args.get("numero_relance", 0))
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+
+    campagne = conn.execute(
+        "SELECT * FROM participation_campagnes WHERE id = ?", (campagne_id,)
+    ).fetchone()
+
+    if not campagne:
+        conn.close()
+        flash("❌ Campagne introuvable", "danger")
+        return redirect(url_for("participation.selection"))
+
+    lignes = conn.execute("""
+        SELECT * FROM participation_factures
+        WHERE campagne_id = ?
+          AND mail_envoye_le IS NOT NULL
+          AND date_paiement IS NULL
+        ORDER BY numero_facture
+    """, (campagne_id,)).fetchall()
+
+    conn.close()
+
+    return render_template(
+        "tresorerie/participation/relance.html",
+        campagne=campagne,
+        mail_mode=mail_mode,
+        mail_test_to=mail_test_to,
+        mail_sender=mail_sender,
+        numero_relance=numero_relance,
+        lignes=lignes,
+        preview=False
+    )
+
+
+@participation_bp.route("/participation/relance/<int:campagne_id>", methods=["POST"])
+@login_required
+@require_access("tresorerie", "ecriture")
+def relance(campagne_id):
+
+    try:
+        numero_relance = int(request.form.get("numero_relance"))
+        confirm_envoi = request.form.get("confirm_envoi")
+        confirm_production = request.form.get("confirm_production")
+
+        mail_sender = request.form.get("mail_sender", "ba380.comptable@banquealimentaire.org")
+        mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
+        mail_test_to = os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org")
+
+        conn = sqlite3.connect(get_db_path())
+        conn.row_factory = sqlite3.Row
+
+        campagne = conn.execute(
+            "SELECT * FROM participation_campagnes WHERE id = ?", (campagne_id,)
+        ).fetchone()
+
+        if not campagne:
+            conn.close()
+            flash("❌ Campagne introuvable", "danger")
+            return redirect(url_for("participation.selection"))
+
+        code_modele = f"PARTICIPATION Relance {numero_relance + 1}"
+
+        modele = conn.execute("""
+            SELECT sujet, corps FROM modeles_emails WHERE code_modele = ? LIMIT 1
+        """, (code_modele,)).fetchone()
+
+        if not modele:
+            conn.close()
+            flash(f"❌ Modèle '{code_modele}' introuvable.", "danger")
+            return redirect(url_for("participation.relance_start", campagne_id=campagne_id))
+
+        sujet_modele = modele["sujet"]
+        corps_modele = modele["corps"]
+
+        lignes = conn.execute("""
+            SELECT *
+            FROM participation_factures
+            WHERE campagne_id = ?
+              AND mail_envoye_le IS NOT NULL
+              AND date_paiement IS NULL
+            ORDER BY numero_facture
+        """, (campagne_id,)).fetchall()
+
+        a_relancer = [l for l in lignes if (l["relance_niveau"] or 0) == numero_relance]
+
+        total_relances = sum(float(l["montant_total"] or 0) for l in a_relancer)
+
+        if not a_relancer:
+            conn.close()
+            return render_template(
+                "tresorerie/participation/relance.html",
+                campagne=campagne,
+                mail_mode=mail_mode,
+                mail_test_to=mail_test_to,
+                mail_sender=mail_sender,
+                numero_relance=numero_relance,
+                lignes=[],
+                preview=False,
+                total_relances=0
+            )
+
+        if not confirm_envoi:
+            conn.close()
+            return render_template(
+                "tresorerie/participation/relance.html",
+                campagne=campagne,
+                mail_mode=mail_mode,
+                mail_test_to=mail_test_to,
+                mail_sender=mail_sender,
+                numero_relance=numero_relance,
+                lignes=a_relancer,
+                preview=True,
+                total_relances=total_relances
+            )
+
+        if mail_mode == "PROD" and not confirm_production:
+            conn.close()
+            flash("⚠ Confirmation obligatoire en PRODUCTION.", "danger")
+            return redirect(url_for("participation.relance_start", campagne_id=campagne_id))
+
+        conn.close()
+
+        items = [
+            {
+                "facture_id": l["id"],
+                "association_id": l["association_id"],
+                "nom_association": l["nom_association"],
+                "numero_facture": l["numero_facture"],
+                "montant_total": l["montant_total"],
+                "detail_json": l["detail_json"],
+                "email": l["email"],
+            }
+            for l in a_relancer
+            if l["email"]
+        ]
+
+        if not items:
+            flash("❌ Aucune association avec une adresse email valide à relancer.", "danger")
+            return redirect(url_for("participation.relance_start", campagne_id=campagne_id))
+
+        app_reel = current_app._get_current_object()
+        db_path = get_db_path()
+
+        Thread(
+            target=envoyer_relances_participation_background,
+            args=(app_reel, db_path, items, sujet_modele, corps_modele,
+                  numero_relance, campagne["annee"], campagne["trimestre"],
+                  mail_sender, mail_mode, mail_test_to)
+        ).start()
+
+        if mail_mode == "TEST":
+            flash("🧪 Envoi TEST des relances lancé en arrière-plan (2 mails max vers l'adresse de test).", "warning")
+        else:
+            flash(f"🚀 Envoi des relances lancé en arrière-plan pour {len(items)} association(s).", "info")
+
+        return redirect(url_for("participation.relance_start", campagne_id=campagne_id))
+
+    except Exception:
+        current_app.logger.exception("Erreur relance participation")
+        flash("Erreur lors des relances.", "danger")
+        return redirect(url_for("participation.relance_start", campagne_id=campagne_id))
+
+
+@participation_bp.route("/participation/relance/<int:campagne_id>/verifier_statut_mailjet", methods=["POST"])
+@login_required
+@require_access("tresorerie", "ecriture")
+def relance_verifier_statut_mailjet(campagne_id):
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+
+    lignes = conn.execute("""
+        SELECT id, relance_mailjet_message_ids
+        FROM participation_factures
+        WHERE campagne_id = ?
+          AND relance_mailjet_message_ids IS NOT NULL
+          AND relance_mailjet_message_ids != ''
+    """, (campagne_id,)).fetchall()
+
+    counts = {}
+    verifies = 0
+
+    for ligne in lignes:
+        premier_id = ligne["relance_mailjet_message_ids"].split(",")[0]
+        statut = mailjet_get_message_status(premier_id)
+
+        if not statut:
+            continue
+
+        verifies += 1
+        counts[statut] = counts.get(statut, 0) + 1
+
+        conn.execute("""
+            UPDATE participation_factures
+            SET relance_statut_final = ?, relance_statut_verifie_le = ?
+            WHERE id = ?
+        """, (statut, datetime.now().isoformat(timespec="seconds"), ligne["id"]))
+
+    conn.commit()
+    conn.close()
+
+    if verifies:
+        detail = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
+        flash(f"🔄 Statut Mailjet vérifié pour {verifies} mail(s) : {detail}", "info")
+    else:
+        flash("ℹ️ Aucun mail avec un identifiant Mailjet à vérifier pour cette campagne.", "warning")
+
+    return redirect(url_for("participation.relance_start", campagne_id=campagne_id))
+
+
+@participation_bp.route("/participation/relance/renvoyer_gmail/<int:facture_id>", methods=["POST"])
+@login_required
+@require_access("tresorerie", "ecriture")
+def relance_renvoyer_gmail(facture_id):
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+
+    f = conn.execute("SELECT * FROM participation_factures WHERE id = ?", (facture_id,)).fetchone()
+
+    if not f:
+        conn.close()
+        flash("❌ Ligne introuvable", "danger")
+        return redirect(url_for("participation.selection"))
+
+    destinataires = split_emails(f["email"])
+    if not destinataires:
+        conn.close()
+        flash(f"❌ Aucune adresse email valide pour {f['nom_association']}", "danger")
+        return redirect(url_for("participation.relance_start", campagne_id=f["campagne_id"]))
+
+    if not f["relance_sujet"] or not f["relance_corps"]:
+        conn.close()
+        flash(f"⛔ Aucune relance précédente connue pour {f['nom_association']} — envoyez d'abord une relance.", "danger")
+        return redirect(url_for("participation.relance_start", campagne_id=f["campagne_id"]))
+
+    if f["mode_test_relance"]:
+        conn.close()
+        flash(f"⛔ La dernière relance pour {f['nom_association']} était en Mode TEST — un renvoi Gmail partirait, lui, pour de vrai. Refaites d'abord une relance réelle.", "danger")
+        return redirect(url_for("participation.relance_start", campagne_id=f["campagne_id"]))
+
+    assoc = None
+    if f["association_id"]:
+        assoc = conn.execute("SELECT * FROM associations WHERE Id = ?", (f["association_id"],)).fetchone()
+
+    conn.close()
+
+    adresse = "\n".join(filter(None, [
+        assoc["adresse_association_1"] if assoc else "",
+        assoc["adresse_association_2"] if assoc else "",
+        " ".join(filter(None, [assoc["CP"], assoc["COMMUNE"]])) if assoc else "",
+    ]))
+
+    data_pdf = {
+        "nom_association": f["nom_association"],
+        "contact": (assoc["responsable_tresorerie"] if assoc else "") or "",
+        "adresse": adresse,
+        "email": f["email"],
+        "numero_facture": f["numero_facture"],
+        "lignes": json.loads(f["detail_json"]) if f["detail_json"] else [],
+        "montant_total": f["montant_total"] or 0,
+    }
+
+    pdf_path = f"/tmp/participation_relance_gmail_{facture_id}.pdf"
+    generer_facture_participation_pdf(data_pdf, pdf_path)
+
+    conn = sqlite3.connect(get_db_path())
+
+    try:
+        envoyer_mail_gmail(
+            sujet=f["relance_sujet"],
+            destinataires=destinataires,
+            texte=f["relance_corps"],
+            attachment_path=pdf_path
+        )
+
+        conn.execute("""
+            UPDATE participation_factures SET relance_renvoi_gmail_le = ? WHERE id = ?
+        """, (datetime.now().isoformat(timespec="seconds"), facture_id))
+        conn.commit()
+
+        flash(f"📧 Relance renvoyée via Gmail à {f['email']} pour {f['nom_association']}", "success")
+
+    except GmailSendError as e:
+        write_log(f"❌ Erreur renvoi Gmail relance participation pour {f['nom_association']} : {e}")
+        flash(f"❌ Échec du renvoi via Gmail : {e}", "danger")
+
+    finally:
+        conn.close()
+        if os.path.exists(pdf_path):
+            os.remove(pdf_path)
+
+    return redirect(url_for("participation.relance_start", campagne_id=f["campagne_id"]))

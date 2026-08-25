@@ -88,7 +88,22 @@ def ensure_tables(conn):
     """)
 
     factures_cols = table_columns(conn, "participation_factures")
-    for col, decl in [("sujet", "TEXT"), ("corps", "TEXT")]:
+    for col, decl in [
+        ("sujet", "TEXT"),
+        ("corps", "TEXT"),
+        ("date_paiement", "TEXT"),
+        ("relance_niveau", "INTEGER DEFAULT 0"),
+        ("date_derniere_relance", "TEXT"),
+        ("mode_test_relance", "INTEGER DEFAULT 0"),
+        ("relance_sujet", "TEXT"),
+        ("relance_corps", "TEXT"),
+        ("relance_mail_erreur", "TEXT"),
+        ("relance_mailjet_status", "TEXT"),
+        ("relance_mailjet_message_ids", "TEXT"),
+        ("relance_statut_final", "TEXT"),
+        ("relance_statut_verifie_le", "TEXT"),
+        ("relance_renvoi_gmail_le", "TEXT"),
+    ]:
         if col not in factures_cols:
             conn.execute(f"ALTER TABLE participation_factures ADD COLUMN {col} {decl}")
             print(f"✓ participation_factures : colonne ajoutée : {col}")
@@ -103,6 +118,56 @@ def ensure_tables(conn):
     )
 
     print("✓ Tables participation_campagnes / participation_factures prêtes.")
+
+
+def ensure_modeles_relance(conn):
+    """Seed idempotent des modèles email de relance participation."""
+    modeles = [
+        (
+            "PARTICIPATION Relance 1",
+            "Rappel {numero_relance} – Participation de solidarité T{trimestre} {annee}",
+            "Bonjour,\n\n"
+            "Nous n'avons pas encore reçu le règlement de votre facture de "
+            "participation de solidarité pour le T{trimestre} {annee}, "
+            "d'un montant de {montant} €.\n\n"
+            "Vous trouverez la facture en pièce jointe.\n\n"
+            "Merci de bien vouloir procéder au règlement dans les meilleurs délais.\n\n"
+            "Cordialement,\nLa Banque Alimentaire de l'Isère",
+        ),
+        (
+            "PARTICIPATION Relance 2",
+            "Relance {numero_relance} – Participation de solidarité T{trimestre} {annee}",
+            "Bonjour,\n\n"
+            "Malgré notre précédent message, nous n'avons toujours pas reçu le "
+            "règlement de votre facture de participation de solidarité pour le "
+            "T{trimestre} {annee}, d'un montant de {montant} €.\n\n"
+            "Vous trouverez la facture en pièce jointe.\n\n"
+            "Merci de bien vouloir régulariser rapidement cette situation.\n\n"
+            "Cordialement,\nLa Banque Alimentaire de l'Isère",
+        ),
+        (
+            "PARTICIPATION Relance 3",
+            "Relance {numero_relance} – Participation de solidarité T{trimestre} {annee}",
+            "Bonjour,\n\n"
+            "Sans nouvelle de votre part malgré nos précédentes relances, le "
+            "règlement de votre facture de participation de solidarité pour le "
+            "T{trimestre} {annee} ({montant} €) reste en attente.\n\n"
+            "Vous trouverez la facture en pièce jointe.\n\n"
+            "Merci de procéder au règlement dans les plus brefs délais.\n\n"
+            "Cordialement,\nLa Banque Alimentaire de l'Isère",
+        ),
+    ]
+
+    for code_modele, sujet, corps in modeles:
+        existe = conn.execute(
+            "SELECT 1 FROM modeles_emails WHERE code_modele = ?", (code_modele,)
+        ).fetchone()
+        if not existe:
+            conn.execute(
+                "INSERT INTO modeles_emails (code_modele, sujet, corps) VALUES (?, ?, ?)",
+                (code_modele, sujet, corps),
+            )
+            print(f"✓ modeles_emails : modèle créé : {code_modele}")
 
 
 def main():
@@ -127,6 +192,7 @@ def main():
 
     with closing(sqlite3.connect(db_path)) as conn:
         ensure_tables(conn)
+        ensure_modeles_relance(conn)
         conn.commit()
 
     print("✓ Migration terminée.")

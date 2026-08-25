@@ -60,6 +60,14 @@ def envoyer_mail_gmail(sujet, destinataires, texte, attachment_path=None,
     """
     service = _get_gmail_service()
 
+    # 🔒 Garde-fou DEV : cette fonction contourne Mailjet (donc le garde-fou
+    # déjà en place dans utils.py::envoyer_mail) — sur l'instance DEV, on
+    # force donc ici aussi l'envoi vers une adresse de test unique, jamais
+    # vers un vrai destinataire.
+    if os.getenv("ENVIRONMENT", "").upper() == "DEV":
+        sujet = f"🧪 [DEV] {sujet}"
+        destinataires = [os.getenv("MAIL_TEST_TO") or "ba380.informatique2@banquealimentaire.org"]
+
     message = MIMEMultipart()
     message["To"] = ", ".join(destinataires)
     message["From"] = sender
