@@ -87,7 +87,7 @@ from ba38_engagements import engagements_bp
 from ba38_droit_image import droit_image_bp
 from ba38_indicateurs import indicateurs_bp
 from ba38_emails import emails_bp
-from ba38_participation import participation_bp
+from ba38_tresorerie import participation_bp
 from ba38_applications import applications_bp
 from ba38_collecte import collecte_bp
 from ba38_routes_vif_comparaison import vif_bp

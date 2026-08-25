@@ -31,13 +31,9 @@ from pathlib import Path
 
 from utils import get_db_path, require_access, write_log, envoyer_mail, render_modele_email, mailjet_get_message_status, split_emails
 from utils_gmail_send import envoyer_mail_gmail, GmailSendError
-from ba38_tresorerie import BAI_NOM, BAI_ADRESSE, BAI_TEL, BAI_MAIL, BAI_IBAN, BAI_BIC
+from ba38_tresorerie.constants import BAI_NOM, BAI_ADRESSE, BAI_TEL, BAI_MAIL, BAI_IBAN, BAI_BIC
 
-participation_bp = Blueprint(
-    "participation",
-    __name__,
-    template_folder="templates/tresorerie/participation"
-)
+participation_bp = Blueprint("participation", __name__)
 
 # Constantes propres à la facture "participation" : SIRET/RNA différents de
 # ceux utilisés pour les cotisations (BAI_SIREN/BAI_NAF dans
