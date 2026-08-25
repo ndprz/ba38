@@ -195,7 +195,7 @@
             {% endif %}
           </td>
           <td>
-            <button type="button" class="btn btn-sm btn-outline-secondary btn-paye" data-facture-id="{{ row.id }}">⬜ Marquer payé</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary btn-paye" data-facture-id="{{ row.id }}" title="Marquer payée">⬜</button>
           </td>
           {% if not preview %}
           <td>
@@ -262,12 +262,12 @@
                 if (data.date_paiement) {
                     this.classList.remove("btn-outline-secondary");
                     this.classList.add("btn-success");
-                    this.textContent = "✅ Payé";
+                    this.textContent = "✅";
                     this.title = "Marquer impayée";
                 } else {
                     this.classList.remove("btn-success");
                     this.classList.add("btn-outline-secondary");
-                    this.textContent = "⬜ Marquer payé";
+                    this.textContent = "⬜";
                     this.title = "Marquer payée";
                 }
                 this.closest("tr").classList.toggle("table-secondary", !!data.date_paiement);

@@ -647,7 +647,9 @@ def traiter():
         conn.execute("DELETE FROM participation_factures WHERE campagne_id = ?", (campagne_id,))
         conn.execute("""
             UPDATE participation_campagnes
-            SET fichier_source = ?, numero_facture_depart = ?, date_creation = ?, cree_par = ?
+            SET fichier_source = ?, numero_facture_depart = ?, date_creation = ?, cree_par = ?,
+                dernier_envoi_le = NULL, dernier_envoi_par = NULL, dernier_envoi_mode_test = 0,
+                dernier_envoi_nb_ok = NULL, dernier_envoi_nb_erreur = NULL
             WHERE id = ?
         """, (secure_filename(fichier.filename) if fichier.filename else "parsol.txt",
               numero_facture_depart, datetime.now().isoformat(timespec="seconds"), current_user.email,

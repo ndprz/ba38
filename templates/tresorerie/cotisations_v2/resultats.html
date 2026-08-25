@@ -34,6 +34,10 @@
                 🔔 Relancer les impayés
             </a>
 
+            <a href="{{ url_for('tresorerie.cotisations_v2_export_excel', campagne_id=campagne.id) }}" class="btn btn-outline-success btn-sm">
+                📊 Export Excel
+            </a>
+
             <a href="{{ url_for('tresorerie.cotisations_v2_traiter') }}?annee={{ campagne.annee }}" class="btn btn-outline-danger btn-sm">
                 📤 Retraiter un nouveau fichier
             </a>
@@ -126,7 +130,7 @@
             <thead>
                 <tr>
                     <th class="sortable" data-type="num" onclick="sortTable(0, this)" style="cursor:pointer;">N° facture ↕</th>
-                    <th class="sortable" data-type="text" onclick="sortTable(1, this)" style="cursor:pointer;">Association ↕</th>
+                    <th class="sortable col-association" data-type="text" onclick="sortTable(1, this)" style="cursor:pointer;">Association ↕</th>
                     <th class="sortable" data-type="text" onclick="sortTable(2, this)" style="cursor:pointer;">Code VIF ↕</th>
                     <th>Email</th>
                     <th class="sortable" data-type="num" onclick="sortTable(4, this)" style="cursor:pointer;">Bénéficiaires ↕</th>
@@ -143,16 +147,16 @@
                 {% for f in factures %}
                 <tr>
                     <td>{{ f.numero_facture }}</td>
-                    <td>{{ f.nom_association_affichage or f.nom_association }}</td>
+                    <td class="col-association">{{ f.nom_association_affichage or f.nom_association }}</td>
                     <td class="small">{{ f.code_vif }}</td>
                     <td class="small">{{ f.email or '—' }}</td>
                     <td class="small text-end">{{ f.beneficiaires }}</td>
                     <td class="small text-end">{{ "%.2f"|format(f.montant or 0) }} €</td>
                     <td class="small text-center align-middle">
                         {% if f.date_paiement %}
-                        <button type="button" class="btn btn-sm btn-success btn-paye" data-facture-id="{{ f.id }}" title="Marquer impayée">✅ Payé</button>
+                        <button type="button" class="btn btn-sm btn-success btn-paye" data-facture-id="{{ f.id }}" title="Marquer impayée">✅</button>
                         {% else %}
-                        <button type="button" class="btn btn-sm btn-outline-secondary btn-paye" data-facture-id="{{ f.id }}" title="Marquer payée">⬜ Marquer payé</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary btn-paye" data-facture-id="{{ f.id }}" title="Marquer payée">⬜</button>
                         {% endif %}
                     </td>
                     <td class="small text-center align-middle">
@@ -286,12 +290,12 @@
                 if (data.date_paiement) {
                     this.classList.remove("btn-outline-secondary");
                     this.classList.add("btn-success");
-                    this.textContent = "✅ Payé";
+                    this.textContent = "✅";
                     this.title = "Marquer impayée";
                 } else {
                     this.classList.remove("btn-success");
                     this.classList.add("btn-outline-secondary");
-                    this.textContent = "⬜ Marquer payé";
+                    this.textContent = "⬜";
                     this.title = "Marquer payée";
                 }
                 this.closest("tr").classList.toggle("table-secondary", !!data.date_paiement);
@@ -325,5 +329,17 @@
         rows.forEach(row => tbody.appendChild(row));
     }
 </script>
+
+<style>
+    /* Les noms d'association regroupées ("A / B / C") peuvent être très
+       longs — sans ça, ils poussent toute la table vers la droite et
+       masquent les colonnes Mail envoyé / Statut Mailjet / Gmail sans
+       qu'on s'en rende compte (nécessite un défilement horizontal peu
+       visible dans .table-container-fixe). */
+    #tableFactures .col-association {
+        white-space: normal;
+        max-width: 260px;
+    }
+</style>
 
 {% endblock %}

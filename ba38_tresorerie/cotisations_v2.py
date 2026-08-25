@@ -1,4 +1,5 @@
 import os
+import io
 import json
 import sqlite3
 import tempfile
@@ -419,7 +420,9 @@ def cotisations_v2_traiter():
         conn.execute("DELETE FROM cotisations_v2_factures WHERE campagne_id = ?", (campagne_id,))
         conn.execute("""
             UPDATE cotisations_v2_campagnes
-            SET fichier_source = ?, numero_facture_depart = ?, date_creation = ?, cree_par = ?
+            SET fichier_source = ?, numero_facture_depart = ?, date_creation = ?, cree_par = ?,
+                dernier_envoi_le = NULL, dernier_envoi_par = NULL, dernier_envoi_mode_test = 0,
+                dernier_envoi_nb_ok = NULL, dernier_envoi_nb_erreur = NULL
             WHERE id = ?
         """, (secure_filename(fichier.filename) if fichier.filename else "parsol2l_annuel.txt",
               numero_facture_depart, datetime.now().isoformat(timespec="seconds"), current_user.email,
@@ -539,6 +542,57 @@ def cotisations_v2_resultats(campagne_id):
         mail_mode=mail_mode,
         mail_test_to=mail_test_to,
         montant_total_campagne=montant_total_campagne
+    )
+
+
+# ============================================================================
+# 📊 EXPORT EXCEL
+# ============================================================================
+@tresorerie_bp.route("/cotisations_v2/export_excel/<int:campagne_id>")
+@login_required
+@require_access("tresorerie", "ecriture")
+def cotisations_v2_export_excel(campagne_id):
+
+    import pandas as pd
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+
+    campagne = conn.execute("SELECT * FROM cotisations_v2_campagnes WHERE id = ?", (campagne_id,)).fetchone()
+
+    if not campagne:
+        conn.close()
+        flash("❌ Campagne introuvable", "danger")
+        return redirect(url_for("tresorerie.cotisations_v2_selection"))
+
+    df = pd.read_sql_query("""
+        SELECT
+            numero_facture AS "N° facture",
+            code_vif AS "Code VIF",
+            COALESCE(nom_association_affichage, nom_association) AS "Association",
+            email AS "Email",
+            beneficiaires AS "Bénéficiaires",
+            montant AS "Montant",
+            CASE WHEN date_paiement IS NOT NULL THEN 'Payé' ELSE 'Impayé' END AS "Statut paiement",
+            date_paiement AS "Date paiement",
+            mail_envoye_le AS "Mail envoyé le",
+            relance_niveau AS "Niveau de relance"
+        FROM cotisations_v2_factures
+        WHERE campagne_id = ? AND association_id IS NOT NULL
+        ORDER BY numero_facture
+    """, conn, params=(campagne_id,))
+
+    conn.close()
+
+    output = io.BytesIO()
+    df.to_excel(output, index=False)
+    output.seek(0)
+
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=f"cotisations_v2_{campagne['annee']}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
 
