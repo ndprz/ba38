@@ -3,7 +3,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from utils import get_db_connection, upload_database, write_log, require_access
-from ba38_planning_utils import get_lundi_de_la_semaine, get_benevole_infos, get_nom, get_absents_par_jour, parse_numero_semaine, get_type_benevole_options
+from ba38_planning.utils import get_lundi_de_la_semaine, get_benevole_infos, get_nom, get_absents_par_jour, parse_numero_semaine, get_type_benevole_options
 from datetime import datetime, timedelta
 from collections import defaultdict
 

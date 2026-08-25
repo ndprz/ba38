@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 from flask_login import login_required
 from utils import get_db_connection, upload_database, write_log, require_access
-from ba38_planning_utils import get_nom_tournee, get_fournisseurs_par_tournee_id
+from ba38_planning.utils import get_nom_tournee, get_fournisseurs_par_tournee_id
 
 import sqlite3
 

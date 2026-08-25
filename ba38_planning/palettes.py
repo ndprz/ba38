@@ -3,7 +3,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 from utils import get_db_connection, write_log, upload_database, get_db_connection, require_access
-from ba38_planning_utils import get_lundi_de_la_semaine, parse_id, get_nom, get_type_benevole_options
+from ba38_planning.utils import get_lundi_de_la_semaine, parse_id, get_nom, get_type_benevole_options
 
 planning_palettes_bp = Blueprint('planning_palettes', __name__)
 
@@ -296,7 +296,7 @@ def gestion_planning_palettes():
     # Imports locaux
     # ------------------------------------------------------------
     from utils import get_db_connection, upload_database
-    from ba38_planning_utils import get_lundi_de_la_semaine, get_type_benevole_options
+    from ba38_planning.utils import get_lundi_de_la_semaine, get_type_benevole_options
     from datetime import datetime, timedelta
 
     # ------------------------------------------------------------

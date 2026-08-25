@@ -8,7 +8,7 @@ from flask_login import login_required, current_user
 from utils import upload_database, write_log, get_db_connection, require_access
 
 
-from ba38_planning_utils import (
+from ba38_planning.utils import (
     get_lundi_de_la_semaine,
     get_benevole_infos,
     parse_id,
@@ -113,7 +113,7 @@ def creation_planning_distribution():
         -> afficher un pré-planning
     """
 
-    from ba38_planning_utils import get_lundi_de_la_semaine
+    from ba38_planning.utils import get_lundi_de_la_semaine
     from datetime import datetime, timedelta
 
     conn = get_db_connection()

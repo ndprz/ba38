@@ -59,17 +59,17 @@ import re
 # BLUEPRINTS (Modules fonctionnels)
 # --------------------------------------------------
 
-from ba38_planning_ramasse import planning_bp  # Ramasse
-from ba38_planning_distribution import planning_dist_bp  # Distribution
+from ba38_planning import planning_bp  # Ramasse
+from ba38_planning import planning_dist_bp  # Distribution
 from ba38_benevoles import benevoles_bp
-from ba38_planning_palettes import planning_palettes_bp
+from ba38_planning import planning_palettes_bp
 from ba38_partenaires import partenaires_bp
-from ba38_planning_tournees import planning_tournees_bp
-from ba38_planning_pesee import planning_pesee_bp
+from ba38_planning import planning_tournees_bp
+from ba38_planning import planning_pesee_bp
 from ba38_export_publipostage import export_bp
-from ba38_planning_vif import planning_vif_bp
+from ba38_planning import planning_vif_bp
 from debug_tools import debug_bp
-from ba38_planning_utils import planning_utils_bp
+from ba38_planning import planning_utils_bp
 from ba38_distribution import distribution_bp
 from scripts.rename_field import rename_bp
 from ba38_admin import admin_bp
@@ -81,7 +81,7 @@ from ba38_annexe1bis import annexe1bis_bp, webhook_yousign
 from ba38_signature import signature_bp
 from ba38_evenements import evenements_bp
 from ba38_factures import factures_bp
-from ba38_planning_report import planning_report_bp
+from ba38_planning import planning_report_bp
 from ba38_aide import aide_bp
 from ba38_engagements import engagements_bp
 from ba38_droit_image import droit_image_bp

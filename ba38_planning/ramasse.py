@@ -1,12 +1,12 @@
 # ba38_planning_ramasse.py
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, flash
-from ba38_planning_utils import get_type_benevole_options
+from ba38_planning.utils import get_type_benevole_options
 from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 from utils import get_db_connection, write_log, upload_database, require_access
 
-from ba38_planning_utils import (
+from ba38_planning.utils import (
     get_lundi_de_la_semaine,
     get_benevole_infos,
     parse_id,
@@ -201,7 +201,7 @@ def gestion_planning_ramasse():
     - Aucun mélange bool / string dans la logique
     """
 
-    from ba38_planning_utils import get_lundi_de_la_semaine, get_type_benevole_options
+    from ba38_planning.utils import get_lundi_de_la_semaine, get_type_benevole_options
     from datetime import datetime, timedelta
     import sqlite3
 

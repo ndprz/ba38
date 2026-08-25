@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required
 from utils import get_db_connection, write_log, upload_database, require_access
-from ba38_planning_utils import get_lundi_de_la_semaine, get_nom, get_absents_par_jour
+from ba38_planning.utils import get_lundi_de_la_semaine, get_nom, get_absents_par_jour
 from datetime import timedelta
 from datetime import datetime, timedelta
 
