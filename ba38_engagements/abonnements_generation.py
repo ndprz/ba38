@@ -11,7 +11,7 @@ from utils import get_db_path, write_log, envoyer_mail
 # ============================================================================
 # Doit rester identique à VALIDATION_POLE_TOKEN_VALIDITE_JOURS (utils.py) :
 # les liens de validation générés ici sont vérifiés par
-# engagements.routes_workflow.valider_engagement_pole_lien via
+# ba38_engagements.routes_workflow.valider_engagement_pole_lien via
 # utils.verifier_token_validation_pole().
 VALIDATION_POLE_TOKEN_VALIDITE_JOURS = 14
 

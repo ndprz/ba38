@@ -5,8 +5,8 @@ from utils import get_db_path, write_log, require_access
 
 import sqlite3
 
-from engagements import engagements_bp
-from ba38_engagements_abonnements import generer_engagements_abonnements
+from ba38_engagements import engagements_bp
+from ba38_engagements.abonnements_generation import generer_engagements_abonnements
 
 JOUR_MOIS_MIN = 1
 JOUR_MOIS_MAX = 28
