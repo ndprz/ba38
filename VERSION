@@ -1,3 +1,3 @@
-VERSION=1.4.94
-MESSAGE=Suppression dossiers backup/ vides (dev+prod), remplaces par /srv/ba38/backups/
-DATE=2026-08-25 15:45
+VERSION=1.4.95
+MESSAGE=Suppression fichier fantome ba38_dev.db (0 octet, jamais utilise)
+DATE=2026-08-25 15:47
