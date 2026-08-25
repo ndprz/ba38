@@ -1,3 +1,3 @@
-VERSION=1.4.81
-MESSAGE=Fix bouton aide casse (chemin serveur obsolete) sur ecran Traitement participation EBP, remplace par le systeme d'aide standard + fix texte vendredi/samedi/dimanche
-DATE=2026-08-25 12:02
+VERSION=1.4.82
+MESSAGE=Reorganisation ba38_tresorerie.py en package (cotisations, participation EBP, CERFA, factures, decoupage, parsol2l) + fix logo cotisations + fix crash reset relance + fix fuite fichier temporaire
+DATE=2026-08-25 13:18
