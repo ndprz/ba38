@@ -84,7 +84,7 @@ from ba38_tresorerie import factures_bp
 from ba38_planning import planning_report_bp
 from ba38_aide import aide_bp
 from ba38_engagements import engagements_bp
-from ba38_droit_image import droit_image_bp
+from ba38_benevoles import droit_image_bp
 from ba38_indicateurs import indicateurs_bp
 from ba38_emails import emails_bp
 from ba38_tresorerie import participation_bp

@@ -1,3 +1,3 @@
-VERSION=1.4.90
-MESSAGE=Deplacement ba38_participation dans package ba38_tresorerie
-DATE=2026-08-25 15:33
+VERSION=1.4.91
+MESSAGE=Package ba38_benevoles (routes + droit_image)
+DATE=2026-08-25 15:37
