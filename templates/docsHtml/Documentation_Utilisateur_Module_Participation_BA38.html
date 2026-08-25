@@ -1,0 +1,112 @@
+<p>Documentation Utilisateur — Module Facturation Participation BA38</p>
+<p>Objectif</p>
+<p>Traiter le fichier PARSOL de participation de solidarité
+(trimestriel), générer automatiquement les factures PDF, les envoyer par
+email aux associations, suivre les paiements et relancer les impayés —
+le tout depuis un seul module, sans passer par un logiciel externe
+(EBP).</p>
+<p>Ce module ne remplace pas l’écran “📂 Traitement fichier de
+participation pour EBP” : celui-ci reste utile et continue d’être
+utilisé pour préparer le fichier PARSOL destiné au comptable, qui
+l’intègre ensuite dans la comptabilité EBP. Les deux écrans coexistent,
+chacun pour son propre usage.</p>
+<ol type="1">
+<li>Accéder au module</li>
+</ol>
+<p>Menu → Trésorerie → section “Participation” → “📊 Facturation
+participation (V2 — traitement + envoi)”.</p>
+<ol start="2" type="1">
+<li>Traiter un fichier PARSOL</li>
+</ol>
+<ul>
+<li><p>Choisir le trimestre concerné dans la liste déroulante.</p></li>
+<li><p>Si une campagne existe déjà pour ce trimestre, une fenêtre
+propose soit de voir les factures déjà générées, soit de retraiter un
+nouveau fichier (attention : retraiter écrase les factures existantes
+tant qu’aucun envoi réel n’a eu lieu ; c’est bloqué dès qu’au moins une
+facture a été réellement envoyée).</p></li>
+<li><p>Sélectionner le fichier PARSOL (.txt) et indiquer le numéro de
+facture de départ.</p></li>
+<li><p>Cliquer sur “🔍 Analyser et générer” : les factures sont créées,
+numérotées dans l’ordre du fichier. Les passages du vendredi, samedi et
+dimanche (non facturés) sont automatiquement retirés — la même règle que
+celle appliquée par l’ancien écran “📂 Traitement fichier de
+participation pour EBP”.</p></li>
+</ul>
+<ol start="3" type="1">
+<li>Écran Résultats</li>
+</ol>
+<p>Affiche la liste des factures de la campagne : numéro de facture,
+association, code VIF, email, montant, statut Payé, PDF, statut d’envoi,
+statut Mailjet, renvoi Gmail.</p>
+<ul>
+<li><p>“👁️ Voir” : ouvre le PDF de la facture (régénéré à la
+demande).</p></li>
+<li><p>Bandeau “Mode TEST / Mode PROD” en haut de l’écran : commun à
+tout le module (participation et anciennes factures) ; en mode TEST, les
+envois ne partent que vers l’adresse de test (2 mails maximum).</p></li>
+<li><p>“📧 Envoyer les mails” : choisir un modèle d’email puis envoyer —
+seules les factures pas encore envoyées sont concernées.</p></li>
+<li><p>“🔄 Vérifier statut Mailjet” : met à jour le statut de
+délivrabilité (remis, ouvert, rejeté…) des mails déjà envoyés.</p></li>
+<li><p>“🔁” (colonne Gmail) : renvoie la facture via Gmail en cas de
+rebond Mailjet — uniquement disponible si le dernier envoi était réel
+(pas en mode TEST).</p></li>
+<li><p>“🔔 Relancer les impayés” : ouvre l’écran de relance (voir
+section suivante).</p></li>
+<li><p>“📤 Retraiter un nouveau fichier” : recommence le traitement pour
+ce même trimestre.</p></li>
+</ul>
+<p>Les codes VIF du fichier qui ne correspondent à aucune association
+connue apparaissent en bas de l’écran dans une liste “Associations non
+trouvées en base (code VIF inconnu)” — elles sont automatiquement
+rattachées dès qu’une association avec ce code VIF existe ou est
+corrigée par la suite (voir Points d’attention).</p>
+<ol start="4" type="1">
+<li>Marquer une facture payée</li>
+</ol>
+<p>Le bouton “⬜ Marquer payé” / “✅ Payé” (colonne Payé) bascule l’état
+payé/impayé d’une facture en un clic, sans recharger la page. Une
+facture marquée payée n’est plus proposée dans les relances.</p>
+<ol start="5" type="1">
+<li>Relancer les impayés</li>
+</ol>
+<p>Depuis l’écran Résultats, “🔔 Relancer les impayés” affiche la liste
+des factures déjà envoyées et non encore payées.</p>
+<ul>
+<li><p>Choisir le numéro de relance (1ère, 2ème ou 3ème) et l’expéditeur
+du mail, puis cliquer sur “🔎 Prévisualiser” pour voir la liste des
+associations concernées et le montant total.</p></li>
+<li><p>Si une association n’a pas d’adresse email connue, un message
+d’avertissement orange l’indique dès cet écran, avant l’envoi —
+l’association reste alors non relancée jusqu’à ce qu’une adresse soit
+renseignée sur sa fiche.</p></li>
+<li><p>Valider avec “🚨 CONFIRMER L’ENVOI” (une case à cocher
+supplémentaire est demandée en mode PROD, par sécurité). L’envoi se fait
+en arrière-plan, sans bloquer l’écran.</p></li>
+<li><p>Comme sur l’écran Résultats, “🔄 Vérifier statut Mailjet” et le
+renvoi Gmail par ligne sont disponibles pour les relances déjà
+envoyées.</p></li>
+<li><p>Le bouton “Marquer payé” est aussi disponible directement sur cet
+écran : dès qu’une facture est marquée payée, elle sort du lot à
+relancer.</p></li>
+</ul>
+<ol start="6" type="1">
+<li>Points d’attention</li>
+</ol>
+<ul>
+<li><p>Le mode TEST / PROD est un réglage partagé avec l’ancien module
+de factures — le vérifier avant tout envoi réel.</p></li>
+<li><p>L’email utilisé pour une facture est celui de l’association au
+moment du traitement du fichier PARSOL. S’il a été ajouté ou corrigé
+depuis, l’application utilise automatiquement l’adresse actuelle de
+l’association pour les relances, et l’enregistre sur la facture dès
+qu’une relance réussit avec cette adresse.</p></li>
+<li><p>Une association absente de la base au moment du traitement
+(facture “orpheline”) est automatiquement rattachée dès qu’elle est
+créée ou corrigée par la suite — un message de confirmation s’affiche à
+la prochaine ouverture de l’écran Résultats.</p></li>
+<li><p>Le renvoi via Gmail n’est possible que pour une facture (ou
+relance) dont le dernier envoi était réel — un envoi effectué en mode
+TEST ne peut pas être “renvoyé pour de vrai” par ce bouton.</p></li>
+</ul>

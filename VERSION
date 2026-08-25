@@ -1,3 +1,3 @@
-VERSION=1.4.79
-MESSAGE=Rattachement automatique des factures orphelines quand l'association/code VIF est cree ou corrige apres coup
-DATE=2026-08-25 11:07
+VERSION=1.4.80
+MESSAGE=Aide utilisateur module Facturation Participation + libelle menu precisant la regle ven/sam/dim
+DATE=2026-08-25 11:47

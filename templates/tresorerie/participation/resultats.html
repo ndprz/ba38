@@ -10,6 +10,13 @@
         <h2 class="mb-0">📊 Participation — T{{ campagne.trimestre }} {{ campagne.annee }}</h2>
 
         <div class="btn-group-ba38">
+            <button class="btn btn-outline-info btn-sm"
+                    type="button"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modalAideParticipation">
+                ℹ️ Aide utilisateur
+            </button>
+
             <a href="{{ url_for('emails.liste_modeles') }}"
                 onclick="window.open(this.href, 'emails_window', 'width=1200,height=800'); return false;"
                 class="btn btn-outline-primary btn-sm">
@@ -227,6 +234,42 @@
     </div>
     {% endif %}
 
+</div>
+
+<!-- ============================================== -->
+<!-- ℹ️ MODALE D'AIDE UTILISATEUR -->
+<!-- ============================================== -->
+<div class="modal fade" id="modalAideParticipation" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📊 Aide – Facturation participation</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_Participation_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAideParticipation')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
 </div>
 
 <script>

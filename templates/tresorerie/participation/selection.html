@@ -10,6 +10,13 @@
     <h2>📊 Facturation participation (V2)</h2>
     <p class="text-muted">Traitement du fichier PARSOL + génération des factures + envoi, en un seul flux.</p>
 
+    <button class="btn btn-outline-info btn-sm mb-3"
+            type="button"
+            data-bs-toggle="modal"
+            data-bs-target="#modalAideParticipation">
+        ℹ️ Aide utilisateur
+    </button>
+
     <div class="mb-3">
         <label>Trimestre</label>
         <select id="trimestre" class="form-select">
@@ -41,6 +48,42 @@
         <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
         <a href="#" id="btnVoirResultats" class="btn btn-primary">📊 Voir les factures</a>
         <a href="#" id="btnNouveauFichier" class="btn btn-outline-danger">📤 Retraiter un nouveau fichier</a>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============================================== -->
+<!-- ℹ️ MODALE D'AIDE UTILISATEUR -->
+<!-- ============================================== -->
+<div class="modal fade" id="modalAideParticipation" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📊 Aide – Facturation participation</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_Participation_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAideParticipation')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
       </div>
 
     </div>
