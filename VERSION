@@ -1,3 +1,3 @@
-VERSION=1.4.83
-MESSAGE=Renommage du package engagements en ba38_engagements + integration de ba38_engagements_abonnements.py dans le package (abonnements_generation.py) + fix doc utilisateur
-DATE=2026-08-25 13:33
+VERSION=1.4.84
+MESSAGE=Cotisations V2 (traitement + envoi + relances + bouton Paye) sur le modele Participation V2 + colonne Beneficiaires participation + code VIF sur facture cotisations V2
+DATE=2026-08-25 14:27

@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 
-{% block title %}Résultats facturation participation{% endblock %}
+{% block title %}Résultats cotisations V2{% endblock %}
 
 {% block content %}
 <div class="container mt-4" style="max-width: 1600px;">
 
     <div class="page-sticky-header d-flex justify-content-between align-items-center">
 
-        <h2 class="mb-0">📊 Participation — T{{ campagne.trimestre }} {{ campagne.annee }}</h2>
+        <h2 class="mb-0">📊 Cotisations V2 — {{ campagne.annee }}</h2>
 
         <div class="btn-group-ba38">
             <button class="btn btn-outline-info btn-sm"
                     type="button"
                     data-bs-toggle="modal"
-                    data-bs-target="#modalAideParticipation">
+                    data-bs-target="#modalAideCotisationsV2">
                 ℹ️ Aide utilisateur
             </button>
 
@@ -23,30 +23,30 @@
                 ✉️ Textes mails
             </a>
 
-            <form method="POST" action="{{ url_for('participation.verifier_statut_mailjet', campagne_id=campagne.id) }}" class="d-inline">
+            <form method="POST" action="{{ url_for('tresorerie.cotisations_v2_verifier_statut_mailjet', campagne_id=campagne.id) }}" class="d-inline">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-outline-primary btn-sm">
                     🔄 Vérifier statut Mailjet
                 </button>
             </form>
 
-            <a href="{{ url_for('participation.relance_start', campagne_id=campagne.id) }}" class="btn btn-outline-warning btn-sm">
+            <a href="{{ url_for('tresorerie.cotisations_v2_relance_start', campagne_id=campagne.id) }}" class="btn btn-outline-warning btn-sm">
                 🔔 Relancer les impayés
             </a>
 
-            <a href="{{ url_for('participation.traiter') }}?annee={{ campagne.annee }}&trimestre={{ campagne.trimestre }}" class="btn btn-outline-danger btn-sm">
+            <a href="{{ url_for('tresorerie.cotisations_v2_traiter') }}?annee={{ campagne.annee }}" class="btn btn-outline-danger btn-sm">
                 📤 Retraiter un nouveau fichier
             </a>
 
-            <a href="{{ url_for('participation.selection') }}" class="btn btn-outline-dark btn-sm">
+            <a href="{{ url_for('tresorerie.cotisations_v2_selection') }}" class="btn btn-outline-dark btn-sm">
                 ↩️ Retour à la sélection
             </a>
         </div>
 
     </div>
 
-    <!-- MODE ENVOI (partagé avec l'ancien écran factures) -->
-    <form method="post" action="{{ url_for('tresorerie.factures_toggle_mode') }}" class="mb-2">
+    <!-- MODE ENVOI (partagé avec l'ancien flux cotisations) -->
+    <form method="post" action="{{ url_for('tresorerie.cotisations_toggle_test_mode') }}" class="mb-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% if mail_mode == "TEST" %}
         <button class="btn btn-warning w-100">
@@ -99,7 +99,7 @@
     </div>
 
     {% if reste_a_envoyer %}
-    <form method="POST" action="{{ url_for('participation.envoyer', campagne_id=campagne.id) }}" class="d-flex align-items-end gap-2 my-3"
+    <form method="POST" action="{{ url_for('tresorerie.cotisations_v2_envoyer', campagne_id=campagne.id) }}" class="d-flex align-items-end gap-2 my-3"
           {% if mail_mode != "TEST" %}
           onsubmit="return confirm('⚠️ Mode PROD actif : vous allez envoyer les factures non encore traitées de cette campagne aux associations. Continuer ?');"
           {% endif %}>
@@ -129,7 +129,7 @@
                     <th class="sortable" data-type="text" onclick="sortTable(1, this)" style="cursor:pointer;">Association ↕</th>
                     <th class="sortable" data-type="text" onclick="sortTable(2, this)" style="cursor:pointer;">Code VIF ↕</th>
                     <th>Email</th>
-                    <th class="text-end">Bénéficiaires</th>
+                    <th class="sortable" data-type="num" onclick="sortTable(4, this)" style="cursor:pointer;">Bénéficiaires ↕</th>
                     <th class="sortable" data-type="num" onclick="sortTable(5, this)" style="cursor:pointer;">Montant ↕</th>
                     <th>Payé</th>
                     <th>PDF</th>
@@ -143,11 +143,11 @@
                 {% for f in factures %}
                 <tr>
                     <td>{{ f.numero_facture }}</td>
-                    <td>{{ f.nom_association }}</td>
+                    <td>{{ f.nom_association_affichage or f.nom_association }}</td>
                     <td class="small">{{ f.code_vif }}</td>
                     <td class="small">{{ f.email or '—' }}</td>
                     <td class="small text-end">{{ f.beneficiaires }}</td>
-                    <td class="small text-end">{{ "%.2f"|format(f.montant_total or 0) }} €</td>
+                    <td class="small text-end">{{ "%.2f"|format(f.montant or 0) }} €</td>
                     <td class="small text-center align-middle">
                         {% if f.date_paiement %}
                         <button type="button" class="btn btn-sm btn-success btn-paye" data-facture-id="{{ f.id }}" title="Marquer impayée">✅ Payé</button>
@@ -156,7 +156,7 @@
                         {% endif %}
                     </td>
                     <td class="small text-center align-middle">
-                        <a href="{{ url_for('participation.voir_pdf', facture_id=f.id) }}" target="_blank">👁️ Voir</a>
+                        <a href="{{ url_for('tresorerie.cotisations_v2_voir_pdf', facture_id=f.id) }}" target="_blank">👁️ Voir</a>
                     </td>
                     <td class="small text-center align-middle">
                         {% if f.mail_envoye_le %}
@@ -188,7 +188,7 @@
                     </td>
                     <td class="small text-center align-middle">
                         {% if f.email and f.mail_envoye_le and not f.mail_mode_test %}
-                        <form method="POST" action="{{ url_for('participation.renvoyer_gmail', facture_id=f.id) }}"
+                        <form method="POST" action="{{ url_for('tresorerie.cotisations_v2_renvoyer_gmail', facture_id=f.id) }}"
                               onsubmit="return confirm('Renvoyer la facture à {{ f.nom_association }} via Gmail (ba380@banquealimentaire.org) ?');">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="btn btn-sm btn-outline-danger" title="Renvoyer via Gmail">🔁</button>
@@ -211,24 +211,23 @@
     {% if orphelines %}
     <h4 class="mt-4">⚠️ Associations non trouvées en base (code VIF inconnu)</h4>
     <p class="text-muted small">
-        Ces lignes viennent du fichier PARSOL mais aucune association avec ce code VIF n'existe dans BA38.
-        Vérifiez le code VIF côté fiche association, puis retraitez le fichier.
+        Ces lignes viennent du fichier PARSOL2L mais aucune association avec ce code VIF n'existe dans BA38.
+        Vérifiez le code VIF côté fiche association, puis rechargez cet écran (rattachement automatique) ou
+        retraitez le fichier.
     </p>
     <div class="table-container-fixe">
         <table class="table table-striped table-auto-width">
             <thead>
                 <tr>
                     <th>Code VIF</th>
-                    <th>Nom (fichier PARSOL)</th>
-                    <th>Montant</th>
+                    <th>Bénéficiaires</th>
                 </tr>
             </thead>
             <tbody>
                 {% for o in orphelines %}
                 <tr>
                     <td>{{ o.code_vif }}</td>
-                    <td>{{ o.nom_association }}</td>
-                    <td class="small text-end">{{ "%.2f"|format(o.montant_total or 0) }} €</td>
+                    <td class="small text-end">{{ o.beneficiaires }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -241,12 +240,12 @@
 <!-- ============================================== -->
 <!-- ℹ️ MODALE D'AIDE UTILISATEUR -->
 <!-- ============================================== -->
-<div class="modal fade" id="modalAideParticipation" tabindex="-1">
+<div class="modal fade" id="modalAideCotisationsV2" tabindex="-1">
   <div class="modal-dialog modal-xl">
     <div class="modal-content">
 
       <div class="modal-header">
-        <h5 class="modal-title">📊 Aide – Facturation participation</h5>
+        <h5 class="modal-title">📊 Aide – Cotisations V2</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
 
@@ -257,12 +256,12 @@
           line-height: 1.4;
       ">
 
-        {% include "docsHtml/Documentation_Utilisateur_Module_Participation_BA38.html" %}
+        {% include "docsHtml/Documentation_Utilisateur_Module_CotisationsV2_BA38.html" %}
 
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-outline-primary" onclick="printModal('modalAideParticipation')">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAideCotisationsV2')">
             🖨️ Imprimer
         </button>
         <button class="btn btn-secondary" data-bs-dismiss="modal">
@@ -278,7 +277,7 @@
     document.querySelectorAll(".btn-paye").forEach(btn => {
         btn.addEventListener("click", function () {
             const factureId = this.dataset.factureId;
-            fetch(`/participation/toggle_paye/${factureId}`, {
+            fetch(`/cotisations_v2/toggle_paye/${factureId}`, {
                 method: "POST",
                 headers: { "X-CSRFToken": "{{ csrf_token() }}", "Content-Type": "application/json" }
             })

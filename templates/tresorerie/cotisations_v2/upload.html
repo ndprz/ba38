@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button %}
+
+{% block title %}Traitement fichier cotisations V2{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width:700px;">
+
+    <h2>📂 Traitement du fichier PARSOL2L annuel</h2>
+
+    {% if annee %}
+    <p class="text-muted">Année : <strong>{{ annee }}</strong></p>
+    {% endif %}
+
+    <form method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+
+        <div class="mb-3">
+            <label class="form-label">Fichier PARSOL2L annuel (.txt)</label>
+            <input type="file" name="parsol_file" class="form-control" accept=".txt" required>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Numéro de facture de départ</label>
+            <input type="number" name="numero_facture_depart" class="form-control" required min="1">
+            <div class="form-text">
+                Les factures seront numérotées à partir de ce numéro, dans l'ordre du compte comptable.
+            </div>
+        </div>
+
+        <div class="alert alert-info small">
+            Les bénéficiaires des associations regroupées (champ "vif_regroup_cotisation") sont
+            cumulés sur l'association maître, qui reçoit une facture unique.
+        </div>
+
+        <div class="d-flex justify-content-between">
+            <button class="btn btn-primary">🔍 Analyser et générer</button>
+            {{ action_button("↩️ Retour", href=url_for('tresorerie.cotisations_v2_selection'), color="outline-dark") }}
+        </div>
+
+    </form>
+
+</div>
+{% endblock %}

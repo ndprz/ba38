@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button %}
+
+{% block title %}Cotisations V2 — Sélection{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width:700px;">
+
+    <h2>📊 Cotisations (V2)</h2>
+    <p class="text-muted">Traitement du fichier PARSOL2L annuel + génération des factures + envoi, en un seul flux.</p>
+
+    <button class="btn btn-outline-info btn-sm mb-3"
+            type="button"
+            data-bs-toggle="modal"
+            data-bs-target="#modalAideCotisationsV2">
+        ℹ️ Aide utilisateur
+    </button>
+
+    <div class="alert alert-secondary small">
+        Coexiste avec l'ancien flux "📂 Cotisations 2026" jusqu'à son retrait prévu fin 2026.
+    </div>
+
+    <div class="mb-3">
+        <label>Année</label>
+        <select id="annee" class="form-select">
+            <option value="" selected disabled>-- Choisir une année --</option>
+            {% for annee in annees %}
+            <option value="{{ annee }}">{{ annee }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    {{ action_button("↩️ Retour", href=url_for('tresorerie.tresorerie'), color="outline-dark") }}
+
+</div>
+
+<!-- MODAL CAMPAGNE EXISTANTE -->
+<div class="modal fade" id="modalCampagneExistante" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📊 Campagne déjà traitée</h5>
+      </div>
+
+      <div class="modal-body">
+        <p>Une campagne de cotisations V2 existe déjà pour cette année.</p>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <a href="#" id="btnVoirResultats" class="btn btn-primary">📊 Voir les factures</a>
+        <a href="#" id="btnNouveauFichier" class="btn btn-outline-danger">📤 Retraiter un nouveau fichier</a>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============================================== -->
+<!-- ℹ️ MODALE D'AIDE UTILISATEUR -->
+<!-- ============================================== -->
+<div class="modal fade" id="modalAideCotisationsV2" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📊 Aide – Cotisations V2</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_CotisationsV2_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAideCotisationsV2')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById("annee").addEventListener("change", function () {
+
+    const annee = this.value;
+    if (!annee) return;
+
+    fetch(`{{ url_for('tresorerie.cotisations_v2_check_annee') }}?annee=${annee}`)
+        .then(response => response.json())
+        .then(data => {
+
+            if (data.exists) {
+                const modalEl = document.getElementById("modalCampagneExistante");
+                const modal = new bootstrap.Modal(modalEl);
+
+                document.getElementById("btnVoirResultats").href = `/cotisations_v2/resultats/${data.id}`;
+
+                document.getElementById("btnNouveauFichier").href =
+                    `{{ url_for('tresorerie.cotisations_v2_traiter') }}?annee=${annee}`;
+
+                modal.show();
+
+            } else {
+                window.location.href = `{{ url_for('tresorerie.cotisations_v2_traiter') }}?annee=${annee}`;
+            }
+
+        })
+        .catch(err => console.error("Erreur check année:", err));
+
+});
+</script>
+
+{% endblock %}

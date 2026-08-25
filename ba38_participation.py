@@ -788,12 +788,14 @@ def resultats(campagne_id):
         WHERE campagne_id = ? AND association_id IS NOT NULL
         ORDER BY numero_facture
     """, (campagne_id,)).fetchall()
+    factures = [dict(f, beneficiaires=_compter_beneficiaires(f["detail_json"])) for f in factures]
 
     orphelines = conn.execute("""
         SELECT * FROM participation_factures
         WHERE campagne_id = ? AND association_id IS NULL
         ORDER BY nom_association
     """, (campagne_id,)).fetchall()
+    orphelines = [dict(o, beneficiaires=_compter_beneficiaires(o["detail_json"])) for o in orphelines]
 
     modeles = conn.execute("""
         SELECT * FROM modeles_emails WHERE type_periode = 'facture' ORDER BY TRIM(code_modele) COLLATE NOCASE
@@ -1082,12 +1084,24 @@ def renvoyer_gmail(facture_id):
 # ============================================================================
 # 🔔 RELANCE DES FACTURES IMPAYÉES
 # ============================================================================
+def _compter_beneficiaires(detail_json):
+    """Somme des nb_beneficiaires des passages retenus (detail_json) d'une facture."""
+    if not detail_json:
+        return 0
+    try:
+        lignes = json.loads(detail_json)
+        return sum(l.get("nb_beneficiaires", 0) for l in lignes)
+    except Exception:
+        return 0
+
+
 def _resoudre_lignes_email(rows):
     """
-    Convertit les lignes SQL (jointes à associations) en dicts, et complète
+    Convertit les lignes SQL (jointes à associations) en dicts, complète
     l'email de la facture — capturé une fois au traitement PARSOL, donc
     potentiellement obsolète si l'association n'avait pas encore d'email à
-    ce moment — par l'adresse actuelle de l'association si absent.
+    ce moment — par l'adresse actuelle de l'association si absent, et
+    ajoute le total de bénéficiaires (calculé depuis detail_json).
     """
     lignes = []
     for row in rows:
@@ -1095,6 +1109,7 @@ def _resoudre_lignes_email(rows):
         assoc_email = d.pop("_assoc_tresorerie", None) or d.pop("_assoc_association", None)
         if not d.get("email"):
             d["email"] = assoc_email
+        d["beneficiaires"] = _compter_beneficiaires(d.get("detail_json"))
         lignes.append(d)
     return lignes
 
