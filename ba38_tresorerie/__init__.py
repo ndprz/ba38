@@ -18,4 +18,4 @@ from ba38_tresorerie import cotisations_v2_relance
 from ba38_tresorerie import parsol2l
 from ba38_tresorerie import cerfa
 from ba38_tresorerie import factures_upload
-from ba38_tresorerie import factures_decoupage
+from ba38_tresorerie.factures_decoupage import factures_bp

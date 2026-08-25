@@ -1,3 +1,3 @@
-VERSION=1.4.88
-MESSAGE=Reorg module planning en package ba38_planning
-DATE=2026-08-25 15:19
+VERSION=1.4.89
+MESSAGE=Fusion ba38_factures dans package ba38_tresorerie + suppression flux factures_decoupage mort
+DATE=2026-08-25 15:26

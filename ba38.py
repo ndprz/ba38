@@ -80,7 +80,7 @@ from ba38_fiches_visite import fiches_visite_bp
 from ba38_annexe1bis import annexe1bis_bp, webhook_yousign
 from ba38_signature import signature_bp
 from ba38_evenements import evenements_bp
-from ba38_factures import factures_bp
+from ba38_tresorerie import factures_bp
 from ba38_planning import planning_report_bp
 from ba38_aide import aide_bp
 from ba38_engagements import engagements_bp

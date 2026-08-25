@@ -738,20 +738,3 @@ def factures_renvoyer_gmail(envoi_id):
 
     conn.close()
     return redirect(url_for("tresorerie.factures_resultats", lot_id=envoi["lot_id"]))
-
-
-@tresorerie_bp.route("/telecharger_factures")
-@login_required
-@require_access("tresorerie", "ecriture")
-def telecharger_factures():
-
-    zip_path = session.get("zip_path")
-
-    if not zip_path or not os.path.exists(zip_path):
-        flash("❌ Fichier introuvable", "danger")
-        return redirect(url_for("tresorerie.factures_decoupage"))
-
-    return render_template(
-        "tresorerie/telechargement_factures.html",
-        zip_path=zip_path
-    )
