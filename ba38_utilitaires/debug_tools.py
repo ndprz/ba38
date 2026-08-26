@@ -1332,7 +1332,7 @@ def edit_modele_admin(modele_id=None):
             conn.commit()
 
         if action == "save_both" and os.getenv("ENVIRONMENT", "DEV").upper() == "DEV":
-            ok, err = copier_modele_email_vers_prod(code, sujet, corps, type_periode)
+            ok, err = copier_modele_email_vers_prod(code, sujet, corps, type_periode, is_html)
             if ok:
                 flash("Modèle également enregistré en PROD", "success")
             else:

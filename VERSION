@@ -1,3 +1,3 @@
-VERSION=1.5.0
-MESSAGE=Editeur riche (Quill) + coller une image sur le modele email Mail Users, colonne is_html sur modeles_emails
-DATE=2026-08-26 14:04
+VERSION=1.5.1
+MESSAGE=Fix : is_html non propage par le bouton Enregistrer en DEV et PROD des modeles email
+DATE=2026-08-26 14:13

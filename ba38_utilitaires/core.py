@@ -1647,7 +1647,7 @@ def get_contacts(param_name):
 PROD_DB_PATH_MODELES_EMAILS = "/srv/ba38/prod/instance/ba380.sqlite"
 
 
-def copier_modele_email_vers_prod(code, sujet, corps, type_periode=None):
+def copier_modele_email_vers_prod(code, sujet, corps, type_periode=None, is_html=0):
     """Crée ou met à jour (par code_modele) le modèle d'email dans la base
     PROD, en plus de l'enregistrement déjà fait par l'appelant dans la base
     courante. Utilisé par les deux pages d'édition de modèles (ba38_emails.py
@@ -1660,14 +1660,14 @@ def copier_modele_email_vers_prod(code, sujet, corps, type_periode=None):
             if existant:
                 prod_conn.execute("""
                     UPDATE modeles_emails
-                    SET sujet=?, corps=?, type_periode=?, date_modification=datetime('now')
+                    SET sujet=?, corps=?, type_periode=?, is_html=?, date_modification=datetime('now')
                     WHERE code_modele=?
-                """, (sujet, corps, type_periode, code))
+                """, (sujet, corps, type_periode, is_html, code))
             else:
                 prod_conn.execute("""
-                    INSERT INTO modeles_emails (code_modele, sujet, corps, type_periode, date_modification)
-                    VALUES (?, ?, ?, ?, datetime('now'))
-                """, (code, sujet, corps, type_periode))
+                    INSERT INTO modeles_emails (code_modele, sujet, corps, type_periode, is_html, date_modification)
+                    VALUES (?, ?, ?, ?, ?, datetime('now'))
+                """, (code, sujet, corps, type_periode, is_html))
             prod_conn.commit()
         return True, None
     except Exception as e:
