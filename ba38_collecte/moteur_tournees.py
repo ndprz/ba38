@@ -492,7 +492,11 @@ def optimiser_tournees(fiches, df_mag, args):
     df_complet_opt['Nouveau'] = False
     df_complet_opt = df_complet_opt.reset_index(drop=True)
 
-    vif2row = {str(r['Code VIF']).strip(): r
+    # Les codes VIF issus du PDF 2025 n'ont pas de zéro initial (ex: "2380059"),
+    # contrairement à ceux des fichiers magasins Excel qui en ont parfois un
+    # (ex: "02380249") : on normalise systématiquement via lstrip('0') pour que
+    # les deux référentiels se rejoignent (même convention que lire_magasins()).
+    vif2row = {str(r['Code VIF']).strip().lstrip('0'): r
                for _, r in df_complet_opt.iterrows()}
     # Enrichir vif2row avec les secteurs calculés dans df_mag (absents de df_complet_opt)
     import unicodedata as _ud_sec
@@ -501,7 +505,7 @@ def optimiser_tournees(fiches, df_mag, args):
         s = _ud_sec.normalize('NFD', str(s).strip()).encode('ascii','ignore').decode('ascii')
         s = _re_sec.sub(r"[-'’]", ' ', s)
         return _re_sec.sub(r'\s+', ' ', s).strip().title()
-    secteurs_mag = {str(r['Code VIF']).strip(): _norm_sec(r.get('Secteur',''))
+    secteurs_mag = {str(r['Code VIF']).strip().lstrip('0'): _norm_sec(r.get('Secteur',''))
                     for _, r in df_mag.iterrows() if r.get('Secteur','')}
     for vif, row in vif2row.items():
         if vif in secteurs_mag:
@@ -512,12 +516,12 @@ def optimiser_tournees(fiches, df_mag, args):
             creneaux_raw = str(row_copy.get('Créneaux', '')).strip()
             row_copy['djs_creneaux'] = parse_creneaux(creneaux_raw) if creneaux_raw and creneaux_raw != 'nan' else None
             vif2row[vif] = row_copy
-    new_vifs = set(str(r['Code VIF']).strip() for _, r in df_mag.iterrows() if r['Nouveau'])
+    new_vifs = set(str(r['Code VIF']).strip().lstrip('0') for _, r in df_mag.iterrows() if r['Nouveau'])
     nouveaux_vehs = set(f'VX{300+i:03d}' for i in range(args.camions_supp))
 
     # Structure (demi_journee, vehicule) → [vif, ...]
     # On ne garde que les VIFs encore actifs en 2026 (présents dans df_mag = État='Collecté par la BAI')
-    vifs_actifs = set(str(r['Code VIF']).strip() for _, r in df_mag.iterrows())
+    vifs_actifs = set(str(r['Code VIF']).strip().lstrip('0') for _, r in df_mag.iterrows())
     dj_veh = defaultdict(list)
     nb_supprimes_pdf = 0
     for f in fiches:
@@ -614,7 +618,7 @@ def optimiser_tournees(fiches, df_mag, args):
     non_affectes = []
 
     # Nouveaux VIFs = magasins actifs 2026 absents du PDF 2025
-    nouveaux_vifs = [str(r['Code VIF']).strip() for _, r in df_mag.iterrows() if r['Nouveau']]
+    nouveaux_vifs = [str(r['Code VIF']).strip().lstrip('0') for _, r in df_mag.iterrows() if r['Nouveau']]
     print(f"  → {len(nouveaux_vifs)} nouveaux magasins à injecter dans les tournées")
 
     # Statistiques créneaux
