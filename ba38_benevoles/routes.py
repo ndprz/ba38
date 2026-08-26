@@ -1062,6 +1062,7 @@ def update_benevole(benevole_id):
             abort(403)
 
         opts_type_bene = get_type_benevole_options(conn)
+        go_to = request.form.get("go_to")
         do_upload = request.form.get("do_upload", "1")
 
         photo_dir = os.getenv("PHOTOS_BENEVOLES_DIR", "/srv/ba38/photos_benevoles")
@@ -1190,6 +1191,9 @@ def update_benevole(benevole_id):
             flash("✅ Bénévole mis à jour", "success")
 
         conn.close()
+
+        if go_to:
+            return redirect(go_to)
 
         return redirect(
             url_for("benevoles.update_benevole", benevole_id=benevole_id)

@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 {% block title %}{% if modele %}Modifier le modèle — {{ modele.code_modele }}{% else %}Nouveau modèle{% endif %}{% endblock %}
 
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
+<style>
+#corps_quill_container .ql-editor {
+    min-height: 280px;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4">
   <h2>{% if modele %}✏️ Modifier le modèle : {{ modele.code_modele }}{% else %}➕ Nouveau modèle{% endif %}</h2>
@@ -37,9 +46,18 @@
       </small>
     </div>
 
+    <div class="mb-2 form-check">
+      <input type="checkbox" class="form-check-input" name="is_html" id="is_html_toggle"
+             {% if modele and modele.is_html %}checked{% endif %}>
+      <label class="form-check-label" for="is_html_toggle">
+        Éditeur riche (permet de coller des images dans le message)
+      </label>
+    </div>
+
     <div class="mb-3">
       <label class="form-label">Corps du mail</label>
-      <textarea name="corps" rows="12" class="form-control">{{ modele.corps if modele else '' }}</textarea>
+      <textarea name="corps" id="corps_textarea" rows="12" class="form-control">{{ modele.corps if modele else '' }}</textarea>
+      <div id="corps_quill_container" style="display:none; background:white;"></div>
     </div>
 
     <button type="submit" name="action" value="save" class="btn btn-primary">💾 Enregistrer</button>
@@ -52,4 +70,131 @@
     {% endif %}
   </form>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+<script>
+
+const corpsTextarea = document.getElementById("corps_textarea");
+const quillContainer = document.getElementById("corps_quill_container");
+const htmlToggle = document.getElementById("is_html_toggle");
+
+let quill = null;
+
+function initQuill() {
+
+    if (quill) {
+
+        return;
+    }
+
+    quill = new Quill(quillContainer, {
+
+        theme: "snow",
+
+        modules: {
+
+            toolbar: [
+                ["bold", "italic", "underline"],
+                [{ list: "ordered" }, { list: "bullet" }],
+                ["link", "image"],
+                ["clean"]
+            ]
+        }
+    });
+
+    quill.root.innerHTML = corpsTextarea.value;
+
+    // Quill encode nativement toute image collée/déposée en base64. On la
+    // laisse faire (pas d'interception du "paste" — Quill a déjà son propre
+    // listener sur le même noeud, impossible à devancer proprement), puis on
+    // remplace après coup chaque image base64 par une image hébergée, pour
+    // éviter d'envoyer des mails avec des images inline énormes.
+    quill.on("text-change", uploadPendingBase64Images);
+}
+
+function uploadPendingBase64Images() {
+
+    const images = quill.root.querySelectorAll(
+        'img[src^="data:"]:not([data-uploading])'
+    );
+
+    images.forEach(img => {
+
+        img.setAttribute("data-uploading", "1");
+
+        fetch(img.src)
+            .then(r => r.blob())
+            .then(blob => {
+
+                const formData = new FormData();
+                formData.append("image", blob, "collee.png");
+
+                return fetch("{{ url_for('debug_bp.upload_image_modele') }}", {
+
+                    method: "POST",
+
+                    headers: {
+                        "X-CSRFToken": "{{ csrf_token() }}"
+                    },
+
+                    body: formData
+                });
+            })
+            .then(r => r.json())
+            .then(data => {
+
+                if (data.url) {
+
+                    img.src = data.url;
+
+                } else {
+
+                    alert("❌ Erreur import image : " + (data.error || "inconnue"));
+                }
+
+                img.removeAttribute("data-uploading");
+            })
+            .catch(() => {
+
+                alert("❌ Erreur réseau lors de l'import de l'image.");
+                img.removeAttribute("data-uploading");
+            });
+    });
+}
+
+function updateEditorMode() {
+
+    if (htmlToggle.checked) {
+
+        initQuill();
+        corpsTextarea.style.display = "none";
+        quillContainer.style.display = "block";
+
+    } else {
+
+        if (quill) {
+
+            corpsTextarea.value = quill.root.innerHTML;
+        }
+
+        quillContainer.style.display = "none";
+        corpsTextarea.style.display = "block";
+    }
+}
+
+htmlToggle.addEventListener("change", updateEditorMode);
+
+document.querySelector("form").addEventListener("submit", function () {
+
+    if (htmlToggle.checked && quill) {
+
+        corpsTextarea.value = quill.root.innerHTML;
+    }
+});
+
+updateEditorMode();
+
+</script>
 {% endblock %}

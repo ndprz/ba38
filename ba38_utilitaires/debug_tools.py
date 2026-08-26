@@ -29,8 +29,11 @@ import subprocess
 import sqlite3
 import sys
 import json
+import uuid
 
 from datetime import datetime, timedelta
+
+from PIL import Image
 
 from ba38_utilitaires.core import (
     write_log,
@@ -1271,7 +1274,7 @@ def mail_utilisateurs():
                     sujet=sujet,
                     destinataires=[email],
                     texte=corps,
-                    is_html=False
+                    is_html=bool(modele["is_html"])
                 )
                 envoyes += 1
             except Exception as e:
@@ -1309,19 +1312,20 @@ def edit_modele_admin(modele_id=None):
         sujet = request.form.get("sujet", "").strip()
         corps = request.form.get("corps", "").strip()
         type_periode = request.form.get("type_periode", "").strip() or None
+        is_html = 1 if request.form.get("is_html") == "on" else 0
         action = request.form.get("action", "save")
 
         with sqlite3.connect(db_path) as conn:
             if modele_id:
                 conn.execute(
-                    "UPDATE modeles_emails SET code_modele = ?, sujet = ?, corps = ?, type_periode = ?, date_modification = ? WHERE id = ?",
-                    (code, sujet, corps, type_periode, datetime.now().isoformat(), modele_id)
+                    "UPDATE modeles_emails SET code_modele = ?, sujet = ?, corps = ?, type_periode = ?, is_html = ?, date_modification = ? WHERE id = ?",
+                    (code, sujet, corps, type_periode, is_html, datetime.now().isoformat(), modele_id)
                 )
                 flash("✅ Modèle mis à jour.", "success")
             else:
                 cur = conn.execute(
-                    "INSERT INTO modeles_emails (code_modele, sujet, corps, type_periode, date_modification) VALUES (?, ?, ?, ?, ?)",
-                    (code, sujet, corps, type_periode, datetime.now().isoformat())
+                    "INSERT INTO modeles_emails (code_modele, sujet, corps, type_periode, is_html, date_modification) VALUES (?, ?, ?, ?, ?, ?)",
+                    (code, sujet, corps, type_periode, is_html, datetime.now().isoformat())
                 )
                 modele_id = cur.lastrowid
                 flash("✅ Modèle créé.", "success")
@@ -1349,3 +1353,41 @@ def edit_modele_admin(modele_id=None):
             return redirect(url_for("debug_bp.mail_utilisateurs"))
 
     return render_template("admin/edit_modele_admin.html", modele=modele)
+
+
+@debug_bp.route("/admin/modeles/upload_image", methods=["POST"])
+@login_required
+def upload_image_modele():
+    if session.get("user_role") != "admin":
+        abort(403)
+
+    image_file = request.files.get("image")
+
+    if not image_file or not image_file.filename:
+        return jsonify({"error": "Aucune image reçue"}), 400
+
+    try:
+        image = Image.open(image_file)
+        image.verify()
+        image_file.seek(0)
+        image = Image.open(image_file)
+    except Exception:
+        return jsonify({"error": "Fichier image invalide"}), 400
+
+    image = image.convert("RGB")
+    image.thumbnail((900, 900))
+
+    upload_dir = os.path.join(
+        current_app.root_path, "static", "modeles_images"
+    )
+    os.makedirs(upload_dir, exist_ok=True)
+
+    filename = f"{uuid.uuid4().hex}.jpg"
+    image.save(
+        os.path.join(upload_dir, filename), format="JPEG", quality=85
+    )
+
+    base_url = os.getenv("APP_BASE_URL", "").rstrip("/")
+    url = f"{base_url}/static/modeles_images/{filename}"
+
+    return jsonify({"url": url})
