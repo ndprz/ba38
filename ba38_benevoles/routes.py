@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import sqlite3
@@ -255,6 +256,48 @@ def benevoles_tabulator():
 
             "normalized": normalized
         })
+
+    # ============================================================
+    # FONCTIONS (FILTRE)
+    # ============================================================
+
+    fonctions_options = [
+
+        {
+
+            "field_name": field["field_name"],
+
+            "normalized": normalize(field["field_name"])
+        }
+
+        for field in fields
+
+        if (field["group_name"] or "").lower() == "fonction"
+        and (field["type_champ"] or "").lower() == "oui_non"
+    ]
+
+    conn_pref = sqlite3.connect(db_path)
+
+    conn_pref.row_factory = sqlite3.Row
+
+    user_row = conn_pref.execute(
+        "SELECT fonctions_filter FROM users WHERE id = ?",
+        (current_user.id,)
+    ).fetchone()
+
+    conn_pref.close()
+
+    fonctions_filter_selected = []
+
+    if user_row and user_row["fonctions_filter"]:
+
+        try:
+
+            fonctions_filter_selected = json.loads(user_row["fonctions_filter"])
+
+        except (TypeError, ValueError):
+
+            fonctions_filter_selected = []
 
     # ============================================================
     # PHOTOS
@@ -618,8 +661,41 @@ def benevoles_tabulator():
 
         lecture_seule=lecture_seule,
 
-        photo_ids=photo_ids
+        photo_ids=photo_ids,
+
+        fonctions_options=fonctions_options,
+
+        fonctions_filter_selected=fonctions_filter_selected
     )
+
+
+@benevoles_bp.route("/api/save_fonctions_filter", methods=["POST"])
+@login_required
+@require_access("benevoles", "lecture")
+def save_fonctions_filter():
+
+    data = request.get_json(silent=True) or {}
+
+    fonctions = data.get("fonctions", [])
+
+    if not isinstance(fonctions, list):
+
+        return jsonify({"success": False}), 400
+
+    fonctions = [str(f) for f in fonctions]
+
+    conn = get_db_connection()
+
+    conn.execute(
+        "UPDATE users SET fonctions_filter = ? WHERE id = ?",
+        (json.dumps(fonctions), current_user.id)
+    )
+
+    conn.commit()
+
+    conn.close()
+
+    return jsonify({"success": True})
 
 
 

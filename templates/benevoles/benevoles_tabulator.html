@@ -260,6 +260,24 @@ body{
 }
 
 /* =====================================================
+   FILTRE FONCTION
+===================================================== */
+
+.fonction-pill-remove{
+
+    cursor:pointer;
+
+    font-weight:700;
+
+    line-height:1;
+}
+
+#fonction-filter-btn{
+
+    white-space:nowrap;
+}
+
+/* =====================================================
    TABLE
 ===================================================== */
 
@@ -368,8 +386,92 @@ body{
     </h1>
 
     <!-- ===================================================== -->
-    <!-- BOUTONS -->
+    <!-- FILTRE FONCTION + BOUTONS -->
     <!-- ===================================================== -->
+
+    <div class="d-flex flex-wrap align-items-start gap-2">
+
+    <div class="dropdown d-flex flex-wrap align-items-center gap-2" style="padding-top:2px;">
+
+        <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm dropdown-toggle"
+            id="fonction-filter-btn"
+            data-bs-toggle="dropdown"
+            data-bs-auto-close="outside"
+            aria-expanded="false">
+
+            Fonction
+
+            <span
+                id="fonction-filter-count"
+                class="badge bg-primary ms-1 d-none">
+                0
+            </span>
+
+        </button>
+
+        <ul
+            class="dropdown-menu p-2"
+            style="max-height:320px; overflow-y:auto;"
+            aria-labelledby="fonction-filter-btn">
+
+            <li>
+
+                <label class="dropdown-item d-flex align-items-center gap-2 mb-0">
+
+                    <input
+                        type="checkbox"
+                        class="fonction-filter-checkbox fonction-filter-aucune"
+                        value="__aucune__"
+                        {% if "__aucune__" in fonctions_filter_selected %}checked{% endif %}>
+
+                    <em>Aucune fonction</em>
+
+                </label>
+
+            </li>
+
+            <li><hr class="dropdown-divider"></li>
+
+            {% for f in fonctions_options %}
+
+            <li>
+
+                <label class="dropdown-item d-flex align-items-center gap-2 mb-0">
+
+                    <input
+                        type="checkbox"
+                        class="fonction-filter-checkbox"
+                        value="{{ f.normalized }}"
+                        {% if f.normalized in fonctions_filter_selected %}checked{% endif %}>
+
+                    {{ f.field_name }}
+
+                </label>
+
+            </li>
+
+            {% endfor %}
+
+            <li><hr class="dropdown-divider"></li>
+
+            <li>
+                <button
+                    type="button"
+                    class="dropdown-item text-danger"
+                    id="fonction-filter-clear">
+                    Effacer la sélection
+                </button>
+            </li>
+
+        </ul>
+
+        <div id="fonction-filter-pastilles" class="d-flex flex-wrap gap-1"></div>
+
+    </div>
+
+    <div style="flex:1 1 auto;">
 
     {% call action_buttons() %}
 
@@ -422,6 +524,10 @@ body{
     ) }}
 
     {% endcall %}
+
+    </div>
+
+    </div>
 
     <!-- ===================================================== -->
     <!-- GROUPES -->
@@ -755,7 +861,7 @@ requestAnimationFrame(() => {
 });
 
 // ======================================================
-// RECHERCHE
+// RECHERCHE + FILTRE FONCTION (combinés)
 // ======================================================
 
 const filtreInput =
@@ -763,12 +869,18 @@ const filtreInput =
         "filtre-benevole"
     );
 
-filtreInput.addEventListener("input", function(){
+let fonctionFilterSelected = new Set(
+    Array.from(
+        document.querySelectorAll(".fonction-filter-checkbox:checked")
+    ).map(cb => cb.value)
+);
+
+function applyFilters(){
 
     const search =
-        normalizeSearch(this.value);
+        normalizeSearch(filtreInput.value);
 
-    if (!search){
+    if (!search && fonctionFilterSelected.size === 0){
 
         table.clearFilter();
 
@@ -776,6 +888,34 @@ filtreInput.addEventListener("input", function(){
     }
 
     table.setFilter(function(data){
+
+        if (fonctionFilterSelected.has("__aucune__")){
+
+            const aUneFonction = FONCTION_FIELDS.some(
+                f => String(data[f] || "").toLowerCase() === "oui"
+            );
+
+            if (aUneFonction){
+
+                return false;
+            }
+
+        } else if (fonctionFilterSelected.size > 0){
+
+            const aUneFonction = Array.from(fonctionFilterSelected).some(
+                f => String(data[f] || "").toLowerCase() === "oui"
+            );
+
+            if (!aUneFonction){
+
+                return false;
+            }
+        }
+
+        if (!search){
+
+            return true;
+        }
 
         for (const key in data){
 
@@ -790,12 +930,12 @@ filtreInput.addEventListener("input", function(){
 
         return false;
     });
+}
 
-});
-
+filtreInput.addEventListener("input", applyFilters);
 
 // ======================================================
-// ECHAP = RESET
+// ECHAP = RESET RECHERCHE
 // ======================================================
 
 filtreInput.addEventListener("keydown", function(e){
@@ -804,9 +944,183 @@ filtreInput.addEventListener("keydown", function(e){
 
         this.value = "";
 
-        table.clearFilter();
+        applyFilters();
 
         e.preventDefault();
+    }
+});
+
+// ======================================================
+// FILTRE FONCTION : DROPDOWN + PASTILLES
+// ======================================================
+
+const FONCTION_FIELDS = [
+    {% for f in fonctions_options %}
+    "{{ f.normalized }}",
+    {% endfor %}
+];
+
+const FONCTIONS_LABELS = {
+    "__aucune__": "Aucune fonction",
+    {% for f in fonctions_options %}
+    "{{ f.normalized }}": {{ f.field_name | tojson }},
+    {% endfor %}
+};
+
+function renderFonctionPastilles(){
+
+    const container =
+        document.getElementById("fonction-filter-pastilles");
+
+    container.innerHTML = "";
+
+    fonctionFilterSelected.forEach(value => {
+
+        const pill = document.createElement("span");
+
+        pill.className =
+            "badge rounded-pill text-bg-primary d-inline-flex align-items-center gap-1";
+
+        pill.innerHTML =
+            (FONCTIONS_LABELS[value] || value) +
+            ' <span role="button" class="fonction-pill-remove" data-value="' +
+            value +
+            '">&times;</span>';
+
+        container.appendChild(pill);
+    });
+
+    const badge =
+        document.getElementById("fonction-filter-count");
+
+    if (fonctionFilterSelected.size > 0){
+
+        badge.textContent = fonctionFilterSelected.size;
+
+        badge.classList.remove("d-none");
+
+    } else {
+
+        badge.classList.add("d-none");
+    }
+}
+
+function saveFonctionFilter(){
+
+    fetch("/api/save_fonctions_filter", {
+
+        method: "POST",
+
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": "{{ csrf_token() }}"
+        },
+
+        body: JSON.stringify({
+
+            fonctions: Array.from(fonctionFilterSelected)
+        })
+
+    }).then(r => {
+
+        if (!r.ok){
+
+            console.error("Erreur sauvegarde filtre fonction", r.status);
+        }
+
+    }).catch(() => {});
+}
+
+function onFonctionFilterChange(){
+
+    fonctionFilterSelected = new Set(
+        Array.from(
+            document.querySelectorAll(".fonction-filter-checkbox:checked")
+        ).map(cb => cb.value)
+    );
+
+    renderFonctionPastilles();
+
+    applyFilters();
+
+    saveFonctionFilter();
+}
+
+document
+.querySelectorAll(".fonction-filter-checkbox")
+.forEach(cb => {
+
+    cb.addEventListener("change", function(){
+
+        if (this.checked){
+
+            if (this.classList.contains("fonction-filter-aucune")){
+
+                document
+                .querySelectorAll(
+                    ".fonction-filter-checkbox:not(.fonction-filter-aucune)"
+                )
+                .forEach(other => { other.checked = false; });
+
+            } else {
+
+                document
+                .querySelector(".fonction-filter-aucune")
+                .checked = false;
+            }
+        }
+
+        onFonctionFilterChange();
+    });
+});
+
+document
+.getElementById("fonction-filter-pastilles")
+.addEventListener("click", function(e){
+
+    const btn = e.target.closest(".fonction-pill-remove");
+
+    if (!btn){
+
+        return;
+    }
+
+    const value = btn.dataset.value;
+
+    document
+    .querySelectorAll(".fonction-filter-checkbox")
+    .forEach(cb => {
+
+        if (cb.value === value){
+
+            cb.checked = false;
+        }
+    });
+
+    onFonctionFilterChange();
+});
+
+document
+.getElementById("fonction-filter-clear")
+.addEventListener("click", function(){
+
+    document
+    .querySelectorAll(".fonction-filter-checkbox")
+    .forEach(cb => {
+
+        cb.checked = false;
+    });
+
+    onFonctionFilterChange();
+});
+
+renderFonctionPastilles();
+
+table.on("tableBuilt", function(){
+
+    if (fonctionFilterSelected.size > 0){
+
+        applyFilters();
     }
 });
 
