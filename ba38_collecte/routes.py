@@ -36,15 +36,18 @@
 import io
 import os
 import re
+import glob
 import json
 import copy
 import sqlite3
 import argparse
+import subprocess
 from datetime import datetime
 from threading import Thread
 
 import anthropic
 import markdown
+import requests
 import pandas as pd
 from flask import (
     render_template, request, redirect, url_for, flash,
@@ -102,6 +105,43 @@ def _dossier_annee(annee):
 
 def _dossier_resultats(annee):
     return os.path.join(_dossier_annee(annee), "resultats")
+
+
+def _dossier_production(annee):
+    return os.path.join(_dossier_annee(annee), "production")
+
+
+# ============================================================================
+# 🚛 PRODUCTION — génération des documents réels (fiches, pointage, équipier,
+# index, carte) directement depuis les 3 exports go-on-web du drive collecte,
+# en réutilisant tel quel Generer_documents_bai38_depuis_listes.py (copié
+# dans ba38_collecte/scripts/generer_documents_production.py). Contrairement
+# à la simulation ci-dessus (tournées calculées par optimisation), ici les
+# tournées sont déjà décidées dans liste-vehicule.xlsx : ce module se
+# contente de mettre en forme les documents à partir de ce qui existe déjà.
+#
+# Les 3 fichiers sources sont téléchargés à la volée depuis le drive (Google
+# Sheets/Excel partagés en "Toute personne disposant du lien"), pas importés
+# à la main : la page production doit toujours refléter le dernier état du
+# planning go-on-web. Pas d'historique de versions ici (contrairement aux
+# générations de simulation) : chaque lancement écrase les documents
+# précédents.
+# ============================================================================
+
+PRODUCTION_DRIVE_FICHIERS = {
+    "magasins": "https://docs.google.com/spreadsheets/d/1MdUMIMK2g2kshqO9IqFf8iJjyDYQ8sB6/export?format=xlsx",
+    "vehicules": "https://docs.google.com/spreadsheets/d/10AQExua-F2hZY9DrcnC2hwBtOayuPO-0/export?format=xlsx",
+    "cagettes": "https://docs.google.com/spreadsheets/d/1Y8g2kUjiLJ3lG7CKDw_QbC5JKx_36u7T/export?format=xlsx",
+}
+
+PRODUCTION_FICHIERS_SORTIE = {
+    "excel":    {"nom": "Tournees_BAI38_{annee}_GOTW.xlsx", "label": "Classeur Excel (tournées + contrôles)"},
+    "fiches":   {"nom": "fiches_jour_vehicule_magasin_{annee}_GOTW.pdf", "label": "Fiches de collecte"},
+    "pointage": {"nom": "pointage_vehicules_{annee}_GOTW.pdf", "label": "Pointage véhicules"},
+    "equipier": {"nom": "fiches_jour_vehicule_magasin_equipier_{annee}_GOTW.pdf", "label": "Fiches équipier"},
+    "index":    {"nom": "fiches_equipier_jour_vehicule_{annee}_GOTW.pdf", "label": "Index alphabétique équipiers"},
+    "carte":    {"nom": "carte_tournees_production.html", "label": "Carte interactive des tournées"},
+}
 
 
 # Défauts repris de lancer_tournees_bai_v2.bat (section PARAMETRES), pas des
@@ -993,3 +1033,150 @@ def resultats_pdf(generation_id):
         download_name=os.path.splitext(generation["fichier_excel"])[0] + ".pdf",
         mimetype="application/pdf",
     )
+
+
+@collecte_bp.route("/collecte/production")
+@login_required
+@require_access("collecte", "lecture")
+def production():
+    annee = request.args.get("annee", type=int) or datetime.now().year
+    dossier = _dossier_production(annee)
+
+    fichiers = {}
+    for cle, conf in PRODUCTION_FICHIERS_SORTIE.items():
+        nom = conf["nom"].format(annee=annee)
+        chemin = os.path.join(dossier, nom)
+        existe = os.path.exists(chemin)
+        fichiers[cle] = {
+            "label": conf["label"],
+            "nom": nom,
+            "existe": existe,
+            "genere_le": datetime.fromtimestamp(os.path.getmtime(chemin)) if existe else None,
+        }
+
+    derniere_generation = max(
+        (f["genere_le"] for f in fichiers.values() if f["genere_le"]), default=None
+    )
+
+    journal = None
+    chemin_journal = os.path.join(dossier, "dernier_journal.log")
+    if os.path.exists(chemin_journal):
+        with open(chemin_journal, "r", encoding="utf-8") as f:
+            journal = f.read()
+
+    return render_template(
+        "collecte/collecte_production.html",
+        annee=annee,
+        fichiers=fichiers,
+        derniere_generation=derniere_generation,
+        journal=journal,
+    )
+
+
+@collecte_bp.route("/collecte/production/generer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def production_generer():
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    date_jeudi = request.form.get("date_jeudi", "").strip()
+    camion = request.form.get("camion", "").strip()
+
+    # Le champ <input type="date"> soumet AAAA-MM-JJ ; le script attend JJ/MM/AAAA.
+    if date_jeudi:
+        try:
+            date_jeudi = datetime.strptime(date_jeudi, "%Y-%m-%d").strftime("%d/%m/%Y")
+        except ValueError:
+            date_jeudi = ""
+
+    dossier = _dossier_production(annee)
+    os.makedirs(dossier, exist_ok=True)
+
+    # Téléchargement des 3 fichiers depuis le drive (partagés "Toute personne
+    # disposant du lien") : la page production doit toujours refléter le
+    # dernier état du planning go-on-web, pas un import ponctuel.
+    try:
+        for cle, url in PRODUCTION_DRIVE_FICHIERS.items():
+            reponse = requests.get(url, timeout=30)
+            reponse.raise_for_status()
+            if not reponse.content.startswith(b"PK"):
+                raise ValueError(
+                    f"contenu invalide pour « {cle} » — vérifier que le fichier est "
+                    f"bien partagé en \"Toute personne disposant du lien\""
+                )
+            with open(os.path.join(dossier, f"{cle}.xlsx"), "wb") as f:
+                f.write(reponse.content)
+    except Exception as e:
+        flash(f"❌ Échec du téléchargement des fichiers depuis le drive : {e}", "danger")
+        write_log(f"❌ Génération documents production {annee} : échec téléchargement drive ({e})")
+        return redirect(url_for("collecte.production", annee=annee))
+
+    # La carte HTML est régénérée à chaque lancement sous un nom horodaté :
+    # on supprime les anciennes avant de relancer (pas d'historique ici).
+    for ancienne_carte in glob.glob(os.path.join(dossier, "carte_tournees_bai38_*.html")):
+        os.remove(ancienne_carte)
+
+    script_path = os.path.join(
+        current_app.root_path, "ba38_collecte", "scripts", "generer_documents_production.py"
+    )
+    venv_python = os.path.join(current_app.root_path, "venv", "bin", "python")
+
+    cmd = [
+        venv_python, script_path,
+        "--magasins", os.path.join(dossier, "magasins.xlsx"),
+        "--vehicules", os.path.join(dossier, "vehicules.xlsx"),
+        "--cagettes", os.path.join(dossier, "cagettes.xlsx"),
+        "--annee", str(annee),
+        "--output-excel", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["excel"]["nom"].format(annee=annee)),
+        "--output-fiches", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["fiches"]["nom"].format(annee=annee)),
+        "--output-pointage", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["pointage"]["nom"].format(annee=annee)),
+        "--output-equipier", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["equipier"]["nom"].format(annee=annee)),
+        "--output-index", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["index"]["nom"].format(annee=annee)),
+    ]
+    if camion:
+        cmd += ["--camion", camion]
+    if date_jeudi:
+        cmd += ["--date-jeudi", date_jeudi]
+
+    resultat = subprocess.run(cmd, capture_output=True, text=True)
+    sortie = (resultat.stdout or "") + "\n" + (resultat.stderr or "")
+
+    with open(os.path.join(dossier, "dernier_journal.log"), "w", encoding="utf-8") as f:
+        f.write(sortie)
+
+    # Nom fixe pour la carte (générée sous un nom horodaté par le script) afin
+    # d'offrir un lien de téléchargement stable.
+    cartes = sorted(glob.glob(os.path.join(dossier, "carte_tournees_bai38_*.html")))
+    if cartes:
+        os.replace(cartes[-1], os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["carte"]["nom"]))
+
+    if resultat.returncode != 0:
+        flash("❌ Échec de la génération — voir le journal ci-dessous", "danger")
+        write_log(
+            f"❌ Génération documents production {annee} en échec par {current_user.email}\n"
+            f"{sortie[-4000:]}"
+        )
+    else:
+        flash("✅ Documents générés avec succès", "success")
+        write_log(f"📄 Génération documents production {annee} par {current_user.email}")
+
+    return redirect(url_for("collecte.production", annee=annee))
+
+
+@collecte_bp.route("/collecte/production/telecharger/<cle>")
+@login_required
+@require_access("collecte", "lecture")
+def production_telecharger(cle):
+    annee = request.args.get("annee", type=int) or datetime.now().year
+
+    if cle not in PRODUCTION_FICHIERS_SORTIE:
+        flash("❌ Fichier inconnu", "danger")
+        return redirect(url_for("collecte.production", annee=annee))
+
+    nom = PRODUCTION_FICHIERS_SORTIE[cle]["nom"].format(annee=annee)
+    chemin = os.path.join(_dossier_production(annee), nom)
+    if not os.path.exists(chemin):
+        flash("❌ Fichier introuvable — lancez une génération", "danger")
+        return redirect(url_for("collecte.production", annee=annee))
+
+    mimetype = "text/html" if cle == "carte" else None
+    return send_file(chemin, as_attachment=(cle != "carte"), download_name=nom, mimetype=mimetype)
