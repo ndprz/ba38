@@ -199,8 +199,13 @@
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
 
-  const PAVE_WIDTH = 220;
-  const PAVE_HEIGHT = 40;
+  // Alignées sur les dimensions par défaut de LibreSign lui-même
+  // (SignatureTextService::DEFAULT_SIGNATURE_WIDTH/HEIGHT = 350x100) : un
+  // pavé plus petit que ça fait recalculer un scaleFactor < 1 côté LibreSign,
+  // qui réduit d'autant le texte ET l'image de signature manuscrite apposés
+  // dans le pavé (constaté avec l'ancien pavé 220x40, signature illisible).
+  const PAVE_WIDTH = 350;
+  const PAVE_HEIGHT = 100;
 
   let pdfDoc = null;
   let pageNum = 1;
