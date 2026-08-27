@@ -1970,6 +1970,11 @@ def main():
     parser.add_argument('--camion', default=None,
                         help="Limite le document 1 (fiches de collecte) à ce seul camion "
                              "(ex: V003). N'affecte pas les documents 2/3/4.")
+    parser.add_argument('--fiche-seule', action='store_true',
+                        help="Ne génère que le document 1 (fiches de collecte) et s'arrête là — "
+                             "n'écrit ni le classeur Excel ni les documents 2/3/4/5. Utile avec "
+                             "--camion pour un aperçu rapide d'un seul véhicule sans toucher aux "
+                             "autres documents officiels.")
     parser.add_argument('--date-jeudi', default=None,
                         help="Date du jeudi de la collecte (JJ/MM/AAAA), pour afficher la date "
                              "de chaque demi-journée en en-tête du document 3. Omis si non fourni.")
@@ -2065,10 +2070,12 @@ def main():
     # ── vehicule_consignes.xlsx : une ligne par camion, condensée depuis les
     # colonnes de consignes déjà présentes dans liste-vehicule.xlsx (réutilise
     # df_veh, déjà chargé ci-dessus — pas de second passage sur le fichier).
-    print(f"\nSortie 5 (consignes véhicules) : {args.output_vehicule_consignes}")
-    lignes_consignes = construire_vehicule_consignes(df_veh)
-    print(f"  → {len(lignes_consignes)} camion(s) distinct(s)")
-    args.output_vehicule_consignes = ecrire_vehicule_consignes(lignes_consignes, args.output_vehicule_consignes)
+    # Sauté en --fiche-seule : ce mode ne doit produire que le document 1.
+    if not args.fiche_seule:
+        print(f"\nSortie 5 (consignes véhicules) : {args.output_vehicule_consignes}")
+        lignes_consignes = construire_vehicule_consignes(df_veh)
+        print(f"  → {len(lignes_consignes)} camion(s) distinct(s)")
+        args.output_vehicule_consignes = ecrire_vehicule_consignes(lignes_consignes, args.output_vehicule_consignes)
 
     # Référentiel magasins (documents 1 uniquement)
     df_ref = pd.read_excel(args.magasins)
@@ -2310,6 +2317,11 @@ def main():
     print(f"PDF sauvegardé : {args.output_fiches}")
     print("Quai et nb de cagettes pré-remplis quand disponibles dans les fichiers sources ;")
     print("les cases restées vides sont à compléter manuellement.")
+
+    if args.fiche_seule:
+        print("\n--fiche-seule : arrêt après le document 1 (classeur Excel et documents "
+              "2/3/4/5 non générés).")
+        return
 
     # ── Camions absents : codes camion présents dans liste-vehicule.xlsx
     # (une ligne au moins, ex. avec un Quai renseigné) mais qui n'ont

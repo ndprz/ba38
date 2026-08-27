@@ -43,15 +43,20 @@
             </p>
             {% endif %}
 
-            <form method="POST" action="{{ url_for('collecte.production_generer') }}">
+            <form method="POST" action="{{ url_for('collecte.production_generer') }}" id="formGenererProduction">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="annee" value="{{ annee }}">
 
                 <div class="row g-3 mb-3">
                     <div class="col-sm-6">
-                        <label class="form-label">Camion (fiches uniquement)</label>
-                        <input type="text" name="camion" class="form-control" placeholder="ex : V003">
-                        <div class="form-text">Optionnel — limite le PDF des fiches à un seul camion.</div>
+                        <label class="form-label">Camion (aperçu fiche seule)</label>
+                        <input type="text" name="camion" id="champCamion" class="form-control" placeholder="ex : V003">
+                        <div class="form-text">
+                            Optionnel — si renseigné, génère uniquement la fiche de collecte de ce
+                            camion et l'ouvre directement dans un nouvel onglet, sans regénérer ni
+                            remplacer les documents officiels ci-dessous. Laisser vide pour la
+                            génération complète (tous camions, tous documents).
+                        </div>
                     </div>
                 </div>
 
@@ -102,4 +107,11 @@
     {% endif %}
 
 </div>
+
+<script>
+document.getElementById("formGenererProduction").addEventListener("submit", function () {
+    var camion = document.getElementById("champCamion").value.trim();
+    this.target = camion ? "_blank" : "_self";
+});
+</script>
 {% endblock %}

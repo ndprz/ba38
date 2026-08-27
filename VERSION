@@ -1,3 +1,3 @@
-VERSION=1.6.4
-MESSAGE=Collecte : dates de collecte (debut/fin) enregistrees une fois par annee, reprises automatiquement en production (fin du champ date jeudi a ressaisir)
-DATE=2026-08-27 10:30
+VERSION=1.6.5
+MESSAGE=Collecte production : filtre camion genere uniquement sa fiche (nommee avec le code camion), ouverte en direct dans un nouvel onglet, sans toucher aux documents officiels
+DATE=2026-08-27 10:41

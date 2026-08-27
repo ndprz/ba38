@@ -1127,7 +1127,11 @@ def production():
 @require_access("collecte", "ecriture")
 def production_generer():
     annee = request.form.get("annee", type=int) or datetime.now().year
-    camion = request.form.get("camion", "").strip()
+    camion = request.form.get("camion", "").strip().upper()
+    # Sécurité + nommage de fichier : un code camion go-on-web est toujours
+    # alphanumérique (ex. V003) — on rejette tout le reste plutôt que de
+    # laisser passer un caractère de type '/', '..' etc. dans un nom de fichier.
+    camion = re.sub(r"[^A-Z0-9]", "", camion)
 
     # Date du jeudi de la collecte : renseignée une fois pour toutes sur la
     # page principale du module (collecte_campagnes.date_debut), plus besoin
@@ -1160,15 +1164,53 @@ def production_generer():
         write_log(f"❌ Génération documents production {annee} : échec téléchargement drive ({e})")
         return redirect(url_for("collecte.production", annee=annee))
 
-    # La carte HTML est régénérée à chaque lancement sous un nom horodaté :
-    # on supprime les anciennes avant de relancer (pas d'historique ici).
-    for ancienne_carte in glob.glob(os.path.join(dossier, "carte_tournees_bai38_*.html")):
-        os.remove(ancienne_carte)
-
     script_path = os.path.join(
         current_app.root_path, "ba38_collecte", "scripts", "generer_documents_production.py"
     )
     venv_python = os.path.join(current_app.root_path, "venv", "bin", "python")
+
+    # Un camion précis : aperçu rapide de sa seule fiche de collecte,
+    # ouverte directement dans le navigateur, sans toucher aux documents
+    # officiels (classeur Excel, pointage, équipier, index, consignes,
+    # carte) — --fiche-seule arrête le script juste après ce document.
+    if camion:
+        chemin_fiche = os.path.join(dossier, f"fiche_collecte_{annee}_{camion}.pdf")
+        cmd = [
+            venv_python, script_path,
+            "--magasins", os.path.join(dossier, "magasins.xlsx"),
+            "--vehicules", os.path.join(dossier, "vehicules.xlsx"),
+            "--cagettes", os.path.join(dossier, "cagettes.xlsx"),
+            "--annee", str(annee),
+            "--camion", camion,
+            "--fiche-seule",
+            "--output-fiches", chemin_fiche,
+            # Jamais réellement écrit en --fiche-seule (le script s'arrête
+            # avant), mais nécessaire pour que le script déduise son dossier
+            # de sortie par défaut (out_dir) du bon endroit plutôt que du
+            # chemin Windows codé en dur.
+            "--output-excel", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["excel"]["nom"].format(annee=annee)),
+        ]
+        if date_jeudi:
+            cmd += ["--date-jeudi", date_jeudi]
+
+        resultat = subprocess.run(cmd, capture_output=True, text=True)
+        sortie = (resultat.stdout or "") + "\n" + (resultat.stderr or "")
+
+        if resultat.returncode != 0 or not os.path.exists(chemin_fiche):
+            flash(f"❌ Échec de la génération de la fiche du camion {camion}", "danger")
+            write_log(
+                f"❌ Fiche camion {camion} ({annee}) en échec par {current_user.email}\n{sortie[-4000:]}"
+            )
+            return redirect(url_for("collecte.production", annee=annee))
+
+        write_log(f"📄 Fiche camion {camion} ({annee}) générée par {current_user.email}")
+        return send_file(chemin_fiche, mimetype="application/pdf", as_attachment=False)
+
+    # Génération complète (tous camions) : régénère les 6 documents officiels.
+    # La carte HTML est régénérée à chaque lancement sous un nom horodaté :
+    # on supprime les anciennes avant de relancer (pas d'historique ici).
+    for ancienne_carte in glob.glob(os.path.join(dossier, "carte_tournees_bai38_*.html")):
+        os.remove(ancienne_carte)
 
     cmd = [
         venv_python, script_path,
@@ -1183,8 +1225,6 @@ def production_generer():
         "--output-index", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["index"]["nom"].format(annee=annee)),
         "--output-vehicule-consignes", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["consignes"]["nom"]),
     ]
-    if camion:
-        cmd += ["--camion", camion]
     if date_jeudi:
         cmd += ["--date-jeudi", date_jeudi]
 
