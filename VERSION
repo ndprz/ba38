@@ -1,3 +1,3 @@
-VERSION=1.6.2
-MESSAGE=Collecte production : ajout doc consignes vehicules (5e document), aide utilisateur module Collecte
-DATE=2026-08-27 10:18
+VERSION=1.6.3
+MESSAGE=Collecte : suppression du cartouche Liste des vehicules (non utilise par la simulation), aide utilisateur corrigee
+DATE=2026-08-27 10:22

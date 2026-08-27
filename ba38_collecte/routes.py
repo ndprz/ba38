@@ -9,9 +9,10 @@
 # Étape 1 : page principale du module avec l'upload des fichiers nécessaires
 # pour une campagne (année) de collecte donnée :
 #   - liste des magasins (export go-on-web de l'année en cours)
-#   - liste des véhicules (export go-on-web de l'année en cours)
 #   - PDF des tournées de la collecte précédente (dossier camions du drive
 #     collecte), utilisé comme point de départ par l'algorithme d'optimisation
+#     — les camions (codes + noms) en sont aussi extraits, pas besoin d'un
+#     fichier véhicules séparé pour la simulation
 #
 # Étape 2 : génération des tournées, en réutilisant telle quelle la logique de
 # generer_tournees_bai_v2.py (copiée dans collecte_moteur_tournees.py) plutôt
@@ -76,15 +77,6 @@ FICHIERS = {
         "nom_stockage": "liste_magasins.xlsx",
         "extensions": EXTENSIONS_EXCEL,
         "label": "Liste des magasins",
-        "aide": "Export go-on-web de l'année en cours",
-    },
-    "vehicules": {
-        "champ_chemin": "fichier_vehicules",
-        "champ_le": "fichier_vehicules_le",
-        "champ_par": "fichier_vehicules_par",
-        "nom_stockage": "liste_vehicules.xlsx",
-        "extensions": EXTENSIONS_EXCEL,
-        "label": "Liste des véhicules",
         "aide": "Export go-on-web de l'année en cours",
     },
     "pdf_precedent": {
