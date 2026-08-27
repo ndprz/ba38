@@ -69,10 +69,49 @@
 
   {# ✅ Boutons d’action #}
   {% call action_buttons() %}
+    {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAideCreatePartenaire')).show()", color="outline-info") }}
     {{ action_button("💾 Enregistrer", type="submit", color="primary") }}
     {{ action_button("↩️ Retour", href=url_for('partenaires.partenaires'), color="outline-dark") }}
   {% endcall %}
 </form>
+
+<!-- ===================================================== -->
+<!-- MODALE AIDE -->
+<!-- ===================================================== -->
+
+<div class="modal fade" id="modalAideCreatePartenaire" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📄 Aide – Création d'un nouveau Partenaire</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_CreatePartner_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary"
+                onclick="printModal('modalAideCreatePartenaire')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
 
 {# ✅ Script de dépliage des groupes #}
 <script>

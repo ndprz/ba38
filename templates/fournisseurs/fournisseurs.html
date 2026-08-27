@@ -338,6 +338,12 @@ body{
 
     {% call action_buttons() %}
 
+    {{ action_button(
+        "❓ Aide",
+        onclick="new bootstrap.Modal(document.getElementById('modalAideFournisseurs')).show()",
+        color="outline-info"
+    ) }}
+
     {% if not lecture_seule %}
 
     {{ action_button(
@@ -461,6 +467,44 @@ body{
 </div>
 
 <!-- ===================================================== -->
+<!-- MODALE AIDE -->
+<!-- ===================================================== -->
+
+<div class="modal fade" id="modalAideFournisseurs" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📄 Aide – Module Fournisseurs</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_Fournisseurs_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary"
+                onclick="printModal('modalAideFournisseurs')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================== -->
 <!-- TABLE -->
 <!-- ===================================================== -->
 
@@ -518,23 +562,6 @@ function driveFormatter(cell){
 }
 
 // ======================================================
-// MODIFIER
-// ======================================================
-
-function modifierFormatter(cell){
-
-    const id = cell.getValue();
-
-    return `
-        <a href="/fournisseurs/${id}/update"
-           class="btn btn-warning btn-sm px-2 py-0">
-
-           Modifier
-        </a>
-    `;
-}
-
-// ======================================================
 // NORMALIZE
 // ======================================================
 
@@ -580,10 +607,6 @@ function getTabulatorConfig(data){
 
         columns:getVisibleColumns().map(col => {
 
-            if (col.formatter === "modifierFormatter"){
-                col.formatter = modifierFormatter;
-            }
-
             if (col.formatter === "emailFormatter"){
                 col.formatter = emailFormatter;
             }
@@ -620,7 +643,12 @@ function getTabulatorConfig(data){
 
         columnHeaderVertAlign:"middle",
 
-        placeholder:"Aucune donnée"
+        placeholder:"Aucune donnée",
+
+        rowFormatter: function(row){
+
+            row.getElement().style.cursor = "pointer";
+        }
     };
 }
 
@@ -628,6 +656,22 @@ let table = new Tabulator(
     "#tabulator-table",
     getTabulatorConfig(tableData)
 );
+
+// ======================================================
+// CLIC LIGNE → MODIFIER
+// (sauf sur un lien : Drive, mail...)
+// ======================================================
+table.on("rowClick", function(e, row){
+
+    if (e.target.closest("a")){
+
+        return;
+    }
+
+    const id = row.getData().id;
+
+    window.location.href = "/fournisseurs/" + id + "/update";
+});
 
 // ======================================================
 // RECHERCHE

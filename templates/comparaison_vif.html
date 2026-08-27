@@ -173,6 +173,10 @@ html, body{
     <div class="d-flex align-items-center justify-content-between mb-2" style="gap:0.75rem;">
         <h1>📋 Comparaison planning VIF / Base association</h1>
         {% call action_buttons() %}
+        <button type="button" class="btn btn-outline-info btn-sm"
+                onclick="new bootstrap.Modal(document.getElementById('modalAideComparaisonVif')).show()">
+            ❓ Aide
+        </button>
         <button type="button" class="btn btn-outline-success btn-sm" id="btn-export-xlsx">
             📥 Export Excel
         </button>
@@ -300,6 +304,41 @@ html, body{
             </div>
         </div>
     </div>
+</div>
+
+<!-- ─── Modal Aide ─── -->
+<div class="modal fade" id="modalAideComparaisonVif" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📄 Aide – Comparaison planning VIF / Base association</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_ComparaisonVIF_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary"
+                onclick="printModal('modalAideComparaisonVif')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>

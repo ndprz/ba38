@@ -106,16 +106,6 @@ def liste_fournisseurs():
     columns = [
 
         {
-            "title": "Action",
-            "field": "id",
-            "width": 110,
-            "frozen": True,
-            "hozAlign": "center",
-            "headerSort": False,
-            "formatter": "modifierFormatter"
-        },
-
-        {
             "title": "ID",
             "field": "id",
             "minWidth": 70,

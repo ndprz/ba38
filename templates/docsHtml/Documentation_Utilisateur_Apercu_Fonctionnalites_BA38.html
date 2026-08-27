@@ -12,6 +12,8 @@ trésorerie.</p>
 dans la vie associative, cotisations)</p></li>
 <li><p>Vue tableau (Tabulator) avec filtres par colonne, recherche,
 choix des colonnes affichées</p></li>
+<li><p>Filtre dédié par fonction (dropdown avec pastilles), mémorisé par
+utilisateur</p></li>
 <li><p>Modification en masse (édition de plusieurs bénévoles en une
 seule validation)</p></li>
 <li><p>Gestion du droit à l’image (photo + consentement)</p></li>
@@ -46,8 +48,14 @@ par colonnes</p></li>
 </ul>
 <h3 id="indicateurs">Indicateurs</h3>
 <ul>
-<li>Import et suivi des indicateurs trimestriels et annuels par
-association (fichiers réseau national)</li>
+<li><p>Import et suivi des indicateurs trimestriels et annuels par
+association (fichiers réseau national)</p></li>
+<li><p>Import du tonnage collecté par association (Kg Net), depuis un
+export VIF dédié</p></li>
+<li><p>Envoi de campagnes de mails “Indicateurs état” aux associations,
+avec traçabilité complète : statut de remise (via Mailjet), distinction
+mode test / envoi réel, renvoi manuel via Gmail en cas de rebond
+(Microsoft, mail.ru…)</p></li>
 </ul>
 <h3 id="exports">Exports</h3>
 <ul>
@@ -59,6 +67,17 @@ colonnes/filtres) pour bénévoles, associations, fournisseurs</li>
 <ul>
 <li>Organisation de la distribution alimentaire vers les associations
 (embryonnaire uniquement mouvement de stocks 02&gt;03)</li>
+</ul>
+<h3 id="collecte">Collecte</h3>
+<ul>
+<li><p><strong>Simulation</strong> : calcul automatique de tournées
+optimisées (répartition des magasins par camion et demi-journée) pour
+tester différents scénarios de collecte en magasins, sans impact sur le
+planning réel</p></li>
+<li><p><strong>Production</strong> : une fois le planning réel saisi
+dans go-on-web, génération des documents utilisés le jour de la collecte
+(fiches de collecte, pointage, équipier, index, consignes véhicules,
+carte, classeur Excel)</p></li>
 </ul>
 <h3 id="plannings-pour-les-différents-postes-de-travail-ba38">Plannings
 pour les différents postes de travail (BA38)</h3>
@@ -78,15 +97,27 @@ collecte)</p></li>
 </ul>
 <h3 id="facturation">Facturation</h3>
 <ul>
-<li>Émission et suivi des factures de participation (parsol2)</li>
-<li>Émission et suivi des factures de cotisation annuelle</li>
-<li>Emission de CERFA bénévoles annuels</li>
+<li><p><strong>Cotisation annuelle</strong> : ancien flux (“📂
+Cotisations 2026”, export Google Drive) maintenu jusqu’à son retrait
+prévu fin 2026, et nouveau module <strong>Cotisations V2</strong> :
+traitement du fichier PARSOL2L, génération automatique des factures PDF,
+envoi par email, suivi des paiements et relance des impayés, le tout
+dans un seul écran</p></li>
+<li><p><strong>Facture de participation trimestrielle</strong> : ancien
+flux dépendant d’EBP toujours utilisé pour préparer le fichier
+comptable, et nouveau module <strong>Participation V2</strong> :
+traitement interne du fichier PARSOL, génération des factures PDF, envoi
+et suivi, sans dépendance à un logiciel externe</p></li>
+<li><p>Traçabilité des envois de factures (statut Mailjet, distinction
+mode test / envoi réel, renvoi manuel via Gmail en cas de
+rebond)</p></li>
+<li><p>Émission de CERFA bénévoles annuels</p></li>
 </ul>
 <h2 id="engagements-dépenses">4. Engagements (dépenses)</h2>
 <ul>
 <li><p>Saisie de notes de frais (déplacements, achats) avec génération
 automatique du PDF justificatif</p></li>
-<li><p>Saisie d’achats (frais ou marchandises), suivi budgetaire de
+<li><p>Saisie d’achats (frais ou marchandises), suivi budgétaire de
 subventions ou de budgets internes</p></li>
 <li><p>Workflow de validation par pôle (un responsable ne peut pas
 valider sa propre demande)</p></li>
@@ -95,7 +126,17 @@ automatique mensuelle)</p></li>
 <li><p>Reporting et suivi budgétaire par pôle</p></li>
 <li><p>GED utilisable en révision des comptes</p></li>
 </ul>
-<h2 id="média">5. Média</h2>
+<h2 id="signature-électronique">5. Signature électronique</h2>
+<ul>
+<li><p>Envoi de n’importe quel document PDF en signature électronique
+(via LibreSign), directement depuis BA38, sans logiciel externe</p></li>
+<li><p>Deux cas d’usage : signature par l’utilisateur lui-même, ou envoi
+à un tiers (fournisseur, partenaire, collègue) par email</p></li>
+<li><p>Positionnement visuel de la zone de signature sur un aperçu du
+document avant envoi</p></li>
+<li><p>Suivi des demandes de signature en cours</p></li>
+</ul>
+<h2 id="média">6. Média</h2>
 <h3 id="droit-à-limage">Droit à l’image</h3>
 <ul>
 <li>Registre centralisé du consentement photo par bénévole</li>
@@ -106,12 +147,15 @@ automatique mensuelle)</p></li>
 PDF/PowerPoint convertis automatiquement)</p></li>
 <li><p>Diffusion sur écrans d’affichage (mode kiosque), avec plages
 horaires de diffusion configurables</p></li>
+<li><p>Tableau “Passages associations” généré automatiquement (à partir
+des jours/heures de passage renseignés sur les fiches associations),
+sans saisie manuelle</p></li>
 </ul>
 <h3 id="photos-bénévoles">Photos bénévoles</h3>
 <ul>
 <li>Gestion des photos associées aux fiches bénévoles</li>
 </ul>
-<h2 id="administration">6. Administration</h2>
+<h2 id="administration">7. Administration</h2>
 <ul>
 <li><p>Gestion des utilisateurs et des rôles (droits lecture/écriture
 par module)</p></li>
@@ -124,6 +168,8 @@ anonymisées séparées, comptes à accès restreint (voient l’application en
 conditions réelles sans toucher aux vraies données ni pouvoir déclencher
 d’action serveur sensible), redirection automatique des emails vers
 l’utilisateur connecté</p></li>
+<li><p>Sauvegarde manuelle à la demande vers Google Drive (en complément
+de la sauvegarde automatique horaire)</p></li>
 <li><p>Sécurité : protection anti brute-force sur la connexion,
 protection CSRF sur tous les formulaires, en-têtes de sécurité HTTP,
 journalisation des connexions</p></li>

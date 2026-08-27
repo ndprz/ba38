@@ -1,0 +1,75 @@
+<h1 id="aide-comparaison-planning-vif-base-association">Aide –
+Comparaison planning VIF / Base association</h1>
+<p>Cet écran compare, association par association, les données de
+planification stockées dans la base BA38 (“Base”) avec celles issues des
+exports du logiciel VIF (“VIF”), afin de repérer et corriger les écarts
+entre les deux.</p>
+<h2 id="lecture-du-tableau">Lecture du tableau</h2>
+<p>Pour chaque champ comparé (jour de passage, menu sec, menu frais,
+fréquence, nombre de bénéficiaires), deux colonnes sont affichées côte à
+côte :</p>
+<ul>
+<li><p><strong>Base</strong> : la valeur actuellement enregistrée dans
+BA38.</p></li>
+<li><p><strong>VIF</strong> : la valeur correspondante trouvée dans les
+fichiers VIF importés.</p></li>
+</ul>
+<h3 id="code-couleur-des-lignes">Code couleur des lignes</h3>
+<ul>
+<li><p><strong>Ligne jaune</strong> : au moins une différence entre la
+base et VIF a été détectée pour cette association.</p></li>
+<li><p><strong>Ligne rouge</strong> : l’association n’a pas été trouvée
+dans le planning VIF (colonne Code VIF affichée en badge rouge “✖
+Absent”).</p></li>
+</ul>
+<h3 id="code-couleur-des-cellules">Code couleur des cellules</h3>
+<ul>
+<li><p><strong>Cellule surlignée avec pointillés orange (⚠️)</strong> :
+la valeur Base diffère de la valeur VIF. Cliquer dessus propose
+d’adopter la valeur VIF (une confirmation est demandée avant
+application).</p></li>
+<li><p><strong>Cellule surlignée avec pointillés rouges (🗑)</strong> :
+l’association est absente du planning VIF mais une valeur existe encore
+en Base. Cliquer dessus propose d’effacer cette valeur (confirmation
+demandée).</p></li>
+<li><p><strong>Colonne “Nom association”</strong> : si le nom diffère de
+celui du VIF, un badge rouge “VIF” apparaît (survoler pour voir le nom
+VIF) ; cliquer sur la cellule propose d’adopter le nom VIF.</p></li>
+</ul>
+<p>Toute mise à jour déclenchée par un clic est enregistrée
+immédiatement dans la base BA38.</p>
+<h2 id="ignorer-une-association">Ignorer une association</h2>
+<p>Le bouton “Ignorer” à côté du nom d’une association permet d’exclure
+définitivement ses différences de planning de la comparaison (utile pour
+les cas particuliers qui ne doivent pas être resynchronisés). Le bouton
+devient “✓ Ignoré” ; cliquer à nouveau réactive la comparaison pour
+cette association. La case “Masquer les ignorées” permet de ne plus
+afficher du tout ces lignes dans le tableau.</p>
+<h2 id="filtres-et-recherche">Filtres et recherche</h2>
+<ul>
+<li><p><strong>Tous / Différences uniquement / Pas de planification
+VIF</strong> : boutons permettant de limiter l’affichage aux lignes
+concernées.</p></li>
+<li><p><strong>🔍 Recherche</strong> : filtre par code VIF ou nom
+d’association.</p></li>
+<li><p>Le compteur en bas à droite indique le nombre de lignes affichées
+sur le total.</p></li>
+</ul>
+<h2 id="export-excel">📥 Export Excel</h2>
+<p>Exporte le tableau actuellement affiché (en tenant compte du filtre
+sélectionné) au format Excel.</p>
+<h2 id="charger-fichiers-vif">📂 Charger fichiers VIF</h2>
+<p>Ouvre une fenêtre permettant de déposer les deux fichiers d’export
+VIF (<code>planning_partenaires.txt</code> et
+<code>planning_par_date.txt</code>) qui alimentent la comparaison. La
+fenêtre indique la marche à suivre dans le logiciel VIF pour générer
+chacun des deux fichiers, ainsi que la date du fichier actuellement
+chargé. Il est possible de ne déposer qu’un seul des deux fichiers ; la
+page se recharge automatiquement une fois l’envoi terminé.</p>
+<h2 id="autres-boutons">Autres boutons</h2>
+<ul>
+<li><p><strong>↩︎️ Accueil</strong> : revient à la page
+d’accueil.</p></li>
+<li><p><strong>⬅️ Retour</strong> : revient à la liste des
+associations.</p></li>
+</ul>

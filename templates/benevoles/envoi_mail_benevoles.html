@@ -9,9 +9,48 @@
   <h2>📧 Envoi d'un mail (bénévoles)</h2>
 
   {% call action_buttons() %}
+    {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAideEnvoiMailBenevoles')).show()", color="outline-info") }}
     {{ action_button("⚙️ Gérer les messages pré-enregistrés", href=url_for('benevoles.messages_predefinis_benevoles'), color="outline-secondary") }}
     {{ action_button("↩️ Retour", href=retour_url or url_for('benevoles.benevoles'), color="outline-dark") }}
   {% endcall %}
+
+  <!-- ===================================================== -->
+  <!-- MODALE AIDE -->
+  <!-- ===================================================== -->
+
+  <div class="modal fade" id="modalAideEnvoiMailBenevoles" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+
+        <div class="modal-header">
+          <h5 class="modal-title">📄 Aide – Envoi de mail bénévoles</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body" style="
+            max-height: 70vh;
+            overflow:auto;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        ">
+
+          {% include "docsHtml/Documentation_Utilisateur_Module_EnvoiMailBenevoles_BA38.html" %}
+
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-outline-primary"
+                  onclick="printModal('modalAideEnvoiMailBenevoles')">
+              🖨️ Imprimer
+          </button>
+          <button class="btn btn-secondary" data-bs-dismiss="modal">
+              Fermer
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
 
   <!-- 🔹 Filtrage par fonction -->
   <form method="get" class="mb-4 border rounded p-3 bg-light">

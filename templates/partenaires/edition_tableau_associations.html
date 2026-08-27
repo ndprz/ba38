@@ -60,12 +60,50 @@
     <div class="d-flex justify-content-between align-items-center flex-wrap">
       <h2 class="mb-0">Mise à jour en tableau des associations</h2>
       <div class="d-flex gap-2 mt-2 mt-md-0">
+        {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAideEditionTableauAssociations')).show()", color="outline-info") }}
         {{ action_button("💾 Enregistrer les modifications", type="submit", color="success") }}
         {{ action_button("↩️ Retour à la liste", href=url_for('partenaires.partenaires'), color="outline-dark") }}
       </div>
     </div>
   </div>
 
+  <!-- ===================================================== -->
+  <!-- MODALE AIDE -->
+  <!-- ===================================================== -->
+
+  <div class="modal fade" id="modalAideEditionTableauAssociations" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+
+        <div class="modal-header">
+          <h5 class="modal-title">📄 Aide – Mise à jour en tableau des associations</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body" style="
+            max-height: 70vh;
+            overflow:auto;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        ">
+
+          {% include "docsHtml/Documentation_Utilisateur_Module_EditionTableauAssociations_BA38.html" %}
+
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-outline-primary"
+                  onclick="printModal('modalAideEditionTableauAssociations')">
+              🖨️ Imprimer
+          </button>
+          <button class="btn btn-secondary" data-bs-dismiss="modal">
+              Fermer
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
 
   {# ⬆️ Barre de scroll horizontale en haut (fixe) #}
   <div id="scroll-top" class="scroll-sync scroll-sync-top">
