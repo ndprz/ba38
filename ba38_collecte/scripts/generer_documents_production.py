@@ -609,18 +609,23 @@ def draw_page(cv, dj_label, annee, camions):
     cv.setFillColor(C_BLACK)
 
 
-def _eq_header(cv, dj_label, date_collecte, date_gen, page_num):
+def _eq_header(cv, dj_label, date_collecte, page_num):
     """En-tête de page du document 3 (sur le modèle 2025)."""
     cv.setFont('Helvetica-Bold', 11)
     cv.setFillColor(C_BLACK)
     cv.drawString(PML, PH - PMT, dj_label)
     cv.setFont('Helvetica', 10)
-    x = PML + 45*mm
     if date_collecte:
-        cv.drawString(x, PH - PMT, date_collecte)
-        x += 30*mm
-    cv.drawString(x, PH - PMT, date_gen)
+        cv.drawString(PML + 45*mm, PH - PMT, date_collecte)
     cv.drawString(PW - PMR - 20*mm, PH - PMT, f'Page {page_num}')
+    cv.setFillColor(C_BLACK)
+
+
+def _eq_footer(cv, date_gen):
+    """Pied de page du document 3 : date d'édition, petite et discrète."""
+    cv.setFont('Helvetica', 7)
+    cv.setFillColor(colors.HexColor('#888888'))
+    cv.drawString(PML, PMB - 8*mm, f'Édité le : {date_gen}')
     cv.setFillColor(C_BLACK)
 
 
@@ -657,7 +662,7 @@ def draw_equipier_page(cv, dj_label, camions_rows, date_collecte, date_gen, page
     camions_rows : liste de (code, nom_camion, [magasins], [(equipier, tel)])
     Retourne le numéro de la dernière page dessinée (pour la numérotation continue).
     """
-    _eq_header(cv, dj_label, date_collecte, date_gen, page_num)
+    _eq_header(cv, dj_label, date_collecte, page_num)
     y = PH - PMT - 9*mm
 
     x_code = PML
@@ -671,9 +676,10 @@ def draw_equipier_page(cv, dj_label, camions_rows, date_collecte, date_gen, page
         row_h_estime = nb_lignes * EQ_LINE_H + ROW_GAP
 
         if y - row_h_estime < PMB:
+            _eq_footer(cv, date_gen)
             cv.showPage()
             page_num += 1
-            _eq_header(cv, dj_label + ' (suite)', date_collecte, date_gen, page_num)
+            _eq_header(cv, dj_label + ' (suite)', date_collecte, page_num)
             y = PH - PMT - 9*mm
 
         y_top = y
@@ -691,6 +697,7 @@ def draw_equipier_page(cv, dj_label, camions_rows, date_collecte, date_gen, page
         y -= max(h_eq, h_mag) + ROW_GAP
 
     cv.setFillColor(C_BLACK)
+    _eq_footer(cv, date_gen)
     return page_num
 
 
