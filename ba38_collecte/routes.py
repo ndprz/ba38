@@ -538,6 +538,43 @@ def upload_fichier(type_fichier):
     return redirect(url_for("collecte.collecte_main", annee=annee))
 
 
+@collecte_bp.route("/collecte/dates", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_dates():
+    annee = request.form.get("annee", type=int)
+    date_debut = request.form.get("date_debut", "").strip() or None
+    date_fin = request.form.get("date_fin", "").strip() or None
+
+    if not annee:
+        flash("❌ Année manquante", "danger")
+        return redirect(url_for("collecte.collecte_main"))
+
+    with get_db_connection() as conn:
+        existante = conn.execute(
+            "SELECT id FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+
+        if existante:
+            conn.execute(
+                "UPDATE collecte_campagnes SET date_debut = ?, date_fin = ? WHERE annee = ?",
+                (date_debut, date_fin, annee)
+            )
+        else:
+            maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            conn.execute("""
+                INSERT INTO collecte_campagnes (annee, date_debut, date_fin, date_creation, cree_par)
+                VALUES (?, ?, ?, ?, ?)
+            """, (annee, date_debut, date_fin, maintenant, current_user.email))
+
+        conn.commit()
+
+    write_log(f"📅 Collecte {annee} : dates mises à jour par {current_user.email} ({date_debut} → {date_fin})")
+    flash(f"✅ Dates de la collecte {annee} enregistrées", "success")
+
+    return redirect(url_for("collecte.collecte_main", annee=annee))
+
+
 def _get_campagne_ou_redirect(annee):
     with get_db_connection() as conn:
         campagne = conn.execute(
@@ -1028,12 +1065,29 @@ def resultats_pdf(generation_id):
     )
 
 
+def _date_fr_courte(iso):
+    """Convertit une date ISO (AAAA-MM-JJ, celle du <input type=date>) en
+    JJ/MM/AAAA (format attendu par --date-jeudi du script de production).
+    Retourne None si iso est vide ou invalide."""
+    if not iso:
+        return None
+    try:
+        return datetime.strptime(iso, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except ValueError:
+        return None
+
+
 @collecte_bp.route("/collecte/production")
 @login_required
 @require_access("collecte", "lecture")
 def production():
     annee = request.args.get("annee", type=int) or datetime.now().year
     dossier = _dossier_production(annee)
+
+    with get_db_connection() as conn:
+        campagne = conn.execute(
+            "SELECT date_debut, date_fin FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
 
     fichiers = {}
     for cle, conf in PRODUCTION_FICHIERS_SORTIE.items():
@@ -1063,6 +1117,8 @@ def production():
         fichiers=fichiers,
         derniere_generation=derniere_generation,
         journal=journal,
+        date_debut=_date_fr_courte(campagne["date_debut"]) if campagne else None,
+        date_fin=_date_fr_courte(campagne["date_fin"]) if campagne else None,
     )
 
 
@@ -1071,15 +1127,16 @@ def production():
 @require_access("collecte", "ecriture")
 def production_generer():
     annee = request.form.get("annee", type=int) or datetime.now().year
-    date_jeudi = request.form.get("date_jeudi", "").strip()
     camion = request.form.get("camion", "").strip()
 
-    # Le champ <input type="date"> soumet AAAA-MM-JJ ; le script attend JJ/MM/AAAA.
-    if date_jeudi:
-        try:
-            date_jeudi = datetime.strptime(date_jeudi, "%Y-%m-%d").strftime("%d/%m/%Y")
-        except ValueError:
-            date_jeudi = ""
+    # Date du jeudi de la collecte : renseignée une fois pour toutes sur la
+    # page principale du module (collecte_campagnes.date_debut), plus besoin
+    # de la ressaisir à chaque génération.
+    with get_db_connection() as conn:
+        campagne = conn.execute(
+            "SELECT date_debut FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    date_jeudi = _date_fr_courte(campagne["date_debut"]) if campagne else None
 
     dossier = _dossier_production(annee)
     os.makedirs(dossier, exist_ok=True)

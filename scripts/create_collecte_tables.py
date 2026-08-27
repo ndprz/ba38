@@ -30,6 +30,9 @@ def main():
         fichier_pdf_precedent_le TEXT,
         fichier_pdf_precedent_par TEXT,
 
+        date_debut TEXT,
+        date_fin TEXT,
+
         date_creation TEXT,
         cree_par TEXT
     );

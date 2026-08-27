@@ -29,16 +29,25 @@
     <div class="card mb-4">
         <div class="card-body">
             <h5 class="card-title mb-3">🚀 Lancer la génération</h5>
+
+            {% if date_debut %}
+            <p class="small text-muted">
+                📅 Dates de la collecte : <strong>{{ date_debut }}{% if date_fin %} → {{ date_fin }}{% endif %}</strong>
+                — <a href="{{ url_for('collecte.collecte_main', annee=annee) }}">modifier</a>
+            </p>
+            {% else %}
+            <p class="small text-warning">
+                ⚠️ Aucune date de collecte renseignée — les fiches équipier n'afficheront que le
+                libellé du jour, sans date précise.
+                <a href="{{ url_for('collecte.collecte_main', annee=annee) }}">Renseigner les dates</a>
+            </p>
+            {% endif %}
+
             <form method="POST" action="{{ url_for('collecte.production_generer') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="annee" value="{{ annee }}">
 
                 <div class="row g-3 mb-3">
-                    <div class="col-sm-6">
-                        <label class="form-label">Date du jeudi de la collecte</label>
-                        <input type="date" name="date_jeudi" class="form-control" id="dateJeudi">
-                        <div class="form-text">Optionnel — affichée en en-tête des fiches. Laisser vide si inconnue.</div>
-                    </div>
                     <div class="col-sm-6">
                         <label class="form-label">Camion (fiches uniquement)</label>
                         <input type="text" name="camion" class="form-control" placeholder="ex : V003">

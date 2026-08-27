@@ -125,20 +125,24 @@ liste des magasins, historique des cagettes) : la page reflète donc
 toujours le dernier état saisi dans go-on-web, sans étape d’import
 manuel. Il n’y a pas d’historique de versions ici — chaque génération
 écrase les documents précédents.</p>
-<h2 id="lancer-une-génération-1">4.2 Lancer une génération</h2>
+<h2 id="dates-de-la-collecte">4.2 Dates de la collecte</h2>
+<p>La date de début (jeudi) et de fin (dimanche) se renseignent
+<strong>une seule fois</strong>, sur la page principale du module
+(section « 📅 Dates de la collecte »), pas à chaque génération. La date
+de début est ensuite reprise automatiquement pour afficher la date de
+chaque demi-journée en en-tête des fiches équipier (les autres jours
+sont déduits automatiquement : vendredi = jeudi + 1, etc.). Tant
+qu’aucune date n’est renseignée, seul le libellé du jour apparaît («
+Vendredi Matin »), sans date précise.</p>
+<h2 id="lancer-une-génération-1">4.3 Lancer une génération</h2>
 <p>Sur la page Production, le bouton « 🚀 Lancer la génération » accepte
-deux champs optionnels :</p>
+un champ optionnel :</p>
 <ul>
-<li><p><strong>Date du jeudi de la collecte</strong> : affichée en
-en-tête des fiches équipier (les autres jours de la semaine sont déduits
-automatiquement). Laisser vide si la date n’est pas encore connue — seul
-le libellé du jour (« Vendredi Matin », etc.) apparaît alors, sans date
-précise.</p></li>
-<li><p><strong>Camion</strong> (ex. V003) : limite le PDF des fiches de
+<li><strong>Camion</strong> (ex. V003) : limite le PDF des fiches de
 collecte à ce seul camion. Les autres documents (pointage, équipier,
-index, Excel) restent générés pour tous les camions.</p></li>
+index, Excel) restent générés pour tous les camions.</li>
 </ul>
-<h2 id="documents-produits">4.3 Documents produits</h2>
+<h2 id="documents-produits">4.4 Documents produits</h2>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -188,7 +192,7 @@ go-on-web</td>
 </tr>
 </tbody>
 </table>
-<h2 id="journal-et-contrôles">4.4 Journal et contrôles</h2>
+<h2 id="journal-et-contrôles">4.5 Journal et contrôles</h2>
 <p>Après chaque génération, un journal récapitule les anomalies
 détectées dans le planning go-on-web (camion sans quai, magasin actif
 jamais planifié, créneau incomplet — un seul des deux demi-journées d’un

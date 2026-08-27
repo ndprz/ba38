@@ -34,6 +34,33 @@
         </select>
     </div>
 
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">📅 Dates de la collecte {{ annee }}</h5>
+            <p class="card-text text-muted small">
+                Renseignées une seule fois ici, réutilisées automatiquement par la page Production
+                (fiches équipier) — plus besoin de ressaisir la date à chaque génération.
+            </p>
+            <form method="POST" action="{{ url_for('collecte.enregistrer_dates') }}" class="row g-3 align-items-end">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <div class="col-sm-4">
+                    <label class="form-label">Date de début (jeudi)</label>
+                    <input type="date" name="date_debut" class="form-control"
+                           value="{{ campagne.date_debut if campagne else '' }}">
+                </div>
+                <div class="col-sm-4">
+                    <label class="form-label">Date de fin (dimanche)</label>
+                    <input type="date" name="date_fin" class="form-control"
+                           value="{{ campagne.date_fin if campagne else '' }}">
+                </div>
+                <div class="col-sm-4">
+                    <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="row g-3">
         {% for type_fichier, conf in fichiers.items() %}
         {% set le_champ = campagne[conf.champ_le] if campagne else None %}
