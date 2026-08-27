@@ -135,12 +135,13 @@ PRODUCTION_DRIVE_FICHIERS = {
 }
 
 PRODUCTION_FICHIERS_SORTIE = {
-    "excel":    {"nom": "Tournees_BAI38_{annee}_GOTW.xlsx", "label": "Classeur Excel (tournées + contrôles)"},
-    "fiches":   {"nom": "fiches_jour_vehicule_magasin_{annee}_GOTW.pdf", "label": "Fiches de collecte"},
-    "pointage": {"nom": "pointage_vehicules_{annee}_GOTW.pdf", "label": "Pointage véhicules"},
-    "equipier": {"nom": "fiches_jour_vehicule_magasin_equipier_{annee}_GOTW.pdf", "label": "Fiches équipier"},
-    "index":    {"nom": "fiches_equipier_jour_vehicule_{annee}_GOTW.pdf", "label": "Index alphabétique équipiers"},
-    "carte":    {"nom": "carte_tournees_production.html", "label": "Carte interactive des tournées"},
+    "excel":     {"nom": "Tournees_BAI38_{annee}_GOTW.xlsx", "label": "Classeur Excel (tournées + contrôles)"},
+    "fiches":    {"nom": "fiches_jour_vehicule_magasin_{annee}_GOTW.pdf", "label": "Fiches de collecte"},
+    "pointage":  {"nom": "pointage_vehicules_{annee}_GOTW.pdf", "label": "Pointage véhicules"},
+    "equipier":  {"nom": "fiches_jour_vehicule_magasin_equipier_{annee}_GOTW.pdf", "label": "Fiches équipier"},
+    "index":     {"nom": "fiches_equipier_jour_vehicule_{annee}_GOTW.pdf", "label": "Index alphabétique équipiers"},
+    "consignes": {"nom": "vehicule_consignes.xlsx", "label": "Consignes véhicules (1 ligne/camion)"},
+    "carte":     {"nom": "carte_tournees_production.html", "label": "Carte interactive des tournées"},
 }
 
 
@@ -1131,6 +1132,7 @@ def production_generer():
         "--output-pointage", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["pointage"]["nom"].format(annee=annee)),
         "--output-equipier", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["equipier"]["nom"].format(annee=annee)),
         "--output-index", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["index"]["nom"].format(annee=annee)),
+        "--output-vehicule-consignes", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["consignes"]["nom"]),
     ]
     if camion:
         cmd += ["--camion", camion]

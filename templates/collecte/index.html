@@ -9,6 +9,13 @@
 
     <h2>🧺 Collecte annuelle</h2>
 
+    <button class="btn btn-outline-info mb-3"
+            type="button"
+            data-bs-toggle="modal"
+            data-bs-target="#modalAideCollecte">
+        ℹ️ Aide utilisateur
+    </button>
+
     {% call action_buttons() %}
         {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
     {% endcall %}
@@ -152,6 +159,42 @@
         </div>
     </div>
 
+</div>
+
+<!-- ============================================== -->
+<!-- ℹ️ MODALE D'AIDE UTILISATEUR -->
+<!-- ============================================== -->
+<div class="modal fade" id="modalAideCollecte" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">🧺 Aide – Collecte annuelle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_Collecte_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAideCollecte')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
 </div>
 
 <script>

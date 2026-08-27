@@ -25,6 +25,14 @@ Elle produit les mêmes livrables que Generer_documents_bai38.py :
      collecte, pointage, équipier, index) + le rapport manquants.xlsx — en
      réutilisant telles quelles les fonctions de dessin de ce script.
 
+  C. vehicule_consignes.xlsx : une vue condensée, UNE LIGNE PAR CAMION, des
+     consignes de préparation déjà présentes dans liste-vehicule.xlsx (Gilets,
+     tracts secours, nb caisses, nb palettes, Quai, clés à recuperer...) —
+     reprend telle quelle la logique du script autonome
+     generer_vehicule_consignes.py, désormais générée automatiquement à chaque
+     lancement (ce script autonome reste disponible pour une régénération
+     rapide de ce seul fichier, sans relancer tout le pipeline).
+
 Différences fonctionnelles volontaires par rapport à Generer_documents_bai38.py :
   - Pas de paramètre --excel : il n'y a plus de fichier de tournées externe,
     liste-vehicule.xlsx EST la source de vérité des affectations.
@@ -101,6 +109,42 @@ NOMS_CAMIONS_CONNUS = {
 # anomalie de planification et ne doit pas déclencher l'alerte 'Créneaux
 # incomplets' (voir plus loin dans main()).
 VEHICULES_FIGES = {'V007', 'V008', 'V009', 'V013', 'V023', 'V026', 'V027', 'V028', 'V037'}
+
+# ── vehicule_consignes.xlsx : vue condensée UNE LIGNE PAR CAMION des consignes
+# de préparation déjà présentes dans liste-vehicule.xlsx (reprises telles
+# quelles depuis generer_vehicule_consignes.py, intégré ici pour qu'un seul
+# lancement produise aussi ce fichier). La liste complète et l'ordre
+# correspondent exactement au formulaire de fiche véhicule de l'outil « Go on
+# the Web » (Code/Véhicule en tête, puis ces 14 champs). La clé est le nom de
+# colonne dans liste-vehicule.xlsx, la valeur l'intitulé à utiliser dans la
+# sortie (identique ici, sauf « fiche camion » → « Fiche camion »).
+COLONNES_CONSIGNES = [
+    ('A preparer avant', 'A preparer avant'),
+    ('Gilets', 'Gilets'),
+    ('tracts secours', 'tracts secours'),
+    ('nb caisses', 'nb caisses'),
+    ('nb palettes', 'nb palettes'),
+    ('Date', 'Date'),
+    ('fiche camion', 'Fiche camion'),
+    ('chariot à roulettes', 'chariot à roulettes'),
+    ('donné', 'donné'),
+    ('Garé BAI', 'Garé BAI'),
+    ('pris', 'pris'),
+    ('clés à recuperer', 'clés à recuperer'),
+    ('Quai', 'Quai'),
+    ('caisses', 'caisses'),
+]
+
+# Colonnes numériques de vehicule_consignes.xlsx : un entier propre est écrit
+# si la valeur est un nombre entier (pandas les lit en float dès qu'il y a une
+# case vide dans la colonne) ; sinon la valeur texte d'origine est conservée
+# telle quelle (ex. « 60C », « 3K et materiel magasin 500c... » dans nb caisses).
+COLONNES_NUMERIQUES = {'Gilets', 'tracts secours', 'Fiche camion', 'nb palettes', 'chariot à roulettes'}
+
+# Colonnes « oui / vide » de vehicule_consignes.xlsx : une liste de choix est
+# ajoutée dans le classeur de sortie pour cocher rapidement pendant la
+# préparation.
+COLONNES_OUI_VIDE = {'donné', 'Garé BAI', 'pris', 'clés à recuperer'}
 
 # ── Secteurs géographiques : MÊME découpage que generer_tournees_bai_v2.py ──
 # (reproduit ici pour que le classeur issu de Go on the Web affiche les mêmes
@@ -1746,6 +1790,171 @@ def ajouter_onglet_explications(wb):
 # ══════════════════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════════════════
+def valeur_propre(val):
+    """Nettoie une valeur de cellule pandas : NaN/None/'' -> None, sinon la
+    représentation texte nettoyée (espaces superflus retirés)."""
+    if val is None:
+        return None
+    try:
+        if pd.isna(val):
+            return None
+    except (TypeError, ValueError):
+        pass
+    s = str(val).strip()
+    return s if s and s.lower() != 'nan' else None
+
+
+def premiere_valeur_non_vide(serie):
+    """Retourne la première valeur non vide (nettoyée) d'une colonne pandas
+    pour un camion donné, ou None si toutes les lignes sont vides."""
+    for v in serie:
+        v = valeur_propre(v)
+        if v is not None:
+            return v
+    return None
+
+
+def formater_numerique(nom_colonne, valeur):
+    """Pour les colonnes purement numériques de vehicule_consignes.xlsx
+    (Gilets, tracts secours, Fiche camion, nb palettes, chariot à roulettes) :
+    écrit un entier propre si la valeur est un nombre entier (pandas la lit
+    en float à cause des cases vides ailleurs dans la colonne), sinon laisse
+    la valeur telle quelle (texte non numérique inattendu, conservé sans
+    planter)."""
+    if valeur is None or nom_colonne not in COLONNES_NUMERIQUES:
+        return valeur
+    try:
+        f = float(valeur)
+        if f == int(f):
+            return int(f)
+        return f
+    except (TypeError, ValueError):
+        return valeur
+
+
+def construire_vehicule_consignes(df_veh):
+    """Regroupe liste-vehicule.xlsx (déjà chargé dans df_veh, une ligne par
+    passage camion/magasin/demi-journée) par Code et retourne la liste des
+    lignes (dicts) prêtes à écrire dans vehicule_consignes.xlsx : UNE LIGNE
+    PAR CAMION, triée par Code. Signale sur la sortie standard les camions
+    dont la totalité des consignes est vide (probablement un camion tout
+    juste ajouté à liste-vehicule.xlsx, à compléter)."""
+    cols = list(df_veh.columns)
+    col_code = detecter_colonne(cols, ['code']) or 'Code'
+    col_vehicule = detecter_colonne(cols, ['vehicule']) or detecter_colonne(cols, ['nom', 'camion'])
+    if col_code not in df_veh.columns:
+        raise ValueError("Colonne 'Code' introuvable dans le fichier véhicules.")
+
+    df_veh = df_veh.copy()
+    df_veh[col_code] = df_veh[col_code].apply(valeur_propre)
+    df_veh = df_veh[df_veh[col_code].notna()]
+
+    lignes = []
+    a_completer = []
+    for code, grp in df_veh.groupby(col_code, sort=True):
+        nom = premiere_valeur_non_vide(grp[col_vehicule]) if col_vehicule else None
+        if not nom:
+            nom = NOMS_CAMIONS_CONNUS.get(code, '')
+
+        ligne = {'Code': code, 'Véhicule': nom}
+        nb_renseignees = 0
+        for col_source, col_sortie in COLONNES_CONSIGNES:
+            if col_source in grp.columns:
+                val = premiere_valeur_non_vide(grp[col_source])
+            else:
+                val = None
+            val = formater_numerique(col_sortie, val)
+            ligne[col_sortie] = val
+            if val is not None:
+                nb_renseignees += 1
+
+        lignes.append(ligne)
+        if nb_renseignees == 0:
+            a_completer.append(code)
+
+    if a_completer:
+        print(f"  ATTENTION : {len(a_completer)} camion(s) sans AUCUNE consigne renseignée dans "
+              f"liste-vehicule.xlsx (probablement nouveaux) : {', '.join(a_completer)}")
+        print("    → à compléter dans liste-vehicule.xlsx (colonnes Gilets, tracts secours, Quai...),")
+        print("      puis régénérer.")
+
+    return lignes
+
+
+def ecrire_vehicule_consignes(lignes, chemin_sortie):
+    """Écrit vehicule_consignes.xlsx (une ligne par camion) : en-tête bleu,
+    lignes zébrées, mise en évidence jaune des camions sans aucune consigne
+    renseignée, et listes de choix 'oui' sur les colonnes de suivi (donné /
+    Garé BAI / pris / clés à recuperer)."""
+    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    entetes = ['Code', 'Véhicule'] + [c for _, c in COLONNES_CONSIGNES]
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'vehicule_consignes'
+
+    C_HDR = PatternFill('solid', fgColor='1F4E79')
+    F_HDR = Font(name='Calibri', bold=True, color='FFFFFF', size=10)
+    F_NRM = Font(name='Calibri', size=10)
+    C_BLC = PatternFill('solid', fgColor='DDEEFF')
+    C_WARN = PatternFill('solid', fgColor='FFF2CC')
+    thin = Side(style='thin', color='AAAAAA')
+    BRD = Border(left=thin, right=thin, top=thin, bottom=thin)
+    A_TOP = Alignment(vertical='top', horizontal='left', wrap_text=True)
+    A_TOP_C = Alignment(vertical='top', horizontal='center', wrap_text=True)
+
+    ws.append(entetes)
+    for c, _ in enumerate(entetes, 1):
+        cell = ws.cell(row=1, column=c)
+        cell.font = F_HDR
+        cell.fill = C_HDR
+        cell.border = BRD
+        cell.alignment = A_TOP_C
+    ws.row_dimensions[1].height = 28
+
+    for r, ligne in enumerate(lignes, 2):
+        fill = C_BLC if r % 2 == 0 else None
+        # Ligne quasi vide (aucune consigne renseignée) : mise en évidence
+        # jaune pour signaler visuellement un camion à compléter.
+        vide = all(ligne.get(c) is None for _, c in COLONNES_CONSIGNES)
+        for c, entete in enumerate(entetes, 1):
+            val = ligne.get(entete)
+            cell = ws.cell(row=r, column=c, value=val)
+            cell.font = F_NRM
+            cell.border = BRD
+            cell.alignment = A_TOP if entete in ('A preparer avant', 'Véhicule', 'caisses') else A_TOP_C
+            if vide and entete not in ('Code', 'Véhicule'):
+                cell.fill = C_WARN
+            elif fill:
+                cell.fill = fill
+
+    largeurs = {
+        'Code': 8, 'Véhicule': 26, 'A preparer avant': 42, 'Gilets': 8,
+        'tracts secours': 10, 'nb caisses': 14, 'nb palettes': 10,
+        'Date': 12, 'Fiche camion': 10, 'chariot à roulettes': 12, 'donné': 9, 'Garé BAI': 10,
+        'pris': 8, 'clés à recuperer': 12, 'Quai': 8, 'caisses': 22,
+    }
+    for c, entete in enumerate(entetes, 1):
+        ws.column_dimensions[get_column_letter(c)].width = largeurs.get(entete, 12)
+
+    # Listes de choix « oui / (vide) » sur les colonnes de suivi, pour cocher
+    # rapidement pendant la préparation sans ressaisir le texte.
+    dv = DataValidation(type='list', formula1='"oui"', allow_blank=True)
+    ws.add_data_validation(dv)
+    for entete in COLONNES_OUI_VIDE:
+        if entete in entetes:
+            col_lettre = get_column_letter(entetes.index(entete) + 1)
+            dv.add(f"{col_lettre}2:{col_lettre}{len(lignes) + 1}")
+
+    ws.freeze_panes = 'C2'
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(entetes))}{len(lignes) + 1}"
+
+    return sauver_xlsx_avec_repli(wb, chemin_sortie)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Génère le classeur Excel des tournées + les 4 documents PDF BAI 38, '
@@ -1780,6 +1989,10 @@ def main():
     parser.add_argument('--output-index', default=None,
                         help="Chemin du PDF index alphabétique des équipiers (défaut : "
                              "Tournées definitives 2026/fiches_equipier_jour_vehicule_{annee}.pdf)")
+    parser.add_argument('--output-vehicule-consignes', default=None,
+                        help="Chemin du classeur consignes véhicules — une ligne par camion, "
+                             "condensée depuis liste-vehicule.xlsx (défaut : "
+                             "Tournées definitives 2026/vehicule_consignes.xlsx)")
 
     # Rétro-compatibilité : anciens noms d'arguments des scripts d'origine
     parser.add_argument('--output', default=None, help=argparse.SUPPRESS)
@@ -1824,6 +2037,8 @@ def main():
         args.output_equipier = os.path.join(out_dir, f'fiches_jour_vehicule_magasin_equipier_{args.annee}_{ORIGINE}.pdf')
     if args.output_index is None:
         args.output_index = os.path.join(out_dir, f'fiches_equipier_jour_vehicule_{args.annee}_{ORIGINE}.pdf')
+    if args.output_vehicule_consignes is None:
+        args.output_vehicule_consignes = os.path.join(out_dir, 'vehicule_consignes.xlsx')
 
     print(f"Vehicules : {args.vehicules}")
     print(f"Ref       : {args.magasins}")
@@ -1846,6 +2061,14 @@ def main():
         print("ERREUR : aucune tournée reconstruite — vérifiez les colonnes de "
               f"{args.vehicules} ('Code', 'Tournée', 'Début', 'Code VIF', 'Magasin').")
         return
+
+    # ── vehicule_consignes.xlsx : une ligne par camion, condensée depuis les
+    # colonnes de consignes déjà présentes dans liste-vehicule.xlsx (réutilise
+    # df_veh, déjà chargé ci-dessus — pas de second passage sur le fichier).
+    print(f"\nSortie 5 (consignes véhicules) : {args.output_vehicule_consignes}")
+    lignes_consignes = construire_vehicule_consignes(df_veh)
+    print(f"  → {len(lignes_consignes)} camion(s) distinct(s)")
+    args.output_vehicule_consignes = ecrire_vehicule_consignes(lignes_consignes, args.output_vehicule_consignes)
 
     # Référentiel magasins (documents 1 uniquement)
     df_ref = pd.read_excel(args.magasins)
@@ -2315,7 +2538,7 @@ def main():
     df_carte = pd.DataFrame(lignes_carte)
     generer_carte_tournees(df_carte, df_ref, mag_cols, out_dir)
 
-    print(f"\nLes 4 documents et la carte HTML ont été générés dans : {out_dir}")
+    print(f"\nLes 4 documents, la carte HTML et vehicule_consignes.xlsx ont été générés dans : {out_dir}")
 
 
 if __name__ == '__main__':

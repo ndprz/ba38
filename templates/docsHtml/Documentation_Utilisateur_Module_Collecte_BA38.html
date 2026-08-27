@@ -1,0 +1,207 @@
+<p><strong>Application BA38 – Module Collecte</strong> Version de la
+documentation : 27/08/2026</p>
+<h1 id="objectif-du-module">1. Objectif du module</h1>
+<p>Le module « Collecte » gère la préparation de la collecte annuelle en
+magasins, en deux temps bien séparés :</p>
+<ul>
+<li><p>la <strong>simulation</strong> : calcule automatiquement des
+tournées optimisées (répartition des magasins par camion et
+demi-journée), pour tester différents scénarios avant de décider du
+planning réel ;</p></li>
+<li><p>la <strong>production</strong> : une fois le planning réel saisi
+dans go-on-web, génère les vrais documents utilisés le jour de la
+collecte (fiches de collecte, pointage, équipier, index, carte, classeur
+Excel).</p></li>
+</ul>
+<p>La simulation ne modifie jamais le planning go-on-web : c’est un
+outil d’aide à la décision. Seule la page Production produit les
+documents réellement utilisés sur le terrain.</p>
+<h1 id="accès">2. Accès</h1>
+<p>L’accès à ce module nécessite le droit « lecture » (ou supérieur) sur
+« Collecte ». Le lancement d’une génération (simulation ou production)
+et l’import de fichiers nécessitent le droit « écriture ».</p>
+<h1 id="simulation-préparer-la-campagne">3. Simulation — préparer la
+campagne</h1>
+<p>Menu → Collecte. Sélectionner l’année de collecte en haut de page
+(une campagne est créée automatiquement au premier import de fichier
+pour une année donnée).</p>
+<h2 id="fichiers-nécessaires">3.1 Fichiers nécessaires</h2>
+<p>Deux fichiers sont à importer pour pouvoir lancer une simulation
+:</p>
+<ul>
+<li><p><strong>Liste des magasins</strong> : export go-on-web de l’année
+en cours (adresses, horaires, coordonnées GPS, VIF, état) ;</p></li>
+<li><p><strong>Tournées de la collecte précédente</strong> : le PDF «
+fiches jour-véhicules-magasins » de la collecte précédente, disponible
+dans le dossier camions du drive collecte. Sert de point de départ à
+l’algorithme, qui fait évoluer ces tournées en tenant compte des
+magasins ajoutés ou arrêtés cette année.</p></li>
+</ul>
+<p>Un troisième emplacement (« Liste des véhicules ») est présent sur la
+page mais n’est pas utilisé par la simulation.</p>
+<h2 id="lancer-une-génération">3.2 Lancer une génération</h2>
+<p>Une fois les deux fichiers importés, le bouton « 🚀 Générer les
+tournées » ouvre le formulaire de paramètres :</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Paramètre</th>
+<th>Rôle</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Camions supplémentaires</td>
+<td>Nombre de camions ajoutés pour absorber les nouveaux magasins</td>
+</tr>
+<tr class="even">
+<td>Poids nouveaux magasins (kg)</td>
+<td>Tonnage estimé attribué à un magasin qui n’existait pas l’an
+dernier</td>
+</tr>
+<tr class="odd">
+<td>Max magasins/tournée</td>
+<td>Nombre maximum de magasins par tournée (+1 automatique le
+dimanche)</td>
+</tr>
+<tr class="even">
+<td>Optimiser anciens</td>
+<td>Autorise à déplacer des magasins déjà présents l’an dernier, pas
+seulement les nouveaux</td>
+</tr>
+<tr class="odd">
+<td>Corriger mal placés</td>
+<td>Réaffecte les magasins situés à plus de 8 km du centre de leur
+tournée</td>
+</tr>
+<tr class="even">
+<td>Fusionner légères</td>
+<td>Fusionne automatiquement les tournées très légères (2 magasins max
+chacune)</td>
+</tr>
+</tbody>
+</table>
+<p>Chaque génération crée une nouvelle version sans écraser les
+précédentes. La génération peut prendre jusqu’à une minute.</p>
+<h2 id="consulter-un-résultat">3.3 Consulter un résultat</h2>
+<p>La page résultat affiche le détail des tournées (tableau
+filtrable/triable), avec :</p>
+<ul>
+<li><p>l’export Excel et l’export PDF du tableau,</p></li>
+<li><p>la carte des secteurs et la carte des tournées (itinéraire réel
+calculé),</p></li>
+<li><p>la sélection d’une autre version générée pour la même
+année,</p></li>
+<li><p>les lignes en rouge signalent un véhicule figé (jamais modifié
+par l’algorithme).</p></li>
+</ul>
+<p>L’historique (bouton « 📋 Historique ») liste toutes les versions
+générées pour l’année, avec leurs paramètres, et permet de les
+consulter, télécharger ou supprimer individuellement.</p>
+<h2 id="analyse-comparative-8-scénarios">3.4 Analyse comparative — 8
+scénarios</h2>
+<p>Le bouton « 🔬 Lancer l’analyse des 8 scénarios » compare, en tâche
+de fond, 1 à 4 camions supplémentaires croisés avec 4 ou 5 magasins
+maximum par tournée (8 combinaisons), et affiche les indicateurs
+chiffrés de chaque scénario côte à côte pour aider à choisir les
+paramètres de la génération finale. Aucun fichier Excel ou carte n’est
+produit pour ces 8 scénarios : seuls les indicateurs sont conservés.</p>
+<h1 id="production-générer-les-vrais-documents">4. Production — générer
+les vrais documents</h1>
+<p>Bouton « 🚛 Passer en réel » sur la page principale du module : ouvre
+la page Production, indépendante de la simulation.</p>
+<h2 id="principe">4.1 Principe</h2>
+<p>Contrairement à la simulation, la page Production ne calcule pas de
+tournées : elle <strong>met en forme les documents à partir du planning
+déjà décidé</strong> dans go-on-web (colonnes Quai, Tournée, Début, Code
+VIF, Magasin, Équipier, consignes de l’outil de collecte).</p>
+<p>À chaque lancement, les 3 fichiers sources sont <strong>retéléchargés
+automatiquement depuis le drive</strong> (liste des véhicules/planning,
+liste des magasins, historique des cagettes) : la page reflète donc
+toujours le dernier état saisi dans go-on-web, sans étape d’import
+manuel. Il n’y a pas d’historique de versions ici — chaque génération
+écrase les documents précédents.</p>
+<h2 id="lancer-une-génération-1">4.2 Lancer une génération</h2>
+<p>Sur la page Production, le bouton « 🚀 Lancer la génération » accepte
+deux champs optionnels :</p>
+<ul>
+<li><p><strong>Date du jeudi de la collecte</strong> : affichée en
+en-tête des fiches équipier (les autres jours de la semaine sont déduits
+automatiquement). Laisser vide si la date n’est pas encore connue — seul
+le libellé du jour (« Vendredi Matin », etc.) apparaît alors, sans date
+précise.</p></li>
+<li><p><strong>Camion</strong> (ex. V003) : limite le PDF des fiches de
+collecte à ce seul camion. Les autres documents (pointage, équipier,
+index, Excel) restent générés pour tous les camions.</p></li>
+</ul>
+<h2 id="documents-produits">4.3 Documents produits</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Document</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Classeur Excel</td>
+<td>Tournées (VIF + secteurs), magasins, et onglets de contrôle (quai
+manquant, cagettes manquantes, magasins non planifiés, créneaux
+incomplets…)</td>
+</tr>
+<tr class="even">
+<td>Fiches de collecte</td>
+<td>Une fiche par camion et demi-journée, avec quai, consignes,
+magasins, adresses, horaires et nombre de cagettes</td>
+</tr>
+<tr class="odd">
+<td>Pointage véhicules</td>
+<td>Feuille de pointage départ/retour par camion et demi-journée</td>
+</tr>
+<tr class="even">
+<td>Fiches équipier</td>
+<td>Détail équipiers/magasins par camion et demi-journée, avec date
+d’édition en petit en pied de page</td>
+</tr>
+<tr class="odd">
+<td>Index alphabétique équipiers</td>
+<td>Liste alphabétique des équipiers par demi-journée, avec leur
+camion</td>
+</tr>
+<tr class="even">
+<td>Consignes véhicules</td>
+<td>Une ligne par camion : consignes de préparation (gilets, tracts,
+caisses, palettes, quai, clés à récupérer…), condensées depuis
+go-on-web</td>
+</tr>
+<tr class="odd">
+<td>Carte interactive</td>
+<td>Carte des tournées avec itinéraire routier réel</td>
+</tr>
+</tbody>
+</table>
+<h2 id="journal-et-contrôles">4.4 Journal et contrôles</h2>
+<p>Après chaque génération, un journal récapitule les anomalies
+détectées dans le planning go-on-web (camion sans quai, magasin actif
+jamais planifié, créneau incomplet — un seul des deux demi-journées d’un
+jour couvert alors que l’autre devrait l’être, cagettes manquantes…).
+Ces informations figurent aussi dans les onglets de contrôle du classeur
+Excel : à corriger dans go-on-web puis relancer une génération.</p>
+<h1 id="bonnes-pratiques">5. Bonnes pratiques</h1>
+<ul>
+<li><p>Toujours vérifier les onglets de contrôle du classeur Excel avant
+impression des documents de production.</p></li>
+<li><p>Ne lancer la génération de production que lorsque le planning
+go-on-web est considéré comme stable pour la période concernée — chaque
+lancement écrase les documents précédents.</p></li>
+<li><p>La simulation reste disponible à tout moment pour tester de
+nouveaux scénarios, indépendamment de l’état de la production.</p></li>
+</ul>
