@@ -485,6 +485,12 @@ fieldset legend{
         color="success"
     ) }}
 
+    {{ action_button(
+        "💾 Sauvegarde manuelle",
+        onclick="lancerSauvegardeManuelle(this)",
+        color="outline-primary"
+    ) }}
+
     {% if has_access("associations", "ecriture") %}
 
     {{ action_button(
@@ -1234,6 +1240,48 @@ window.addEventListener("load", () => {
 // ======================================================
 // PUBLIPOSTAGE
 // ======================================================
+
+// ======================================================
+// SAUVEGARDE MANUELLE
+// ======================================================
+
+function lancerSauvegardeManuelle(btn){
+
+    if (!confirm(
+        "Lancer une sauvegarde immédiate de la base vers Google Drive ?"
+    )){
+        return;
+    }
+
+    const label = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = "⏳ Sauvegarde en cours...";
+
+    fetch("{{ url_for('partenaires.backup_manuel') }}", {
+
+        method: "POST",
+
+        headers: {
+            "X-CSRFToken": "{{ csrf_token() }}"
+        }
+
+    })
+    .then(r => r.json())
+    .then(data => {
+
+        alert(data.message || "Sauvegarde terminée");
+    })
+    .catch(() => {
+
+        alert("❌ Erreur réseau lors de la sauvegarde.");
+    })
+    .finally(() => {
+
+        btn.disabled = false;
+        btn.innerHTML = label;
+    });
+}
+
 
 function updatePublipostageFile(){
 

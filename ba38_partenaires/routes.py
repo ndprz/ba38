@@ -2,10 +2,12 @@ import os
 import sqlite3
 import base64
 import re
+import subprocess
+import sys
 import unicodedata
 import json
 
-from flask import Blueprint, render_template, render_template_string, request, redirect, url_for, flash
+from flask import Blueprint, render_template, render_template_string, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from ba38_utilitaires.core import get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_multi_email, is_valid_phone, require_access, get_db_path
 from urllib.parse import urlencode
@@ -485,6 +487,60 @@ def partenaires_tabulator():
     )
 
 
+# ============================================================
+# SAUVEGARDE MANUELLE VERS DRIVE
+# ============================================================
+
+@partenaires_bp.route("/backup_manuel", methods=["POST"])
+@login_required
+@require_access("associations", "lecture")
+def backup_manuel():
+    """
+    Déclenche immédiatement le même script que le cron horaire
+    (backup_db_to_drive.py) plutôt que d'attendre la prochaine
+    exécution planifiée.
+    """
+
+    script_path = "/srv/ba38/scripts_taches/backup_db_to_drive.py"
+    python_path = "/srv/ba38/prod/venv/bin/python"
+
+    try:
+        result = subprocess.run(
+            [python_path, script_path],
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+
+        success = result.returncode == 0
+
+        write_log(
+            f"{'✅' if success else '❌'} Sauvegarde manuelle Drive "
+            f"déclenchée par {getattr(current_user, 'username', 'inconnu')}"
+        )
+
+        return jsonify({
+            "success": success,
+            "message": (
+                "✅ Sauvegarde envoyée sur Drive avec succès."
+                if success else
+                "❌ Échec de la sauvegarde. Consultez les logs."
+            )
+        })
+
+    except subprocess.TimeoutExpired:
+        write_log("❌ Sauvegarde manuelle Drive : timeout")
+        return jsonify({
+            "success": False,
+            "message": "❌ La sauvegarde a dépassé le délai autorisé."
+        })
+
+    except Exception as e:
+        write_log(f"❌ Sauvegarde manuelle Drive : erreur {e}")
+        return jsonify({
+            "success": False,
+            "message": f"❌ Erreur lors de la sauvegarde : {e}"
+        })
 
 
 
