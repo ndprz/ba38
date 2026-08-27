@@ -289,6 +289,8 @@ def planning_absences():
     conn = get_db_connection()
     cur = conn.cursor()
 
+    voir_toutes = request.args.get("voir_toutes") == "1"
+
     if request.method == "POST":
         action = request.form.get("action", "").strip()
 
@@ -365,10 +367,28 @@ def planning_absences():
                 flash(f"❌ Erreur purge : {e}", "danger")
 
     # Affichage : absences + liste des bénévoles
-    absences = cur.execute("""
+    # Par défaut, on masque les absences closes (date_fin déjà passée) :
+    # même logique de parsing jj/mm/aaaa que la purge ci-dessus.
+    where_clause = ""
+    if not voir_toutes:
+        where_clause = """
+            WHERE NOT (
+                length(trim(a.date_fin)) = 10
+                AND substr(trim(a.date_fin), 3, 1) = '/'
+                AND substr(trim(a.date_fin), 6, 1) = '/'
+                AND date(
+                        substr(trim(a.date_fin), 7, 4) || '-' ||
+                        substr(trim(a.date_fin), 4, 2) || '-' ||
+                        substr(trim(a.date_fin), 1, 2)
+                    ) <= date('now','localtime')
+            )
+        """
+
+    absences = cur.execute(f"""
         SELECT a.id, a.benevole_id, a.date_debut, a.date_fin, b.nom, b.prenom
         FROM absences a
         JOIN benevoles b ON a.benevole_id = b.id
+        {where_clause}
         ORDER BY b.nom COLLATE NOCASE, b.prenom COLLATE NOCASE, a.date_debut
     """).fetchall()
 
@@ -379,7 +399,12 @@ def planning_absences():
     """).fetchall()
 
     conn.close()
-    return render_template("planning/utils_planning/planning_absences.html", absences=absences, benevoles=benevoles)
+    return render_template(
+        "planning/utils_planning/planning_absences.html",
+        absences=absences,
+        benevoles=benevoles,
+        voir_toutes=voir_toutes,
+    )
 
 
 

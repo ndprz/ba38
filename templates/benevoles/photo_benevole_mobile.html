@@ -15,6 +15,51 @@
   <div class="container">
     <h3 class="text-center mb-4">📸 Photo bénévole</h3>
 
+    <div class="d-flex justify-content-center mb-3">
+      <button class="btn btn-outline-info btn-sm"
+              type="button"
+              onclick="new bootstrap.Modal(document.getElementById('modalAidePhotoBenevoleMobile')).show()">
+        ❓ Aide
+      </button>
+    </div>
+
+    <!-- ===================================================== -->
+    <!-- MODALE AIDE -->
+    <!-- ===================================================== -->
+
+    <div class="modal fade" id="modalAidePhotoBenevoleMobile" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+
+          <div class="modal-header">
+            <h5 class="modal-title">📄 Aide – Photo bénévole</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+
+          <div class="modal-body" style="
+              max-height: 70vh;
+              overflow:auto;
+              font-size: 0.9rem;
+              line-height: 1.4;
+          ">
+
+            {% include "docsHtml/Documentation_Utilisateur_Module_PhotoBenevoleMobile_BA38.html" %}
+
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn btn-outline-primary"
+                    onclick="printModal('modalAidePhotoBenevoleMobile')">
+                🖨️ Imprimer
+            </button>
+            <button class="btn btn-secondary" data-bs-dismiss="modal">
+                Fermer
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
 
     <!-- Formulaire de sélection du bénévole -->
     <form method="POST" class="mb-4">
@@ -95,6 +140,53 @@
       margin: 1rem 0;
     }
   </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+
+    function printModal(modalId) {
+
+        const modalBody = document.querySelector(
+            "#" + modalId + " .modal-body"
+        );
+
+        if (!modalBody) {
+            alert("Contenu à imprimer introuvable");
+            return;
+        }
+
+        const contenu = modalBody.innerHTML;
+
+        const win = window.open("", "_blank");
+
+        win.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Documentation BA38</title>
+                <style>
+                    body{ font-family: Arial, sans-serif; margin:20px; line-height:1.4; }
+                    table{ border-collapse:collapse; width:100%; }
+                    table, th, td{ border:1px solid #ccc; }
+                    th, td{ padding:6px; }
+                    img{ max-width:100%; }
+                </style>
+            </head>
+            <body>
+                ${contenu}
+            </body>
+            </html>
+        `);
+
+        win.document.close();
+
+        setTimeout(function() {
+            win.print();
+        }, 500);
+    }
+
+  </script>
 
   <!-- Script d’aperçu -->
   <script>

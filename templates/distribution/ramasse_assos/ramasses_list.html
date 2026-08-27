@@ -68,14 +68,14 @@
 
     <div style="display:flex; justify-content:flex-end; align-items:center; gap:10px;">
 
-            <button class="btn btn-outline-info"
-                type="button"
-                data-bs-toggle="modal"
-                data-bs-target="#modalAide">
-                ℹ️ Aide utilisateur
-            </button>
-
         {% call action_buttons() %}
+
+            <!-- Aide -->
+            {{ action_button(
+                "ℹ️ Aide utilisateur",
+                onclick="new bootstrap.Modal(document.getElementById('modalAide')).show()",
+                color="outline-info"
+            ) }}
 
             <!-- Excel -->
             {{ action_button(

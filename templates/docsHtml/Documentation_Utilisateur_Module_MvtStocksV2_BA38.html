@@ -1,0 +1,50 @@
+<h1 id="aide-mouvements-de-stocks-02-vers-03-et-03-vers-02">Aide –
+Mouvements de stocks (02 vers 03 et 03 vers 02)</h1>
+<p>Cet écran permet de saisir les transferts de stock entre les deux
+dépôts de l’entrepôt (02 et 03), puis de les exporter vers VIF.</p>
+<p>⚠️ Un bandeau rouge s’affiche en haut de page si le stock affiché
+n’est pas celui de la veille : cela signale probablement un échec de la
+récupération automatique du stock depuis VIF, et les quantités affichées
+peuvent ne pas être à jour.</p>
+<h2 id="saisir-un-mouvement">Saisir un mouvement</h2>
+<p>Chaque ligne du tableau correspond à un article, dans un lot et un
+dépôt donnés (colonnes Article, Libellé, Lot, DLC, DDM, Dépôt,
+Emplacement, Kgn ERP). Les articles sont regroupés par famille (📁).</p>
+<p>Pour transférer une quantité, saisir la valeur dans l’une des trois
+cases de la ligne :</p>
+<ul>
+<li><p><strong>PAL</strong> : nombre de palettes.</p></li>
+<li><p><strong>COL</strong> : nombre de colis.</p></li>
+<li><p><strong>Kg</strong> : quantité directement en kilos
+nets.</p></li>
+</ul>
+<p>Les trois cases se combinent (PAL et COL sont automatiquement
+convertis en kg net selon le conditionnement de l’article) : le total
+obtenu s’affiche en colonne <strong>Δ</strong> (négatif sur la ligne
+d’origine), et la colonne <strong>Kgn final</strong> se met à jour en
+conséquence. Le dépôt de destination (colonne “Vers dépôt”) est
+déterminé automatiquement (02 → 03 ou 03 → 02).</p>
+<p>Si une quantité a déjà été exportée vers VIF pour cette ligne, elle
+est rappelée en vert (“✅ … déjà exporté”) au-dessus des cases de saisie
+: la case de saisie permet alors de démarrer un <strong>nouveau</strong>
+mouvement, sans modifier celui déjà exporté.</p>
+<h2 id="recherche-et-filtres">Recherche et filtres</h2>
+<ul>
+<li><p><strong>🔎 Recherche</strong> : filtre les lignes par code
+article ou libellé.</p></li>
+<li><p><strong>⚙️ Filtrer</strong> (Dépôts) : ouvre un menu permettant
+de limiter l’affichage à un ou plusieurs dépôts.</p></li>
+</ul>
+<h2 id="enregistrer-et-exporter">Enregistrer et exporter</h2>
+<ul>
+<li><p><strong>💾 Enregistrer</strong> : sauvegarde les mouvements
+saisis sous forme de brouillon. Ce brouillon est rechargé
+automatiquement si l’on revient sur la page plus tard dans la même
+journée, ce qui permet de reprendre une saisie interrompue.</p></li>
+<li><p><strong>📤 Export VIF</strong> : ouvre l’écran de confirmation
+avant l’export définitif des mouvements vers VIF. Il faut avoir cliqué
+au préalable sur “💾 Enregistrer” : sans mouvement sauvegardé, un
+message d’avertissement s’affiche.</p></li>
+<li><p><strong>↩︎️ Retour Distribution</strong> : revient à l’écran
+principal du module Distribution.</p></li>
+</ul>

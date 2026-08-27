@@ -1,0 +1,54 @@
+<h1 id="aide-découpe-et-envoi-du-fichier-cerfa">Aide – Découpe et envoi
+du fichier CERFA</h1>
+<p>Cet écran automatise l’envoi des reçus fiscaux CERFA (abandon de
+frais kilométriques) aux bénévoles : à partir d’un seul PDF contenant
+une page par bénévole, l’outil détecte chaque bénévole et son email,
+ajoute une signature et la date sur sa page, puis envoie à chacun son
+reçu individuel par email.</p>
+<h2 id="mode-test-prod">Mode TEST / PROD</h2>
+<p>Un bandeau en haut de page indique le mode actif, et un bouton permet
+de basculer de l’un à l’autre :</p>
+<ul>
+<li><p><strong>🧪 Mode TEST</strong> (par défaut) : tous les envois sont
+redirigés vers l’adresse de test
+(ba380.informatique2@banquealimentaire.org), et un seul email est
+réellement envoyé lors de la confirmation, quel que soit le nombre de
+bénévoles détectés — pratique pour vérifier le résultat avant un envoi
+réel.</p></li>
+<li><p><strong>🚀 Mode PROD</strong> : les emails partent réellement aux
+bénévoles. Une case à cocher de confirmation supplémentaire est demandée
+avant l’envoi.</p></li>
+</ul>
+<p>⚠️ Pensez à repasser en mode TEST après un envoi en production, pour
+éviter un envoi accidentel lors d’un prochain essai.</p>
+<h2 id="étape-1-analyser-le-fichier">Étape 1 – Analyser le fichier</h2>
+<ul>
+<li><p><strong>Fichier PDF CERFA</strong> : le PDF complet contenant une
+page de reçu par bénévole.</p></li>
+<li><p><strong>Expéditeur</strong> : l’adresse email utilisée comme
+expéditeur des envois.</p></li>
+</ul>
+<p>Cliquer sur “🔍 Analyser le fichier” découpe le PDF page par page et
+tente de détecter automatiquement le nom et l’email de chaque bénévole,
+avant d’afficher l’écran de prévisualisation.</p>
+<h2 id="étape-2-prévisualisation-des-envois">Étape 2 – Prévisualisation
+des envois</h2>
+<p>Un tableau récapitule chaque page détectée, avec son statut :</p>
+<ul>
+<li><p><strong>✔ OK</strong> : nom et email détectés, la page sera
+envoyée normalement.</p></li>
+<li><p><strong>⚠️ Nom manquant</strong> : le nom n’a pas pu être
+identifié sur la page (l’envoi reste possible si un email a été
+détecté).</p></li>
+<li><p><strong>❌ Aucun email détecté</strong> : la page ne sera
+<strong>pas</strong> envoyée (elle est ignorée automatiquement lors de
+la confirmation).</p></li>
+</ul>
+<p>En mode TEST, l’email affiché est celui de test, avec l’email
+réellement détecté rappelé en petit dessous (“réel : …”).</p>
+<p>Cliquer sur “🚀 Confirmer l’envoi” déclenche l’envoi effectif :
+chaque page reçoit automatiquement une signature et la date du jour
+avant d’être envoyée en pièce jointe. Le nombre d’emails envoyés et de
+pages ignorées (sans email) s’affiche ensuite en message de
+confirmation.</p>
+<p>“↩︎️ Retour” permet de revenir à l’écran précédent sans envoyer.</p>

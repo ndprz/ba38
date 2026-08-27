@@ -8,36 +8,72 @@
 <!--   BARRE DE BOUTONS DU HAUT    -->
 <!-- ============================= -->
 <div class="container mt-2">
-  <div class="row g-2">
+  <div class="d-flex flex-wrap" style="gap:15px;">
 
-    <div class="col-6 col-md-3">
-      <a href="{{ url_for('planning_tournees.maj_camions') }}"
-         class="btn btn-outline-secondary w-100">
-        🚚 Camions
-      </a>
+    <button type="button"
+            class="btn btn-outline-info"
+            onclick="new bootstrap.Modal(document.getElementById('modalAidePlanningTournees')).show()">
+      ❓ Aide
+    </button>
+
+    <a href="{{ url_for('planning_tournees.maj_camions') }}"
+       class="btn btn-outline-secondary">
+      🚚 Camions
+    </a>
+
+    <a href="{{ url_for('planning_tournees.maj_fournisseurs') }}"
+       class="btn btn-outline-primary">
+      🧾 Fournisseurs
+    </a>
+
+    <a href="{{ url_for('planning_tournees.print_tournees') }}"
+       class="btn btn-outline-dark" target="_blank">
+      🖨️ Imprimer
+    </a>
+
+    <a href="{{ url_for('planning.planning_main') }}"
+       class="btn btn-outline-secondary">
+      ⬅️ Planning principal
+    </a>
+
+  </div>
+</div>
+
+<!-- ===================================================== -->
+<!-- MODALE AIDE -->
+<!-- ===================================================== -->
+
+<div class="modal fade" id="modalAidePlanningTournees" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📄 Aide – Gestion des Tournées</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_PlanningTournees_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary"
+                onclick="printModal('modalAidePlanningTournees')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
     </div>
-
-    <div class="col-6 col-md-3">
-      <a href="{{ url_for('planning_tournees.maj_fournisseurs') }}"
-         class="btn btn-outline-primary w-100">
-        🧾 Fournisseurs
-      </a>
-    </div>
-
-    <div class="col-6 col-md-3">
-      <a href="{{ url_for('planning_tournees.print_tournees') }}"
-         class="btn btn-outline-dark w-100" target="_blank">
-        🖨️ Imprimer
-      </a>
-    </div>
-
-    <div class="col-6 col-md-3">
-      <a href="{{ url_for('planning.planning_main') }}"
-         class="btn btn-outline-secondary w-100">
-        ⬅️ Planning principal
-      </a>
-    </div>
-
   </div>
 </div>
 

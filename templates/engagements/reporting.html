@@ -9,8 +9,47 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2 class="mb-0">📊 Reporting des engagements</h2>
     {% call action_buttons() %}
+        {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAideEngagementsReporting')).show()", color="outline-info") }}
         {{ action_button("↩️ Retour", href=url_for('engagements.engagements_main'), color="outline-dark") }}
     {% endcall %}
+</div>
+
+<!-- ===================================================== -->
+<!-- MODALE AIDE -->
+<!-- ===================================================== -->
+
+<div class="modal fade" id="modalAideEngagementsReporting" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📄 Aide – Reporting des engagements</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_EngagementsReporting_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary"
+                onclick="printModal('modalAideEngagementsReporting')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
 </div>
 
 {% if voir_tout %}

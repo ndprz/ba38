@@ -41,6 +41,7 @@
         </div>
 
         {% call action_buttons() %}
+            {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAideVisualisationStock')).show()", color="outline-info") }}
             {{ action_button("📥 Export Excel", href=url_for('distribution.export_stocks_excel'), color="success") }}
             {{ action_button("↩️ Retour Distribution", href=url_for('distribution.distribution_main'), color="outline-dark") }}
         {% endcall %}
@@ -175,6 +176,44 @@
 </div>
 
 <div id="filter-depot" class="filter-dropdown"></div>
+
+<!-- ===================================================== -->
+<!-- MODALE AIDE -->
+<!-- ===================================================== -->
+
+<div class="modal fade" id="modalAideVisualisationStock" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📄 Aide – Visualisation des stocks</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_VisualisationStock_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary"
+                onclick="printModal('modalAideVisualisationStock')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
 
 {% call action_buttons() %}
     {{ action_button("← Retour", href=url_for('distribution.distribution_main'), color="outline-dark") }}

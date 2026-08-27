@@ -7,16 +7,36 @@
 
 {% block content %}
 <div class="table-responsive" style="overflow-x:auto;">
-  <h2>🎬 Gestion des événements écran</h2>
-
-  <button class="btn btn-outline-info mb-3"
-          type="button"
-          data-bs-toggle="modal"
-          data-bs-target="#modalAideEvenements">
-      ℹ️ Aide utilisateur
-  </button>
 
   {% set lecture_seule = not has_access("evenements", "ecriture") %}
+
+  <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
+
+    <h2 class="mb-0">🎬 Gestion des événements écran</h2>
+
+    <div class="d-flex align-items-center flex-wrap" style="gap:10px;">
+
+      <button class="btn btn-outline-info"
+              type="button"
+              data-bs-toggle="modal"
+              data-bs-target="#modalAideEvenements">
+          ℹ️ Aide utilisateur
+      </button>
+
+      {% if evenement_actif %}
+      <a href="{{ url_for('evenements.affichage_evenement',
+                        evenement_id=evenement_actif.id) }}" class="btn btn-outline-dark" target="_blank">
+        🖥️ Ouvrir l’affichage (nouvelle fenêtre)
+      </a>
+      {% else %}
+      <span class="text-danger">⚠️ Aucun événement actif</span>
+      {% endif %}
+
+      {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
+
+    </div>
+
+  </div>
 
   {% if lecture_seule %}
   <div class="alert alert-warning">
@@ -44,9 +64,11 @@
       </div>
 
       <div class="col-md-4">
-        <label class="form-label">Durée d'affichage (s)</label>
-        <input type="number" name="planning_duree_affichage" class="form-control"
-          value="{{ planning_config.duree_affichage }}" min="5" {% if lecture_seule %}disabled{% endif %}>
+        <div class="d-flex align-items-center" style="gap:8px;">
+          <label class="form-label mb-0" style="white-space:nowrap;">Durée d'affichage (s)</label>
+          <input type="number" name="planning_duree_affichage" class="form-control" style="max-width:100px;"
+            value="{{ planning_config.duree_affichage }}" min="5" {% if lecture_seule %}disabled{% endif %}>
+        </div>
       </div>
 
       <div class="col-md-4">
@@ -65,7 +87,7 @@
   <!-- ============================================= -->
   <!-- 🧾 FORMULAIRE D'AJOUT D'UN NOUVEL ÉVÉNEMENT -->
   <!-- ============================================= -->
-  <form method="post" enctype="multipart/form-data" class="card p-3 mt-3">
+  <form method="post" enctype="multipart/form-data" class="card p-3 mt-2">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="ajouter">
 
@@ -80,8 +102,10 @@
       </div>
 
       <div class="col-md-5">
-        <label class="form-label">Titre</label>
-        <input type="text" name="titre" class="form-control" required>
+        <div class="d-flex align-items-center" style="gap:8px;">
+          <label class="form-label mb-0" style="white-space:nowrap;">Titre</label>
+          <input type="text" name="titre" class="form-control" style="flex:1;" required>
+        </div>
       </div>
 
       <div class="col-md-4">
@@ -119,11 +143,11 @@
         <label class="form-label">Fin</label>
         <input type="datetime-local" name="date_fin" class="form-control" required>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-2">
         <label class="form-label">Durée affichage (s)</label>
-        <input type="number" name="duree_affichage" id="duree_affichage" class="form-control" value="15" min="1">
+        <input type="number" name="duree_affichage" id="duree_affichage" class="form-control" style="max-width:100px;" value="15" min="1">
       </div>
-      <div class="col-md-3">
+      <div class="col-md-2">
         <label class="form-label">Récurrence</label>
         <select name="recurrence" class="form-select">
           <option value="aucune">Aucune</option>
@@ -131,23 +155,11 @@
           <option value="hebdo">Hebdomadaire</option>
         </select>
       </div>
-    </div>
-
-    <div class="mt-3 d-flex justify-content-end" style="gap: .5rem;">
-      <button class="btn btn-primary" type="submit" {% if lecture_seule %}disabled{% endif %}>
-        ➕ Ajouter
-      </button>
-      {% set ev = evenements|selectattr('actif')|list|first %}
-
-      {% if evenement_actif %}
-      <a href="{{ url_for('evenements.affichage_evenement',
-                        evenement_id=evenement_actif.id) }}" class="btn btn-outline-dark" target="_blank">
-        🖥️ Ouvrir l’affichage (nouvelle fenêtre)
-      </a>
-      {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
-      {% else %}
-      <span class="text-danger">⚠️ Aucun événement actif</span>
-      {% endif %}
+      <div class="col-md-2" style="align-self:flex-end;">
+        <button class="btn btn-primary w-100" type="submit" {% if lecture_seule %}disabled{% endif %}>
+          ➕ Ajouter
+        </button>
+      </div>
     </div>
   </form>
 
@@ -397,7 +409,7 @@
           <!-- Durée + récurrence -->
           <div class="col-md-3">
             <label class="form-label">Durée (s)</label>
-            <input type="number" name="duree_affichage" id="edit_duree" class="form-control" min="1">
+            <input type="number" name="duree_affichage" id="edit_duree" class="form-control" style="max-width:140px;" min="1">
           </div>
           <div class="col-md-3">
             <label class="form-label">Récurrence</label>

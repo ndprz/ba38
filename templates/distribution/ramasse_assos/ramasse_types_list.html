@@ -17,22 +17,12 @@
 </div>
 {% endif %}
 
-<div class="d-flex justify-content-end">
-
-    <div style="display:flex; gap:15px;">
-
-        <button class="btn btn-outline-info"
-            type="button"
-            data-bs-toggle="modal"
-            data-bs-target="#modalAide">
-            ℹ️ Aide utilisateur
-        </button>
-
-    </div>
-
-</div>
-
 {% call action_buttons() %}
+    {{ action_button(
+        "ℹ️ Aide utilisateur",
+        onclick="new bootstrap.Modal(document.getElementById('modalAide')).show()",
+        color="outline-info"
+    ) }}
     {{ action_button("➕ Nouveau modèle", href=url_for('distribution.ramasse_type_form'), color="success") }}
     {{ action_button("↩️ Retour", href=url_for('distribution.distribution_main'), color="outline-dark") }}
 {% endcall %}

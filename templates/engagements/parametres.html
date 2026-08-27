@@ -8,13 +8,56 @@
 
 <div class="container mt-4">
 
-    <h2>⚙️ Paramétrage des engagements</h2>
+    <div class="d-flex justify-content-between align-items-center flex-wrap">
 
-    <!-- 🔙 Boutons navigation -->
-    {% call action_buttons() %}
-        {{ action_button("↩️ Retour aux engagements", href=url_for('engagements.engagements_main'), color="outline-dark") }}
-        {{ action_button("↩️ Accueil", href=url_for('index'), color="outline-dark") }}
-    {% endcall %}
+        <h2 class="mb-0">⚙️ Paramétrage des engagements</h2>
+
+        <!-- 🔙 Boutons navigation -->
+        {% call action_buttons() %}
+            {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAideEngagementsParametres')).show()", color="outline-info") }}
+            {{ action_button("↩️ Retour aux engagements", href=url_for('engagements.engagements_main'), color="outline-dark") }}
+            {{ action_button("↩️ Accueil", href=url_for('index'), color="outline-dark") }}
+        {% endcall %}
+
+    </div>
+
+    <!-- ===================================================== -->
+    <!-- MODALE AIDE -->
+    <!-- ===================================================== -->
+
+    <div class="modal fade" id="modalAideEngagementsParametres" tabindex="-1">
+      <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+
+          <div class="modal-header">
+            <h5 class="modal-title">📄 Aide – Paramétrage des engagements</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+
+          <div class="modal-body" style="
+              max-height: 70vh;
+              overflow:auto;
+              font-size: 0.9rem;
+              line-height: 1.4;
+          ">
+
+            {% include "docsHtml/Documentation_Utilisateur_Module_EngagementsParametresMain_BA38.html" %}
+
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn btn-outline-primary"
+                    onclick="printModal('modalAideEngagementsParametres')">
+                🖨️ Imprimer
+            </button>
+            <button class="btn btn-secondary" data-bs-dismiss="modal">
+                Fermer
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
 
     <div class="card mb-3">
 

@@ -18,8 +18,63 @@
     <h2>🔝 Gestion des Absences</h2>
 
     {% call action_buttons() %}
+        {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAidePlanningAbsences')).show()", color="outline-info") }}
+
+        <form method="GET" class="m-0">
+            {% if voir_toutes %}
+            {{ action_button("👁️ Voir les absences en cours", type="submit", color="outline-primary") }}
+            {% else %}
+            <input type="hidden" name="voir_toutes" value="1">
+            {{ action_button("👁️ Voir toutes les absences", type="submit", color="outline-primary") }}
+            {% endif %}
+        </form>
+
+        <form method="POST" class="m-0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="purger_absences">
+            {{ action_button("🧹 Purger les absences closes", type="submit", color="outline-danger", onclick="return confirm('Êtes-vous sûr de vouloir purger les anciennes absences ? Cette action est irréversible.')") }}
+        </form>
+
         {{ action_button("🏠 Retour au menu Planning", href=url_for('planning.planning_main'), color="outline-dark") }}
     {% endcall %}
+</div>
+
+<!-- ===================================================== -->
+<!-- MODALE AIDE -->
+<!-- ===================================================== -->
+
+<div class="modal fade" id="modalAidePlanningAbsences" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📄 Aide – Gestion des Absences</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_PlanningAbsences_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary"
+                onclick="printModal('modalAidePlanningAbsences')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
 </div>
 
 
@@ -69,6 +124,17 @@
 # 📋 Tableau des absences enregistrées
 # ============================== #}
 <h5>📄 Absences enregistrées</h5>
+
+{% if voir_toutes %}
+<div class="alert alert-secondary py-2 px-3 mb-2">
+    👁️ Affichage : <strong>toutes les absences</strong>, y compris celles déjà closes.
+</div>
+{% else %}
+<div class="alert alert-light border py-2 px-3 mb-2">
+    ✅ Affichage : <strong>absences en cours ou à venir</strong> uniquement (les absences closes sont masquées).
+</div>
+{% endif %}
+
 <div class="mb-2 col-md-4">
     <label for="recherche_absent">🔎 Rechercher un bénévole absent</label>
     <input type="text" id="recherche_absent" class="form-control" placeholder="Nom ou prénom...">
@@ -108,21 +174,12 @@
 </table>
 
 {# ============================== #
-# 🔙 Bouton de retour au menu principal (bas de page)
-# ============================== #}
-{% call action_buttons() %}
-    {{ action_button("⬅️ Retour au menu Planning", href=url_for('planning.planning_main'), color="outline-dark") }}
-{% endcall %}
-
-<hr>
-
-{# ============================== #
-# ⚙️ Outils de filtrage et de purge
+# 🔙 Outils de filtrage, purge et retour (bas de page)
 # ============================== #}
 {% call action_buttons() %}
     <form method="GET" class="m-0">
         {% if voir_toutes %}
-        {{ action_button("🔙 Revenir au filtrage", type="submit", color="outline-primary") }}
+        {{ action_button("👁️ Voir les absences en cours", type="submit", color="outline-primary") }}
         {% else %}
         <input type="hidden" name="voir_toutes" value="1">
         {{ action_button("👁️ Voir toutes les absences", type="submit", color="outline-primary") }}
@@ -134,6 +191,8 @@
         <input type="hidden" name="action" value="purger_absences">
         {{ action_button("🧹 Purger les absences closes", type="submit", color="outline-danger", onclick="return confirm('Êtes-vous sûr de vouloir purger les anciennes absences ? Cette action est irréversible.')") }}
     </form>
+
+    {{ action_button("⬅️ Retour au menu Planning", href=url_for('planning.planning_main'), color="outline-dark") }}
 {% endcall %}
 
 

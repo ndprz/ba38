@@ -1,0 +1,28 @@
+<h1 id="aide-analyse-dun-fichier-parsol2l">Aide – Analyse d’un fichier
+PARSOL2L</h1>
+<p>Cet écran analyse un export PARSOL2L annuel (fichier texte issu de
+VIF) pour calculer, pour chaque association (identifiée par son code
+VIF), le nombre total de bénéficiaires livrés sur l’année.</p>
+<h2 id="analyser-un-fichier">Analyser un fichier</h2>
+<p>Sélectionner le fichier PARSOL2L (.txt) puis cliquer sur “🔍
+Analyser”. L’outil parcourt le fichier, additionne le nombre de
+bénéficiaires de chaque livraison par code VIF, puis recherche chaque
+code VIF dans la base des associations.</p>
+<h2 id="résultat">Résultat</h2>
+<p>Un tableau liste, pour chaque code VIF trouvé dans le fichier :</p>
+<ul>
+<li><p><strong>Code VIF</strong> et <strong>Compte comptable</strong> de
+l’association correspondante.</p></li>
+<li><p><strong>Association</strong> : le nom de l’association, si le
+code VIF a été retrouvé en base.</p></li>
+<li><p><strong>Bénéficiaires</strong> : le total de bénéficiaires cumulé
+sur l’année pour ce code VIF.</p></li>
+<li><p><strong>Trouvé</strong> : “Oui” si le code VIF correspond à une
+association existante en base, “Non” sinon.</p></li>
+</ul>
+<p>Un encart en bas de page résume le nombre total de codes VIF traités,
+et le nombre de codes VIF non retrouvés dans la base (à corriger côté
+fiche association si nécessaire — code VIF manquant ou erroné).</p>
+<h2 id="export-excel">Export Excel</h2>
+<p>Le bouton “📥 Export Excel” télécharge le tableau de résultats au
+format Excel.</p>

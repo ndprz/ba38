@@ -25,13 +25,65 @@ Nouvelle demande d'engagement
     .depense-compact .form-select { padding-top: 0.3rem; padding-bottom: 0.3rem; }
 </style>
 
-<h2>
-    Nouvelle demande d'engagement de dépense
-</h2>
-
 <form method="POST"
       enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <!-- ================================================== -->
+    <!-- TITRE + BOUTONS (haut, sur la même ligne) -->
+    <!-- ================================================== -->
+
+    <div class="d-flex justify-content-between align-items-center flex-wrap">
+
+        <h2 class="mb-0">
+            Nouvelle demande d'engagement de dépense
+        </h2>
+
+        {% call action_buttons() %}
+            {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAideNouvelleDepense')).show()", color="outline-info") }}
+            {{ action_button("💾 Enregistrer la demande", type="submit", color="success") }}
+            {{ action_button("⬅ Retour", href=url_for('engagements.engagements_main'), color="outline-dark") }}
+        {% endcall %}
+
+    </div>
+
+    <!-- ================================================== -->
+    <!-- MODALE AIDE -->
+    <!-- ================================================== -->
+
+    <div class="modal fade" id="modalAideNouvelleDepense" tabindex="-1">
+      <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+
+          <div class="modal-header">
+            <h5 class="modal-title">📄 Aide – Nouvelle demande d'engagement de dépense</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+
+          <div class="modal-body" style="
+              max-height: 70vh;
+              overflow:auto;
+              font-size: 0.9rem;
+              line-height: 1.4;
+          ">
+
+            {% include "docsHtml/Documentation_Utilisateur_Module_NouvelleDepense_BA38.html" %}
+
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn btn-outline-primary"
+                    onclick="printModal('modalAideNouvelleDepense')">
+                🖨️ Imprimer
+            </button>
+            <button class="btn btn-secondary" data-bs-dismiss="modal">
+                Fermer
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
 
     <!-- ================================================== -->
     <!-- DEMANDEUR -->
@@ -592,56 +644,65 @@ Nouvelle demande d'engagement
     <!-- ================================================== -->
 
     <div class="row g-2 mb-2">
-    <div class="col-md-6">
+    <div class="col-md-4">
 
-        <label class="form-label">
+        <div class="d-flex align-items-center" style="gap:8px;">
 
-            Pôle d'activité *
+            <label class="form-label mb-0" style="white-space:nowrap; min-width:150px;">
 
-        </label>
+                Pôle d'activité *
 
-        <select name="pole_id"
-                class="form-select"
-                required>
+            </label>
 
-            <option value="">
-                -- Sélectionner un pôle --
-            </option>
+            <select name="pole_id"
+                    class="form-select"
+                    required>
 
-            {% for p in poles %}
+                <option value="">
+                    -- Sélectionner un pôle --
+                </option>
 
-            <option value="{{ p.id }}"
-                {% if request.form.get(
-                    'pole_id'
-                ) == p.id|string %}
-                    selected
-                {% endif %}>
+                {% for p in poles %}
 
-                {{ p.nom_affiche }}
+                <option value="{{ p.id }}"
+                    {% if request.form.get(
+                        'pole_id'
+                    ) == p.id|string %}
+                        selected
+                    {% endif %}>
 
-            </option>
+                    {{ p.nom_affiche }}
 
-            {% endfor %}
+                </option>
 
-        </select>
+                {% endfor %}
+
+            </select>
+
+        </div>
 
     </div>
-    <div class="col-md-6">
+    <div class="col-md-8">
 
-        <label class="form-label">
+        <div class="d-flex align-items-center" style="gap:8px;">
 
-            Objet *
+            <label class="form-label mb-0" style="white-space:nowrap; min-width:190px;">
 
-        </label>
+                Objet *
 
-        <input type="text"
-               name="objet"
-               class="form-control"
-               value="{{ request.form.get(
-                    'objet',
-                    ''
-               ) }}"
-               required>
+            </label>
+
+            <input type="text"
+                   name="objet"
+                   class="form-control"
+                   style="flex:1;"
+                   value="{{ request.form.get(
+                        'objet',
+                        ''
+                   ) }}"
+                   required>
+
+        </div>
 
     </div>
     </div>{# /row pole+objet #}
@@ -671,55 +732,65 @@ Nouvelle demande d'engagement
     <!-- ================================================== -->
 
     <div class="row g-2 mb-2">
-    <div class="col-md-6">
+    <div class="col-md-4">
 
-        <label class="form-label">
+        <div class="d-flex align-items-center" style="gap:8px;">
 
-            Projet subventionné
+            <label class="form-label mb-0" style="white-space:nowrap; min-width:150px;">
 
-        </label>
+                Projet subventionné
 
-        <select name="subvention_id"
-                class="form-select select2">
+            </label>
 
-            <option value="">
-                -- Aucun --
-            </option>
+            <select name="subvention_id"
+                    class="form-select select2"
+                    style="flex:1;">
 
-            {% for s in subventions %}
+                <option value="">
+                    -- Aucun --
+                </option>
 
-            <option value="{{ s.id }}"
+                {% for s in subventions %}
 
-                {% if request.form.get(
-                    'subvention_id'
-                ) == s.id|string %}
-                    selected
-                {% endif %}>
+                <option value="{{ s.id }}"
 
-                {{ s.nom_subvention }}
+                    {% if request.form.get(
+                        'subvention_id'
+                    ) == s.id|string %}
+                        selected
+                    {% endif %}>
 
-            </option>
+                    {{ s.nom_subvention }}
 
-            {% endfor %}
+                </option>
 
-        </select>
+                {% endfor %}
+
+            </select>
+
+        </div>
 
     </div>
-    <div class="col-md-6">
+    <div class="col-md-8">
 
-        <label class="form-label">
+        <div class="d-flex align-items-center" style="gap:8px;">
 
-            Convention de financement
+            <label class="form-label mb-0" style="white-space:nowrap; min-width:190px;">
 
-        </label>
+                Convention de financement
 
-        <input type="text"
-               name="convention_partenariale"
-               class="form-control"
-               value="{{ request.form.get(
-                    'convention_partenariale',
-                    ''
-               ) }}">
+            </label>
+
+            <input type="text"
+                   name="convention_partenariale"
+                   class="form-control"
+                   style="flex:1;"
+                   value="{{ request.form.get(
+                        'convention_partenariale',
+                        ''
+                   ) }}">
+
+        </div>
 
     </div>
     </div>{# /row projet+convention #}
@@ -729,16 +800,19 @@ Nouvelle demande d'engagement
     <!-- ================================================== -->
 
     <div class="row g-2 mb-2">
-    <div class="col-md-6">
+    <div class="col-md-4">
 
-        <label class="form-label">
+        <div class="d-flex align-items-center" style="gap:8px;">
 
-            Rubrique
+            <label class="form-label mb-0" style="white-space:nowrap; min-width:150px;">
 
-        </label>
+                Rubrique
 
-        <select name="rubrique"
-                class="form-select">
+            </label>
+
+            <select name="rubrique"
+                    class="form-select"
+                    style="flex:1;">
 
             <option value="">
                 -- Choisir --
@@ -848,6 +922,8 @@ Nouvelle demande d'engagement
 
         </select>
 
+        </div>
+
         <div id="alerte_achat_denrees"
              class="alert alert-danger mt-2 d-none">
 
@@ -857,21 +933,26 @@ Nouvelle demande d'engagement
         </div>
 
     </div>
-    <div class="col-md-6">
+    <div class="col-md-8">
 
-        <label class="form-label">
+        <div class="d-flex align-items-center" style="gap:8px;">
 
-            Précision rubrique (Autres)
+            <label class="form-label mb-0" style="white-space:nowrap; min-width:190px;">
 
-        </label>
+                Précision rubrique (Autres)
 
-        <input type="text"
-               name="precision_rubrique"
-               class="form-control"
-               value="{{ request.form.get(
-                    'precision_rubrique',
-                    ''
-               ) }}">
+            </label>
+
+            <input type="text"
+                   name="precision_rubrique"
+                   class="form-control"
+                   style="flex:1;"
+                   value="{{ request.form.get(
+                        'precision_rubrique',
+                        ''
+                   ) }}">
+
+        </div>
 
     </div>
     </div>{# /row rubrique+precision #}
@@ -974,23 +1055,13 @@ Nouvelle demande d'engagement
 
         <div class="card-body">
 
-            <p class="text-muted">
+            <p class="text-muted mb-2">
 
-                Joignez si nécessaire :
+                Joignez si nécessaire : Factures / tickets de caisse,
+                Péages, Repas, Hôtel, Carburant, Billets SNCF,
+                Autres justificatifs.
 
             </p>
-
-            <ul>
-
-                <li>Factures / tickets de caisse</li>
-                <li>Péages</li>
-                <li>Repas</li>
-                <li>Hôtel</li>
-                <li>Carburant</li>
-                <li>Billets SNCF</li>
-                <li>Autres justificatifs</li>
-
-            </ul>
 
             <div class="mb-2">
 
@@ -1129,13 +1200,15 @@ Nouvelle demande d'engagement
     </div>
 
     <!-- ================================================== -->
-    <!-- BOUTONS -->
+    <!-- BOUTONS (bas, fixés en bas de l'écran au scroll) -->
     <!-- ================================================== -->
 
-    {% call action_buttons() %}
-        {{ action_button("💾 Enregistrer la demande", type="submit", color="success") }}
-        {{ action_button("⬅ Retour", href=url_for('engagements.engagements_main'), color="outline-dark") }}
-    {% endcall %}
+    <div style="position:sticky; bottom:0; background:white; padding-top:8px; border-top:1px solid #ddd; z-index:20;">
+        {% call action_buttons() %}
+            {{ action_button("💾 Enregistrer la demande", type="submit", color="success") }}
+            {{ action_button("⬅ Retour", href=url_for('engagements.engagements_main'), color="outline-dark") }}
+        {% endcall %}
+    </div>
 
 </form>
 

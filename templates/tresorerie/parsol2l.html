@@ -10,13 +10,62 @@
 
     <h2>📂 Analyse d'un fichier PARSOL2L</h2>
 
+    <p class="text-muted">
+        Cet écran analyse un export PARSOL2L annuel (fichier texte issu de VIF)
+        pour calculer, pour chaque association (identifiée par son code VIF),
+        le nombre total de bénéficiaires livrés sur l'année.
+    </p>
+
     {{ action_buttons([
+        {
+            "label": "❓ Aide",
+            "onclick": "new bootstrap.Modal(document.getElementById('modalAideParsol2l')).show()",
+            "color": "outline-info"
+        },
         {
             "label": "↩️ Retour",
             "url": url_for('tresorerie.tresorerie'),
             "color": "outline-dark"
         }
     ]) }}
+
+    <!-- ===================================================== -->
+    <!-- MODALE AIDE -->
+    <!-- ===================================================== -->
+
+    <div class="modal fade" id="modalAideParsol2l" tabindex="-1">
+      <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+
+          <div class="modal-header">
+            <h5 class="modal-title">📄 Aide – Analyse d'un fichier PARSOL2L</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+
+          <div class="modal-body" style="
+              max-height: 70vh;
+              overflow:auto;
+              font-size: 0.9rem;
+              line-height: 1.4;
+          ">
+
+            {% include "docsHtml/Documentation_Utilisateur_Module_Parsol2L_BA38.html" %}
+
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn btn-outline-primary"
+                    onclick="printModal('modalAideParsol2l')">
+                🖨️ Imprimer
+            </button>
+            <button class="btn btn-secondary" data-bs-dismiss="modal">
+                Fermer
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
 
     <hr>
 

@@ -9,6 +9,7 @@
 
 {% if has_access('planning', 'lecture') %}
 {% call action_buttons() %}
+    {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAidePlanningMain')).show()", color="outline-info") }}
     {{ action_button("📅 Gérer les absences des bénévoles", href=url_for('planning_utils.planning_absences'), color="outline-secondary") }}
     {{ action_button("🛠️ Gestion des tournées", href=url_for('planning_tournees.planning_tournees'), color="outline-secondary") }}
     {{ action_button("📋 État des plannings", href=url_for('planning_utils.etat_plannings'), color="outline-secondary") }}
@@ -16,6 +17,44 @@
     {{ action_button("↩️ Retour Bénévoles", href=url_for('benevoles.benevoles'), color="outline-dark") }}
     {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
 {% endcall %}
+
+<!-- ===================================================== -->
+<!-- MODALE AIDE -->
+<!-- ===================================================== -->
+
+<div class="modal fade" id="modalAidePlanningMain" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">📄 Aide – Planning des Bénévoles</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="
+          max-height: 70vh;
+          overflow:auto;
+          font-size: 0.9rem;
+          line-height: 1.4;
+      ">
+
+        {% include "docsHtml/Documentation_Utilisateur_Module_PlanningMain_BA38.html" %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary"
+                onclick="printModal('modalAidePlanningMain')">
+            🖨️ Imprimer
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            Fermer
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
 
 <div class="row">
     <div class="col-md-6">
