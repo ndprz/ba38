@@ -33,6 +33,7 @@ from ba38_utilitaires.core import get_db_connection, write_log, send_reset_email
 from ba38_utilitaires.core import get_user_info,has_access, is_admin_global, format_date_fr, build_menu, require_admin_global
 from ba38_utilitaires.core import is_blocked, record_attempt, reset_attempts, is_suspicious_ip, is_suspicious_ua, get_attempt_count, require_access
 from ba38_utilitaires.core import date_fr
+from ba38_utilitaires.organisation import get_organisation
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, g, current_app, send_from_directory, abort
 from flask_login import current_user, LoginManager, UserMixin, login_user, logout_user, login_required
 from flask_session import Session
@@ -89,6 +90,7 @@ from ba38_partenaires import indicateurs_bp
 from ba38_utilitaires import emails_bp
 from ba38_tresorerie import participation_bp
 from ba38_admin import applications_bp
+from ba38_admin import organisation_bp
 from ba38_collecte import collecte_bp
 from ba38_utilitaires import vif_bp
 
@@ -370,6 +372,7 @@ app.register_blueprint(indicateurs_bp)
 app.register_blueprint(emails_bp)
 app.register_blueprint(participation_bp)
 app.register_blueprint(applications_bp)
+app.register_blueprint(organisation_bp)
 app.register_blueprint(collecte_bp)
 app.register_blueprint(vif_bp)
 
@@ -1401,7 +1404,7 @@ def query_db(query, args=(), one=False):
 class PDF(FPDF):
     def header(self):
         """ Ajout du logo en haut à gauche de chaque page (avec vérification du chemin) """
-        logo_path = "static/images/logo.png"  # Assurez-vous que ce fichier existe !
+        logo_path = get_organisation()["logo_path"]
         if os.path.exists(logo_path):
             self.image(logo_path, 10, 8, 12.5)  # Taille réduite du logo
         else:
@@ -1417,7 +1420,7 @@ class PDF(FPDF):
         self.set_font("Arial", size=10)
 
         # Texte à gauche
-        self.cell(0, 10, "Banque Alimentaire de l'Isère - Service Partenariat", align="L")
+        self.cell(0, 10, get_organisation()["footer_partenariat"], align="L")
 
         # Date à droite
         date_du_jour = datetime.today().strftime('%d/%m/%Y')

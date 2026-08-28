@@ -40,6 +40,7 @@ from ba38_utilitaires.core import (
     require_access,
     write_log,
 )
+from ba38_utilitaires.organisation import get_organisation
 
 from ba38_engagements import engagements_bp
 from ba38_engagements.utils_financement import calculer_montants_utilises
@@ -884,7 +885,10 @@ def engagements_reporting_pdf():
     GRIS   = colors.HexColor("#F2F2F2")
     BLANC  = colors.white
 
+    org = get_organisation()
     story = []
+
+    story.append(Paragraph(org["nom"], style_sous_titre))
 
     # Titre
     story.append(

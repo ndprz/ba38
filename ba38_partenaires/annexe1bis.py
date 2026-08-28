@@ -29,6 +29,7 @@ from ba38_utilitaires.core import (
     require_access,
     upload_file_to_drive
 )
+from ba38_utilitaires.organisation import get_organisation
 
 
 annexe1bis_bp = Blueprint("annexe1bis", __name__)
@@ -763,8 +764,10 @@ def header_footer(canvas, doc, title, subtitle):
     # --- EN-TÊTE ---
     canvas.saveState()
 
+    org = get_organisation()
+
     # Logo
-    logo_path = "static/images/logo.png"
+    logo_path = org["logo_path"]
     if os.path.exists(logo_path):
         canvas.drawImage(logo_path, x=40, y=A4[1] - 60, width=1.5*cm, height=1.5*cm)
 
@@ -787,6 +790,7 @@ def header_footer(canvas, doc, title, subtitle):
     # --- PIED DE PAGE ---
     page_num = canvas.getPageNumber()
     canvas.setFont("Helvetica", 8)
+    canvas.drawString(40, 20, org["footer_partenariat"])
     canvas.drawRightString(A4[0] - 40, 20, f"Page {page_num}")
 
     canvas.restoreState()
@@ -849,6 +853,7 @@ def generate_pdf_annexe1bis(annexe_id):
 
 
 def _build_pdf_bytes(data):
+    org = get_organisation()
     title = "ANNEXE 1 BIS"
     subtitle = "Point de distribution"
 
@@ -1589,15 +1594,6 @@ def _build_pdf_bytes(data):
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
     ]))
     elements.append(table_signature)
-
-
-    # --- Pied de page ---
-    def footer(canvas, doc):
-        canvas.setFont("Helvetica", 8)
-        date_du_jour = datetime.today().strftime('%d/%m/%Y')
-        canvas.drawString(1.5 * cm, 1 * cm, "Banque Alimentaire de l'Isère - Service Partenariat")
-        canvas.drawRightString(A4[0] - 1.5 * cm, 1 * cm, f"{date_du_jour} - Page {doc.page}")
-        canvas.restoreState()
 
     doc.build(
         elements,

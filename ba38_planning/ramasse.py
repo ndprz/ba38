@@ -1,6 +1,6 @@
 # ba38_planning_ramasse.py
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, flash
+from flask import Blueprint, render_template, request, flash, redirect, url_for, send_file
 from ba38_planning.utils import get_type_benevole_options
 from flask_login import login_required, current_user
 from datetime import datetime, timedelta
@@ -637,6 +637,9 @@ def print_planning_ramasse():
 
     conn.close()
 
+    from ba38_utilitaires.organisation import get_organisation
+    org = get_organisation()
+
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4)
     pdf.setTitle(f"Planning Ramasse - Semaine {numero_semaine}")
@@ -645,6 +648,10 @@ def print_planning_ramasse():
     x = 2 * cm
     y = hauteur - 2 * cm
     line_height = 14
+
+    pdf.setFont("Helvetica", 9)
+    pdf.drawString(x, y, org["nom"])
+    y -= 0.6 * cm
 
     pdf.setFont("Helvetica-Bold", 16)
     pdf.drawString(x, y, f"Planning de Ramasse - Semaine {numero_semaine}")

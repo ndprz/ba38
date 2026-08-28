@@ -23,12 +23,10 @@ from ba38_utilitaires.core import (
     get_db_path, write_log, envoyer_mail, upload_file_to_drive_path,
     slugify_filename, split_emails, require_access,
 )
+from ba38_utilitaires.organisation import get_organisation
 
 from ba38_tresorerie import tresorerie_bp
-from ba38_tresorerie.constants import (
-    BA380_SHARED_DRIVE_ID, BAI_NOM, BAI_ADRESSE, BAI_TEL, BAI_MAIL,
-    BAI_IBAN, BAI_BIC, BAI_SIREN, BAI_NAF,
-)
+from ba38_tresorerie.constants import BA380_SHARED_DRIVE_ID
 
 
 def calculer_cotisations_par_annee(db_path, benef_par_vif):
@@ -865,6 +863,8 @@ def generer_facture_pdf(data, output_path):
       - code_vif_facture
     """
 
+    org = get_organisation()
+
     c = canvas.Canvas(str(output_path), pagesize=A4)
     largeur, hauteur = A4
 
@@ -872,12 +872,7 @@ def generer_facture_pdf(data, output_path):
     # LOGO BA (centré page)
     # ============================
 
-    logo_path = (
-        Path(current_app.root_path)
-        / "static"
-        / "images"
-        / "logo_ba_complet.png"
-    )
+    logo_path = Path(current_app.root_path) / org["logo_complet_path"]
 
     if logo_path.exists():
         logo = ImageReader(str(logo_path))
@@ -921,17 +916,17 @@ def generer_facture_pdf(data, output_path):
     # ============================
 
     c.setFont("Helvetica-Bold", 11)
-    c.drawString(20 * mm, y, BAI_NOM)
+    c.drawString(20 * mm, y, org["nom"])
 
     c.setFont("Helvetica", 9)
     y -= 12
-    for line in BAI_ADRESSE.split("\n"):
+    for line in org["adresse"].split("\n"):
         c.drawString(20 * mm, y, line)
         y -= 10
 
-    c.drawString(20 * mm, y, f"Tél : {BAI_TEL}")
+    c.drawString(20 * mm, y, f"Tél : {org['tel']}")
     y -= 10
-    c.drawString(20 * mm, y, f"Mail : {BAI_MAIL}")
+    c.drawString(20 * mm, y, f"Mail : {org['email']}")
 
     # ============================
     # INFOS FACTURE (droite)
@@ -1030,14 +1025,14 @@ def generer_facture_pdf(data, output_path):
     c.drawString(20 * mm, y, "TVA non applicable, art. 293B du CGI")
 
     y -= 15
-    c.drawString(20 * mm, y, f"IBAN : {BAI_IBAN}")
+    c.drawString(20 * mm, y, f"IBAN : {org['iban']}")
     y -= 10
-    c.drawString(20 * mm, y, f"BIC : {BAI_BIC}")
+    c.drawString(20 * mm, y, f"BIC : {org['bic']}")
 
     y -= 20
-    c.drawString(20 * mm, y, f"SIREN : {BAI_SIREN}")
+    c.drawString(20 * mm, y, f"SIREN : {org['siren']}")
     y -= 10
-    c.drawString(20 * mm, y, f"NAF : {BAI_NAF}")
+    c.drawString(20 * mm, y, f"NAF : {org['naf']}")
 
     # ============================
     # COMMENTAIRE REGROUPEMENT (PIED DE PAGE)

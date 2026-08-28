@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% from "macros/buttons.html" import action_button %}
+
+{% block title %}Organisation{% endblock %}
+
+{% block content %}
+<h2>Informations de l'organisme</h2>
+<p class="text-muted">
+    Ces informations alimentent les documents fiscaux générés par l'application
+    (cotisations, participation, CERFA) ainsi que les pieds de page PDF.
+    Réservé aux administrateurs.
+</p>
+
+<form method="POST" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <h4 class="mt-4">Identité</h4>
+
+    <div class="mb-3">
+        <label class="form-label">Nom</label>
+        <input type="text" name="nom" class="form-control" value="{{ org.nom }}" required>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Adresse (une ligne par ligne du champ)</label>
+        <textarea name="adresse" class="form-control" rows="2" required>{{ org.adresse }}</textarea>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Téléphone</label>
+            <input type="text" name="tel" class="form-control" value="{{ org.tel or '' }}">
+        </div>
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Email</label>
+            <input type="email" name="email" class="form-control" value="{{ org.email or '' }}">
+        </div>
+    </div>
+
+    <h4 class="mt-4">Coordonnées bancaires et identifiants légaux</h4>
+
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label class="form-label">IBAN</label>
+            <input type="text" name="iban" class="form-control" value="{{ org.iban or '' }}">
+        </div>
+        <div class="col-md-6 mb-3">
+            <label class="form-label">BIC</label>
+            <input type="text" name="bic" class="form-control" value="{{ org.bic or '' }}">
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-3 mb-3">
+            <label class="form-label">SIREN</label>
+            <input type="text" name="siren" class="form-control" value="{{ org.siren or '' }}">
+        </div>
+        <div class="col-md-3 mb-3">
+            <label class="form-label">NAF</label>
+            <input type="text" name="naf" class="form-control" value="{{ org.naf or '' }}">
+        </div>
+        <div class="col-md-3 mb-3">
+            <label class="form-label">SIRET</label>
+            <input type="text" name="siret" class="form-control" value="{{ org.siret or '' }}">
+        </div>
+        <div class="col-md-3 mb-3">
+            <label class="form-label">RNA</label>
+            <input type="text" name="rna" class="form-control" value="{{ org.rna or '' }}">
+        </div>
+    </div>
+
+    <p class="text-muted small">
+        SIREN/NAF sont utilisés sur les factures de cotisation, SIRET/RNA sur les factures de
+        participation — ce sont deux identifiants différents, vérifiés séparément sur des
+        exemples réels, ne pas les confondre.
+    </p>
+
+    <h4 class="mt-4">Documents PDF</h4>
+
+    <div class="mb-3">
+        <label class="form-label">Texte de pied de page "Service Partenariat"</label>
+        <input type="text" name="footer_partenariat" class="form-control" value="{{ org.footer_partenariat or '' }}">
+    </div>
+
+    <div class="row">
+        <div class="col-md-4 mb-3">
+            <label class="form-label">Logo (icône, utilisé dans les documents et pieds de page)</label><br>
+            {% if org.logo_path %}
+            <img src="{{ url_for('static', filename=org.logo_path.split('static/')[-1]) }}" style="max-height:60px; display:block; margin-bottom:8px;">
+            {% endif %}
+            <input type="file" name="logo" class="form-control" accept=".png,.jpg,.jpeg">
+        </div>
+        <div class="col-md-4 mb-3">
+            <label class="form-label">Logo complet (bandeau avec nom, utilisé sur les factures de cotisation)</label><br>
+            {% if org.logo_complet_path %}
+            <img src="{{ url_for('static', filename=org.logo_complet_path.split('static/')[-1]) }}" style="max-height:60px; display:block; margin-bottom:8px;">
+            {% endif %}
+            <input type="file" name="logo_complet" class="form-control" accept=".png,.jpg,.jpeg">
+        </div>
+        <div class="col-md-4 mb-3">
+            <label class="form-label">Signature (apposée automatiquement sur les CERFA)</label><br>
+            {% if org.signature_path %}
+            <img src="{{ url_for('static', filename=org.signature_path.split('static/')[-1]) }}" style="max-height:60px; display:block; margin-bottom:8px;">
+            {% endif %}
+            <input type="file" name="signature" class="form-control" accept=".png,.jpg,.jpeg">
+        </div>
+    </div>
+
+    <div class="mt-4">
+        {{ action_button("Enregistrer", type="submit", color="success") }}
+        {{ action_button("Annuler", href=url_for('index'), color="outline-dark") }}
+    </div>
+</form>
+{% endblock %}

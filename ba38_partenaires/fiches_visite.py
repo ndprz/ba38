@@ -21,6 +21,7 @@ from ba38_utilitaires.core import (
     upload_database,
     require_access
 )
+from ba38_utilitaires.organisation import get_organisation
 
 
 fiches_visite_bp = Blueprint("fiches_visite", __name__)
@@ -265,15 +266,16 @@ def pdf(fiche_id):
         if not fiche:
             return "❌ Fiche non trouvée", 404
 
-        static_path = os.path.join(os.getcwd(), "static")
-        logo_path = os.path.join(static_path, "images/logo.png")
+        org = get_organisation()
+        logo_path = os.path.join(os.getcwd(), org["logo_path"])
 
         rendered_html = render_template(
             "fiches_visite/fiche_visite_pdf.html",
             fiche=fiche,
             partenaire=partenaire,
             lecture_seule=True,
-            logo_path=logo_path
+            logo_path=logo_path,
+            org=org,
         )
 
         pdf_io = io.BytesIO()
@@ -321,14 +323,24 @@ def fiche_visite_html(fiche_id):
                 "SELECT * FROM fiches_visite WHERE id = ?", (fiche_id,)
             ).fetchone()
 
+            partenaire = None
+            if fiche:
+                partenaire = conn.execute(
+                    "SELECT * FROM associations WHERE id = ?", (fiche["partenaire_id"],)
+                ).fetchone()
+
         if not fiche:
             return "❌ Fiche non trouvée", 404
 
-        static_path = os.path.join(os.getcwd(), "static")
-        logo_path = os.path.join(static_path, "images/logo.png")
+        org = get_organisation()
+        logo_path = os.path.join(os.getcwd(), org["logo_path"])
 
         # Retourne le rendu HTML du template
-        return render_template("fiches_visite/fiche_visite_pdf.html", fiche=dict(fiche), logo_path=logo_path)
+        return render_template(
+            "fiches_visite/fiche_visite_pdf.html", fiche=dict(fiche),
+            partenaire=dict(partenaire) if partenaire else {},
+            logo_path=logo_path, org=org,
+        )
 
     except Exception as e:
         write_log(f"❌ Erreur debug HTML fiche_visite {fiche_id} : {e}")

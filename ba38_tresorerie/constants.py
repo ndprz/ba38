@@ -13,15 +13,7 @@ DATE_Y = 100
 # Ancien dossier générique (pour tests)
 FOLDER_ID_TRAITEMENTS = "1_RiRtqyjwxcgCo9csqL8ckjePmaFwviy"
 
-# ============================
-# PARAMÈTRES FIXES BAI
-# ============================
-
-BAI_NOM = "BANQUE ALIMENTAIRE DE L'ISÈRE"
-BAI_ADRESSE = "11, allée de la Pinéa\n38600 FONTAINE"
-BAI_TEL = "04 76 85 92 50"
-BAI_MAIL = "ba380@banquealimentaire.org"
-BAI_IBAN = "FR76 1027 8089 2200 0598 3594 087"
-BAI_BIC = "CMCIFR2A"
-BAI_SIREN = "388 092 132 00033"
-BAI_NAF = "8899B"
+# Les paramètres d'identité de l'organisme (nom, adresse, IBAN, SIREN...)
+# vivent désormais dans la table `organisation` — voir
+# ba38_utilitaires.organisation.get_organisation() et
+# scripts/migrate_organisation.py.

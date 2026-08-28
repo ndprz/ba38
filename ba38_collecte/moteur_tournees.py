@@ -20,6 +20,25 @@ from datetime import datetime
 BAI_LAT, BAI_LON = 45.18867, 5.68456  # 11 allée de la Pinea, 38600 Fontaine
 VEHICULES_FIGES  = sorted(['V007','V008','V009','V013','V023','V026','V027','V028','V037'], key=lambda v: int(v[1:]))
 
+# Adresse du siège affichée sur la carte des tournées : tirée de la config
+# organisation quand ce module tourne dans l'appli Flask (import optionnel —
+# le CLI d'origine reste utilisable hors appli, cf. docstring en tête de
+# fichier, d'où le repli sur l'adresse BA38 si l'import/la lecture DB échoue).
+try:
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from ba38_utilitaires.organisation import get_organisation as _get_organisation
+except Exception:
+    _get_organisation = None
+
+
+def _adresse_siege_html():
+    if _get_organisation is not None:
+        try:
+            return _get_organisation()["adresse"].replace("\n", "<br>")
+        except Exception:
+            pass
+    return "11 All&eacute;e de la Pin&eacute;a<br>38600 Fontaine"
+
 # Contraintes de gel par véhicule ET demi-journée :
 # (veh, dj) → ne pas modifier cette tournée (ni ajouter ni retirer de magasins)
 TOURNEES_GELEES = set([
@@ -2629,7 +2648,9 @@ L.marker(BAI, {icon: L.divIcon({
   className:'',
   html:'<div style="background:#1F4E79;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)">&#127981;</div>',
   iconSize:[32,32],iconAnchor:[16,16]
-})}).addTo(map).bindPopup('<b>BAI 38</b><br>11 All&eacute;e de la Pin&eacute;a<br>38600 Fontaine');
+})}).addTo(map).bindPopup('<b>BAI 38</b><br>""")
+    parts.append(_adresse_siege_html())
+    parts.append("""');
 
 let layerGroup = L.layerGroup().addTo(map);
 let currentTournee = null;
@@ -2936,7 +2957,9 @@ L.marker(BAI, {icon: L.divIcon({
   className:'',
   html:'<div style="background:#1F4E79;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)">&#127981;</div>',
   iconSize:[32,32],iconAnchor:[16,16]
-})}).addTo(map).bindPopup('<b>BAI 38</b><br>11 All&eacute;e de la Pin&eacute;a<br>38600 Fontaine');
+})}).addTo(map).bindPopup('<b>BAI 38</b><br>""")
+    parts.append(_adresse_siege_html())
+    parts.append("""');
 
 let layerGroup = L.layerGroup().addTo(map);
 let currentTournee = null;

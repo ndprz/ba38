@@ -31,16 +31,10 @@ from pathlib import Path
 
 from ba38_utilitaires.core import get_db_path, require_access, write_log, envoyer_mail, render_modele_email, mailjet_get_message_status, split_emails
 from ba38_utilitaires.gmail_send import envoyer_mail_gmail, GmailSendError
-from ba38_tresorerie.constants import BAI_NOM, BAI_ADRESSE, BAI_TEL, BAI_MAIL, BAI_IBAN, BAI_BIC
+from ba38_utilitaires.organisation import get_organisation
 
 participation_bp = Blueprint("participation", __name__)
 
-# Constantes propres à la facture "participation" : SIRET/RNA différents de
-# ceux utilisés pour les cotisations (BAI_SIREN/BAI_NAF dans
-# ba38_tresorerie.py) — vérifiés sur un exemple réel de facture EBP
-# (/srv/ba38/tmp/factures_*.pdf), ne pas les confondre.
-BAI_SIRET = "38809213200025"
-BAI_RNA = "W381001970"
 
 def fmt_eur(valeur):
     """Formate un montant avec virgule décimale (convention française)."""
@@ -52,7 +46,10 @@ MENTIONS_LEGALES = [
     "Les produits FSE+ sont obligatoirement gratuits jusqu'au bénéficiaire final. Sur le BL : G gratuit, RP remise produit.",
 ]
 
-BAI_ORANGE = "#f27830"  # couleur primaire de l'appli (bootstrap-custom.css)
+# Couleur du logo national du réseau des Banques Alimentaires (FFBA) —
+# commune à toutes les BA, pas un choix propre à l'organisme hébergeant
+# l'instance : ne fait donc pas partie de la table `organisation`.
+COULEUR_RESEAU_BA = "#f27830"
 
 
 # ============================================================================
@@ -215,14 +212,16 @@ def generer_facture_participation_pdf(data, output_path):
     """
     from reportlab.lib.colors import HexColor
 
+    org = get_organisation()
+
     c = canvas.Canvas(str(output_path), pagesize=A4)
     largeur, hauteur = A4
     marge_g, marge_d = 20 * mm, largeur - 20 * mm
 
     def nouvelle_page_entete():
-        """Bandeau logo + titre en haut de chaque page (grand, orange)."""
+        """Bandeau logo + titre en haut de chaque page (grand, couleur primaire)."""
         y_top = hauteur - 15 * mm
-        logo_path = Path(current_app.root_path) / "static" / "images" / "logo.png"
+        logo_path = Path(current_app.root_path) / org["logo_path"]
         logo_size = 24 * mm
 
         if logo_path.exists():
@@ -231,7 +230,7 @@ def generer_facture_participation_pdf(data, output_path):
                         preserveAspectRatio=True, mask="auto")
 
         c.setFont("Helvetica-Bold", 20)
-        c.setFillColor(HexColor(BAI_ORANGE))
+        c.setFillColor(HexColor(COULEUR_RESEAU_BA))
         c.drawString(marge_g + logo_size + 8 * mm, y_top - logo_size / 2 - 3, "Participation de solidarité")
         c.setFillColor(HexColor("#000000"))
 
@@ -246,15 +245,15 @@ def generer_facture_participation_pdf(data, output_path):
 
     y_gauche = y
     c.setFont("Helvetica-Bold", 11)
-    c.drawString(marge_g, y_gauche, BAI_NOM)
+    c.drawString(marge_g, y_gauche, org["nom"])
     c.setFont("Helvetica", 9)
     y_gauche -= 12
-    for line in BAI_ADRESSE.split("\n"):
+    for line in org["adresse"].split("\n"):
         c.drawString(marge_g, y_gauche, line)
         y_gauche -= 10
-    c.drawString(marge_g, y_gauche, f"Tél : {BAI_TEL}")
+    c.drawString(marge_g, y_gauche, f"Tél : {org['tel']}")
     y_gauche -= 10
-    c.drawString(marge_g, y_gauche, f"E-mail : {BAI_MAIL}")
+    c.drawString(marge_g, y_gauche, f"E-mail : {org['email']}")
 
     y_droite = y
     c.setFont("Helvetica-Bold", 10)
@@ -346,7 +345,7 @@ def generer_facture_participation_pdf(data, output_path):
     y -= 10
 
     c.setFont("Helvetica", 7)
-    c.drawString(marge_g, y, f"Siret {BAI_SIRET} RNA {BAI_RNA}")
+    c.drawString(marge_g, y, f"Siret {org['siret']} RNA {org['rna']}")
     y -= 9
     for texte in MENTIONS_LEGALES:
         c.drawString(marge_g, y, texte)
@@ -368,9 +367,9 @@ def generer_facture_participation_pdf(data, output_path):
     c.drawString(box_left + 4 * mm, ty, "Merci d'effectuer le règlement par virement sur notre compte :")
     ty -= 12
     c.setFont("Helvetica", 8)
-    c.drawString(box_left + 4 * mm, ty, f"Compte bancaire Crédit Mutuel {BAI_IBAN.replace(' ', '')}")
+    c.drawString(box_left + 4 * mm, ty, f"Compte bancaire Crédit Mutuel {org['iban'].replace(' ', '')}")
     ty -= 12
-    c.drawString(box_left + 4 * mm, ty, f"BIC : {BAI_BIC}")
+    c.drawString(box_left + 4 * mm, ty, f"BIC : {org['bic']}")
 
     c.showPage()
     c.save()

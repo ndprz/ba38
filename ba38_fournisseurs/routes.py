@@ -6,6 +6,7 @@ import pytz
 import base64
 from datetime import datetime
 from ba38_utilitaires.core import get_db_path, get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_phone, row_get, require_access
+from ba38_utilitaires.organisation import get_organisation
 
 
 fournisseurs_bp = Blueprint('fournisseurs', __name__)
@@ -721,6 +722,8 @@ def export_fiche_fournisseur(fournisseur_id):
     ).fetchall()
     conn.close()
 
+    org = get_organisation()
+
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
@@ -728,6 +731,10 @@ def export_fiche_fournisseur(fournisseur_id):
     # Styles pour Paragraph
     styles = getSampleStyleSheet()
     normal_style = styles["Normal"]
+
+    # En-tête organisme
+    c.setFont("Helvetica", 9)
+    c.drawString(50, height - 30, org["nom"])
 
     # Titre
     c.setFont("Helvetica-Bold", 16)

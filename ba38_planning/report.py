@@ -15,6 +15,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, Paragraph, Spacer
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from ba38_utilitaires.core import get_db_connection, write_log
+from ba38_utilitaires.organisation import get_organisation
 
 import sqlite3
 
@@ -705,13 +706,15 @@ def planning_report_pdf():
     periode_safe = periode.replace("/", "-").replace(" ", "_")
     filename = f"rapport_benevoles_{periode_safe}.pdf"
 
+    org = get_organisation()
+
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30)
     styles = getSampleStyleSheet()
     story = []
 
     # Logo
-    logo_path = os.path.join("static", "logo.png")
+    logo_path = org["logo_path"]
     if os.path.exists(logo_path):
         img = Image(logo_path, width=80, height=80)
         img.hAlign = 'CENTER'
@@ -719,6 +722,10 @@ def planning_report_pdf():
         story.append(Spacer(1, 20))
 
     # Titre
+    story.append(Paragraph(
+        f"<para align='center'>{org['nom']}</para>",
+        styles["Normal"]
+    ))
     story.append(Paragraph(
         f"<para align='center'><b>Rapport d’activité des bénévoles</b></para>",
         styles["Title"]

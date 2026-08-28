@@ -23,6 +23,8 @@ from collections import defaultdict
 import numpy as np
 from scipy.spatial import ConvexHull
 
+from ba38_utilitaires.organisation import get_organisation
+
 
 def calculer_polygones(data, margin=0.008):
     groupes = defaultdict(list)
@@ -67,6 +69,7 @@ def calculer_polygones(data, margin=0.008):
 def generer_html(data, polygones, output_path, annee):
     nb_mag = len(data)
     nb_sec = len(polygones)
+    adresse_siege = get_organisation()["adresse"].replace("\n", ", ")
 
     magasins_json = json.dumps(data, ensure_ascii=False)
     polygones_json = json.dumps(polygones, ensure_ascii=False)
@@ -184,7 +187,7 @@ L.tileLayer('https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}{{r}
 
 // BAI
 L.circleMarker([45.18867,5.68456], {{radius:10,color:'#e94560',fillColor:'#e94560',fillOpacity:1,weight:3}})
-  .addTo(map).bindTooltip('🏭 BAI — 11 allée de la Pinéa, Fontaine', {{permanent:false}});
+  .addTo(map).bindTooltip('🏭 BAI — {adresse_siege}', {{permanent:false}});
 
 // Polygones
 const polygonLayer = L.layerGroup().addTo(map);

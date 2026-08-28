@@ -10,6 +10,7 @@ import json
 from flask import Blueprint, render_template, render_template_string, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from ba38_utilitaires.core import get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_multi_email, is_valid_phone, require_access, get_db_path
+from ba38_utilitaires.organisation import get_organisation
 from urllib.parse import urlencode
 from flask_wtf import FlaskForm
 from wtforms import HiddenField
@@ -1921,6 +1922,8 @@ def get_neighbor_ids_alphabetically(conn, current_id):
 
 
 def generate_pdf(partner_id, groups, title):
+    org = get_organisation()
+
     # Connexion à la base
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
@@ -1969,7 +1972,7 @@ def generate_pdf(partner_id, groups, title):
     field_spacing = 5
 
     # Logo
-    logo_path = "static/images/logo.png"
+    logo_path = org["logo_path"]
     if os.path.exists(logo_path):
         pdf.drawImage(logo_path, left_margin, height - 80, width=50, height=50)
 
@@ -2010,7 +2013,7 @@ def generate_pdf(partner_id, groups, title):
         if y_position < 60:
             pdf.setFont("Helvetica", 8)
             date_du_jour = datetime.today().strftime('%d/%m/%Y')
-            pdf.drawString(left_margin, 30, "Banque Alimentaire de l'Isère - Service Partenariat")
+            pdf.drawString(left_margin, 30, org["footer_partenariat"])
             pdf.drawString(right_margin - 150, 30, f"{date_du_jour} - Page {pdf.getPageNumber()}")
             pdf.showPage()
 
@@ -2024,7 +2027,7 @@ def generate_pdf(partner_id, groups, title):
     # Pied de page
     pdf.setFont("Helvetica", 8)
     date_du_jour = datetime.today().strftime('%d/%m/%Y')
-    pdf.drawString(left_margin, 30, "Banque Alimentaire de l'Isère - Service Partenariat")
+    pdf.drawString(left_margin, 30, org["footer_partenariat"])
     pdf.drawString(right_margin - 150, 30, f"{date_du_jour} - Page {pdf.getPageNumber()}")
 
     pdf.save()

@@ -11,6 +11,7 @@ from flask import request, render_template, flash, redirect, url_for, session
 from flask_login import login_required
 
 from ba38_utilitaires.core import write_log, envoyer_mail, require_access
+from ba38_utilitaires.organisation import get_organisation
 
 from ba38_tresorerie import tresorerie_bp
 from ba38_tresorerie.constants import MAX_TEST_PREVIEW, DATE_X, DATE_Y
@@ -152,7 +153,7 @@ def cerfa():
                 if mail_mode == "TEST" and i >= 1:
                     break
 
-                signature_path = os.path.join(os.getenv("BASE_PATH", "/srv/ba38"), "static/signatures/signature_chantal_vivier.png")
+                signature_path = os.path.join(os.getenv("BASE_PATH", "/srv/ba38"), get_organisation()["signature_path"])
 
                 signed_pdf = ajouter_signature_pdf(
                     p["pdf"],

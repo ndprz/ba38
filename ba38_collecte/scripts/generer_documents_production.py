@@ -67,6 +67,37 @@ from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas as rl_canvas
 
+# Adresse du siège affichée sur la carte des tournées : tirée de la config
+# organisation quand ce script tourne dans l'environnement applicatif
+# (import optionnel — ce script reste utilisable de façon totalement
+# autonome, cf. docstring en tête de fichier, d'où le repli sur l'adresse
+# BA38 si l'import ou la lecture DB échoue).
+try:
+    import sys as _sys
+    _sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    from ba38_utilitaires.organisation import get_organisation as _get_organisation
+except Exception:
+    _get_organisation = None
+
+
+def _adresse_siege_html():
+    if _get_organisation is not None:
+        try:
+            return _get_organisation()["adresse"].replace("\n", "<br>")
+        except Exception:
+            pass
+    return "11 All&eacute;e de la Pin&eacute;a<br>38600 Fontaine"
+
+
+def _tel_siege():
+    if _get_organisation is not None:
+        try:
+            return _get_organisation()["tel"]
+        except Exception:
+            pass
+    return TEL1
+
+
 # Dossier du script : sert d'ancrage pour le sous-dossier de sortie afin que
 # la sortie se retrouve toujours au même endroit, quel que soit le dossier
 # courant au moment du lancement (ex. si le script est lancé sans passer par
@@ -547,7 +578,7 @@ def _draw_footer(cv, dj, consigne1='', consigne2=''):
 
     cv.setFont('Helvetica-Bold', 10)
     cv.setFillColor(C_BLACK)
-    cv.drawString(W - MR - 55*mm, y_base + 2*mm, f'tel BAI : {TEL1}')
+    cv.drawString(W - MR - 55*mm, y_base + 2*mm, f'Tél : {_tel_siege()}')
     cv.drawString(W - MR - 55*mm, y_base - 3*mm, f'ou       {TEL2}')
 
     cv.setFont('Helvetica-Bold', 14)
@@ -1376,7 +1407,9 @@ L.marker(BAI, {icon: L.divIcon({
   className:'',
   html:'<div style="background:#1F4E79;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)">&#127981;</div>',
   iconSize:[32,32],iconAnchor:[16,16]
-})}).addTo(map).bindPopup('<b>BAI 38</b><br>11 All&eacute;e de la Pin&eacute;a<br>38600 Fontaine');
+})}).addTo(map).bindPopup('<b>BAI 38</b><br>""")
+    parts.append(_adresse_siege_html())
+    parts.append("""');
 
 let layerGroup = L.layerGroup().addTo(map);
 let currentTournee = null;

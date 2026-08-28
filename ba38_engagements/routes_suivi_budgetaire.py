@@ -34,6 +34,7 @@ from ba38_utilitaires.core import (
     has_access,
     require_access,
 )
+from ba38_utilitaires.organisation import get_organisation
 
 from ba38_engagements import engagements_bp
 from ba38_engagements.routes_reporting import STATUTS_LABELS
@@ -526,8 +527,10 @@ def suivi_budgetaire_pdf():
     GRIS = colors.HexColor("#F2F2F2")
     BLANC = colors.white
 
+    org = get_organisation()
     story = []
 
+    story.append(Paragraph(org["nom"], style_sous_titre))
     story.append(Paragraph("Suivi budgétaire — Subventions et budgets", style_titre))
     story.append(Paragraph(
         f"{periode_txt} — Extrait au "
