@@ -1744,6 +1744,13 @@ def ajouter_onglet_explications(wb):
          "renseigné) mais auxquels aucun magasin/tournée n'est finalement affecté — planning "
          "vide pour ce camion. À vérifier : camion réellement non utilisé cette année, ou "
          "oubli lors de la saisie des tournées (colonnes 'Tournée'/'Début' non remplies)."),
+        ('Doublons camion-magasin',
+         "Magasins affectés à PLUSIEURS camions différents sur la même demi-journée dans "
+         "liste-vehicule.xlsx : erreur de planification quasi certaine (le magasin ne sera "
+         "collecté qu'une fois dans la réalité, alors que 2 camions comptent dessus sur leur "
+         "fiche). Un même magasin collecté plusieurs fois par le MÊME camion n'est pas signalé "
+         "ici. À corriger dans liste-vehicule.xlsx en priorité — retirer le magasin de la "
+         "tournée en trop."),
         ('Camion non défini',
          "Magasins présents dans liste-vehicule.xlsx (une ligne existe, avec un nom de magasin) "
          "mais dont la colonne Code (camion) est vide sur cette ligne : le magasin a été saisi, "
@@ -2369,6 +2376,31 @@ def main():
         print(f"ATTENTION : {len(camions_absents)} camion(s) présent(s) dans {args.vehicules} "
               f"sans aucune tournée affectée : {', '.join(sorted(camions_absents))}")
 
+    # ── Doublons camion/magasin : un même magasin affecté à PLUSIEURS camions
+    # différents sur la même demi-journée — erreur de planification probable
+    # (le magasin ne sera collecté qu'une fois dans la réalité, mais 2 camions
+    # comptent dessus). À distinguer d'un magasin collecté plusieurs fois par
+    # le MÊME camion (pas signalé ici, pas une anomalie).
+    camions_par_magasin_dj = {}
+    for _, trow in df.iterrows():
+        dj_t = str(trow.get('Demi-journee', '')).strip()
+        cam_t = str(trow.get('Camion', '')).strip()
+        for mc in mag_cols:
+            nom_t = str(trow.get(mc, '')).strip()
+            if nom_t and nom_t != 'nan':
+                camions_par_magasin_dj.setdefault((dj_t, nom_t), set()).add(cam_t)
+
+    doublons_camion_magasin = []
+    for (dj_t, nom_t), camions_t in camions_par_magasin_dj.items():
+        if len(camions_t) > 1:
+            r_ref = ref_dict.get(nom_t, {})
+            vif_t = vif_fmt(r_ref.get('Code VIF', '')) if r_ref else ''
+            doublons_camion_magasin.append((vif_t, nom_t, dj_t, sorted(camions_t)))
+
+    if doublons_camion_magasin:
+        print(f"ATTENTION : {len(doublons_camion_magasin)} magasin(s) affecté(s) à PLUSIEURS "
+              f"camions sur la même demi-journée !")
+
     # ── Onglets de contrôle (Quai manquant, Cagettes manquantes...), ajoutés
     # dans LE MÊME classeur que Tournees VIF / Tournees / Magasins — un seul
     # fichier Excel avec tous les onglets, sauvegardé une seule fois ci-dessous.
@@ -2377,6 +2409,23 @@ def main():
         ws_ca.append(['Code', 'Nom camion'])
         for code, nom_cam in sorted(camions_absents.items()):
             ws_ca.append([code, nom_cam])
+
+    if doublons_camion_magasin:
+        from openpyxl.styles import PatternFill as _PF3, Font as _Ft3
+        ws_dc = wb.create_sheet('Doublons camion-magasin')
+        entetes_dc = ['Code VIF', 'Nom', 'Demi-journée', 'Camions affectés']
+        ws_dc.append(entetes_dc)
+        for cell in ws_dc[1]:
+            cell.font = _Ft3(name='Calibri', bold=True, color='FFFFFF', size=10)
+            cell.fill = _PF3("solid", fgColor="C00000")
+        for vif_t, nom_t, dj_t, camions_t in sorted(
+                doublons_camion_magasin, key=lambda t: (t[1], t[2])):
+            ws_dc.append([vif_t, nom_t, dj_t, ', '.join(camions_t)])
+            ws_dc.cell(row=ws_dc.max_row, column=4).font = _Ft3(bold=True, color='C00000')
+        for col, w in zip('ABCD', [12, 30, 22, 30]):
+            ws_dc.column_dimensions[col].width = w
+        ws_dc.freeze_panes = 'A2'
+        ws_dc.auto_filter.ref = ws_dc.dimensions
 
     if magasins_sans_camion:
         ws_msc = wb.create_sheet('Camion non défini')
@@ -2455,11 +2504,14 @@ def main():
 
     args.output_excel = sauver_xlsx_avec_repli(wb, args.output_excel)
     if (manquants_quai or camions_non_definis or camions_absents or magasins_sans_camion
-            or manquants_cag or non_planifies or creneaux_incomplets or magasins_dj_non_couverts):
+            or manquants_cag or non_planifies or creneaux_incomplets or magasins_dj_non_couverts
+            or doublons_camion_magasin):
         print(f"\nManquants : {len(manquants_quai)} camion(s) sans Quai, "
               f"{len(camions_non_definis)} camion(s) totalement absent(s) de {args.vehicules}, "
               f"{len(camions_absents)} camion(s) présent(s) dans {args.vehicules} mais sans "
               f"tournée affectée, "
+              f"{len(doublons_camion_magasin)} magasin(s) affecté(s) à plusieurs camions sur la "
+              f"même demi-journée, "
               f"{len(magasins_sans_camion)} magasin(s) présent(s) dans {args.vehicules} sans "
               f"camion (Code) renseigné, "
               f"{len(manquants_cag)} entrée(s) magasin/demi-journée sans nb de cagettes, "
@@ -2468,10 +2520,10 @@ def main():
               f"demi-journée sur les deux), "
               f"{len(magasins_dj_non_couverts)} couple(s) magasin/demi-journée attendu(s) "
               f"d'après les créneaux mais sans camion")
-        print(f"  (Quai/Camions non définis/Camions absents/Camion non défini/Cagettes/"
-              f"Magasins non planifiés/Créneaux incomplets/Magasins-DJ non couverts → à "
-              f"compléter puis réinjecter dans {args.vehicules} / {args.cagettes}, avant "
-              f"régénération)")
+        print(f"  (Quai/Camions non définis/Camions absents/Doublons camion-magasin/Camion non "
+              f"défini/Cagettes/Magasins non planifiés/Créneaux incomplets/Magasins-DJ non "
+              f"couverts → à compléter puis réinjecter dans {args.vehicules} / {args.cagettes}, "
+              f"avant régénération)")
     else:
         print("\nAucun manquant : Quai, cagettes et planification sont complets.")
     print(f"→ Classeur Excel (tous onglets) : {args.output_excel}")

@@ -162,8 +162,8 @@ camions, tous documents, remplace les documents précédents).</li>
 <tr class="odd">
 <td>Classeur Excel</td>
 <td>Tournées (VIF + secteurs), magasins, et onglets de contrôle (quai
-manquant, cagettes manquantes, magasins non planifiés, créneaux
-incomplets…)</td>
+manquant, doublons camion/magasin, cagettes manquantes, magasins non
+planifiés, créneaux incomplets…)</td>
 </tr>
 <tr class="even">
 <td>Fiches de collecte</td>
@@ -200,9 +200,11 @@ go-on-web</td>
 <p>Après chaque génération, un journal récapitule les anomalies
 détectées dans le planning go-on-web (camion sans quai, magasin actif
 jamais planifié, créneau incomplet — un seul des deux demi-journées d’un
-jour couvert alors que l’autre devrait l’être, cagettes manquantes…).
-Ces informations figurent aussi dans les onglets de contrôle du classeur
-Excel : à corriger dans go-on-web puis relancer une génération.</p>
+jour couvert alors que l’autre devrait l’être, cagettes manquantes,
+magasin affecté à plusieurs camions sur la même demi-journée…). Ces
+informations figurent aussi dans les onglets de contrôle du classeur
+Excel (dont un onglet « Explications » qui les détaille tous) : à
+corriger dans go-on-web puis relancer une génération.</p>
 <h1 id="bonnes-pratiques">5. Bonnes pratiques</h1>
 <ul>
 <li><p>Toujours vérifier les onglets de contrôle du classeur Excel avant
