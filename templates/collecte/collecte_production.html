@@ -30,6 +30,13 @@
         <div class="card-body">
             <h5 class="card-title mb-3">🚀 Lancer la génération</h5>
 
+            {% if liens_manquants %}
+            <p class="small text-danger">
+                ⛔ Lien(s) Drive non configuré(s) pour {{ annee }} : <strong>{{ liens_manquants|join(', ') }}</strong>.
+                <a href="{{ url_for('collecte.collecte_main', annee=annee) }}">Renseigner les liens</a>
+            </p>
+            {% endif %}
+
             {% if date_debut %}
             <p class="small text-muted">
                 📅 Dates de la collecte : <strong>{{ date_debut }}{% if date_fin %} → {{ date_fin }}{% endif %}</strong>
@@ -61,7 +68,7 @@
                 </div>
 
                 {% call action_buttons() %}
-                    {{ action_button("🚀 Lancer la génération", type="submit", color="success") }}
+                    {{ action_button("🚀 Lancer la génération", type="submit", color="success", disabled=(liens_manquants|length > 0)) }}
                 {% endcall %}
             </form>
         </div>

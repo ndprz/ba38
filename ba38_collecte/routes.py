@@ -119,13 +119,35 @@ def _dossier_production(annee):
 # planning go-on-web. Pas d'historique de versions ici (contrairement aux
 # générations de simulation) : chaque lancement écrase les documents
 # précédents.
+#
+# Un nouveau dossier Drive (donc 3 nouveaux liens) est créé chaque année par
+# le club : les 3 liens sont donc stockés par année dans collecte_campagnes
+# (drive_magasins/drive_vehicules/drive_cagettes), pas codés en dur — voir
+# la section "🔗 Fichiers Drive" de la page principale du module.
 # ============================================================================
 
-PRODUCTION_DRIVE_FICHIERS = {
-    "magasins": "https://docs.google.com/spreadsheets/d/1MdUMIMK2g2kshqO9IqFf8iJjyDYQ8sB6/export?format=xlsx",
-    "vehicules": "https://docs.google.com/spreadsheets/d/10AQExua-F2hZY9DrcnC2hwBtOayuPO-0/export?format=xlsx",
-    "cagettes": "https://docs.google.com/spreadsheets/d/1Y8g2kUjiLJ3lG7CKDw_QbC5JKx_36u7T/export?format=xlsx",
+DRIVE_CHAMPS = {
+    "magasins":  {"champ": "drive_magasins",  "label": "Liste des magasins"},
+    "vehicules": {"champ": "drive_vehicules", "label": "Liste des véhicules / planning"},
+    "cagettes":  {"champ": "drive_cagettes",  "label": "Historique cagettes"},
 }
+
+
+def _id_drive(url):
+    """Extrait l'identifiant Drive (segment /d/{ID}/) d'un lien Google Sheets,
+    quel que soit le format exact du lien collé (édition, partage...)."""
+    if not url:
+        return None
+    m = re.search(r"/d/([a-zA-Z0-9_-]+)", url)
+    return m.group(1) if m else None
+
+
+def _url_export_drive(url):
+    """Construit l'URL d'export xlsx à partir d'un lien Drive collé par
+    l'utilisateur. None si le lien est vide ou ne contient pas d'identifiant
+    Drive reconnaissable."""
+    fid = _id_drive(url)
+    return f"https://docs.google.com/spreadsheets/d/{fid}/export?format=xlsx" if fid else None
 
 PRODUCTION_FICHIERS_SORTIE = {
     "excel":     {"nom": "Tournees_BAI38_{annee}_GOTW.xlsx", "label": "Classeur Excel (tournées + contrôles)"},
@@ -572,6 +594,60 @@ def enregistrer_dates():
 
     write_log(f"📅 Collecte {annee} : dates mises à jour par {current_user.email} ({date_debut} → {date_fin})")
     flash(f"✅ Dates de la collecte {annee} enregistrées", "success")
+
+    return redirect(url_for("collecte.collecte_main", annee=annee))
+
+
+@collecte_bp.route("/collecte/drive_liens", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_liens_drive():
+    annee = request.form.get("annee", type=int)
+
+    if not annee:
+        flash("❌ Année manquante", "danger")
+        return redirect(url_for("collecte.collecte_main"))
+
+    valeurs = {}
+    invalides = []
+    for cle, conf in DRIVE_CHAMPS.items():
+        brut = request.form.get(cle, "").strip()
+        if brut and not _id_drive(brut):
+            invalides.append(conf["label"])
+        valeurs[conf["champ"]] = brut or None
+
+    if invalides:
+        flash(
+            f"❌ Lien(s) Drive non reconnu(s), non enregistré(s) : {', '.join(invalides)} "
+            f"— coller le lien de partage complet du fichier Google Sheets",
+            "danger"
+        )
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    with get_db_connection() as conn:
+        existante = conn.execute(
+            "SELECT id FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+
+        if existante:
+            conn.execute(
+                "UPDATE collecte_campagnes SET drive_magasins = ?, drive_vehicules = ?, "
+                "drive_cagettes = ? WHERE annee = ?",
+                (valeurs["drive_magasins"], valeurs["drive_vehicules"], valeurs["drive_cagettes"], annee)
+            )
+        else:
+            maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            conn.execute("""
+                INSERT INTO collecte_campagnes
+                    (annee, drive_magasins, drive_vehicules, drive_cagettes, date_creation, cree_par)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (annee, valeurs["drive_magasins"], valeurs["drive_vehicules"], valeurs["drive_cagettes"],
+                  maintenant, current_user.email))
+
+        conn.commit()
+
+    write_log(f"🔗 Collecte {annee} : liens Drive mis à jour par {current_user.email}")
+    flash(f"✅ Liens Drive de la collecte {annee} enregistrés", "success")
 
     return redirect(url_for("collecte.collecte_main", annee=annee))
 
@@ -1090,8 +1166,14 @@ def production():
 
     with get_db_connection() as conn:
         campagne = conn.execute(
-            "SELECT date_debut, date_fin FROM collecte_campagnes WHERE annee = ?", (annee,)
+            "SELECT date_debut, date_fin, drive_magasins, drive_vehicules, drive_cagettes "
+            "FROM collecte_campagnes WHERE annee = ?", (annee,)
         ).fetchone()
+
+    liens_manquants = [
+        conf["label"] for cle, conf in DRIVE_CHAMPS.items()
+        if not (campagne and _url_export_drive(campagne[conf["champ"]]))
+    ]
 
     fichiers = {}
     for cle, conf in PRODUCTION_FICHIERS_SORTIE.items():
@@ -1123,6 +1205,7 @@ def production():
         journal=journal,
         date_debut=_date_fr_courte(campagne["date_debut"]) if campagne else None,
         date_fin=_date_fr_courte(campagne["date_fin"]) if campagne else None,
+        liens_manquants=liens_manquants,
     )
 
 
@@ -1137,14 +1220,31 @@ def production_generer():
     # laisser passer un caractère de type '/', '..' etc. dans un nom de fichier.
     camion = re.sub(r"[^A-Z0-9]", "", camion)
 
-    # Date du jeudi de la collecte : renseignée une fois pour toutes sur la
-    # page principale du module (collecte_campagnes.date_debut), plus besoin
-    # de la ressaisir à chaque génération.
+    # Date du jeudi + liens Drive : renseignés une fois pour toutes sur la
+    # page principale du module (un nouveau dossier/jeu de 3 liens est créé
+    # par le club chaque année), plus besoin de les ressaisir ici.
     with get_db_connection() as conn:
         campagne = conn.execute(
-            "SELECT date_debut FROM collecte_campagnes WHERE annee = ?", (annee,)
+            "SELECT date_debut, drive_magasins, drive_vehicules, drive_cagettes "
+            "FROM collecte_campagnes WHERE annee = ?", (annee,)
         ).fetchone()
     date_jeudi = _date_fr_courte(campagne["date_debut"]) if campagne else None
+
+    urls_drive = {}
+    liens_manquants = []
+    for cle, conf in DRIVE_CHAMPS.items():
+        url = _url_export_drive(campagne[conf["champ"]]) if campagne else None
+        if url:
+            urls_drive[cle] = url
+        else:
+            liens_manquants.append(conf["label"])
+    if liens_manquants:
+        flash(
+            f"❌ Lien(s) Drive non configuré(s) pour {annee} : {', '.join(liens_manquants)} — "
+            f"à renseigner sur la page principale du module (section « Fichiers Drive »)",
+            "danger"
+        )
+        return redirect(url_for("collecte.production", annee=annee))
 
     dossier = _dossier_production(annee)
     os.makedirs(dossier, exist_ok=True)
@@ -1153,7 +1253,7 @@ def production_generer():
     # disposant du lien") : la page production doit toujours refléter le
     # dernier état du planning go-on-web, pas un import ponctuel.
     try:
-        for cle, url in PRODUCTION_DRIVE_FICHIERS.items():
+        for cle, url in urls_drive.items():
             reponse = requests.get(url, timeout=30)
             reponse.raise_for_status()
             if not reponse.content.startswith(b"PK"):

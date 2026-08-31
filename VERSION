@@ -1,3 +1,3 @@
-VERSION=1.6.13
-MESSAGE=Consignes vehicules : nouvelle colonne Caisses 1er jour (somme cag1 des magasins de la 1ere tournee hors jeudi de chaque camion)
-DATE=2026-08-31 11:56
+VERSION=1.6.14
+MESSAGE=Collecte production : liens Drive editables par annee (3 champs sur la page principale) au lieu de codes en dur, pour permettre 2027 sans modification de code
+DATE=2026-08-31 12:34

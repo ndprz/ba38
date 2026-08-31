@@ -33,6 +33,10 @@ def main():
         date_debut TEXT,
         date_fin TEXT,
 
+        drive_magasins TEXT,
+        drive_vehicules TEXT,
+        drive_cagettes TEXT,
+
         date_creation TEXT,
         cree_par TEXT
     );

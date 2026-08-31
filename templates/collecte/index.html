@@ -61,6 +61,40 @@
         </div>
     </div>
 
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">🔗 Fichiers Drive {{ annee }} (production)</h5>
+            <p class="card-text text-muted small">
+                Un nouveau dossier Drive étant créé chaque année, coller ici les 3 liens de partage
+                de la campagne {{ annee }} — réutilisés automatiquement par la page Production à
+                chaque génération, pas besoin de les ressaisir. Colle le lien de partage complet
+                (Google Sheets), le fichier doit être partagé en « Toute personne disposant du lien ».
+            </p>
+            <form method="POST" action="{{ url_for('collecte.enregistrer_liens_drive') }}" class="row g-3 align-items-end">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <div class="col-md-4">
+                    <label class="form-label">Liste des magasins</label>
+                    <input type="text" name="magasins" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
+                           value="{{ campagne.drive_magasins if campagne else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Liste des véhicules / planning</label>
+                    <input type="text" name="vehicules" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
+                           value="{{ campagne.drive_vehicules if campagne else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Historique cagettes</label>
+                    <input type="text" name="cagettes" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
+                           value="{{ campagne.drive_cagettes if campagne else '' }}">
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="row g-3">
         {% for type_fichier, conf in fichiers.items() %}
         {% set le_champ = campagne[conf.champ_le] if campagne else None %}
