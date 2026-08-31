@@ -331,16 +331,26 @@ def lire_magasins(path_mag, vifs_pdf_2025, poids_nouveaux):
     df = df.rename(columns=rmap)
     df = df.loc[:, ~df.columns.duplicated()]
 
-    for col in ['Code VIF','Nom','Ville','Latitude','Longitude','Tonnage 2025','Secteur','État']:
+    for col in ['Code VIF','Nom','Ville','Latitude','Longitude','Tonnage 2025','Secteur','État','Stockage']:
         if col not in df.columns:
             df[col] = ''
 
-    # Filtrer uniquement les magasins actifs : État = 'Collecté par la BAI'
-    # et exclure les bénévoles BAI (noms 'A-BAI ...' ou 'BAI ...')
+    # Filtrer les magasins actifs : État = 'Collecté par la BAI', PLUS les magasins
+    # en 'Collecte gardée' (collecte assurée par une autre association) dont le
+    # Stockage reste néanmoins partagé avec la BAI (ex. 'BAI + EQUILIBRE',
+    # 'BAI+3ABI') — la BAI doit alors quand même y passer un camion pour le
+    # stockage même si elle n'assure pas la collecte elle-même.
+    # Exclut toujours 'Non collecté' et 'Collecte gardée' sans stockage BAI+.
     nb_avant = len(df)
     if 'État' in df.columns:
-        df = df[df['État'].astype(str).str.strip() == 'Collecté par la BAI'].reset_index(drop=True)
-        print(f"  → Filtre État='Collecté par la BAI' : {nb_avant} → {len(df)} magasins retenus")
+        etat = df['État'].astype(str).str.strip()
+        stockage = df['Stockage'].astype(str).str.strip()
+        mask_collecte_bai = etat == 'Collecté par la BAI'
+        mask_gardee_bai_plus = (etat == 'Collecte gardée') & stockage.str.contains(r'BAI\s*\+', case=False, regex=True, na=False)
+        nb_gardee_bai_plus = int(mask_gardee_bai_plus.sum())
+        df = df[mask_collecte_bai | mask_gardee_bai_plus].reset_index(drop=True)
+        print(f"  → Filtre État='Collecté par la BAI' + 'Collecte gardée' avec Stockage BAI+ : {nb_avant} → {len(df)} magasins retenus"
+              f" (dont {nb_gardee_bai_plus} en collecte gardée/stockage BAI+)")
     else:
         print(f"  INFO: colonne 'État' absente, tous les {nb_avant} magasins conservés")
 
@@ -841,51 +851,90 @@ def optimiser_tournees(fiches, df_mag, args):
             return len(pris)
 
         def _delester_dj(veh_new, dj, max_c_vx):
-
             """Déleste la demi-journée dj vers veh_new.
-            Prend depuis UN SEUL camion source (le plus chargé avec secteur clair)
-            pour garantir la cohérence géographique du VX.
+
+            Étape 1 : essaie chaque camion source chargé, du plus chargé au moins
+            chargé (au lieu de s'arrêter au premier candidat comme auparavant), et
+            prend le premier qui peut donner au moins 2 magasins d'un secteur clair
+            tout en en gardant au moins 2 — pour garantir la cohérence géographique
+            du VX sans dépendre d'un unique camion source qui n'aurait pas assez
+            d'excédent ce jour-là.
+
+            Étape 2 (repli) : si aucun camion seul n'a assez d'excédent, combine
+            les magasins de plusieurs camions partageant le même secteur dominant
+            majoritaire sur cette demi-journée (même logique que
+            _delester_dj_secteur, généralisée à un secteur déterminé automatiquement
+            plutôt qu'imposé). Ceci évite qu'un camion supplémentaire reste inutilisé
+            sur une demi-journée simplement parce qu'aucune tournée isolée n'était
+            assez chargée pour être délestée à elle seule.
             """
             groupes_dj = sorted(
                 [(veh, list(vifs)) for (d, veh), vifs in dj_veh.items()
-                 if d == dj and (veh, dj) not in TOURNEES_GELEES],
+                 if d == dj and veh != veh_new and (veh, dj) not in TOURNEES_GELEES
+                 and veh not in VEHICULES_FIGES],
                 key=lambda x: len(x[1]), reverse=True
             )
             if not groupes_dj:
                 return 0
 
-            # Choisir UN SEUL camion source avec secteur dominant clair
-            veh_src_choisi = None
-            sec_src_choisi = ''
+            # Étape 1 : un seul camion source, en essayant tous les candidats
             for veh_src, vifs_src in groupes_dj:
                 anciens = [v for v in vifs_src if v not in new_vifs]
-                if len(anciens) < 2: continue
+                if len(anciens) < 2:
+                    continue
                 sec = _sec_dominant(anciens)
-                if sec:
-                    veh_src_choisi = veh_src
-                    sec_src_choisi = sec
-                    break
+                if not sec:
+                    continue
+                anciens_tries = sorted(anciens, key=_dist, reverse=True)
+                nb_garder = max(2, len(anciens_tries) // 2)
+                nb_donner = min(len(anciens_tries) - nb_garder, max_c_vx)
+                if nb_donner < 2:
+                    continue  # cette tournée n'a pas assez d'excédent, essayer la suivante
+                pris = anciens_tries[:nb_donner]
+                dj_veh[(dj, veh_src)] = [v for v in vifs_src if v not in pris]
+                dj_veh[(dj, veh_new)] = list(pris)
+                print(f"    {veh_new} → {dj}: {len(pris)} mag de {veh_src} (secteur {sec})")
+                return len(pris)
 
-            if not veh_src_choisi:
+            # Étape 2 : repli — combiner plusieurs camions du même secteur dominant
+            from collections import Counter as _C_deles
+            secteurs_count = _C_deles()
+            for veh_src, vifs_src in groupes_dj:
+                for v in vifs_src:
+                    if v in new_vifs:
+                        continue
+                    s = _secteur_vif_calc2(v)
+                    if s:
+                        secteurs_count[s] += 1
+            if not secteurs_count:
+                return 0
+            sec_cible = secteurs_count.most_common(1)[0][0]
+
+            candidats = []
+            for veh_src, vifs_src in groupes_dj:
+                anciens_cible = [v for v in vifs_src
+                                  if v not in new_vifs and _secteur_vif_calc2(v) == sec_cible]
+                if not anciens_cible:
+                    continue
+                # Plafonner la contribution de cette tournée pour garder au moins 1
+                # magasin en son sein, plutôt que d'écarter toute la tournée si elle
+                # est entièrement du secteur cible (cas d'une tournée homogène).
+                cap = len(vifs_src) - 1
+                if cap <= 0:
+                    continue
+                candidats.extend([(v, veh_src) for v in anciens_cible[:cap]])
+
+            if len(candidats) < 2:
                 return 0
 
-            vifs_src = dj_veh.get((dj, veh_src_choisi), [])
-            anciens = [v for v in vifs_src if v not in new_vifs]
-            anciens_tries = sorted(anciens, key=_dist, reverse=True)
-            nb_garder = max(2, len(anciens_tries) // 2)
-            nb_donner = min(len(anciens_tries) - nb_garder, max_c_vx)
-            if nb_donner <= 0:
-                return 0
-
-            pris = anciens_tries[:nb_donner]
-
-            # Ne créer la tournée VX que si au moins 2 magasins
-            if len(pris) < 2:
-                return 0
-
-            dj_veh[(dj, veh_src_choisi)] = [v for v in vifs_src if v not in pris]
-            dj_veh[(dj, veh_new)] = list(pris)
-            print(f"    {veh_new} → {dj}: {len(pris)} mag de {veh_src_choisi} (secteur {sec_src_choisi})")
+            pris = candidats[:max_c_vx]
+            sources = {}
+            for vif, veh_src in pris:
+                sources.setdefault(veh_src, []).append(vif)
+            for veh_src, vifs_pris in sources.items():
+                dj_veh[(dj, veh_src)] = [v for v in dj_veh[(dj, veh_src)] if v not in vifs_pris]
+            dj_veh[(dj, veh_new)] = [v for v, _ in pris]
+            print(f"    {veh_new} → {dj}: {len(pris)} mag secteur '{sec_cible}' combinés depuis {list(sources.keys())}")
             return len(pris)
 
         # Chaque VX couvre les 4 demi-journées Vendredi+Samedi
@@ -1375,8 +1424,16 @@ def optimiser_tournees(fiches, df_mag, args):
     elif nb_doublons == 0:
         print("  ✓ Aucun doublon détecté")
 
-    # ── Éliminer les tournées à 1 seul magasin (sauf camions figés) ──────────
+    # ── Tournées à 1 seul magasin (sauf camions figés) ────────────────────────
+    # Un camion supplémentaire (VX) réduit à 1 magasin est éliminé : mieux vaut
+    # rattacher ce magasin à une tournée voisine que de mobiliser un véhicule
+    # de plus. En revanche, un véhicule EXISTANT non figé sortira de toute façon
+    # ce jour-là — le vider complètement (comme on faisait avant) le laisse
+    # inutilisé alors qu'il pourrait emporter 1-2 magasins proches en plus.
+    # On tente donc de le compléter, et on ne le vide que si rien de proche
+    # n'a pu lui être ajouté.
     nb_elimines = 0
+    nb_completes_1mag = 0
     for dj in [d for d in DEMI_JOURNEES if d not in DJ_DIMANCHE]:
         max_c_dj = max_norm
         for (d, veh), vifs in list(dj_veh.items()):
@@ -1390,6 +1447,37 @@ def optimiser_tournees(fiches, df_mag, args):
             lat_s = float(r_seul.get('Latitude', BAI_LAT))
             lon_s = float(r_seul.get('Longitude', BAI_LON))
             sec_s = _secteur_vif_calc2(vif_seul)
+            est_vx = veh in nouveaux_vehs  # camion supplémentaire (VX3xx)
+
+            if not est_vx:
+                # Véhicule existant : chercher un magasin proche du même secteur
+                # dans une tournée qui a de la marge, pour compléter plutôt que
+                # de vider ce camion.
+                best_vif = None; best_src = None; best_dist = float('inf')
+                for (d2, veh2), vifs2 in dj_veh.items():
+                    if d2 != dj or veh2 == veh: continue
+                    if veh2 in VEHICULES_FIGES: continue
+                    if (veh2, dj) in TOURNEES_GELEES: continue
+                    if len(vifs2) <= 2: continue  # ne pas dégarnir une tournée déjà légère
+                    for v in vifs2:
+                        if _secteur_vif_calc2(v) != sec_s: continue
+                        r_v = vif2row.get(v)
+                        if r_v is None: continue
+                        d_km = haversine(float(r_v.get('Latitude', BAI_LAT)),
+                                          float(r_v.get('Longitude', BAI_LON)), lat_s, lon_s)
+                        if d_km < best_dist:
+                            best_dist = d_km; best_vif = v; best_src = veh2
+                if best_vif:
+                    nom_a = str(vif2row.get(best_vif, {}).get('Nom', best_vif))
+                    dj_veh[(dj, best_src)] = [v for v in dj_veh[(dj, best_src)] if v != best_vif]
+                    dj_veh[(dj, veh)].append(best_vif)
+                    print(f"  Complément tournée 1 mag: '{nom_a}' {best_src}→{veh} ({dj}, évite un véhicule existant inutilisé)")
+                    nb_completes_1mag += 1
+                    continue  # ne pas éliminer ce camion, il n'est plus à 1 magasin
+                # sinon : rien de proche à ajouter, on laisse la tournée à 1
+                # magasin telle quelle (mieux qu'un véhicule totalement vide).
+                continue
+
             # Chercher la tournée la plus proche avec de la place
             best_key = None; best_score = float('inf')
             for (d2, veh2), vifs2 in dj_veh.items():
@@ -1412,7 +1500,9 @@ def optimiser_tournees(fiches, df_mag, args):
                 print(f"  Tournée 1 mag éliminée: '{nom_s}' ({veh}/{dj}) → {best_key[1]}")
                 nb_elimines += 1
     if nb_elimines:
-        print(f"  → {nb_elimines} tournée(s) à 1 magasin éliminée(s)")
+        print(f"  → {nb_elimines} tournée(s) à 1 magasin éliminée(s) (camions supplémentaires)")
+    if nb_completes_1mag:
+        print(f"  → {nb_completes_1mag} tournée(s) à 1 magasin complétée(s) (véhicules existants, pour éviter un camion inutilisé)")
 
 
     # Coefficients trafic TomTom 2025 Grenoble
@@ -3144,16 +3234,28 @@ def main():
     args = parse_args()
 
     if args.output is None:
-        # Créer le dossier resultat/ si nécessaire (dans le même dossier que le script)
-        dossier_resultat_base = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resultat')
-        # Sous-dossier : VX{nb_camions}_MAX{max_magasins}
-        sous_dossier = f'MAX{args.max_magasins}_Creneaux'
+        # Chaque simulation (= une combinaison de paramètres) va dans son propre
+        # sous-dossier de resultat/simulation tournées/, nommé d'après ses
+        # paramètres (ex: vx3-mag5) — pour comparer facilement plusieurs essais
+        # sans que l'un écrase le résultat d'un autre.
+        # Le nom du sous-dossier ne reprend QUE camions-supp et max-magasins (pas
+        # les options optanciens/fuslegeres/cormalplaces/poids) : sur un chemin
+        # Google Drive déjà long, un nom de dossier trop détaillé peut dépasser
+        # la limite de chemin d'Excel (~218 caractères) et donner un faux
+        # "fichier introuvable" alors que le fichier existe bel et bien.
+        dossier_resultat_base = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                              'resultat', 'simulation tournées')
+        sous_dossier = f'vx{args.camions_supp}-mag{args.max_magasins}'
         dossier_resultat = os.path.join(dossier_resultat_base, sous_dossier)
         os.makedirs(dossier_resultat, exist_ok=True)
         args.output = os.path.join(dossier_resultat, (lambda s: f'Tournees_BAI38_2026_{datetime.now().strftime("%Y%m%d_%H%M")}_VX{args.camions_supp}{s}.xlsx')(
             ('_OptAnciens' if args.optimiser_anciens else '') +
             ('_FusLegeres' if args.fusionner_legeres else '') +
             ('_CorMalPlaces' if args.corriger_mal_places else '')))
+    else:
+        # Sortie explicitement fournie (--output) : la carte HTML (générée plus
+        # loin) va dans le même dossier que ce fichier Excel.
+        dossier_resultat = os.path.dirname(os.path.abspath(args.output))
 
     print()
     print('='*65)
