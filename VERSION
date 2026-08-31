@@ -1,3 +1,3 @@
-VERSION=1.6.6
-MESSAGE=Collecte production : nouveau controle Excel Doublons camion-magasin (meme magasin affecte a 2 camions sur la meme demi-journee)
-DATE=2026-08-31 10:49
+VERSION=1.6.12
+MESSAGE=Collecte production : nouveau controle Excel Doublons camion-magasin (meme magasin affecte a 2 camions sur la meme demi-journee) - correction numero de version (doublon avec 1.6.6 deja utilise)
+DATE=2026-08-31 10:50
