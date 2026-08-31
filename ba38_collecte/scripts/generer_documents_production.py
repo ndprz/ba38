@@ -1872,13 +1872,60 @@ def formater_numerique(nom_colonne, valeur):
         return valeur
 
 
-def construire_vehicule_consignes(df_veh):
+def calculer_caisses_premier_jour(df, mag_cols, vif_cols, cag_par_vif_dj):
+    """Pour chaque camion, calcule le nombre de caisses nécessaires pour son
+    PREMIER jour d'utilisation, jeudi exclu (les tournées du jeudi sont
+    spéciales/figées, non représentatives d'un jour normal) : on prend la
+    demi-journée non-jeudi la plus tôt dans la semaine où ce camion a une
+    tournée, et on additionne, pour tous les magasins de cette tournée, la
+    colonne cag1 du fichier cagettes (nombre de caisses du 1er passage de
+    chaque magasin ce jour-là). Retourne {code_camion: total} ; un camion
+    sans aucune tournée hors jeudi, ou dont aucun magasin n'a de cag1
+    renseigné, n'apparaît pas dans le résultat (case laissée vide)."""
+    dj_ordre = {dj: i for i, dj in enumerate(DJ_ORDER)}
+
+    premiere_tournee_par_camion = {}
+    for _, trow in df.iterrows():
+        dj_t = str(trow.get('Demi-journee', '')).strip()
+        if dj_t.startswith('Jeudi'):
+            continue
+        code = str(trow.get('Camion', '')).strip()
+        if not code:
+            continue
+        idx = dj_ordre.get(dj_t, 99)
+        if code not in premiere_tournee_par_camion or idx < premiere_tournee_par_camion[code][0]:
+            premiere_tournee_par_camion[code] = (idx, dj_t, trow)
+
+    resultat = {}
+    for code, (_, dj_t, trow) in premiere_tournee_par_camion.items():
+        total = 0
+        au_moins_une_valeur = False
+        for vc, mc in zip(vif_cols, mag_cols):
+            nom = str(trow.get(mc, '')).strip()
+            if not nom or nom == 'nan':
+                continue
+            vif = str(trow.get(vc, '')).strip()
+            cag = cag_par_vif_dj.get((vif, dj_t))
+            if not cag or not cag[0]:
+                continue
+            try:
+                total += int(cag[0])
+                au_moins_une_valeur = True
+            except ValueError:
+                continue
+        if au_moins_une_valeur:
+            resultat[code] = total
+    return resultat
+
+
+def construire_vehicule_consignes(df_veh, caisses_premier_jour=None):
     """Regroupe liste-vehicule.xlsx (déjà chargé dans df_veh, une ligne par
     passage camion/magasin/demi-journée) par Code et retourne la liste des
     lignes (dicts) prêtes à écrire dans vehicule_consignes.xlsx : UNE LIGNE
     PAR CAMION, triée par Code. Signale sur la sortie standard les camions
     dont la totalité des consignes est vide (probablement un camion tout
     juste ajouté à liste-vehicule.xlsx, à compléter)."""
+    caisses_premier_jour = caisses_premier_jour or {}
     cols = list(df_veh.columns)
     col_code = detecter_colonne(cols, ['code']) or 'Code'
     col_vehicule = detecter_colonne(cols, ['vehicule']) or detecter_colonne(cols, ['nom', 'camion'])
@@ -1896,7 +1943,7 @@ def construire_vehicule_consignes(df_veh):
         if not nom:
             nom = NOMS_CAMIONS_CONNUS.get(code, '')
 
-        ligne = {'Code': code, 'Véhicule': nom}
+        ligne = {'Code': code, 'Véhicule': nom, 'Caisses 1er jour': caisses_premier_jour.get(code)}
         nb_renseignees = 0
         for col_source, col_sortie in COLONNES_CONSIGNES:
             if col_source in grp.columns:
@@ -1930,7 +1977,7 @@ def ecrire_vehicule_consignes(lignes, chemin_sortie):
     from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.datavalidation import DataValidation
 
-    entetes = ['Code', 'Véhicule'] + [c for _, c in COLONNES_CONSIGNES]
+    entetes = ['Code', 'Véhicule', 'Caisses 1er jour'] + [c for _, c in COLONNES_CONSIGNES]
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -1972,7 +2019,7 @@ def ecrire_vehicule_consignes(lignes, chemin_sortie):
                 cell.fill = fill
 
     largeurs = {
-        'Code': 8, 'Véhicule': 26, 'A preparer avant': 42, 'Gilets': 8,
+        'Code': 8, 'Véhicule': 26, 'Caisses 1er jour': 14, 'A preparer avant': 42, 'Gilets': 8,
         'tracts secours': 10, 'nb caisses': 14, 'nb palettes': 10,
         'Date': 12, 'Fiche camion': 10, 'chariot à roulettes': 12, 'donné': 9, 'Garé BAI': 10,
         'pris': 8, 'clés à recuperer': 12, 'Quai': 8, 'caisses': 22,
@@ -2107,13 +2154,35 @@ def main():
               f"{args.vehicules} ('Code', 'Tournée', 'Début', 'Code VIF', 'Magasin').")
         return
 
+    # ── Cagettes — chargé ici (avant vehicule_consignes.xlsx ET le document 1)
+    # car les deux en ont besoin : vehicule_consignes pour la colonne
+    # 'Caisses 1er jour', le document 1 pour le nombre de cagettes par magasin.
+    cag_par_vif_dj = {}
+    try:
+        df_cag = pd.read_excel(args.cagettes, sheet_name='Feuil1')
+        for _, r in df_cag.iterrows():
+            vif = vif_fmt(r.get('Code VIF', ''))
+            dj_n = normaliser_dj(r.get('jour', ''))
+            if not vif or not dj_n:
+                continue
+            vals = []
+            for k in ('cag1', 'cag2', 'cag3', 'cag4'):
+                v = r.get(k, '')
+                v = str(v).strip().split('.')[0] if str(v).strip() not in ('', 'nan') else ''
+                vals.append(v)
+            cag_par_vif_dj[(vif, dj_n)] = vals
+        print(f"Cagettes: {args.cagettes} ({len(cag_par_vif_dj)} entrées magasin/demi-journée)")
+    except Exception as e:
+        print(f"AVERTISSEMENT : Cagettes non chargées ({args.cagettes} : {e})")
+
     # ── vehicule_consignes.xlsx : une ligne par camion, condensée depuis les
     # colonnes de consignes déjà présentes dans liste-vehicule.xlsx (réutilise
     # df_veh, déjà chargé ci-dessus — pas de second passage sur le fichier).
     # Sauté en --fiche-seule : ce mode ne doit produire que le document 1.
     if not args.fiche_seule:
         print(f"\nSortie 5 (consignes véhicules) : {args.output_vehicule_consignes}")
-        lignes_consignes = construire_vehicule_consignes(df_veh)
+        caisses_premier_jour = calculer_caisses_premier_jour(df, mag_cols, vif_cols, cag_par_vif_dj)
+        lignes_consignes = construire_vehicule_consignes(df_veh, caisses_premier_jour)
         print(f"  → {len(lignes_consignes)} camion(s) distinct(s)")
         args.output_vehicule_consignes = ecrire_vehicule_consignes(lignes_consignes, args.output_vehicule_consignes)
 
@@ -2263,25 +2332,6 @@ def main():
         if magasins_dj_non_couverts:
             print(f"ATTENTION : {len(magasins_dj_non_couverts)} couple(s) magasin/demi-journée "
                   f"attendu(s) d'après les créneaux mais sans camion dans {args.vehicules} !")
-
-    # ── Cagettes (document 1 uniquement) ────────────────────────────────────
-    cag_par_vif_dj = {}
-    try:
-        df_cag = pd.read_excel(args.cagettes, sheet_name='Feuil1')
-        for _, r in df_cag.iterrows():
-            vif = vif_fmt(r.get('Code VIF', ''))
-            dj_n = normaliser_dj(r.get('jour', ''))
-            if not vif or not dj_n:
-                continue
-            vals = []
-            for k in ('cag1', 'cag2', 'cag3', 'cag4'):
-                v = r.get(k, '')
-                v = str(v).strip().split('.')[0] if str(v).strip() not in ('', 'nan') else ''
-                vals.append(v)
-            cag_par_vif_dj[(vif, dj_n)] = vals
-        print(f"Cagettes: {args.cagettes} ({len(cag_par_vif_dj)} entrées magasin/demi-journée)")
-    except Exception as e:
-        print(f"AVERTISSEMENT : Cagettes non chargées ({args.cagettes} : {e})")
 
     # ═══════════════════════════════════════════════════════════════════════
     # DOCUMENT 1 — Fiches de collecte + rapport des manquants
