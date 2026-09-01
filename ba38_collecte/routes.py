@@ -89,6 +89,24 @@ FICHIERS = {
         "label": "Tournées de la collecte précédente",
         "aide": "PDF \"fiches jour-véhicules-magasins\", dossier camions de la collecte précédente sur le drive collecte",
     },
+    "groupes": {
+        "champ_chemin": "fichier_groupes",
+        "champ_le": "fichier_groupes_le",
+        "champ_par": "fichier_groupes_par",
+        "nom_stockage": "liste_groupes.xlsx",
+        "extensions": EXTENSIONS_EXCEL,
+        "label": "Liste des groupes (associations go-on-web)",
+        "aide": "Export go-on-web Association > Groupes — utilisé pour identifier les associations qui gardent leur collecte",
+    },
+    "participants": {
+        "champ_chemin": "fichier_participants",
+        "champ_le": "fichier_participants_le",
+        "champ_par": "fichier_participants_par",
+        "nom_stockage": "liste_participants.xlsx",
+        "extensions": EXTENSIONS_EXCEL,
+        "label": "Liste des participants (contacts go-on-web)",
+        "aide": "Export go-on-web des participants/contacts par groupe — utilisé pour retrouver le référent (nom, email, téléphone) de chaque association qui garde sa collecte",
+    },
 }
 
 
@@ -1375,3 +1393,299 @@ def production_telecharger(cle):
 
     mimetype = "text/html" if cle == "carte" else None
     return send_file(chemin, as_attachment=(cle != "carte"), download_name=nom, mimetype=mimetype)
+
+
+# ============================================================================
+# 🏠 ASSOCIATIONS GARDANT — associations qui gardent leur collecte au lieu de
+# la remettre à la BAI (magasins État='Collecte gardée' du référentiel).
+# Croise deux exports go-on-web déjà utilisés ailleurs dans le module :
+#   - liste_magasins.xlsx (FICHIERS['magasins']) : un magasin par ligne,
+#     colonne 'Gardée par' = nom de l'association qui en assure la collecte
+#     (source de vérité pour "qui garde quoi" — voir _construire_associations)
+#   - liste_groupes.xlsx  (FICHIERS['groupes'])  : un groupe/association par
+#     ligne, sert uniquement à enrichir chaque association trouvée dans
+#     'Gardée par' (type, contacts, fiche groupe) — sa colonne 'Nombre
+#     magasins' n'est PAS utilisée pour décider qui apparaît dans la liste,
+#     car elle accuse parfois un retard sur 'Gardée par' (association trouvée
+#     quand même, juste avec des métadonnées vides — voir 'trouvee').
+# Étape 1 du sous-projet : constituer/télécharger la liste croisée. L'envoi
+# d'une demande de résultats aux associations et la saisie du tonnage reçu
+# sont des étapes suivantes, pas encore implémentées.
+# ============================================================================
+
+def _valeur_propre(v):
+    return "" if pd.isna(v) else v
+
+
+def _vif_fmt(v):
+    """Formate un Code VIF en texte à 8 chiffres, zéros non significatifs
+    conservés (ex. 9990005 → '09990005') — Excel/pandas lisent ce genre de
+    code comme un nombre et perdent sinon le zéro de tête."""
+    if pd.isna(v):
+        return ""
+    s = str(v).strip().split(".")[0]
+    return s.zfill(8) if s.isdigit() else s
+
+
+def _normaliser_gardee_par(s):
+    """Nettoie la colonne 'Gardée par' pour la faire correspondre au nom du
+    groupe : certains magasins à stockage partagé notent l'association sous
+    la forme 'BAI+Nom' (ex. 'BAI+Equilibre') plutôt que juste 'Nom' — préfixe
+    à retirer avant comparaison."""
+    s = str(s).strip()
+    return re.sub(r'^BAI\s*\+\s*', '', s, flags=re.IGNORECASE).strip()
+
+
+def _lire_magasins_gardes(annee):
+    """Magasins État='Collecte gardée' du référentiel de l'année (DataFrame
+    vide si liste_magasins.xlsx est absent)."""
+    chemin = os.path.join(_dossier_annee(annee), FICHIERS["magasins"]["nom_stockage"])
+    if not os.path.exists(chemin):
+        return pd.DataFrame()
+    df = pd.read_excel(chemin)
+    df.columns = [str(c).strip() for c in df.columns]
+    if "État" not in df.columns:
+        return pd.DataFrame()
+    return df[df["État"].astype(str).str.strip() == "Collecte gardée"].reset_index(drop=True)
+
+
+def _lire_groupes(annee):
+    """Tous les groupes (associations) go-on-web de l'année, colonnes
+    normalisées (DataFrame vide si liste_groupes.xlsx est absent). Pas
+    filtré sur 'Nombre magasins' : cette colonne, calculée côté go-on-web,
+    accuse parfois un retard par rapport à la colonne 'Gardée par' du
+    référentiel magasins (ex. une association vient de reprendre un magasin
+    mais son compteur n'est pas encore remonté) — s'y fier pour décider
+    qu'une association « n'existe pas » ferait disparaître des associations
+    bien réelles de la liste."""
+    chemin = os.path.join(_dossier_annee(annee), FICHIERS["groupes"]["nom_stockage"])
+    if not os.path.exists(chemin):
+        return pd.DataFrame()
+    df = pd.read_excel(chemin)
+    df.columns = [str(c).strip() for c in df.columns]
+    return df
+
+
+def _lire_participants(annee):
+    """Tous les participants/contacts go-on-web de l'année (toutes années de
+    collecte confondues dans l'export), colonnes normalisées (DataFrame vide
+    si liste_participants.xlsx est absent)."""
+    chemin = os.path.join(_dossier_annee(annee), FICHIERS["participants"]["nom_stockage"])
+    if not os.path.exists(chemin):
+        return pd.DataFrame()
+    df = pd.read_excel(chemin)
+    df.columns = [str(c).strip() for c in df.columns]
+    return df
+
+
+def _referents_association(nom_asso, df_participants):
+    """Contacts connus pour un groupe (association) donné, à partir de
+    liste_participants.xlsx (colonne 'Groupe'). Dédoublonnés par (Nom,
+    Email) ; ceux dont le nom porte la mention '(Ref)' (référent désigné
+    côté go-on-web) sont mis en tête."""
+    if df_participants.empty or "Groupe" not in df_participants.columns:
+        return []
+    sub = df_participants[df_participants["Groupe"].astype(str).str.strip() == nom_asso].fillna("")
+    if sub.empty:
+        return []
+
+    vus = set()
+    contacts = []
+    for _, r in sub.iterrows():
+        nom = str(r.get("Nom", "")).strip()
+        if not nom:
+            continue
+        email = str(r.get("Email", "")).strip()
+        cle = (nom, email)
+        if cle in vus:
+            continue
+        vus.add(cle)
+        telephone = str(r.get("Portable", "")).strip() or str(r.get("Téléphone", "")).strip()
+        contacts.append({
+            "nom": nom,
+            "email": email,
+            "telephone": telephone,
+            "referent": "ref" in nom.lower().replace("é", "e"),
+        })
+    contacts.sort(key=lambda c: (not c["referent"], c["nom"]))
+    return contacts
+
+
+def _associations_secondaires_stockage(stockage, primaire):
+    """Certains magasins sont gardés à tour de rôle par DEUX associations
+    (ex. une journée chacune) — la colonne 'Gardée par' n'en retient qu'une,
+    la seconde n'apparaît que dans le texte libre 'Stockage' (ex.
+    'Beurrepinard+la Roseraie'). Renvoie les noms distincts de la principale
+    et de 'BAI' (qui désigne un stockage partagé avec la banque alimentaire,
+    pas une association)."""
+    stockage = str(stockage)
+    if "+" not in stockage:
+        return []
+
+    def cle(s):
+        # espaces ignorés : 'BAI+3ABI' et 'BAI+3 ABI' doivent être reconnus
+        # comme la même association malgré l'incohérence de saisie.
+        return re.sub(r"\s+", "", s).lower()
+
+    primaire_cle = cle(primaire)
+    tokens = [t.strip() for t in stockage.split("+") if t.strip()]
+    return [t for t in tokens if cle(t) not in ("bai", primaire_cle)]
+
+
+def _construire_associations(df_mag, df_groupes):
+    """Rattache chaque magasin gardé à son (ou ses) association(s), à partir
+    de la colonne 'Gardée par' (normalisée — voir _normaliser_gardee_par) et
+    d'une éventuelle seconde association révélée par 'Stockage' (voir
+    _associations_secondaires_stockage) : la liste des associations vient
+    donc de df_mag, pas de df_groupes. Chaque association trouvée dans
+    df_groupes est enrichie de ses métadonnées (type, contacts, fiche
+    groupe) ; sinon ('trouvee': False) elle apparaît quand même, avec juste
+    son nom et ses magasins — jamais de magasin perdu."""
+    df_mag = df_mag.fillna("")
+    gardee_par = df_mag.get("Gardée par", pd.Series(dtype=str)).map(_normaliser_gardee_par)
+
+    groupes_par_nom = {}
+    groupes_par_nom_lower = {}
+    if not df_groupes.empty and "Nom" in df_groupes.columns:
+        for _, g in df_groupes.iterrows():
+            nom = str(g.get("Nom", "")).strip()
+            groupes_par_nom[nom] = g
+            groupes_par_nom_lower[nom.lower()] = g
+
+    lignes_par_asso = {}
+    for idx, row in df_mag.iterrows():
+        primaire = gardee_par.loc[idx]
+        if primaire:
+            lignes_par_asso.setdefault(primaire, []).append(idx)
+        for secondaire in _associations_secondaires_stockage(row.get("Stockage", ""), primaire):
+            grp_sec = groupes_par_nom_lower.get(secondaire.lower())
+            nom_cle = str(grp_sec.get("Nom")).strip() if grp_sec is not None else secondaire
+            lignes_par_asso.setdefault(nom_cle, []).append(idx)
+
+    associations = []
+    for nom_asso in sorted(lignes_par_asso.keys(), key=str.lower):
+        magasins_grp = df_mag.loc[lignes_par_asso[nom_asso]]
+        grp = groupes_par_nom.get(nom_asso)
+        associations.append({
+            "nom": nom_asso,
+            "type": _valeur_propre(grp.get("Type")) if grp is not None else "",
+            "membre_bai": _valeur_propre(grp.get("Membre BAI")) if grp is not None else "",
+            "nb_contacts": int(grp.get("Nombre contacts")) if grp is not None and pd.notna(grp.get("Nombre contacts")) else 0,
+            "nb_leaders": int(grp.get("Nombre leaders")) if grp is not None and pd.notna(grp.get("Nombre leaders")) else 0,
+            "fiche_groupe": _valeur_propre(grp.get("Fiche groupe")) if grp is not None else "",
+            "trouvee": grp is not None,
+            "magasins": magasins_grp[["Code VIF", "Nom", "Ville", "Stockage", "Contact", "Email"]].to_dict("records"),
+        })
+
+    sans_association = df_mag[gardee_par == ""][["Code VIF", "Nom", "Ville", "Stockage"]].to_dict("records")
+    return associations, sans_association
+
+
+@collecte_bp.route("/collecte/gardee")
+@login_required
+@require_access("collecte", "lecture")
+def gardee():
+    annee = request.args.get("annee", type=int) or datetime.now().year
+
+    df_mag = _lire_magasins_gardes(annee)
+    df_groupes = _lire_groupes(annee)
+    if "Code VIF" in df_mag.columns:
+        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+
+    manquants = []
+    if df_mag.empty:
+        manquants.append(FICHIERS["magasins"]["label"])
+    if df_groupes.empty:
+        manquants.append(FICHIERS["groupes"]["label"])
+
+    associations, sans_association = ([], [])
+    if not manquants:
+        associations, sans_association = _construire_associations(df_mag, df_groupes)
+        df_participants = _lire_participants(annee)
+        for asso in associations:
+            asso["referents"] = _referents_association(asso["nom"], df_participants)
+
+    return render_template(
+        "collecte/gardee.html",
+        annee=annee,
+        manquants=manquants,
+        associations=associations,
+        sans_association=sans_association,
+        nb_magasins=len(df_mag),
+    )
+
+
+@collecte_bp.route("/collecte/gardee/excel")
+@login_required
+@require_access("collecte", "lecture")
+def gardee_excel():
+    annee = request.args.get("annee", type=int) or datetime.now().year
+
+    df_mag = _lire_magasins_gardes(annee)
+    df_groupes = _lire_groupes(annee)
+
+    if df_mag.empty or df_groupes.empty:
+        flash("❌ Fichier(s) manquant(s) (liste des magasins et/ou des groupes)", "danger")
+        return redirect(url_for("collecte.gardee", annee=annee))
+
+    if "Code VIF" in df_mag.columns:
+        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+
+    associations, sans_association = _construire_associations(df_mag, df_groupes)
+    df_participants = _lire_participants(annee)
+    for asso in associations:
+        asso["referents"] = _referents_association(asso["nom"], df_participants)
+
+    def _fmt_referents(referents):
+        return " ; ".join(
+            f"{r['nom']}" + (f" <{r['email']}>" if r["email"] else "") + (f" ({r['telephone']})" if r["telephone"] else "")
+            for r in referents
+        )
+
+    df_associations = pd.DataFrame([{
+        "Nom": a["nom"],
+        "Type": a["type"],
+        "Membre BAI": a["membre_bai"],
+        "Nombre contacts": a["nb_contacts"],
+        "Nombre leaders": a["nb_leaders"],
+        "Nombre magasins": len(a["magasins"]),
+        "Trouvée dans liste des groupes": "Oui" if a["trouvee"] else "Non — nom absent de liste_groupes.xlsx",
+        "Référent - Nom": a["referents"][0]["nom"] if a["referents"] else "",
+        "Référent - Email": a["referents"][0]["email"] if a["referents"] else "",
+        "Référent - Téléphone": a["referents"][0]["telephone"] if a["referents"] else "",
+        "Autres contacts": _fmt_referents(a["referents"][1:]),
+        "Fiche groupe": a["fiche_groupe"],
+    } for a in associations])
+
+    df_mag_flat = df_mag.copy()
+    df_mag_flat["Association"] = df_mag_flat.get("Gardée par", "").map(_normaliser_gardee_par)
+    colonnes_mag = ["Association", "Gardée par", "Code VIF", "Nom", "Ville", "Stockage",
+                    "Contact", "Email", "Accord", "Commentaire", "Fiche magasin"]
+    colonnes_mag = [c for c in colonnes_mag if c in df_mag_flat.columns]
+    df_magasins = df_mag_flat[colonnes_mag].sort_values(["Association", "Nom"])
+
+    # Onglet pivot : une association par ligne, ses magasins en colonnes
+    # (même présentation que l'onglet 'Tournees' du module Production).
+    nb_max_mag = max((len(a["magasins"]) for a in associations), default=0)
+    colonnes_mag_pivot = [f"Magasin {i + 1}" for i in range(nb_max_mag)]
+    rows_pivot = []
+    for a in associations:
+        noms_mags = [f"{m['Code VIF']} — {m['Nom']}" for m in a["magasins"]]
+        row = {"Association": a["nom"], "Type": a["type"], "Nb magasins": len(noms_mags)}
+        for i, col in enumerate(colonnes_mag_pivot):
+            row[col] = noms_mags[i] if i < len(noms_mags) else ""
+        rows_pivot.append(row)
+    df_pivot = pd.DataFrame(rows_pivot, columns=["Association", "Type", "Nb magasins"] + colonnes_mag_pivot)
+
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df_associations.to_excel(writer, sheet_name="Associations", index=False)
+        df_magasins.to_excel(writer, sheet_name="Magasins gardés", index=False)
+        df_pivot.to_excel(writer, sheet_name="Associations - Magasins", index=False)
+    buffer.seek(0)
+
+    write_log(f"📥 Export Associations gardant {annee} par {current_user.email}")
+    return send_file(
+        buffer, as_attachment=True, download_name=f"associations_gardant_{annee}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )

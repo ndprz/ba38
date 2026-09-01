@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Associations gardant {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width:1100px;">
+
+    <h2>🏠 Collecte {{ annee }} — Associations gardant</h2>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+    {% endcall %}
+
+    <p class="text-muted">
+        Associations qui assurent elles-mêmes la collecte dans un ou plusieurs magasins (État
+        "Collecte gardée" du référentiel) au lieu de la remettre à la BAI. Liste croisée à partir
+        de la liste des magasins et de la liste des groupes (exports go-on-web de la page
+        principale).
+    </p>
+
+    {% if manquants %}
+    <div class="alert alert-warning">
+        ⛔ Fichier(s) manquant(s) pour {{ annee }} : <strong>{{ manquants|join(', ') }}</strong>.
+        <a href="{{ url_for('collecte.collecte_main', annee=annee) }}">Importer les fichiers</a>
+    </div>
+    {% else %}
+
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <p class="mb-0">
+            <strong>{{ associations|length }}</strong> association(s) pour
+            <strong>{{ nb_magasins }}</strong> magasin(s) en collecte gardée.
+        </p>
+        {{ action_button("📥 Télécharger Excel", href=url_for('collecte.gardee_excel', annee=annee), color="success") }}
+    </div>
+
+    {% if sans_association %}
+    <div class="alert alert-danger small">
+        ⚠️ {{ sans_association|length }} magasin(s) en collecte gardée sans association renseignée
+        (colonne "Gardée par" vide) :
+        <ul class="mb-0">
+            {% for o in sans_association %}
+            <li>
+                [{{ o['Code VIF'] }}] {{ o['Nom'] }} ({{ o['Ville'] }})
+                {% if o['Stockage'] %}— Stockage : {{ o['Stockage'] }}{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <div class="accordion" id="accordionAssociations">
+        {% for asso in associations %}
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                        data-bs-target="#asso-{{ loop.index }}">
+                    <span class="me-2">{{ asso.nom }}</span>
+                    <span class="badge bg-secondary me-2">{{ asso.magasins|length }} magasin(s)</span>
+                    {% if asso.type %}<span class="badge bg-light text-dark border me-2">{{ asso.type }}</span>{% endif %}
+                    {% if asso.membre_bai %}<span class="badge bg-info-subtle text-dark me-2">Membre BAI</span>{% endif %}
+                    {% if not asso.trouvee %}<span class="badge bg-warning text-dark">⚠️ absente de liste_groupes.xlsx</span>{% endif %}
+                </button>
+            </h2>
+            <div id="asso-{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#accordionAssociations">
+                <div class="accordion-body">
+                    <p class="small text-muted mb-2">
+                        {{ asso.nb_contacts }} contact(s), {{ asso.nb_leaders }} leader(s)
+                        {% if asso.fiche_groupe %}
+                        — <a href="{{ asso.fiche_groupe }}" target="_blank">Fiche groupe go-on-web</a>
+                        {% endif %}
+                    </p>
+
+                    {% if asso.referents %}
+                    <ul class="list-unstyled small mb-3">
+                        {% for r in asso.referents %}
+                        <li>
+                            {% if r.referent %}⭐{% else %}👤{% endif %}
+                            <strong>{{ r.nom }}</strong>
+                            {% if r.email %} — {{ r.email }}{% endif %}
+                            {% if r.telephone %} — {{ r.telephone }}{% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="small text-warning mb-3">⚠️ Aucun contact trouvé dans la liste des participants.</p>
+                    {% endif %}
+                    <table class="table table-sm table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>Code VIF</th><th>Magasin</th><th>Ville</th><th>Stockage</th>
+                                <th>Contact</th><th>Email</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for mag in asso.magasins %}
+                            <tr>
+                                <td>{{ mag['Code VIF'] }}</td>
+                                <td>{{ mag['Nom'] }}</td>
+                                <td>{{ mag['Ville'] }}</td>
+                                <td>{{ mag['Stockage'] }}</td>
+                                <td>{{ mag['Contact'] }}</td>
+                                <td>{{ mag['Email'] }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% endif %}
+
+</div>
+{% endblock %}
