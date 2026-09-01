@@ -119,7 +119,7 @@ def envoyer_relances_cotisations_v2_background(app, db_path, items, sujet_modele
 
                 conn.execute("""
                     UPDATE cotisations_v2_factures
-                    SET relance_niveau = COALESCE(relance_niveau,0)+1,
+                    SET relance_niveau = COALESCE(relance_niveau,0) + ?,
                         date_derniere_relance = ?,
                         mode_test_relance = ?,
                         relance_sujet = ?,
@@ -130,6 +130,7 @@ def envoyer_relances_cotisations_v2_background(app, db_path, items, sujet_modele
                         email = COALESCE(NULLIF(email, ''), ?)
                     WHERE id = ?
                 """, (
+                    0 if mail_mode == "TEST" else 1,
                     datetime.now().isoformat(timespec="seconds"),
                     1 if mail_mode == "TEST" else 0,
                     sujet_envoi,

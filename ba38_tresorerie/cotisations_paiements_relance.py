@@ -447,7 +447,7 @@ def envoyer_relances_background(app, db_path, items, sujet_modele, corps_modele,
 
                 conn.execute("""
                     UPDATE cotisations
-                    SET relance_niveau = COALESCE(relance_niveau,0)+1,
+                    SET relance_niveau = COALESCE(relance_niveau,0) + ?,
                         date_derniere_relance = ?,
                         mode_test_relance = ?,
                         relance_sujet = ?,
@@ -457,6 +457,7 @@ def envoyer_relances_background(app, db_path, items, sujet_modele, corps_modele,
                         relance_mailjet_message_ids = ?
                     WHERE id = ?
                 """, (
+                    0 if mail_mode == "TEST" else 1,
                     datetime.now().isoformat(timespec="seconds"),
                     1 if mail_mode == "TEST" else 0,
                     sujet_envoi,

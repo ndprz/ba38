@@ -1,3 +1,3 @@
-VERSION=1.6.17
-MESSAGE=Nouveau planning Cuisine 3 etoiles (jours en colonnes, sans postes differencies, absences/remplacements)
-DATE=2026-09-01 09:21
+VERSION=1.6.18
+MESSAGE=Fix bug relance TEST qui incrementait relance_niveau (participation, cotisations V1 et V2)
+DATE=2026-09-01 09:38
