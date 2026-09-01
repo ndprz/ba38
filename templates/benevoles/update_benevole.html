@@ -98,7 +98,7 @@
             </legend>
             <div class="group-content p-3 border rounded bg-white" style="display: none;">
                 {% for field in fields %}
-                {% if field['field_name'] != 'id' %}
+                {% if field['field_name'] not in ['id', 'date_modif', 'heure_modif', 'user_modif'] %}
                 <div class="row mb-2">
                     <div class="col-md-4 fw-bold text-end">
                         {{ field['field_name'] | format_label }}

@@ -52,8 +52,8 @@
       </legend>
       <div class="group-content p-3 border rounded bg-white" style="display: none;">
         {% for field in fields %}
-          {% if field['field_name'] == 'id' %}
-            {# Ignorer le champ technique ID #}
+          {% if field['field_name'] in ['id', 'date_modif', 'heure_modif', 'user_modif'] %}
+            {# Ignorer les champs techniques (ID, traçabilité modif déjà affichée en en-tête) #}
 
           {% elif field['field_name'] == 'produits_souhaites' %}
             {# Exemple spécial : cases à cocher #}

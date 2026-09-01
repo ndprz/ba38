@@ -1,3 +1,3 @@
-VERSION=1.6.15
-MESSAGE=Simulation tournees : resync avec generer_tournees_bai_v2.py (filtre Collecte gardee+Stockage BAI+, delestage VX ameliore, completion tournees a 1 magasin), fix VIF preserve
-DATE=2026-08-31 13:24
+VERSION=1.6.16
+MESSAGE=Champs date_modif/heure_modif/user_modif non modifiables (fiche+tableau) benevoles/partenaires; ancrage VIFS_ANCRES St Egreve + fix CRLF adresse siege (tournees)
+DATE=2026-09-01 08:34

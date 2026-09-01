@@ -146,7 +146,10 @@
           {% set valeur = valeurs[column] %}
           {% set v = valeur if valeur is not none and valeur != 'None' else '' %}
           <td>
-            {% if column|lower == 'civilite' %}
+            {% if column in ['date_modif', 'heure_modif', 'user_modif'] %}
+            <span class="text-muted">{{ v }}</span>
+
+            {% elif column|lower == 'civilite' %}
             <select name="{{ column }}_{{ row_index }}"
               class="form-select form-select-sm {% if column in champs_invalides %}is-invalid{% endif %}">
               <option value=""></option>

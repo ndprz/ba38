@@ -20,6 +20,17 @@ from datetime import datetime
 BAI_LAT, BAI_LON = 45.18867, 5.68456  # 11 allée de la Pinea, 38600 Fontaine
 VEHICULES_FIGES  = sorted(['V007','V008','V009','V013','V023','V026','V027','V028','V037'], key=lambda v: int(v[1:]))
 
+# Magasins ancrés à un véhicule précis (Code VIF sans zéro initial → véhicule
+# obligatoire), sans figer tout le camion pour autant : les autres magasins
+# de ce véhicule restent optimisables normalement. Réappliqué en toute fin
+# de optimiser_tournees(), après toutes les passes de rééquilibrage/fusion/
+# correction, pour garantir le résultat quel que soit le chemin qui a pu
+# déplacer ces magasins ailleurs.
+VIFS_ANCRES = {
+    '2380003': 'V012',  # Carrefour St Egreve - camion Ass. Familiale St Egrève
+    '2380250': 'V012',  # ALDI St Egreve - idem
+}
+
 # Adresse du siège affichée sur la carte des tournées : tirée de la config
 # organisation quand ce module tourne dans l'appli Flask (import optionnel —
 # le CLI d'origine reste utilisable hors appli, cf. docstring en tête de
@@ -34,7 +45,7 @@ except Exception:
 def _adresse_siege_html():
     if _get_organisation is not None:
         try:
-            return _get_organisation()["adresse"].replace("\n", "<br>")
+            return _get_organisation()["adresse"].replace("\r\n", "\n").replace("\n", "<br>")
         except Exception:
             pass
     return "11 All&eacute;e de la Pin&eacute;a<br>38600 Fontaine"
@@ -1504,6 +1515,26 @@ def optimiser_tournees(fiches, df_mag, args):
     if nb_completes_1mag:
         print(f"  → {nb_completes_1mag} tournée(s) à 1 magasin complétée(s) (véhicules existants, pour éviter un camion inutilisé)")
 
+    # ── Ancrage forcé de certains magasins à leur camion (VIFS_ANCRES) ───────
+    if VIFS_ANCRES:
+        nb_ancrages = 0
+        for vif_a, veh_cible in VIFS_ANCRES.items():
+            for (dj, veh), vifs in list(dj_veh.items()):
+                if veh == veh_cible or vif_a not in vifs:
+                    continue
+                dj_veh[(dj, veh)] = [v for v in vifs if v != vif_a]
+                if not dj_veh[(dj, veh)]:
+                    del dj_veh[(dj, veh)]
+                cle_cible = (dj, veh_cible)
+                if cle_cible not in dj_veh:
+                    dj_veh[cle_cible] = []
+                if vif_a not in dj_veh[cle_cible]:
+                    dj_veh[cle_cible].append(vif_a)
+                nom_a = str(vif2row.get(vif_a, {}).get('Nom', vif_a))
+                print(f"  Ancrage: '{nom_a}' {veh}→{veh_cible} ({dj})")
+                nb_ancrages += 1
+        if nb_ancrages:
+            print(f"  → {nb_ancrages} magasin(s) recentré(s) sur leur camion ancré")
 
     # Coefficients trafic TomTom 2025 Grenoble
     SECTEURS_METRO_XL = {

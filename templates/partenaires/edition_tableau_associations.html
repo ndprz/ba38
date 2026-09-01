@@ -153,7 +153,11 @@
           {% set v = valeur if valeur is not none and valeur != 'None' else '' %}
           <td>
 
-          {% if column in oui_non_fields %}
+          {% if column in ['date_modif', 'heure_modif', 'user_modif'] %}
+
+          <span class="text-muted">{{ v }}</span>
+
+          {% elif column in oui_non_fields %}
 
           <select
               name="{{ column }}_{{ row_index }}"

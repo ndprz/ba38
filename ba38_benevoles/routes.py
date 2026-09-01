@@ -1282,6 +1282,10 @@ def update_benevoles_table():
         champs_invalides = []
 
         for col in columns:
+            if col in ("date_modif", "heure_modif", "user_modif"):
+                # Colonnes en lecture seule dans le tableau : pas d'input soumis
+                continue
+
             old_val = (bene_dict[col] or "").strip() if bene_dict[col] else ""
             new_val = request.form.get(f"{col}_{i}", "").strip()
 
@@ -1341,7 +1345,11 @@ def update_benevoles_table():
             row_data = {
                 "id": bene_id,
                 "champs_invalides": champs_invalides,
-                "valeurs": {col: request.form.get(f"{col}_{i}", "").strip() for col in columns},
+                "valeurs": {
+                    col: bene_dict.get(col, "") if col in ("date_modif", "heure_modif", "user_modif")
+                    else request.form.get(f"{col}_{i}", "").strip()
+                    for col in columns
+                },
                 "nom": nom_val,
                 "prenom": prenom_val
             }

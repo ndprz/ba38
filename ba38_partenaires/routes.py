@@ -1125,8 +1125,9 @@ def update_partner(partner_id):
 
             fname = field["field_name"]
 
-            if fname == "id":
-
+            if fname in ("id", "date_modif", "heure_modif", "user_modif"):
+                # Champs de traçabilité : jamais pilotés par le formulaire,
+                # gérés plus bas via le hash de détection de changement.
                 continue
 
             # ====================================================
@@ -1335,7 +1336,9 @@ def update_partner(partner_id):
 
                 for f in fields_data
 
-                if f["field_name"] != "id"
+                if f["field_name"] not in (
+                    "id", "date_modif", "heure_modif", "user_modif"
+                )
             ]
 
             computed_hash = base64.b64encode(
@@ -1475,7 +1478,9 @@ def update_partner(partner_id):
 
         for field in fields_data
 
-        if field['field_name'] != "id"
+        if field['field_name'] not in (
+            "id", "date_modif", "heure_modif", "user_modif"
+        )
     ]
 
     form_hash = base64.b64encode(
@@ -1788,6 +1793,10 @@ def update_associations_table():
         champs_invalides = []
 
         for col in columns:
+            if col in ("date_modif", "heure_modif", "user_modif"):
+                # Colonnes en lecture seule dans le tableau : pas d'input soumis
+                continue
+
             db_key = None
             field_type = field_types.get(col)
 
@@ -1848,7 +1857,11 @@ def update_associations_table():
             row_data = {
                 "id": asso_id,
                 "champs_invalides": champs_invalides,
-                "valeurs": {col: request.form.get(f"{col}_{i}", "").strip() for col in columns},
+                "valeurs": {
+                    col: asso_dict.get(col, "") if col in ("date_modif", "heure_modif", "user_modif")
+                    else request.form.get(f"{col}_{i}", "").strip()
+                    for col in columns
+                },
                 "nom": request.form.get(f"nom_association_{i}", "") or asso_dict.get("nom_association", "")
             }
             associations_data.append(row_data)
