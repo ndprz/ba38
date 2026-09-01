@@ -1223,23 +1223,28 @@ def construire_classeur_tournees(df_t, mag_cols, vif_cols, df_ref):
         cell = ws3.cell(row=1, column=c, value=col)
         cell.font = F_HDR; cell.fill = C_HDR; cell.border = BRD; cell.alignment = A_C
 
+    # Indexé par Code VIF (et non par nom) : le nom d'un même magasin peut
+    # différer légèrement entre l'export véhicules et l'export magasins de
+    # go-on-web (ordre des mots, espaces...), alors que le Code VIF, lui,
+    # reste identique des deux côtés.
     vif_plan = {}
     for _, tr in df_t.iterrows():
         dj_k, cam = tr['Demi-journee'], tr['Camion']
-        for mc in mag_cols:
+        for vc, mc in zip(vif_cols, mag_cols):
             nom = str(tr.get(mc, ''))
-            if nom and nom != 'nan':
-                vif_plan.setdefault(nom, {})[dj_k] = cam
+            vif = vif_fmt(tr.get(vc, ''))
+            if nom and nom != 'nan' and vif:
+                vif_plan.setdefault(vif, {})[dj_k] = cam
 
     if 'État' in df_ref.columns:
         df_ref_actifs_m = df_ref[df_ref['État'].astype(str).str.strip() == 'Collecté par la BAI'].reset_index(drop=True)
     else:
         df_ref_actifs_m = df_ref
     for r, (_, mag) in enumerate(df_ref_actifs_m.iterrows(), 2):
-        nom_mag = str(mag.get('Nom', '')).strip()
+        vif_mag = vif_fmt(mag.get('Code VIF', ''))
         for c, col in enumerate(cols_m, 1):
             if col in DJ_ORDER:
-                val = vif_plan.get(nom_mag, {}).get(col, '')
+                val = vif_plan.get(vif_mag, {}).get(col, '')
             else:
                 val = mag.get(col, '')
                 val = '' if str(val) == 'nan' else val
@@ -2189,10 +2194,14 @@ def main():
     # Référentiel magasins (documents 1 uniquement)
     df_ref = pd.read_excel(args.magasins)
     ref_dict = {}
+    ref_dict_par_vif = {}
     for _, r in df_ref.iterrows():
         nom = str(r.get('Nom', '')).strip()
         if nom and nom != 'nan':
             ref_dict[nom] = dict(r)
+        vif_ref = vif_fmt(r.get('Code VIF', ''))
+        if vif_ref:
+            ref_dict_par_vif[vif_ref] = dict(r)
 
 
     # ── Classeur Excel unique : Tournees VIF / Tournees (+ secteurs) /
@@ -2269,18 +2278,22 @@ def main():
             if dj_t not in presence_par_dj:
                 continue
             cam_t = str(trow.get('Camion', '')).strip()
-            for mc in mag_cols:
+            for vc, mc in zip(vif_cols, mag_cols):
                 nom_t = str(trow.get(mc, '')).strip()
-                if nom_t and nom_t != 'nan':
-                    presence_par_dj[dj_t].setdefault(nom_t, cam_t)
+                vif_t = vif_fmt(trow.get(vc, ''))
+                if nom_t and nom_t != 'nan' and vif_t:
+                    presence_par_dj[dj_t].setdefault(vif_t, cam_t)
 
         for _, r in actifs_ref.iterrows():
             nom_r = str(r.get('Nom', '')).strip()
             if not nom_r or nom_r == 'nan':
                 continue
+            vif_r = vif_fmt(r.get('Code VIF', ''))
+            if not vif_r:
+                continue
             for jour, (dj_matin, dj_am) in DJ_JOURS_CTRL.items():
-                couvert_matin = nom_r in presence_par_dj[dj_matin]
-                couvert_am = nom_r in presence_par_dj[dj_am]
+                couvert_matin = vif_r in presence_par_dj[dj_matin]
+                couvert_am = vif_r in presence_par_dj[dj_am]
                 # Seul le cas « une seule des deux demi-journées couverte » est
                 # une anomalie ; 0 ou 2 demi-journées couvertes sont normaux.
                 if couvert_matin == couvert_am:
@@ -2289,13 +2302,12 @@ def main():
                     dj_ok, dj_ko = dj_matin, dj_am
                 else:
                     dj_ok, dj_ko = dj_am, dj_matin
-                camion_ok = presence_par_dj[dj_ok][nom_r]
+                camion_ok = presence_par_dj[dj_ok][vif_r]
                 # Camion à tournée figée/spéciale (ex. V026, V037) : son planning
                 # n'a normalement pas à couvrir les deux demi-journées du jour,
                 # donc pas d'alerte dans ce cas précis.
                 if camion_ok in VEHICULES_FIGES:
                     continue
-                vif_r = vif_fmt(r.get('Code VIF', ''))
                 ville_r = str(r.get('Ville', '')).strip()
                 txt_couvert = f"{DJ_LABELS.get(dj_ok, dj_ok)} ({camion_ok})"
                 txt_manquant = DJ_LABELS.get(dj_ko, dj_ko)
@@ -2319,13 +2331,15 @@ def main():
             nom_r = str(r.get('Nom', '')).strip()
             if not nom_r or nom_r == 'nan':
                 continue
+            vif_r = vif_fmt(r.get('Code VIF', ''))
+            if not vif_r:
+                continue
             djs_attendues = parse_creneaux(r.get('Créneaux', ''))
             if not djs_attendues:
                 continue
             for dj_att in sorted(djs_attendues, key=lambda d: DJ_ORDER.index(d) if d in DJ_ORDER else 99):
-                if nom_r in presence_par_dj.get(dj_att, {}):
+                if vif_r in presence_par_dj.get(dj_att, {}):
                     continue
-                vif_r = vif_fmt(r.get('Code VIF', ''))
                 ville_r = str(r.get('Ville', '')).strip()
                 magasins_dj_non_couverts.append((vif_r, nom_r, ville_r, DJ_LABELS.get(dj_att, dj_att)))
 
@@ -2372,8 +2386,12 @@ def main():
             nom = str(row.get(mc, '')).strip()
             if not nom or nom == 'nan':
                 continue
-            r_ref = ref_dict.get(nom, {})
             vif = vif_fmt(row.get(vc, '')) if vc else ''
+            # Priorité au Code VIF (fiable) : le nom peut différer légèrement
+            # entre l'export véhicules et l'export magasins de go-on-web.
+            r_ref = ref_dict_par_vif.get(vif) if vif else None
+            if r_ref is None:
+                r_ref = ref_dict.get(nom, {})
             if not vif:
                 vif = vif_fmt(r_ref.get('Code VIF', ''))
             cag = cag_par_vif_dj.get((vif, dj_n), ['', '', '', ''])
@@ -2432,19 +2450,21 @@ def main():
     # comptent dessus). À distinguer d'un magasin collecté plusieurs fois par
     # le MÊME camion (pas signalé ici, pas une anomalie).
     camions_par_magasin_dj = {}
+    noms_par_vif_t = {}
     for _, trow in df.iterrows():
         dj_t = str(trow.get('Demi-journee', '')).strip()
         cam_t = str(trow.get('Camion', '')).strip()
-        for mc in mag_cols:
+        for vc, mc in zip(vif_cols, mag_cols):
             nom_t = str(trow.get(mc, '')).strip()
-            if nom_t and nom_t != 'nan':
-                camions_par_magasin_dj.setdefault((dj_t, nom_t), set()).add(cam_t)
+            vif_t = vif_fmt(trow.get(vc, ''))
+            if vif_t:
+                camions_par_magasin_dj.setdefault((dj_t, vif_t), set()).add(cam_t)
+                noms_par_vif_t.setdefault(vif_t, nom_t)
 
     doublons_camion_magasin = []
-    for (dj_t, nom_t), camions_t in camions_par_magasin_dj.items():
+    for (dj_t, vif_t), camions_t in camions_par_magasin_dj.items():
         if len(camions_t) > 1:
-            r_ref = ref_dict.get(nom_t, {})
-            vif_t = vif_fmt(r_ref.get('Code VIF', '')) if r_ref else ''
+            nom_t = noms_par_vif_t.get(vif_t, '')
             doublons_camion_magasin.append((vif_t, nom_t, dj_t, sorted(camions_t)))
 
     if doublons_camion_magasin:
