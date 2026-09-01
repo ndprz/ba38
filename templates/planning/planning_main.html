@@ -137,6 +137,22 @@
         </div>
     </div>
 
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-danger text-white fs-4 fw-bold text-center">
+                CUISINE
+            </div>
+            <div class="card-body">
+                <a href="{{ url_for('planning_cuisine.maj_modele_planning_cuisine') }}" class="btn btn-outline-danger mb-2 w-100">
+                    🔧 Mise à jour modèle planning cuisine
+                </a>
+                <a href="{{ url_for('planning_cuisine.creation_planning_cuisine') }}" class="btn btn-danger w-100">
+                    ➕ Création planning cuisine
+                </a>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 {% else %}

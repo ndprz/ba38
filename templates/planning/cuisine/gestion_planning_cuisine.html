@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Gestion Planning Cuisine{% endblock %}
+
+{% block content %}
+
+<form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>Gestion du planning cuisine 3 étoiles</h2>
+
+  {% call action_buttons() %}
+    <button type="submit"
+            name="action"
+            value="enregistrer"
+            class="btn btn-primary save-btn"
+            disabled>
+      💾 Enregistrer le planning
+    </button>
+
+    {{ action_button("⬅️ Retour à la création", href=url_for('planning_cuisine.creation_planning_cuisine', semaine=semaine), color="outline-dark") }}
+
+    {{ action_button("🏠 Menu Planning", href=url_for('planning.planning_main'), color="outline-secondary") }}
+
+    <a id="apercu-link"
+       href="{{ url_for('planning_cuisine.apercu_planning_cuisine', semaine=semaine) }}"
+       target="_blank"
+       class="btn btn-outline-secondary">
+      🖨️ Aperçu imprimable (A3)
+    </a>
+  {% endcall %}
+</div>
+
+<div id="unsaved-warning"
+     class="alert alert-warning py-2 px-3 mb-3"
+     style="display:none;">
+  ⚠️ Modifications non enregistrées
+</div>
+
+{# ============================== #
+   🧾 Un tableau par créneau, jours en colonnes
+# ============================== #}
+{% for creneau, label in creneaux %}
+  <h4 class="mt-4">{{ label }}</h4>
+  <div class="gestion-planning-container table-responsive">
+    <table class="table table-bordered table-striped table-sm">
+      <thead>
+        <tr>
+          <th>#</th>
+          {% for jour in jours %}
+            <th class="text-capitalize">{{ jour }}<br>{{ jours_dates[jour].strftime('%d/%m') }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for i in range(1, slots_par_creneau[creneau] + 1) %}
+        <tr>
+          <td>{{ i }}</td>
+          {% for jour in jours %}
+            {% set ligne = grille[creneau].get(jour) %}
+            {% if not ligne %}
+              <td class="text-muted">–</td>
+            {% else %}
+              {% set champ_id   = 'cui%02d_id' % i %}
+              {% set champ_remp = 'cui%02d_remplacant' % i %}
+              {% set champ_abs  = 'cui%02d_absent' % i %}
+              {% set is_absent      = (ligne[champ_abs] or '')|lower == 'oui' %}
+              {% set titulaire_id   = ligne[champ_id] %}
+              {% set remplacant_id  = ligne[champ_remp] %}
+              {% set selected_id    = remplacant_id if is_absent and remplacant_id else titulaire_id %}
+
+              {# Liste des bénévoles déjà affectés sur cette même ligne (jour+créneau) #}
+              {% set deja_affectes = [] %}
+              {% for j in range(1, slots_par_creneau[creneau] + 1) %}
+                {% set t = ligne['cui%02d_id' % j] %}
+                {% set r = ligne['cui%02d_remplacant' % j] %}
+                {% if t %}{% set _ = deja_affectes.append(t) %}{% endif %}
+                {% if r %}{% set _ = deja_affectes.append(r) %}{% endif %}
+              {% endfor %}
+
+              {% set source = salaries if creneau == 'salaries' else equipe %}
+              {% set favoris = source|selectattr('trois_etoiles','equalto','oui')|list %}
+              {% set autres  = source|rejectattr('trois_etoiles','equalto','oui')|list %}
+
+              <td class="{% if is_absent and not remplacant_id %}absent-cell{% endif %}">
+                <select name="cui{{ '%02d'|format(i) }}_id_{{ ligne.id }}"
+                        class="form-control form-select-sm bene-select"
+                        data-role="{{ 'cuisine_salaries' if creneau == 'salaries' else 'cuisine' }}">
+                  <option value="__add__">➕ Ajouter un bénévole…</option>
+                  <option disabled>──────────</option>
+
+                  <option value="" {% if selected_id is none %}selected{% endif %}>-- Aucun --</option>
+
+                  {% for bene in favoris %}
+                    {% set is_selected         = bene.id == selected_id %}
+                    {% set is_remplacant       = is_selected and is_absent and remplacant_id %}
+                    {% set is_absent_titulaire = is_selected and is_absent and not remplacant_id %}
+                    {% set is_already_assigned = (bene.id in deja_affectes) and not is_selected %}
+                    <option value="{{ bene.id }}"
+                            {% if is_selected %}selected{% endif %}
+                            {% if is_remplacant %}style="color: green;"{% elif is_absent_titulaire %}style="color: red;"{% elif is_already_assigned %}style="color: orange;"{% endif %}>
+                      ✅ {{ bene.nom }} {{ bene.prenom }}
+                      {% if is_remplacant %}(remplaçant){% elif is_absent_titulaire %}(absent){% elif is_already_assigned %}(déjà affecté){% endif %}
+                    </option>
+                  {% endfor %}
+
+                  {% if favoris and autres %}<option disabled>──────────</option>{% endif %}
+
+                  {% for bene in autres %}
+                    {% set is_selected         = bene.id == selected_id %}
+                    {% set is_remplacant       = is_selected and is_absent and remplacant_id %}
+                    {% set is_absent_titulaire = is_selected and is_absent and not remplacant_id %}
+                    {% set is_already_assigned = (bene.id in deja_affectes) and not is_selected %}
+                    <option value="{{ bene.id }}"
+                            {% if is_selected %}selected{% endif %}
+                            {% if is_remplacant %}style="color: green;"{% elif is_absent_titulaire %}style="color: red;"{% elif is_already_assigned %}style="color: orange;"{% endif %}>
+                      {{ bene.nom }} {{ bene.prenom }}
+                      {% if is_remplacant %}(remplaçant){% elif is_absent_titulaire %}(absent){% elif is_already_assigned %}(déjà affecté){% endif %}
+                    </option>
+                  {% endfor %}
+                </select>
+
+                <input type="hidden"
+                       name="cui{{ '%02d'|format(i) }}_remplacant_{{ ligne.id }}"
+                       value="{{ remplacant_id or '' }}">
+              </td>
+            {% endif %}
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endfor %}
+
+</form>
+
+{% include "partials/quick_benevole_modal.html" %}
+<script src="{{ url_for('static', filename='js/quick_benevole.js', v=8) }}"></script>
+
+<script>
+(function () {
+  window.planningDirty = false;
+  const formEl = document.querySelector('form');
+  if (formEl) {
+    formEl.addEventListener('change', (e) => {
+      const t = e.target;
+      if (!t) return;
+
+      if (t.matches('select, input[type="text"], input[type="number"]')) {
+        window.planningDirty = true;
+
+        const warning = document.getElementById("unsaved-warning");
+        if (warning) warning.style.display = "block";
+
+        document.querySelectorAll(".save-btn").forEach(btn => {
+          btn.disabled = false;
+        });
+      }
+    });
+  }
+  const link = document.getElementById('apercu-link');
+  if (link) {
+    link.addEventListener('click', (e) => {
+      if (window.planningDirty) {
+        e.preventDefault();
+        alert("ℹ️ L’aperçu reflète uniquement les données enregistrées.\n" +
+              "Veuillez d’abord cliquer sur « 💾 Enregistrer le planning », puis relancer l’aperçu.");
+      }
+    });
+  }
+})();
+
+document.addEventListener("DOMContentLoaded", function () {
+  {% if planning_auto_modified %}
+    const warning = document.getElementById("unsaved-warning");
+    const saveButtons = document.querySelectorAll(".save-btn");
+
+    if (warning) warning.style.display = "block";
+    saveButtons.forEach(btn => btn.disabled = false);
+
+    window.planningDirty = true;
+  {% endif %}
+});
+</script>
+
+<style>
+  .absent-cell {
+    background-color: #ffe0e0 !important;
+  }
+</style>
+
+{% endblock %}

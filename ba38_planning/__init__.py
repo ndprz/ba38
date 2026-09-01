@@ -2,6 +2,7 @@ from ba38_planning.utils import planning_utils_bp
 from ba38_planning.ramasse import planning_bp
 from ba38_planning.distribution import planning_dist_bp
 from ba38_planning.palettes import planning_palettes_bp
+from ba38_planning.cuisine import planning_cuisine_bp
 from ba38_planning.pesee import planning_pesee_bp
 from ba38_planning.tournees import planning_tournees_bp
 from ba38_planning.vif import planning_vif_bp

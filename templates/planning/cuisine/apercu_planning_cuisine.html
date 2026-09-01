@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Planning Cuisine 3 Étoiles – Semaine {{ semaine }}</title>
+  <style>
+    @page { size: A3 landscape; margin: 1cm; }
+
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 11px;
+      margin: 0;
+      padding: 1cm;
+      color: black;
+      background: white;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: auto;
+      border: 1px solid #444;
+    }
+
+    th, td {
+      padding: 3px 8px;
+      text-align: center;
+      vertical-align: middle;
+      white-space: normal;
+    }
+
+    th {
+      border: 1px solid #444;
+      background-color: #f2f2f2;
+      font-weight: bold;
+    }
+
+    /* 🧾 Pas de quadrillage entre les bénévoles : uniquement des séparateurs verticaux entre jours */
+    tbody td {
+      border-left: 1px solid #444;
+      border-right: 1px solid #444;
+    }
+
+    /* Séparation nette entre chaque bloc créneau */
+    tr.creneau-start td {
+      border-top: 2px solid #444;
+    }
+
+    td.creneau-label {
+      border-left: 1px solid #444;
+      background-color: #f2f2f2;
+      font-weight: bold;
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+    }
+
+    .absent {
+      color: red;
+      font-weight: bold;
+    }
+
+    .remplacant {
+      color: #007bff;
+      font-style: italic;
+    }
+
+    th.lundi     { background-color: #eaf6ff; }
+    th.mardi     { background-color: #e8f5e9; }
+    th.mercredi  { background-color: #fffde7; }
+    th.jeudi     { background-color: #fce4ec; }
+    th.vendredi  { background-color: #f3e5f5; }
+
+    @media print {
+      .no-print {
+        display: none !important;
+      }
+      * {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>Planning Cuisine 3 Étoiles – Semaine {{ semaine }}</h2>
+
+  <div style="text-align: center; margin-bottom: 20px;" class="no-print">
+    <button onclick="window.print()" style="padding: 8px 16px; font-size: 14px; cursor: pointer;">
+      🖨️ Imprimer cette page
+    </button>
+  </div>
+
+  {% if jours %}
+  <table>
+    <thead>
+      <tr>
+        <th>Créneau</th>
+        {% for jour in jours %}
+          <th class="{{ jour }}">{{ jour|capitalize }}<br>{{ jours_dates[jour].strftime('%d/%m/%Y') }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for creneau, label in creneaux %}
+        {% for i in range(1, slots_par_creneau[creneau] + 1) %}
+        <tr{% if i == 1 %} class="creneau-start"{% endif %}>
+          {% if i == 1 %}
+            <td class="creneau-label" rowspan="{{ slots_par_creneau[creneau] }}">{{ label }}</td>
+          {% endif %}
+          {% for jour in jours %}
+            {% set ligne = grille[creneau].get(jour) %}
+            {% set nom = ligne['cui%02d_nom' % i] if ligne else '' %}
+            {% set absent = ligne and ligne['cui%02d_absent' % i] == 'oui' %}
+            {% set remplacant = ligne['cui%02d_remplacant_nom' % i] if ligne else '' %}
+            <td>
+              {% if remplacant %}
+                <span class="remplacant">{{ remplacant }} <small>(remplaçant)</small></span>
+              {% else %}
+                {{ nom }}
+                {% if absent %}
+                  <span class="absent"><small>(absent)</small></span>
+                {% endif %}
+              {% endif %}
+            </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="text-align: center; font-weight: bold; color: red;">
+    ⚠️ Aucun planning cuisine trouvé pour la semaine {{ semaine }}.
+  </p>
+  {% endif %}
+
+</body>
+</html>

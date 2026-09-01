@@ -64,6 +64,7 @@ from ba38_planning import planning_bp  # Ramasse
 from ba38_planning import planning_dist_bp  # Distribution
 from ba38_benevoles import benevoles_bp
 from ba38_planning import planning_palettes_bp
+from ba38_planning import planning_cuisine_bp
 from ba38_partenaires import partenaires_bp
 from ba38_planning import planning_tournees_bp
 from ba38_planning import planning_pesee_bp
@@ -347,6 +348,7 @@ app.register_blueprint(planning_dist_bp)
 app.register_blueprint(rename_bp)
 app.register_blueprint(benevoles_bp)
 app.register_blueprint(planning_palettes_bp, url_prefix="/")
+app.register_blueprint(planning_cuisine_bp, url_prefix="/")
 app.register_blueprint(partenaires_bp)
 app.register_blueprint(planning_tournees_bp)
 app.register_blueprint(planning_pesee_bp)

@@ -1,3 +1,3 @@
-VERSION=1.6.16
-MESSAGE=Champs date_modif/heure_modif/user_modif non modifiables (fiche+tableau) benevoles/partenaires; ancrage VIFS_ANCRES St Egreve + fix CRLF adresse siege (tournees)
-DATE=2026-09-01 08:34
+VERSION=1.6.17
+MESSAGE=Nouveau planning Cuisine 3 etoiles (jours en colonnes, sans postes differencies, absences/remplacements)
+DATE=2026-09-01 09:21

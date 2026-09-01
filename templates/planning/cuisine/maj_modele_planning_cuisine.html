@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Modèle Planning Cuisine{% endblock %}
+
+{% block content %}
+<form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="m-0">🛠️ Mise à jour du modèle de planning cuisine 3 étoiles</h2>
+  {% call action_buttons() %}
+    <button class="btn btn-primary" type="submit" name="action" value="enregistrer">💾 Enregistrer</button>
+    {{ action_button("↩️ Retour", href=url_for('planning.planning_main'), color="outline-dark") }}
+  {% endcall %}
+</div>
+
+{% for creneau, label in creneaux %}
+  <h4 class="mt-4">{{ label }}</h4>
+  <div class="table-responsive">
+  <table class="table table-bordered table-striped">
+  <thead>
+    <tr>
+      <th>#</th>
+      {% for jour in jours %}
+        {% if jour != 'vendredi' or travail_vendredi != 'non' %}
+          <th class="text-capitalize">{{ jour }}</th>
+        {% endif %}
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for i in range(1, slots_par_creneau[creneau] + 1) %}
+    <tr>
+      <td>{{ i }}</td>
+      {% for jour in jours %}
+        {% if jour != 'vendredi' or travail_vendredi != 'non' %}
+        <td>
+          {% set ligne = model_par_jour_creneau.get((jour, creneau)) %}
+          {% set current_id = ligne['cui%02d_id' % i] if ligne else none %}
+          {% set source = salaries if creneau == 'salaries' else equipe %}
+          {% set favoris = source|selectattr('trois_etoiles','equalto','oui')|list %}
+          {% set autres  = source|rejectattr('trois_etoiles','equalto','oui')|list %}
+          <select class="form-select form-select-sm"
+                  name="cui{{ '%02d' % i }}_id_{{ jour }}_{{ creneau }}"
+                  style="max-width:150px;">
+
+            <option value="">-- Aucun --</option>
+
+            {% for bene in favoris %}
+            <option value="{{ bene.id }}"
+              {% if bene.id == current_id %}selected{% endif %}
+              style="color:green;font-weight:bold;">
+              ✅ {{ bene.nom }} {{ bene.prenom }}
+            </option>
+            {% endfor %}
+
+            {% if favoris and autres %}
+            <option disabled>──────────</option>
+            {% endif %}
+
+            {% for bene in autres %}
+            <option value="{{ bene.id }}"
+              {% if bene.id == current_id %}selected{% endif %}>
+              {{ bene.nom }} {{ bene.prenom }}
+            </option>
+            {% endfor %}
+          </select>
+        </td>
+        {% endif %}
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+  </table>
+  </div>
+{% endfor %}
+
+{% call action_buttons() %}
+  <button class="btn btn-primary" type="submit" name="action" value="enregistrer">💾 Enregistrer</button>
+  {{ action_button("↩️ Retour", href=url_for('planning.planning_main'), color="outline-dark") }}
+{% endcall %}
+
+</form>
+{% endblock %}
+
+{% block styles %}
+<style>
+.table-responsive {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+th, td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+  vertical-align: middle;
+  text-align: center;
+}
+
+select.form-select {
+  width: 100%;
+  max-width: 150px;
+  font-size: 0.85rem;
+  padding: 0.2rem;
+}
+</style>
+{% endblock %}

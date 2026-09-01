@@ -44,6 +44,7 @@ def get_etat_plannings(conn):
         ("Palettes",     "palettes",     "plannings_pal"),
         ("Pesée",        "pesee",         "plannings_pesee"),
         ("VIF",          "vif",           "plannings_vif"),
+        ("Cuisine",      "cuisine",       "plannings_cuisine"),
     ]
 
     data = []
@@ -105,6 +106,12 @@ def etat_plannings():
         elif d["type_code"] == "vif":
             d["url"] = url_for(
                 "planning_vif.apercu_planning_vif",
+                semaine=d["semaine_iso"]
+            )
+
+        elif d["type_code"] == "cuisine":
+            d["url"] = url_for(
+                "planning_cuisine.apercu_planning_cuisine",
                 semaine=d["semaine_iso"]
             )
 
