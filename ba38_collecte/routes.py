@@ -1480,12 +1480,15 @@ def _lire_participants(annee):
 
 def _referents_association(nom_asso, df_participants):
     """Contacts connus pour un groupe (association) donné, à partir de
-    liste_participants.xlsx (colonne 'Groupe'). Dédoublonnés par (Nom,
-    Email) ; ceux dont le nom porte la mention '(Ref)' (référent désigné
-    côté go-on-web) sont mis en tête."""
+    liste_participants.xlsx (colonne 'Groupe' — notée 'BAI+Nom' pour les
+    magasins à stockage partagé, comme 'Gardée par' dans liste_magasins.xlsx,
+    d'où la même normalisation). Dédoublonnés par (Nom, Email) ; ceux dont le
+    nom porte la mention '(Ref)' (référent désigné côté go-on-web) sont mis
+    en tête."""
     if df_participants.empty or "Groupe" not in df_participants.columns:
         return []
-    sub = df_participants[df_participants["Groupe"].astype(str).str.strip() == nom_asso].fillna("")
+    groupe = df_participants["Groupe"].map(_normaliser_gardee_par)
+    sub = df_participants[groupe == nom_asso].fillna("")
     if sub.empty:
         return []
 
