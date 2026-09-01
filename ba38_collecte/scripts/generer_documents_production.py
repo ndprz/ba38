@@ -279,6 +279,23 @@ def vif_fmt(vif):
     if s in ('', 'nan'): return ''
     return s.zfill(8) if s.isdigit() else s
 
+def magasins_actifs(df_ref):
+    """
+    Magasins réellement desservis par un camion BAI : État = 'Collecté par
+    la BAI', PLUS les magasins en 'Collecte gardée' (collecte assurée par
+    une autre association) dont le Stockage reste partagé avec la BAI (ex.
+    'BAI + EQUILIBRE') — la BAI y passe alors quand même un camion pour le
+    stockage même si elle n'assure pas la collecte elle-même. Même règle que
+    lire_magasins() dans moteur_tournees.py (simulation des tournées).
+    """
+    if 'État' not in df_ref.columns:
+        return df_ref
+    etat = df_ref['État'].astype(str).str.strip()
+    stockage = df_ref.get('Stockage', pd.Series('', index=df_ref.index)).astype(str).str.strip()
+    mask_collecte_bai = etat == 'Collecté par la BAI'
+    mask_gardee_bai_plus = (etat == 'Collecte gardée') & stockage.str.contains(r'BAI\s*\+', case=False, regex=True, na=False)
+    return df_ref[mask_collecte_bai | mask_gardee_bai_plus]
+
 def parse_creneaux(creneaux_raw):
     """
     Convertit le contenu de la colonne 'Créneaux' du référentiel magasins
@@ -1236,10 +1253,7 @@ def construire_classeur_tournees(df_t, mag_cols, vif_cols, df_ref):
             if nom and nom != 'nan' and vif:
                 vif_plan.setdefault(vif, {})[dj_k] = cam
 
-    if 'État' in df_ref.columns:
-        df_ref_actifs_m = df_ref[df_ref['État'].astype(str).str.strip() == 'Collecté par la BAI'].reset_index(drop=True)
-    else:
-        df_ref_actifs_m = df_ref
+    df_ref_actifs_m = magasins_actifs(df_ref).reset_index(drop=True)
     for r, (_, mag) in enumerate(df_ref_actifs_m.iterrows(), 2):
         vif_mag = vif_fmt(mag.get('Code VIF', ''))
         for c, col in enumerate(cols_m, 1):
@@ -1591,7 +1605,7 @@ function openGmaps() {
 def _ajouter_onglets_secteurs(wb, df_ref):
     """
     Ajoute deux onglets calculés à partir du référentiel magasins (tous les
-    magasins actifs, État = 'Collecté par la BAI'), en réutilisant le même
+    magasins actifs, voir magasins_actifs()), en réutilisant le même
     calcul de secteur géographique (calculer_secteur) que l'onglet 'Tournees'
     et que l'outil d'optimisation des tournées :
 
@@ -1619,7 +1633,7 @@ def _ajouter_onglets_secteurs(wb, df_ref):
 
     if 'État' not in df_ref.columns:
         return
-    actifs = df_ref[df_ref['État'].astype(str).str.strip() == 'Collecté par la BAI']
+    actifs = magasins_actifs(df_ref)
 
     col_tonnage = None
     for col in df_ref.columns:
@@ -2213,7 +2227,7 @@ def main():
     # ── Magasins actifs du référentiel jamais intégrés dans liste-vehicule.xlsx
     non_planifies = []
     if 'État' in df_ref.columns:
-        actifs_ref = df_ref[df_ref['État'].astype(str).str.strip() == 'Collecté par la BAI']
+        actifs_ref = magasins_actifs(df_ref)
         # NB : on part de df (tournées réellement reconstruites, une ligne par
         # camion x demi-journée) et non de df_veh brut — une ligne de
         # liste-vehicule.xlsx peut avoir un Code VIF renseigné mais un Code
