@@ -8,6 +8,8 @@
 
   <h2>📱 Envoi de SMS (bénévoles)</h2>
 
+  {% include "sms/_banner_alerte.html" %}
+
   {% call action_buttons() %}
     {{ action_button("⚙️ Gérer les textes pré-enregistrés", href=url_for('sms.textes_predefinis_sms'), color="outline-secondary") }}
     {{ action_button("↩️ Retour au planning", href=url_for('planning.planning_main'), color="outline-dark") }}

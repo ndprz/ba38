@@ -8,6 +8,8 @@
 
   <h2>📑 Textes SMS pré-enregistrés</h2>
 
+  {% include "sms/_banner_alerte.html" %}
+
   {% call action_buttons() %}
     {{ action_button("↩️ Retour à l'envoi de SMS", href=url_for('sms.envoi_sms_benevoles'), color="outline-dark") }}
   {% endcall %}

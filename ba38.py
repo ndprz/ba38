@@ -399,6 +399,10 @@ _migrate_email_verifie()
 # Enregistrement de la fonction has_access dans l’environnement Jinja
 app.jinja_env.globals['has_access'] = has_access
 
+# Alerte SMS active (ex: crédit SmsFactor épuisé) affichée en bandeau
+from ba38_sms.routes import get_sms_alerte_active
+app.jinja_env.globals['sms_alerte_active'] = get_sms_alerte_active
+
 
 @app.context_processor
 def inject_benevole_options():

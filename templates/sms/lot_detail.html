@@ -8,6 +8,8 @@
 
   <h2>📱 Envoi SMS #{{ lot.id }}</h2>
 
+  {% include "sms/_banner_alerte.html" %}
+
   {% call action_buttons() %}
     {% if en_cours %}
       {{ action_button("🔄 Actualiser", href=url_for('sms.lot_detail', lot_id=lot.id), color="outline-primary") }}

@@ -8,6 +8,9 @@
 <h2>Planning des Bénévoles</h2>
 
 {% if has_access('planning', 'lecture') %}
+{% if has_access('sms_benevoles', 'lecture') %}
+  {% include "sms/_banner_alerte.html" %}
+{% endif %}
 {% call action_buttons() %}
     {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAidePlanningMain')).show()", color="outline-info") }}
     {{ action_button("📅 Gérer les absences des bénévoles", href=url_for('planning_utils.planning_absences'), color="outline-secondary") }}

@@ -12,8 +12,11 @@ from ba38_sms.smsfactor_client import (
     normalize_phone_fr, envoyer_sms_reel, is_dev_environment, get_dev_test_number
 )
 from ba38_utilitaires.core import (
-    get_db_connection, get_db_path, write_log, require_access, has_access, upload_database
+    get_db_connection, get_db_path, write_log, require_access, has_access, upload_database,
+    envoyer_mail
 )
+
+ALERTE_MAIL_DESTINATAIRE = "ba380.informatique2@banquealimentaire.org"
 
 TYPE_BENE_PARAM = "type_benevole"
 
@@ -92,6 +95,18 @@ def _charger_textes():
     return [dict(r) for r in rows]
 
 
+def get_sms_alerte_active():
+    """Dernière alerte SMS non résolue (ex: crédit SmsFactor épuisé), ou None.
+    Enregistrée comme global Jinja (ba38.py) pour affichage en bandeau."""
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT * FROM sms_alertes WHERE resolu = 0 ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def envoyer_sms_lot_background(app, db_path, lot_id, destinataires, texte):
     """
     Tourne dans un Thread séparé (même pattern que envoyer_indicateurs_background,
@@ -101,11 +116,17 @@ def envoyer_sms_lot_background(app, db_path, lot_id, destinataires, texte):
     En environnement DEV, un seul SMS réel part (vers SMS_DEV_TEST_NUMBER) quel
     que soit le nombre de destinataires ; les autres lignes sont marquées
     'simule_dev' sans appel API.
+
+    Si SmsFactor renvoie status=-3 ("Not enough credits"), l'envoi est
+    interrompu (inutile de retenter les suivants, ils échoueront pareil),
+    une alerte est enregistrée (sms_alertes, bandeau app) et un mail part à
+    l'administrateur.
     """
     with app.app_context():
         mode_test = is_dev_environment()
         test_number = get_dev_test_number()
         real_sent = False
+        credit_epuise = False
 
         conn = sqlite3.connect(db_path)
 
@@ -114,23 +135,33 @@ def envoyer_sms_lot_background(app, db_path, lot_id, destinataires, texte):
             numero = dest["numero"]
             now_iso = datetime.now().isoformat(timespec="seconds")
 
+            if credit_epuise:
+                conn.execute(
+                    "UPDATE sms_envois SET statut='erreur', erreur=?, date_envoi=? WHERE id=?",
+                    ("Crédit SmsFactor épuisé, envoi interrompu", now_iso, envoi_id),
+                )
+                conn.commit()
+                continue
+
             try:
-                if mode_test:
-                    if not real_sent:
-                        resultat = envoyer_sms_reel(test_number, f"[TEST] {texte}")
-                        real_sent = True
-                        statut = "envoye" if resultat.get("status") == 1 else "erreur"
-                        ticket = resultat.get("ticket")
-                        cout = resultat.get("cost")
-                        erreur = None if statut == "envoye" else str(resultat.get("message"))
-                    else:
-                        statut, ticket, cout, erreur = "simule_dev", None, 0, None
+                if mode_test and real_sent:
+                    resultat = None  # destinataires suivants simulés, pas d'appel API
+                elif mode_test:
+                    resultat = envoyer_sms_reel(test_number, f"[TEST] {texte}")
+                    real_sent = True
                 else:
                     resultat = envoyer_sms_reel(numero, texte)
-                    statut = "envoye" if resultat.get("status") == 1 else "erreur"
+
+                if resultat is None:
+                    statut, ticket, cout, erreur = "simule_dev", None, 0, None
+                else:
+                    code = resultat.get("status")
+                    statut = "envoye" if code == 1 else "erreur"
                     ticket = resultat.get("ticket")
                     cout = resultat.get("cost")
-                    erreur = None if statut == "envoye" else str(resultat.get("message"))
+                    erreur = None if statut == "envoye" else f"{resultat.get('message')} (code {code})"
+                    if code == -3:
+                        credit_epuise = True
 
                 conn.execute(
                     "UPDATE sms_envois SET statut=?, ticket_smsfactor=?, cout=?, erreur=?, date_envoi=? WHERE id=?",
@@ -158,6 +189,27 @@ def envoyer_sms_lot_background(app, db_path, lot_id, destinataires, texte):
             (nb_ok, nb_erreur, datetime.now().isoformat(timespec="seconds"), lot_id),
         )
         conn.commit()
+
+        if credit_epuise:
+            message = (
+                f"⚠️ Crédit SmsFactor épuisé pendant l'envoi SMS #{lot_id} "
+                f"({nb_ok} envoyé(s), {nb_erreur} en erreur sur {len(destinataires)} destinataire(s)). "
+                f"Pensez à recharger le compte SmsFactor."
+            )
+            conn.execute(
+                "INSERT INTO sms_alertes (message, lot_id, date_creation) VALUES (?, ?, ?)",
+                (message, lot_id, datetime.now().isoformat(timespec="seconds")),
+            )
+            conn.commit()
+            try:
+                envoyer_mail(
+                    sujet="🚨 Crédit SmsFactor épuisé",
+                    destinataires=[ALERTE_MAIL_DESTINATAIRE],
+                    texte=message,
+                )
+            except Exception as e:
+                write_log(f"⚠️ Erreur envoi mail alerte crédit SMS : {e}")
+
         conn.close()
 
         write_log(f"📤 Envoi SMS (lot {lot_id}) terminé : {nb_ok} ok, {nb_erreur} erreur(s), mode_test={mode_test}")
@@ -363,3 +415,22 @@ def delete_texte_sms(tid):
     upload_database()
     flash("🗑️ Texte supprimé.", "warning")
     return redirect(url_for("sms.textes_predefinis_sms"))
+
+
+@sms_bp.route("/sms/alertes/<int:alerte_id>/resoudre", methods=["POST"])
+@login_required
+@require_access("sms_benevoles", "ecriture")
+def resoudre_alerte_sms(alerte_id):
+    conn = get_db_connection()
+    conn.execute(
+        "UPDATE sms_alertes SET resolu=1, resolu_par=?, date_resolu=? WHERE id=?",
+        (
+            getattr(current_user, "email", "") or "",
+            datetime.now().isoformat(timespec="seconds"),
+            alerte_id,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    flash("✅ Alerte marquée comme résolue.", "success")
+    return redirect(request.referrer or url_for("sms.envoi_sms_benevoles"))
