@@ -1,3 +1,3 @@
-VERSION=1.6.23
-MESSAGE=Nouveau module SMS benevoles (SmsFactor) : bouton sur planning, droit d'acces dedie sms_benevoles, textes pre-enregistres, envoi filtre par fonction/type_benevole/selection manuelle
-DATE=2026-09-02 13:52
+VERSION=1.6.24
+MESSAGE=Ajout fonction benevole tri_entrepot (colonne benevoles + field_groups)
+DATE=2026-09-02 14:20
