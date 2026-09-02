@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Envoi de SMS bénévoles{% endblock %}
+{% block content %}
+<div class="container mt-4">
+
+  <h2>📱 Envoi de SMS (bénévoles)</h2>
+
+  {% call action_buttons() %}
+    {{ action_button("⚙️ Gérer les textes pré-enregistrés", href=url_for('sms.textes_predefinis_sms'), color="outline-secondary") }}
+    {{ action_button("↩️ Retour au planning", href=url_for('planning.planning_main'), color="outline-dark") }}
+  {% endcall %}
+
+  <!-- 🔹 Filtres -->
+  <form method="get" class="mb-4 border rounded p-3 bg-light">
+    <label class="form-label fw-bold">Filtrer par fonction :</label>
+    <div class="d-flex flex-wrap mb-3" style="gap: 1rem;">
+      {% for field, label in all_fonctions %}
+        <div class="form-check">
+          <input class="form-check-input"
+                 type="checkbox"
+                 name="fonctions"
+                 id="f_{{ field }}"
+                 value="{{ field }}"
+                 {% if field in selected_fonctions %}checked{% endif %}
+                 onchange="this.form.submit()">
+          <label class="form-check-label" for="f_{{ field }}">{{ label }}</label>
+        </div>
+      {% endfor %}
+    </div>
+
+    <label class="form-label fw-bold">Filtrer par type de bénévole :</label>
+    <div class="d-flex flex-wrap" style="gap: 1rem;">
+      {% for t in all_types %}
+        <div class="form-check">
+          <input class="form-check-input"
+                 type="checkbox"
+                 name="types"
+                 id="t_{{ loop.index }}"
+                 value="{{ t }}"
+                 {% if t in selected_types %}checked{% endif %}
+                 onchange="this.form.submit()">
+          <label class="form-check-label" for="t_{{ loop.index }}">{{ t }}</label>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if selected_fonctions or selected_types %}
+      <p class="mt-2 text-muted small">
+        ➤ {{ destinataires|length }} bénévole(s) avec téléphone correspondant aux critères sélectionnés.
+      </p>
+    {% else %}
+      <p class="mt-2 text-muted small">
+        ➤ {{ destinataires|length }} bénévole(s) avec téléphone (aucun filtre appliqué).
+      </p>
+    {% endif %}
+  </form>
+
+  <!-- 🔹 Formulaire d'envoi -->
+  <form id="smsForm" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="envoyer">
+
+    <div class="mb-3">
+      <label class="form-label">Destinataires :</label>
+      <div class="border p-2" style="max-height: 300px; overflow-y: auto;">
+        <div class="mb-2">
+          <input type="checkbox" id="select_all" onclick="toggleAll(this)">
+          <label for="select_all"><strong>Tout sélectionner</strong></label>
+        </div>
+        <hr class="my-1">
+        {% for d in destinataires %}
+          <div>
+            <input type="checkbox" name="destinataires" value="{{ d.id }}" id="dest{{ d.id }}">
+            <label for="dest{{ d.id }}">
+              <strong>{{ d.prenom }} {{ d.nom }}</strong>
+              <span class="text-muted">— {{ d.telephone_portable }}</span>
+            </label>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label for="texte_predefini" class="form-label">Utiliser un texte pré-enregistré :</label>
+      <select id="texte_predefini" class="form-select">
+        <option value="">-- Aucun --</option>
+        {% for t in textes %}
+          <option value="{{ t.id }}">{{ t.titre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    {% for t in textes %}
+      <textarea id="texte-{{ t.id }}" class="d-none">{{ t.contenu }}</textarea>
+    {% endfor %}
+
+    <div class="mb-1">
+      <label for="message" class="form-label">Message :</label>
+      <textarea name="message" id="message" rows="4" class="form-control" required></textarea>
+    </div>
+    <p class="text-muted small mb-3">
+      <span id="charCount">0</span> caractère(s) — <span id="segCount">1</span> SMS
+      (au-delà de 160 caractères, le message est facturé en plusieurs SMS).
+    </p>
+
+    {% call action_buttons() %}
+      {{ action_button("📤 Envoyer", type="submit", color="primary") }}
+      {{ action_button("↩️ Retour au planning", href=url_for('planning.planning_main'), color="outline-dark") }}
+    {% endcall %}
+  </form>
+</div>
+
+<script>
+function toggleAll(master) {
+  document.querySelectorAll('input[name="destinataires"]').forEach(cb => cb.checked = master.checked);
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  const select = document.getElementById("texte_predefini");
+  const textarea = document.getElementById("message");
+  const charCount = document.getElementById("charCount");
+  const segCount = document.getElementById("segCount");
+
+  select.addEventListener("change", function () {
+    const id = this.value;
+    textarea.value = id ? document.getElementById("texte-" + id).value : "";
+    updateCounter();
+  });
+
+  function updateCounter() {
+    const len = textarea.value.length;
+    charCount.textContent = len;
+    segCount.textContent = Math.max(1, Math.ceil(len / 160));
+  }
+
+  textarea.addEventListener("input", updateCounter);
+  updateCounter();
+
+  document.getElementById("smsForm").addEventListener("submit", function (e) {
+    const checked = document.querySelectorAll('input[name="destinataires"]:checked').length;
+    if (checked === 0) {
+      e.preventDefault();
+      alert("❌ Merci de sélectionner au moins un destinataire.");
+    } else if (!confirm(`Envoyer ce SMS à ${checked} bénévole(s) ?`)) {
+      e.preventDefault();
+    }
+  });
+});
+</script>
+
+{% endblock %}

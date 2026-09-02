@@ -14,6 +14,9 @@
     {{ action_button("🛠️ Gestion des tournées", href=url_for('planning_tournees.planning_tournees'), color="outline-secondary") }}
     {{ action_button("📋 État des plannings", href=url_for('planning_utils.etat_plannings'), color="outline-secondary") }}
     {{ action_button("📊 Rapport activité bénévoles", href=url_for('planning_report.planning_report_run'), color="outline-secondary") }}
+    {% if has_access('sms_benevoles', 'lecture') %}
+    {{ action_button("📱 Envoyer un SMS", href=url_for('sms.envoi_sms_benevoles'), color="outline-secondary") }}
+    {% endif %}
     {{ action_button("↩️ Retour Bénévoles", href=url_for('benevoles.benevoles'), color="outline-dark") }}
     {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
 {% endcall %}

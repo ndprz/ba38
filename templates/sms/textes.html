@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Textes SMS pré-enregistrés{% endblock %}
+{% block content %}
+<div class="container mt-4">
+
+  <h2>📑 Textes SMS pré-enregistrés</h2>
+
+  {% call action_buttons() %}
+    {{ action_button("↩️ Retour à l'envoi de SMS", href=url_for('sms.envoi_sms_benevoles'), color="outline-dark") }}
+  {% endcall %}
+
+  <!-- Formulaire ajout / édition -->
+  <form method="post" class="mb-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="mb-2">
+      <label for="titre" class="form-label">Titre</label>
+      <input type="text" name="titre" id="titre" class="form-control" required
+             value="{{ edit_titre if edit_mode else '' }}">
+    </div>
+    <div class="mb-2">
+      <label for="contenu" class="form-label">Contenu</label>
+      <textarea name="contenu" id="contenu" class="form-control" rows="4" required>{{ edit_contenu if edit_mode else '' }}</textarea>
+      <p class="text-muted small mb-0"><span id="charCount">0</span> caractère(s)</p>
+    </div>
+
+    {% call action_buttons() %}
+      {% if edit_mode %}
+        {{ action_button("💾 Enregistrer", type="submit", formaction=url_for('sms.edit_texte_sms', tid=edit_id), color="primary") }}
+        {{ action_button("Annuler", href=url_for('sms.textes_predefinis_sms'), color="outline-dark") }}
+      {% else %}
+        {{ action_button("➕ Ajouter", type="submit", color="success") }}
+      {% endif %}
+    {% endcall %}
+  </form>
+
+  <!-- Liste des textes -->
+  <table class="table table-striped">
+    <thead>
+      <tr><th style="width: 220px;">Titre</th><th>Contenu</th><th style="width: 170px;">Actions</th></tr>
+    </thead>
+    <tbody>
+    {% for t in textes %}
+      <tr>
+        <td>{{ t.titre }}</td>
+        <td style="white-space: pre-wrap;">{{ t.contenu }}</td>
+        <td>
+          <a href="{{ url_for('sms.edit_texte_sms', tid=t.id) }}" class="btn btn-sm btn-primary">✏️ Modifier</a>
+          <form method="post" action="{{ url_for('sms.delete_texte_sms', tid=t.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Supprimer ce texte ?');">🗑️ Supprimer</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {% call action_buttons() %}
+    {{ action_button("↩️ Retour", href=url_for('sms.envoi_sms_benevoles'), color="outline-dark") }}
+  {% endcall %}
+
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const contenu = document.getElementById("contenu");
+  const charCount = document.getElementById("charCount");
+  function update() { charCount.textContent = contenu.value.length; }
+  contenu.addEventListener("input", update);
+  update();
+});
+</script>
+{% endblock %}

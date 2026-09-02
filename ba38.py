@@ -91,6 +91,7 @@ from ba38_partenaires import indicateurs_bp
 from ba38_utilitaires import emails_bp
 from ba38_tresorerie import participation_bp
 from ba38_admin import applications_bp
+from ba38_sms import sms_bp
 from ba38_admin import organisation_bp
 from ba38_collecte import collecte_bp
 from ba38_utilitaires import vif_bp
@@ -377,6 +378,7 @@ app.register_blueprint(applications_bp)
 app.register_blueprint(organisation_bp)
 app.register_blueprint(collecte_bp)
 app.register_blueprint(vif_bp)
+app.register_blueprint(sms_bp)
 
 
 # Migration : ajout colonne email_verifie si absente
