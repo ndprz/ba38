@@ -2,6 +2,7 @@
 # Standard library
 # =========================
 import os
+import mimetypes
 import re
 import sqlite3
 import logging
@@ -900,7 +901,7 @@ def get_drive_folder_id_from_path(drive_path, shared_drive_id):
 # 📧 MAILJET
 # ============================================================================
 
-def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None, is_html=False, bcc=None):
+def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None, is_html=False, bcc=None, attachment_paths=None):
 
     api_key = os.getenv("MAILJET_API_KEY")
     api_secret = os.getenv("MAILJET_API_SECRET")
@@ -955,13 +956,16 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
     # -----------------------------
     write_log(f"📧 Mailjet : FROM={sender} TO={destinataires} BCC={bcc} SUBJECT={sujet}")
     attachments = []
-    if attachment_path and os.path.exists(attachment_path):
-        with open(attachment_path, "rb") as f:
+    chemins_pieces_jointes = ([attachment_path] if attachment_path else []) + (attachment_paths or [])
+    for chemin_piece_jointe in chemins_pieces_jointes:
+        if not os.path.exists(chemin_piece_jointe):
+            continue
+        with open(chemin_piece_jointe, "rb") as f:
             encoded = base64.b64encode(f.read()).decode("utf-8")
 
         attachments.append({
-            "ContentType": "application/pdf",
-            "Filename": os.path.basename(attachment_path),
+            "ContentType": mimetypes.guess_type(chemin_piece_jointe)[0] or "application/octet-stream",
+            "Filename": os.path.basename(chemin_piece_jointe),
             "Base64Content": encoded
         })
 

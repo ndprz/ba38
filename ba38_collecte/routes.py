@@ -50,14 +50,24 @@ import anthropic
 import markdown
 import requests
 import pandas as pd
+from docx import Document
+from openpyxl import load_workbook
 from flask import (
     render_template, request, redirect, url_for, flash,
     current_app, send_file
 )
 from flask_login import login_required, current_user
 from weasyprint import HTML
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas as pdf_canvas
+from reportlab.lib.utils import ImageReader
 
-from ba38_utilitaires.core import get_db_connection, get_db_path, require_access, write_log, date_fr
+from ba38_utilitaires.core import (
+    get_db_connection, get_db_path, require_access, write_log, date_fr,
+    envoyer_mail, render_modele_email,
+)
 from ba38_utilitaires.organisation import get_organisation
 from ba38_collecte import collecte_bp
 from ba38_collecte import moteur_tournees as moteur
@@ -65,6 +75,7 @@ from ba38_collecte import moteur_carte_secteurs as carte_secteurs
 
 EXTENSIONS_EXCEL = {".xlsx", ".xls"}
 EXTENSIONS_PDF = {".pdf"}
+MODELES_GARDEE_DIR = "/srv/ba38/uploads/collecte_fichiers_source"
 
 # Un type de fichier = une colonne (chemin/date/auteur) dans collecte_campagnes
 # + un nom de stockage fixe (les scripts de génération, ajoutés dans une
@@ -148,7 +159,10 @@ DRIVE_CHAMPS = {
     "magasins":  {"champ": "drive_magasins",  "label": "Liste des magasins"},
     "vehicules": {"champ": "drive_vehicules", "label": "Liste des véhicules / planning"},
     "cagettes":  {"champ": "drive_cagettes",  "label": "Historique cagettes"},
+    "groupes":   {"champ": "drive_groupes",   "label": "Liste des groupes"},
+    "participants": {"champ": "drive_participants", "label": "Liste des participants"},
 }
+DRIVE_CHAMPS_PRODUCTION = {cle: DRIVE_CHAMPS[cle] for cle in ("magasins", "vehicules", "cagettes")}
 
 
 def _id_drive(url):
@@ -166,6 +180,28 @@ def _url_export_drive(url):
     Drive reconnaissable."""
     fid = _id_drive(url)
     return f"https://docs.google.com/spreadsheets/d/{fid}/export?format=xlsx" if fid else None
+
+
+def _fichier_drive(annee, cle):
+    """Télécharge un export Google Sheets et retourne son chemin local."""
+    conf = DRIVE_CHAMPS[cle]
+    with get_db_connection() as conn:
+        campagne = conn.execute(
+            "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    url = _url_export_drive(campagne[conf["champ"]]) if campagne else None
+    if not url:
+        return None
+    dossier = _dossier_annee(annee)
+    os.makedirs(dossier, exist_ok=True)
+    chemin = os.path.join(dossier, FICHIERS[cle]["nom_stockage"])
+    reponse = requests.get(url, timeout=30)
+    reponse.raise_for_status()
+    if not reponse.content.startswith(b"PK"):
+        raise ValueError(f"contenu invalide pour « {conf['label']} »")
+    with open(chemin, "wb") as fichier:
+        fichier.write(reponse.content)
+    return chemin
 
 PRODUCTION_FICHIERS_SORTIE = {
     "excel":     {"nom": "Tournees_BAI38_{annee}_GOTW.xlsx", "label": "Classeur Excel (tournées + contrôles)"},
@@ -218,7 +254,7 @@ def _generer_tournees(campagne, params):
     annee = campagne["annee"]
     dossier = _dossier_annee(annee)
     pdf_path = os.path.join(dossier, campagne["fichier_pdf_precedent"])
-    magasins_path = os.path.join(dossier, campagne["fichier_magasins"])
+    magasins_path = _fichier_drive(annee, "magasins") or os.path.join(dossier, campagne["fichier_magasins"])
 
     args_ns = argparse.Namespace(
         camions_supp=params["camions_supp"],
@@ -650,17 +686,19 @@ def enregistrer_liens_drive():
         if existante:
             conn.execute(
                 "UPDATE collecte_campagnes SET drive_magasins = ?, drive_vehicules = ?, "
-                "drive_cagettes = ? WHERE annee = ?",
-                (valeurs["drive_magasins"], valeurs["drive_vehicules"], valeurs["drive_cagettes"], annee)
+                "drive_cagettes = ?, drive_groupes = ?, drive_participants = ? WHERE annee = ?",
+                (valeurs["drive_magasins"], valeurs["drive_vehicules"], valeurs["drive_cagettes"],
+                 valeurs["drive_groupes"], valeurs["drive_participants"], annee)
             )
         else:
             maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             conn.execute("""
                 INSERT INTO collecte_campagnes
-                    (annee, drive_magasins, drive_vehicules, drive_cagettes, date_creation, cree_par)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (annee, drive_magasins, drive_vehicules, drive_cagettes, drive_groupes,
+                     drive_participants, date_creation, cree_par)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (annee, valeurs["drive_magasins"], valeurs["drive_vehicules"], valeurs["drive_cagettes"],
-                  maintenant, current_user.email))
+                  valeurs["drive_groupes"], valeurs["drive_participants"], maintenant, current_user.email))
 
         conn.commit()
 
@@ -676,7 +714,7 @@ def _get_campagne_ou_redirect(annee):
             "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
         ).fetchone()
 
-    if not campagne or not campagne["fichier_magasins"] or not campagne["fichier_pdf_precedent"]:
+    if not campagne or not (campagne["fichier_magasins"] or campagne["drive_magasins"]) or not campagne["fichier_pdf_precedent"]:
         flash(
             "⛔ Liste des magasins et PDF des tournées précédentes requis avant de générer "
             f"les tournées {annee}",
@@ -714,7 +752,7 @@ def lancer_analyse():
 
     dossier = _dossier_annee(annee)
     pdf_path = os.path.join(dossier, campagne["fichier_pdf_precedent"])
-    magasins_path = os.path.join(dossier, campagne["fichier_magasins"])
+    magasins_path = _fichier_drive(annee, "magasins") or os.path.join(dossier, campagne["fichier_magasins"])
     app_reel = current_app._get_current_object()
 
     Thread(
@@ -1184,12 +1222,11 @@ def production():
 
     with get_db_connection() as conn:
         campagne = conn.execute(
-            "SELECT date_debut, date_fin, drive_magasins, drive_vehicules, drive_cagettes "
-            "FROM collecte_campagnes WHERE annee = ?", (annee,)
+            "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
         ).fetchone()
 
     liens_manquants = [
-        conf["label"] for cle, conf in DRIVE_CHAMPS.items()
+        conf["label"] for cle, conf in DRIVE_CHAMPS_PRODUCTION.items()
         if not (campagne and _url_export_drive(campagne[conf["champ"]]))
     ]
 
@@ -1243,14 +1280,13 @@ def production_generer():
     # par le club chaque année), plus besoin de les ressaisir ici.
     with get_db_connection() as conn:
         campagne = conn.execute(
-            "SELECT date_debut, drive_magasins, drive_vehicules, drive_cagettes "
-            "FROM collecte_campagnes WHERE annee = ?", (annee,)
+            "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
         ).fetchone()
     date_jeudi = _date_fr_courte(campagne["date_debut"]) if campagne else None
 
     urls_drive = {}
     liens_manquants = []
-    for cle, conf in DRIVE_CHAMPS.items():
+    for cle, conf in DRIVE_CHAMPS_PRODUCTION.items():
         url = _url_export_drive(campagne[conf["champ"]]) if campagne else None
         if url:
             urls_drive[cle] = url
@@ -1439,7 +1475,11 @@ def _normaliser_gardee_par(s):
 def _lire_magasins_gardes(annee):
     """Magasins État='Collecte gardée' du référentiel de l'année (DataFrame
     vide si liste_magasins.xlsx est absent)."""
-    chemin = os.path.join(_dossier_annee(annee), FICHIERS["magasins"]["nom_stockage"])
+    try:
+        chemin = _fichier_drive(annee, "magasins") or os.path.join(_dossier_annee(annee), FICHIERS["magasins"]["nom_stockage"])
+    except Exception as erreur:
+        write_log(f"⚠️ Lecture Drive magasins {annee} impossible : {erreur}")
+        chemin = os.path.join(_dossier_annee(annee), FICHIERS["magasins"]["nom_stockage"])
     if not os.path.exists(chemin):
         return pd.DataFrame()
     df = pd.read_excel(chemin)
@@ -1458,7 +1498,11 @@ def _lire_groupes(annee):
     mais son compteur n'est pas encore remonté) — s'y fier pour décider
     qu'une association « n'existe pas » ferait disparaître des associations
     bien réelles de la liste."""
-    chemin = os.path.join(_dossier_annee(annee), FICHIERS["groupes"]["nom_stockage"])
+    try:
+        chemin = _fichier_drive(annee, "groupes") or os.path.join(_dossier_annee(annee), FICHIERS["groupes"]["nom_stockage"])
+    except Exception as erreur:
+        write_log(f"⚠️ Lecture Drive groupes {annee} impossible : {erreur}")
+        chemin = os.path.join(_dossier_annee(annee), FICHIERS["groupes"]["nom_stockage"])
     if not os.path.exists(chemin):
         return pd.DataFrame()
     df = pd.read_excel(chemin)
@@ -1470,7 +1514,11 @@ def _lire_participants(annee):
     """Tous les participants/contacts go-on-web de l'année (toutes années de
     collecte confondues dans l'export), colonnes normalisées (DataFrame vide
     si liste_participants.xlsx est absent)."""
-    chemin = os.path.join(_dossier_annee(annee), FICHIERS["participants"]["nom_stockage"])
+    try:
+        chemin = _fichier_drive(annee, "participants") or os.path.join(_dossier_annee(annee), FICHIERS["participants"]["nom_stockage"])
+    except Exception as erreur:
+        write_log(f"⚠️ Lecture Drive participants {annee} impossible : {erreur}")
+        chemin = os.path.join(_dossier_annee(annee), FICHIERS["participants"]["nom_stockage"])
     if not os.path.exists(chemin):
         return pd.DataFrame()
     df = pd.read_excel(chemin)
@@ -1533,6 +1581,160 @@ def _associations_secondaires_stockage(stockage, primaire):
     primaire_cle = cle(primaire)
     tokens = [t.strip() for t in stockage.split("+") if t.strip()]
     return [t for t in tokens if cle(t) not in ("bai", primaire_cle)]
+
+
+def _modele_gardee(nom):
+    chemin = os.path.join(MODELES_GARDEE_DIR, nom)
+    if not os.path.exists(chemin):
+        chemin = os.path.join(current_app.root_path, "uploads", "collecte_fichiers_source", nom)
+    return chemin
+
+
+def _nom_fichier_association(nom, annee):
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", nom).strip("_").lower() or "association"
+    return f"association_gardant_{annee}_{slug}.xlsx"
+
+
+def _date_collecte(annee):
+    with get_db_connection() as conn:
+        campagne = conn.execute(
+            "SELECT date_debut, date_fin FROM collecte_campagnes WHERE annee = ?",
+            (annee,),
+        ).fetchone()
+    if not campagne or not campagne["date_debut"]:
+        return str(annee)
+    debut = campagne["date_debut"]
+    fin = campagne["date_fin"]
+    try:
+        debut = datetime.strptime(debut, "%Y-%m-%d").strftime("%d/%m/%Y")
+        fin = datetime.strptime(fin, "%Y-%m-%d").strftime("%d/%m/%Y") if fin else None
+    except ValueError:
+        pass
+    return f"du {debut} au {fin}" if fin else debut
+
+
+def _creer_fichier_association(asso, annee, dossier):
+    source = _modele_gardee("Modele association.xlsx")
+    if not os.path.exists(source):
+        raise FileNotFoundError("Modèle Excel association introuvable")
+
+    chemin = os.path.join(dossier, _nom_fichier_association(asso["nom"], annee))
+    wb = load_workbook(source)
+    code = ""
+    date_collecte = _date_collecte(annee)
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.value == 2025:
+                    cell.value = annee
+                if isinstance(cell.value, str):
+                    cell.value = cell.value.replace("àassociation", asso["nom"])
+                    cell.value = re.sub(r"àcode(?!\d)", code, cell.value)
+                    cell.value = cell.value.replace("àdatecollecte", date_collecte)
+                    cell.value = cell.value.replace("àannéecollecte", str(annee))
+                    cell.value = cell.value.replace("2025", str(annee))
+
+    ws = wb["magasins"]
+    for index, magasin in enumerate(asso["magasins"], start=1):
+        row = 14 + index
+        if row >= 25:
+            ws.insert_rows(row)
+        ws.cell(row=row, column=1).value = _vif_fmt(magasin.get("Code VIF"))
+        ws.cell(row=row, column=2).value = _valeur_propre(magasin.get("Nom"))
+        ws.cell(row=row, column=3).value = None
+    for row in range(15 + len(asso["magasins"]), 24):
+        for column in range(1, 10):
+            ws.cell(row=row, column=column).value = None
+    ws["C25"] = "=SUM(C15:C23)"
+    for feuille, zone in ((wb["produits"], "A1:E44"), (ws, "A1:I27")):
+        feuille.page_setup.orientation = "portrait"
+        feuille.page_setup.fitToWidth = 1
+        feuille.page_setup.fitToHeight = 1
+        feuille.sheet_properties.pageSetUpPr.fitToPage = True
+        feuille.print_area = zone
+    wb.save(chemin)
+    return chemin
+
+
+def _creer_pdf_association(fichier_excel, asso, annee, dossier):
+    """Crée directement les deux fiches PDF avec la présentation du modèle Excel."""
+    wb = load_workbook(fichier_excel, data_only=False)
+    nom = os.path.splitext(os.path.basename(fichier_excel))[0] + ".pdf"
+    chemin = os.path.join(dossier, nom)
+    page_width, page_height = A4
+    pdf = pdf_canvas.Canvas(chemin, pagesize=A4)
+    logo = os.path.join(current_app.root_path, "static", "images", "logo_ba_complet.png")
+
+    def texte(valeur):
+        return str(valeur or "").replace("\n", " ")
+
+    def entete(ws, titre):
+        if os.path.exists(logo):
+            pdf.drawImage(ImageReader(logo), 12 * mm, page_height - 25 * mm, width=72 * mm, height=8 * mm, preserveAspectRatio=True, mask="auto")
+        pdf.setFont("Helvetica", 8)
+        pdf.drawString(24 * mm, page_height - 32 * mm, "11 allée de la Pinéa - 38600 FONTAINE")
+        pdf.drawString(24 * mm, page_height - 38 * mm, "Tél. : 04.76.85.92.50")
+        pdf.drawString(24 * mm, page_height - 44 * mm, "Mail : ba380.collecte@banquealimentaire.org")
+        y = page_height - 53 * mm
+        pdf.setFont("Helvetica-Bold", 9)
+        pdf.drawString(70 * mm, y, "COLLECTE")
+        pdf.drawString(105 * mm, y, str(annee))
+        pdf.drawString(24 * mm, y - 8 * mm, _date_collecte(annee))
+        pdf.drawString(105 * mm, y - 8 * mm, titre)
+        pdf.line(24 * mm, y - 11 * mm, 175 * mm, y - 11 * mm)
+        pdf.drawString(24 * mm, y - 19 * mm, asso["nom"])
+        return y - 25 * mm
+
+    def grille(lignes, largeurs, x, y, hauteur, gras_premiere=False):
+        total = sum(largeurs)
+        for index, ligne in enumerate(lignes):
+            yy = y - index * hauteur
+            pdf.setFont("Helvetica-Bold" if gras_premiere and index == 0 else "Helvetica", 6 if index else 6.5)
+            xx = x
+            for col, largeur in enumerate(largeurs):
+                pdf.rect(xx, yy - hauteur, largeur, hauteur)
+                pdf.drawString(xx + 1.2 * mm, yy - hauteur + 2.2 * mm, texte(ligne[col])[:38])
+                xx += largeur
+        return y - len(lignes) * hauteur
+
+    ws = wb["produits"]
+    y = entete(ws, "FICHE PRODUITS")
+    lignes = [[ws.cell(14, c).value for c in range(1, 6)]]
+    lignes.extend([[ws.cell(r, c).value for c in range(1, 6)] for r in range(16, 41) if any(ws.cell(r, c).value is not None for c in range(1, 6))])
+    lignes.append(["", "Total", "", "", ""])
+    grille(lignes, [25 * mm, 46 * mm, 22 * mm, 62 * mm, 22 * mm], 10 * mm, y, 6.2 * mm, True)
+    pdf.showPage()
+
+    ws = wb["magasins"]
+    y = entete(ws, "FICHE MAGASINS")
+    lignes = [[ws.cell(13, c).value for c in range(1, 9)]]
+    lignes.extend([[ws.cell(r, c).value for c in range(1, 9)] for r in range(15, 24) if ws.cell(r, 1).value or ws.cell(r, 2).value])
+    lignes.append(["", "Total", "", "", "", "", "", ""])
+    grille(lignes, [18 * mm, 39 * mm, 20 * mm, 20 * mm, 20 * mm, 22 * mm, 20 * mm, 22 * mm], 5 * mm, y, 8 * mm, True)
+    pdf.save()
+    return chemin
+
+
+def _texte_modele_gardee(asso, annee):
+    source = _modele_gardee("associations-gardant.docx")
+    if not os.path.exists(source):
+        raise FileNotFoundError("Modèle de mail associations-gardant introuvable")
+    document = Document(source)
+    magasins = "\n".join(
+        f"- {_vif_fmt(m.get('Code VIF'))} — {m.get('Nom', '')} ({m.get('Ville', '')})"
+        for m in asso["magasins"]
+    )
+    lignes = []
+    for paragraphe in document.paragraphs:
+        texte = paragraphe.text
+        texte = texte.replace("àassociation", asso["nom"])
+        texte = texte.replace("àcode", "")
+        texte = texte.replace("àdatecollecte", _date_collecte(annee))
+        texte = texte.replace("àLISTE_MAGASINS", magasins)
+        texte = texte.replace("àresponsable collecte", "Responsable collecte de la BA38")
+        if texte.strip():
+            lignes.append(texte)
+    return "\n\n".join(lignes)
 
 
 def _construire_associations(df_mag, df_groupes):
@@ -1615,6 +1817,9 @@ def gardee():
         associations=associations,
         sans_association=sans_association,
         nb_magasins=len(df_mag),
+        fichier_excel=os.path.exists(
+            os.path.join(_dossier_annee(annee), f"associations_gardant_{annee}.xlsx")
+        ),
     )
 
 
@@ -1687,8 +1892,119 @@ def gardee_excel():
         df_pivot.to_excel(writer, sheet_name="Associations - Magasins", index=False)
     buffer.seek(0)
 
+    dossier = _dossier_annee(annee)
+    os.makedirs(dossier, exist_ok=True)
+    chemin = os.path.join(dossier, f"associations_gardant_{annee}.xlsx")
+    try:
+        for asso in associations:
+            fichier_association = _creer_fichier_association(asso, annee, dossier)
+            _creer_pdf_association(fichier_association, asso, annee, dossier)
+    except RuntimeError as erreur:
+        flash(f"❌ Création PDF impossible : {erreur}", "danger")
+        return redirect(url_for("collecte.gardee", annee=annee))
+    with open(chemin, "wb") as fichier:
+        fichier.write(buffer.getvalue())
+
     write_log(f"📥 Export Associations gardant {annee} par {current_user.email}")
+    flash(
+        f"✅ Fichier associations_gardant_{annee}.xlsx créé. Contrôlez-le avant de préparer l'envoi.",
+        "success",
+    )
+    return redirect(url_for("collecte.gardee", annee=annee))
+
+
+@collecte_bp.route("/collecte/gardee/telecharger")
+@login_required
+@require_access("collecte", "lecture")
+def gardee_telecharger():
+    annee = request.args.get("annee", type=int) or datetime.now().year
+    nom = f"associations_gardant_{annee}.xlsx"
+    chemin = os.path.join(_dossier_annee(annee), nom)
+    if not os.path.exists(chemin):
+        flash("❌ Le fichier Excel n'a pas encore été créé", "danger")
+        return redirect(url_for("collecte.gardee", annee=annee))
     return send_file(
-        buffer, as_attachment=True, download_name=f"associations_gardant_{annee}.xlsx",
+        chemin,
+        as_attachment=True,
+        download_name=nom,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@collecte_bp.route("/collecte/gardee/envoi", methods=["GET", "POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def gardee_envoi():
+    annee = request.args.get("annee", type=int) or request.form.get("annee", type=int) or datetime.now().year
+    dossier = _dossier_annee(annee)
+    chemin = os.path.join(dossier, f"associations_gardant_{annee}.xlsx")
+    if not os.path.exists(chemin):
+        flash("❌ Créez et contrôlez d'abord le fichier Excel", "danger")
+        return redirect(url_for("collecte.gardee", annee=annee))
+
+    df_mag = _lire_magasins_gardes(annee)
+    df_groupes = _lire_groupes(annee)
+    df_participants = _lire_participants(annee)
+    if df_mag.empty or df_groupes.empty:
+        flash("❌ Fichier(s) source(s) manquant(s)", "danger")
+        return redirect(url_for("collecte.gardee", annee=annee))
+    if "Code VIF" in df_mag.columns:
+        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+    associations, _ = _construire_associations(df_mag, df_groupes)
+    for asso in associations:
+        asso["referents"] = _referents_association(asso["nom"], df_participants)
+        asso["emails"] = sorted({r["email"] for r in asso["referents"] if "@" in r["email"]})
+
+    if request.method == "POST":
+        if request.form.get("confirmation") != "oui":
+            flash("❌ Confirmez le contrôle du fichier avant l'envoi", "danger")
+            return redirect(url_for("collecte.gardee_envoi", annee=annee))
+        mode_test = request.form.get("mode_test") == "on"
+        test_une_association = request.form.get("test_une_association") == "on"
+        nom_test = request.form.get("association_test_nom", "")
+        if test_une_association and not mode_test:
+            flash("❌ L'option sur une seule association nécessite le mode Test", "danger")
+            return redirect(url_for("collecte.gardee_envoi", annee=annee))
+        associations_a_traiter = associations
+        if test_une_association:
+            associations_a_traiter = [a for a in associations if a["nom"] == nom_test]
+            if not associations_a_traiter:
+                flash("❌ Sélectionnez une association pour le test", "danger")
+                return redirect(url_for("collecte.gardee_envoi", annee=annee))
+        envoyes = 0
+        sans_email = []
+        for asso in associations_a_traiter:
+            if not asso["emails"] and not mode_test:
+                sans_email.append(asso["nom"])
+                continue
+            fichier_association = os.path.join(dossier, _nom_fichier_association(asso["nom"], annee))
+            if not os.path.exists(fichier_association):
+                fichier_association = _creer_fichier_association(asso, annee, dossier)
+            fichier_pdf = os.path.splitext(fichier_association)[0] + ".pdf"
+            if not os.path.exists(fichier_pdf):
+                fichier_pdf = _creer_pdf_association(fichier_association, asso, annee, dossier)
+            destinataires = [os.getenv("MAIL_TEST_TO") or current_user.email] if mode_test else asso["emails"]
+            envoyer_mail(
+                sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — {asso['nom']}",
+                destinataires=destinataires,
+                texte=_texte_modele_gardee(asso, annee),
+                sender_override=os.getenv("MAILJET_SENDER"),
+                attachment_path=fichier_association,
+                attachment_paths=[fichier_pdf],
+            )
+            envoyes += 1
+
+        portee = "pour une association" if test_une_association else "pour toutes les associations"
+        message = f"✅ {envoyes} mail(s) {'de test ' if mode_test else ''}envoyé(s) {portee} avec les fichiers Excel personnalisés"
+        if sans_email:
+            message += f" ; sans adresse : {', '.join(sans_email)}"
+        flash(message, "success" if not sans_email else "warning")
+        write_log(f"📧 Envoi Associations gardant {annee} : {envoyes} envoyé(s) par {current_user.email}")
+        return redirect(url_for("collecte.gardee", annee=annee))
+
+    return render_template(
+        "collecte/gardee_envoi.html",
+        annee=annee,
+        associations=associations,
+        fichier_nom=os.path.basename(chemin),
     )

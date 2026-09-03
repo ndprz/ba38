@@ -32,7 +32,11 @@
             <strong>{{ associations|length }}</strong> association(s) pour
             <strong>{{ nb_magasins }}</strong> magasin(s) en collecte gardée.
         </p>
-        {{ action_button("📥 Télécharger Excel", href=url_for('collecte.gardee_excel', annee=annee), color="success") }}
+        {{ action_button("📊 Créer le fichier Excel", href=url_for('collecte.gardee_excel', annee=annee), color="success") }}
+        {% if fichier_excel %}
+        {{ action_button("📥 Télécharger le fichier contrôlé", href=url_for('collecte.gardee_telecharger', annee=annee), color="outline-success") }}
+        {{ action_button("📧 Préparer l'envoi", href=url_for('collecte.gardee_envoi', annee=annee), color="primary") }}
+        {% endif %}
     </div>
 
     {% if sans_association %}

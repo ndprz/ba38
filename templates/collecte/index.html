@@ -7,7 +7,7 @@
 {% block content %}
 <div class="container mt-4" style="max-width:900px;">
 
-    <h2>🧺 Collecte annuelle</h2>
+    <h2>🧺 Collecte annuelle {{ annee }}</h2>
 
     <button class="btn btn-outline-info mb-3"
             type="button"
@@ -20,10 +20,7 @@
         {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
     {% endcall %}
 
-    <p class="text-muted">
-        Fichiers nécessaires à la génération des tournées de collecte, extraits de go-on-web
-        et du drive collecte.
-    </p>
+    <p class="text-muted">Paramètres et fichiers de la campagne de collecte.</p>
 
     <div class="mb-4">
         <label class="form-label">Année de collecte</label>
@@ -33,6 +30,8 @@
             {% endfor %}
         </select>
     </div>
+
+    <h4 class="mt-4 mb-3">Collecte annuelle</h4>
 
     <div class="card mb-4">
         <div class="card-body">
@@ -63,12 +62,11 @@
 
     <div class="card mb-4">
         <div class="card-body">
-            <h5 class="card-title">🔗 Fichiers Drive {{ annee }} (production)</h5>
+            <h5 class="card-title">🔗 Fichiers Google Drive {{ annee }}</h5>
             <p class="card-text text-muted small">
-                Un nouveau dossier Drive étant créé chaque année, coller ici les 3 liens de partage
-                de la campagne {{ annee }} — réutilisés automatiquement par la page Production à
-                chaque génération, pas besoin de les ressaisir. Colle le lien de partage complet
-                (Google Sheets), le fichier doit être partagé en « Toute personne disposant du lien ».
+                Coller les liens des fichiers Google Sheets issus de go-on-web et de la production.
+                Ils sont conservés avec la campagne {{ annee }}. Les fichiers doivent être partagés
+                en « Toute personne disposant du lien ».
             </p>
             <form method="POST" action="{{ url_for('collecte.enregistrer_liens_drive') }}" class="row g-3 align-items-end">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -88,6 +86,16 @@
                     <input type="text" name="cagettes" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
                            value="{{ campagne.drive_cagettes if campagne else '' }}">
                 </div>
+                <div class="col-md-4">
+                    <label class="form-label">Liste des groupes (go-on-web)</label>
+                    <input type="text" name="groupes" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/..."
+                           value="{{ campagne.drive_groupes or '' if campagne and campagne.drive_groupes is defined else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Liste des participants (go-on-web)</label>
+                    <input type="text" name="participants" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/..."
+                           value="{{ campagne.drive_participants or '' if campagne and campagne.drive_participants is defined else '' }}">
+                </div>
                 <div class="col-12">
                     <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
                 </div>
@@ -99,141 +107,62 @@
         {% for type_fichier, conf in fichiers.items() %}
         {% set le_champ = campagne[conf.champ_le] if campagne else None %}
         {% set par_champ = campagne[conf.champ_par] if campagne else None %}
+        {% if type_fichier not in ['magasins', 'groupes', 'participants'] %}
         <div class="col-md-6">
             <div class="card h-100 {% if le_champ %}border-success{% else %}border-warning{% endif %}">
-                <div class="card-body">
                     <h5 class="card-title">
                         {% if le_champ %}✅{% else %}⚠️{% endif %}
                         {{ conf.label }}
                     </h5>
                     <p class="card-text text-muted small">{{ conf.aide }}</p>
-
                     {% if le_champ %}
-                    <p class="small mb-3">
-                        Importé le <strong>{{ le_champ|date_fr }}</strong> par {{ par_champ }}
-                    </p>
+                    <p class="small mb-3">Importé le <strong>{{ le_champ|date_fr }}</strong> par {{ par_champ }}</p>
                     {% else %}
                     <p class="small mb-3 text-warning">Aucun fichier importé pour {{ annee }}</p>
                     {% endif %}
-
-                    <form method="POST"
-                          action="{{ url_for('collecte.upload_fichier', type_fichier=type_fichier) }}"
-                          enctype="multipart/form-data"
-                          class="d-flex gap-2">
+                    <form method="POST" action="{{ url_for('collecte.upload_fichier', type_fichier=type_fichier) }}" enctype="multipart/form-data" class="d-flex gap-2">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="annee" value="{{ annee }}">
                         <input type="file" name="fichier" class="form-control form-control-sm" required>
-                        <button class="btn btn-sm btn-primary text-nowrap">
-                            {% if le_champ %}🔄 Remplacer{% else %}📤 Importer{% endif %}
-                        </button>
+                        <button class="btn btn-sm btn-primary text-nowrap">{% if le_champ %}🔄 Remplacer{% else %}📤 Importer{% endif %}</button>
                     </form>
                 </div>
             </div>
         </div>
+        {% endif %}
         {% endfor %}
     </div>
 
-    <hr class="my-4">
+    {% set prets = campagne and (campagne.fichier_magasins or campagne.drive_magasins) and campagne.fichier_pdf_precedent %}
 
-    {% set prets = campagne and campagne.fichier_magasins and campagne.fichier_pdf_precedent %}
-    <div class="card {% if not prets %}bg-light{% endif %}">
-        <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <div>
-                <h5 class="card-title mb-1">🚀 Génération des tournées {{ annee }}</h5>
-                {% if derniere_generation %}
-                <p class="card-text small text-muted mb-0">
-                    Dernière génération le <strong>{{ derniere_generation.genere_le|date_fr }}</strong>
-                    par {{ derniere_generation.genere_par }}
-                    ({{ derniere_generation.nb_tournees }} tournées, {{ derniere_generation.nb_magasins }} magasins)
-                    {% if nb_generations > 1 %}— {{ nb_generations }} versions générées{% endif %}
-                </p>
-                {% elif not prets %}
-                <p class="card-text small text-muted mb-0">
-                    Nécessite la liste des magasins et le PDF des tournées précédentes.
-                </p>
-                {% else %}
-                <p class="card-text small text-muted mb-0">Aucune génération pour l'instant.</p>
-                {% endif %}
+    <h4 class="mt-5 mb-3">Gestion tournées</h4>
+    <div class="border-start border-3 border-primary ps-3">
+        <h5 class="mb-3">Simulation</h5>
+        <div class="card mb-3 {% if not prets %}bg-light{% endif %}">
+            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div><h5 class="card-title mb-1">🚀 Génération des tournées</h5><p class="card-text small text-muted mb-0">Créer et consulter les versions simulées des tournées.</p></div>
+                <div class="d-flex gap-2">
+                    {% if nb_generations > 1 %}{{ action_button("📋 Historique", href=url_for('collecte.generations', annee=annee), color="outline-secondary") }}{% endif %}
+                    {% if derniere_generation %}{{ action_button("📊 Voir le résultat", href=url_for('collecte.resultats', generation_id=derniere_generation.id), color="outline-primary") }}{% endif %}
+                    {{ action_button("🚀 Générer" if not derniere_generation else "🔄 Nouvelle version", href=url_for('collecte.generer_form', annee=annee), color="success" if prets else "outline-secondary", disabled=not prets) }}
+                </div>
             </div>
-            <div class="d-flex gap-2">
-                {% if nb_generations > 1 %}
-                {{ action_button("📋 Historique (" ~ nb_generations ~ ")", href=url_for('collecte.generations', annee=annee), color="outline-secondary") }}
-                {% endif %}
-                {% if derniere_generation %}
-                {{ action_button("📊 Voir le résultat", href=url_for('collecte.resultats', generation_id=derniere_generation.id), color="outline-primary") }}
-                {% endif %}
-                {{ action_button(
-                    "🚀 Générer les tournées" if not derniere_generation else "🔄 Générer une nouvelle version",
-                    href=url_for('collecte.generer_form', annee=annee),
-                    color="success" if prets else "outline-secondary",
-                    disabled=not prets
-                ) }}
+        </div>
+        <div class="card mb-3 {% if not prets %}bg-light{% endif %}">
+            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div><h5 class="card-title mb-1">🔬 Analyse comparative</h5><p class="card-text small text-muted mb-0">Comparer les 8 scénarios de camions et de magasins par tournée.</p></div>
+                <div class="d-flex gap-2">
+                    {% if derniere_analyse %}{{ action_button("📊 Voir l'analyse", href=url_for('collecte.analyse', analyse_id=derniere_analyse.id), color="outline-primary") }}{% endif %}
+                    <form method="POST" action="{{ url_for('collecte.lancer_analyse') }}" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="annee" value="{{ annee }}"><button type="submit" class="btn {{ 'btn-warning' if prets else 'btn-outline-secondary' }}" {% if not prets %}disabled{% endif %}>🔬 Lancer l'analyse</button></form>
+                </div>
             </div>
         </div>
     </div>
 
-    <hr class="my-4">
+    <div class="card mt-4"><div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2"><div><h5 class="card-title mb-1">🚛 Production réelle</h5><p class="card-text small text-muted mb-0">Générer les documents définitifs depuis le planning go-on-web.</p></div>{{ action_button("🚛 Passer en réel", href=url_for('collecte.production', annee=annee), color="warning") }}</div></div>
 
-    <div class="card">
-        <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <div>
-                <h5 class="card-title mb-1">🚛 Passer en réel</h5>
-                <p class="card-text small text-muted mb-0">
-                    Tout ce qui précède est une simulation. Génère les vrais documents de collecte
-                    (fiches, pointage, équipier, index, carte) depuis le planning go-on-web.
-                </p>
-            </div>
-            {{ action_button("🚛 Passer en réel", href=url_for('collecte.production', annee=annee), color="warning") }}
-        </div>
-    </div>
-
-    <hr class="my-4">
-
-    <div class="card">
-        <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <div>
-                <h5 class="card-title mb-1">🏠 Associations gardant</h5>
-                <p class="card-text small text-muted mb-0">
-                    Associations qui assurent elles-mêmes la collecte dans certains magasins
-                    (au lieu de la remettre à la BAI) — liste croisée magasins/groupes go-on-web.
-                </p>
-            </div>
-            {{ action_button("🏠 Voir la liste", href=url_for('collecte.gardee', annee=annee), color="outline-primary") }}
-        </div>
-    </div>
-
-    <hr class="my-4">
-
-    <div class="card {% if not prets %}bg-light{% endif %}">
-        <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <div>
-                <h5 class="card-title mb-1">🔬 Analyse comparative — 8 scénarios</h5>
-                <p class="card-text small text-muted mb-0">
-                    {% if derniere_analyse %}
-                    Dernière analyse le <strong>{{ derniere_analyse.lance_le|date_fr }}</strong>
-                    par {{ derniere_analyse.lance_par }} —
-                    statut : {{ derniere_analyse.statut }}
-                    {% elif not prets %}
-                    Nécessite la liste des magasins et le PDF des tournées précédentes.
-                    {% else %}
-                    Compare 1 à 4 camions supplémentaires × 4 ou 5 magasins/tournée max (8 combinaisons).
-                    {% endif %}
-                </p>
-            </div>
-            <div class="d-flex gap-2">
-                {% if derniere_analyse %}
-                {{ action_button("📊 Voir la dernière analyse", href=url_for('collecte.analyse', analyse_id=derniere_analyse.id), color="outline-primary") }}
-                {% endif %}
-                <form method="POST" action="{{ url_for('collecte.lancer_analyse') }}" class="d-inline">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="annee" value="{{ annee }}">
-                    <button type="submit" class="btn {{ 'btn-warning' if prets else 'btn-outline-secondary' }}" {% if not prets %}disabled{% endif %}>
-                        🔬 Lancer l'analyse des 8 scénarios
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
+    <h4 class="mt-5 mb-3">Associations gardant</h4>
+    <div class="border-start border-3 border-warning ps-3"><div class="card"><div class="card-body"><p class="card-text small text-muted">Créer la liste, la contrôler, puis préparer et envoyer les messages.</p><div class="d-flex flex-wrap gap-2">{{ action_button("🏠 Créer la liste", href=url_for('collecte.gardee_excel', annee=annee), color="outline-primary") }}{{ action_button("⏸️ Vérifier la liste", href=url_for('collecte.gardee', annee=annee), color="outline-secondary") }}{{ action_button("📧 Préparer l'envoi", href=url_for('collecte.gardee_envoi', annee=annee), color="primary") }}</div><p class="small text-muted mt-2 mb-0">L’envoi des mails se fait ensuite sur l’écran de préparation, après confirmation.</p></div></div></div>
 
 </div>
 
