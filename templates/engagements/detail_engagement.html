@@ -238,7 +238,18 @@ Détail engagement #{{ engagement.id }}
                     <!-- ARCHIVAGE LOGIQUE -->
                     <!-- ============================================== -->
 
-                    {% if engagement.deleted != 1 %}
+                    {% if engagement.deleted != 1 and engagement.est_modele_abonnement %}
+
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            disabled
+                            title="Modèle d'abonnement récurrent : l'archivage est désactivé pour ne pas interrompre la génération automatique des prochaines échéances. Désactivez d'abord l'abonnement si vous voulez y mettre fin.">
+
+                        🔒 Archiver (modèle abonnement)
+
+                    </button>
+
+                    {% elif engagement.deleted != 1 %}
 
                     <form method="POST"
                         action="{{ url_for(

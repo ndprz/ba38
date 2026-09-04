@@ -965,6 +965,30 @@ def delete_engagement(engagement_id):
             )
 
         # =====================================================
+        # MODELE D'ABONNEMENT : ARCHIVAGE INTERDIT
+        # =====================================================
+        # Archiver le modèle stoppe silencieusement la génération
+        # automatique des prochaines échéances (cf. incident du
+        # 17/08/2026 sur l'abonnement Mailjet).
+
+        if engagement["est_modele_abonnement"] == 1:
+
+            flash(
+                "⛔ Cet engagement est le modèle d'un abonnement "
+                "récurrent. L'archiver stopperait la génération "
+                "automatique des prochaines échéances. Désactivez "
+                "d'abord l'abonnement si vous voulez y mettre fin.",
+                "danger"
+            )
+
+            return redirect(
+                url_for(
+                    "engagements.detail_engagement",
+                    engagement_id=engagement_id
+                )
+            )
+
+        # =====================================================
         # SUPPRESSION LOGIQUE
         # =====================================================
 
@@ -1164,9 +1188,10 @@ def archiver_engagements_masse():
     depuis la liste principale.
 
     Reprend exactement le contrôle de delete_engagement() pour
-    chaque ligne : l'engagement doit exister et ne pas être déjà
-    archivé. Les lignes qui ne remplissent pas cette condition
-    sont ignorées (et comptabilisées) plutôt que de faire échouer
+    chaque ligne : l'engagement doit exister, ne pas être déjà
+    archivé, et ne pas être le modèle d'un abonnement récurrent.
+    Les lignes qui ne remplissent pas cette condition sont
+    ignorées (et comptabilisées) plutôt que de faire échouer
     toute l'opération.
     """
 
@@ -1218,7 +1243,11 @@ def archiver_engagements_masse():
             # CONTROLE : engagement existant et pas déjà archivé
             # =====================================================
 
-            if not engagement or engagement["deleted"] == 1:
+            if (
+                not engagement
+                or engagement["deleted"] == 1
+                or engagement["est_modele_abonnement"] == 1
+            ):
                 nb_ignores += 1
                 continue
 

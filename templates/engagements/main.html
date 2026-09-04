@@ -434,11 +434,13 @@
             {% if peut_archiver_masse %}
             <td class="text-center">
 
-                {% if d.deleted != 1 %}
+                {% if d.deleted != 1 and not d.est_modele_abonnement %}
                 <input type="checkbox"
                        class="form-check-input check-engagement"
                        name="engagement_ids"
                        value="{{ d.id }}">
+                {% elif d.est_modele_abonnement %}
+                <span title="Modèle d'abonnement : non archivable">🔒</span>
                 {% endif %}
 
             </td>
