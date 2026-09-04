@@ -75,6 +75,9 @@ def engagements_main():
                 e.deleted,
                 e.deleted_le,
 
+                e.est_modele_abonnement,
+                e.abonnement_parent_id,
+
                 p.nom_affiche AS pole,
 
                 d.objet,

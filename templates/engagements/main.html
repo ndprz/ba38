@@ -450,7 +450,17 @@
             </td>
             <td>{{ d.demandeur_nom }}</td>
             <td>{{ d.pole }}</td>
-            <td>{{ d.objet }}</td>
+            <td>
+                {{ d.objet }}
+
+                {% if d.est_modele_abonnement %}
+                <span class="badge bg-secondary"
+                      title="Modèle d'abonnement récurrent : sert de base à la génération automatique mensuelle. Ne jamais archiver, sinon la génération des prochaines échéances s'arrête.">
+                    🔁 Modèle abonnement
+                </span>
+                {% endif %}
+
+            </td>
             <td>
 
                 {% if d.type_engagement == "fournisseur" %}
