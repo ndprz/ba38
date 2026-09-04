@@ -7,6 +7,12 @@
 {% block content %}
 <h2>Modèle du planning VIF</h2>
 
+{% call action_buttons() %}
+    <a href="{{ url_for('planning_vif.apercu_modele_planning_vif') }}" target="_blank" class="btn btn-outline-dark">
+        🖨️ Aperçu du modèle (A3)
+    </a>
+{% endcall %}
+
 <form method="POST">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <table class="table table-bordered table-sm">

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Modèle Planning Distribution</title>
+  <style>
+    @page { size: A3 landscape; margin: 1cm; }
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 11px;
+      color: black;
+      background: white;
+      margin: 0;
+      padding: 1cm;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 25px;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 4px 8px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    th {
+      background-color: #f2f2f2;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<h2>🛠️ Modèle du Planning Distribution</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Jour</th>
+      <th>Froid 1</th>
+      <th>Froid 2</th>
+      <th>Froid 3</th>
+      <th>Froid 4</th>
+      <th>Frais/Sec 1</th>
+      <th>Frais/Sec 2</th>
+      <th>Frais/Sec 3</th>
+      <th>Frais/Sec 4</th>
+      <th>Durée</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in model %}
+    <tr>
+      <td style="text-align:left;font-weight:bold;">{{ row.jour|capitalize }}</td>
+      {% for col in ["froid1_id", "froid2_id", "froid3_id", "froid4_id",
+                     "frais_sec1_id", "frais_sec2_id", "frais_sec3_id", "frais_sec4_id"] %}
+      <td>{{ bene_dict.get(row[col], "") }}</td>
+      {% endfor %}
+      <td>{{ row.duree or "" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+</body>
+</html>

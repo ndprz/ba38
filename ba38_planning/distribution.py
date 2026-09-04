@@ -94,6 +94,27 @@ def maj_modele_planning_distribution():
     )
 
 
+@planning_dist_bp.route("/apercu_modele_planning_distribution")
+@login_required
+@require_access("planning", "lecture")
+def apercu_modele_planning_distribution():
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    model = cur.execute("SELECT * FROM planning_standard_distribution_ids ORDER BY id").fetchall()
+
+    benevoles = cur.execute("SELECT id, nom || ' ' || prenom AS nom FROM benevoles").fetchall()
+    bene_dict = {b["id"]: b["nom"] for b in benevoles}
+
+    conn.close()
+    return render_template(
+        "planning/distribution/apercu_modele_planning_distribution.html",
+        model=model,
+        bene_dict=bene_dict,
+    )
+
+
 @planning_dist_bp.route("/creation_planning_distribution", methods=["GET", "POST"])
 @login_required
 @require_access("planning", "ecriture")

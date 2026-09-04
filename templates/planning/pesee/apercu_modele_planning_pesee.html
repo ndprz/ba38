@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Modèle Planning Pesée</title>
+  <style>
+    @page { size: A3 landscape; margin: 1cm; }
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 11px;
+      color: black;
+      background: white;
+      margin: 0;
+      padding: 1cm;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 25px;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 4px 8px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    th {
+      background-color: #f2f2f2;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<h2>🛠️ Modèle du Planning Pesée</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Jour</th>
+      <th>Pesée 1</th><th>Pesée 2</th><th>Pesée 3</th><th>Pesée 4</th>
+      <th>Pesée 5</th><th>Pesée 6</th><th>Pesée 7</th><th>Pesée 8</th><th>Pesée 9</th>
+      <th>Durée</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in model %}
+    {% if row.jour != 'vendredi' or travail_vendredi %}
+    <tr>
+      <td style="text-align:left;font-weight:bold;">{{ row.jour|capitalize }}</td>
+      {% for champ in ['pesee01_id','pesee02_id','pesee03_id','pesee04_id',
+                        'pesee05_id','pesee06_id','pesee07_id','pesee08_id','pesee09_id'] %}
+      <td>{{ bene_dict.get(row[champ], "") }}</td>
+      {% endfor %}
+      <td>{{ row.duree or "" }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+</body>
+</html>

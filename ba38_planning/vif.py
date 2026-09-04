@@ -113,6 +113,29 @@ def maj_modele_planning_vif():
     )
 
 
+@planning_vif_bp.route("/apercu_modele_planning_vif")
+@login_required
+@require_access("planning", "lecture")
+def apercu_modele_planning_vif():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    lignes = cursor.execute("SELECT * FROM planning_standard_vif_ids").fetchall()
+
+    jours_ordre = ["lundi", "mardi", "mercredi", "jeudi", "vendredi"]
+    lignes = sorted(lignes, key=lambda l: jours_ordre.index(l["jour"].lower()))
+
+    benevoles = cursor.execute("SELECT id, nom || ' ' || prenom AS nom FROM benevoles").fetchall()
+    bene_dict = {b["id"]: b["nom"] for b in benevoles}
+
+    conn.close()
+    return render_template(
+        "planning/vif/apercu_modele_planning_vif.html",
+        lignes=lignes,
+        bene_dict=bene_dict,
+    )
+
+
 @planning_vif_bp.route("/creation_planning_vif", methods=["GET", "POST"])
 @login_required
 @require_access("planning", "ecriture")

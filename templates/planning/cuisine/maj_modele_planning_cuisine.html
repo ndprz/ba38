@@ -12,6 +12,9 @@
   <h2 class="m-0">🛠️ Mise à jour du modèle de planning cuisine 3 étoiles</h2>
   {% call action_buttons() %}
     <button class="btn btn-primary" type="submit" name="action" value="enregistrer">💾 Enregistrer</button>
+    <a href="{{ url_for('planning_cuisine.apercu_modele_planning_cuisine') }}" target="_blank" class="btn btn-outline-dark">
+        🖨️ Aperçu du modèle (A3)
+    </a>
     {{ action_button("↩️ Retour", href=url_for('planning.planning_main'), color="outline-dark") }}
   {% endcall %}
 </div>
@@ -79,6 +82,9 @@
 
 {% call action_buttons() %}
   <button class="btn btn-primary" type="submit" name="action" value="enregistrer">💾 Enregistrer</button>
+  <a href="{{ url_for('planning_cuisine.apercu_modele_planning_cuisine') }}" target="_blank" class="btn btn-outline-dark">
+      🖨️ Aperçu du modèle (A3)
+  </a>
   {{ action_button("↩️ Retour", href=url_for('planning.planning_main'), color="outline-dark") }}
 {% endcall %}
 

@@ -93,6 +93,39 @@ def maj_modele_planning_pesee():
         raise
 
 
+@planning_pesee_bp.route("/apercu_modele_planning_pesee")
+@login_required
+@require_access("planning", "lecture")
+def apercu_modele_planning_pesee():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    model = cursor.execute("""
+        SELECT * FROM planning_standard_pesee_ids
+        ORDER BY
+            CASE jour
+                WHEN 'lundi' THEN 1
+                WHEN 'mardi' THEN 2
+                WHEN 'mercredi' THEN 3
+                WHEN 'jeudi' THEN 4
+                WHEN 'vendredi' THEN 5
+            END
+    """).fetchall()
+
+    benevoles = cursor.execute("SELECT id, nom || ' ' || prenom AS nom FROM benevoles").fetchall()
+    bene_dict = {b["id"]: b["nom"] for b in benevoles}
+
+    row = cursor.execute("SELECT param_value FROM parametres WHERE param_name='travail_vendredi'").fetchone()
+    travail_vendredi = row and row["param_value"].strip().lower() == "oui"
+
+    conn.close()
+    return render_template(
+        "planning/pesee/apercu_modele_planning_pesee.html",
+        model=model,
+        bene_dict=bene_dict,
+        travail_vendredi=travail_vendredi,
+    )
+
 
 @planning_pesee_bp.route("/creation_planning_pesee", methods=["GET", "POST"])
 @login_required

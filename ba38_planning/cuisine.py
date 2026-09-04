@@ -308,6 +308,39 @@ def maj_modele_planning_cuisine():
     )
 
 
+@planning_cuisine_bp.route("/apercu_modele_planning_cuisine")
+@login_required
+@require_access("planning", "lecture")
+def apercu_modele_planning_cuisine():
+    jours = ["lundi", "mardi", "mercredi", "jeudi", "vendredi"]
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    row = cursor.execute("""
+        SELECT param_value FROM parametres WHERE param_name = 'travail_vendredi'
+    """).fetchone()
+    travail_vendredi = row["param_value"].strip().lower() if row else "oui"
+
+    model = cursor.execute("SELECT * FROM planning_standard_cuisine_ids").fetchall()
+    model_par_jour_creneau = {(m["jour"], m["creneau"]): m for m in model}
+
+    benevoles = cursor.execute("SELECT id, nom || ' ' || prenom AS nom FROM benevoles").fetchall()
+    bene_dict = {b["id"]: b["nom"] for b in benevoles}
+
+    conn.close()
+
+    return render_template(
+        "planning/cuisine/apercu_modele_planning_cuisine.html",
+        model_par_jour_creneau=model_par_jour_creneau,
+        bene_dict=bene_dict,
+        jours=jours,
+        creneaux=CRENEAUX,
+        slots_par_creneau=SLOTS_PAR_CRENEAU,
+        travail_vendredi=travail_vendredi,
+    )
+
+
 @planning_cuisine_bp.route("/gestion_planning_cuisine", methods=["GET", "POST"])
 @login_required
 @require_access("planning", "ecriture")

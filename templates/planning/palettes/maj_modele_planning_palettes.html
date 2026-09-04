@@ -7,6 +7,12 @@
 {% block content %}
 <h2>🛠️ Mise à jour du modèle de planning palettes</h2>
 
+{% call action_buttons() %}
+    <a href="{{ url_for('planning_palettes.apercu_modele_planning_palettes') }}" target="_blank" class="btn btn-outline-dark">
+        🖨️ Aperçu du modèle (A3)
+    </a>
+{% endcall %}
+
 <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <div class="table-responsive">

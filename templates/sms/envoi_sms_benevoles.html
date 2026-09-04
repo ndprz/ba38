@@ -13,6 +13,7 @@
   {% call action_buttons() %}
     {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAideEnvoiSmsBenevoles')).show()", color="outline-info") }}
     {{ action_button("⚙️ Gérer les textes pré-enregistrés", href=url_for('sms.textes_predefinis_sms'), color="outline-secondary") }}
+    {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
     {{ action_button("↩️ Retour au planning", href=url_for('planning.planning_main'), color="outline-dark") }}
   {% endcall %}
 
