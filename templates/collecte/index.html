@@ -31,7 +31,7 @@
         </select>
     </div>
 
-    <h4 class="mt-4 mb-3">Collecte annuelle</h4>
+    <h4 class="mt-4 mb-3 pb-2 border-bottom">Collecte annuelle</h4>
 
     <div class="card mb-4">
         <div class="card-body">
@@ -62,39 +62,44 @@
 
     <div class="card mb-4">
         <div class="card-body">
-            <h5 class="card-title">🔗 Fichiers Google Drive {{ annee }}</h5>
+            <h5 class="card-title">🔗 Fichiers Google Drive {{ annee }} issus de GOW</h5>
             <p class="card-text text-muted small">
                 Coller les liens des fichiers Google Sheets issus de go-on-web et de la production.
                 Ils sont conservés avec la campagne {{ annee }}. Les fichiers doivent être partagés
                 en « Toute personne disposant du lien ».
             </p>
-            <form method="POST" action="{{ url_for('collecte.enregistrer_liens_drive') }}" class="row g-3 align-items-end">
+            <form method="POST" action="{{ url_for('collecte.enregistrer_liens_drive') }}" class="row align-items-end">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="annee" value="{{ annee }}">
-                <div class="col-md-4">
+                <div class="col-12 mb-4">
                     <label class="form-label">Liste des magasins</label>
                     <input type="text" name="magasins" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
                            value="{{ campagne.drive_magasins if campagne else '' }}">
                 </div>
-                <div class="col-md-4">
+                <div class="col-12 mb-4">
                     <label class="form-label">Liste des véhicules / planning</label>
                     <input type="text" name="vehicules" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
                            value="{{ campagne.drive_vehicules if campagne else '' }}">
                 </div>
-                <div class="col-md-4">
+                <div class="col-12 mb-4">
                     <label class="form-label">Historique cagettes</label>
                     <input type="text" name="cagettes" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
                            value="{{ campagne.drive_cagettes if campagne else '' }}">
                 </div>
-                <div class="col-md-4">
+                <div class="col-12 mb-4">
                     <label class="form-label">Liste des groupes (go-on-web)</label>
                     <input type="text" name="groupes" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/..."
                            value="{{ campagne.drive_groupes or '' if campagne and campagne.drive_groupes is defined else '' }}">
                 </div>
-                <div class="col-md-4">
+                <div class="col-12 mb-4">
                     <label class="form-label">Liste des participants (go-on-web)</label>
                     <input type="text" name="participants" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/..."
                            value="{{ campagne.drive_participants or '' if campagne and campagne.drive_participants is defined else '' }}">
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Liste des participants pour mailing</label>
+                    <input type="text" name="participants_mailing" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/..."
+                           value="{{ campagne.drive_participants_mailing or '' if campagne and campagne.drive_participants_mailing is defined else '' }}">
                 </div>
                 <div class="col-12">
                     <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
@@ -110,6 +115,7 @@
         {% if type_fichier not in ['magasins', 'groupes', 'participants'] %}
         <div class="col-md-6">
             <div class="card h-100 {% if le_champ %}border-success{% else %}border-warning{% endif %}">
+            <div class="card-body">
                     <h5 class="card-title">
                         {% if le_champ %}✅{% else %}⚠️{% endif %}
                         {{ conf.label }}
@@ -128,6 +134,7 @@
                     </form>
                 </div>
             </div>
+            </div>
         </div>
         {% endif %}
         {% endfor %}
@@ -135,7 +142,7 @@
 
     {% set prets = campagne and (campagne.fichier_magasins or campagne.drive_magasins) and campagne.fichier_pdf_precedent %}
 
-    <h4 class="mt-5 mb-3">Gestion tournées</h4>
+    <h4 class="mt-5 mb-3 pb-2 border-bottom">Gestion tournées</h4>
     <div class="border-start border-3 border-primary ps-3">
         <h5 class="mb-3">Simulation</h5>
         <div class="card mb-3 {% if not prets %}bg-light{% endif %}">
@@ -157,12 +164,31 @@
                 </div>
             </div>
         </div>
+        <h5 class="mt-4 mb-3">Production</h5>
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div><h5 class="card-title mb-1">🚛 Génération des documents définitifs</h5><p class="card-text small text-muted mb-0">Générer les documents définitifs depuis le planning go-on-web.</p></div>
+                {{ action_button("🚛 Générer documents", href=url_for('collecte.production', annee=annee), color="warning") }}
+            </div>
+        </div>
     </div>
 
-    <div class="card mt-4"><div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2"><div><h5 class="card-title mb-1">🚛 Production réelle</h5><p class="card-text small text-muted mb-0">Générer les documents définitifs depuis le planning go-on-web.</p></div>{{ action_button("🚛 Passer en réel", href=url_for('collecte.production', annee=annee), color="warning") }}</div></div>
-
-    <h4 class="mt-5 mb-3">Associations gardant</h4>
-    <div class="border-start border-3 border-warning ps-3"><div class="card"><div class="card-body"><p class="card-text small text-muted">Créer la liste, la contrôler, puis préparer et envoyer les messages.</p><div class="d-flex flex-wrap gap-2">{{ action_button("🏠 Créer la liste", href=url_for('collecte.gardee_excel', annee=annee), color="outline-primary") }}{{ action_button("⏸️ Vérifier la liste", href=url_for('collecte.gardee', annee=annee), color="outline-secondary") }}{{ action_button("📧 Préparer l'envoi", href=url_for('collecte.gardee_envoi', annee=annee), color="primary") }}</div><p class="small text-muted mt-2 mb-0">L’envoi des mails se fait ensuite sur l’écran de préparation, après confirmation.</p></div></div></div>
+    <h4 class="mt-5 mb-3 pb-2 border-bottom">Associations gardant</h4>
+    <div class="border-start border-3 border-primary ps-3">
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h5 class="card-title mb-1">🏠 Envoi fichiers réponse aux associations</h5>
+                    <p class="card-text small text-muted mb-0">Créer la liste, la contrôler, puis préparer et envoyer les messages.</p>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    {{ action_button("🏠 Créer la liste", href=url_for('collecte.gardee_excel', annee=annee), color="outline-primary") }}
+                    {{ action_button("⏸️ Vérifier la liste", href=url_for('collecte.gardee', annee=annee), color="outline-secondary") }}
+                    {{ action_button("📧 Préparer l'envoi", href=url_for('collecte.gardee_envoi', annee=annee), color="primary") }}
+                </div>
+            </div>
+        </div>
+    </div>
 
 </div>
 

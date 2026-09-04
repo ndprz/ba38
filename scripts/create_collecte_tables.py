@@ -36,6 +36,9 @@ def main():
         drive_magasins TEXT,
         drive_vehicules TEXT,
         drive_cagettes TEXT,
+        drive_groupes TEXT,
+        drive_participants TEXT,
+        drive_participants_mailing TEXT,
 
         date_creation TEXT,
         cree_par TEXT

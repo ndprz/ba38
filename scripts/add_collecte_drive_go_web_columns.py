@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ajoute les liens Drive des exports go-on-web groupes et participants."""
+"""Ajoute les liens Drive des exports groupes, participants et mailing."""
 import sqlite3
 import os
 import sys
@@ -12,7 +12,7 @@ from ba38_utilitaires.core import get_db_path
 def main():
     conn = sqlite3.connect(get_db_path())
     colonnes = {row[1] for row in conn.execute("PRAGMA table_info(collecte_campagnes)")}
-    for nom in ("drive_groupes", "drive_participants"):
+    for nom in ("drive_groupes", "drive_participants", "drive_participants_mailing"):
         if nom not in colonnes:
             conn.execute(f"ALTER TABLE collecte_campagnes ADD COLUMN {nom} TEXT")
             print(f"✅ Colonne {nom} ajoutée")

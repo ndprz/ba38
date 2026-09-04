@@ -161,6 +161,7 @@ DRIVE_CHAMPS = {
     "cagettes":  {"champ": "drive_cagettes",  "label": "Historique cagettes"},
     "groupes":   {"champ": "drive_groupes",   "label": "Liste des groupes"},
     "participants": {"champ": "drive_participants", "label": "Liste des participants"},
+    "participants_mailing": {"champ": "drive_participants_mailing", "label": "Liste des participants pour mailing"},
 }
 DRIVE_CHAMPS_PRODUCTION = {cle: DRIVE_CHAMPS[cle] for cle in ("magasins", "vehicules", "cagettes")}
 
@@ -686,19 +687,22 @@ def enregistrer_liens_drive():
         if existante:
             conn.execute(
                 "UPDATE collecte_campagnes SET drive_magasins = ?, drive_vehicules = ?, "
-                "drive_cagettes = ?, drive_groupes = ?, drive_participants = ? WHERE annee = ?",
+                 "drive_cagettes = ?, drive_groupes = ?, drive_participants = ?, "
+                 "drive_participants_mailing = ? WHERE annee = ?",
                 (valeurs["drive_magasins"], valeurs["drive_vehicules"], valeurs["drive_cagettes"],
-                 valeurs["drive_groupes"], valeurs["drive_participants"], annee)
+                  valeurs["drive_groupes"], valeurs["drive_participants"],
+                  valeurs["drive_participants_mailing"], annee)
             )
         else:
             maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             conn.execute("""
                 INSERT INTO collecte_campagnes
                     (annee, drive_magasins, drive_vehicules, drive_cagettes, drive_groupes,
-                     drive_participants, date_creation, cree_par)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (annee, valeurs["drive_magasins"], valeurs["drive_vehicules"], valeurs["drive_cagettes"],
-                  valeurs["drive_groupes"], valeurs["drive_participants"], maintenant, current_user.email))
+                                         drive_participants, drive_participants_mailing, date_creation, cree_par)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (annee, valeurs["drive_magasins"], valeurs["drive_vehicules"], valeurs["drive_cagettes"],
+                                    valeurs["drive_groupes"], valeurs["drive_participants"],
+                                    valeurs["drive_participants_mailing"], maintenant, current_user.email))
 
         conn.commit()
 
@@ -1989,6 +1993,7 @@ def gardee_envoi():
                 destinataires=destinataires,
                 texte=_texte_modele_gardee(asso, annee),
                 sender_override=os.getenv("MAILJET_SENDER"),
+                cc=["ba380.collecte@banquealimentaire.org"],
                 attachment_path=fichier_association,
                 attachment_paths=[fichier_pdf],
             )
