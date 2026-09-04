@@ -195,7 +195,9 @@ def _fichier_drive(annee, cle):
         return None
     dossier = _dossier_annee(annee)
     os.makedirs(dossier, exist_ok=True)
-    chemin = os.path.join(dossier, FICHIERS[cle]["nom_stockage"])
+    noms_stockage = {"vehicules": "liste_vehicules.xlsx"}
+    nom_stockage = FICHIERS.get(cle, {}).get("nom_stockage") or noms_stockage[cle]
+    chemin = os.path.join(dossier, nom_stockage)
     reponse = requests.get(url, timeout=30)
     reponse.raise_for_status()
     if not reponse.content.startswith(b"PK"):
@@ -203,6 +205,92 @@ def _fichier_drive(annee, cle):
     with open(chemin, "wb") as fichier:
         fichier.write(reponse.content)
     return chemin
+
+
+def _charger_affectations_chauffeurs_equipiers(annee):
+    """Construit les affectations par personne depuis le planning véhicules."""
+    chemin = _fichier_drive(annee, "vehicules")
+    if not chemin:
+        chemin = os.path.join(_dossier_annee(annee), "liste_vehicules.xlsx")
+    if not os.path.exists(chemin):
+        raise FileNotFoundError("Le fichier liste_vehicules.xlsx est introuvable")
+
+    df = pd.read_excel(chemin)
+    df.columns = [str(col).strip() for col in df.columns]
+    personnes_par_affectation = {}
+    affectations_par_personne = {}
+    personnes_sans_email = set()
+    jours = {"jeudi": "Jeudi", "vendredi": "Vendredi", "samedi": "Samedi", "dimanche": "Dimanche"}
+
+    for _, ligne in df.iterrows():
+        code = str(ligne.get("Code", "")).strip()
+        personne = str(ligne.get("Équipier", ligne.get("equipier", ""))).strip()
+        jour = jours.get(str(ligne.get("Tournée", "")).strip().lower())
+        debut = str(ligne.get("Début", "")).strip()
+        if not code or code == "nan" or not personne or personne == "nan" or not jour:
+            continue
+        match = re.match(r"(\d+)", debut)
+        periode = "Matin" if not match or int(match.group(1)) < 13 else "Après-midi"
+        demi_journee = f"{jour} {periode}"
+        email = str(ligne.get("Email", "")).strip().lower()
+        if email == "nan":
+            email = ""
+        role = "chauffeur" if personne.lower().startswith("chauffeur") else "équipier"
+        cle_personne = email or f"nom:{personne.lower()}"
+        affectation = {
+            "demi_journee": demi_journee,
+            "camion": code,
+            "nom_camion": str(ligne.get("Véhicule", "")).strip(),
+            "magasin": str(ligne.get("Magasin", "")).strip(),
+            "personne": personne,
+            "role": role,
+            "email": email,
+        }
+        affectations_par_personne.setdefault(cle_personne, {"nom": personne, "role": role, "email": email, "affectations": []})["affectations"].append(affectation)
+        personnes_par_affectation.setdefault((demi_journee, code), set()).add(personne)
+        if not email:
+            personnes_sans_email.add(personne)
+
+    destinataires = []
+    for personne in affectations_par_personne.values():
+        affectations_regroupees = {}
+        for affectation in personne["affectations"]:
+            cle_affectation = (affectation["demi_journee"], affectation["camion"], affectation["nom_camion"])
+            groupe = affectations_regroupees.setdefault(cle_affectation, {**affectation, "magasins": []})
+            if affectation["magasin"] and affectation["magasin"] != "nan" and affectation["magasin"] not in groupe["magasins"]:
+                groupe["magasins"].append(affectation["magasin"])
+
+        lignes_personne = []
+        for affectation in affectations_regroupees.values():
+            autres = sorted(personnes_par_affectation[(affectation["demi_journee"], affectation["camion"])] - {personne["nom"]})
+            lignes_personne.append({**affectation, "autres": autres})
+        lignes_personne.sort(key=lambda item: (item["demi_journee"], item["camion"]))
+        personne["affectations"] = lignes_personne
+        if personne["email"]:
+            destinataires.append(personne)
+
+    destinataires.sort(key=lambda personne: personne["nom"].lower())
+    return destinataires, sorted(personnes_sans_email, key=str.lower)
+
+
+def _corps_mail_affectations(personne):
+    lignes = [
+        f"Bonjour {personne['nom']},",
+        "",
+        "Voici la liste de vos tournées camions et les personnes affectées avec vous :",
+        "",
+    ]
+    for affectation in personne["affectations"]:
+        camion = affectation["camion"]
+        if affectation["nom_camion"] and affectation["nom_camion"] != "nan":
+            camion += f" - {affectation['nom_camion']}"
+        lignes.append(f"- {affectation['demi_journee']} : {camion}")
+        if affectation["magasins"]:
+            lignes.append(f"    Magasins : {', '.join(affectation['magasins'])}")
+        if affectation["autres"]:
+            lignes.append(f"  Avec : {', '.join(affectation['autres'])}")
+    lignes += ["", "Merci."]
+    return "\n".join(lignes)
 
 PRODUCTION_FICHIERS_SORTIE = {
     "excel":     {"nom": "Tournees_BAI38_{annee}_GOTW.xlsx", "label": "Classeur Excel (tournées + contrôles)"},
@@ -549,6 +637,53 @@ def collecte_main():
         derniere_generation=generations[0] if generations else None,
         nb_generations=len(generations),
         derniere_analyse=derniere_analyse,
+    )
+
+
+@collecte_bp.route("/collecte/chauffeurs_equipiers", methods=["GET", "POST"])
+@login_required
+@require_access("collecte", "lecture")
+def chauffeurs_equipiers():
+    annee = request.args.get("annee", type=int) or request.form.get("annee", type=int) or datetime.now().year
+    try:
+        destinataires, personnes_sans_email = _charger_affectations_chauffeurs_equipiers(annee)
+    except Exception as erreur:
+        flash(f"❌ Impossible de charger les affectations : {erreur}", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        if not destinataires:
+            flash("❌ Aucun chauffeur ou équipier avec une adresse email.", "danger")
+        elif action == "test":
+            email_test = request.form.get("test_destinataire", "")
+            exemple = next((personne for personne in destinataires if personne["email"] == email_test), destinataires[0])
+            adresse_test = getattr(current_user, "email", "") or ""
+            if not adresse_test:
+                flash("❌ Votre compte n’a pas d’adresse email pour le test.", "danger")
+            else:
+                envoyer_mail(
+                    f"[TEST] Affectations tournées {annee}",
+                    [adresse_test],
+                    _corps_mail_affectations(exemple),
+                    sender_override="ba380.directeur@banquealimentaire.org",
+                )
+                flash(f"✅ Mail de test envoyé à {adresse_test}.", "success")
+        elif action == "envoyer":
+            for personne in destinataires:
+                envoyer_mail(
+                    f"Vos affectations tournées {annee}",
+                    [personne["email"]],
+                    _corps_mail_affectations(personne),
+                    sender_override="ba380.directeur@banquealimentaire.org",
+                )
+            flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+
+    return render_template(
+        "collecte/chauffeurs_equipiers.html",
+        annee=annee,
+        destinataires=destinataires,
+        personnes_sans_email=personnes_sans_email,
     )
 
 

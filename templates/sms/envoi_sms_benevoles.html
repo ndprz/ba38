@@ -11,9 +11,48 @@
   {% include "sms/_banner_alerte.html" %}
 
   {% call action_buttons() %}
+    {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAideEnvoiSmsBenevoles')).show()", color="outline-info") }}
     {{ action_button("⚙️ Gérer les textes pré-enregistrés", href=url_for('sms.textes_predefinis_sms'), color="outline-secondary") }}
     {{ action_button("↩️ Retour au planning", href=url_for('planning.planning_main'), color="outline-dark") }}
   {% endcall %}
+
+  <!-- ===================================================== -->
+  <!-- MODALE AIDE -->
+  <!-- ===================================================== -->
+
+  <div class="modal fade" id="modalAideEnvoiSmsBenevoles" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+
+        <div class="modal-header">
+          <h5 class="modal-title">📄 Aide – Envoi de SMS bénévoles</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body" style="
+            max-height: 70vh;
+            overflow:auto;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        ">
+
+          {% include "docsHtml/Documentation_Utilisateur_Module_EnvoiSmsBenevoles_BA38.html" %}
+
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-outline-primary"
+                  onclick="printModal('modalAideEnvoiSmsBenevoles')">
+              🖨️ Imprimer
+          </button>
+          <button class="btn btn-secondary" data-bs-dismiss="modal">
+              Fermer
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
 
   <!-- 🔹 Filtres -->
   <form method="get" class="mb-4 border rounded p-3 bg-light">
