@@ -196,6 +196,14 @@ def favicon():
         mimetype='image/vnd.microsoft.icon'
     )
 
+@app.route('/sw_photo_benevole.js')
+def sw_photo_benevole():
+    return send_from_directory(
+        os.path.join(app.root_path, 'static/pwa'),
+        'sw_photo_benevole.js',
+        mimetype='application/javascript'
+    )
+
 @app.route("/__ping")
 def __ping():
     return "PING OK"
@@ -1691,7 +1699,7 @@ def test_email_api():
     api_key = os.getenv("MAILJET_API_KEY")
     api_secret = os.getenv("MAILJET_API_SECRET")
     sender = os.getenv("MAILJET_SENDER")
-    destinataire = sender
+    destinataire = os.getenv("MAIL_TEST_TO") or sender
 
     write_log("📤 Test API Mailjet — Début")
     write_log(f"MAILJET_SENDER = {sender}")

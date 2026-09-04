@@ -9,18 +9,71 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-custom.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">
 
+  <!-- PWA : installation sur l'écran d'accueil -->
+  <link rel="manifest" href="{{ url_for('static', filename='pwa/manifest_photo_benevole.json') }}">
+  <meta name="theme-color" content="#f27830">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/icon-192.png') }}">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Photo Bénévole">
+
 </head>
 
 <body>
   <div class="container">
     <h3 class="text-center mb-4">📸 Photo bénévole</h3>
 
-    <div class="d-flex justify-content-center mb-3">
+    <div class="d-flex justify-content-center gap-2 mb-3">
       <button class="btn btn-outline-info btn-sm"
               type="button"
               onclick="new bootstrap.Modal(document.getElementById('modalAidePhotoBenevoleMobile')).show()">
         ❓ Aide
       </button>
+      <button class="btn btn-outline-secondary btn-sm"
+              type="button"
+              onclick="new bootstrap.Modal(document.getElementById('modalInstallerAppPhotoBenevole')).show()">
+        📲 Installer sur mon téléphone
+      </button>
+    </div>
+
+    <!-- ===================================================== -->
+    <!-- MODALE INSTALLATION (PWA + QR code) -->
+    <!-- ===================================================== -->
+
+    <div class="modal fade" id="modalInstallerAppPhotoBenevole" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+
+          <div class="modal-header">
+            <h5 class="modal-title">📲 Installer l'application</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+
+          <div class="modal-body text-center" style="font-size: 0.9rem; line-height: 1.4;">
+            <p>Scannez ce QR code avec l'appareil photo de votre téléphone pour ouvrir cette page :</p>
+            <img src="data:image/png;base64,{{ qr_code_b64 }}" alt="QR code" style="max-width: 220px;">
+
+            <div class="text-start mt-3">
+              <p class="mb-1"><strong>📱 Android (Chrome) :</strong> après connexion, appuyez sur le menu ⋮ puis
+                <em>« Installer l'application »</em> (ou suivez le bandeau proposé automatiquement).</p>
+              <p class="mb-0"><strong>🍎 iPhone (Safari) :</strong> après connexion, appuyez sur le bouton
+                <em>Partager</em> (carré avec flèche), puis <em>« Sur l'écran d'accueil »</em>.</p>
+            </div>
+
+            <p class="text-muted mt-3 mb-0" style="font-size: 0.85em;">
+              Une connexion avec un compte autorisé reste nécessaire : l'installation crée juste un raccourci,
+              elle ne dispense pas de se connecter.
+            </p>
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn btn-secondary" data-bs-dismiss="modal">
+                Fermer
+            </button>
+          </div>
+
+        </div>
+      </div>
     </div>
 
     <!-- ===================================================== -->
@@ -188,12 +241,19 @@
 
   </script>
 
+  <!-- Enregistrement du service worker (installation PWA) -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register("{{ url_for('sw_photo_benevole') }}");
+    }
+  </script>
+
   <!-- Script d’aperçu -->
   <script>
     const fileInput = document.getElementById('hiddenInput');
     const previewImg = document.getElementById('preview');
 
-    fileInput.addEventListener('change', () => {
+    fileInput?.addEventListener('change', () => {
       const file = fileInput.files[0];
       if (file && file.type.startsWith("image/")) {
         const reader = new FileReader();

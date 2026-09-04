@@ -1,8 +1,12 @@
+import base64
+import io
 import json
 import os
 import re
 import sqlite3
 import unicodedata
+
+import qrcode
 
 
 from flask import Blueprint, render_template, render_template_string, request, redirect, url_for, flash, session, jsonify, current_app, abort, send_from_directory
@@ -1441,7 +1445,27 @@ def photo_benevole_mobile():
                 flash("❌ Bénévole introuvable", "danger")
 
     conn.close()
-    return render_template("benevoles/photo_benevole_mobile.html", benevole=benevole, benevoles=tous_les_benevoles, selected_id=selected_id)
+
+    qr_obj = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_Q,
+        box_size=10,
+        border=4,
+    )
+    qr_obj.add_data(url_for("benevoles.photo_benevole_mobile", _external=True))
+    qr_obj.make(fit=True)
+    img = qr_obj.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    qr_code_b64 = base64.b64encode(buf.getvalue()).decode()
+
+    return render_template(
+        "benevoles/photo_benevole_mobile.html",
+        benevole=benevole,
+        benevoles=tous_les_benevoles,
+        selected_id=selected_id,
+        qr_code_b64=qr_code_b64,
+    )
 
 
 @benevoles_bp.route('/photos_benevoles/<filename>')
