@@ -7,7 +7,7 @@
 {% block content %}
 <div class="container mt-4" style="max-width:900px;">
 
-    <h2>🧺 Collecte annuelle {{ annee }}</h2>
+    <h2>🧺 Collecte annuelle</h2>
 
     <button class="btn btn-outline-info mb-3"
             type="button"
@@ -31,13 +31,13 @@
         </select>
     </div>
 
-    <button class="btn btn-outline-secondary w-100 text-start mb-3"
+    <button class="btn btn-outline-secondary mx-auto d-block text-start mb-3" style="width: 675px; max-width: 75%;"
             type="button"
             data-bs-toggle="collapse"
             data-bs-target="#sectionCollecteAnnuelle"
             aria-expanded="false"
             aria-controls="sectionCollecteAnnuelle">
-        📁 Collecte annuelle
+        📁 Paramètres de la collecte annuelle
     </button>
     <div id="sectionCollecteAnnuelle" class="collapse">
 
@@ -70,7 +70,7 @@
 
     <div class="card mb-4">
         <div class="card-header p-0">
-            <button class="btn btn-outline-secondary w-100 text-start rounded-0"
+            <button class="btn btn-outline-secondary mx-auto d-block text-start rounded-0" style="width: 675px; max-width: 75%;"
                     type="button"
                     data-bs-toggle="collapse"
                     data-bs-target=".parametresDrive"
@@ -164,7 +164,7 @@
 
     {% set prets = campagne and (campagne.fichier_magasins or campagne.drive_magasins) and campagne.fichier_pdf_precedent %}
 
-    <button class="btn btn-outline-secondary w-100 text-start mb-3 mt-4"
+    <button class="btn btn-outline-secondary mx-auto d-block text-start mb-3 mt-4" style="width: 675px; max-width: 75%;"
             type="button"
             data-bs-toggle="collapse"
             data-bs-target="#sectionGestionTournees"
@@ -173,7 +173,7 @@
         📁 Gestion tournées
     </button>
     <div id="sectionGestionTournees" class="collapse">
-    <div class="border-start border-3 border-primary ps-3">
+    <div class="border-start border-3 border-primary ps-3 mx-auto" style="width: 675px; max-width: 75%;">
         <h5 class="mb-3">Simulation</h5>
         <div class="card mb-3 {% if not prets %}bg-light{% endif %}">
             <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -214,7 +214,7 @@
 
     </div>
 
-    <button class="btn btn-outline-secondary w-100 text-start mb-3 mt-4"
+    <button class="btn btn-outline-secondary mx-auto d-block text-start mb-3 mt-4" style="width: 675px; max-width: 75%;"
             type="button"
             data-bs-toggle="collapse"
             data-bs-target="#sectionAssociationsGardant"
@@ -223,7 +223,7 @@
         📁 Associations gardant
     </button>
     <div id="sectionAssociationsGardant" class="collapse">
-    <div class="border-start border-3 border-primary ps-3">
+    <div class="border-start border-3 border-primary ps-3 mx-auto" style="width: 675px; max-width: 75%;">
         <div class="card mb-3">
             <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div>
