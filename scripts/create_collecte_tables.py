@@ -40,6 +40,9 @@ def main():
         drive_participants TEXT,
         drive_participants_mailing TEXT,
 
+        mail_debut TEXT,
+        mail_fin TEXT,
+
         date_creation TEXT,
         cree_par TEXT
     );

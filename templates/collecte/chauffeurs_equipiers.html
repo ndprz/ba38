@@ -13,8 +13,8 @@
     {% endcall %}
 
     <p class="text-muted">
-        Un mail personnalisé sera préparé pour chaque personne, avec ses affectations par demi-journée,
-        le camion et les autres personnes de la tournée.
+        Le début et la fin sont personnalisables ci-dessous. La partie centrale avec les affectations
+        par demi-journée, les camions et les autres personnes est générée automatiquement.
     </p>
 
     {% if personnes_sans_email %}
@@ -25,6 +25,21 @@
     {% endif %}
 
     {% if destinataires %}
+    <form method="post" action="{{ url_for('collecte.enregistrer_contenu_mail_chauffeurs_equipiers') }}" class="border rounded p-3 mb-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+        <div class="mb-3">
+            <label for="mail_debut" class="form-label"><strong>Début du mail</strong></label>
+            <textarea name="mail_debut" id="mail_debut" class="form-control" rows="4">{{ mail_debut }}</textarea>
+            <small class="text-muted">Vous pouvez utiliser <code>&lt;&lt;nom&gt;&gt;</code>.</small>
+        </div>
+        <div class="mb-3">
+            <label for="mail_fin" class="form-label"><strong>Fin du mail</strong></label>
+            <textarea name="mail_fin" id="mail_fin" class="form-control" rows="3">{{ mail_fin }}</textarea>
+        </div>
+        <button type="submit" class="btn btn-outline-primary">💾 Enregistrer le texte</button>
+    </form>
+
     <form method="post" class="mb-4 d-flex flex-wrap gap-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="annee" value="{{ annee }}">

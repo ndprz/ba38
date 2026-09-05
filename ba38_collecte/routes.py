@@ -121,6 +121,13 @@ FICHIERS = {
 }
 
 
+MAIL_DEBUT_DEFAUT = (
+    "Bonjour <<nom>>,\n\n"
+    "Voici la liste de vos tournées camions et les personnes affectées avec vous :"
+)
+MAIL_FIN_DEFAUT = "Merci."
+
+
 def _dossier_annee(annee):
     return os.path.join(current_app.root_path, "uploads", "collecte", str(annee))
 
@@ -273,13 +280,21 @@ def _charger_affectations_chauffeurs_equipiers(annee):
     return destinataires, sorted(personnes_sans_email, key=str.lower)
 
 
-def _corps_mail_affectations(personne):
-    lignes = [
-        f"Bonjour {personne['nom']},",
-        "",
-        "Voici la liste de vos tournées camions et les personnes affectées avec vous :",
-        "",
-    ]
+def _contenu_mail_affectations(annee):
+    with get_db_connection() as conn:
+        ligne = conn.execute(
+            "SELECT mail_debut, mail_fin FROM collecte_campagnes WHERE annee = ?",
+            (annee,),
+        ).fetchone()
+    debut = ligne["mail_debut"] if ligne and ligne["mail_debut"] else MAIL_DEBUT_DEFAUT
+    fin = ligne["mail_fin"] if ligne and ligne["mail_fin"] else MAIL_FIN_DEFAUT
+    return debut, fin
+
+
+def _corps_mail_affectations(personne, debut=MAIL_DEBUT_DEFAUT, fin=MAIL_FIN_DEFAUT):
+    debut = debut.replace("<<nom>>", personne["nom"]).strip()
+    fin = fin.replace("<<nom>>", personne["nom"]).strip()
+    lignes = [debut, ""]
     for affectation in personne["affectations"]:
         camion = affectation["camion"]
         if affectation["nom_camion"] and affectation["nom_camion"] != "nan":
@@ -289,7 +304,8 @@ def _corps_mail_affectations(personne):
             lignes.append(f"    Magasins : {', '.join(affectation['magasins'])}")
         if affectation["autres"]:
             lignes.append(f"  Avec : {', '.join(affectation['autres'])}")
-    lignes += ["", "Merci."]
+    if fin:
+        lignes += ["", fin]
     return "\n".join(lignes)
 
 PRODUCTION_FICHIERS_SORTIE = {
@@ -647,6 +663,7 @@ def chauffeurs_equipiers():
     annee = request.args.get("annee", type=int) or request.form.get("annee", type=int) or datetime.now().year
     try:
         destinataires, personnes_sans_email = _charger_affectations_chauffeurs_equipiers(annee)
+        mail_debut, mail_fin = _contenu_mail_affectations(annee)
     except Exception as erreur:
         flash(f"❌ Impossible de charger les affectations : {erreur}", "danger")
         return redirect(url_for("collecte.collecte_main", annee=annee))
@@ -665,7 +682,7 @@ def chauffeurs_equipiers():
                 envoyer_mail(
                     f"[TEST] Affectations tournées {annee}",
                     [adresse_test],
-                    _corps_mail_affectations(exemple),
+                    _corps_mail_affectations(exemple, mail_debut, mail_fin),
                     sender_override="ba380.directeur@banquealimentaire.org",
                 )
                 flash(f"✅ Mail de test envoyé à {adresse_test}.", "success")
@@ -674,7 +691,7 @@ def chauffeurs_equipiers():
                 envoyer_mail(
                     f"Vos affectations tournées {annee}",
                     [personne["email"]],
-                    _corps_mail_affectations(personne),
+                    _corps_mail_affectations(personne, mail_debut, mail_fin),
                     sender_override="ba380.directeur@banquealimentaire.org",
                 )
             flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
@@ -684,7 +701,27 @@ def chauffeurs_equipiers():
         annee=annee,
         destinataires=destinataires,
         personnes_sans_email=personnes_sans_email,
+        mail_debut=mail_debut,
+        mail_fin=mail_fin,
     )
+
+
+@collecte_bp.route("/collecte/chauffeurs_equipiers/contenu-mail", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_contenu_mail_chauffeurs_equipiers():
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    debut = request.form.get("mail_debut", "").strip()
+    fin = request.form.get("mail_fin", "").strip()
+    with get_db_connection() as conn:
+        conn.execute(
+            """UPDATE collecte_campagnes
+               SET mail_debut = ?, mail_fin = ?
+               WHERE annee = ?""",
+            (debut, fin, annee),
+        )
+    flash("✅ Début et fin du mail enregistrés.", "success")
+    return redirect(url_for("collecte.chauffeurs_equipiers", annee=annee))
 
 
 @collecte_bp.route("/collecte/upload/<type_fichier>", methods=["POST"])
@@ -2110,6 +2147,9 @@ def gardee_envoi():
             if not associations_a_traiter:
                 flash("❌ Sélectionnez une association pour le test", "danger")
                 return redirect(url_for("collecte.gardee_envoi", annee=annee))
+        if mode_test and not getattr(current_user, "email", ""):
+            flash("❌ Votre compte n’a pas d’adresse email pour le test", "danger")
+            return redirect(url_for("collecte.gardee_envoi", annee=annee))
         envoyes = 0
         sans_email = []
         for asso in associations_a_traiter:
@@ -2122,7 +2162,7 @@ def gardee_envoi():
             fichier_pdf = os.path.splitext(fichier_association)[0] + ".pdf"
             if not os.path.exists(fichier_pdf):
                 fichier_pdf = _creer_pdf_association(fichier_association, asso, annee, dossier)
-            destinataires = [os.getenv("MAIL_TEST_TO") or current_user.email] if mode_test else asso["emails"]
+            destinataires = [current_user.email] if mode_test else asso["emails"]
             envoyer_mail(
                 sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — {asso['nom']}",
                 destinataires=destinataires,
