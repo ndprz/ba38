@@ -214,6 +214,15 @@ def _fichier_drive(annee, cle):
     return chemin
 
 
+def _est_camion_reel(code):
+    """Un camion réel a un code 'Vxxx' inférieur à V090 — à partir de V090 ce
+    sont des lignes go-on-web pour le staffing de l'entrepôt BAI (ex. V090 =
+    'BAI Entrepot', magasin vide), pas des camions qui collectent réellement
+    des magasins."""
+    match = re.match(r"^V(\d+)$", code, re.IGNORECASE)
+    return bool(match) and int(match.group(1)) < 90
+
+
 def _charger_affectations_chauffeurs_equipiers(annee):
     """Construit les affectations par personne depuis le planning véhicules."""
     chemin = _fichier_drive(annee, "vehicules")
@@ -235,6 +244,8 @@ def _charger_affectations_chauffeurs_equipiers(annee):
         jour = jours.get(str(ligne.get("Tournée", "")).strip().lower())
         debut = str(ligne.get("Début", "")).strip()
         if not code or code == "nan" or not personne or personne == "nan" or not jour:
+            continue
+        if not _est_camion_reel(code):
             continue
         match = re.match(r"(\d+)", debut)
         periode = "Matin" if not match or int(match.group(1)) < 13 else "Après-midi"
@@ -1703,42 +1714,137 @@ def _lire_participants(annee):
 
 
 def _normaliser_nom_association(s):
+    """Normalise un nom d'association pour comparaison robuste : casse,
+    accents (ex. 'Côte' == 'Cote'), ponctuation, mots de liaison 'du'/'de'
+    (ex. 'CCAS du Val de Virieu' == 'CCAS VAL DE VIRIEU'), et abréviations
+    connues utilisées tantôt côté go-on-web tantôt côté base associations
+    ('CR' / 'Croix Rouge', 'CS' / 'Centre Social', 'Entraide' / 'entr.')."""
+    import unicodedata
     s = str(s or "").strip().lower()
-    return re.sub(r"\s+", " ", s)
+    s = "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+    s = s.replace(".", " ")
+    s = re.sub(r"\s+", " ", s).strip()
+    s = re.sub(r"^cr\b", "croix rouge", s)
+    s = re.sub(r"^cs\b", "centre social", s)
+    s = re.sub(r"\bentraide\b", "entr", s)
+    s = re.sub(r"\b(du|de)\b", "", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+# Libellés go-on-web trop différents de la base associations pour être
+# rapprochés par la seule normalisation générique ci-dessus : on indique
+# explicitement quel nom chercher à la place (clés/valeurs en clair,
+# normalisées comme le reste au chargement — voir _code_vif_association).
+#   - ASAT : le libellé go-on-web ajoute un descriptif complet après le
+#     sigle, alors que la base ne connaît que le sigle seul ('ASAT
+#     Distribution').
+#   - CR Villefontaine (Bourgoin) : même association que 'CR Bourgoin',
+#     juste une autre façon de la nommer côté go-on-web.
+ALIAS_NOM_ASSOCIATION_BRUT = {
+    "ASAT Association Solidaire Active De Tignieu": "ASAT",
+    "CR Villefontaine (Bourgoin)": "CR Bourgoin",
+}
+ALIAS_NOM_ASSOCIATION = {
+    _normaliser_nom_association(k): _normaliser_nom_association(v)
+    for k, v in ALIAS_NOM_ASSOCIATION_BRUT.items()
+}
+
+
+def _cle_recherche_association(nom_asso):
+    """Clé de recherche normalisée pour retrouver une association — alias
+    explicites compris (voir ALIAS_NOM_ASSOCIATION). Utilisée à la fois pour
+    le rapprochement avec liste_groupes.xlsx et pour le Code VIF (base
+    associations), afin que les deux profitent des mêmes alias."""
+    cle = _normaliser_nom_association(nom_asso)
+    return ALIAS_NOM_ASSOCIATION.get(cle, cle)
+
+
+def _ensure_table_code_vif_overrides(conn):
+    """Table des corrections manuelles de Code VIF propres à la liste
+    'Associations gardant' — n'affecte jamais code_VIF dans la table
+    associations (partagée avec indicateurs, cotisations, etc.), seulement
+    ce que cette liste affiche/exporte."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_gardee_code_vif_overrides (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom_normalise TEXT NOT NULL UNIQUE,
+            nom_association TEXT NOT NULL,
+            code_vif TEXT NOT NULL,
+            defini_par TEXT,
+            defini_le TEXT
+        )
+    """)
 
 
 def _table_code_vif_associations():
-    """Charge {nom normalisé: [(id, code_VIF), ...]} depuis la table
-    associations, pour retrouver le Code VIF d'une association gardant sa
-    collecte à partir de son libellé (voir _code_vif_association)."""
+    """Charge depuis la table associations (+ les corrections manuelles
+    propres à cette liste) de quoi retrouver le Code VIF d'une association
+    gardant sa collecte à partir de son libellé (voir _code_vif_association) :
+    - 'overrides' : {nom normalisé: code_VIF forcé manuellement} ;
+    - 'exact' : {nom normalisé: [(id, code_VIF), ...]} ;
+    - 'liste' : [(nom normalisé, id, code_VIF), ...] triée par nom, pour le
+      repli par préfixe (ex. 'Trois Robert' → une seule antenne par jour de
+      passage, ex. '3 ABI Lundi' / 'Mardi' / 'Mercredi' dans la base — on
+      prend alors la première par ordre alphabétique)."""
     with get_db_connection() as conn:
+        _ensure_table_code_vif_overrides(conn)
+        conn.commit()
         rows = conn.execute(
             "SELECT id, nom_association, code_VIF FROM associations"
         ).fetchall()
-    index = {}
+        overrides_rows = conn.execute(
+            "SELECT nom_normalise, code_vif FROM collecte_gardee_code_vif_overrides"
+        ).fetchall()
+    exact = {}
+    liste = []
     for r in rows:
         cle = _normaliser_nom_association(r["nom_association"])
         if not cle:
             continue
-        index.setdefault(cle, []).append((r["id"], r["code_VIF"]))
-    return index
+        exact.setdefault(cle, []).append((r["id"], r["code_VIF"]))
+        liste.append((cle, r["id"], r["code_VIF"]))
+    liste.sort(key=lambda t: t[0])
+    overrides = {r["nom_normalise"]: r["code_vif"] for r in overrides_rows}
+    return {"exact": exact, "liste": liste, "overrides": overrides}
 
 
 def _code_vif_association(nom_asso, index):
     """Retrouve le Code VIF d'une association « gardant » sa collecte en
     cherchant son libellé (colonne 'Gardée par' / liste_groupes.xlsx) dans la
     base associations (nom_association). Renvoie (code_vif, écart) — écart
-    non vide si le nom est introuvable, ambigu, ou sans Code VIF renseigné,
-    pour signaler les cas à corriger manuellement."""
-    correspondances = index.get(_normaliser_nom_association(nom_asso), [])
+    non vide si le nom est introuvable ou sans Code VIF renseigné, pour
+    signaler les cas à corriger manuellement.
+
+    Si le nom exact n'existe pas mais que la base contient plusieurs
+    antennes déclinées par jour de passage (ex. '3 ABI Lundi', '3 ABI
+    Mardi', '3 ABI Mercredi' pour '3 ABI'), on prend la première par ordre
+    alphabétique plutôt que de signaler un écart.
+
+    Une correction manuelle (voir _ensure_table_code_vif_overrides), propre
+    à cette liste et sans effet sur la base associations, est toujours
+    prioritaire — renvoie alors (code_vif, "", True) au lieu de (code_vif,
+    écart)."""
+    cle = _cle_recherche_association(nom_asso)
+
+    if cle in index["overrides"]:
+        return index["overrides"][cle], "", True
+
+    correspondances = index["exact"].get(cle, [])
+
     if not correspondances:
-        return "", "⚠️ Association introuvable dans la base (nom à vérifier)"
+        prefixe = cle + " "
+        correspondances = [
+            (id_, code) for c, id_, code in index["liste"] if c.startswith(prefixe)
+        ][:1]
+
+    if not correspondances:
+        return "", "⚠️ Association introuvable dans la base (nom à vérifier)", False
     if len(correspondances) > 1:
-        return "", "⚠️ Plusieurs associations portent ce nom dans la base — à vérifier manuellement"
+        return "", "⚠️ Plusieurs associations portent ce nom dans la base — à vérifier manuellement", False
     code_vif = correspondances[0][1]
     if not code_vif:
-        return "", "⚠️ Code VIF non renseigné pour cette association"
-    return code_vif, ""
+        return "", "⚠️ Code VIF non renseigné pour cette association", False
+    return code_vif, "", False
 
 
 def _referents_association(nom_asso, df_participants):
@@ -1835,7 +1941,7 @@ def _creer_fichier_association(asso, annee, dossier):
 
     chemin = os.path.join(dossier, _nom_fichier_association(asso["nom"], annee))
     wb = load_workbook(source)
-    code = ""
+    code = asso.get("code_vif") or ""
     date_collecte = _date_collecte(annee)
     for ws in wb.worksheets:
         for row in ws.iter_rows():
@@ -1897,7 +2003,9 @@ def _creer_pdf_association(fichier_excel, asso, annee, dossier):
         pdf.drawString(24 * mm, y - 8 * mm, _date_collecte(annee))
         pdf.drawString(105 * mm, y - 8 * mm, titre)
         pdf.line(24 * mm, y - 11 * mm, 175 * mm, y - 11 * mm)
-        pdf.drawString(24 * mm, y - 19 * mm, asso["nom"])
+        code_vif = asso.get("code_vif") or ""
+        nom_asso = asso["nom"] + (f" (code {code_vif})" if code_vif else "")
+        pdf.drawString(24 * mm, y - 19 * mm, nom_asso)
         return y - 25 * mm
 
     def grille(lignes, largeurs, x, y, hauteur, gras_premiere=False):
@@ -1943,7 +2051,7 @@ def _texte_modele_gardee(asso, annee):
     for paragraphe in document.paragraphs:
         texte = paragraphe.text
         texte = texte.replace("àassociation", asso["nom"])
-        texte = texte.replace("àcode", "")
+        texte = texte.replace("àcode", asso.get("code_vif") or "")
         texte = texte.replace("àdatecollecte", _date_collecte(annee))
         texte = texte.replace("àLISTE_MAGASINS", magasins)
         texte = texte.replace("àresponsable collecte", "Responsable collecte de la BA38")
@@ -1966,11 +2074,21 @@ def _construire_associations(df_mag, df_groupes):
 
     groupes_par_nom = {}
     groupes_par_nom_lower = {}
+    groupes_par_nom_norm = {}
     if not df_groupes.empty and "Nom" in df_groupes.columns:
         for _, g in df_groupes.iterrows():
-            nom = str(g.get("Nom", "")).strip()
+            # Certaines associations sont enregistrées dans liste_groupes.xlsx
+            # avec le préfixe 'BAI+' collé au nom (ex. 'BAI+CCAS DOMENE') —
+            # même normalisation que pour 'Gardée par' pour que la
+            # correspondance fonctionne malgré ce préfixe.
+            nom = _normaliser_gardee_par(g.get("Nom", ""))
             groupes_par_nom[nom] = g
             groupes_par_nom_lower[nom.lower()] = g
+            # Repli supplémentaire (casse/accents/abréviations/alias — voir
+            # _cle_recherche_association) pour les libellés trop différents
+            # même après le nettoyage 'BAI+' ci-dessus (ex. 'ASAT Association
+            # Solidaire Active De Tignieu' côté magasins vs 'ASAT' seul ici).
+            groupes_par_nom_norm[_normaliser_nom_association(nom)] = g
 
     lignes_par_asso = {}
     for idx, row in df_mag.iterrows():
@@ -1986,6 +2104,8 @@ def _construire_associations(df_mag, df_groupes):
     for nom_asso in sorted(lignes_par_asso.keys(), key=str.lower):
         magasins_grp = df_mag.loc[lignes_par_asso[nom_asso]]
         grp = groupes_par_nom.get(nom_asso)
+        if grp is None:
+            grp = groupes_par_nom_norm.get(_cle_recherche_association(nom_asso))
         associations.append({
             "nom": nom_asso,
             "type": _valeur_propre(grp.get("Type")) if grp is not None else "",
@@ -2022,8 +2142,10 @@ def gardee():
     if not manquants:
         associations, sans_association = _construire_associations(df_mag, df_groupes)
         df_participants = _lire_participants(annee)
+        index_code_vif = _table_code_vif_associations()
         for asso in associations:
             asso["referents"] = _referents_association(asso["nom"], df_participants)
+            asso["code_vif"], asso["ecart_code_vif"], asso["code_vif_force"] = _code_vif_association(asso["nom"], index_code_vif)
 
     return render_template(
         "collecte/gardee.html",
@@ -2036,6 +2158,46 @@ def gardee():
             os.path.join(_dossier_annee(annee), f"associations_gardant_{annee}.xlsx")
         ),
     )
+
+
+@collecte_bp.route("/collecte/gardee/code_vif_override", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def gardee_code_vif_override():
+    """Force (ou efface) le Code VIF utilisé pour une association dans la
+    liste 'Associations gardant' uniquement — n'écrit jamais dans la table
+    associations (partagée avec indicateurs, cotisations, etc.), voir
+    _ensure_table_code_vif_overrides."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    nom_association = (request.form.get("nom_association") or "").strip()
+    code_vif = "" if request.form.get("reset") else (request.form.get("code_vif") or "").strip()
+    cle = _cle_recherche_association(nom_association)
+
+    with get_db_connection() as conn:
+        _ensure_table_code_vif_overrides(conn)
+        if code_vif:
+            conn.execute("""
+                INSERT INTO collecte_gardee_code_vif_overrides
+                    (nom_normalise, nom_association, code_vif, defini_par, defini_le)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(nom_normalise) DO UPDATE SET
+                    code_vif = excluded.code_vif,
+                    nom_association = excluded.nom_association,
+                    defini_par = excluded.defini_par,
+                    defini_le = excluded.defini_le
+            """, (cle, nom_association, code_vif, current_user.email, datetime.now().strftime("%Y-%m-%d %H:%M")))
+            conn.commit()
+            flash(f"✅ Code VIF forcé pour « {nom_association} » : {code_vif} (liste Associations gardant uniquement)", "success")
+            write_log(f"✏️ Code VIF gardant forcé : {nom_association!r} -> {code_vif!r} par {current_user.email}")
+        else:
+            conn.execute(
+                "DELETE FROM collecte_gardee_code_vif_overrides WHERE nom_normalise = ?", (cle,)
+            )
+            conn.commit()
+            flash(f"↩️ Code VIF automatique rétabli pour « {nom_association} »", "success")
+            write_log(f"↩️ Code VIF gardant : correction manuelle effacée pour {nom_association!r} par {current_user.email}")
+
+    return redirect(url_for("collecte.gardee", annee=annee))
 
 
 @collecte_bp.route("/collecte/gardee/excel")
@@ -2059,7 +2221,7 @@ def gardee_excel():
     index_code_vif = _table_code_vif_associations()
     for asso in associations:
         asso["referents"] = _referents_association(asso["nom"], df_participants)
-        asso["code_vif"], asso["ecart_code_vif"] = _code_vif_association(asso["nom"], index_code_vif)
+        asso["code_vif"], asso["ecart_code_vif"], asso["code_vif_force"] = _code_vif_association(asso["nom"], index_code_vif)
 
     def _fmt_referents(referents):
         return " ; ".join(
@@ -2170,9 +2332,11 @@ def gardee_envoi():
     if "Code VIF" in df_mag.columns:
         df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
     associations, _ = _construire_associations(df_mag, df_groupes)
+    index_code_vif = _table_code_vif_associations()
     for asso in associations:
         asso["referents"] = _referents_association(asso["nom"], df_participants)
         asso["emails"] = sorted({r["email"] for r in asso["referents"] if "@" in r["email"]})
+        asso["code_vif"], asso["ecart_code_vif"], asso["code_vif_force"] = _code_vif_association(asso["nom"], index_code_vif)
 
     if request.method == "POST":
         if request.form.get("confirmation") != "oui":

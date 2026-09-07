@@ -64,7 +64,14 @@
                     <span class="badge bg-secondary me-2">{{ asso.magasins|length }} magasin(s)</span>
                     {% if asso.type %}<span class="badge bg-light text-dark border me-2">{{ asso.type }}</span>{% endif %}
                     {% if asso.membre_bai %}<span class="badge bg-info-subtle text-dark me-2">Membre BAI</span>{% endif %}
-                    {% if not asso.trouvee %}<span class="badge bg-warning text-dark">⚠️ absente de liste_groupes.xlsx</span>{% endif %}
+                    {% if not asso.trouvee %}<span class="badge bg-warning text-dark me-2">⚠️ absente de liste_groupes.xlsx</span>{% endif %}
+                    {% if asso.code_vif %}
+                    <span class="badge {% if asso.code_vif_force %}bg-primary{% else %}bg-light text-dark border{% endif %} me-2">
+                        Code VIF {{ asso.code_vif }}{% if asso.code_vif_force %} (forcé){% endif %}
+                    </span>
+                    {% elif asso.ecart_code_vif %}
+                    <span class="badge bg-warning text-dark">{{ asso.ecart_code_vif }}</span>
+                    {% endif %}
                 </button>
             </h2>
             <div id="asso-{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#accordionAssociations">
@@ -75,6 +82,22 @@
                         — <a href="{{ asso.fiche_groupe }}" target="_blank">Fiche groupe go-on-web</a>
                         {% endif %}
                     </p>
+
+                    <form method="POST" action="{{ url_for('collecte.gardee_code_vif_override') }}"
+                          class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="annee" value="{{ annee }}">
+                        <input type="hidden" name="nom_association" value="{{ asso.nom }}">
+                        <label class="small text-muted mb-0">Code VIF (Associations gardant uniquement) :</label>
+                        <input type="text" name="code_vif" value="{{ asso.code_vif }}"
+                               class="form-control form-control-sm" style="max-width:140px;">
+                        <button type="submit" class="btn btn-sm btn-outline-primary">Enregistrer</button>
+                        {% if asso.code_vif_force %}
+                        <button type="submit" name="reset" value="1" class="btn btn-sm btn-outline-secondary">
+                            ↩️ Rétablir automatique
+                        </button>
+                        {% endif %}
+                    </form>
 
                     {% if asso.referents %}
                     <ul class="list-unstyled small mb-3">
