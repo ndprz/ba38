@@ -1702,6 +1702,45 @@ def _lire_participants(annee):
     return df
 
 
+def _normaliser_nom_association(s):
+    s = str(s or "").strip().lower()
+    return re.sub(r"\s+", " ", s)
+
+
+def _table_code_vif_associations():
+    """Charge {nom normalisé: [(id, code_VIF), ...]} depuis la table
+    associations, pour retrouver le Code VIF d'une association gardant sa
+    collecte à partir de son libellé (voir _code_vif_association)."""
+    with get_db_connection() as conn:
+        rows = conn.execute(
+            "SELECT id, nom_association, code_VIF FROM associations"
+        ).fetchall()
+    index = {}
+    for r in rows:
+        cle = _normaliser_nom_association(r["nom_association"])
+        if not cle:
+            continue
+        index.setdefault(cle, []).append((r["id"], r["code_VIF"]))
+    return index
+
+
+def _code_vif_association(nom_asso, index):
+    """Retrouve le Code VIF d'une association « gardant » sa collecte en
+    cherchant son libellé (colonne 'Gardée par' / liste_groupes.xlsx) dans la
+    base associations (nom_association). Renvoie (code_vif, écart) — écart
+    non vide si le nom est introuvable, ambigu, ou sans Code VIF renseigné,
+    pour signaler les cas à corriger manuellement."""
+    correspondances = index.get(_normaliser_nom_association(nom_asso), [])
+    if not correspondances:
+        return "", "⚠️ Association introuvable dans la base (nom à vérifier)"
+    if len(correspondances) > 1:
+        return "", "⚠️ Plusieurs associations portent ce nom dans la base — à vérifier manuellement"
+    code_vif = correspondances[0][1]
+    if not code_vif:
+        return "", "⚠️ Code VIF non renseigné pour cette association"
+    return code_vif, ""
+
+
 def _referents_association(nom_asso, df_participants):
     """Contacts connus pour un groupe (association) donné, à partir de
     liste_participants.xlsx (colonne 'Groupe' — notée 'BAI+Nom' pour les
@@ -2017,8 +2056,10 @@ def gardee_excel():
 
     associations, sans_association = _construire_associations(df_mag, df_groupes)
     df_participants = _lire_participants(annee)
+    index_code_vif = _table_code_vif_associations()
     for asso in associations:
         asso["referents"] = _referents_association(asso["nom"], df_participants)
+        asso["code_vif"], asso["ecart_code_vif"] = _code_vif_association(asso["nom"], index_code_vif)
 
     def _fmt_referents(referents):
         return " ; ".join(
@@ -2034,6 +2075,8 @@ def gardee_excel():
         "Nombre leaders": a["nb_leaders"],
         "Nombre magasins": len(a["magasins"]),
         "Trouvée dans liste des groupes": "Oui" if a["trouvee"] else "Non — nom absent de liste_groupes.xlsx",
+        "Code VIF de l'association": a["code_vif"],
+        "Écart Code VIF": a["ecart_code_vif"],
         "Référent - Nom": a["referents"][0]["nom"] if a["referents"] else "",
         "Référent - Email": a["referents"][0]["email"] if a["referents"] else "",
         "Référent - Téléphone": a["referents"][0]["telephone"] if a["referents"] else "",

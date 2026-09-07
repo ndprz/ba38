@@ -91,6 +91,23 @@ Détail engagement #{{ engagement.id }}
             {% call action_buttons() %}
 
                 <!-- ============================================== -->
+                <!-- MODIFICATION -->
+                <!-- ============================================== -->
+
+                {% if peut_modifier %}
+
+                <button type="button"
+                        class="btn btn-outline-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalModifierEngagement">
+
+                    ✏️ Modifier
+
+                </button>
+
+                {% endif %}
+
+                <!-- ============================================== -->
                 <!-- VALIDATION POLE -->
                 <!-- ============================================== -->
 
@@ -1269,6 +1286,213 @@ Détail engagement #{{ engagement.id }}
 
 
 <!-- ================================================== -->
+<!-- MODALE MODIFICATION -->
+<!-- ================================================== -->
+
+{% if peut_modifier %}
+<div class="modal fade"
+     id="modalModifierEngagement"
+     tabindex="-1">
+
+    <div class="modal-dialog modal-lg">
+
+        <div class="modal-content">
+
+            <form method="POST"
+                  action="{{ url_for(
+                        'engagements.modifier_engagement_configuration',
+                        engagement_id=engagement.id
+                  ) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="modal-header bg-primary text-white">
+
+                    <h5 class="modal-title">
+
+                        ✏️ Modifier l'engagement
+
+                    </h5>
+
+                    <button type="button"
+                            class="btn-close btn-close-white"
+                            data-bs-dismiss="modal"></button>
+
+                </div>
+
+                <div class="modal-body">
+
+                    {% if engagement.est_modele_abonnement %}
+                    <p class="text-muted small">
+                        Modèle d'abonnement : ces valeurs serviront
+                        de base aux prochains engagements générés
+                        automatiquement chaque mois.
+                    </p>
+                    {% endif %}
+
+                    <div class="row g-2 mb-2">
+                    <div class="col-md-6">
+
+                        <label class="form-label">Pôle</label>
+
+                        <select name="pole_id" class="form-select" required>
+                            {% for p in poles %}
+                            <option value="{{ p.id }}"
+                                {% if p.id == engagement.pole_id %}selected{% endif %}>
+                                {{ p.nom_affiche }}
+                            </option>
+                            {% endfor %}
+                        </select>
+
+                    </div>
+                    <div class="col-md-6">
+
+                        <label class="form-label">Objet</label>
+
+                        <input type="text"
+                               name="objet"
+                               class="form-control"
+                               value="{{ engagement.objet or '' }}"
+                               required>
+
+                    </div>
+                    </div>
+
+                    <div class="mb-2">
+
+                        <label class="form-label">Description</label>
+
+                        <textarea name="description"
+                                  class="form-control"
+                                  rows="2">{{ engagement.description or '' }}</textarea>
+
+                    </div>
+
+                    <div class="row g-2 mb-2">
+                    <div class="col-md-4">
+
+                        <label class="form-label">Montant (€)</label>
+
+                        <input type="text"
+                               inputmode="decimal"
+                               pattern="[0-9]+([.,][0-9]{1,2})?"
+                               name="montant_total"
+                               class="form-control"
+                               value="{{ '%.2f'|format(engagement.montant_total or 0)|replace('.', ',') }}"
+                               required>
+
+                    </div>
+                    <div class="col-md-8">
+
+                        <label class="form-label">Nature</label><br>
+
+                        <div class="form-check form-check-inline">
+                            <input type="radio"
+                                   class="form-check-input"
+                                   name="sous_type_depense"
+                                   id="modif_nature_achat"
+                                   value="achat"
+                                   {% if engagement.sous_type_depense != "deplacement" %}checked{% endif %}>
+                            <label class="form-check-label" for="modif_nature_achat">
+                                🛒 Achat / dépense
+                            </label>
+                        </div>
+
+                        <div class="form-check form-check-inline">
+                            <input type="radio"
+                                   class="form-check-input"
+                                   name="sous_type_depense"
+                                   id="modif_nature_deplacement"
+                                   value="deplacement"
+                                   {% if engagement.sous_type_depense == "deplacement" %}checked{% endif %}>
+                            <label class="form-check-label" for="modif_nature_deplacement">
+                                🚗 Déplacement
+                            </label>
+                        </div>
+
+                    </div>
+                    </div>
+
+                    <div class="row g-2 mb-2">
+                    <div class="col-md-6">
+
+                        <label class="form-label">Rubrique</label>
+
+                        <select name="rubrique" class="form-select">
+                            <option value="">-- Choisir --</option>
+                            {% for val, libelle in [
+                                ("achats_denrees", "Achats denrées"),
+                                ("fournitures_entretien", "Fournitures entretien & petit matériel"),
+                                ("fournitures_administratives", "Fournitures administratives"),
+                                ("deplacements_administratifs", "Déplacements administratifs"),
+                                ("deplacements_institutions", "Déplacements relations avec institutions"),
+                                ("vie_associative", "Vie associative (denrées repas location salles, etc.)"),
+                                ("deplacements", "Frais déplacement visite Association"),
+                                ("formation", "Frais de formation (frais formateur, repas, salle)"),
+                                ("collecte_annuelle", "Collecte annuelle"),
+                                ("autres", "Autres (précisez)")
+                            ] %}
+                            <option value="{{ val }}"
+                                {% if engagement.rubrique == val %}selected{% endif %}>
+                                {{ libelle }}
+                            </option>
+                            {% endfor %}
+                        </select>
+
+                    </div>
+                    <div class="col-md-6">
+
+                        <label class="form-label">Précision rubrique (Autres)</label>
+
+                        <input type="text"
+                               name="precision_rubrique"
+                               class="form-control"
+                               value="{{ engagement.precision_rubrique or '' }}">
+
+                    </div>
+                    </div>
+
+                    <div class="mb-2">
+
+                        <label class="form-label">Commentaire devis</label>
+
+                        <textarea name="commentaire_devis"
+                                  class="form-control"
+                                  rows="2">{{ engagement.commentaire_devis or '' }}</textarea>
+
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+
+                    <button type="button"
+                            class="btn btn-secondary"
+                            data-bs-dismiss="modal">
+
+                        Annuler
+
+                    </button>
+
+                    <button type="submit"
+                            class="btn btn-primary">
+
+                        ✅ Enregistrer
+
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+{% endif %}
+
+
+<!-- ================================================== -->
 <!-- MODALE REFUS -->
 <!-- ================================================== -->
 
@@ -1484,13 +1708,13 @@ document.getElementById("modalValidationPresidence")
 
                     <div class="input-group mb-1">
 
-                        <input type="number"
-                               step="0.01"
-                               min="0.01"
+                        <input type="text"
+                               inputmode="decimal"
+                               pattern="[0-9]+([.,][0-9]{1,2})?"
                                name="montant_total"
                                id="montant_total_input"
                                class="form-control"
-                               value="{{ '%.2f'|format(engagement.montant_total) }}"
+                               value="{{ '%.2f'|format(engagement.montant_total)|replace('.', ',') }}"
                                required>
 
                         <span class="input-group-text">€</span>

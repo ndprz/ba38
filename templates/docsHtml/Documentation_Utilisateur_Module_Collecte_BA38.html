@@ -1,6 +1,5 @@
 <p><strong>Application BA38 – Module Collecte</strong> Version de la
-documentation : 05/09/2026</p>
-<h1 id="objectif-du-module">1. Objectif du module</h1>
+documentation : 07/09/2026</p>
 <p>Le module « Collecte » gère la préparation de la collecte annuelle en
 magasins, en deux temps bien séparés :</p>
 <ul>
@@ -14,34 +13,38 @@ collecte (fiches de collecte, pointage, équipier, index, carte, classeur
 Excel).</p></li>
 </ul>
 <p>La simulation ne modifie jamais le planning go-on-web : c’est un
-outil d’aide à la décision. Seule la page Production produit les
-documents réellement utilisés sur le terrain.</p>
-<h1 id="accès">2. Accès</h1>
+outil d’aide à la décision. Seule la génération des documents réels
+produit ce qui est utilisé sur le terrain.</p>
 <p>L’accès à ce module nécessite le droit « lecture » (ou supérieur) sur
 « Collecte ». Le lancement d’une génération (simulation ou production),
-la modification des textes de mails et les envois nécessitent le droit
-« écriture ».</p>
-<h1 id="simulation-préparer-la-campagne">3. Simulation — préparer la
-campagne</h1>
+l’import de fichiers, la modification des textes de mails et les envois
+nécessitent le droit « écriture ».</p>
 <p>Menu → Collecte. Sélectionner l’année de collecte en haut de page
 (une campagne est créée automatiquement au premier import de fichier
-pour une année donnée).</p>
-<p>La section « 📁 Paramètres de la collecte annuelle » regroupe les
-dates, les liens Google Drive et les fichiers de la campagne. Les sections
-« 📁 Gestion tournées » et « 📁 Associations gardant » sont indépendantes
+pour une année donnée). Les trois sections ci-dessous sont indépendantes
 et peuvent être ouvertes séparément.</p>
-<h2 id="dates-et-liens">3.1 Dates et liens Google Drive</h2>
+<h1 id="paramètres-de-la-collecte-annuelle">1. Paramètres de la collecte
+annuelle</h1>
+<h2 id="dates-et-liens-google-drive">1.1 Dates et liens Google
+Drive</h2>
 <p>Renseigner les dates de début et de fin de la collecte une seule fois
 par année. Elles sont reprises automatiquement dans les documents de
-production.</p>
-<p>Coller les liens Google Sheets demandés dans « Paramètres des fichiers
-Google Drive » : magasins, véhicules/planning, historique des cagettes,
-groupes, participants et participants pour mailing. Les fichiers doivent
-être partagés avec « Toute personne disposant du lien ».</p>
-<p>Les fichiers nécessaires à la simulation se chargent dans cette même
-section avec les boutons « Importer » ou « Remplacer ».</p>
-<h2 id="fichiers-nécessaires">3.2 Fichiers nécessaires</h2>
-<p>Deux fichiers sont à importer pour pouvoir lancer une simulation
+production (date de chaque demi-journée en en-tête des fiches équipier —
+les autres jours sont déduits automatiquement : vendredi = jeudi + 1,
+etc.). Tant qu’aucune date n’est renseignée, seul le libellé du jour
+apparaît (« Vendredi Matin »), sans date précise.</p>
+<p>Un nouveau dossier Drive étant créé chaque année, coller les liens
+Google Sheets demandés dans « Paramètres des fichiers Google Drive » :
+magasins, véhicules/planning, historique des cagettes, groupes,
+participants et participants pour mailing (le lien de partage complet de
+chaque fichier Google Sheets, celui-ci devant être partagé en « Toute
+personne disposant du lien »). Tant qu’un lien n’est pas renseigné pour
+l’année en cours, la génération des documents réels reste
+désactivée.</p>
+<h2 id="fichiers-nécessaires-à-la-simulation">1.2 Fichiers nécessaires à
+la simulation</h2>
+<p>Deux fichiers sont à importer pour pouvoir lancer une simulation,
+avec les boutons « Importer » ou « Remplacer » de cette même section
 :</p>
 <ul>
 <li><p><strong>Liste des magasins</strong> : export go-on-web de l’année
@@ -54,7 +57,8 @@ magasins ajoutés ou arrêtés cette année — les camions (codes et noms) en
 sont aussi extraits directement, aucun fichier véhicules séparé n’est
 nécessaire ici.</p></li>
 </ul>
-<h2 id="lancer-une-génération">3.3 Lancer une génération</h2>
+<h1 id="gestion-tournées">2. Gestion tournées</h1>
+<h2 id="lancer-une-simulation">2.1 Lancer une simulation</h2>
 <p>Une fois les deux fichiers importés, le bouton « 🚀 Générer les
 tournées » ouvre le formulaire de paramètres :</p>
 <table>
@@ -102,7 +106,7 @@ chacune)</td>
 </table>
 <p>Chaque génération crée une nouvelle version sans écraser les
 précédentes. La génération peut prendre jusqu’à une minute.</p>
-<h2 id="consulter-un-résultat">3.4 Consulter un résultat</h2>
+<h2 id="consulter-un-résultat">2.2 Consulter un résultat</h2>
 <p>La page résultat affiche le détail des tournées (tableau
 filtrable/triable), avec :</p>
 <ul>
@@ -117,7 +121,7 @@ par l’algorithme).</p></li>
 <p>L’historique (bouton « 📋 Historique ») liste toutes les versions
 générées pour l’année, avec leurs paramètres, et permet de les
 consulter, télécharger ou supprimer individuellement.</p>
-<h2 id="analyse-comparative-8-scénarios">3.5 Analyse comparative — 8
+<h2 id="analyse-comparative-8-scénarios">2.3 Analyse comparative — 8
 scénarios</h2>
 <p>Le bouton « 🔬 Lancer l’analyse des 8 scénarios » compare, en tâche
 de fond, 1 à 4 camions supplémentaires croisés avec 4 ou 5 magasins
@@ -125,11 +129,10 @@ maximum par tournée (8 combinaisons), et affiche les indicateurs
 chiffrés de chaque scénario côte à côte pour aider à choisir les
 paramètres de la génération finale. Aucun fichier Excel ou carte n’est
 produit pour ces 8 scénarios : seuls les indicateurs sont conservés.</p>
-<h1 id="production-générer-les-vrais-documents">4. Production — générer
-les vrais documents</h1>
-<p>Dans la section « 📁 Gestion tournées », le bouton « 🚛 Générer
-documents » ouvre la page Production, indépendante de la simulation.</p>
-<h2 id="principe">4.1 Principe</h2>
+<h2 id="générer-les-documents-réels-production">2.4 Générer les
+documents réels (Production)</h2>
+<p>Le bouton « 🚛 Générer documents » ouvre la page Production,
+indépendante de la simulation.</p>
 <p>Contrairement à la simulation, la page Production ne calcule pas de
 tournées : elle <strong>met en forme les documents à partir du planning
 déjà décidé</strong> dans go-on-web (colonnes Quai, Tournée, Début, Code
@@ -140,25 +143,8 @@ liste des magasins, historique des cagettes) : la page reflète donc
 toujours le dernier état saisi dans go-on-web, sans étape d’import
 manuel. Il n’y a pas d’historique de versions ici — chaque génération
 écrase les documents précédents.</p>
-<p>Un nouveau dossier Drive étant créé chaque année, les 3 liens de
-partage se renseignent <strong>une seule fois par année</strong>, dans
-la section « 🔗 Fichiers Drive » de la page principale du module (coller
-le lien de partage complet de chaque fichier Google Sheets — celui-ci
-doit être partagé en « Toute personne disposant du lien »). Tant qu’un
-lien n’est pas renseigné pour l’année en cours, le bouton de génération
-reste désactivé sur la page Production.</p>
-<h2 id="dates-de-la-collecte">4.2 Dates de la collecte</h2>
-<p>La date de début (jeudi) et de fin (dimanche) se renseignent
-<strong>une seule fois</strong>, sur la page principale du module
-(section « 📅 Dates de la collecte »), pas à chaque génération. La date
-de début est ensuite reprise automatiquement pour afficher la date de
-chaque demi-journée en en-tête des fiches équipier (les autres jours
-sont déduits automatiquement : vendredi = jeudi + 1, etc.). Tant
-qu’aucune date n’est renseignée, seul le libellé du jour apparaît («
-Vendredi Matin »), sans date précise.</p>
-<h2 id="lancer-une-génération-1">4.3 Lancer une génération</h2>
-<p>Sur la page Production, le bouton « 🚀 Lancer la génération » accepte
-un champ optionnel :</p>
+<p>Le bouton « 🚀 Lancer la génération » accepte un champ optionnel
+:</p>
 <ul>
 <li><strong>Camion</strong> (ex. V003) : génère uniquement la fiche de
 collecte de ce camion et l’ouvre directement dans un nouvel onglet du
@@ -168,7 +154,7 @@ véhicules, carte) — pratique pour un aperçu ou une réimpression rapide
 d’un seul camion. Laisser vide pour la génération complète (tous
 camions, tous documents, remplace les documents précédents).</li>
 </ul>
-<h2 id="documents-produits">4.4 Documents produits</h2>
+<p>Documents produits par une génération complète :</p>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -220,7 +206,6 @@ cag1 de tous les magasins de cette tournée)</td>
 </tr>
 </tbody>
 </table>
-<h2 id="journal-et-contrôles">4.5 Journal et contrôles</h2>
 <p>Après chaque génération, un journal récapitule les anomalies
 détectées dans le planning go-on-web (camion sans quai, magasin actif
 jamais planifié, créneau incomplet — un seul des deux demi-journées d’un
@@ -229,35 +214,33 @@ magasin affecté à plusieurs camions sur la même demi-journée…). Ces
 informations figurent aussi dans les onglets de contrôle du classeur
 Excel (dont un onglet « Explications » qui les détaille tous) : à
 corriger dans go-on-web puis relancer une génération.</p>
-<h1 id="envoi-des-mails-aux-chauffeurs-et-equipiers">5. Envoi des mails aux chauffeurs et équipiers</h1>
-<p>Dans la section « 📁 Gestion tournées », ouvrir « Envoi mail tournées
-aux chauffeurs/équipiers ». La page récupère les affectations du fichier
-véhicules/planning et regroupe les informations par adresse e-mail.</p>
-<h2 id="texte-du-mail">5.1 Texte du mail</h2>
+<h2 id="envoi-des-mails-aux-chauffeurs-et-équipiers">2.5 Envoi des mails
+aux chauffeurs et équipiers</h2>
+<p>Ouvrir « Envoi mail tournées aux chauffeurs/équipiers ». La page
+récupère les affectations du fichier véhicules/planning et regroupe les
+informations par adresse e-mail.</p>
 <p>Le début et la fin du mail sont configurables séparément. La partie
 centrale, qui liste automatiquement les demi-journées, les camions, les
-magasins et les autres personnes affectées, n’est pas modifiée.</p>
-<p>Modifier les champs « Début du mail » et « Fin du mail », puis cliquer
-sur « Enregistrer le texte ». Le marqueur <code>&lt;&lt;nom&gt;&gt;</code>
-est remplacé automatiquement par le nom du destinataire.</p>
-<h2 id="test-et-envoi-des-mails">5.2 Test et envoi</h2>
+magasins et les autres personnes affectées, n’est pas modifiée. Modifier
+les champs « Début du mail » et « Fin du mail », puis cliquer sur «
+Enregistrer le texte ». Le marqueur <code>&lt;&lt;nom&gt;&gt;</code> est
+remplacé automatiquement par le nom du destinataire.</p>
 <ul>
 <li><p>Choisir une personne dans la liste et utiliser « Tester sur mon
 adresse » pour vérifier le contenu.</p></li>
-<li><p>Après vérification, cliquer sur « Envoyer les mails » pour envoyer
-un message personnalisé à chaque chauffeur ou équipier ayant une adresse
-e-mail.</p></li>
-<li><p>Les personnes sans adresse e-mail sont signalées sur la page et ne
-reçoivent pas de message.</p></li>
+<li><p>Après vérification, cliquer sur « Envoyer les mails » pour
+envoyer un message personnalisé à chaque chauffeur ou équipier ayant une
+adresse e-mail.</p></li>
+<li><p>Les personnes sans adresse e-mail sont signalées sur la page et
+ne reçoivent pas de message.</p></li>
 </ul>
-
-<h1 id="associations-gardant">6. Associations gardant</h1>
+<h1 id="associations-gardant">3. Associations gardant</h1>
 <p>La section « 📁 Associations gardant » concerne les associations qui
 assurent elles-mêmes la collecte d’un ou plusieurs magasins au lieu de
 remettre les produits à la BAI.</p>
-<ol>
-<li><p>Cliquer sur « 🏠 Créer la liste » pour croiser la liste des magasins
-et la liste des groupes.</p></li>
+<ol type="1">
+<li><p>Cliquer sur « 🏠 Créer la liste » pour croiser la liste des
+magasins et la liste des groupes.</p></li>
 <li><p>Contrôler les associations, les contacts, les adresses e-mail et
 les magasins affichés.</p></li>
 <li><p>Télécharger le fichier contrôlé si nécessaire.</p></li>
@@ -268,8 +251,7 @@ destinataires, puis confirmer l’envoi.</p></li>
 Excel doit avoir été contrôlé et la confirmation demandée doit être
 cochée. Les magasins sans association renseignée sont signalés afin
 d’être corrigés avant l’envoi.</p>
-
-<h1 id="bonnes-pratiques">7. Bonnes pratiques</h1>
+<h1 id="bonnes-pratiques">4. Bonnes pratiques</h1>
 <ul>
 <li><p>Toujours vérifier les onglets de contrôle du classeur Excel avant
 impression des documents de production.</p></li>

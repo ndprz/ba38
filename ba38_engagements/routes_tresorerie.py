@@ -388,7 +388,7 @@ def marquer_comptabilise(engagement_id):
 
     try:
         nouveau_montant = Decimal(
-            request.form.get("montant_total", "")
+            request.form.get("montant_total", "").replace(",", ".")
         )
     except (InvalidOperation, ValueError):
         nouveau_montant = None

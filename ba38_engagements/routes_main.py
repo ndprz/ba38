@@ -11,7 +11,7 @@ from openpyxl import Workbook
 from io import BytesIO
 from datetime import datetime
 from werkzeug.utils import secure_filename
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pypdf import PdfReader, PdfWriter
 
 import sqlite3
@@ -398,6 +398,9 @@ def nouvelle_depense():
                 "montant_total"
             )
 
+            if montant_total:
+                montant_total = montant_total.replace(",", ".")
+
             # =====================================================
             # TYPE ENGAGEMENT
             # =====================================================
@@ -545,7 +548,23 @@ def nouvelle_depense():
             # MONTANT / DEVIS / FICHIERS
             # =====================================================
 
-            montant = Decimal(montant_total)
+            try:
+                montant = Decimal(montant_total)
+            except InvalidOperation:
+
+                flash(
+                    "⚠️ Le montant saisi est invalide.",
+                    "warning"
+                )
+
+                return render_template(
+                    "engagements/nouvelle_depense.html",
+                    poles=poles,
+                    paliers=paliers,
+                    benevoles=benevoles,
+                    subventions=subventions,
+                    fournisseurs=fournisseurs
+                )
 
             nb_devis = int(
                 request.form.get("nb_devis") or 0
@@ -1661,6 +1680,30 @@ def detail_engagement(engagement_id):
                     in emails_presidence
 
                 )
+
+        # =====================================================
+        # MODIFICATION (Pôle/Objet/Description/Montant/Nature/
+        # Rubrique/Précision/Commentaire devis)
+        # =====================================================
+        # Un modèle d'abonnement reste modifiable en permanence
+        # (c'est un gabarit vivant pour les prochaines générations).
+        # Un engagement normal ne l'est que tant qu'aucune validation
+        # (pôle ou présidence) n'a encore eu lieu.
+
+        peut_modifier = bool(engagement["est_modele_abonnement"]) or (
+            engagement["statut"] in (
+                "validation_pole",
+                "validation_presidence"
+            )
+        )
+
+        poles = conn.execute("""
+            SELECT id, nom_affiche
+            FROM engagement_poles
+            WHERE actif = 1
+            ORDER BY nom_affiche
+        """).fetchall()
+
     return render_template(
         "engagements/detail_engagement.html",
 
@@ -1671,5 +1714,170 @@ def detail_engagement(engagement_id):
         fichiers=fichiers,
 
         peut_valider_pole=peut_valider_pole,
-        peut_valider_presidence=peut_valider_presidence
+        peut_valider_presidence=peut_valider_presidence,
+
+        peut_modifier=peut_modifier,
+        poles=poles
     )
+
+
+# ============================================================
+# MODIFICATION D'UN ENGAGEMENT (avant validation, ou modèle
+# d'abonnement à tout moment)
+# ============================================================
+
+@engagements_bp.route(
+    "/detail_engagement/<int:engagement_id>/modifier",
+    methods=["POST"]
+)
+@login_required
+@require_access("engagements", "ecriture")
+def modifier_engagement_configuration(engagement_id):
+
+    db_path = get_db_path()
+
+    with sqlite3.connect(db_path) as conn:
+
+        conn.row_factory = sqlite3.Row
+
+        engagement = conn.execute("""
+            SELECT id, statut, est_modele_abonnement
+            FROM engagements
+            WHERE id = ?
+        """, (engagement_id,)).fetchone()
+
+        if not engagement:
+            abort(404)
+
+        peut_modifier = bool(engagement["est_modele_abonnement"]) or (
+            engagement["statut"] in (
+                "validation_pole",
+                "validation_presidence"
+            )
+        )
+
+        if not peut_modifier:
+
+            flash(
+                "⚠️ Cet engagement ne peut plus être modifié "
+                "(déjà validé).",
+                "warning"
+            )
+
+            return redirect(url_for(
+                "engagements.detail_engagement",
+                engagement_id=engagement_id
+            ))
+
+        pole_id = request.form.get("pole_id", type=int)
+        objet = request.form.get("objet", "").strip()
+        description = request.form.get("description", "").strip()
+        sous_type_depense = request.form.get(
+            "sous_type_depense", ""
+        ).strip()
+        rubrique = request.form.get("rubrique", "").strip()
+        precision_rubrique = request.form.get(
+            "precision_rubrique", ""
+        ).strip()
+        commentaire_devis = request.form.get(
+            "commentaire_devis", ""
+        ).strip()
+
+        if not pole_id or not objet:
+
+            flash(
+                "⚠️ Pôle et objet sont obligatoires.",
+                "warning"
+            )
+
+            return redirect(url_for(
+                "engagements.detail_engagement",
+                engagement_id=engagement_id
+            ))
+
+        try:
+            montant_total = Decimal(
+                request.form.get("montant_total", "").replace(",", ".")
+            )
+        except (InvalidOperation, ValueError):
+            montant_total = None
+
+        if montant_total is None or montant_total <= 0:
+
+            flash(
+                "⚠️ Le montant saisi est invalide.",
+                "warning"
+            )
+
+            return redirect(url_for(
+                "engagements.detail_engagement",
+                engagement_id=engagement_id
+            ))
+
+        conn.execute("""
+            UPDATE engagements
+            SET pole_id = ?
+            WHERE id = ?
+        """, (pole_id, engagement_id))
+
+        conn.execute("""
+            UPDATE engagements_depenses
+            SET
+                objet = ?,
+                description = ?,
+                montant_total = ?,
+                sous_type_depense = ?,
+                rubrique = ?,
+                precision_rubrique = ?,
+                commentaire_devis = ?
+            WHERE engagement_id = ?
+        """, (
+            objet,
+            description,
+            float(montant_total),
+            sous_type_depense,
+            rubrique,
+            precision_rubrique,
+            commentaire_devis,
+            engagement_id
+        ))
+
+        conn.execute("""
+            INSERT INTO engagements_workflow (
+                engagement_id,
+                action,
+                ancien_statut,
+                nouveau_statut,
+                commentaire,
+                user_id,
+                user_email
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            engagement_id,
+            "modification_configuration",
+            engagement["statut"],
+            engagement["statut"],
+            "Modification des informations de l'engagement "
+            "(pôle/objet/description/montant/nature/rubrique/"
+            "précision/commentaire devis)",
+            current_user.id,
+            current_user.email
+        ))
+
+        conn.commit()
+
+        write_log(
+            f"[ENGAGEMENTS] Engagement #{engagement_id} modifié "
+            f"par {current_user.email}"
+        )
+
+    flash(
+        "✅ Engagement modifié.",
+        "success"
+    )
+
+    return redirect(url_for(
+        "engagements.detail_engagement",
+        engagement_id=engagement_id
+    ))
