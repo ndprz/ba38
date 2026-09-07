@@ -458,6 +458,22 @@ Nouvelle demande d'engagement
             </div>
             </div>{# /row email+iban #}
 
+            <div class="form-check mb-2">
+
+                <input type="checkbox"
+                       class="form-check-input"
+                       name="fournisseur_sans_coordonnees"
+                       id="fournisseur_sans_coordonnees_input"
+                       {% if request.form.get('fournisseur_sans_coordonnees') %}checked{% endif %}>
+
+                <label class="form-check-label" for="fournisseur_sans_coordonnees_input">
+
+                    Fournisseur interne : email et IBAN inconnus (ex. Orange, EDF...)
+
+                </label>
+
+            </div>
+
             <!-- ============================================= -->
             <!-- ADRESSE -->
             <!-- ============================================= -->

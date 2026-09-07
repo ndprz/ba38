@@ -469,6 +469,10 @@ def nouvelle_depense():
                 "fournisseur_iban"
             )
 
+            fournisseur_sans_coordonnees = bool(
+                request.form.get("fournisseur_sans_coordonnees")
+            )
+
             attestation = 1 if request.form.get("attestation_comparaison") else 0
             signature = request.form.get("signature")
 
@@ -759,11 +763,13 @@ def nouvelle_depense():
                 if not fournisseur_adresse:
                     champs_manquants.append("adresse")
 
-                if not fournisseur_email:
-                    champs_manquants.append("email")
+                if not fournisseur_sans_coordonnees:
 
-                if not fournisseur_iban:
-                    champs_manquants.append("IBAN")
+                    if not fournisseur_email:
+                        champs_manquants.append("email")
+
+                    if not fournisseur_iban:
+                        champs_manquants.append("IBAN")
 
                 if champs_manquants:
 

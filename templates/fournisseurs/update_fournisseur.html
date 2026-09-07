@@ -61,7 +61,7 @@
           <div class="row mb-2" id="row_{{ field['field_name'] }}">
             <div class="col-md-4 fw-bold text-end">
               {{ field['field_name'] | format_label }}
-              {% if field['required'] %}
+              {% if field['is_required'] %}
                 <span class="text-danger">*</span>
               {% endif %}
             </div>

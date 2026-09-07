@@ -5,7 +5,7 @@ import sqlite3
 import pytz
 import base64
 from datetime import datetime
-from ba38_utilitaires.core import get_db_path, get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_phone, row_get, require_access
+from ba38_utilitaires.core import get_db_path, get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_phone, is_valid_iban, row_get, require_access
 from ba38_utilitaires.organisation import get_organisation
 
 
@@ -316,6 +316,29 @@ def update_fournisseur(fournisseur_id):
 
         if do_upload == "1":
             if computed_hash != received_hash:
+
+                sans_coordonnees = updates.get("sans_coordonnees") == "oui"
+
+                if updates.get("iban") and not is_valid_iban(updates["iban"]):
+                    conn.close()
+                    flash("⚠️ IBAN invalide.", "warning")
+                    return redirect(url_for("fournisseurs.update_fournisseur", fournisseur_id=fournisseur_id))
+
+                if not sans_coordonnees:
+                    champs_manquants = []
+                    if not updates.get("mail"):
+                        champs_manquants.append("email")
+                    if not updates.get("iban"):
+                        champs_manquants.append("IBAN")
+                    if champs_manquants:
+                        conn.close()
+                        flash(
+                            "⚠️ Champs manquants : " + ", ".join(champs_manquants)
+                            + " (cochez « Sans Coordonnees » si inconnus).",
+                            "warning"
+                        )
+                        return redirect(url_for("fournisseurs.update_fournisseur", fournisseur_id=fournisseur_id))
+
                 now = datetime.utcnow()
                 updates["date_modif"] = now.strftime("%Y-%m-%d %H:%M:%S")
                 updates["user_modif"] = current_user.username
@@ -404,20 +427,50 @@ def create_fournisseur():
         famille_fournisseur = request.form.get("famille_fournisseur", "").strip()
         tel = request.form.get("tel", "").strip()
         mail = request.form.get("mail", "").strip()
+        iban = request.form.get("iban", "").strip()
+        sans_coordonnees = bool(request.form.get("sans_coordonnees"))
         adresse = request.form.get("adresse", "").strip()
         ville = request.form.get("ville", "").strip()
         notes = request.form.get("notes", "").strip()
+
+        if iban and not is_valid_iban(iban):
+            flash("⚠️ IBAN invalide.", "danger")
+            conn.close()
+            return render_template(
+                "fournisseurs/create_fournisseur.html",
+                parametres=param_dict
+            )
+
+        if not sans_coordonnees:
+            champs_manquants = []
+            if not mail:
+                champs_manquants.append("email")
+            if not iban:
+                champs_manquants.append("IBAN")
+            if champs_manquants:
+                flash(
+                    "⚠️ Champs manquants : " + ", ".join(champs_manquants)
+                    + " (cochez « fournisseur interne » si inconnus).",
+                    "warning"
+                )
+                conn.close()
+                return render_template(
+                    "fournisseurs/create_fournisseur.html",
+                    parametres=param_dict
+                )
 
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
         try:
             cursor.execute("""
                 INSERT INTO fournisseurs
-                (nom, enseigne, type_frs, famille_fournisseur, tel, mail, adresse, ville, notes,
+                (nom, enseigne, type_frs, famille_fournisseur, tel, mail, iban, sans_coordonnees,
+                 adresse, ville, notes,
                  date_creation, date_modif, user_modif)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                nom, enseigne, type_frs, famille_fournisseur, tel, mail,
+                nom, enseigne, type_frs, famille_fournisseur, tel, mail, iban,
+                "oui" if sans_coordonnees else "non",
                 adresse, ville, notes,
                 now, now,
                 current_user.username or current_user.email
