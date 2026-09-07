@@ -383,6 +383,7 @@ def _generer_tournees(campagne, params):
         pdf=pdf_path,
         magasins=magasins_path,
         nouveaux=None,
+        annee=annee,
     )
 
     fiches = moteur.extraire_pdf(pdf_path)
@@ -392,7 +393,7 @@ def _generer_tournees(campagne, params):
         for v in f["vif_codes"]:
             vifs_pdf_2025.add(str(v).lstrip("0"))
 
-    df_mag = moteur.lire_magasins(magasins_path, vifs_pdf_2025, params["poids_nouveaux"])
+    df_mag = moteur.lire_magasins(magasins_path, vifs_pdf_2025, params["poids_nouveaux"], annee)
     df_t = moteur.optimiser_tournees(fiches, df_mag, args_ns)
 
     dossier_resultats = _dossier_resultats(annee)
@@ -576,7 +577,7 @@ def _calculer_indicateurs_scenario(df_t, camions_supp, max_magasins):
     }
 
 
-def _lancer_analyse_8configs_background(app, analyse_id, pdf_path, magasins_path, params_communs):
+def _lancer_analyse_8configs_background(app, analyse_id, pdf_path, magasins_path, params_communs, annee):
     with app.app_context():
         db_path = get_db_path()
         try:
@@ -587,7 +588,7 @@ def _lancer_analyse_8configs_background(app, analyse_id, pdf_path, magasins_path
                 for v in f["vif_codes"]:
                     vifs_pdf_2025.add(str(v).lstrip("0"))
 
-            df_mag = moteur.lire_magasins(magasins_path, vifs_pdf_2025, params_communs["poids_nouveaux"])
+            df_mag = moteur.lire_magasins(magasins_path, vifs_pdf_2025, params_communs["poids_nouveaux"], annee)
 
             resultats = []
             for camions_supp, max_magasins in SCENARIOS_ANALYSE:
@@ -599,6 +600,7 @@ def _lancer_analyse_8configs_background(app, analyse_id, pdf_path, magasins_path
                     fusionner_legeres=params_communs["fusionner_legeres"],
                     optimiser_anciens=params_communs["optimiser_anciens"],
                     output=None, pdf=pdf_path, magasins=magasins_path, nouveaux=None,
+                    annee=annee,
                 )
                 df_t = moteur.optimiser_tournees(copy.deepcopy(fiches), df_mag.copy(), args_ns)
                 resultats.append(_calculer_indicateurs_scenario(df_t, camions_supp, max_magasins))
@@ -944,7 +946,7 @@ def lancer_analyse():
 
     Thread(
         target=_lancer_analyse_8configs_background,
-        args=(app_reel, analyse_id, pdf_path, magasins_path, params_communs)
+        args=(app_reel, analyse_id, pdf_path, magasins_path, params_communs, annee)
     ).start()
 
     write_log(f"🔬 Collecte {annee} : analyse 8 scénarios #{analyse_id} lancée par {current_user.email}")

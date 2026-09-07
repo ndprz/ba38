@@ -452,7 +452,7 @@ def txt(cv, x, y, s, font='Helvetica', size=8, color=C_BLACK, align='left', maxw
     cv.setFillColor(C_BLACK)
 
 
-def draw_fiche(cv, dj, camion, nom_camion, magasins, annee=2026, quai='', consigne1='', consigne2=''):
+def draw_fiche(cv, dj, camion, nom_camion, magasins, annee=None, quai='', consigne1='', consigne2=''):
     """
     Dessine une fiche complète sur la page courante.
     magasins : liste de dicts {nom, vif, adresse, horaires, en_dimanche, cag}
@@ -1278,7 +1278,7 @@ def construire_classeur_tournees(df_t, mag_cols, vif_cols, df_ref):
     return wb
 
 
-def generer_carte_tournees(df_t, df_mag, mag_cols, dossier_resultat):
+def generer_carte_tournees(df_t, df_mag, mag_cols, dossier_resultat, annee=None):
     """Génère une carte HTML interactive des tournées avec itinéraire routier
     OSRM — reprise quasi telle quelle de generer_carte_tournees() dans
     generer_tournees_bai_v2.py (même template Leaflet/HTML/CSS/JS autonome),
@@ -1341,6 +1341,7 @@ def generer_carte_tournees(df_t, df_mag, mag_cols, dossier_resultat):
 
     DATA_JSON_CT = json.dumps(data_ct, ensure_ascii=False)
     DJ_JSON_CT   = json.dumps(DJ_LIST_CT, ensure_ascii=False)
+    annee_ct = annee or datetime.datetime.now().year
 
     parts = []
     parts.append("""<!DOCTYPE html>
@@ -1348,7 +1349,8 @@ def generer_carte_tournees(df_t, df_mag, mag_cols, dossier_resultat):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BAI 38 — Carte des tourn&#233;es 2026</title>
+<title>BAI 38 — Carte des tourn&#233;es __ANNEE_CT__</title>""".replace('__ANNEE_CT__', str(annee_ct)))
+    parts.append("""
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -1386,7 +1388,8 @@ select{padding:6px 10px;border-radius:6px;border:none;font-size:13px;background:
 </head>
 <body>
 <header>
-  <h1>&#128666; BAI 38 &#8212; Tourn&#233;es 2026</h1>
+  <h1>&#128666; BAI 38 &#8212; Tourn&#233;es __ANNEE_CT__</h1>""".replace('__ANNEE_CT__', str(annee_ct)))
+    parts.append("""
   <div class="controls">
     <select id="sel-dj" onchange="onDjChange()">
       <option value="">&#8212; Demi-journ&#233;e &#8212;</option>
@@ -2072,7 +2075,7 @@ def main():
     parser.add_argument('--cagettes', default='Cagettes_magasins.xlsx',
                         help="Historique du nb de cagettes par magasin/demi-journée "
                              "(colonnes 'Code VIF','jour','cag1'..'cag4')")
-    parser.add_argument('--annee', default=2026, type=int)
+    parser.add_argument('--annee', default=datetime.datetime.now().year, type=int)
     parser.add_argument('--camion', default=None,
                         help="Limite le document 1 (fiches de collecte) à ce seul camion "
                              "(ex: V003). N'affecte pas les documents 2/3/4.")
@@ -2088,22 +2091,22 @@ def main():
     parser.add_argument('--output-excel', default=None,
                         help="Chemin du classeur Excel unique — tournées (VIF + secteurs) + "
                              "magasins + contrôles manquants (défaut : "
-                             "Tournées definitives 2026/Tournees_BAI38_{annee}_GOTW.xlsx)")
+                             "Tournées definitives <année>/Tournees_BAI38_{annee}_GOTW.xlsx)")
     parser.add_argument('--output-fiches', default=None,
                         help="Chemin du PDF des fiches de collecte (défaut : "
-                             "Tournées definitives 2026/fiches_jour_vehicule_magasin_{annee}.pdf)")
+                             "Tournées definitives <année>/fiches_jour_vehicule_magasin_{annee}.pdf)")
     parser.add_argument('--output-pointage', default=None,
-                        help="Chemin du PDF de pointage (défaut : Tournées definitives 2026/pointage_vehicules_{annee}.pdf)")
+                        help="Chemin du PDF de pointage (défaut : Tournées definitives <année>/pointage_vehicules_{annee}.pdf)")
     parser.add_argument('--output-equipier', default=None,
                         help="Chemin du PDF jour/véhicule/magasin/équipier (défaut : "
-                             "Tournées definitives 2026/fiches_jour_vehicule_magasin_equipier_{annee}.pdf)")
+                             "Tournées definitives <année>/fiches_jour_vehicule_magasin_equipier_{annee}.pdf)")
     parser.add_argument('--output-index', default=None,
                         help="Chemin du PDF index alphabétique des équipiers (défaut : "
-                             "Tournées definitives 2026/fiches_equipier_jour_vehicule_{annee}.pdf)")
+                             "Tournées definitives <année>/fiches_equipier_jour_vehicule_{annee}.pdf)")
     parser.add_argument('--output-vehicule-consignes', default=None,
                         help="Chemin du classeur consignes véhicules — une ligne par camion, "
                              "condensée depuis liste-vehicule.xlsx (défaut : "
-                             "Tournées definitives 2026/vehicule_consignes.xlsx)")
+                             "Tournées definitives <année>/vehicule_consignes.xlsx)")
 
     # Rétro-compatibilité : anciens noms d'arguments des scripts d'origine
     parser.add_argument('--output', default=None, help=argparse.SUPPRESS)
@@ -2136,7 +2139,8 @@ def main():
     if args.output_excel:
         out_dir = os.path.dirname(os.path.abspath(args.output_excel)) or '.'
     else:
-        out_dir = r'G:\Drive partagés\BA380 - COLLECTE\Collecte 2026\Camions 2026\Tournées definitives 2026'
+        out_dir = (r'G:\Drive partagés\BA380 - COLLECTE\Collecte %(a)s\Camions %(a)s\Tournées definitives %(a)s'
+                   % {'a': args.annee})
     os.makedirs(out_dir, exist_ok=True)
     if args.output_excel is None:
         args.output_excel = os.path.join(out_dir, f'Tournees_BAI38_{args.annee}_{ORIGINE}.xlsx')
@@ -2717,7 +2721,7 @@ def main():
     print('  Génération de la carte HTML des tournées...')
     lignes_carte = construire_lignes_tournees_secteur(df, mag_cols, df_ref)
     df_carte = pd.DataFrame(lignes_carte)
-    generer_carte_tournees(df_carte, df_ref, mag_cols, out_dir)
+    generer_carte_tournees(df_carte, df_ref, mag_cols, out_dir, args.annee)
 
     print(f"\nLes 4 documents, la carte HTML et vehicule_consignes.xlsx ont été générés dans : {out_dir}")
 

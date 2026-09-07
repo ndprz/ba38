@@ -1,3 +1,3 @@
-VERSION=1.6.37
-MESSAGE=Aide Collecte en accordeon par sujet ; Associations gardant : Code VIF auto (accents/CR/CS/du-de + alias + correction manuelle), inclus dans mail/PDF/Excel ; envoi mail tournees : exclusion camions fictifs (code >= V090)
-DATE=2026-09-07 15:20
+VERSION=1.6.38
+MESSAGE=Collecte annuelle : fin des annees codees en dur (bug tonnage colonne 2025/2026 + titres/en-tetes classeur et cartes HTML) pour que la campagne 2027 fonctionne sans modif de code
+DATE=2026-09-07 15:49

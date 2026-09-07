@@ -158,7 +158,10 @@ DJ_MAP = {
 
 # ─── ARGUMENTS ───────────────────────────────────────────────────────────────
 def parse_args():
-    p = argparse.ArgumentParser(description='Génère les tournées BAI 38 - 2026')
+    annee_defaut = datetime.now().year
+    p = argparse.ArgumentParser(description=f'Génère les tournées BAI 38 - {annee_defaut}')
+    p.add_argument('--annee', type=int, default=annee_defaut, metavar='AAAA',
+                   help=f'Année de la campagne (défaut: {annee_defaut})')
     p.add_argument('--camions-supp',  type=int, default=0,   metavar='N',  help='Camions supplémentaires (défaut: 0)')
     p.add_argument('--poids-nouveaux',type=int, default=200, metavar='KG', help='Poids nouveaux magasins kg (défaut: 200)')
     p.add_argument('--max-magasins',  type=int, default=4,   metavar='N',  help='Max magasins/tournée hors dimanche (défaut: 4, dimanche: +1)')
@@ -167,10 +170,10 @@ def parse_args():
     p.add_argument('--fusionner-legeres', action='store_true', default=False,
                    help='Fusionner automatiquement les tournées légères (≤ 2 mag) faisables')
     p.add_argument('--optimiser-anciens', action='store_true', default=False,
-                   help='Autoriser le déplacement des anciens magasins (2025) pour optimiser les tournées')
+                   help="Autoriser le déplacement des anciens magasins (année précédente) pour optimiser les tournées")
     p.add_argument('--output',   type=str, default=None, metavar='F')
     p.add_argument('--pdf',      type=str, default='fiches jour-véhicule-magasin.pdf', metavar='F')
-    p.add_argument('--magasins', type=str, default='liste-magasins2026.xlsx', metavar='F')
+    p.add_argument('--magasins', type=str, default=f'liste-magasins{annee_defaut}.xlsx', metavar='F')
     p.add_argument('--nouveaux', type=str, default=None, metavar='F',
                    help='(obsolète) Ignoré — les nouveaux magasins sont détectés automatiquement')
     p.add_argument('--debug-pdf',   action='store_true', help='Affiche les 3 premières pages brutes')
@@ -320,8 +323,11 @@ def extraire_pdf(pdf_path):
     return fiches
 
 # ─── MAGASINS ─────────────────────────────────────────────────────────────────
-def lire_magasins(path_mag, vifs_pdf_2025, poids_nouveaux):
+def lire_magasins(path_mag, vifs_pdf_2025, poids_nouveaux, annee=None):
     import pandas as pd
+
+    annee = annee or datetime.now().year
+    annee_precedente = annee - 1
 
     print(f"  Lecture magasins : {path_mag}")
     df = pd.read_excel(path_mag)
@@ -337,12 +343,12 @@ def lire_magasins(path_mag, vifs_pdf_2025, poids_nouveaux):
         elif 'ville' in cl:                     rmap[col] = 'Ville'
         elif 'lat' in cl:                       rmap[col] = 'Latitude'
         elif 'lon' in cl:                       rmap[col] = 'Longitude'
-        elif 'tonnage' in cl and '2025' in cl:  rmap[col] = 'Tonnage 2025'
+        elif 'tonnage' in cl and str(annee_precedente) in cl: rmap[col] = 'Tonnage_precedent'
         elif 'secteur' in cl:                   rmap[col] = 'Secteur'
     df = df.rename(columns=rmap)
     df = df.loc[:, ~df.columns.duplicated()]
 
-    for col in ['Code VIF','Nom','Ville','Latitude','Longitude','Tonnage 2025','Secteur','État','Stockage']:
+    for col in ['Code VIF','Nom','Ville','Latitude','Longitude','Tonnage_precedent','Secteur','État','Stockage']:
         if col not in df.columns:
             df[col] = ''
 
@@ -365,7 +371,7 @@ def lire_magasins(path_mag, vifs_pdf_2025, poids_nouveaux):
     else:
         print(f"  INFO: colonne 'État' absente, tous les {nb_avant} magasins conservés")
 
-    df['Tonnage 2025'] = pd.to_numeric(df['Tonnage 2025'], errors='coerce').fillna(0)
+    df['Tonnage_precedent'] = pd.to_numeric(df['Tonnage_precedent'], errors='coerce').fillna(0)
     df['Nouveau'] = False
 
     # Construire les secteurs géographiques
@@ -442,11 +448,11 @@ def lire_magasins(path_mag, vifs_pdf_2025, poids_nouveaux):
     # Calculer le nombre de passages par VIF (= nb de fiches dans le PDF qui le contiennent)
     # -> sera utilisé plus tard pour diviser le tonnage annuel
     df['NbPassages'] = 0  # sera mis à jour après extraction PDF si disponible
-    df['Tonnage 2025'] = pd.to_numeric(df['Tonnage 2025'], errors='coerce').fillna(0)
+    df['Tonnage_precedent'] = pd.to_numeric(df['Tonnage_precedent'], errors='coerce').fillna(0)
 
-    # Détecter les nouveaux magasins 2026 :
-    # Nouveau = présent dans liste-magasins2026.xlsx (État='Collecté par la BAI')
-    #           ET absent du PDF des tournées 2025 (VIF non reconnu)
+    # Détecter les nouveaux magasins (année en cours) :
+    # Nouveau = présent dans le fichier magasins (État='Collecté par la BAI')
+    #           ET absent du PDF des tournées de l'année précédente (VIF non reconnu)
     # vifs_pdf_2025 = ensemble des codes VIF extraits du PDF (sans zéro initial)
     vifs_df_str = df['Code VIF'].astype(str).str.strip().str.lstrip('0')
     nb_nouveaux = 0
@@ -454,9 +460,9 @@ def lire_magasins(path_mag, vifs_pdf_2025, poids_nouveaux):
         vif_norm = vifs_df_str[idx_r]
         if vif_norm not in vifs_pdf_2025:
             df.loc[idx_r, 'Nouveau'] = True
-            df.loc[idx_r, 'Tonnage 2025'] = poids_nouveaux
+            df.loc[idx_r, 'Tonnage_precedent'] = poids_nouveaux
             nb_nouveaux += 1
-    print(f"  → {nb_nouveaux} nouveaux magasins détectés (absents du PDF 2025, poids: {poids_nouveaux} kg)")
+    print(f"  → {nb_nouveaux} nouveaux magasins détectés (absents du PDF {annee_precedente}, poids: {poids_nouveaux} kg)")
 
     # Détecter les magasins sans coordonnées GPS avant de mettre les valeurs par défaut
     df['Latitude_raw']  = pd.to_numeric(df['Latitude'],  errors='coerce')
@@ -480,6 +486,9 @@ def lire_magasins(path_mag, vifs_pdf_2025, poids_nouveaux):
 def optimiser_tournees(fiches, df_mag, args):
     import pandas as pd
     from collections import Counter
+
+    annee = getattr(args, 'annee', None) or datetime.now().year
+    annee_precedente = annee - 1
 
     max_norm = args.max_magasins
     max_dim  = max_norm + 1
@@ -519,16 +528,16 @@ def optimiser_tournees(fiches, df_mag, args):
         elif 'ville' in _cl:                     _rmap[_col] = 'Ville'
         elif 'lat' in _cl:                       _rmap[_col] = 'Latitude'
         elif 'lon' in _cl:                       _rmap[_col] = 'Longitude'
-        elif 'tonnage' in _cl and '2025' in _cl: _rmap[_col] = 'Tonnage 2025'
+        elif 'tonnage' in _cl and str(annee_precedente) in _cl: _rmap[_col] = 'Tonnage_precedent'
         elif 'secteur' in _cl:                   _rmap[_col] = 'Secteur'
     df_complet_opt = df_complet_opt.rename(columns=_rmap)
     df_complet_opt = df_complet_opt.loc[:, ~df_complet_opt.columns.duplicated()]
-    for _col in ['Code VIF','Nom','Ville','Latitude','Longitude','Tonnage 2025','Secteur']:
+    for _col in ['Code VIF','Nom','Ville','Latitude','Longitude','Tonnage_precedent','Secteur']:
         if _col not in df_complet_opt.columns:
             df_complet_opt[_col] = ''
     df_complet_opt['Latitude']  = _pd.to_numeric(df_complet_opt['Latitude'],  errors='coerce').fillna(BAI_LAT)
     df_complet_opt['Longitude'] = _pd.to_numeric(df_complet_opt['Longitude'], errors='coerce').fillna(BAI_LON)
-    df_complet_opt['Tonnage 2025'] = _pd.to_numeric(df_complet_opt['Tonnage 2025'], errors='coerce').fillna(0)
+    df_complet_opt['Tonnage_precedent'] = _pd.to_numeric(df_complet_opt['Tonnage_precedent'], errors='coerce').fillna(0)
     df_complet_opt['Nouveau'] = False
     df_complet_opt = df_complet_opt.reset_index(drop=True)
 
@@ -1582,7 +1591,7 @@ def optimiser_tournees(fiches, df_mag, args):
             if row is not None:
                 # Tonnage par demi-journée = tonnage annuel / nb de passages du magasin
                 nb_passages = vif_passages.get(vif, 1)
-                tonnage_annuel = float(row['Tonnage 2025']) if row['Tonnage 2025'] else 0
+                tonnage_annuel = float(row['Tonnage_precedent']) if row['Tonnage_precedent'] else 0
                 tonnage_par_dj = round(tonnage_annuel / nb_passages) if nb_passages > 0 else 0
                 infos.append({
                     'vif': vif, 'nom': str(row['Nom']),
@@ -1611,7 +1620,7 @@ def optimiser_tournees(fiches, df_mag, args):
             secteur = ' | '.join(secs_uniq) if secs_uniq else ''
 
             parts = []
-            if has_new: parts.append('Nouveau magasin 2026')
+            if has_new: parts.append(f'Nouveau magasin {annee}')
             if veh in nouveaux_vehs: parts.append('Camion supplementaire')
             # Optimisation 3 : signaler les tournées légères et surchargées
             if len(groupe) <= 2:
@@ -1676,6 +1685,10 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
 
     print(f"  Génération Excel : {output_path}")
 
+    annee = getattr(args, 'annee', None) or datetime.now().year
+    annee_precedente = annee - 1
+    tonnage_label = f'Tonnage {annee_precedente}'
+
     C_HDR  = PatternFill("solid", fgColor="1F4E79")
     C_ORG  = PatternFill("solid", fgColor="FFE699")
     C_VRT  = PatternFill("solid", fgColor="E2EFDA")
@@ -1704,7 +1717,7 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
         ('--poids-nouveaux', args.poids_nouveaux,  'Poids kg nouveaux magasins'),
         ('--max-magasins',   args.max_magasins,    'Max magasins/tournée hors dimanche'),
         ('Max dimanche',     args.max_magasins+1,  'Max dimanche (auto)'),
-        ('Optimiser anciens', 'OUI' if args.optimiser_anciens else 'NON', 'Déplacer anciens magasins 2025'),
+        ('Optimiser anciens', 'OUI' if args.optimiser_anciens else 'NON', f'Déplacer anciens magasins {annee_precedente}'),
         ('Fusionner légères',  'OUI' if args.fusionner_legeres else 'NON', 'Fusionner tournées légères (≤ 2 mag)'),
         ('Corriger mal placés','OUI' if args.corriger_mal_places else 'NON', 'Réaffecter magasins éloignés du centre'),
         ('Génération',       datetime.now().strftime('%d/%m/%Y %H:%M'), ''),
@@ -1910,7 +1923,7 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
     ws_t.page_setup.fitToPage   = True
     ws_t.page_margins = PageMargins(left=0.4, right=0.4, top=0.5, bottom=0.5,
                                     header=0.2, footer=0.2)
-    ws_t.oddHeader.center.text = "BAI 38 — Tournées de Collecte 2026"
+    ws_t.oddHeader.center.text = f"BAI 38 — Tournées de Collecte {annee}"
     ws_t.oddHeader.center.size = 10
     ws_t.oddFooter.left.text   = f"Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
     ws_t.oddFooter.right.text  = "Page &P / &N"
@@ -2014,7 +2027,7 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
 
     # ── Magasins ─────────────────────────────────────────────────────────────
     ws_m = wb.create_sheet('Magasins')
-    cols_fix = ['Code VIF','Nom','Ville','Secteur','Tonnage 2025','Latitude','Longitude','Dist_BAI','Nouveau']
+    cols_fix = ['Code VIF','Nom','Ville','Secteur',tonnage_label,'Latitude','Longitude','Dist_BAI','Nouveau']
     cols_m   = cols_fix + DEMI_JOURNEES
     for c, col in enumerate(cols_m, 1):
         cell = ws_m.cell(row=1, column=c, value=col)
@@ -2039,7 +2052,7 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
         for c, col in enumerate(cols_m, 1):
             if col == 'Nouveau':     val = 'OUI' if is_new else ''
             elif col == 'Dist_BAI': val = round(float(mag['Dist_BAI']), 1)
-            elif col == 'Tonnage 2025': val = int(float(mag.get('Tonnage 2025', 0)))
+            elif col == tonnage_label: val = int(float(mag.get('Tonnage_precedent', 0)))
             elif col in DEMI_JOURNEES:  val = vif_plan.get(vif, {}).get(col, '')
             else:
                 val = mag.get(col, '')
@@ -2065,7 +2078,7 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
     for _, mag in df_mag.iterrows():
         sec = str(mag.get('Secteur',''))
         nom = str(mag.get('Nom',''))
-        ton = float(mag.get('Tonnage 2025', 0) or 0)
+        ton = float(mag.get('Tonnage_precedent', 0) or 0)
         if sec and nom:
             secteur_stats[sec]['noms'].append(nom)
             secteur_stats[sec]['tonnage'] += ton
@@ -2089,7 +2102,7 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
 
     # Titre
     ws_a.merge_cells('A1:H1')
-    cell = ws_a.cell(row=1, column=1, value='ANALYSE ET OPTIMISATION DES TOURNÉES BAI 38 - 2026')
+    cell = ws_a.cell(row=1, column=1, value=f'ANALYSE ET OPTIMISATION DES TOURNÉES BAI 38 - {annee}')
     cell.font = Font(name='Calibri', bold=True, color='FFFFFF', size=12)
     cell.fill = C_HDR
     cell.alignment = Alignment(horizontal='center', vertical='center')
@@ -2339,7 +2352,7 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
 
     # ── Tournées 2025 (source PDF) ───────────────────────────────────────────
     if fiches_2025:
-        ws_25 = wb.create_sheet('Tournees 2025')
+        ws_25 = wb.create_sheet(f'Tournees {annee_precedente}')
 
         # Index VIF → nom magasin depuis le référentiel COMPLET (toutes lignes, sans filtre État)
         # Permet de résoudre les magasins qui ne sont plus collectés, changés de nom ou supprimés
@@ -2464,7 +2477,7 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
     # ── Évolutions : magasins ajoutés et supprimés ────────────────────────────
     ws_ev = wb.create_sheet('Evolutions')
     ws_ev.merge_cells('A1:D1')
-    cell = ws_ev.cell(row=1, column=1, value='ÉVOLUTIONS DES MAGASINS 2025 → 2026')
+    cell = ws_ev.cell(row=1, column=1, value=f'ÉVOLUTIONS DES MAGASINS {annee_precedente} → {annee}')
     cell.font = Font(name='Calibri', bold=True, color='FFFFFF', size=12)
     cell.fill = C_HDR
     cell.alignment = Alignment(horizontal='center', vertical='center')
@@ -2491,7 +2504,7 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
 
     row_ev = 3
     for col, label, couleur, nb in [
-        (1, f'NOUVEAUX MAGASINS 2026 ({len(ajoutes)})', '2E7D32', len(ajoutes)),
+        (1, f'NOUVEAUX MAGASINS {annee} ({len(ajoutes)})', '2E7D32', len(ajoutes)),
         (3, f'SUPPRIMÉS / NON RECONDUITS ({len(supprimes)})', 'C62828', len(supprimes))]:
         cell = ws_ev.cell(row=row_ev, column=col, value=label)
         cell.font = Font(name='Calibri', bold=True, color='FFFFFF', size=10)
@@ -2607,12 +2620,12 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
     C_CHG_DJ_L  = PatternFill("solid", fgColor="FFB347")
     leg = [
         ('Couleur','Signification',C_HDR,F_HDR),
-        ('Orange (#FFE699)','Nouveau magasin 2026 (ligne)',C_ORG,F_NRM),
+        ('Orange (#FFE699)',f'Nouveau magasin {annee} (ligne)',C_ORG,F_NRM),
         ('Vert clair','Camion supplémentaire (ligne)',C_VRT,F_NRM),
         ('Rouge clair','Camion figé (ligne)',C_RGE,F_NRM),
         ('Bleu clair','Alternance demi-journée (ligne)',C_BLC,F_NRM),
-        ('Rouge (#FF6B6B)','Magasin : changement de camion vs 2025',C_CHG_CAM_L,Font(name='Calibri',size=10,bold=True,color='FFFFFF')),
-        ('Orange (#FFB347)','Magasin : changement de demi-journée vs 2025',C_CHG_DJ_L,Font(name='Calibri',size=10,bold=True)),
+        ('Rouge (#FF6B6B)',f'Magasin : changement de camion vs {annee_precedente}',C_CHG_CAM_L,Font(name='Calibri',size=10,bold=True,color='FFFFFF')),
+        ('Orange (#FFB347)',f'Magasin : changement de demi-journée vs {annee_precedente}',C_CHG_DJ_L,Font(name='Calibri',size=10,bold=True)),
         ('Violet (#CC99FF)','Nouveau magasin placé hors secteur (à vérifier)',PatternFill("solid", fgColor="CC99FF"),Font(name='Calibri',size=10,bold=True,color='4B0082')),
         ('Texte orange foncé','Secteur : tournée avec exactement 3 secteurs (attention)',C_WHT,Font(name='Calibri',size=10,bold=True,color='C65911')),
         ('Texte rouge foncé','Secteur : tournée avec > 3 secteurs distincts (incohérence)',C_WHT,Font(name='Calibri',size=10,bold=True,color='C00000')),
@@ -2993,6 +3006,7 @@ def generer_carte_tournees(df_t, df_mag, args, dossier_resultat):
 
     DATA_JSON_CT = json.dumps(data_ct, ensure_ascii=False)
     DJ_JSON_CT   = json.dumps(DJ_LIST_CT, ensure_ascii=False)
+    annee_ct = getattr(args, 'annee', None) or datetime.now().year
 
     parts = []
     parts.append("""<!DOCTYPE html>
@@ -3000,7 +3014,8 @@ def generer_carte_tournees(df_t, df_mag, args, dossier_resultat):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BAI 38 — Carte des tourn&#233;es 2026</title>
+<title>BAI 38 — Carte des tourn&#233;es __ANNEE_CT__</title>""".replace('__ANNEE_CT__', str(annee_ct)))
+    parts.append("""
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -3038,7 +3053,8 @@ select{padding:6px 10px;border-radius:6px;border:none;font-size:13px;background:
 </head>
 <body>
 <header>
-  <h1>&#128666; BAI 38 &#8212; Tourn&#233;es 2026</h1>
+  <h1>&#128666; BAI 38 &#8212; Tourn&#233;es __ANNEE_CT__</h1>""".replace('__ANNEE_CT__', str(annee_ct)))
+    parts.append("""
   <div class="controls">
     <select id="sel-dj" onchange="onDjChange()">
       <option value="">&#8212; Demi-journ&#233;e &#8212;</option>
@@ -3279,7 +3295,7 @@ def main():
         sous_dossier = f'vx{args.camions_supp}-mag{args.max_magasins}'
         dossier_resultat = os.path.join(dossier_resultat_base, sous_dossier)
         os.makedirs(dossier_resultat, exist_ok=True)
-        args.output = os.path.join(dossier_resultat, (lambda s: f'Tournees_BAI38_2026_{datetime.now().strftime("%Y%m%d_%H%M")}_VX{args.camions_supp}{s}.xlsx')(
+        args.output = os.path.join(dossier_resultat, (lambda s: f'Tournees_BAI38_{args.annee}_{datetime.now().strftime("%Y%m%d_%H%M")}_VX{args.camions_supp}{s}.xlsx')(
             ('_OptAnciens' if args.optimiser_anciens else '') +
             ('_FusLegeres' if args.fusionner_legeres else '') +
             ('_CorMalPlaces' if args.corriger_mal_places else '')))
@@ -3290,14 +3306,14 @@ def main():
 
     print()
     print('='*65)
-    print('  GÉNÉRATION TOURNÉES BAI 38 - 2026')
+    print(f'  GÉNÉRATION TOURNÉES BAI 38 - {args.annee}')
     print('='*65)
     print(f'  Camions supplémentaires : {args.camions_supp}')
     print(f'  Poids nouveaux magasins : {args.poids_nouveaux} kg')
     print(f'  Max magasins/tournée    : {args.max_magasins} (dimanche: {args.max_magasins+1})')
     print(f'  Fichier PDF source      : {args.pdf}')
     print(f'  Fichier magasins        : {args.magasins}')
-    print(f'  Nouveaux magasins       : détectés automatiquement (absents du PDF 2025)')
+    print(f'  Nouveaux magasins       : détectés automatiquement (absents du PDF {args.annee - 1})')
     print('='*65)
     print()
 
@@ -3370,8 +3386,8 @@ def main():
     for f in fiches:
         for v in f['vif_codes']:
             vifs_pdf_2025.add(str(v).lstrip('0'))
-    print(f"  → {len(vifs_pdf_2025)} codes VIF distincts dans le PDF 2025")
-    df_mag = lire_magasins(args.magasins, vifs_pdf_2025, args.poids_nouveaux)
+    print(f"  → {len(vifs_pdf_2025)} codes VIF distincts dans le PDF {args.annee - 1}")
+    df_mag = lire_magasins(args.magasins, vifs_pdf_2025, args.poids_nouveaux, args.annee)
 
     print("\nÉTAPE 3 — Optimisation des tournées...")
     df_t = optimiser_tournees(fiches, df_mag, args)
