@@ -21,6 +21,19 @@
      <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-custom.css') }}">
      <link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">
 
+     <style>
+     .aide-toggle {
+          padding: .75rem 1.25rem;
+     }
+     .aide-chevron {
+          display: inline-block;
+          transition: transform .2s ease;
+     }
+     .aide-toggle[aria-expanded="true"] .aide-chevron {
+          transform: rotate(90deg);
+     }
+     </style>
+
      {% block extra_css %}{% endblock %}
 
 
@@ -193,6 +206,61 @@
           win.print();
      }, 500);
      }
+
+     document.addEventListener('shown.bs.modal', function (e) {
+
+     const doc = e.target.querySelector('.aide-doc:not([data-decoupe])');
+     if (!doc) return;
+     doc.setAttribute('data-decoupe', '1');
+
+     const intro = [];
+     const sections = [];
+     let section = null;
+
+     Array.from(doc.children).forEach(function (el) {
+          if (el.tagName === 'H1') {
+               section = { titre: el.textContent, contenu: [] };
+               sections.push(section);
+          } else if (section) {
+               section.contenu.push(el);
+          } else {
+               intro.push(el);
+          }
+     });
+
+     if (sections.length < 2) return;
+
+     const accordionId = 'aide-accordion-' + Math.random().toString(36).slice(2);
+     const accordion = document.createElement('div');
+     accordion.className = 'aide-accordion';
+     accordion.id = accordionId;
+
+     sections.forEach(function (sec, i) {
+          const itemId = accordionId + '-item-' + i;
+          const item = document.createElement('div');
+          item.className = 'card mb-2';
+          item.innerHTML =
+               '<div class="card-header p-0">' +
+                    '<button class="btn btn-link aide-toggle w-100 text-start text-decoration-none fw-bold" type="button" ' +
+                            'data-bs-toggle="collapse" data-bs-target="#' + itemId + '" ' +
+                            'aria-expanded="' + (i === 0 ? 'true' : 'false') + '" aria-controls="' + itemId + '">' +
+                       '<span class="aide-chevron">▸</span> ' + sec.titre +
+                    '</button>' +
+               '</div>' +
+               '<div id="' + itemId + '" class="collapse' + (i === 0 ? ' show' : '') + '" ' +
+                    'data-bs-parent="#' + accordionId + '">' +
+                    '<div class="card-body"></div>' +
+               '</div>';
+          const body = item.querySelector('.card-body');
+          sec.contenu.forEach(function (el) { body.appendChild(el); });
+          accordion.appendChild(item);
+     });
+
+     doc.innerHTML = '';
+     intro.forEach(function (el) { doc.appendChild(el); });
+     doc.appendChild(accordion);
+
+     });
 
      </script>
 

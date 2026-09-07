@@ -153,7 +153,14 @@ Détail engagement #{{ engagement.id }}
                 <!-- TRANSMISSION TRESORERIE -->
                 <!-- ============================================== -->
 
-                {% if engagement.statut == "valide" %}
+                {% if engagement.statut == "valide" and engagement.est_modele_abonnement %}
+
+                <span class="badge bg-secondary align-self-center"
+                      title="Ce modèle sert uniquement de base à la génération mensuelle. Seuls les engagements générés chaque mois passent par la trésorerie.">
+                    ✅ Modèle validé — le workflow s'arrête ici
+                </span>
+
+                {% elif engagement.statut == "valide" %}
 
                 <form method="POST"
                     action="{{ url_for(

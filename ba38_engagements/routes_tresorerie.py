@@ -68,6 +68,23 @@ def transmettre_tresorerie(engagement_id):
         if not engagement:
             abort(404)
 
+        if engagement["est_modele_abonnement"]:
+
+            flash(
+                "⚠️ Ce modèle d'abonnement s'arrête à la validation "
+                "(pôle/présidence) : seuls les engagements générés "
+                "chaque mois à partir de ce modèle passent par la "
+                "trésorerie.",
+                "warning"
+            )
+
+            return redirect(
+                url_for(
+                    "engagements.detail_engagement",
+                    engagement_id=engagement_id
+                )
+            )
+
         ancien_statut = engagement["statut"]
 
         conn.execute("""
@@ -716,8 +733,13 @@ def retransmettre_engagement(engagement_id):
         # Détermination du nouveau statut
         # ====================================================
 
-
-        nouveau_statut = "a_payer"
+        # Un modèle d'abonnement ne va jamais jusqu'à la trésorerie :
+        # une fois corrigé, il repart en validation pôle comme un
+        # engagement normal (le workflow s'arrête à la validation).
+        if engagement["est_modele_abonnement"]:
+            nouveau_statut = "validation_pole"
+        else:
+            nouveau_statut = "a_payer"
 
 
         ancien_statut = engagement["statut"]
@@ -764,7 +786,7 @@ def retransmettre_engagement(engagement_id):
         # MAIL TRESORERIE
         # =====================================================
 
-        if engagement["tresorier_email"]:
+        if not engagement["est_modele_abonnement"] and engagement["tresorier_email"]:
 
             lien = url_for(
                 "engagements.detail_engagement",
