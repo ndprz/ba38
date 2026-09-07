@@ -475,6 +475,48 @@ Nouvelle demande d'engagement
             </div>
 
             <!-- ============================================= -->
+            <!-- ENGAGEMENT RECURRENT -->
+            <!-- ============================================= -->
+
+            <div class="form-check mb-2">
+
+                <input type="checkbox"
+                       class="form-check-input"
+                       name="engagement_recurrent"
+                       id="engagement_recurrent_input"
+                       {% if request.form.get('engagement_recurrent') %}checked{% endif %}>
+
+                <label class="form-check-label" for="engagement_recurrent_input">
+
+                    🔁 Engagement récurrent (reconduit automatiquement chaque mois)
+
+                </label>
+
+            </div>
+
+            <div class="row g-2 mb-2"
+                 id="bloc_abonnement_jour_mois"
+                 style="{% if not request.form.get('engagement_recurrent') %}display:none;{% endif %}">
+
+                <div class="col-md-4">
+
+                    <label class="form-label">
+                        Jour du mois (1 à 28)
+                    </label>
+
+                    <input type="number"
+                           name="abonnement_jour_mois"
+                           id="abonnement_jour_mois_input"
+                           class="form-control"
+                           min="1"
+                           max="28"
+                           value="{{ request.form.get('abonnement_jour_mois', '1') }}">
+
+                </div>
+
+            </div>
+
+            <!-- ============================================= -->
             <!-- ADRESSE -->
             <!-- ============================================= -->
 
@@ -1655,6 +1697,15 @@ document.addEventListener(
         verifierAchatDenrees();
         initFournisseurSelect();
         initNouveauFournisseur();
+
+        const champRecurrent = document.getElementById("engagement_recurrent_input");
+        const blocJourMois = document.getElementById("bloc_abonnement_jour_mois");
+
+        if (champRecurrent && blocJourMois) {
+            champRecurrent.addEventListener("change", function () {
+                blocJourMois.style.display = champRecurrent.checked ? "" : "none";
+            });
+        }
 
 
         const champMontant =

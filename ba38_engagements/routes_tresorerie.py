@@ -140,7 +140,8 @@ def transmettre_tresorerie(engagement_id):
                 destinataires=[
                     engagement["tresorier_email"]
                 ],
-                texte=texte
+                texte=texte,
+                sender_override=current_user.email
             )
 
         conn.commit()
@@ -803,7 +804,8 @@ def retransmettre_engagement(engagement_id):
                 destinataires=[
                     engagement["tresorier_email"]
                 ],
-                texte=texte
+                texte=texte,
+                sender_override=current_user.email
             )
 
         conn.commit()

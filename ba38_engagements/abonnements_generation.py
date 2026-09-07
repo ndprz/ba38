@@ -120,7 +120,12 @@ Ou en vous connectant à l'application :
 BA38
 """
 
-            envoyer_mail(sujet=sujet, destinataires=[user_email], texte=texte)
+            envoyer_mail(
+                sujet=sujet,
+                destinataires=[user_email],
+                texte=texte,
+                sender_override=modele["demandeur_email"]
+            )
 
     elif statut == "a_payer":
 
@@ -151,7 +156,8 @@ BA38
             envoyer_mail(
                 sujet=sujet,
                 destinataires=[pole["tresorier_email"]],
-                texte=texte
+                texte=texte,
+                sender_override=modele["demandeur_email"]
             )
 
     else:
@@ -184,7 +190,12 @@ Accéder à la demande :
 BA38
 """
 
-        envoyer_mail(sujet=sujet, destinataires=destinataires, texte=texte)
+        envoyer_mail(
+            sujet=sujet,
+            destinataires=destinataires,
+            texte=texte,
+            sender_override=modele["demandeur_email"]
+        )
 
 
 def _creer_engagement_enfant(conn, modele, aujourdhui):

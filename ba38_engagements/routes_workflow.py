@@ -214,7 +214,8 @@ def _executer_validation_pole(
                 destinataires=[
                     tresorier["tresorier_email"]
                 ],
-                texte=texte
+                texte=texte,
+                sender_override=user_email
             )
 
             write_log(
@@ -281,7 +282,8 @@ def _executer_validation_pole(
             envoyer_mail(
                 sujet=sujet,
                 destinataires=destinataires,
-                texte=texte
+                texte=texte,
+                sender_override=user_email
             )
 
             write_log(
@@ -773,7 +775,8 @@ def refuser_engagement(engagement_id):
         envoyer_mail(
             sujet=sujet,
             destinataires=[engagement["demandeur_email"]],
-            texte=texte
+            texte=texte,
+            sender_override=current_user.email
         )
 
         # =====================================================

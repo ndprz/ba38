@@ -909,6 +909,21 @@ Détail engagement #{{ engagement.id }}
                         {{ action_button("🗑 Retirer l'abonnement", type="submit", color="outline-danger") }}
                     </form>
 
+                    <form method="POST"
+                        action="{{ url_for(
+                                'engagements.abonnement_generer_occurrence',
+                                engagement_id=engagement.id
+                        ) }}"
+                        onsubmit="return confirm(
+                                'Générer maintenant un nouvel engagement '
+                                + 'à partir de ce modèle (même objet, '
+                                + 'montant, fournisseur) ?'
+                        );"
+                        class="m-0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        {{ action_button("▶️ Générer une occurrence maintenant", type="submit", color="outline-primary") }}
+                    </form>
+
                     {{ action_button(
                         "📋 Voir tous les abonnements",
                         href=url_for('engagements.gestion_abonnements'),

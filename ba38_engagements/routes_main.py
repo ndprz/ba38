@@ -473,6 +473,14 @@ def nouvelle_depense():
                 request.form.get("fournisseur_sans_coordonnees")
             )
 
+            engagement_recurrent = bool(
+                request.form.get("engagement_recurrent")
+            )
+
+            abonnement_jour_mois = request.form.get(
+                "abonnement_jour_mois", type=int
+            )
+
             attestation = 1 if request.form.get("attestation_comparaison") else 0
             signature = request.form.get("signature")
 
@@ -788,6 +796,29 @@ def nouvelle_depense():
                         fournisseurs=fournisseurs
                     )
 
+                if engagement_recurrent:
+
+                    if not abonnement_jour_mois or not (1 <= abonnement_jour_mois <= 28):
+
+                        flash(
+                            "⚠️ Le jour du mois (engagement récurrent) "
+                            "doit être compris entre 1 et 28.",
+                            "warning"
+                        )
+
+                        return render_template(
+                            "engagements/nouvelle_depense.html",
+                            poles=poles,
+                            paliers=paliers,
+                            benevoles=benevoles,
+                            subventions=subventions,
+                            fournisseurs=fournisseurs
+                        )
+
+            else:
+
+                engagement_recurrent = False
+
             # ============================
             # 1️⃣ INSERT TABLE MÈRE
             # ============================
@@ -820,6 +851,22 @@ def nouvelle_depense():
                 signature_user_agent
             ))
             engagement_id = cur.lastrowid
+
+            if engagement_recurrent:
+
+                conn.execute("""
+                    UPDATE engagements
+                    SET
+                        est_modele_abonnement = 1,
+                        abonnement_actif = 1,
+                        abonnement_jour_mois = ?
+                    WHERE id = ?
+                """, (abonnement_jour_mois, engagement_id))
+
+                write_log(
+                    f"[ABONNEMENTS] Engagement #{engagement_id} créé "
+                    f"directement comme abonnement (jour {abonnement_jour_mois} du mois)"
+                )
 
             # =====================================================
             # STOCKAGE DEVIS PDF
@@ -1078,7 +1125,8 @@ def nouvelle_depense():
                     envoyer_mail(
                         sujet=sujet,
                         destinataires=[user_email],
-                        texte=texte
+                        texte=texte,
+                        sender_override=current_user.email
                     )
 
             else:
@@ -1128,7 +1176,8 @@ def nouvelle_depense():
                 envoyer_mail(
                     sujet=sujet,
                     destinataires=destinataires,
-                    texte=texte
+                    texte=texte,
+                    sender_override=current_user.email
                 )
 
             # ============================

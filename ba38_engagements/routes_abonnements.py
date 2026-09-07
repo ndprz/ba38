@@ -4,9 +4,13 @@ from flask_login import login_required
 from ba38_utilitaires.core import get_db_path, write_log, require_access
 
 import sqlite3
+from datetime import datetime
 
 from ba38_engagements import engagements_bp
-from ba38_engagements.abonnements_generation import generer_engagements_abonnements
+from ba38_engagements.abonnements_generation import (
+    generer_engagements_abonnements,
+    _creer_engagement_enfant,
+)
 
 JOUR_MOIS_MIN = 1
 JOUR_MOIS_MAX = 28
@@ -113,6 +117,96 @@ def abonnement_configurer(engagement_id):
     )
 
     flash("✅ Abonnement configuré.", "success")
+
+    return redirect(url_for(
+        "engagements.detail_engagement",
+        engagement_id=engagement_id
+    ))
+
+
+# ============================================================
+# GENERATION MANUELLE D'UNE OCCURRENCE (ciblée sur ce modèle)
+# ============================================================
+
+@engagements_bp.route(
+    "/engagements/detail_engagement/<int:engagement_id>/abonnement/generer_occurrence",
+    methods=["POST"]
+)
+@login_required
+@require_access("engagement_parametres", "ecriture")
+def abonnement_generer_occurrence(engagement_id):
+
+    db_path = get_db_path()
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+
+        modele = conn.execute("""
+            SELECT
+                e.id AS engagement_id,
+                e.demandeur_id,
+                e.demandeur_nom,
+                e.demandeur_email,
+                e.pole_id,
+                e.valide_par_pole_le,
+                d.objet,
+                d.description,
+                d.rubrique,
+                d.precision_rubrique,
+                d.subvention_id,
+                d.montant_total,
+                d.type_engagement,
+                d.beneficiaire_user_id,
+                d.beneficiaire_benevole_id,
+                d.beneficiaire_nom,
+                d.fournisseur_id,
+                d.fournisseur_nom,
+                d.fournisseur_adresse,
+                d.fournisseur_telephone,
+                d.fournisseur_email,
+                d.fournisseur_iban,
+                d.sous_type_depense
+            FROM engagements e
+            JOIN engagements_depenses d ON d.engagement_id = e.id
+            WHERE e.id = ? AND e.est_modele_abonnement = 1 AND e.deleted = 0
+        """, (engagement_id,)).fetchone()
+
+        if not modele:
+            abort(404)
+
+        aujourdhui = datetime.now()
+
+        nouvel_id = _creer_engagement_enfant(conn, modele, aujourdhui)
+
+        if nouvel_id:
+
+            conn.execute("""
+                UPDATE engagements
+                SET abonnement_derniere_generation_le = ?
+                WHERE id = ?
+            """, (aujourdhui.isoformat(), engagement_id))
+
+            conn.commit()
+
+            write_log(
+                f"[ABONNEMENTS] Occurrence #{nouvel_id} générée "
+                f"manuellement depuis le modèle #{engagement_id}"
+            )
+
+            flash(
+                f"✅ Engagement #{nouvel_id} généré et soumis à validation.",
+                "success"
+            )
+
+        else:
+
+            conn.commit()
+
+            flash(
+                "⚠️ Génération impossible : aucun palier de validation "
+                "ne couvre ce montant.",
+                "warning"
+            )
 
     return redirect(url_for(
         "engagements.detail_engagement",
