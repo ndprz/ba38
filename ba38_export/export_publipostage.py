@@ -538,12 +538,13 @@ def list_drive_files(drive_service, container_id):
         return []
 
 
-def get_existing_spreadsheet_id(drive_service, container_id, filename):
+def get_existing_spreadsheet_ids(drive_service, container_id, filename):
     normalized = filename.strip().replace(" ", "_").lower()
-    for file in list_drive_files(drive_service, container_id):
-        if file["name"].strip().replace(" ", "_").lower() == normalized:
-            return file["id"]
-    return None
+    return [
+        file["id"]
+        for file in list_drive_files(drive_service, container_id)
+        if file["name"].strip().replace(" ", "_").lower() == normalized
+    ]
 
 
 def create_spreadsheet_in_shared_drive(drive_service, folder_id, sheet_name):
@@ -570,15 +571,15 @@ def export_dataframe_to_drive(df, sheet_name, client, drive_service, container_i
             write_log(f"⚠️ Aucun enregistrement à exporter pour {sheet_name}")
             return f"{sheet_name} : vide"
 
-        file_id = get_existing_spreadsheet_id(
+        existing_ids = get_existing_spreadsheet_ids(
             drive_service,
             container_id,
             sheet_name
         )
 
-        if file_id:
+        for existing_id in existing_ids:
             drive_service.files().delete(
-                fileId=file_id,
+                fileId=existing_id,
                 supportsAllDrives=True
             ).execute()
             write_log(f"🗑️ Ancien fichier supprimé : {sheet_name}")
