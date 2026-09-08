@@ -54,7 +54,7 @@ from docx import Document
 from openpyxl import load_workbook
 from flask import (
     render_template, request, redirect, url_for, flash,
-    current_app, send_file
+    current_app, send_file, jsonify
 )
 from flask_login import login_required, current_user
 from weasyprint import HTML
@@ -461,6 +461,97 @@ def _charger_tournees(generation):
             "commentaire": "" if pd.isna(row.get("Commentaire optimisation")) else str(row["Commentaire optimisation"]),
             "figee": bool(row["Camion"] in moteur.VEHICULES_FIGES),
         })
+    return lignes
+
+
+def _lire_referentiel_magasins_bai(annee, campagne):
+    """Relit le fichier magasins de l'année (Drive ou upload) et renvoie la
+    liste des magasins du périmètre bai (État='Collecté par la BAI', +
+    'Collecte gardée' avec Stockage BAI+, cf. moteur.lire_magasins) avec leurs
+    demi-journées d'ouverture (colonne Créneaux, cf. moteur.parse_creneaux).
+    Reflète l'état courant du fichier — utilisé uniquement pour (ré)initialiser
+    la liste figée de collecte_cagettes_magasins, jamais directement par la
+    page de saisie (qui doit rester stable même si le fichier est remplacé en
+    cours de campagne)."""
+    chemin = _fichier_drive(annee, "magasins") or os.path.join(_dossier_annee(annee), campagne["fichier_magasins"])
+
+    df = pd.read_excel(chemin)
+    df.columns = [c.strip() for c in df.columns]
+    df = df.loc[:, ~df.columns.duplicated()]
+
+    rmap = {}
+    for col in df.columns:
+        cl = col.lower()
+        if "vif" in cl or cl == "code":
+            rmap[col] = "Code VIF"
+        elif ("nom" in cl or "magasin" in cl) and "fiche" not in cl:
+            rmap[col] = "Nom"
+    df = df.rename(columns=rmap)
+    df = df.loc[:, ~df.columns.duplicated()]
+
+    for col in ["Code VIF", "Nom", "État", "Stockage", "Créneaux"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    etat = df["État"].astype(str).str.strip()
+    stockage = df["Stockage"].astype(str).str.strip()
+    mask_bai = etat == "Collecté par la BAI"
+    mask_gardee_bai_plus = (etat == "Collecte gardée") & stockage.str.contains(r"BAI\s*\+", case=False, regex=True, na=False)
+    df = df[mask_bai | mask_gardee_bai_plus].reset_index(drop=True)
+
+    magasins = []
+    for _, row in df.iterrows():
+        code_vif = str(row["Code VIF"]).strip()
+        nom_magasin = str(row["Nom"]).strip()
+        if not code_vif or code_vif.lower() == "nan":
+            continue
+        djs = moteur.parse_creneaux(row.get("Créneaux", ""))
+        demi_journees = [dj for dj in moteur.DEMI_JOURNEES if djs is None or dj in djs]
+        magasins.append({"code_vif": code_vif, "nom_magasin": nom_magasin, "demi_journees": demi_journees})
+    return magasins
+
+
+def _charger_lignes_cagettes(annee):
+    """Une ligne par magasin (une colonne par demi-journée applicable, + un
+    total) depuis la liste figée collecte_cagettes_magasins (cf. bouton
+    « Initialiser »), complétée avec les cagettes déjà saisies
+    (collecte_cagettes) — jamais depuis le fichier magasins courant. Chaque
+    ligne porte aussi un indicateur « _appl_<demi-journée> » : demi-journée
+    non applicable à ce magasin (fermé ce créneau, valeur grisée dans la
+    grille) vs applicable mais pas encore saisie (None)."""
+    with get_db_connection() as conn:
+        magasins = conn.execute(
+            "SELECT DISTINCT code_vif, nom_magasin FROM collecte_cagettes_magasins "
+            "WHERE annee = ? ORDER BY nom_magasin",
+            (annee,)
+        ).fetchall()
+        applicables = {
+            (r["code_vif"], r["demi_journee"])
+            for r in conn.execute(
+                "SELECT code_vif, demi_journee FROM collecte_cagettes_magasins WHERE annee = ?",
+                (annee,)
+            ).fetchall()
+        }
+        saisies = {
+            (r["code_vif"], r["demi_journee"]): r["nb_cagettes"]
+            for r in conn.execute(
+                "SELECT code_vif, demi_journee, nb_cagettes FROM collecte_cagettes WHERE annee = ?",
+                (annee,)
+            ).fetchall()
+        }
+
+    lignes = []
+    for magasin in magasins:
+        code_vif = magasin["code_vif"]
+        ligne = {"code_vif": code_vif, "nom_magasin": magasin["nom_magasin"], "total": 0}
+        for dj in moteur.DEMI_JOURNEES:
+            applicable = (code_vif, dj) in applicables
+            valeur = saisies.get((code_vif, dj)) if applicable else None
+            ligne[dj] = valeur
+            ligne["_appl_" + dj] = applicable
+            if valeur:
+                ligne["total"] += valeur
+        lignes.append(ligne)
     return lignes
 
 
@@ -1313,6 +1404,113 @@ def resultats(generation_id):
         lignes=lignes,
         params=params_utilises,
     )
+
+
+@collecte_bp.route("/collecte/<int:annee>/cagettes")
+@login_required
+@require_access("collecte", "lecture")
+def cagettes(annee):
+    with get_db_connection() as conn:
+        campagne = conn.execute(
+            "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+
+    if not campagne or not (campagne["fichier_magasins"] or campagne["drive_magasins"]):
+        flash(f"⛔ Liste des magasins {annee} requise avant de saisir les cagettes", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    initialisee = bool(campagne["cagettes_initialisee_le"])
+    lignes = _charger_lignes_cagettes(annee) if initialisee else []
+
+    return render_template(
+        "collecte/cagettes.html",
+        annee=annee,
+        lignes=lignes,
+        demi_journees=moteur.DEMI_JOURNEES,
+        campagne=campagne,
+        initialisee=initialisee,
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/cagettes/initialiser", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def initialiser_cagettes(annee):
+    with get_db_connection() as conn:
+        campagne = conn.execute(
+            "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+
+    if not campagne or not (campagne["fichier_magasins"] or campagne["drive_magasins"]):
+        flash(f"⛔ Liste des magasins {annee} requise avant d'initialiser la saisie cagettes", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    magasins = _lire_referentiel_magasins_bai(annee, campagne)
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    with get_db_connection() as conn:
+        conn.execute("DELETE FROM collecte_cagettes_magasins WHERE annee = ?", (annee,))
+        for magasin in magasins:
+            for dj in magasin["demi_journees"]:
+                conn.execute("""
+                    INSERT INTO collecte_cagettes_magasins (annee, code_vif, nom_magasin, demi_journee)
+                    VALUES (?, ?, ?, ?)
+                """, (annee, magasin["code_vif"], magasin["nom_magasin"], dj))
+        conn.execute("""
+            UPDATE collecte_campagnes SET cagettes_initialisee_le = ?, cagettes_initialisee_par = ?
+            WHERE annee = ?
+        """, (maintenant, current_user.email, annee))
+        conn.commit()
+
+    write_log(
+        f"🔒 Collecte {annee} : liste des magasins figée pour la saisie cagettes par "
+        f"{current_user.email} — {len(magasins)} magasin(s)"
+    )
+    flash(f"🔒 Liste des magasins figée ({len(magasins)} magasins)", "success")
+    return redirect(url_for("collecte.cagettes", annee=annee))
+
+
+@collecte_bp.route("/collecte/cagettes/enregistrer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_cagettes():
+    data = request.get_json(force=True) or {}
+    annee = data.get("annee")
+    lignes = data.get("lignes") or []
+
+    if not isinstance(annee, int):
+        return jsonify({"success": False, "error": "Année invalide"}), 400
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M")
+    with get_db_connection() as conn:
+        for ligne in lignes:
+            code_vif = str(ligne.get("code_vif", "")).strip()
+            demi_journee = str(ligne.get("demi_journee", "")).strip()
+            if not code_vif or not demi_journee:
+                continue
+            nb_cagettes = ligne.get("nb_cagettes")
+            if nb_cagettes in ("", None):
+                nb_cagettes = None
+            else:
+                try:
+                    nb_cagettes = int(nb_cagettes)
+                except (ValueError, TypeError):
+                    continue
+            conn.execute("""
+                INSERT INTO collecte_cagettes
+                    (annee, code_vif, demi_journee, nb_cagettes, saisi_le, saisi_par)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(annee, code_vif, demi_journee)
+                DO UPDATE SET nb_cagettes = excluded.nb_cagettes,
+                              saisi_le = excluded.saisi_le,
+                              saisi_par = excluded.saisi_par
+            """, (annee, code_vif, demi_journee, nb_cagettes, maintenant, current_user.email))
+        conn.commit()
+
+    write_log(
+        f"🧺 Collecte {annee} : cagettes saisies par {current_user.email} — {len(lignes)} ligne(s)"
+    )
+    return jsonify({"success": True})
 
 
 @collecte_bp.route("/collecte/resultats/<int:generation_id>/carte_secteurs")

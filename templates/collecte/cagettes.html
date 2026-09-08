@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Cagettes {{ annee }}{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
+<style>
+    .tabulator-row.ligne-erreur { background-color: #f8d7da !important; }
+    .cellule-non-applicable { color: #adb5bd; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width:1300px;">
+
+    <h2>🧺 Cagettes collecte bai {{ annee }}</h2>
+    <p class="text-muted small">
+        Saisie du nombre de cagettes relevé sur la fiche camion demi-journée au retour des camions —
+        une ligne par magasin, une colonne par demi-journée.
+    </p>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+    {% endcall %}
+
+    {% if initialisee %}
+    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+        <p class="text-muted small mb-0">
+            🔒 Liste figée le {{ campagne.cagettes_initialisee_le|date_fr }} par {{ campagne.cagettes_initialisee_par }}
+        </p>
+        <form method="POST" action="{{ url_for('collecte.initialiser_cagettes', annee=annee) }}" class="ms-auto"
+              onsubmit="return confirm('Recalculer la liste des magasins depuis le fichier magasins actuel ? Les cagettes déjà saisies sont conservées, mais un magasin retiré de la nouvelle liste n\'apparaîtra plus.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-secondary btn-sm">🔄 Réinitialiser la liste</button>
+        </form>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+        <input type="text" id="filtre-recherche" class="form-control form-control-sm" style="max-width:320px;"
+               placeholder="🔎 Rechercher (magasin…)">
+        <span class="text-muted small ms-auto">💾 Chaque case est enregistrée automatiquement dès la saisie</span>
+    </div>
+
+    <div id="message-enregistrement" class="alert d-none mb-2" role="alert"></div>
+
+    <div id="tabulator-table"></div>
+    {% else %}
+    <div class="alert alert-warning">
+        <p class="mb-3">
+            ⚠️ La liste des magasins pour la saisie des cagettes n'a pas encore été initialisée.
+            Elle sera figée à partir du fichier magasins {{ annee }} actuel et ne changera plus tant
+            qu'elle n'est pas réinitialisée volontairement — les saisies restent conservées d'une session à l'autre.
+        </p>
+        <form method="POST" action="{{ url_for('collecte.initialiser_cagettes', annee=annee) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-primary">🔒 Initialiser la liste des magasins</button>
+        </form>
+    </div>
+    {% endif %}
+
+</div>
+
+{% if initialisee %}
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+const lignesCagettes = {{ lignes|tojson }};
+const demiJournees = {{ demi_journees|tojson }};
+const annee = {{ annee }};
+const urlEnregistrer = "{{ url_for('collecte.enregistrer_cagettes') }}";
+const csrfToken = "{{ csrf_token() }}";
+
+function normalizeSearch(text) {
+    return String(text ?? "")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+}
+
+function recalculerTotal(row) {
+    const data = row.getData();
+    let total = 0;
+    demiJournees.forEach(function (dj) {
+        if (data["_appl_" + dj] && typeof data[dj] === "number") {
+            total += data[dj];
+        }
+    });
+    row.update({ total: total });
+}
+
+// ── Enregistrement automatique cellule par cellule ─────────────────
+// Évite de dépendre d'un clic sur un bouton avant de quitter la page —
+// chaque valeur saisie est envoyée dès la sortie de la case.
+const messageDiv = document.getElementById("message-enregistrement");
+
+function afficherMessage(texte, classe) {
+    messageDiv.textContent = texte;
+    messageDiv.className = "alert alert-" + classe + " mb-2";
+}
+
+function sauvegarderCellule(cell) {
+    const row = cell.getRow();
+    const data = row.getData();
+    const dj = cell.getColumn().getField();
+    recalculerTotal(row);
+    row.getElement().classList.remove("ligne-erreur");
+
+    fetch(urlEnregistrer, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+        },
+        body: JSON.stringify({
+            annee: annee,
+            lignes: [{ code_vif: data.code_vif, demi_journee: dj, nb_cagettes: cell.getValue() }],
+        }),
+    })
+    .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+    .then(function (result) {
+        if (result.ok && result.data.success) {
+            afficherMessage("✅ Enregistré — " + data.nom_magasin, "success");
+        } else {
+            console.error("Échec enregistrement cagette :", result.data);
+            row.getElement().classList.add("ligne-erreur");
+            afficherMessage("⛔ Échec de l'enregistrement pour " + data.nom_magasin + " — ressaisissez la valeur", "danger");
+        }
+    })
+    .catch(function (err) {
+        console.error("Erreur réseau enregistrement cagette :", err);
+        row.getElement().classList.add("ligne-erreur");
+        afficherMessage("⛔ Erreur réseau — " + data.nom_magasin + " non enregistré, ressaisissez la valeur", "danger");
+    });
+}
+
+const colonnesDemiJournees = demiJournees.map(function (dj) {
+    return {
+        title: dj.replace(" Apres Midi", " ap-m").replace(" Matin", " matin"),
+        field: dj,
+        width: 110,
+        hozAlign: "right",
+        editable: function (cell) { return !!cell.getRow().getData()["_appl_" + dj]; },
+        formatter: function (cell) {
+            if (!cell.getRow().getData()["_appl_" + dj]) {
+                cell.getElement().classList.add("cellule-non-applicable");
+                return "—";
+            }
+            const v = cell.getValue();
+            return (v === null || v === undefined) ? "" : v;
+        },
+        editor: "number",
+        editorParams: { min: 0, step: 1 },
+        cellEdited: sauvegarderCellule,
+    };
+});
+
+const table = new Tabulator("#tabulator-table", {
+    data: lignesCagettes,
+    layout: "fitColumns",
+    height: "calc(100vh - 320px)",
+    placeholder: "Aucun magasin",
+    initialSort: [{ column: "nom_magasin", dir: "asc" }],
+    columns: [
+        { title: "Magasin", field: "nom_magasin", widthGrow: 2, headerFilter: "input", frozen: true },
+    ].concat(colonnesDemiJournees).concat([
+        { title: "Total", field: "total", width: 100, hozAlign: "right" },
+    ]),
+});
+
+// ── Recherche globale ──────────────────────────────────────────────
+const filtreInput = document.getElementById("filtre-recherche");
+filtreInput.addEventListener("input", function () {
+    const search = normalizeSearch(this.value);
+    if (!search) { table.clearFilter(); return; }
+    table.setFilter(function (data) {
+        return normalizeSearch(data.nom_magasin).includes(search);
+    });
+});
+</script>
+{% endif %}
+{% endblock %}

@@ -277,7 +277,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function updateLink() {
         const val = parseInt(selectRelance.value) + 1;
-        btn.href = "/cotisations/modele/relance_cotisation_" + val;
+        btn.href = "/cotisations/modele/" + encodeURIComponent("COTISATIONS Relance " + val);
     }
 
     updateLink();

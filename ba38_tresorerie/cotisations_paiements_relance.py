@@ -540,7 +540,7 @@ def cotisations_relance():
         # ======================================================
         # Chargement modèle email
         # ======================================================
-        code_modele = f"relance_cotisation_{numero_relance + 1}"
+        code_modele = f"COTISATIONS Relance {numero_relance + 1}"
 
         cursor.execute("""
             SELECT sujet, corps
