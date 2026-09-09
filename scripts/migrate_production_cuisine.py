@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS cuisine_etapes_ref (
   saisie_debut INTEGER DEFAULT 1,
   saisie_fin INTEGER DEFAULT 1,
   saisie_temperature INTEGER DEFAULT 1,
+  saisie_temperature_debut INTEGER DEFAULT 0,
   saisie_conformite INTEGER DEFAULT 1,
   saisie_cellule INTEGER DEFAULT 0,
   optionnelle INTEGER DEFAULT 0,
@@ -156,8 +157,10 @@ CREATE TABLE IF NOT EXISTS cuisine_production_etapes (
   etape_code TEXT NOT NULL REFERENCES cuisine_etapes_ref(code),
   heure_debut TEXT, heure_fin TEXT,
   temperature REAL,
+  temperature_debut REAL,
   cellule_numero INTEGER,
   conforme TEXT CHECK (conforme IN ('conforme','non_conforme')),
+  non_applicable INTEGER DEFAULT 0,
   commentaire TEXT,
   user_creation TEXT, date_creation TEXT DEFAULT (datetime('now','utc')),
   user_modif TEXT, date_modif TEXT
@@ -245,15 +248,22 @@ BEGIN
 END;
 """
 
-# code, libelle, ordre, saisie_debut, saisie_fin, saisie_temperature, saisie_conformite, saisie_cellule, optionnelle
+# D'après le fichier Excel "Suivi production jour" (feuille "Suivi des
+# données") : chaque étape à double colonne Début/Fin (fusion d'en-tête
+# horizontale) demande une température aux DEUX bouts ; les étapes à colonne
+# unique (Fin de cuisson, Refroidissement à l'eau) n'ont qu'un seul relevé,
+# à la fin.
+#
+# code, libelle, ordre, saisie_debut, saisie_fin, saisie_temperature (fin),
+# saisie_conformite, saisie_cellule, optionnelle, saisie_temperature_debut
 ETAPES_REF = [
-    ("tranchage_froid", "Tranchage froid", 1, 1, 1, 1, 1, 0, 0),
-    ("cuisson", "Cuisson", 2, 1, 1, 1, 1, 0, 0),
-    ("tranchage_chaud", "Tranchage chaud", 3, 1, 1, 1, 1, 0, 0),
-    ("refroidissement_eau", "Refroidissement à l'eau", 4, 1, 1, 0, 0, 0, 0),
-    ("conditionnement", "Conditionnement", 5, 1, 1, 0, 0, 0, 0),
-    ("refroidissement_cellule", "Refroidissement cellule", 6, 1, 1, 0, 0, 1, 0),
-    ("decongelation", "Décongélation", 7, 1, 1, 0, 0, 0, 1),
+    ("tranchage_froid", "Tranchage froid", 1, 1, 1, 1, 1, 0, 0, 1),
+    ("cuisson", "Cuisson", 2, 1, 1, 1, 1, 0, 0, 0),
+    ("tranchage_chaud", "Tranchage chaud", 3, 1, 1, 1, 1, 0, 0, 1),
+    ("refroidissement_eau", "Refroidissement à l'eau", 4, 0, 1, 1, 0, 0, 0, 0),
+    ("conditionnement", "Conditionnement", 5, 1, 1, 1, 0, 0, 0, 1),
+    ("refroidissement_cellule", "Mise en cellule", 6, 1, 1, 1, 0, 1, 0, 1),
+    ("decongelation", "Décongélation", 7, 1, 1, 0, 0, 0, 1, 0),
 ]
 
 ZONES_TEMPERATURE = [
@@ -348,14 +358,15 @@ def seed(conn):
     cur.executemany(
         """INSERT INTO cuisine_etapes_ref
            (code, libelle, ordre, saisie_debut, saisie_fin, saisie_temperature,
-            saisie_conformite, saisie_cellule, optionnelle)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            saisie_conformite, saisie_cellule, optionnelle, saisie_temperature_debut)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(code) DO UPDATE SET
              libelle=excluded.libelle, ordre=excluded.ordre,
              saisie_debut=excluded.saisie_debut, saisie_fin=excluded.saisie_fin,
              saisie_temperature=excluded.saisie_temperature,
              saisie_conformite=excluded.saisie_conformite,
-             saisie_cellule=excluded.saisie_cellule, optionnelle=excluded.optionnelle""",
+             saisie_cellule=excluded.saisie_cellule, optionnelle=excluded.optionnelle,
+             saisie_temperature_debut=excluded.saisie_temperature_debut""",
         ETAPES_REF,
     )
     print(f"✓ cuisine_etapes_ref : {len(ETAPES_REF)} ligne(s) synchronisées (upsert)")
@@ -429,6 +440,13 @@ def main():
             ("libelle_produit", "TEXT"),
         ])
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cuisine_receptions_production ON cuisine_receptions(production_id)")
+        add_missing_columns(conn, "cuisine_etapes_ref", [
+            ("saisie_temperature_debut", "INTEGER DEFAULT 0"),
+        ])
+        add_missing_columns(conn, "cuisine_production_etapes", [
+            ("temperature_debut", "REAL"),
+            ("non_applicable", "INTEGER DEFAULT 0"),
+        ])
         seed(conn)
         conn.commit()
 

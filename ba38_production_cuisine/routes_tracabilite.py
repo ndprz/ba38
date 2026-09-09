@@ -13,6 +13,7 @@ from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_production_cuisine import production_cuisine_bp
 from ba38_production_cuisine.utils import (
     _connect, now_paris_str, upload_dir_traca_lot, save_uploaded_files,
+    etape_bloquante, heure_fin_max_precedentes,
 )
 
 CONFORMITE_CHOICES = ("conforme", "non_conforme")
@@ -94,11 +95,11 @@ def ajouter_lot(production_id):
 @login_required
 @require_access("production_cuisine", "ecriture")
 def etape_production(production_id):
-    action = request.form.get("action")  # 'demarrer' | 'terminer'
+    action = request.form.get("action")  # 'demarrer' | 'terminer' | 'non_applicable'
     etape_code = request.form.get("etape_code")
     benevole = (request.form.get("benevole") or "").strip()
 
-    if not etape_code or action not in ("demarrer", "terminer"):
+    if not etape_code or action not in ("demarrer", "terminer", "non_applicable"):
         flash("⚠️ Étape ou action invalide.", "warning")
         return _redirect_run(production_id)
 
@@ -112,14 +113,42 @@ def etape_production(production_id):
             flash("⛔ Étape inconnue.", "danger")
             return _redirect_run(production_id)
 
+        # Ordre métier : on ne peut pas démarrer/terminer/passer une étape
+        # tant que les étapes précédentes (non optionnelles) ne sont pas
+        # résolues (terminées ou marquées non applicables).
+        if action in ("demarrer", "non_applicable"):
+            bloquante = etape_bloquante(conn, production_id, etape_code)
+            if bloquante:
+                flash(f"🔒 Terminez d'abord « {bloquante} » avant « {etape_ref['libelle']} ».", "warning")
+                return _redirect_run(production_id)
+
         cur = conn.cursor()
 
-        if action == "demarrer":
+        if action == "non_applicable":
+            existe_deja = conn.execute(
+                """SELECT 1 FROM cuisine_production_etapes
+                   WHERE production_id = ? AND etape_code = ?""",
+                (production_id, etape_code),
+            ).fetchone()
+            if existe_deja:
+                flash("⚠️ Cette étape a déjà été démarrée ou résolue.", "warning")
+                return _redirect_run(production_id)
             cur.execute(
                 """INSERT INTO cuisine_production_etapes
-                   (production_id, etape_code, heure_debut, user_creation)
-                   VALUES (?, ?, ?, ?)""",
+                   (production_id, etape_code, heure_fin, non_applicable, user_creation)
+                   VALUES (?, ?, ?, 1, ?)""",
                 (production_id, etape_code, now_paris_str(), benevole or None),
+            )
+            conn.commit()
+            flash(f"🚫 {etape_ref['libelle']} marquée non applicable.", "success")
+
+        elif action == "demarrer":
+            temperature_debut = request.form.get("temperature_debut") or None
+            cur.execute(
+                """INSERT INTO cuisine_production_etapes
+                   (production_id, etape_code, heure_debut, temperature_debut, user_creation)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (production_id, etape_code, now_paris_str(), temperature_debut, benevole or None),
             )
             conn.commit()
             flash(f"▶️ {etape_ref['libelle']} démarrée.", "success")
@@ -136,10 +165,28 @@ def etape_production(production_id):
                 flash("⚠️ Aucune étape en cours à terminer pour cette étape.", "warning")
                 return _redirect_run(production_id)
 
+            if not derniere:
+                # Étape sans phase "démarrer" (ex. refroidissement à l'eau) :
+                # elle n'est pas encore journalisée, donc l'ordre métier n'a
+                # pas encore été vérifié (contrairement à "demarrer").
+                bloquante = etape_bloquante(conn, production_id, etape_code)
+                if bloquante:
+                    flash(f"🔒 Terminez d'abord « {bloquante} » avant « {etape_ref['libelle']} ».", "warning")
+                    return _redirect_run(production_id)
+
             temperature = request.form.get("temperature") or None
             cellule_numero = request.form.get("cellule_numero") or None
             conforme = _clean_conformite(request.form.get("conforme"))
             commentaire = (request.form.get("commentaire") or "").strip() or None
+            heure_fin = now_paris_str()
+
+            repere = heure_fin_max_precedentes(conn, production_id, etape_code)
+            if repere and heure_fin < repere:
+                flash(
+                    f"⚠️ Heure incohérente : « {etape_ref['libelle']} » est enregistrée avant "
+                    f"la fin d'une étape précédente ({repere}). Vérifiez, ou corrigez l'heure ensuite.",
+                    "warning",
+                )
 
             if derniere:
                 cur.execute(
@@ -147,7 +194,7 @@ def etape_production(production_id):
                        SET heure_fin = ?, temperature = ?, cellule_numero = ?,
                            conforme = ?, commentaire = ?, user_modif = ?
                        WHERE id = ?""",
-                    (now_paris_str(), temperature, cellule_numero, conforme, commentaire,
+                    (heure_fin, temperature, cellule_numero, conforme, commentaire,
                      benevole or None, derniere["id"]),
                 )
             else:
@@ -159,13 +206,86 @@ def etape_production(production_id):
                        (production_id, etape_code, heure_fin, temperature,
                         cellule_numero, conforme, commentaire, user_creation)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (production_id, etape_code, now_paris_str(), temperature,
+                    (production_id, etape_code, heure_fin, temperature,
                      cellule_numero, conforme, commentaire, benevole or None),
                 )
             conn.commit()
             flash(f"⏹️ {etape_ref['libelle']} terminée.", "success")
 
     upload_database()
+    return _redirect_run(production_id)
+
+
+def _datetime_local_vers_stockage(valeur):
+    """Convertit la valeur d'un <input type="datetime-local"> ('AAAA-MM-JJTHH:MM')
+    vers le format de stockage 'AAAA-MM-JJ HH:MM:SS' utilisé partout ailleurs."""
+    valeur = (valeur or "").strip()
+    if not valeur:
+        return None
+    valeur = valeur.replace("T", " ")
+    if len(valeur) == 16:  # pas de secondes
+        valeur += ":00"
+    return valeur
+
+
+# ------------------------------------------------------------
+# ✏️ Correction d'une étape déjà enregistrée (heure/température oubliées
+#     sur le moment, à corriger a posteriori) — pas une ré-exécution de la
+#     tâche, juste un ajustement des valeurs saisies.
+# ------------------------------------------------------------
+@production_cuisine_bp.route("/<int:production_id>/etape/<int:etape_id>/corriger", methods=["POST"])
+@login_required
+@require_access("production_cuisine", "ecriture")
+def corriger_etape_production(production_id, etape_id):
+    benevole = (request.form.get("benevole") or "").strip()
+
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        ligne = conn.execute(
+            """SELECT e.*, r.libelle FROM cuisine_production_etapes e
+               JOIN cuisine_etapes_ref r ON r.code = e.etape_code
+               WHERE e.id = ? AND e.production_id = ?""",
+            (etape_id, production_id),
+        ).fetchone()
+        if not ligne:
+            flash("⛔ Étape introuvable.", "danger")
+            return _redirect_run(production_id)
+
+        heure_debut = _datetime_local_vers_stockage(request.form.get("heure_debut"))
+        heure_fin = _datetime_local_vers_stockage(request.form.get("heure_fin"))
+        temperature_debut = request.form.get("temperature_debut") or None
+        temperature = request.form.get("temperature") or None
+        cellule_numero = request.form.get("cellule_numero") or None
+        conforme = _clean_conformite(request.form.get("conforme"))
+
+        if not heure_fin:
+            flash("⚠️ L'heure de fin est obligatoire.", "warning")
+            return _redirect_run(production_id)
+
+        if heure_debut and heure_fin and heure_debut > heure_fin:
+            flash("⚠️ L'heure de début est après l'heure de fin — vérifiez la correction.", "warning")
+            return _redirect_run(production_id)
+
+        repere = heure_fin_max_precedentes(conn, production_id, ligne["etape_code"])
+        if repere and heure_fin and heure_fin < repere:
+            flash(
+                f"⚠️ Heure incohérente : « {ligne['libelle']} » est maintenant enregistrée avant "
+                f"la fin d'une étape précédente ({repere}).",
+                "warning",
+            )
+
+        conn.execute(
+            """UPDATE cuisine_production_etapes
+               SET heure_debut = ?, heure_fin = ?, temperature_debut = ?, temperature = ?,
+                   cellule_numero = ?, conforme = ?, user_modif = ?
+               WHERE id = ?""",
+            (heure_debut, heure_fin, temperature_debut, temperature,
+             cellule_numero, conforme, benevole or None, etape_id),
+        )
+        conn.commit()
+
+    upload_database()
+    flash("✏️ Étape corrigée.", "success")
     return _redirect_run(production_id)
 
 

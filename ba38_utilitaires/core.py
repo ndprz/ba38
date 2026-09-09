@@ -901,7 +901,7 @@ def get_drive_folder_id_from_path(drive_path, shared_drive_id):
 # 📧 MAILJET
 # ============================================================================
 
-def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None, is_html=False, bcc=None, cc=None, attachment_paths=None):
+def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None, is_html=False, bcc=None, cc=None, attachment_paths=None, sender_name=None, reply_to=None):
 
     api_key = os.getenv("MAILJET_API_KEY")
     api_secret = os.getenv("MAILJET_API_SECRET")
@@ -1016,11 +1016,14 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
     message = {
         "From": {
             "Email": sender,
-            "Name": sender
+            "Name": sender_name or sender
         },
         "To": [{"Email": d} for d in destinataires],
         "Subject": sujet
     }
+
+    if reply_to and "@" in reply_to:
+        message["ReplyTo"] = {"Email": reply_to}
 
     # Contenu
     if is_html:

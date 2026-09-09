@@ -46,6 +46,62 @@ def upload_dir_traca_lot(production_id, lot_id):
     return dossier
 
 
+def etape_bloquante(conn, production_id, etape_code):
+    """Retourne le libellé de la première étape précédente (ordre inférieur,
+    non optionnelle) pas encore résolue — ni terminée, ni marquée non
+    applicable — pour cette production, ou None si la voie est libre pour
+    `etape_code`. Les étapes marquées `optionnelle` ne bloquent jamais la
+    suite (ex. décongélation)."""
+    cible = conn.execute(
+        "SELECT ordre FROM cuisine_etapes_ref WHERE code = ?", (etape_code,)
+    ).fetchone()
+    if not cible:
+        return None
+
+    precedentes = conn.execute(
+        """SELECT code, libelle FROM cuisine_etapes_ref
+           WHERE actif = 1 AND ordre < ? AND optionnelle = 0
+           ORDER BY ordre""",
+        (cible["ordre"],),
+    ).fetchall()
+    if not precedentes:
+        return None
+
+    codes_resolus = {
+        row["etape_code"]
+        for row in conn.execute(
+            """SELECT DISTINCT etape_code FROM cuisine_production_etapes
+               WHERE production_id = ? AND heure_fin IS NOT NULL""",
+            (production_id,),
+        ).fetchall()
+    }
+    for p in precedentes:
+        if p["code"] not in codes_resolus:
+            return p["libelle"]
+    return None
+
+
+def heure_fin_max_precedentes(conn, production_id, etape_code):
+    """Heure de fin la plus tardive parmi les étapes précédentes (ordre
+    inférieur, non optionnelles) déjà résolues pour cette production — sert
+    de repère pour détecter une saisie d'heure incohérente (étape terminée
+    "avant" une étape censée la précéder)."""
+    cible = conn.execute(
+        "SELECT ordre FROM cuisine_etapes_ref WHERE code = ?", (etape_code,)
+    ).fetchone()
+    if not cible:
+        return None
+    row = conn.execute(
+        """SELECT MAX(e.heure_fin) AS m
+           FROM cuisine_production_etapes e
+           JOIN cuisine_etapes_ref r ON r.code = e.etape_code
+           WHERE e.production_id = ? AND e.heure_fin IS NOT NULL
+             AND r.actif = 1 AND r.optionnelle = 0 AND r.ordre < ?""",
+        (production_id, cible["ordre"]),
+    ).fetchone()
+    return row["m"] if row else None
+
+
 def save_uploaded_files(files, dossier, prefix=""):
     """Enregistre une liste de fichiers uploadés (request.files.getlist(...))
     dans `dossier` et retourne la liste des chemins absolus sauvegardés.

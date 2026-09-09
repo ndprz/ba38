@@ -72,17 +72,6 @@
     </div>
     {% endfor %}
 
-    <div class="row g-3 mb-3">
-      <div class="col-6">
-        <label class="form-label">DLC / DDM</label>
-        <input type="date" name="dlc_ddm" class="form-control">
-      </div>
-      <div class="col-6">
-        <label class="form-label">N° de lot</label>
-        <input type="text" name="numero_lot" class="form-control">
-      </div>
-    </div>
-
     <div class="mb-3">
       <label class="form-label">Commentaire</label>
       <textarea name="commentaire" class="form-control" rows="2"></textarea>
@@ -96,6 +85,7 @@
       <div class="col-6">
         <label class="form-label">📷 Photo(s) étiquette</label>
         <input type="file" name="photos_etiquette" accept="image/*" capture="environment" multiple class="form-control">
+        <div class="form-text">La photo de l'étiquette fait foi pour la DLC/DDM et le n° de lot — inutile de les ressaisir.</div>
       </div>
     </div>
 

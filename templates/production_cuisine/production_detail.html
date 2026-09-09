@@ -18,7 +18,14 @@
             {% else %}bg-warning text-dark{% endif %}">{{ production.statut }}</span>
       </div>
     </div>
-    <a href="{{ url_for('production_cuisine.liste_productions') }}" class="btn btn-outline-secondary">← Retour</a>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('production_cuisine.liste_productions') }}" class="btn btn-outline-secondary">← Retour</a>
+      <form method="POST" action="{{ url_for('production_cuisine.supprimer_production', production_id=production.id) }}"
+            onsubmit="return confirm('Supprimer cette production ? Les réceptions liées redeviendront disponibles.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-outline-danger">🗑️ Supprimer</button>
+      </form>
+    </div>
   </div>
 
   <div class="card mb-4 bg-light">
@@ -52,19 +59,33 @@
     <div class="card-body">
       {% for ref in etapes_ref %}
         {% set ligne = etapes_par_code.get(ref.code) %}
-        <div class="border rounded p-3 mb-3">
+        {% set resolue = ligne and ligne.heure_fin is not none %}
+        {% set bloquante = bloque_par.get(ref.code) %}
+        <div class="border rounded p-3 mb-3 {% if bloquante %}bg-light{% endif %}">
           <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div>
               <strong>{{ ref.ordre }}. {{ ref.libelle }}</strong>
               {% if ref.optionnelle %}<span class="badge bg-info text-dark ms-1">optionnelle</span>{% endif %}
-              {% if not ligne %}
-                <div class="text-muted small">{{ "Non renseignée" if not ref.saisie_debut else "Non démarrée" }}</div>
+              {% if ligne and ligne.non_applicable %}
+                <div class="text-muted small">🚫 Non applicable</div>
+              {% elif not ligne %}
+                {% if bloquante %}
+                  <div class="text-muted small">🔒 En attente de « {{ bloquante }} »</div>
+                {% else %}
+                  <div class="text-muted small">{{ "Non renseignée" if not ref.saisie_debut else "Non démarrée" }}</div>
+                {% endif %}
               {% elif ligne.heure_fin is none %}
-                <div class="text-warning small">En cours depuis {{ ligne.heure_debut }}</div>
+                <div class="text-warning small">
+                  En cours depuis {{ ligne.heure_debut }}
+                  {% if ligne.temperature_debut is not none %} · {{ ligne.temperature_debut }}°C{% endif %}
+                </div>
               {% else %}
                 <div class="text-success small">
-                  Terminée : {{ (ligne.heure_debut + " → ") if ligne.heure_debut else "" }}{{ ligne.heure_fin }}
-                  {% if ligne.temperature is not none %} · {{ ligne.temperature }}°C{% endif %}
+                  Terminée :
+                  {% if ligne.heure_debut %}
+                    {{ ligne.heure_debut }}{% if ligne.temperature_debut is not none %} ({{ ligne.temperature_debut }}°C){% endif %} →
+                  {% endif %}
+                  {{ ligne.heure_fin }}{% if ligne.temperature is not none %} ({{ ligne.temperature }}°C){% endif %}
                   {% if ligne.conforme %} ·
                     {% if ligne.conforme == 'conforme' %}<span class="badge bg-success">Conforme</span>
                     {% else %}<span class="badge bg-danger">Non conforme</span>{% endif %}
@@ -73,19 +94,36 @@
               {% endif %}
             </div>
 
-            {% if ref.saisie_debut and (not ligne or ligne.heure_fin is not none) %}
+            {% if not bloquante and ref.saisie_debut and not ligne %}
             <form method="POST" action="{{ url_for('production_cuisine.etape_production', production_id=production.id) }}"
-                  class="benevole-form">
+                  class="benevole-form d-flex flex-wrap gap-2 align-items-end">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="benevole" class="benevole-sync">
               <input type="hidden" name="etape_code" value="{{ ref.code }}">
               <input type="hidden" name="action" value="demarrer">
+              {% if ref.saisie_temperature_debut %}
+              <div>
+                <label class="form-label small">Température début (°C)</label>
+                <input type="number" inputmode="decimal" step="0.1" name="temperature_debut" class="form-control" required>
+              </div>
+              {% endif %}
               <button type="submit" class="btn btn-success btn-lg">▶️ Démarrer</button>
+            </form>
+            {% endif %}
+
+            {% if not bloquante and not resolue and not ligne %}
+            <form method="POST" action="{{ url_for('production_cuisine.etape_production', production_id=production.id) }}"
+                  onsubmit="return confirm('Marquer « {{ ref.libelle }} » comme non applicable à cette recette ?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="benevole" class="benevole-sync">
+              <input type="hidden" name="etape_code" value="{{ ref.code }}">
+              <input type="hidden" name="action" value="non_applicable">
+              <button type="submit" class="btn btn-outline-secondary">🚫 Non applicable</button>
             </form>
             {% endif %}
           </div>
 
-          {% if (not ref.saisie_debut and (not ligne or ligne.heure_fin is not none)) or (ligne and ligne.heure_fin is none) %}
+          {% if not bloquante and ((not ref.saisie_debut and not ligne) or (ligne and ligne.heure_fin is none)) %}
           <form method="POST" action="{{ url_for('production_cuisine.etape_production', production_id=production.id) }}"
                 class="benevole-form mt-2 row g-2 align-items-end">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -95,8 +133,8 @@
 
             {% if ref.saisie_temperature %}
             <div class="col-auto">
-              <label class="form-label small">Température (°C)</label>
-              <input type="number" inputmode="decimal" step="0.1" name="temperature" class="form-control">
+              <label class="form-label small">Température {{ "fin" if ref.saisie_temperature_debut else "" }} (°C)</label>
+              <input type="number" inputmode="decimal" step="0.1" name="temperature" class="form-control" required>
             </div>
             {% endif %}
 
@@ -123,6 +161,63 @@
               <button type="submit" class="btn btn-danger btn-lg">⏹️ Terminer</button>
             </div>
           </form>
+          {% endif %}
+
+          {% if resolue and not ligne.non_applicable %}
+          <details class="mt-2">
+            <summary class="text-muted small" style="cursor:pointer;">✏️ Corriger l'heure/température (oubli de saisie sur le moment)</summary>
+            <form method="POST" action="{{ url_for('production_cuisine.corriger_etape_production', production_id=production.id, etape_id=ligne.id) }}"
+                  class="benevole-form row g-2 align-items-end mt-1">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="benevole" class="benevole-sync">
+              {% if ref.saisie_debut %}
+              <div class="col-auto">
+                <label class="form-label small">Début</label>
+                <input type="datetime-local" name="heure_debut" class="form-control"
+                       value="{{ ligne.heure_debut.replace(' ', 'T')[:16] if ligne.heure_debut else '' }}">
+              </div>
+              {% if ref.saisie_temperature_debut %}
+              <div class="col-auto">
+                <label class="form-label small">Temp. début (°C)</label>
+                <input type="number" inputmode="decimal" step="0.1" name="temperature_debut" class="form-control"
+                       value="{{ ligne.temperature_debut if ligne.temperature_debut is not none else '' }}">
+              </div>
+              {% endif %}
+              {% endif %}
+              <div class="col-auto">
+                <label class="form-label small">Fin *</label>
+                <input type="datetime-local" name="heure_fin" class="form-control" required
+                       value="{{ ligne.heure_fin.replace(' ', 'T')[:16] if ligne.heure_fin else '' }}">
+              </div>
+              {% if ref.saisie_temperature %}
+              <div class="col-auto">
+                <label class="form-label small">Temp. fin (°C)</label>
+                <input type="number" inputmode="decimal" step="0.1" name="temperature" class="form-control"
+                       value="{{ ligne.temperature if ligne.temperature is not none else '' }}">
+              </div>
+              {% endif %}
+              {% if ref.saisie_cellule %}
+              <div class="col-auto">
+                <label class="form-label small">N° cellule</label>
+                <input type="number" min="1" max="6" name="cellule_numero" class="form-control"
+                       value="{{ ligne.cellule_numero if ligne.cellule_numero is not none else '' }}">
+              </div>
+              {% endif %}
+              {% if ref.saisie_conformite %}
+              <div class="col-auto">
+                <div class="btn-group" role="group">
+                  <input type="radio" class="btn-check" name="conforme" id="corr_conf_ok_{{ ref.code }}" value="conforme" autocomplete="off" {% if ligne.conforme == 'conforme' %}checked{% endif %}>
+                  <label class="btn btn-outline-success btn-sm" for="corr_conf_ok_{{ ref.code }}">✅</label>
+                  <input type="radio" class="btn-check" name="conforme" id="corr_conf_nc_{{ ref.code }}" value="non_conforme" autocomplete="off" {% if ligne.conforme == 'non_conforme' %}checked{% endif %}>
+                  <label class="btn btn-outline-danger btn-sm" for="corr_conf_nc_{{ ref.code }}">⚠️</label>
+                </div>
+              </div>
+              {% endif %}
+              <div class="col-auto">
+                <button type="submit" class="btn btn-outline-primary btn-sm">💾 Corriger</button>
+              </div>
+            </form>
+          </details>
           {% endif %}
         </div>
       {% endfor %}

@@ -155,7 +155,7 @@ def detail_production(production_id):
         conn.row_factory = sqlite3.Row
 
         production = conn.execute(
-            "SELECT * FROM cuisine_productions WHERE id = ?", (production_id,)
+            "SELECT * FROM cuisine_productions WHERE id = ? AND actif = 1", (production_id,)
         ).fetchone()
         if not production:
             flash("⛔ Production introuvable.", "danger")
@@ -174,6 +174,16 @@ def detail_production(production_id):
         etapes_par_code = {}
         for e in etapes_saisies:
             etapes_par_code[e["etape_code"]] = e  # la dernière écrase les précédentes (ordre id ASC)
+
+        # Ordre métier : une étape (non optionnelle) est "résolue" dès qu'une
+        # ligne avec heure_fin existe (terminée normalement OU non applicable).
+        # Sert à verrouiller les étapes suivantes tant que ce n'est pas le cas.
+        codes_resolus = {e["etape_code"] for e in etapes_saisies if e["heure_fin"] is not None}
+        bloque_par = {}
+        for ref in etapes_ref:
+            precedentes = [r for r in etapes_ref if r["ordre"] < ref["ordre"] and not r["optionnelle"]]
+            bloquante = next((p["libelle"] for p in precedentes if p["code"] not in codes_resolus), None)
+            bloque_par[ref["code"]] = bloquante
 
         lots = conn.execute(
             """
@@ -254,6 +264,7 @@ def detail_production(production_id):
         production=production,
         etapes_ref=etapes_ref,
         etapes_par_code=etapes_par_code,
+        bloque_par=bloque_par,
         lots=lots,
         photos_par_lot=photos_par_lot,
         receptions=receptions,
@@ -301,3 +312,33 @@ def renommer_production(production_id):
 
     upload_database()
     return jsonify({"ok": True, "nouveau_nom": nouveau_nom})
+
+
+@production_cuisine_bp.route("/<int:production_id>/supprimer", methods=["POST"])
+@login_required
+@require_access("production_cuisine", "ecriture")
+def supprimer_production(production_id):
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        production = conn.execute(
+            "SELECT id FROM cuisine_productions WHERE id = ?", (production_id,)
+        ).fetchone()
+        if not production:
+            flash("⛔ Production introuvable.", "danger")
+            return redirect(url_for("production_cuisine.liste_productions"))
+
+        cur = conn.cursor()
+        # Suppression douce (comme les autres tables du module : actif=0) —
+        # on ne perd pas l'historique (étapes, lots, photos).
+        cur.execute("UPDATE cuisine_productions SET actif = 0 WHERE id = ?", (production_id,))
+        # Les réceptions qui alimentaient cette production redeviennent
+        # disponibles pour être affectées à une autre recette.
+        cur.execute(
+            "UPDATE cuisine_receptions SET production_id = NULL WHERE production_id = ?",
+            (production_id,),
+        )
+        conn.commit()
+
+    upload_database()
+    flash("🗑️ Production supprimée.", "success")
+    return redirect(url_for("production_cuisine.liste_productions"))
