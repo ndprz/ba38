@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Productions cuisine{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">🍲 Productions du jour</h2>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('production_cuisine.liste_receptions', date=date_filtre) }}" class="btn btn-outline-primary btn-lg">
+        📥 Réceptions du jour
+        {% if nb_receptions_attente %}<span class="badge bg-danger">{{ nb_receptions_attente }} en attente</span>{% endif %}
+      </a>
+      <a href="{{ url_for('production_cuisine.creer_production') }}" class="btn btn-primary btn-lg">
+        ➕ Nouvelle production
+      </a>
+    </div>
+  </div>
+
+  <form method="GET" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+      <label class="form-label">Date</label>
+      <input type="date" name="date" value="{{ date_filtre }}" class="form-control"
+             onchange="this.form.submit()">
+    </div>
+    <div class="col-auto">
+      <label class="form-label">Statut</label>
+      <select name="statut" class="form-select" onchange="this.form.submit()">
+        <option value="">Tous</option>
+        {% for s in statuts %}
+          <option value="{{ s }}" {% if s == statut_filtre %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
+
+  {% if not productions %}
+    <p class="text-muted">Aucune production pour cette date.</p>
+  {% else %}
+  <div class="row g-3">
+    {% for p in productions %}
+    <div class="col-md-4">
+      <a href="{{ url_for('production_cuisine.detail_production', production_id=p.id) }}"
+         class="text-decoration-none">
+        <div class="card h-100
+          {% if p.statut == 'terminee' %}border-success
+          {% elif p.statut == 'annulee' %}border-secondary
+          {% else %}border-warning{% endif %}">
+          <div class="card-body">
+            <h5 class="card-title">{{ p.nom_recette }}</h5>
+            <p class="card-text text-muted mb-1">{{ p.espece or "" }} {{ p.mode_cuisson or "" }}</p>
+            <span class="badge
+              {% if p.statut == 'terminee' %}bg-success
+              {% elif p.statut == 'annulee' %}bg-secondary
+              {% else %}bg-warning text-dark{% endif %}">
+              {{ p.statut }}
+            </span>
+          </div>
+        </div>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

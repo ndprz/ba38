@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Historique étalonnage{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  {% include "cuisine_hygiene/_nav.html" %}
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">📜 Historique des étalonnages</h2>
+    <a href="{{ url_for('cuisine_hygiene.etalonnage') }}" class="btn btn-outline-secondary">← Retour</a>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th>Date</th><th>Thermomètre</th>
+          <th>Glace</th><th>Ébullition</th>
+          <th>Bénévole</th><th>Commentaire</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in etalonnages %}
+        <tr>
+          <td>{{ e.date_test }}</td>
+          <td>N°{{ e.thermometre_numero }}</td>
+          <td>
+            {{ e.test_glace_valeur if e.test_glace_valeur is not none else "—" }}
+            {% if e.test_glace_resultat == 'conforme' %}<span class="badge bg-success">OK</span>
+            {% elif e.test_glace_resultat == 'non_conforme' %}<span class="badge bg-danger">NC</span>{% endif %}
+          </td>
+          <td>
+            {{ e.test_ebullition_valeur if e.test_ebullition_valeur is not none else "—" }}
+            {% if e.test_ebullition_resultat == 'conforme' %}<span class="badge bg-success">OK</span>
+            {% elif e.test_ebullition_resultat == 'non_conforme' %}<span class="badge bg-danger">NC</span>{% endif %}
+          </td>
+          <td>{{ e.user_creation or "—" }}</td>
+          <td>{{ e.commentaire or "" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}

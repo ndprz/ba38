@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Réceptions marchandises{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">📥 Réceptions marchandises</h2>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('production_cuisine.liste_productions', date=date_filtre) }}" class="btn btn-outline-secondary">
+        🍲 Productions du jour
+      </a>
+      <a href="{{ url_for('production_cuisine.creer_reception') }}" class="btn btn-primary btn-lg">
+        ➕ Nouvelle réception
+      </a>
+    </div>
+  </div>
+
+  <form method="GET" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+      <label class="form-label">Date</label>
+      <input type="date" name="date" value="{{ date_filtre }}" class="form-control"
+             onchange="this.form.submit()">
+    </div>
+  </form>
+
+  {% macro badge(val) -%}
+    {% if val == 'conforme' %}<span class="badge bg-success">OK</span>
+    {% elif val == 'non_conforme' %}<span class="badge bg-danger">NC</span>
+    {% else %}—{% endif %}
+  {%- endmacro %}
+
+  <h4 class="mt-4">⏳ En attente d'affectation à une recette ({{ en_attente|length }})</h4>
+  {% if not en_attente %}
+    <p class="text-muted">Aucune réception en attente pour cette date.</p>
+  {% else %}
+  <div class="table-responsive mb-4">
+    <table class="table table-striped align-middle">
+      <thead>
+        <tr>
+          <th>Heure</th><th>Produit</th><th>Fournisseur</th><th>Camion</th><th>Temp.</th><th>Poids (kg)</th>
+          <th>Aspect</th><th>Emballage</th><th>Étiquetage</th><th>Bénévole</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in en_attente %}
+        <tr>
+          <td>{{ r.heure_arrivee or "—" }}</td>
+          <td class="fw-bold">{{ r.libelle_produit or "—" }}</td>
+          <td>{{ r.fournisseur_nom or "—" }}</td>
+          <td>{{ r.camion_libelle or "—" }}</td>
+          <td>{{ r.temperature_mesuree if r.temperature_mesuree is not none else "—" }}</td>
+          <td>{{ r.poids_kg if r.poids_kg is not none else "—" }}</td>
+          <td>{{ badge(r.aspect_conforme) }}</td>
+          <td>{{ badge(r.emballage_conforme) }}</td>
+          <td>{{ badge(r.etiquetage_conforme) }}</td>
+          <td>{{ r.user_creation or "—" }}</td>
+          <td class="d-flex flex-wrap gap-1">
+            <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id) }}"
+               class="btn btn-sm btn-outline-secondary">Voir</a>
+            <a href="{{ url_for('production_cuisine.creer_production', date_production=r.date_reception, reception_id=r.id) }}"
+               class="btn btn-sm btn-success">🍲 Nouvelle recette avec {{ r.libelle_produit or "ce produit" }}</a>
+            {% if productions_du_jour %}
+            <div class="dropdown d-inline-block">
+              <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                Affecter à…
+              </button>
+              <ul class="dropdown-menu">
+                {% for p in productions_du_jour %}
+                <li>
+                  <form method="POST" action="{{ url_for('production_cuisine.affecter_reception', reception_id=r.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="production_id" value="{{ p.id }}">
+                    <button type="submit" class="dropdown-item">{{ p.nom_recette }}</button>
+                  </form>
+                </li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <h4 class="mt-4">✅ Affectées ({{ affectees|length }})</h4>
+  {% if not affectees %}
+    <p class="text-muted">Aucune réception affectée pour cette date.</p>
+  {% else %}
+  <div class="table-responsive">
+    <table class="table table-striped align-middle">
+      <thead>
+        <tr>
+          <th>Heure</th><th>Produit</th><th>Fournisseur</th><th>Camion</th><th>Poids (kg)</th>
+          <th>Recette</th><th>Bénévole</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in affectees %}
+        <tr>
+          <td>{{ r.heure_arrivee or "—" }}</td>
+          <td class="fw-bold">{{ r.libelle_produit or "—" }}</td>
+          <td>{{ r.fournisseur_nom or "—" }}</td>
+          <td>{{ r.camion_libelle or "—" }}</td>
+          <td>{{ r.poids_kg if r.poids_kg is not none else "—" }}</td>
+          <td>
+            <a href="{{ url_for('production_cuisine.detail_production', production_id=r.production_id) }}">
+              {{ r.production_nom }}
+            </a>
+          </td>
+          <td>{{ r.user_creation or "—" }}</td>
+          <td>
+            <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id) }}"
+               class="btn btn-sm btn-outline-secondary">Voir</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+</div>
+{% include "production_cuisine/_scroll_restore.html" %}
+{% endblock %}

@@ -366,7 +366,8 @@ def note_frais_engagement(engagement_id):
                 d.rubrique,
                 d.precision_rubrique,
                 d.date_frais,
-                d.fournisseur_nom
+                d.fournisseur_nom,
+                d.beneficiaire_benevole_id
             FROM engagements e
             LEFT JOIN engagements_depenses d
                 ON d.engagement_id = e.id
@@ -451,11 +452,22 @@ def note_frais_engagement(engagement_id):
                     request.form.get("montant") or "0"
                 ).quantize(Decimal("0.01"))
 
-            nom_beneficiaire = (
-                engagement["fournisseur_nom"]
-                if engagement["type_engagement"] == "fournisseur"
-                else None
-            )
+            if engagement["type_engagement"] == "fournisseur":
+                nom_beneficiaire = engagement["fournisseur_nom"]
+            elif (
+                engagement["type_engagement"] == "benevole_other"
+                and engagement["beneficiaire_benevole_id"]
+            ):
+                benevole = conn.execute(
+                    "SELECT nom, prenom FROM benevoles WHERE id = ?",
+                    (engagement["beneficiaire_benevole_id"],)
+                ).fetchone()
+                nom_beneficiaire = (
+                    f"{benevole['prenom']} {benevole['nom']}"
+                    if benevole else None
+                )
+            else:
+                nom_beneficiaire = None
 
             generer_note_frais_auto(
                 conn=conn,

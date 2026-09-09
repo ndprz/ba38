@@ -1,3 +1,3 @@
-VERSION=1.6.40
-MESSAGE=Fix export publipostage : suppression de tous les doublons homonymes sur Drive (pas seulement le premier trouve)
-DATE=2026-09-08 11:06
+VERSION=1.6.42
+MESSAGE=Fix note de frais engagements : nom du beneficiaire Autre benevole au lieu du demandeur
+DATE=2026-09-09 11:45

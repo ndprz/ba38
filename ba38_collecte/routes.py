@@ -1406,6 +1406,27 @@ def resultats(generation_id):
     )
 
 
+@collecte_bp.route("/collecte/<int:annee>/telecharger/<nom_fichier>")
+@login_required
+@require_access("collecte", "lecture")
+def telecharger_fichier_annee(annee, nom_fichier):
+    """Téléchargement ad hoc d'un fichier d'analyse déposé directement dans
+    le dossier de l'année (comparaisons/exports one-off produits hors appli) —
+    restreint aux .xlsx réellement présents dans ce dossier précis, nom de
+    fichier validé pour exclure toute traversée de chemin."""
+    if not re.fullmatch(r"[\w.\-]+\.xlsx", nom_fichier):
+        flash("⛔ Nom de fichier invalide", "warning")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+    chemin = os.path.join(_dossier_annee(annee), nom_fichier)
+    if not os.path.exists(chemin):
+        flash("⛔ Fichier introuvable", "warning")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+    return send_file(
+        chemin, as_attachment=True, download_name=nom_fichier,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 @collecte_bp.route("/collecte/<int:annee>/cagettes")
 @login_required
 @require_access("collecte", "lecture")

@@ -1,0 +1,19 @@
+{% set _hygiene_nav_active = request.endpoint %}
+<ul class="nav nav-pills mb-4 flex-wrap gap-2">
+  <li class="nav-item">
+    <a class="nav-link {% if _hygiene_nav_active in ('cuisine_hygiene.temperatures', 'cuisine_hygiene.temperatures_historique') %}active{% else %}border{% endif %}"
+       href="{{ url_for('cuisine_hygiene.temperatures') }}">🌡️ Températures</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if _hygiene_nav_active in ('cuisine_hygiene.nettoyage', 'cuisine_hygiene.nettoyage_historique') %}active{% else %}border{% endif %}"
+       href="{{ url_for('cuisine_hygiene.nettoyage') }}">🧽 Nettoyage</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if _hygiene_nav_active in ('cuisine_hygiene.etalonnage', 'cuisine_hygiene.etalonnage_historique') %}active{% else %}border{% endif %}"
+       href="{{ url_for('cuisine_hygiene.etalonnage') }}">🔧 Étalonnage</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if _hygiene_nav_active == 'cuisine_hygiene.referentiels' %}active{% else %}border{% endif %}"
+       href="{{ url_for('cuisine_hygiene.referentiels') }}">📋 Référentiels</a>
+  </li>
+</ul>

@@ -1,0 +1,28 @@
+<script>
+// Conserve la position de défilement lors des saisies rapides (boutons
+// Démarrer/Terminer, saisie hygiène...) : ces pages ré-affichent la même
+// URL après un POST (pattern Post/Redirect/Get), et le navigateur revient
+// sinon en haut de page à chaque clic — gênant sur un long formulaire
+// tablette où on saisit étape par étape.
+(function () {
+  var key = "cuisine_scroll:" + window.location.pathname + window.location.search;
+
+  window.addEventListener("load", function () {
+    // Après chargement complet (photos incluses) pour un scroll fiable,
+    // même si la hauteur de page change une fois les images affichées.
+    var saved = sessionStorage.getItem(key);
+    if (saved !== null) {
+      window.scrollTo(0, parseInt(saved, 10) || 0);
+      sessionStorage.removeItem(key);
+    }
+  });
+
+  document.addEventListener("submit", function () {
+    try {
+      sessionStorage.setItem(key, String(window.scrollY));
+    } catch (e) {
+      // sessionStorage indisponible (navigation privée...) : tant pis, pas bloquant
+    }
+  }, true);
+})();
+</script>

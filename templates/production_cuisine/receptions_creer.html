@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Nouvelle réception{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 720px;">
+
+  <h2 class="mb-3">📥 Nouvelle réception marchandise</h2>
+
+  <form method="POST" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">Bénévole *</label>
+      <input type="text" name="benevole" class="form-control form-control-lg" required
+             value="{{ form.benevole or '' }}" placeholder="Prénom du bénévole">
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-6">
+        <label class="form-label">Date</label>
+        <input type="date" name="date_reception" class="form-control" value="{{ date_defaut }}">
+      </div>
+      <div class="col-6">
+        <label class="form-label">Heure d'arrivée</label>
+        <input type="time" name="heure_arrivee" class="form-control">
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Fournisseur</label>
+      <select name="fournisseur_id" class="form-select">
+        <option value="">-- Choisir --</option>
+        {% for f in fournisseurs %}
+          <option value="{{ f.id }}">{{ f.nom }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">Produit réceptionné *</label>
+      <input type="text" name="libelle_produit" class="form-control form-control-lg" required
+             value="{{ form.libelle_produit or '' }}" placeholder="Ex : bœuf, poulet, légumes, cagettes de tomates…">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Camion / transporteur</label>
+      <input type="text" name="camion_libelle" class="form-control" value="{{ form.camion_libelle or '' }}">
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-6">
+        <label class="form-label">Température mesurée (°C)</label>
+        <input type="number" inputmode="decimal" step="0.1" name="temperature_mesuree" class="form-control">
+      </div>
+      <div class="col-6">
+        <label class="form-label">Poids (kg)</label>
+        <input type="number" inputmode="decimal" step="0.1" name="poids_kg" class="form-control">
+      </div>
+    </div>
+
+    {% for champ, label in (('aspect_conforme', 'Aspect'), ('emballage_conforme', 'Emballage'), ('etiquetage_conforme', 'Étiquetage')) %}
+    <div class="mb-3">
+      <label class="form-label fw-bold">{{ label }}</label>
+      <div class="btn-group w-100" role="group">
+        <input type="radio" class="btn-check" name="{{ champ }}" id="{{ champ }}_ok" value="conforme" autocomplete="off">
+        <label class="btn btn-outline-success btn-lg" for="{{ champ }}_ok">✅ Conforme</label>
+
+        <input type="radio" class="btn-check" name="{{ champ }}" id="{{ champ }}_nc" value="non_conforme" autocomplete="off">
+        <label class="btn btn-outline-danger btn-lg" for="{{ champ }}_nc">⚠️ Non conforme</label>
+      </div>
+    </div>
+    {% endfor %}
+
+    <div class="row g-3 mb-3">
+      <div class="col-6">
+        <label class="form-label">DLC / DDM</label>
+        <input type="date" name="dlc_ddm" class="form-control">
+      </div>
+      <div class="col-6">
+        <label class="form-label">N° de lot</label>
+        <input type="text" name="numero_lot" class="form-control">
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Commentaire</label>
+      <textarea name="commentaire" class="form-control" rows="2"></textarea>
+    </div>
+
+    <div class="row g-3 mb-4">
+      <div class="col-6">
+        <label class="form-label">📷 Photo(s) produit</label>
+        <input type="file" name="photos_produit" accept="image/*" capture="environment" multiple class="form-control">
+      </div>
+      <div class="col-6">
+        <label class="form-label">📷 Photo(s) étiquette</label>
+        <input type="file" name="photos_etiquette" accept="image/*" capture="environment" multiple class="form-control">
+      </div>
+    </div>
+
+    <div class="d-flex justify-content-between">
+      <a href="{{ url_for('production_cuisine.liste_receptions') }}" class="btn btn-outline-secondary btn-lg">Annuler</a>
+      <button type="submit" class="btn btn-primary btn-lg">💾 Enregistrer la réception</button>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

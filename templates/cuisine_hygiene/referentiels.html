@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Référentiels hygiène{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  {% include "cuisine_hygiene/_nav.html" %}
+
+  <h2 class="mb-4">📋 Référentiels hygiène</h2>
+
+  <div class="row g-4">
+
+    <!-- Zones de température -->
+    <div class="col-md-4">
+      <div class="card h-100">
+        <div class="card-header">🌡️ Zones de température</div>
+        <div class="card-body">
+          <ul class="list-group mb-3">
+            {% for z in zones_temperature %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <span class="{% if not z.actif %}text-muted text-decoration-line-through{% endif %}">{{ z.libelle }}</span>
+              <form method="POST" action="{{ url_for('cuisine_hygiene.toggle_zone_temperature', zone_id=z.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm {% if z.actif %}btn-outline-danger{% else %}btn-outline-success{% endif %}">
+                  {% if z.actif %}Désactiver{% else %}Activer{% endif %}
+                </button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+          <form method="POST" action="{{ url_for('cuisine_hygiene.ajouter_zone_temperature') }}" class="d-flex gap-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="text" name="libelle" class="form-control" placeholder="Nouvelle zone" required>
+            <button type="submit" class="btn btn-primary">➕</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zones de nettoyage -->
+    <div class="col-md-4">
+      <div class="card h-100">
+        <div class="card-header">🧽 Zones de nettoyage</div>
+        <div class="card-body">
+          <ul class="list-group mb-3">
+            {% for z in zones_nettoyage %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <span class="{% if not z.actif %}text-muted text-decoration-line-through{% endif %}">{{ z.libelle }}</span>
+              <form method="POST" action="{{ url_for('cuisine_hygiene.toggle_zone_nettoyage', zone_id=z.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm {% if z.actif %}btn-outline-danger{% else %}btn-outline-success{% endif %}">
+                  {% if z.actif %}Désactiver{% else %}Activer{% endif %}
+                </button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+          <form method="POST" action="{{ url_for('cuisine_hygiene.ajouter_zone_nettoyage') }}" class="d-flex gap-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="text" name="libelle" class="form-control" placeholder="Nouvelle zone" required>
+            <button type="submit" class="btn btn-primary">➕</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Thermomètres -->
+    <div class="col-md-4">
+      <div class="card h-100">
+        <div class="card-header">🔧 Thermomètres</div>
+        <div class="card-body">
+          <ul class="list-group mb-3">
+            {% for t in thermometres %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <span class="{% if not t.actif %}text-muted text-decoration-line-through{% endif %}">N°{{ t.numero }} — {{ t.libelle }}</span>
+              <form method="POST" action="{{ url_for('cuisine_hygiene.toggle_thermometre', thermometre_id=t.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm {% if t.actif %}btn-outline-danger{% else %}btn-outline-success{% endif %}">
+                  {% if t.actif %}Désactiver{% else %}Activer{% endif %}
+                </button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+          <form method="POST" action="{{ url_for('cuisine_hygiene.ajouter_thermometre') }}" class="d-flex gap-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="number" name="numero" class="form-control" placeholder="N°" required min="1">
+            <button type="submit" class="btn btn-primary">➕</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+{% include "production_cuisine/_scroll_restore.html" %}
+{% endblock %}

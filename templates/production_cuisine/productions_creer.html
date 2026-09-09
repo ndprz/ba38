@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Nouvelle production{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 640px;">
+
+  <h2 class="mb-3">🍲 Nouvelle production</h2>
+
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">Bénévole *</label>
+      <input type="text" name="benevole" class="form-control form-control-lg" required
+             value="{{ form.benevole or '' }}" placeholder="Prénom du bénévole">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Date de production</label>
+      <input type="date" name="date_production" class="form-control" value="{{ date_defaut }}"
+             onchange="window.location = '{{ url_for('production_cuisine.creer_production') }}?date_production=' + this.value">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">📥 Marchandises réceptionnées à utiliser</label>
+      {% if not receptions_disponibles %}
+        <div class="form-text">
+          Aucune réception en attente pour cette date —
+          <a href="{{ url_for('production_cuisine.creer_reception') }}">enregistrer une réception</a> d'abord si besoin,
+          ou continuer sans (on pourra en attacher une plus tard).
+        </div>
+      {% else %}
+        <div class="d-flex flex-column gap-2">
+          {% for r in receptions_disponibles %}
+          <label class="border rounded p-2 d-flex align-items-center gap-2">
+            <input type="checkbox" name="reception_ids" value="{{ r.id }}" class="form-check-input mt-0"
+                   {% if r.id in preselection %}checked{% endif %}>
+            <span>
+              <strong>{{ r.libelle_produit or "Produit non renseigné" }}</strong>
+              · {{ r.heure_arrivee or "—" }} · {{ r.fournisseur_nom or "Fournisseur inconnu" }}
+              {% if r.poids_kg is not none %} · {{ r.poids_kg }} kg{% endif %}
+              {% if r.camion_libelle %} · {{ r.camion_libelle }}{% endif %}
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+        <div class="form-text">On peut aussi ne rien cocher et attendre un autre arrivage pour décider — les réceptions restent disponibles.</div>
+      {% endif %}
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">Recette *</label>
+      <input type="text" name="nom_recette" class="form-control form-control-lg" required
+             list="recettes-liste" value="{{ form.nom_recette or '' }}"
+             placeholder="Saisir ou choisir une recette">
+      <datalist id="recettes-liste">
+        {% for r in recettes %}
+          <option value="{{ r.nom }}">
+        {% endfor %}
+      </datalist>
+      <div class="form-text">Si le nom saisi n'existe pas encore, une nouvelle recette sera créée automatiquement.</div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Espèce</label>
+      <input type="text" name="espece" class="form-control">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Mode de cuisson</label>
+      <input type="text" name="mode_cuisson" class="form-control">
+    </div>
+
+    <div class="d-flex justify-content-between">
+      <a href="{{ url_for('production_cuisine.liste_productions') }}" class="btn btn-outline-secondary btn-lg">Annuler</a>
+      <button type="submit" class="btn btn-primary btn-lg">💾 Créer la production</button>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

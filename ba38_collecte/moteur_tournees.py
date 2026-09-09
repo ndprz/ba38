@@ -109,9 +109,15 @@ def parse_creneaux(creneaux_raw):
     disponible pour la collecte.
 
     Règle Matin/Après-midi : même convention que le reste du projet (heure de
-    début du créneau < 13h → Matin, sinon Après-midi). Le dimanche n'a qu'une
-    seule demi-journée possible dans DEMI_JOURNEES ('Dimanche Matin'), donc tout
-    créneau du dimanche y est rattaché quelle que soit son heure de début.
+    début du créneau < 13h → Matin, heure de fin >= 13h → Apres Midi) — un
+    créneau exprimé sur une seule ligne mais couvrant toute la journée (ex.
+    'samedi 08h15-20h00', magasins avec des horaires larges non découpés en
+    plusieurs lignes) compte donc pour les deux demi-journées, pas seulement
+    celle de son heure de début (bug trouvé 2026-09-08 : ces magasins
+    disparaissaient à tort de l'après-midi, aussi bien dans l'optimiseur de
+    tournées que dans la saisie cagettes). Le dimanche n'a qu'une seule
+    demi-journée possible dans DEMI_JOURNEES ('Dimanche Matin'), donc tout
+    créneau du dimanche y est rattaché quelle que soit son heure.
 
     Retourne un set (éventuellement vide si aucune ligne n'a pu être interprétée),
     ou None si creneaux_raw est vide — pour distinguer "aucun créneau déclaré"
@@ -126,21 +132,23 @@ def parse_creneaux(creneaux_raw):
         ligne = ligne.strip().lower()
         if not ligne:
             continue
-        m = re.match(r'(\w+)\s+(\d{1,2})h(\d{2})', ligne)
+        m = re.match(r'(\w+)\s+(\d{1,2})h(\d{2})(?:\s*-\s*(\d{1,2})h(\d{2}))?', ligne)
         if not m:
             continue
-        jour_brut, heure_str, _ = m.groups()
+        jour_brut, h_debut_str, _, h_fin_str, _ = m.groups()
         jour = jours_fr.get(jour_brut)
         if not jour:
             continue
         if jour == 'Dimanche':
-            dj = 'Dimanche Matin'
-        else:
-            periode = 'Matin' if int(heure_str) < 13 else 'Apres Midi'
-            dj = f'{jour} {periode}'
-        if dj in DEMI_JOURNEES:
-            djs.add(dj)
-    return djs
+            djs.add('Dimanche Matin')
+            continue
+        h_debut = int(h_debut_str)
+        h_fin = int(h_fin_str) if h_fin_str is not None else h_debut
+        if h_debut < 13:
+            djs.add(f'{jour} Matin')
+        if h_fin >= 13:
+            djs.add(f'{jour} Apres Midi')
+    return {dj for dj in djs if dj in DEMI_JOURNEES}
 
 # Mapping texte PDF → nom interne (gère accents et variantes)
 DJ_MAP = {

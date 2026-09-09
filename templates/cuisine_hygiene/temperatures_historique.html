@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Historique des températures{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  {% include "cuisine_hygiene/_nav.html" %}
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">📜 Historique des relevés de température</h2>
+    <a href="{{ url_for('cuisine_hygiene.temperatures') }}" class="btn btn-outline-secondary">← Retour</a>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-striped">
+      <thead>
+        <tr><th>Date</th><th>Zone</th><th>Température</th><th>Conformité</th><th>Bénévole</th><th>Commentaire</th></tr>
+      </thead>
+      <tbody>
+        {% for r in releves %}
+        <tr>
+          <td>{{ r.date_releve }}</td>
+          <td>{{ r.zone_libelle }}</td>
+          <td>{{ r.temperature }} °C</td>
+          <td>
+            {% if r.conforme == 'conforme' %}<span class="badge bg-success">Conforme</span>
+            {% elif r.conforme == 'non_conforme' %}<span class="badge bg-danger">Non conforme</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>{{ r.user_creation or "—" }}</td>
+          <td>{{ r.commentaire or "" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}

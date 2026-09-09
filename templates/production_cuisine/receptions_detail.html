@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Réception #{{ reception.id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 720px;">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">📥 Réception #{{ reception.id }} — {{ reception.libelle_produit or "produit non renseigné" }}</h2>
+    <a href="{{ url_for('production_cuisine.liste_receptions') }}" class="btn btn-outline-secondary">← Retour</a>
+  </div>
+
+  <table class="table">
+    <tbody>
+      <tr><th>Produit</th><td class="fw-bold">{{ reception.libelle_produit or "—" }}</td></tr>
+      <tr><th>Date</th><td>{{ reception.date_reception }}</td></tr>
+      <tr><th>Heure d'arrivée</th><td>{{ reception.heure_arrivee or "—" }}</td></tr>
+      <tr><th>Fournisseur</th><td>{{ reception.fournisseur_nom or "—" }}</td></tr>
+      <tr><th>Camion</th><td>{{ reception.camion_libelle or "—" }}</td></tr>
+      <tr><th>Température</th><td>{{ reception.temperature_mesuree if reception.temperature_mesuree is not none else "—" }}</td></tr>
+      <tr><th>Poids</th><td>{{ reception.poids_kg if reception.poids_kg is not none else "—" }} kg</td></tr>
+      <tr><th>Aspect</th><td>{{ reception.aspect_conforme or "—" }}</td></tr>
+      <tr><th>Emballage</th><td>{{ reception.emballage_conforme or "—" }}</td></tr>
+      <tr><th>Étiquetage</th><td>{{ reception.etiquetage_conforme or "—" }}</td></tr>
+      <tr><th>DLC/DDM</th><td>{{ reception.dlc_ddm or "—" }}</td></tr>
+      <tr><th>N° de lot</th><td>{{ reception.numero_lot or "—" }}</td></tr>
+      <tr><th>Commentaire</th><td>{{ reception.commentaire or "—" }}</td></tr>
+      <tr><th>Bénévole</th><td>{{ reception.user_creation or "—" }}</td></tr>
+    </tbody>
+  </table>
+
+  <h5 class="mt-4">🍲 Affectation à une recette</h5>
+  {% if reception.production_id %}
+    <p>
+      Affectée à
+      <a href="{{ url_for('production_cuisine.detail_production', production_id=reception.production_id) }}">
+        {{ reception.production_nom }}
+      </a>.
+    </p>
+    <form method="POST" action="{{ url_for('production_cuisine.affecter_reception', reception_id=reception.id) }}" class="d-inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="production_id" value="">
+      <button type="submit" class="btn btn-sm btn-outline-secondary">Remettre en attente</button>
+    </form>
+  {% else %}
+    <p class="text-muted">Pas encore affectée — on peut attendre un autre arrivage avant de décider.</p>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{{ url_for('production_cuisine.creer_production', date_production=reception.date_reception, reception_id=reception.id) }}"
+         class="btn btn-success">🍲 Nouvelle recette avec cette réception</a>
+      {% if productions_du_jour %}
+      <div class="dropdown">
+        <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+          Affecter à une recette existante…
+        </button>
+        <ul class="dropdown-menu">
+          {% for p in productions_du_jour %}
+          <li>
+            <form method="POST" action="{{ url_for('production_cuisine.affecter_reception', reception_id=reception.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="production_id" value="{{ p.id }}">
+              <button type="submit" class="dropdown-item">{{ p.nom_recette }}</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if photos %}
+  <h5 class="mt-4">📷 Photos</h5>
+  <div class="row g-2">
+    {% for p in photos %}
+    <div class="col-6 col-md-4">
+      <a href="{{ url_for('production_cuisine.photo_reception', photo_id=p.id) }}" target="_blank" class="card text-decoration-none">
+        <img src="{{ url_for('production_cuisine.photo_reception', photo_id=p.id) }}" class="card-img-top" style="height:160px;object-fit:cover;" alt="{{ p.type_photo }}">
+        <div class="card-body p-2">
+          <span class="badge bg-secondary">{{ p.type_photo }}</span>
+        </div>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+</div>
+{% include "production_cuisine/_scroll_restore.html" %}
+{% endblock %}

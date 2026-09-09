@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+  <meta charset="utf-8">
+  <title>Suivi Production Cuisine</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #111;
+      color: #fff;
+      font-family: system-ui, sans-serif;
+      overflow-x: hidden;
+    }
+
+    body {
+      cursor: none;
+    }
+
+    header {
+      padding: 1rem 1.5rem 0.5rem;
+      text-align: center;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 2rem;
+      color: #ff7f00;
+    }
+
+    header .date {
+      color: #aaa;
+      font-size: 1rem;
+    }
+
+    #grille {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 1rem;
+      padding: 1rem 1.5rem 2rem;
+    }
+
+    .production {
+      background: #1c1c1c;
+      border-radius: 12px;
+      padding: 1rem 1.2rem;
+      border: 2px solid #333;
+    }
+
+    .production h2 {
+      margin: 0 0 0.6rem;
+      font-size: 1.4rem;
+      color: #fff;
+    }
+
+    .production .sous-titre {
+      color: #999;
+      font-size: 0.9rem;
+      margin-bottom: 0.8rem;
+    }
+
+    .etape-ligne {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.35rem 0;
+      border-bottom: 1px solid #2a2a2a;
+      font-size: 1rem;
+    }
+
+    .etape-ligne:last-child {
+      border-bottom: none;
+    }
+
+    .pastille {
+      width: 1.1rem;
+      height: 1.1rem;
+      border-radius: 50%;
+      flex: 0 0 auto;
+      background: #555; /* non démarrée = gris */
+    }
+
+    .pastille.en_cours {
+      background: #f5c518; /* jaune = en cours */
+    }
+
+    .pastille.terminee.conforme {
+      background: #2ecc71; /* vert = conforme */
+    }
+
+    .pastille.terminee.non_conforme {
+      background: #e74c3c; /* rouge = non conforme */
+    }
+
+    .pastille.terminee.inconnu {
+      background: #2ecc71;
+    }
+
+    .vide {
+      text-align: center;
+      color: #777;
+      padding: 4rem 1rem;
+      font-size: 1.4rem;
+    }
+
+    .badge-refresh {
+      position: fixed;
+      bottom: 8px;
+      right: 8px;
+      opacity: 0.3;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>🍳 Suivi Production Cuisine</h1>
+    <div class="date" id="date-jour"></div>
+  </header>
+
+  <div id="grille"></div>
+
+  <div class="badge-refresh">BA380 • Écran cuisine</div>
+
+  <script>
+    async function refresh() {
+      try {
+        const r = await fetch("/production-cuisine/api/production_active", { cache: "no-store" });
+        const data = await r.json();
+
+        document.getElementById("date-jour").textContent = data.date || "";
+
+        const grille = document.getElementById("grille");
+        grille.innerHTML = "";
+
+        if (!data.productions || !data.productions.length) {
+          grille.innerHTML = '<div class="vide">Aucune production en cours</div>';
+          return;
+        }
+
+        data.productions.forEach(function (p) {
+          const div = document.createElement("div");
+          div.className = "production";
+
+          let sousTitre = [p.espece, p.mode_cuisson].filter(Boolean).join(" · ");
+
+          let lignes = p.etapes.map(function (e) {
+            let classeConf = "inconnu";
+            if (e.statut === "terminee") {
+              classeConf = e.conforme === "non_conforme" ? "non_conforme" : "conforme";
+            }
+            return `
+              <div class="etape-ligne">
+                <div class="pastille ${e.statut} ${classeConf}"></div>
+                <div>${e.libelle}</div>
+              </div>
+            `;
+          }).join("");
+
+          div.innerHTML = `
+            <h2>${p.nom_recette}</h2>
+            <div class="sous-titre">${sousTitre}</div>
+            ${lignes}
+          `;
+
+          grille.appendChild(div);
+        });
+
+      } catch (e) {
+        console.error("refresh error", e);
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 20000);
+  </script>
+
+</body>
+
+</html>

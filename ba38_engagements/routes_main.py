@@ -1353,11 +1353,19 @@ def nouvelle_depense():
 
                 from .routes_notes_frais import generer_note_frais_auto
 
-                nom_beneficiaire = (
-                    fournisseur_nom
-                    if type_engagement == "fournisseur"
-                    else None
-                )
+                if type_engagement == "fournisseur":
+                    nom_beneficiaire = fournisseur_nom
+                elif type_engagement == "benevole_other" and beneficiaire_benevole_id:
+                    benevole = conn.execute(
+                        "SELECT nom, prenom FROM benevoles WHERE id = ?",
+                        (beneficiaire_benevole_id,)
+                    ).fetchone()
+                    nom_beneficiaire = (
+                        f"{benevole['prenom']} {benevole['nom']}"
+                        if benevole else None
+                    )
+                else:
+                    nom_beneficiaire = None
 
                 generer_note_frais_auto(
                     conn=conn,

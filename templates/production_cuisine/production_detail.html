@@ -1,0 +1,360 @@
+{% extends "base.html" %}
+
+{% block title %}{{ production.nom_recette }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 900px;">
+
+  <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+      <h2 class="mb-1" id="titre-recette">{{ production.nom_recette }}</h2>
+      <div class="text-muted">
+        {{ production.date_production }}
+        {% if production.espece %} · {{ production.espece }}{% endif %}
+        {% if production.mode_cuisson %} · {{ production.mode_cuisson }}{% endif %}
+        · <span class="badge
+            {% if production.statut == 'terminee' %}bg-success
+            {% elif production.statut == 'annulee' %}bg-secondary
+            {% else %}bg-warning text-dark{% endif %}">{{ production.statut }}</span>
+      </div>
+    </div>
+    <a href="{{ url_for('production_cuisine.liste_productions') }}" class="btn btn-outline-secondary">← Retour</a>
+  </div>
+
+  <div class="card mb-4 bg-light">
+    <div class="card-body">
+      <label class="form-label fw-bold">👤 Bénévole (identifiant pour toutes les saisies ci-dessous)</label>
+      <input type="text" id="benevole-global" class="form-control form-control-lg" placeholder="Prénom du bénévole">
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ✏️ Renommer -->
+  <!-- ============================================================ -->
+  <div class="card mb-4">
+    <div class="card-header">✏️ Renommer la recette</div>
+    <div class="card-body">
+      <div class="input-group">
+        <input type="text" id="nouveau-nom" class="form-control" value="{{ production.nom_recette }}">
+        <button class="btn btn-outline-primary" onclick="renommer()">Renommer</button>
+      </div>
+      {% if production.nom_recette != production.nom_recette_initial %}
+        <div class="form-text">Nom initial : {{ production.nom_recette_initial }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ⏱️ Étapes de fabrication -->
+  <!-- ============================================================ -->
+  <div class="card mb-4">
+    <div class="card-header">⏱️ Étapes de fabrication</div>
+    <div class="card-body">
+      {% for ref in etapes_ref %}
+        {% set ligne = etapes_par_code.get(ref.code) %}
+        <div class="border rounded p-3 mb-3">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+              <strong>{{ ref.ordre }}. {{ ref.libelle }}</strong>
+              {% if ref.optionnelle %}<span class="badge bg-info text-dark ms-1">optionnelle</span>{% endif %}
+              {% if not ligne %}
+                <div class="text-muted small">{{ "Non renseignée" if not ref.saisie_debut else "Non démarrée" }}</div>
+              {% elif ligne.heure_fin is none %}
+                <div class="text-warning small">En cours depuis {{ ligne.heure_debut }}</div>
+              {% else %}
+                <div class="text-success small">
+                  Terminée : {{ (ligne.heure_debut + " → ") if ligne.heure_debut else "" }}{{ ligne.heure_fin }}
+                  {% if ligne.temperature is not none %} · {{ ligne.temperature }}°C{% endif %}
+                  {% if ligne.conforme %} ·
+                    {% if ligne.conforme == 'conforme' %}<span class="badge bg-success">Conforme</span>
+                    {% else %}<span class="badge bg-danger">Non conforme</span>{% endif %}
+                  {% endif %}
+                </div>
+              {% endif %}
+            </div>
+
+            {% if ref.saisie_debut and (not ligne or ligne.heure_fin is not none) %}
+            <form method="POST" action="{{ url_for('production_cuisine.etape_production', production_id=production.id) }}"
+                  class="benevole-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="benevole" class="benevole-sync">
+              <input type="hidden" name="etape_code" value="{{ ref.code }}">
+              <input type="hidden" name="action" value="demarrer">
+              <button type="submit" class="btn btn-success btn-lg">▶️ Démarrer</button>
+            </form>
+            {% endif %}
+          </div>
+
+          {% if (not ref.saisie_debut and (not ligne or ligne.heure_fin is not none)) or (ligne and ligne.heure_fin is none) %}
+          <form method="POST" action="{{ url_for('production_cuisine.etape_production', production_id=production.id) }}"
+                class="benevole-form mt-2 row g-2 align-items-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="benevole" class="benevole-sync">
+            <input type="hidden" name="etape_code" value="{{ ref.code }}">
+            <input type="hidden" name="action" value="terminer">
+
+            {% if ref.saisie_temperature %}
+            <div class="col-auto">
+              <label class="form-label small">Température (°C)</label>
+              <input type="number" inputmode="decimal" step="0.1" name="temperature" class="form-control">
+            </div>
+            {% endif %}
+
+            {% if ref.saisie_cellule %}
+            <div class="col-auto">
+              <label class="form-label small">N° cellule (1-6)</label>
+              <input type="number" min="1" max="6" name="cellule_numero" class="form-control">
+            </div>
+            {% endif %}
+
+            {% if ref.saisie_conformite %}
+            <div class="col-auto">
+              <label class="form-label small d-block">Conformité</label>
+              <div class="btn-group" role="group">
+                <input type="radio" class="btn-check" name="conforme" id="conf_ok_{{ ref.code }}" value="conforme" autocomplete="off">
+                <label class="btn btn-outline-success" for="conf_ok_{{ ref.code }}">✅ Conforme</label>
+                <input type="radio" class="btn-check" name="conforme" id="conf_nc_{{ ref.code }}" value="non_conforme" autocomplete="off">
+                <label class="btn btn-outline-danger" for="conf_nc_{{ ref.code }}">⚠️ Non conforme</label>
+              </div>
+            </div>
+            {% endif %}
+
+            <div class="col-auto">
+              <button type="submit" class="btn btn-danger btn-lg">⏹️ Terminer</button>
+            </div>
+          </form>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 🔎 Traçabilité : lots (réceptions liées + lots manuels) -->
+  <!-- ============================================================ -->
+  <div class="card mb-4">
+    <div class="card-header">🔎 Traçabilité — lots</div>
+    <div class="card-body">
+
+      {% if receptions %}
+        <h6 class="text-muted">📥 Lots issus des réceptions</h6>
+        <div class="mb-3">
+          {% for r in receptions %}
+          <div class="border rounded p-2 mb-2">
+            <div class="d-flex justify-content-between">
+              <span>
+                <strong>{{ r.libelle_produit or "—" }}</strong> · {{ r.fournisseur_nom or "—" }}
+                {% if r.heure_arrivee %} · {{ r.heure_arrivee }}{% endif %}
+                {% if r.poids_kg is not none %} · {{ r.poids_kg }} kg{% endif %}
+                {% if r.temperature_mesuree is not none %} · {{ r.temperature_mesuree }}°C{% endif %}
+              </span>
+              <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id) }}" class="small">Détail</a>
+            </div>
+            {% if photos_par_reception.get(r.id) %}
+            <div class="d-flex flex-wrap gap-2 mt-2">
+              {% for photo_id in photos_par_reception.get(r.id) %}
+              <a href="{{ url_for('production_cuisine.photo_reception', photo_id=photo_id) }}" target="_blank">
+                <img src="{{ url_for('production_cuisine.photo_reception', photo_id=photo_id) }}" style="height:90px;width:90px;object-fit:cover;border-radius:4px;" alt="photo">
+              </a>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-muted">Aucune réception attachée pour l'instant — les lots ci-dessous sont ajoutés manuellement.</p>
+      {% endif %}
+
+      {% if receptions_disponibles %}
+      <div class="dropdown mb-3">
+        <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+          ➕ Attacher une réception en attente (nouvel arrivage)
+        </button>
+        <ul class="dropdown-menu">
+          {% for r in receptions_disponibles %}
+          <li>
+            <form method="POST" action="{{ url_for('production_cuisine.affecter_reception', reception_id=r.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="production_id" value="{{ production.id }}">
+              <button type="submit" class="dropdown-item">
+                {{ r.libelle_produit or "—" }} · {{ r.heure_arrivee or "—" }} · {{ r.fournisseur_nom or "—" }}
+                {% if r.poids_kg is not none %} · {{ r.poids_kg }} kg{% endif %}
+              </button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if lots %}
+        <h6 class="text-muted mt-3">✏️ Lots ajoutés manuellement</h6>
+        <div class="mb-3">
+          {% for l in lots %}
+            <div class="border rounded p-2 mb-2">
+              <div class="d-flex justify-content-between">
+                <span class="fw-bold">{{ l.fournisseur_nom or "—" }}</span>
+                <span class="text-muted small">{{ l.horodatage }} · {{ l.user_creation or "" }}</span>
+              </div>
+              {% if l.commentaire %}<div class="small text-muted">{{ l.commentaire }}</div>{% endif %}
+              {% if photos_par_lot.get(l.id) %}
+              <div class="d-flex flex-wrap gap-2 mt-2">
+                {% for photo_id in photos_par_lot.get(l.id) %}
+                <a href="{{ url_for('production_cuisine.photo_traca', photo_id=photo_id) }}" target="_blank">
+                  <img src="{{ url_for('production_cuisine.photo_traca', photo_id=photo_id) }}" style="height:90px;width:90px;object-fit:cover;border-radius:4px;" alt="photo">
+                </a>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <details>
+        <summary class="text-muted" style="cursor:pointer;">
+          ➕ Ajouter un lot manuel (marchandise non couverte par une réception)
+        </summary>
+        <form method="POST" action="{{ url_for('production_cuisine.ajouter_lot', production_id=production.id) }}"
+              enctype="multipart/form-data" class="benevole-form mt-3">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="benevole" class="benevole-sync">
+
+          <label class="form-label fw-bold">Fournisseur</label>
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            {% for f in fournisseurs %}
+              <input type="radio" class="btn-check" name="fournisseur_id" id="frs_{{ f.id }}" value="{{ f.id }}" autocomplete="off">
+              <label class="btn btn-outline-primary" for="frs_{{ f.id }}">{{ f.nom }}</label>
+            {% endfor %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">📷 Photos (étiquette / produit)</label>
+            <input type="file" name="photos" accept="image/*" capture="environment" multiple class="form-control">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Commentaire</label>
+            <input type="text" name="commentaire" class="form-control">
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-lg">➕ Ajouter le lot</button>
+        </form>
+      </details>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 🔢 Quantités conditionnées -->
+  <!-- ============================================================ -->
+  <div class="card mb-4">
+    <div class="card-header">🔢 Quantités conditionnées</div>
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('production_cuisine.quantites_production', production_id=production.id) }}"
+            class="row g-3 align-items-end">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-auto">
+          <label class="form-label">1/2</label>
+          <input type="number" inputmode="numeric" name="qte_1_2" class="form-control" value="{{ quantites['1/2'] }}">
+        </div>
+        <div class="col-auto">
+          <label class="form-label">1/4</label>
+          <input type="number" inputmode="numeric" name="qte_1_4" class="form-control" value="{{ quantites['1/4'] }}">
+        </div>
+        <div class="col-auto">
+          <label class="form-label">1/8</label>
+          <input type="number" inputmode="numeric" name="qte_1_8" class="form-control" value="{{ quantites['1/8'] }}">
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary btn-lg">💾 Enregistrer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ✅ Validation finale -->
+  <!-- ============================================================ -->
+  <div class="card mb-4">
+    <div class="card-header">✅ Validation finale</div>
+    <div class="card-body">
+      {% if validation %}
+        <p class="text-success">
+          Déjà validée le {{ validation.date_validation }} par {{ validation.valide_par or "—" }}
+          — plat témoin : {{ validation.plat_temoin }}
+          {% if validation.plat_temoin_poids_g %} ({{ validation.plat_temoin_poids_g }} g){% endif %}
+        </p>
+      {% endif %}
+
+      <form method="POST" action="{{ url_for('production_cuisine.validation_production', production_id=production.id) }}"
+            class="benevole-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="benevole" class="benevole-sync">
+        <input type="hidden" name="valide_par" class="benevole-sync">
+
+        <label class="form-label fw-bold d-block">Plat témoin conservé ?</label>
+        <div class="btn-group mb-3" role="group">
+          <input type="radio" class="btn-check" name="plat_temoin" id="pt_oui" value="oui" autocomplete="off"
+                 onclick="document.getElementById('pt-poids-wrap').classList.remove('d-none')">
+          <label class="btn btn-outline-success btn-lg" for="pt_oui">Oui</label>
+          <input type="radio" class="btn-check" name="plat_temoin" id="pt_non" value="non" checked autocomplete="off"
+                 onclick="document.getElementById('pt-poids-wrap').classList.add('d-none')">
+          <label class="btn btn-outline-secondary btn-lg" for="pt_non">Non</label>
+        </div>
+
+        <div id="pt-poids-wrap" class="mb-3 d-none">
+          <label class="form-label">Poids du plat témoin (g) *</label>
+          <input type="number" inputmode="decimal" step="0.1" name="plat_temoin_poids_g" class="form-control">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Commentaire</label>
+          <input type="text" name="commentaire" class="form-control">
+        </div>
+
+        <button type="submit" class="btn btn-success btn-lg">✅ Valider la production</button>
+      </form>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Synchronise le champ "Bénévole" saisi une fois en haut de page vers
+  // tous les mini-formulaires indépendants de l'écran (un POST par action).
+  document.querySelectorAll('.benevole-form').forEach(function (form) {
+    form.addEventListener('submit', function () {
+      var valeur = document.getElementById('benevole-global').value;
+      form.querySelectorAll('.benevole-sync').forEach(function (input) {
+        input.value = valeur;
+      });
+    });
+  });
+
+  function renommer() {
+    var nouveauNom = document.getElementById('nouveau-nom').value.trim();
+    var benevole = document.getElementById('benevole-global').value;
+    if (!nouveauNom) return;
+
+    fetch("{{ url_for('production_cuisine.renommer_production', production_id=production.id) }}", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-CSRFToken": "{{ csrf_token() }}"
+      },
+      body: new URLSearchParams({ nouveau_nom: nouveauNom, benevole: benevole })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.ok) {
+          document.getElementById('titre-recette').textContent = data.nouveau_nom;
+        } else {
+          alert(data.error || "Erreur lors du renommage.");
+        }
+      })
+      .catch(function () { alert("Erreur réseau lors du renommage."); });
+  }
+</script>
+{% include "production_cuisine/_scroll_restore.html" %}
+{% endblock %}

@@ -77,6 +77,7 @@ from scripts.rename_field import rename_bp
 from ba38_admin import admin_bp
 from ba38_export import export_data_bp
 from ba38_fournisseurs import fournisseurs_bp
+from ba38_production_cuisine import production_cuisine_bp, cuisine_hygiene_bp
 from ba38_tresorerie import tresorerie_bp
 from ba38_partenaires import fiches_visite_bp
 from ba38_partenaires import annexe1bis_bp, webhook_yousign
@@ -369,6 +370,8 @@ app.register_blueprint(distribution_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(export_data_bp)
 app.register_blueprint(fournisseurs_bp)
+app.register_blueprint(production_cuisine_bp, url_prefix="/production-cuisine")
+app.register_blueprint(cuisine_hygiene_bp, url_prefix="/hygiene-cuisine")
 app.register_blueprint(tresorerie_bp)
 app.register_blueprint(fiches_visite_bp)
 app.register_blueprint(annexe1bis_bp)

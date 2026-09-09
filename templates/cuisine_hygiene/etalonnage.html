@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Étalonnage thermomètres{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 720px;">
+
+  {% include "cuisine_hygiene/_nav.html" %}
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">🔧 Étalonnage des thermomètres</h2>
+    <a href="{{ url_for('cuisine_hygiene.etalonnage_historique') }}" class="btn btn-outline-secondary">
+      📜 Historique
+    </a>
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label fw-bold">👤 Bénévole</label>
+    <input type="text" id="benevole-global" class="form-control form-control-lg" placeholder="Prénom du bénévole">
+  </div>
+
+  <form method="POST" id="form-etalonnage">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="benevole" id="benevole-hidden">
+    <input type="hidden" name="thermometre_id" id="thermometre-id-hidden">
+
+    <label class="form-label fw-bold">Thermomètre</label>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      {% for t in thermometres %}
+        <button type="button" class="btn btn-outline-primary btn-lg thermo-btn" data-thermo-id="{{ t.id }}">
+          N°{{ t.numero }}
+        </button>
+      {% endfor %}
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-6">
+        <label class="form-label">Test glace (°C attendu ≈ 0)</label>
+        <input type="number" inputmode="decimal" step="0.1" name="test_glace_valeur" class="form-control">
+      </div>
+      <div class="col-6">
+        <label class="form-label">Test ébullition (°C attendu ≈ 100)</label>
+        <input type="number" inputmode="decimal" step="0.1" name="test_ebullition_valeur" class="form-control">
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Commentaire</label>
+      <input type="text" name="commentaire" class="form-control">
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-lg" id="btn-enregistrer" disabled>💾 Enregistrer</button>
+  </form>
+
+</div>
+
+<script>
+  const thermoBtns = document.querySelectorAll('.thermo-btn');
+  thermoBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      thermoBtns.forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      document.getElementById('thermometre-id-hidden').value = btn.dataset.thermoId;
+      document.getElementById('btn-enregistrer').disabled = false;
+    });
+  });
+
+  document.getElementById('form-etalonnage').addEventListener('submit', function () {
+    document.getElementById('benevole-hidden').value = document.getElementById('benevole-global').value;
+  });
+</script>
+{% include "production_cuisine/_scroll_restore.html" %}
+{% endblock %}

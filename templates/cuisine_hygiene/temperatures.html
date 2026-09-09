@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Relevés de température{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 720px;">
+
+  {% include "cuisine_hygiene/_nav.html" %}
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">🌡️ Relevés de température</h2>
+    <a href="{{ url_for('cuisine_hygiene.temperatures_historique') }}" class="btn btn-outline-secondary">
+      📜 Historique
+    </a>
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label fw-bold">👤 Bénévole</label>
+    <input type="text" id="benevole-global" class="form-control form-control-lg" placeholder="Prénom du bénévole">
+  </div>
+
+  <form method="POST" id="form-temperature">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="benevole" id="benevole-hidden">
+    <input type="hidden" name="zone_id" id="zone-id-hidden">
+
+    <label class="form-label fw-bold">Zone</label>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      {% for z in zones %}
+        <button type="button" class="btn btn-outline-primary btn-lg zone-btn" data-zone-id="{{ z.id }}">
+          {{ z.libelle }}
+        </button>
+      {% endfor %}
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Température mesurée (°C) *</label>
+      <input type="number" inputmode="decimal" step="0.1" name="temperature" class="form-control form-control-lg" required>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Commentaire</label>
+      <input type="text" name="commentaire" class="form-control">
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-lg" id="btn-enregistrer" disabled>💾 Enregistrer</button>
+  </form>
+
+</div>
+
+<script>
+  const zoneBtns = document.querySelectorAll('.zone-btn');
+  zoneBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      zoneBtns.forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      document.getElementById('zone-id-hidden').value = btn.dataset.zoneId;
+      document.getElementById('btn-enregistrer').disabled = false;
+    });
+  });
+
+  document.getElementById('form-temperature').addEventListener('submit', function () {
+    document.getElementById('benevole-hidden').value = document.getElementById('benevole-global').value;
+  });
+</script>
+{% include "production_cuisine/_scroll_restore.html" %}
+{% endblock %}
