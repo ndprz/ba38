@@ -129,6 +129,28 @@ Détail engagement #{{ engagement.id }}
                 {% endif %}
 
                 <!-- ============================================== -->
+                <!-- RENVOI DEMANDE VALIDATION POLE -->
+                <!-- ============================================== -->
+
+                {% if engagement.statut == "validation_pole"
+                    and (engagement.demandeur_id == current_user.id
+                        or has_access('engagements', 'admin')) %}
+
+                    <form method="POST"
+                        action="{{ url_for(
+                                'engagements.renvoyer_validation_pole',
+                                engagement_id=engagement.id
+                        ) }}"
+                        class="m-0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                        {{ action_button("📧 Renvoyer la demande de validation", type="submit", color="secondary") }}
+
+                    </form>
+
+                {% endif %}
+
+                <!-- ============================================== -->
                 <!-- TRAITEMENT REFUS PAR L'USER -->
                 <!-- ============================================== -->
                 {% if engagement.statut == "refuse"

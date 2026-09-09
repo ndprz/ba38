@@ -6,7 +6,7 @@ from flask_login import login_required, current_user
 from ba38_utilitaires.core import get_db_path, get_db_connection, has_access, write_log, require_access
 from ba38_utilitaires.core import get_real_ip
 from ba38_utilitaires.core import envoyer_mail, is_valid_iban
-from ba38_utilitaires.core import verifier_token_validation_pole
+from ba38_utilitaires.core import verifier_token_validation_pole, generer_token_validation_pole
 from openpyxl import Workbook
 from io import BytesIO
 from datetime import datetime
@@ -432,6 +432,169 @@ def valider_engagement_pole(engagement_id):
             engagement_id=engagement_id
         )
     )
+
+
+@engagements_bp.route("/engagements/<int:engagement_id>/renvoyer-validation-pole", methods=["POST"])
+@login_required
+@require_access("engagements", "ecriture")
+def renvoyer_validation_pole(engagement_id):
+
+    db_path = get_db_path()
+
+    with sqlite3.connect(db_path) as conn:
+
+        conn.row_factory = sqlite3.Row
+
+        engagement = conn.execute("""
+            SELECT
+                e.*,
+                d.objet,
+                d.montant_total
+            FROM engagements e
+
+            LEFT JOIN engagements_depenses d
+                ON d.engagement_id = e.id
+
+            WHERE e.id = ?
+        """, (engagement_id,)).fetchone()
+
+        if not engagement:
+            abort(404)
+
+        if (
+            engagement["demandeur_id"] != current_user.id
+            and not has_access("engagements", "admin")
+        ):
+            abort(403)
+
+        if engagement["statut"] != "validation_pole":
+
+            flash(
+                "⚠️ Cet engagement n'est pas en attente de validation pôle.",
+                "warning"
+            )
+
+            return redirect(url_for(
+                "engagements.detail_engagement",
+                engagement_id=engagement_id
+            ))
+
+        pole = conn.execute("""
+            SELECT
+                p.nom_affiche,
+                p.responsable_id,
+                p.suppleant1_id,
+                p.suppleant2_id,
+
+                u1.email AS responsable_email,
+                u2.email AS supp1_email,
+                u3.email AS supp2_email
+
+            FROM engagement_poles p
+
+            LEFT JOIN users u1
+                ON u1.id = p.responsable_id
+
+            LEFT JOIN users u2
+                ON u2.id = p.suppleant1_id
+
+            LEFT JOIN users u3
+                ON u3.id = p.suppleant2_id
+
+            WHERE p.id = ?
+        """, (engagement["pole_id"],)).fetchone()
+
+        if not pole:
+            abort(404)
+
+        # Même règle de conflit d'intérêt qu'à la création
+        # (routes_main.py) et qu'à la validation (valider_engagement_pole
+        # ci-dessus) : désactivée en DEV pour faciliter les tests.
+        est_prod = os.getenv("ENVIRONMENT", "prod").lower() != "dev"
+
+        if est_prod and engagement["demandeur_id"] == pole["responsable_id"]:
+            destinataires_pole = list(filter(None, [
+                (pole["suppleant1_id"], pole["supp1_email"])
+                if pole["suppleant1_id"] and pole["supp1_email"] else None,
+            ]))
+        else:
+            destinataires_pole = list(filter(None, [
+                (pole["responsable_id"], pole["responsable_email"])
+                if pole["responsable_id"] and pole["responsable_email"] else None,
+            ]))
+
+        if not destinataires_pole:
+
+            flash(
+                "⚠️ Aucun destinataire trouvé pour ce pôle "
+                "(responsable/suppléant sans email renseigné).",
+                "danger"
+            )
+
+            return redirect(url_for(
+                "engagements.detail_engagement",
+                engagement_id=engagement_id
+            ))
+
+        sujet = f"Nouvelle demande d'engagement #{engagement_id}"
+
+        lien = url_for(
+            "engagements.detail_engagement",
+            engagement_id=engagement_id,
+            _external=True
+        )
+
+        for user_id, user_email in destinataires_pole:
+
+            token = generer_token_validation_pole(engagement_id, user_id)
+
+            lien_validation = url_for(
+                "engagements.valider_engagement_pole_lien",
+                engagement_id=engagement_id,
+                token=token,
+                _external=True
+            )
+
+            texte = f"""
+Bonjour,
+
+Une nouvelle demande d'engagement nécessite votre validation.
+
+Pôle : {pole["nom_affiche"]}
+Demandeur : {engagement["demandeur_nom"]}
+Objet : {engagement["objet"]}
+Montant : {engagement["montant_total"]:.2f} €
+
+Valider directement, sans vous connecter :
+{lien_validation}
+
+Ou en vous connectant à l'application :
+{lien}
+"""
+
+            envoyer_mail(
+                sujet=sujet,
+                destinataires=[user_email],
+                texte=texte,
+                sender_override="ba380@banquealimentaire.org",
+                sender_name="BA38 - Engagements",
+                reply_to=engagement["demandeur_email"]
+            )
+
+        write_log(
+            f"[ENGAGEMENTS] Renvoi validation pôle #{engagement_id} "
+            f"déclenché par {current_user.username}"
+        )
+
+    flash(
+        "📧 Demande de validation pôle renvoyée.",
+        "success"
+    )
+
+    return redirect(url_for(
+        "engagements.detail_engagement",
+        engagement_id=engagement_id
+    ))
 
 
 # ============================================================
