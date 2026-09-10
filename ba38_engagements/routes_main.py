@@ -1693,6 +1693,10 @@ def detail_engagement(engagement_id):
 
                 )
 
+        est_responsable_pole = bool(
+            pole and current_user.id == pole["responsable_id"]
+        )
+
         # =====================================================
         # MODIFICATION (Pôle/Objet/Description/Montant/Nature/
         # Rubrique/Précision/Commentaire devis)
@@ -1727,6 +1731,7 @@ def detail_engagement(engagement_id):
 
         peut_valider_pole=peut_valider_pole,
         peut_valider_presidence=peut_valider_presidence,
+        est_responsable_pole=est_responsable_pole,
 
         peut_modifier=peut_modifier,
         poles=poles

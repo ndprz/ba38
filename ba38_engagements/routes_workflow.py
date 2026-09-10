@@ -1128,12 +1128,15 @@ def cloturer_engagement(engagement_id):
 # SUPPRESSION LOGIQUE ENGAGEMENT
 # ============================================================
 
+STATUTS_TERMINES_SUPPRESSION = ("reglee", "comptabilise", "termine")
+
+
 @engagements_bp.route(
     "/engagements/<int:engagement_id>/delete",
     methods=["POST"]
 )
 @login_required
-@require_access("engagements", "admin")
+@require_access("engagements", "ecriture")
 def delete_engagement(engagement_id):
 
     """
@@ -1155,6 +1158,17 @@ def delete_engagement(engagement_id):
     - conservation des devis et validations
 
     Aucune suppression physique des fichiers n’est réalisée.
+
+    Règles d'autorisation :
+    - Admin : suppression possible à tous les niveaux.
+    - Demandeur responsable du pôle de l'engagement : suppression
+      possible tant que l'engagement n'est pas réglé (y compris donc
+      au statut "a_payer"). Si déjà "a_payer" (donc déjà transmis à
+      la trésorerie), un motif est requis et un mail est envoyé au
+      trésorier pour l'informer de l'annulation.
+    - Demandeur simple : suppression possible uniquement avant que
+      l'engagement soit transmis à la trésorerie (donc pas si
+      "a_payer" ou au-delà).
     """
 
     db_path = get_db_path()
@@ -1168,9 +1182,14 @@ def delete_engagement(engagement_id):
         # =====================================================
 
         engagement = conn.execute("""
-            SELECT *
-            FROM engagements
-            WHERE id = ?
+            SELECT
+                e.*,
+                d.objet,
+                d.montant_total
+            FROM engagements e
+            LEFT JOIN engagements_depenses d
+                ON d.engagement_id = e.id
+            WHERE e.id = ?
         """, (engagement_id,)).fetchone()
 
         if not engagement:
@@ -1182,6 +1201,60 @@ def delete_engagement(engagement_id):
 
             return redirect(
                 url_for("engagements.engagements_main")
+            )
+
+        # =====================================================
+        # AUTORISATION (admin / responsable de pôle / demandeur)
+        # =====================================================
+
+        is_admin = has_access("engagements", "admin")
+        is_owner = engagement["demandeur_id"] == current_user.id
+
+        pole = conn.execute("""
+            SELECT responsable_id
+            FROM engagement_poles
+            WHERE id = ?
+        """, (engagement["pole_id"],)).fetchone()
+
+        is_pole_responsable = bool(
+            pole and pole["responsable_id"] == current_user.id
+        )
+
+        necessite_motif = False
+
+        if is_admin:
+            autorise = True
+
+        elif is_owner and is_pole_responsable:
+            autorise = engagement["statut"] not in STATUTS_TERMINES_SUPPRESSION
+            necessite_motif = engagement["statut"] == "a_payer"
+
+        elif is_owner:
+            autorise = engagement["statut"] not in (
+                ("a_payer",) + STATUTS_TERMINES_SUPPRESSION
+            )
+
+        else:
+            autorise = False
+
+        if not autorise:
+            abort(403)
+
+        motif = request.form.get("motif", "").strip()
+
+        if necessite_motif and not motif:
+
+            flash(
+                "⚠️ Un motif est requis pour supprimer une demande "
+                "déjà transmise à la trésorerie.",
+                "danger"
+            )
+
+            return redirect(
+                url_for(
+                    "engagements.detail_engagement",
+                    engagement_id=engagement_id
+                )
             )
 
         # =====================================================
@@ -1235,10 +1308,12 @@ def delete_engagement(engagement_id):
             SET
                 deleted = 1,
                 deleted_le = CURRENT_TIMESTAMP,
-                deleted_by = ?
+                deleted_by = ?,
+                deleted_reason = ?
             WHERE id = ?
         """, (
             current_user.id,
+            motif or None,
             engagement_id
         ))
 
@@ -1265,11 +1340,62 @@ def delete_engagement(engagement_id):
             engagement["statut"],
             "supprime",
 
-            "Suppression logique engagement",
+            f"Suppression logique engagement — motif : {motif}"
+            if motif else "Suppression logique engagement",
 
             current_user.id,
             current_user.email
         ))
+
+        # =====================================================
+        # MAIL TRESORIER (suppression d'une demande déjà a_payer,
+        # par le responsable de pôle)
+        # =====================================================
+
+        if necessite_motif:
+
+            tresorier = conn.execute("""
+                SELECT u.email AS tresorier_email
+                FROM engagement_poles p
+                LEFT JOIN users u
+                    ON u.id = p.tresorier_user_id
+                WHERE p.id = ?
+            """, (engagement["pole_id"],)).fetchone()
+
+            if tresorier and tresorier["tresorier_email"]:
+
+                lien = url_for(
+                    "engagements.detail_engagement",
+                    engagement_id=engagement_id,
+                    _external=True
+                )
+
+                texte = f"""
+Bonjour,
+
+L'engagement suivant, déjà transmis pour règlement,
+vient d'être supprimé par le responsable de pôle.
+
+Engagement : #{engagement_id}
+Demandeur : {engagement["demandeur_nom"]}
+Objet : {engagement["objet"]}
+Montant : {engagement["montant_total"]:.2f} €
+
+Motif de la suppression :
+{motif}
+
+Lien :
+{lien}
+"""
+
+                envoyer_mail(
+                    sujet=f"Engagement supprimé #{engagement_id}",
+                    destinataires=[tresorier["tresorier_email"]],
+                    texte=texte,
+                    sender_override="ba380@banquealimentaire.org",
+                    sender_name=current_user.username,
+                    reply_to=current_user.email
+                )
 
         conn.commit()
 

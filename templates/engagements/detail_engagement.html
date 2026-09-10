@@ -155,6 +155,52 @@ Détail engagement #{{ engagement.id }}
                 {% endif %}
 
                 <!-- ============================================== -->
+                <!-- SUPPRESSION PAR LE DEMANDEUR (NON ADMIN) -->
+                <!-- ============================================== -->
+
+                {% if not has_access('engagements', 'admin')
+                    and engagement.demandeur_id == current_user.id
+                    and engagement.deleted != 1
+                    and (
+                        (est_responsable_pole
+                            and engagement.statut not in ("reglee", "comptabilise", "termine"))
+                        or (not est_responsable_pole
+                            and engagement.statut not in ("a_payer", "reglee", "comptabilise", "termine"))
+                    ) %}
+
+                    {% if est_responsable_pole and engagement.statut == "a_payer" %}
+
+                        <button type="button"
+                                class="btn btn-outline-danger"
+                                data-bs-toggle="modal"
+                                data-bs-target="#modalSupprimerEngagement">
+
+                            🗑 Supprimer ma demande
+
+                        </button>
+
+                    {% else %}
+
+                        <form method="POST"
+                            action="{{ url_for(
+                                    'engagements.delete_engagement',
+                                    engagement_id=engagement.id
+                            ) }}"
+                            onsubmit="return confirm(
+                                    'Supprimer définitivement cette demande ?'
+                            );"
+                            class="m-0">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                            {{ action_button("🗑 Supprimer ma demande", type="submit", color="outline-danger") }}
+
+                        </form>
+
+                    {% endif %}
+
+                {% endif %}
+
+                <!-- ============================================== -->
                 <!-- TRAITEMENT REFUS PAR L'USER -->
                 <!-- ============================================== -->
                 {% if engagement.statut == "refuse"
@@ -1580,6 +1626,89 @@ Détail engagement #{{ engagement.id }}
                             class="btn btn-danger">
 
                         ❌ Confirmer refus
+
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- ================================================== -->
+<!-- MODALE SUPPRESSION AVEC MOTIF (responsable de pôle, -->
+<!-- demande déjà transmise à la trésorerie)             -->
+<!-- ================================================== -->
+
+<div class="modal fade"
+     id="modalSupprimerEngagement"
+     tabindex="-1">
+
+    <div class="modal-dialog">
+
+        <div class="modal-content">
+
+            <form method="POST"
+                  action="{{ url_for(
+                        'engagements.delete_engagement',
+                        engagement_id=engagement.id
+                  ) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="modal-header bg-danger text-white">
+
+                    <h5 class="modal-title">
+
+                        🗑 Supprimer la demande
+
+                    </h5>
+
+                    <button type="button"
+                            class="btn-close btn-close-white"
+                            data-bs-dismiss="modal"></button>
+
+                </div>
+
+                <div class="modal-body">
+
+                    <p>
+                        Cette demande a déjà été transmise à la
+                        trésorerie pour règlement. Le trésorier sera
+                        informé par mail de cette suppression.
+                    </p>
+
+                    <label class="form-label">
+
+                        Motif de la suppression
+
+                    </label>
+
+                    <textarea name="motif"
+                              class="form-control"
+                              rows="5"
+                              required></textarea>
+
+                </div>
+
+                <div class="modal-footer">
+
+                    <button type="button"
+                            class="btn btn-secondary"
+                            data-bs-dismiss="modal">
+
+                        Annuler
+
+                    </button>
+
+                    <button type="submit"
+                            class="btn btn-danger">
+
+                        🗑 Confirmer la suppression
 
                     </button>
 
