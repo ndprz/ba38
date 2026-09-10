@@ -129,10 +129,10 @@ Détail engagement #{{ engagement.id }}
                 {% endif %}
 
                 <!-- ============================================== -->
-                <!-- RENVOI DEMANDE VALIDATION POLE -->
+                <!-- RENVOI NOTIFICATION (VALIDATION POLE / REGLEMENT) -->
                 <!-- ============================================== -->
 
-                {% if engagement.statut == "validation_pole"
+                {% if engagement.statut in ("validation_pole", "a_payer")
                     and (engagement.demandeur_id == current_user.id
                         or has_access('engagements', 'admin')) %}
 
@@ -144,7 +144,11 @@ Détail engagement #{{ engagement.id }}
                         class="m-0">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                        {{ action_button("📧 Renvoyer la demande de validation", type="submit", color="secondary") }}
+                        {% if engagement.statut == "a_payer" %}
+                            {{ action_button("📧 Renvoyer au trésorier", type="submit", color="secondary") }}
+                        {% else %}
+                            {{ action_button("📧 Renvoyer la demande de validation", type="submit", color="secondary") }}
+                        {% endif %}
 
                     </form>
 

@@ -473,68 +473,12 @@ def renvoyer_validation_pole(engagement_id):
         ):
             abort(403)
 
-        if engagement["statut"] != "validation_pole":
+        if engagement["statut"] not in ("validation_pole", "a_payer"):
 
             flash(
-                "⚠️ Cet engagement n'est pas en attente de validation pôle.",
+                "⚠️ Cet engagement n'est ni en attente de validation pôle "
+                "ni en attente de règlement.",
                 "warning"
-            )
-
-            return redirect(url_for(
-                "engagements.detail_engagement",
-                engagement_id=engagement_id
-            ))
-
-        pole = conn.execute("""
-            SELECT
-                p.nom_affiche,
-                p.responsable_id,
-                p.suppleant1_id,
-                p.suppleant2_id,
-
-                u1.email AS responsable_email,
-                u2.email AS supp1_email,
-                u3.email AS supp2_email
-
-            FROM engagement_poles p
-
-            LEFT JOIN users u1
-                ON u1.id = p.responsable_id
-
-            LEFT JOIN users u2
-                ON u2.id = p.suppleant1_id
-
-            LEFT JOIN users u3
-                ON u3.id = p.suppleant2_id
-
-            WHERE p.id = ?
-        """, (engagement["pole_id"],)).fetchone()
-
-        if not pole:
-            abort(404)
-
-        # Même règle de conflit d'intérêt qu'à la création
-        # (routes_main.py) et qu'à la validation (valider_engagement_pole
-        # ci-dessus) : désactivée en DEV pour faciliter les tests.
-        est_prod = os.getenv("ENVIRONMENT", "prod").lower() != "dev"
-
-        if est_prod and engagement["demandeur_id"] == pole["responsable_id"]:
-            destinataires_pole = list(filter(None, [
-                (pole["suppleant1_id"], pole["supp1_email"])
-                if pole["suppleant1_id"] and pole["supp1_email"] else None,
-            ]))
-        else:
-            destinataires_pole = list(filter(None, [
-                (pole["responsable_id"], pole["responsable_email"])
-                if pole["responsable_id"] and pole["responsable_email"] else None,
-            ]))
-
-        if not destinataires_pole:
-
-            flash(
-                "⚠️ Aucun destinataire trouvé pour ce pôle "
-                "(responsable/suppléant sans email renseigné).",
-                "danger"
             )
 
             return redirect(url_for(
@@ -550,18 +494,81 @@ def renvoyer_validation_pole(engagement_id):
             _external=True
         )
 
-        for user_id, user_email in destinataires_pole:
+        # =====================================================
+        # CAS 1 : EN ATTENTE DE VALIDATION POLE
+        # =====================================================
 
-            token = generer_token_validation_pole(engagement_id, user_id)
+        if engagement["statut"] == "validation_pole":
 
-            lien_validation = url_for(
-                "engagements.valider_engagement_pole_lien",
-                engagement_id=engagement_id,
-                token=token,
-                _external=True
-            )
+            pole = conn.execute("""
+                SELECT
+                    p.nom_affiche,
+                    p.responsable_id,
+                    p.suppleant1_id,
+                    p.suppleant2_id,
 
-            texte = f"""
+                    u1.email AS responsable_email,
+                    u2.email AS supp1_email,
+                    u3.email AS supp2_email
+
+                FROM engagement_poles p
+
+                LEFT JOIN users u1
+                    ON u1.id = p.responsable_id
+
+                LEFT JOIN users u2
+                    ON u2.id = p.suppleant1_id
+
+                LEFT JOIN users u3
+                    ON u3.id = p.suppleant2_id
+
+                WHERE p.id = ?
+            """, (engagement["pole_id"],)).fetchone()
+
+            if not pole:
+                abort(404)
+
+            # Même règle de conflit d'intérêt qu'à la création
+            # (routes_main.py) et qu'à la validation (valider_engagement_pole
+            # ci-dessus) : désactivée en DEV pour faciliter les tests.
+            est_prod = os.getenv("ENVIRONMENT", "prod").lower() != "dev"
+
+            if est_prod and engagement["demandeur_id"] == pole["responsable_id"]:
+                destinataires = list(filter(None, [
+                    (pole["suppleant1_id"], pole["supp1_email"])
+                    if pole["suppleant1_id"] and pole["supp1_email"] else None,
+                ]))
+            else:
+                destinataires = list(filter(None, [
+                    (pole["responsable_id"], pole["responsable_email"])
+                    if pole["responsable_id"] and pole["responsable_email"] else None,
+                ]))
+
+            if not destinataires:
+
+                flash(
+                    "⚠️ Aucun destinataire trouvé pour ce pôle "
+                    "(responsable/suppléant sans email renseigné).",
+                    "danger"
+                )
+
+                return redirect(url_for(
+                    "engagements.detail_engagement",
+                    engagement_id=engagement_id
+                ))
+
+            for user_id, user_email in destinataires:
+
+                token = generer_token_validation_pole(engagement_id, user_id)
+
+                lien_validation = url_for(
+                    "engagements.valider_engagement_pole_lien",
+                    engagement_id=engagement_id,
+                    token=token,
+                    _external=True
+                )
+
+                texte = f"""
 Bonjour,
 
 Une nouvelle demande d'engagement nécessite votre validation.
@@ -578,22 +585,78 @@ Ou en vous connectant à l'application :
 {lien}
 """
 
+                envoyer_mail(
+                    sujet=sujet,
+                    destinataires=[user_email],
+                    texte=texte,
+                    sender_override="ba380@banquealimentaire.org",
+                    sender_name=engagement["demandeur_nom"],
+                    reply_to=engagement["demandeur_email"]
+                )
+
+        # =====================================================
+        # CAS 2 : EN ATTENTE DE REGLEMENT (TRESORERIE)
+        # =====================================================
+
+        else:
+
+            tresorier = conn.execute("""
+                SELECT
+                    u.email AS tresorier_email
+
+                FROM engagement_poles p
+
+                LEFT JOIN users u
+                    ON u.id = p.tresorier_user_id
+
+                WHERE p.id = ?
+            """, (engagement["pole_id"],)).fetchone()
+
+            if not tresorier or not tresorier["tresorier_email"]:
+
+                flash(
+                    "⚠️ Aucun trésorier configuré pour ce pôle.",
+                    "danger"
+                )
+
+                return redirect(url_for(
+                    "engagements.detail_engagement",
+                    engagement_id=engagement_id
+                ))
+
+            texte = f"""
+Bonjour,
+
+Un engagement est prêt pour règlement.
+
+Engagement : #{engagement_id}
+Demandeur : {engagement["demandeur_nom"]}
+Objet : {engagement["objet"]}
+Montant : {engagement["montant_total"]:.2f} €
+
+Lien :
+{lien}
+"""
+
             envoyer_mail(
-                sujet=sujet,
-                destinataires=[user_email],
+                sujet=(
+                    f"Engagement prêt pour règlement "
+                    f"#{engagement_id}"
+                ),
+                destinataires=[tresorier["tresorier_email"]],
                 texte=texte,
                 sender_override="ba380@banquealimentaire.org",
-                sender_name="BA38 - Engagements",
+                sender_name=engagement["demandeur_nom"],
                 reply_to=engagement["demandeur_email"]
             )
 
         write_log(
-            f"[ENGAGEMENTS] Renvoi validation pôle #{engagement_id} "
-            f"déclenché par {current_user.username}"
+            f"[ENGAGEMENTS] Renvoi notification #{engagement_id} "
+            f"({engagement['statut']}) déclenché par {current_user.username}"
         )
 
     flash(
-        "📧 Demande de validation pôle renvoyée.",
+        "📧 Notification renvoyée.",
         "success"
     )
 
