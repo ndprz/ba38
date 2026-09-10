@@ -574,6 +574,10 @@ def nouvelle_depense():
                 "commentaire_devis"
             )
 
+            devis_derogation = 1 if request.form.get(
+                "devis_derogation"
+            ) else 0
+
             files = []
 
             devis1 = request.files.get("devis_file_1")
@@ -707,7 +711,11 @@ def nouvelle_depense():
             # CONTROLES METIER
             # =====================================================
 
-            if un_devis_obligatoire and nb_fichiers_devis < 1:
+            if (
+                un_devis_obligatoire
+                and nb_fichiers_devis < 1
+                and not devis_derogation
+            ):
 
                 flash(
                     "⚠️ Au moins 1 devis est obligatoire.",
@@ -724,7 +732,7 @@ def nouvelle_depense():
                 )
 
 
-            if deux_devis_obligatoires:
+            if deux_devis_obligatoires and not devis_derogation:
 
                 if not devis1 or not devis1.filename \
                 or not devis2 or not devis2.filename:
@@ -1257,6 +1265,7 @@ def nouvelle_depense():
                     devis_necessaire,
                     nb_devis,
                     commentaire_devis,
+                    devis_derogation,
 
                     type_engagement,
 
@@ -1279,7 +1288,7 @@ def nouvelle_depense():
                     ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?,
 
-                    ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?,
 
                     ?, ?, ?, ?, ?,
 
@@ -1311,6 +1320,7 @@ def nouvelle_depense():
                 devis_necessaire,
                 nb_devis,
                 commentaire_devis,
+                devis_derogation,
 
                 type_engagement,
 
@@ -1528,6 +1538,7 @@ def detail_engagement(engagement_id):
                 d.devis_necessaire,
                 d.nb_devis,
                 d.commentaire_devis,
+                d.devis_derogation,
 
                 d.type_engagement,
                 d.sous_type_depense,
@@ -1742,6 +1753,176 @@ def detail_engagement(engagement_id):
 # MODIFICATION D'UN ENGAGEMENT (avant validation, ou modèle
 # d'abonnement à tout moment)
 # ============================================================
+# Page dédiée (et non plus une modale) car elle réutilise le
+# widget fournisseur/bénévole complet (select2 + AJAX) partagé
+# avec la page de création via le partial
+# engagements/_bloc_paiement_beneficiaire.html.
+# ============================================================
+
+@engagements_bp.route(
+    "/detail_engagement/<int:engagement_id>/modifier-page"
+)
+@login_required
+@require_access("engagements", "ecriture")
+def modifier_depense_page(engagement_id):
+
+    db_path = get_db_path()
+
+    with sqlite3.connect(db_path) as conn:
+
+        conn.row_factory = sqlite3.Row
+
+        engagement = conn.execute("""
+            SELECT
+                e.id,
+                e.statut,
+                e.est_modele_abonnement,
+                e.pole_id,
+
+                d.objet,
+                d.description,
+                d.montant_total,
+                d.sous_type_depense,
+                d.rubrique,
+                d.precision_rubrique,
+                d.commentaire_devis,
+
+                d.subvention_id,
+                d.type_engagement,
+
+                d.beneficiaire_benevole_id,
+
+                d.fournisseur_id,
+                d.fournisseur_nom,
+                d.fournisseur_adresse,
+                d.fournisseur_telephone,
+                d.fournisseur_email,
+                d.fournisseur_iban,
+
+                d.date_frais,
+                d.kms,
+                d.peages,
+                d.repas
+
+            FROM engagements e
+
+            LEFT JOIN engagements_depenses d
+                ON d.engagement_id = e.id
+
+            WHERE e.id = ?
+        """, (engagement_id,)).fetchone()
+
+        if not engagement:
+            abort(404)
+
+        peut_modifier = bool(engagement["est_modele_abonnement"]) or (
+            engagement["statut"] in (
+                "validation_pole",
+                "validation_presidence"
+            )
+        )
+
+        if not peut_modifier:
+
+            flash(
+                "⚠️ Cet engagement ne peut plus être modifié "
+                "(déjà validé).",
+                "warning"
+            )
+
+            return redirect(url_for(
+                "engagements.detail_engagement",
+                engagement_id=engagement_id
+            ))
+
+        engagement = dict(engagement)
+
+        # =====================================================
+        # VALEURS POUR LE PARTIAL PARTAGE AVEC LA CREATION
+        # =====================================================
+        # Le partial _bloc_paiement_beneficiaire.html attend un
+        # objet exposant .get(cle, defaut), comme request.form en
+        # création. On lui fournit ici les valeurs actuelles de
+        # engagements_depenses, avec les identifiants castés en
+        # chaînes (comme le ferait request.form) pour que les
+        # comparaisons "== x|string" du template fonctionnent.
+
+        def _str_or_vide(valeur):
+            return str(valeur) if valeur is not None else ""
+
+        valeurs = {
+
+            "sous_type_depense": engagement["sous_type_depense"] or "achat",
+            "type_engagement": engagement["type_engagement"] or "benevole_self",
+
+            "beneficiaire_benevole_id": _str_or_vide(
+                engagement["beneficiaire_benevole_id"]
+            ),
+
+            "fournisseur_id": _str_or_vide(engagement["fournisseur_id"]),
+            "fournisseur_nom": engagement["fournisseur_nom"] or "",
+            "fournisseur_adresse": engagement["fournisseur_adresse"] or "",
+            "fournisseur_telephone": engagement["fournisseur_telephone"] or "",
+            "fournisseur_email": engagement["fournisseur_email"] or "",
+            "fournisseur_iban": engagement["fournisseur_iban"] or "",
+
+            # Non persisté en base (cf. nouvelle_depense) : décoché
+            # par défaut à l'ouverture de la page de modification.
+            "fournisseur_sans_coordonnees": "",
+
+            "subvention_id": _str_or_vide(engagement["subvention_id"]),
+
+            "rubrique": engagement["rubrique"] or "",
+            "precision_rubrique": engagement["precision_rubrique"] or "",
+
+            "date_frais": engagement["date_frais"] or "",
+            "kms": engagement["kms"] if engagement["kms"] is not None else 0,
+            "peages": engagement["peages"] if engagement["peages"] is not None else 0,
+            "repas": engagement["repas"] if engagement["repas"] is not None else 0,
+
+        }
+
+        poles = conn.execute("""
+            SELECT id, nom_affiche
+            FROM engagement_poles
+            WHERE actif = 1
+            ORDER BY nom_affiche
+        """).fetchall()
+
+        benevoles = conn.execute("""
+            SELECT id, nom, prenom
+            FROM benevoles
+            ORDER BY nom, prenom
+        """).fetchall()
+
+        subventions = conn.execute("""
+            SELECT *
+            FROM engagement_subventions
+            ORDER BY nom_subvention
+        """).fetchall()
+
+        fournisseurs = [
+            dict(f) for f in conn.execute("""
+                SELECT id, nom, adresse, adresse2, cp, ville, tel, mail, iban
+                FROM fournisseurs
+                WHERE actif IS NULL OR actif != 'non'
+                ORDER BY nom COLLATE NOCASE
+            """).fetchall()
+        ]
+
+    return render_template(
+        "engagements/modifier_depense.html",
+
+        engagement=engagement,
+        valeurs=valeurs,
+        mode="modification",
+
+        poles=poles,
+        benevoles=benevoles,
+        subventions=subventions,
+        fournisseurs=fournisseurs
+    )
+
 
 @engagements_bp.route(
     "/detail_engagement/<int:engagement_id>/modifier",
@@ -1758,7 +1939,8 @@ def modifier_engagement_configuration(engagement_id):
         conn.row_factory = sqlite3.Row
 
         engagement = conn.execute("""
-            SELECT id, statut, est_modele_abonnement
+            SELECT id, statut, est_modele_abonnement,
+                   demandeur_id, demandeur_nom
             FROM engagements
             WHERE id = ?
         """, (engagement_id,)).fetchone()
@@ -1786,6 +1968,27 @@ def modifier_engagement_configuration(engagement_id):
                 engagement_id=engagement_id
             ))
 
+        # =====================================================
+        # ETAT AVANT MODIFICATION
+        # (nécessaire pour décider si la note de frais générée
+        # automatiquement doit être régénérée, cf. plus bas)
+        # =====================================================
+
+        depense_avant = conn.execute("""
+            SELECT
+                type_engagement,
+                beneficiaire_benevole_id,
+                objet,
+                montant_total,
+                sous_type_depense
+            FROM engagements_depenses
+            WHERE engagement_id = ?
+        """, (engagement_id,)).fetchone()
+
+        # =====================================================
+        # CHAMPS "DE BASE" (déjà modifiables avant cette évolution)
+        # =====================================================
+
         pole_id = request.form.get("pole_id", type=int)
         objet = request.form.get("objet", "").strip()
         description = request.form.get("description", "").strip()
@@ -1808,7 +2011,7 @@ def modifier_engagement_configuration(engagement_id):
             )
 
             return redirect(url_for(
-                "engagements.detail_engagement",
+                "engagements.modifier_depense_page",
                 engagement_id=engagement_id
             ))
 
@@ -1827,9 +2030,185 @@ def modifier_engagement_configuration(engagement_id):
             )
 
             return redirect(url_for(
-                "engagements.detail_engagement",
+                "engagements.modifier_depense_page",
                 engagement_id=engagement_id
             ))
+
+        # =====================================================
+        # SUBVENTION + MODE DE PAIEMENT + BENEFICIAIRE
+        # (champs ajoutés par cette évolution)
+        # =====================================================
+
+        subvention_id = request.form.get(
+            "subvention_id"
+        ) or None
+
+        type_engagement = request.form.get(
+            "type_engagement", ""
+        ).strip()
+
+        beneficiaire_benevole_id = request.form.get(
+            "beneficiaire_benevole_id"
+        ) or None
+
+        fournisseur_id = request.form.get(
+            "fournisseur_id"
+        ) or None
+
+        fournisseur_nom = request.form.get(
+            "fournisseur_nom", ""
+        ).strip()
+
+        fournisseur_adresse = request.form.get(
+            "fournisseur_adresse", ""
+        ).strip()
+
+        fournisseur_telephone = request.form.get(
+            "fournisseur_telephone", ""
+        ).strip()
+
+        fournisseur_email = request.form.get(
+            "fournisseur_email", ""
+        ).strip()
+
+        fournisseur_iban = request.form.get(
+            "fournisseur_iban", ""
+        ).strip()
+
+        fournisseur_sans_coordonnees = bool(
+            request.form.get("fournisseur_sans_coordonnees")
+        )
+
+        date_frais = request.form.get("date_frais") or None
+        kms = request.form.get("kms") or 0
+        peages = request.form.get("peages") or 0
+        repas = request.form.get("repas") or 0
+
+        if type_engagement not in (
+            "benevole_self", "benevole_other", "fournisseur"
+        ):
+
+            flash(
+                "⚠️ Mode de paiement invalide.",
+                "warning"
+            )
+
+            return redirect(url_for(
+                "engagements.modifier_depense_page",
+                engagement_id=engagement_id
+            ))
+
+        if type_engagement == "benevole_other" and not beneficiaire_benevole_id:
+
+            flash(
+                "⚠️ Merci de sélectionner le bénévole bénéficiaire.",
+                "warning"
+            )
+
+            return redirect(url_for(
+                "engagements.modifier_depense_page",
+                engagement_id=engagement_id
+            ))
+
+        if type_engagement == "fournisseur":
+
+            if fournisseur_iban:
+
+                if not is_valid_iban(fournisseur_iban):
+
+                    flash(
+                        "⚠️ IBAN invalide.",
+                        "warning"
+                    )
+
+                    return redirect(url_for(
+                        "engagements.modifier_depense_page",
+                        engagement_id=engagement_id
+                    ))
+
+            champs_manquants = []
+
+            if not fournisseur_nom:
+                champs_manquants.append("nom")
+
+            if not fournisseur_adresse:
+                champs_manquants.append("adresse")
+
+            if not fournisseur_sans_coordonnees:
+
+                if not fournisseur_email:
+                    champs_manquants.append("email")
+
+                if not fournisseur_iban:
+                    champs_manquants.append("IBAN")
+
+            if champs_manquants:
+
+                flash(
+                    "⚠️ Champs fournisseur manquants : "
+                    + ", ".join(champs_manquants),
+                    "warning"
+                )
+
+                return redirect(url_for(
+                    "engagements.modifier_depense_page",
+                    engagement_id=engagement_id
+                ))
+
+        # =====================================================
+        # VALEURS FINALES SELON LE TYPE D'ENGAGEMENT
+        # =====================================================
+        # Par sécurité, on annule explicitement (met à NULL) les
+        # champs bénévole/fournisseur/déplacement qui ne
+        # correspondent pas au type sélectionné : contrairement au
+        # formulaire de création (toujours vierge au départ), le
+        # formulaire de modification est pré-rempli avec les
+        # anciennes valeurs, qui resteraient sinon présentes en base
+        # même après un changement de mode de paiement ou de nature.
+
+        beneficiaire_user_id_final = (
+            engagement["demandeur_id"]
+            if type_engagement == "benevole_self"
+            else None
+        )
+
+        beneficiaire_nom_final = (
+            engagement["demandeur_nom"]
+            if type_engagement == "benevole_self"
+            else None
+        )
+
+        beneficiaire_benevole_id_final = (
+            beneficiaire_benevole_id
+            if type_engagement == "benevole_other"
+            else None
+        )
+
+        if type_engagement == "fournisseur":
+            fournisseur_id_final = fournisseur_id
+            fournisseur_nom_final = fournisseur_nom
+            fournisseur_adresse_final = fournisseur_adresse
+            fournisseur_telephone_final = fournisseur_telephone
+            fournisseur_email_final = fournisseur_email
+            fournisseur_iban_final = fournisseur_iban
+        else:
+            fournisseur_id_final = None
+            fournisseur_nom_final = None
+            fournisseur_adresse_final = None
+            fournisseur_telephone_final = None
+            fournisseur_email_final = None
+            fournisseur_iban_final = None
+
+        if sous_type_depense == "deplacement":
+            date_frais_final = date_frais
+            kms_final = kms
+            peages_final = peages
+            repas_final = repas
+        else:
+            date_frais_final = None
+            kms_final = 0
+            peages_final = 0
+            repas_final = 0
 
         conn.execute("""
             UPDATE engagements
@@ -1846,7 +2225,26 @@ def modifier_engagement_configuration(engagement_id):
                 sous_type_depense = ?,
                 rubrique = ?,
                 precision_rubrique = ?,
-                commentaire_devis = ?
+                commentaire_devis = ?,
+
+                subvention_id = ?,
+                type_engagement = ?,
+
+                beneficiaire_user_id = ?,
+                beneficiaire_benevole_id = ?,
+                beneficiaire_nom = ?,
+
+                fournisseur_id = ?,
+                fournisseur_nom = ?,
+                fournisseur_adresse = ?,
+                fournisseur_telephone = ?,
+                fournisseur_email = ?,
+                fournisseur_iban = ?,
+
+                date_frais = ?,
+                kms = ?,
+                peages = ?,
+                repas = ?
             WHERE engagement_id = ?
         """, (
             objet,
@@ -1856,6 +2254,26 @@ def modifier_engagement_configuration(engagement_id):
             rubrique,
             precision_rubrique,
             commentaire_devis,
+
+            subvention_id,
+            type_engagement,
+
+            beneficiaire_user_id_final,
+            beneficiaire_benevole_id_final,
+            beneficiaire_nom_final,
+
+            fournisseur_id_final,
+            fournisseur_nom_final,
+            fournisseur_adresse_final,
+            fournisseur_telephone_final,
+            fournisseur_email_final,
+            fournisseur_iban_final,
+
+            date_frais_final,
+            kms_final,
+            peages_final,
+            repas_final,
+
             engagement_id
         ))
 
@@ -1877,10 +2295,120 @@ def modifier_engagement_configuration(engagement_id):
             engagement["statut"],
             "Modification des informations de l'engagement "
             "(pôle/objet/description/montant/nature/rubrique/"
-            "précision/commentaire devis)",
+            "précision/commentaire devis/subvention/mode de "
+            "paiement/bénéficiaire/fournisseur)",
             current_user.id,
             current_user.email
         ))
+
+        # =====================================================
+        # REGENERATION DE LA NOTE DE FRAIS SI NECESSAIRE
+        # =====================================================
+        # Une note de frais auto-générée existante peut devenir
+        # incohérente (nom du bénéficiaire, montant, objet) si la
+        # modification change le mode de paiement, le bénéficiaire,
+        # l'objet ou le montant. On la régénère dans ce cas, avec
+        # la même règle "generer_frais" que la création
+        # (routes_main.py, nouvelle_depense()).
+
+        generer_frais = (
+            type_engagement in ("benevole_self", "benevole_other")
+            or (
+                type_engagement == "fournisseur"
+                and sous_type_depense == "deplacement"
+            )
+        )
+
+        ancien_type_engagement = (
+            depense_avant["type_engagement"] if depense_avant else None
+        )
+
+        ancien_beneficiaire_benevole_id = (
+            depense_avant["beneficiaire_benevole_id"] if depense_avant else None
+        )
+
+        ancien_objet = (
+            depense_avant["objet"] if depense_avant else None
+        )
+
+        ancien_montant_total = (
+            depense_avant["montant_total"] if depense_avant else None
+        )
+
+        champs_pertinents_modifies = (
+            depense_avant is None
+            or type_engagement != (ancien_type_engagement or "")
+            or str(beneficiaire_benevole_id_final or "")
+                != str(ancien_beneficiaire_benevole_id or "")
+            or objet != (ancien_objet or "")
+            or float(montant_total) != float(ancien_montant_total or 0)
+        )
+
+        if generer_frais and champs_pertinents_modifies:
+
+            from .routes_notes_frais import generer_note_frais_auto
+
+            if type_engagement == "fournisseur":
+                nom_beneficiaire = fournisseur_nom_final
+            elif (
+                type_engagement == "benevole_other"
+                and beneficiaire_benevole_id_final
+            ):
+                benevole = conn.execute(
+                    "SELECT nom, prenom FROM benevoles WHERE id = ?",
+                    (beneficiaire_benevole_id_final,)
+                ).fetchone()
+                nom_beneficiaire = (
+                    f"{benevole['prenom']} {benevole['nom']}"
+                    if benevole else None
+                )
+            else:
+                nom_beneficiaire = None
+
+            generer_note_frais_auto(
+                conn=conn,
+                engagement_id=engagement_id,
+                objet=objet,
+                montant_total=montant_total,
+                date_frais=date_frais_final,
+                kms=kms_final,
+                peages=peages_final,
+                repas=repas_final,
+                rubrique=rubrique,
+                precision_rubrique=precision_rubrique,
+                commentaire="",
+                nom_beneficiaire=nom_beneficiaire
+            )
+
+            write_log(
+                f"[ENGAGEMENTS] Note de frais régénérée pour "
+                f"l'engagement #{engagement_id} suite à modification "
+                f"(mode de paiement/bénéficiaire/objet/montant)"
+            )
+
+        elif not generer_frais and depense_avant and (
+            ancien_type_engagement in ("benevole_self", "benevole_other")
+            or (
+                ancien_type_engagement == "fournisseur"
+                and (depense_avant["sous_type_depense"] == "deplacement")
+            )
+        ):
+
+            # ATTENTION : cet engagement avait une note de frais
+            # auto-générée, et le nouveau mode de paiement/nature ne
+            # nécessite plus de note de frais (ex: bascule vers
+            # fournisseur + achat classique). L'ancien PDF de note de
+            # frais n'est PAS supprimé automatiquement ici (cas jugé
+            # trop rare pour être traité dans ce correctif) : il reste
+            # visible dans les pièces jointes de l'engagement et doit
+            # être retiré manuellement si besoin.
+
+            write_log(
+                f"[ENGAGEMENTS] Engagement #{engagement_id} : le "
+                f"nouveau mode de paiement ne nécessite plus de note "
+                f"de frais, mais l'ancienne note (si elle existe) "
+                f"n'a pas été supprimée automatiquement."
+            )
 
         conn.commit()
 

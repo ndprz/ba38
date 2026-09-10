@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block title %}
+Modifier engagement #{{ engagement.id }}
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+{% endblock %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block content %}
+
+<div class="depense-compact">
+
+<style>
+    .depense-compact h2 { font-size: 1.4rem; margin-bottom: 0.75rem; }
+    .depense-compact .card-header { padding: 0.35rem 1rem; font-weight: 600; }
+    .depense-compact .card-body { padding: 0.6rem 1rem; }
+    .depense-compact .form-label { margin-bottom: 0.15rem; }
+    .depense-compact .form-check-label { line-height: 1.2; }
+    .depense-compact .form-control,
+    .depense-compact .form-select { padding-top: 0.3rem; padding-bottom: 0.3rem; }
+</style>
+
+<form method="POST"
+      action="{{ url_for(
+            'engagements.modifier_engagement_configuration',
+            engagement_id=engagement.id
+      ) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <!-- ================================================== -->
+    <!-- TITRE + BOUTONS (haut, sur la même ligne) -->
+    <!-- ================================================== -->
+
+    <div class="d-flex justify-content-between align-items-center flex-wrap">
+
+        <h2 class="mb-0">
+            ✏️ Modifier l'engagement #{{ engagement.id }}
+        </h2>
+
+        {% call action_buttons() %}
+            {{ action_button("💾 Enregistrer les modifications", type="submit", color="success") }}
+            {{ action_button("⬅ Retour", href=url_for('engagements.detail_engagement', engagement_id=engagement.id), color="outline-dark") }}
+        {% endcall %}
+
+    </div>
+
+    {% if engagement.est_modele_abonnement %}
+
+    <div class="alert alert-info">
+
+        🔁 Modèle d'abonnement : ces valeurs serviront de base aux
+        prochains engagements générés automatiquement chaque mois.
+
+    </div>
+
+    {% endif %}
+
+    <!-- ================================================== -->
+    <!-- POLE + OBJET -->
+    <!-- ================================================== -->
+
+    <div class="row g-2 mb-2">
+    <div class="col-md-4">
+
+        <div class="d-flex align-items-center" style="gap:8px;">
+
+            <label class="form-label mb-0" style="white-space:nowrap; min-width:150px;">
+
+                Pôle d'activité *
+
+            </label>
+
+            <select name="pole_id"
+                    class="form-select"
+                    required>
+
+                <option value="">
+                    -- Sélectionner un pôle --
+                </option>
+
+                {% for p in poles %}
+
+                <option value="{{ p.id }}"
+                    {% if p.id == engagement.pole_id %}
+                        selected
+                    {% endif %}>
+
+                    {{ p.nom_affiche }}
+
+                </option>
+
+                {% endfor %}
+
+            </select>
+
+        </div>
+
+    </div>
+    <div class="col-md-8">
+
+        <div class="d-flex align-items-center" style="gap:8px;">
+
+            <label class="form-label mb-0" style="white-space:nowrap; min-width:190px;">
+
+                Objet *
+
+            </label>
+
+            <input type="text"
+                   name="objet"
+                   class="form-control"
+                   style="flex:1;"
+                   value="{{ engagement.objet or '' }}"
+                   required>
+
+        </div>
+
+    </div>
+    </div>{# /row pole+objet #}
+
+    <!-- ================================================== -->
+    <!-- DESCRIPTION -->
+    <!-- ================================================== -->
+
+    <div class="mb-2">
+
+        <label class="form-label">
+
+            Description
+
+        </label>
+
+        <textarea name="description"
+                  class="form-control">{{ engagement.description or '' }}</textarea>
+
+    </div>
+
+    <!-- ================================================== -->
+    <!-- NATURE DEPENSE + MODE PAIEMENT + BENEFICIAIRE -->
+    <!-- (bloc partagé avec la page de création) -->
+    <!-- ================================================== -->
+
+    {% include "engagements/_bloc_paiement_beneficiaire.html" %}
+
+    <!-- ================================================== -->
+    <!-- MONTANT -->
+    <!-- ================================================== -->
+
+    <div class="mb-2">
+
+        <label class="form-label">
+
+            Montant total des dépenses prévues (€) *
+
+        </label>
+
+        <input type="text"
+               inputmode="decimal"
+               pattern="[0-9]+([.,][0-9]{1,2})?"
+               name="montant_total"
+               id="montant_total"
+               class="form-control"
+               placeholder="ex : 45,60"
+               value="{{ '%.2f'|format(engagement.montant_total or 0)|replace('.', ',') }}"
+               required>
+
+    </div>
+
+    <!-- ================================================== -->
+    <!-- COMMENTAIRE DEVIS -->
+    <!-- ================================================== -->
+
+    <div class="mb-2">
+
+        <label class="form-label">
+
+            Commentaire devis
+
+        </label>
+
+        <textarea name="commentaire_devis"
+                  class="form-control"
+                  rows="2">{{ engagement.commentaire_devis or '' }}</textarea>
+
+    </div>
+
+    <hr>
+
+    <!-- ================================================== -->
+    <!-- BOUTONS (bas, fixés en bas de l'écran au scroll) -->
+    <!-- ================================================== -->
+
+    <div style="position:sticky; bottom:0; background:white; padding-top:8px; border-top:1px solid #ddd; z-index:20;">
+        {% call action_buttons() %}
+            {{ action_button("💾 Enregistrer les modifications", type="submit", color="success") }}
+            {{ action_button("⬅ Retour", href=url_for('engagements.detail_engagement', engagement_id=engagement.id), color="outline-dark") }}
+        {% endcall %}
+    </div>
+
+</form>
+
+</div>{# /depense-compact #}
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/jquery-3.5.1.min.js') }}"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+{% endblock %}

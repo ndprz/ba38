@@ -199,12 +199,19 @@ def _calculer_completude(engagement, fichiers, paliers):
         un_devis_obligatoire = bool(palier) and palier["un_devis"] == "o"
         deux_devis_obligatoires = bool(palier) and palier["deux_devis"] == "o"
 
-        if deux_devis_obligatoires and nb_devis < 2:
-            manques.append(
-                f"Devis incomplet ({nb_devis}/2 requis)"
-            )
-        elif un_devis_obligatoire and nb_devis == 0:
-            manques.append("Aucun devis joint")
+        # Dérogation "pas de mise en concurrence, conditions négociées"
+        # (case cochée à la création) : l'absence de devis n'est alors
+        # pas une anomalie de dossier.
+        derogation = bool(engagement.get("devis_derogation"))
+
+        if not derogation:
+
+            if deux_devis_obligatoires and nb_devis < 2:
+                manques.append(
+                    f"Devis incomplet ({nb_devis}/2 requis)"
+                )
+            elif un_devis_obligatoire and nb_devis == 0:
+                manques.append("Aucun devis joint")
 
         if not a_justificatif:
             manques.append("Facture / justificatif de règlement manquant")
@@ -326,6 +333,7 @@ def _build_ged_query(filters):
             d.fournisseur_nom,
             d.beneficiaire_nom,
             d.subvention_id,
+            d.devis_derogation,
 
             s.nom_subvention
 
