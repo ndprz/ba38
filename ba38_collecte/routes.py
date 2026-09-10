@@ -215,11 +215,16 @@ def _fichier_drive(annee, cle):
 
 
 def _est_camion_reel(code):
-    """Un camion réel a un code 'Vxxx' inférieur à V090 — à partir de V090 ce
+    """Un camion réel a soit un code 'VXddd' (camion supplémentaire créé par
+    le moteur d'optimisation pour la simulation — toujours réel, jamais un
+    placeholder), soit un code 'Vddd' inférieur à V090 — à partir de V090 ce
     sont des lignes go-on-web pour le staffing de l'entrepôt BAI (ex. V090 =
     'BAI Entrepot', magasin vide), pas des camions qui collectent réellement
     des magasins."""
-    match = re.match(r"^V(\d+)$", code, re.IGNORECASE)
+    code = str(code).strip().upper()
+    if re.match(r"^VX\d+$", code):
+        return True
+    match = re.match(r"^V(\d+)$", code)
     return bool(match) and int(match.group(1)) < 90
 
 
@@ -437,7 +442,7 @@ def _charger_tournees(generation):
     chemin = os.path.join(_dossier_resultats(annee), generation["fichier_excel"])
 
     df = pd.read_excel(chemin, sheet_name="Tournees", header=7)
-    df = df[df["Camion"].notna()].reset_index(drop=True)
+    df = df[df["Camion"].notna() & df["Camion"].astype(str).apply(_est_camion_reel)].reset_index(drop=True)
 
     ordre_dj = {dj: i for i, dj in enumerate(moteur.DEMI_JOURNEES)}
     df["_ordre_dj"] = df["Demi-journee"].map(ordre_dj).fillna(99)
@@ -620,6 +625,7 @@ def _calculer_indicateurs_scenario(df_t, camions_supp, max_magasins):
 
     df = df_t[df_t["Demi-journee"].isin(DJ_VS)].copy()
     df = df[~df["Camion"].astype(str).isin(moteur.VEHICULES_FIGES)]
+    df = df[df["Camion"].astype(str).apply(_est_camion_reel)]
 
     df["_nb_mag"] = df[cols_mag].apply(
         lambda r: sum(1 for v in r if str(v).strip() and str(v).strip().lower() != "nan"), axis=1

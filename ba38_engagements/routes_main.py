@@ -1146,7 +1146,7 @@ def nouvelle_depense():
                         destinataires=[user_email],
                         texte=texte,
                         sender_override="ba380@banquealimentaire.org",
-                        sender_name="BA38 - Engagements",
+                        sender_name=current_user.username,
                         reply_to=current_user.email
                     )
 

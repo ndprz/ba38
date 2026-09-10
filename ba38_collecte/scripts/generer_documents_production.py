@@ -378,6 +378,20 @@ def camion_sort_key(code):
     prefix = ''.join(c for c in s if not c.isdigit())
     return (prefix, int(digits) if digits else 0)
 
+def _est_camion_reel(code):
+    """Copie conforme de la fonction du même nom dans ba38_collecte/routes.py
+    (pour un calcul identique dans les deux outils, cf. parse_creneaux) — un
+    camion réel a soit un code 'VXddd' (camion supplémentaire du moteur de
+    simulation, toujours réel), soit un code 'Vddd' inférieur à V090 : à
+    partir de V090 ce sont des lignes go-on-web pour le staffing de
+    l'entrepôt BAI (ex. V090 = 'BAI Entrepot', magasin vide), pas des camions
+    qui collectent réellement des magasins."""
+    code = str(code).strip().upper()
+    if re.match(r"^VX\d+$", code):
+        return True
+    match = re.match(r"^V(\d+)$", code)
+    return bool(match) and int(match.group(1)) < 90
+
 JOURS_FR = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
 MOIS_FR = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
            'août', 'septembre', 'octobre', 'novembre', 'décembre']
@@ -944,6 +958,8 @@ def construire_tournees_depuis_vehicules(args):
             if nom_mag_sc and nom_mag_sc != 'nan':
                 vif_sc = vif_fmt(r.get('Code VIF', ''))
                 magasins_sans_camion[vif_sc or nom_mag_sc] = nom_mag_sc
+            continue
+        if not _est_camion_reel(code):
             continue
         codes_veh.add(code)
 
@@ -1962,6 +1978,7 @@ def construire_vehicule_consignes(df_veh, caisses_premier_jour=None):
     df_veh = df_veh.copy()
     df_veh[col_code] = df_veh[col_code].apply(valeur_propre)
     df_veh = df_veh[df_veh[col_code].notna()]
+    df_veh = df_veh[df_veh[col_code].apply(_est_camion_reel)]
 
     lignes = []
     a_completer = []

@@ -237,6 +237,25 @@ def normaliser(s):
 
 DJ_MAP_NORM = {normaliser(k): v for k, v in DJ_MAP.items()}
 
+def _est_camion_reel(code):
+    """Copie conforme de la fonction du même nom dans ba38_collecte/routes.py
+    et generer_documents_production.py (pour un calcul identique dans les
+    trois outils, cf. parse_creneaux) — un camion réel a soit un code
+    'VXddd' (camion supplémentaire créé par l'optimiseur, toujours réel),
+    soit un code 'Vddd' inférieur à V090 : à partir de V090 ce sont des
+    lignes go-on-web pour le staffing de l'entrepôt BAI (ex. V090 =
+    'BAI Entrepot', magasin vide), pas des camions qui collectent réellement
+    des magasins — un tel code peut en théorie apparaître dans le PDF si la
+    page correspondante y a été incluse par erreur."""
+    if not code:
+        return False
+    code = str(code).strip().upper()
+    if re.match(r"^VX\d+$", code):
+        return True
+    match = re.match(r"^V(\d+)$", code)
+    return bool(match) and int(match.group(1)) < 90
+
+
 def parse_page(lines):
     """
     Parse une page du PDF : 1 page = 1 demi-journée = 1 véhicule.
@@ -320,6 +339,8 @@ def extraire_pdf(pdf_path):
         for res in parse_page(lines):
             demi_j, vehicule, vif_codes = res[0], res[1], res[2]
             nom_veh = res[3] if len(res) > 3 else ''
+            if not _est_camion_reel(vehicule):
+                continue
             fiches.append({'demi_journee': demi_j, 'vehicule': vehicule, 'vif_codes': vif_codes, 'nom_vehicule': nom_veh})
 
     print(f"  → {len(fiches)} fiches extraites")

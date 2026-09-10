@@ -1,3 +1,3 @@
-VERSION=1.6.46
-MESSAGE=Engagements : bouton Renvoyer etendu au statut a_payer (notification tresorier, engagement #38)
-DATE=2026-09-10 09:30
+VERSION=1.6.47
+MESSAGE=Engagements : sender_name coherent (nom utilisateur) sur le dernier mail restant
+DATE=2026-09-10 10:09
