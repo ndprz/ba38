@@ -124,7 +124,9 @@ BA38
                 sujet=sujet,
                 destinataires=[user_email],
                 texte=texte,
-                sender_override=modele["demandeur_email"]
+                sender_override="ba380@banquealimentaire.org",
+                sender_name=modele["demandeur_nom"],
+                reply_to=modele["demandeur_email"]
             )
 
     elif statut == "a_payer":
@@ -157,7 +159,9 @@ BA38
                 sujet=sujet,
                 destinataires=[pole["tresorier_email"]],
                 texte=texte,
-                sender_override=modele["demandeur_email"]
+                sender_override="ba380@banquealimentaire.org",
+                sender_name=modele["demandeur_nom"],
+                reply_to=modele["demandeur_email"]
             )
 
     else:
@@ -194,7 +198,9 @@ BA38
             sujet=sujet,
             destinataires=destinataires,
             texte=texte,
-            sender_override=modele["demandeur_email"]
+            sender_override="ba380@banquealimentaire.org",
+            sender_name=modele["demandeur_nom"],
+            reply_to=modele["demandeur_email"]
         )
 
 

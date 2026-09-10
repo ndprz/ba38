@@ -158,7 +158,9 @@ def transmettre_tresorerie(engagement_id):
                     engagement["tresorier_email"]
                 ],
                 texte=texte,
-                sender_override=current_user.email
+                sender_override="ba380@banquealimentaire.org",
+                sender_name=current_user.username,
+                reply_to=current_user.email
             )
 
         conn.commit()
@@ -827,7 +829,9 @@ def retransmettre_engagement(engagement_id):
                     engagement["tresorier_email"]
                 ],
                 texte=texte,
-                sender_override=current_user.email
+                sender_override="ba380@banquealimentaire.org",
+                sender_name=current_user.username,
+                reply_to=current_user.email
             )
 
         conn.commit()

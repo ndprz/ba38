@@ -33,7 +33,8 @@ def _executer_validation_pole(
     pole,
     engagement_id,
     user_id,
-    user_email
+    user_email,
+    user_name=None
 ):
     """Applique la validation pôle sur un engagement déjà vérifié
     (pôle existant, utilisateur autorisé). Mutualisé entre la
@@ -215,7 +216,9 @@ def _executer_validation_pole(
                     tresorier["tresorier_email"]
                 ],
                 texte=texte,
-                sender_override=user_email
+                sender_override="ba380@banquealimentaire.org",
+                sender_name=user_name or user_email,
+                reply_to=user_email
             )
 
             write_log(
@@ -283,7 +286,9 @@ def _executer_validation_pole(
                 sujet=sujet,
                 destinataires=destinataires,
                 texte=texte,
-                sender_override=user_email
+                sender_override="ba380@banquealimentaire.org",
+                sender_name=user_name or user_email,
+                reply_to=user_email
             )
 
             write_log(
@@ -397,7 +402,8 @@ def valider_engagement_pole(engagement_id):
             pole,
             engagement_id,
             current_user.id,
-            current_user.email
+            current_user.email,
+            current_user.username
         )
 
     # =========================================================
@@ -708,7 +714,8 @@ def valider_engagement_pole_lien(engagement_id, token):
             pole,
             engagement_id,
             user_id,
-            user["email"]
+            user["email"],
+            user["username"]
         )
 
     return render_template(
@@ -939,7 +946,9 @@ def refuser_engagement(engagement_id):
             sujet=sujet,
             destinataires=[engagement["demandeur_email"]],
             texte=texte,
-            sender_override=current_user.email
+            sender_override="ba380@banquealimentaire.org",
+            sender_name=current_user.username,
+            reply_to=current_user.email
         )
 
         # =====================================================
