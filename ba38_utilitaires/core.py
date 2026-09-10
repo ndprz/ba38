@@ -1887,3 +1887,47 @@ def verifier_token_validation_pole(token):
         return None
 
     return payload
+
+
+def generer_token_validation_presidence(engagement_id, email):
+    """Génère un token signé permettant à email de valider
+    (présidence) l'engagement engagement_id depuis le lien reçu
+    par mail, sans avoir à se connecter à l'application."""
+
+    payload = {
+        "action": "valider_presidence",
+        "engagement_id": engagement_id,
+        "email": email,
+        "exp": datetime.utcnow() + timedelta(
+            days=VALIDATION_POLE_TOKEN_VALIDITE_JOURS
+        )
+    }
+
+    return jwt.encode(
+        payload,
+        current_app.secret_key,
+        algorithm="HS256"
+    )
+
+
+def verifier_token_validation_presidence(token):
+    """Vérifie le token du lien de validation présidence.
+    Retourne le payload si valide, sinon None."""
+
+    try:
+        payload = jwt.decode(
+            token,
+            current_app.secret_key,
+            algorithms=["HS256"]
+        )
+
+    except jwt.ExpiredSignatureError:
+        return None
+
+    except jwt.InvalidTokenError:
+        return None
+
+    if payload.get("action") != "valider_presidence":
+        return None
+
+    return payload

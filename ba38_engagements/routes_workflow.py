@@ -7,6 +7,7 @@ from ba38_utilitaires.core import get_db_path, get_db_connection, has_access, wr
 from ba38_utilitaires.core import get_real_ip
 from ba38_utilitaires.core import envoyer_mail, is_valid_iban
 from ba38_utilitaires.core import verifier_token_validation_pole, generer_token_validation_pole
+from ba38_utilitaires.core import verifier_token_validation_presidence, generer_token_validation_presidence
 from openpyxl import Workbook
 from io import BytesIO
 from datetime import datetime
@@ -245,25 +246,6 @@ def _executer_validation_pole(
             f"#{engagement_id}"
         )
 
-        texte = f"""
-    Bonjour,
-
-    Une demande d'engagement nécessite
-    une validation presidence.
-
-    Engagement :
-    #{engagement_id}
-
-    Montant :
-    {montant:.2f} €
-
-    Accès :
-    {lien}
-
-    ---
-    BA38
-    """
-
         destinataires = []
 
         if pole["validation_presidence_email"]:
@@ -280,16 +262,52 @@ def _executer_validation_pole(
 
             ]
 
-        if destinataires:
+        for destinataire in destinataires:
+
+            token = generer_token_validation_presidence(
+                engagement_id,
+                destinataire
+            )
+
+            lien_validation = url_for(
+                "engagements.valider_engagement_presidence_lien",
+                engagement_id=engagement_id,
+                token=token,
+                _external=True
+            )
+
+            texte = f"""
+    Bonjour,
+
+    Une demande d'engagement nécessite
+    une validation presidence.
+
+    Engagement :
+    #{engagement_id}
+
+    Montant :
+    {montant:.2f} €
+
+    Valider directement, sans vous connecter :
+    {lien_validation}
+
+    Ou en vous connectant à l'application :
+    {lien}
+
+    ---
+    BA38
+    """
 
             envoyer_mail(
                 sujet=sujet,
-                destinataires=destinataires,
+                destinataires=[destinataire],
                 texte=texte,
                 sender_override="ba380@banquealimentaire.org",
                 sender_name=user_name or user_email,
                 reply_to=user_email
             )
+
+        if destinataires:
 
             write_log(
                 f"[ENGAGEMENTS] Mail presidence envoyé à "
@@ -473,11 +491,13 @@ def renvoyer_validation_pole(engagement_id):
         ):
             abort(403)
 
-        if engagement["statut"] not in ("validation_pole", "a_payer"):
+        if engagement["statut"] not in (
+            "validation_pole", "validation_presidence", "a_payer"
+        ):
 
             flash(
-                "⚠️ Cet engagement n'est ni en attente de validation pôle "
-                "ni en attente de règlement.",
+                "⚠️ Cet engagement n'est ni en attente de validation "
+                "(pôle ou présidence) ni en attente de règlement.",
                 "warning"
             )
 
@@ -595,7 +615,84 @@ Ou en vous connectant à l'application :
                 )
 
         # =====================================================
-        # CAS 2 : EN ATTENTE DE REGLEMENT (TRESORERIE)
+        # CAS 2 : EN ATTENTE DE VALIDATION PRESIDENCE
+        # =====================================================
+
+        elif engagement["statut"] == "validation_presidence":
+
+            pole = conn.execute("""
+                SELECT validation_presidence_email
+                FROM engagement_poles
+                WHERE id = ?
+            """, (engagement["pole_id"],)).fetchone()
+
+            emails_presidence = [
+                x.strip()
+                for x in (
+                    pole["validation_presidence_email"]
+                    if pole else ""
+                ).split(";")
+                if x.strip()
+            ]
+
+            if not emails_presidence:
+
+                flash(
+                    "⚠️ Aucun email de validation présidence configuré "
+                    "pour ce pôle.",
+                    "danger"
+                )
+
+                return redirect(url_for(
+                    "engagements.detail_engagement",
+                    engagement_id=engagement_id
+                ))
+
+            for destinataire in emails_presidence:
+
+                token = generer_token_validation_presidence(
+                    engagement_id,
+                    destinataire
+                )
+
+                lien_validation = url_for(
+                    "engagements.valider_engagement_presidence_lien",
+                    engagement_id=engagement_id,
+                    token=token,
+                    _external=True
+                )
+
+                texte = f"""
+Bonjour,
+
+Une demande d'engagement nécessite une validation presidence.
+
+Engagement : #{engagement_id}
+Demandeur : {engagement["demandeur_nom"]}
+Objet : {engagement["objet"]}
+Montant : {engagement["montant_total"]:.2f} €
+
+Valider directement, sans vous connecter :
+{lien_validation}
+
+Ou en vous connectant à l'application :
+{lien}
+"""
+
+                envoyer_mail(
+                    sujet=(
+                        f"Validation presidence requise "
+                        f"#{engagement_id}"
+                    ),
+                    destinataires=[destinataire],
+                    texte=texte,
+                    sender_override="ba380@banquealimentaire.org",
+                    sender_name=engagement["demandeur_nom"],
+                    reply_to=engagement["demandeur_email"]
+                )
+
+        # =====================================================
+        # CAS 3 : EN ATTENTE DE REGLEMENT (TRESORERIE)
         # =====================================================
 
         else:
@@ -796,6 +893,57 @@ def valider_engagement_pole_lien(engagement_id, token):
 # VALIDATION presidence
 # ============================================================
 
+def _executer_validation_presidence(
+    conn,
+    engagement,
+    engagement_id,
+    commentaire,
+    user_id,
+    user_email
+):
+    """Applique la validation présidence sur un engagement déjà
+    vérifié. Mutualisé entre la validation classique (connectée)
+    et la validation par lien sécurisé (sans connexion)."""
+
+    ancien_statut = engagement["statut"]
+
+    conn.execute("""
+        UPDATE engagements
+        SET
+            statut = 'valide',
+            valide_par_presidence_le = CURRENT_TIMESTAMP
+        WHERE id = ?
+    """, (engagement_id,))
+
+    conn.execute("""
+        INSERT INTO engagements_workflow (
+            engagement_id,
+            action,
+            ancien_statut,
+            nouveau_statut,
+            commentaire,
+            user_id,
+            user_email
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        engagement_id,
+        "validation_presidence",
+        ancien_statut,
+        "valide",
+        commentaire,
+        user_id,
+        user_email
+    ))
+
+    conn.commit()
+
+    write_log(
+        f"[ENGAGEMENTS] Validation presidence "
+        f"#{engagement_id} par {user_email}"
+    )
+
+
 @engagements_bp.route(
     "/engagements/<int:engagement_id>/valider-presidence",
     methods=["POST"]
@@ -823,43 +971,13 @@ def valider_engagement_presidence(engagement_id):
         if not engagement:
             abort(404)
 
-        ancien_statut = engagement["statut"]
-
-        conn.execute("""
-            UPDATE engagements
-            SET
-                statut = 'valide',
-                valide_par_presidence_le = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (engagement_id,))
-
-        conn.execute("""
-            INSERT INTO engagements_workflow (
-                engagement_id,
-                action,
-                ancien_statut,
-                nouveau_statut,
-                commentaire,
-                user_id,
-                user_email
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
+        _executer_validation_presidence(
+            conn,
+            engagement,
             engagement_id,
-            "validation_presidence",
-            ancien_statut,
-            "valide",
             commentaire,
             current_user.id,
             current_user.email
-        ))
-
-
-        conn.commit()
-
-        write_log(
-            f"[ENGAGEMENTS] Validation presidence "
-            f"#{engagement_id}"
         )
 
     flash(
@@ -872,6 +990,110 @@ def valider_engagement_presidence(engagement_id):
             "engagements.detail_engagement",
             engagement_id=engagement_id
         )
+    )
+
+
+# ============================================================
+# VALIDATION PRESIDENCE PAR LIEN SECURISE (SANS CONNEXION)
+# ============================================================
+
+@engagements_bp.route(
+    "/engagements/<int:engagement_id>/valider-presidence-lien/<token>",
+    methods=["GET", "POST"]
+)
+def valider_engagement_presidence_lien(engagement_id, token):
+
+    payload = verifier_token_validation_presidence(token)
+
+    if not payload or payload.get("engagement_id") != engagement_id:
+
+        return render_template(
+            "engagements/lien_validation_invalide.html"
+        ), 400
+
+    db_path = get_db_path()
+
+    with sqlite3.connect(db_path) as conn:
+
+        conn.row_factory = sqlite3.Row
+
+        engagement = conn.execute("""
+            SELECT
+                e.*,
+                d.montant_total,
+                d.objet
+            FROM engagements e
+
+            LEFT JOIN engagements_depenses d
+                ON d.engagement_id = e.id
+
+            WHERE e.id = ?
+        """, (engagement_id,)).fetchone()
+
+        if not engagement:
+            abort(404)
+
+        pole = conn.execute("""
+            SELECT
+                nom_affiche,
+                validation_presidence_email
+
+            FROM engagement_poles
+
+            WHERE id = ?
+        """, (engagement["pole_id"],)).fetchone()
+
+        if not pole:
+            abort(403)
+
+        email = (payload.get("email") or "").strip().lower()
+
+        emails_presidence = [
+            x.strip().lower()
+            for x in (pole["validation_presidence_email"] or "").split(";")
+            if x.strip()
+        ]
+
+        if not email or email not in emails_presidence:
+
+            return render_template(
+                "engagements/lien_validation_invalide.html"
+            ), 403
+
+        user = {"email": email}
+
+        deja_traite = engagement["statut"] != "validation_presidence"
+
+        if request.method == "GET" or deja_traite:
+
+            return render_template(
+                "engagements/valider_presidence_lien.html",
+                engagement=engagement,
+                pole=pole,
+                user=user,
+                deja_traite=deja_traite
+            )
+
+        # =================================================
+        # POST -> EXECUTION DE LA VALIDATION
+        # =================================================
+
+        _executer_validation_presidence(
+            conn,
+            engagement,
+            engagement_id,
+            "Validation presidence (lien sécurisé)",
+            None,
+            email
+        )
+
+    return render_template(
+        "engagements/valider_presidence_lien.html",
+        engagement=engagement,
+        pole=pole,
+        user=user,
+        deja_traite=True,
+        nouveau_statut="valide"
     )
 
 

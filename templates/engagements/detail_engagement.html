@@ -132,7 +132,7 @@ Détail engagement #{{ engagement.id }}
                 <!-- RENVOI NOTIFICATION (VALIDATION POLE / REGLEMENT) -->
                 <!-- ============================================== -->
 
-                {% if engagement.statut in ("validation_pole", "a_payer")
+                {% if engagement.statut in ("validation_pole", "validation_presidence", "a_payer")
                     and (engagement.demandeur_id == current_user.id
                         or has_access('engagements', 'admin')) %}
 
