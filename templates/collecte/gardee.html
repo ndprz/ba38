@@ -20,6 +20,21 @@
         principale).
     </p>
 
+    {% if not manquants %}
+    <div class="alert alert-info small">
+        <strong>Ordre à suivre :</strong>
+        <ol class="mb-0">
+            <li>Si besoin, vérifier/adapter le modèle Excel envoyé à chaque association (📁 Paramètres
+                ci-dessous) — sinon passer directement à l'étape suivante.</li>
+            <li>« 📊 Créer le fichier Excel » — génère la liste combinée et la fiche personnalisée de
+                chaque association.</li>
+            <li>Contrôler le contenu : détail par association plus bas, ou « 📥 Télécharger le fichier
+                contrôlé » / « 🗜️ Télécharger tout (ZIP) ».</li>
+            <li>« 📧 Préparer l'envoi » une fois le contrôle fait.</li>
+        </ol>
+    </div>
+    {% endif %}
+
     {% if manquants %}
     <div class="alert alert-warning">
         ⛔ Fichier(s) manquant(s) pour {{ annee }} : <strong>{{ manquants|join(', ') }}</strong>.
@@ -40,11 +55,71 @@
         {% endif %}
     </div>
 
-    <p class="text-muted small">
-        📁 Les paramètres (texte du mail, modèle Excel) sont regroupés sur la page d'accueil du module,
-        dans <a href="{{ url_for('collecte.collecte_main', annee=annee) }}#sectionAssociationsGardant">
-        Associations gardant → Paramètres</a>.
-    </p>
+    <button class="btn btn-outline-secondary mb-3" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionModeleAssociation"
+            aria-expanded="false" aria-controls="sectionModeleAssociation">
+        📁 Paramètres (modèle Excel envoyé à chaque association)
+    </button>
+    <div id="sectionModeleAssociation" class="collapse mb-3">
+        <div class="border rounded p-3 mb-3">
+            <a href="{{ url_for('collecte.gardee_modele_produits', annee=annee) }}" class="btn btn-sm btn-primary">
+                📦 Modifier la liste des produits
+            </a>
+            <span class="text-muted small">
+                Ajoutez, renommez ou supprimez des produits directement dans l'application — pas besoin
+                d'Excel pour ça.
+            </span>
+        </div>
+        <div class="border rounded p-3 mb-3">
+            <strong>Édition complète via Google Sheets</strong>
+            <p class="text-muted small mb-2">
+                Pour modifier les titres, la mise en page, les commentaires ou les formules — tout ce
+                qu'Excel permet et qu'un simple éditeur en ligne ne permet pas — collez ici le lien de
+                partage d'une copie Google Sheets du modèle, éditez-la normalement dans Google Sheets,
+                puis synchronisez pour reprendre la dernière version.
+            </p>
+            <form method="post" action="{{ url_for('collecte.enregistrer_url_drive_modele_association') }}"
+                  class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <label for="url_drive" class="visually-hidden">Lien Google Sheets</label>
+                <input type="url" name="url_drive" id="url_drive" class="form-control form-control-sm"
+                       style="max-width: 420px;" placeholder="https://docs.google.com/spreadsheets/d/..."
+                       value="{{ url_drive_modele_association }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">💾 Enregistrer le lien</button>
+            </form>
+            {% if url_drive_modele_association %}
+            <form method="post" action="{{ url_for('collecte.synchroniser_modele_association') }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <button type="submit" class="btn btn-sm btn-primary"
+                        onclick="return confirm('Remplacer le modèle actuel par la version Google Sheets ? L’ancienne version sera conservée en sauvegarde.');">
+                    🔄 Synchroniser depuis Google Sheets
+                </button>
+            </form>
+            {% else %}
+            <span class="text-muted small">Enregistrez d'abord un lien pour activer la synchronisation.</span>
+            {% endif %}
+        </div>
+        <div class="border rounded p-3 d-flex flex-wrap align-items-center gap-2">
+            <a href="{{ url_for('collecte.telecharger_modele_association', annee=annee) }}" class="btn btn-sm btn-outline-secondary">
+                📥 Télécharger le modèle actuel
+            </a>
+            <form method="post" action="{{ url_for('collecte.enregistrer_modele_association') }}"
+                  enctype="multipart/form-data" class="d-flex flex-wrap align-items-center gap-2 m-0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <label for="modele_excel" class="visually-hidden">Nouveau modèle Excel</label>
+                <input type="file" name="modele_excel" id="modele_excel" class="form-control form-control-sm"
+                       style="max-width: 320px;" accept=".xlsx" required>
+                <button type="submit" class="btn btn-sm btn-outline-primary">🔄 Remplacer le modèle</button>
+            </form>
+            <span class="text-muted small w-100">
+                Ou déposez directement un fichier .xlsx modifié sur votre poste — repris automatiquement,
+                sans redémarrage de l'application. L'ancienne version est conservée en sauvegarde.
+            </span>
+        </div>
+    </div>
 
     {% if sans_association %}
     <div class="alert alert-danger small">

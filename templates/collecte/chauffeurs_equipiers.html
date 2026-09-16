@@ -26,6 +26,15 @@
     {% endif %}
 
     {% if destinataires %}
+    <div class="alert alert-info small">
+        <strong>Ordre à suivre :</strong>
+        <ol class="mb-0">
+            <li>Vérifier/adapter le texte du mail, l'image et les pièces jointes (📁 Paramètres).</li>
+            <li>Utiliser « ✉️ Aperçu du mail » pour contrôler le rendu, sans rien envoyer.</li>
+            <li>Tester sur votre propre adresse, puis envoyer aux destinataires.</li>
+        </ol>
+    </div>
+
     <button class="btn btn-outline-secondary mb-3" type="button"
             data-bs-toggle="collapse" data-bs-target="#sectionParametresMailChauffeurs"
             aria-expanded="false" aria-controls="sectionParametresMailChauffeurs">
@@ -116,7 +125,7 @@
             {% endfor %}
         </select>
         <button type="button" id="btn-apercu-mail" class="btn btn-outline-info">
-            🖨️ Aperçu
+            ✉️ Aperçu du mail
         </button>
         <button type="submit" name="action" value="test" class="btn btn-outline-info">
             🧪 Tester sur mon adresse

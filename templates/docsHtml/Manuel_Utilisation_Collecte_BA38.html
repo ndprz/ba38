@@ -46,9 +46,26 @@ collecte annuelle », « Gestion magasins », « Gestion tournées », «
 Associations gardant » et « Résultat collecte ». Sélectionner l’année de
 collecte en haut de page — une campagne est créée automatiquement au
 premier import de fichier pour une année donnée.</p>
-<p><img src="media/rId23.png" style="width:5.83333in;height:11.54167in"
+<p><img
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId23.png"
+style="width:5.83333in;height:11.54167in"
 alt="Page d’accueil du module Collecte, sections dépliées" /></p>
 <p>Page d’accueil du module Collecte, sections dépliées</p>
+<h2 id="légende-des-couleurs-de-boutons">Légende des couleurs de
+boutons</h2>
+<p>Les couleurs des boutons d'action suivent une règle commune à tout le
+module, pour repérer d'un coup d'œil ce qu'il convient de faire :</p>
+<p>🟢 Vert : action prête à être lancée — le bouton reste grisé et
+désactivé tant qu'un fichier ou une information nécessaire manque
+encore.</p>
+<p>🟠 Orange : action principale recommandée de l'étape en cours.</p>
+<p>🟡 Jaune : action qui remplace ou écrase des données déjà générées —
+à utiliser en connaissance de cause, une nouvelle génération n'annule
+pas ce qui a déjà été envoyé.</p>
+<p>De nombreuses pages comportent également un encart « Ordre à suivre »
+qui rappelle, dans le bon ordre, les actions à effectuer pour cette page
+précise (paramètres à vérifier, aperçu à consulter, test avant envoi
+réel…).</p>
 <h1 id="paramètres-de-la-collecte-annuelle">1. Paramètres de la collecte
 annuelle</h1>
 <h2 id="dates-de-la-collecte">1.1 Dates de la collecte</h2>
@@ -99,10 +116,18 @@ rattaché.</p>
 une adresse e-mail renseignée et n’ayant pas encore donné leur accord
 (colonne « Accord » vide dans le fichier magasins). Les magasins à
 l’état « Non collecté » sont exclus de cette liste.</p>
-<p>Étapes :</p>
-<p>Vérifier la liste et décocher, si besoin, les magasins à exclure de
-cet envoi (boutons « Tout cocher » / « Tout décocher » disponibles en
-haut de la liste).</p>
+<p>Un encart « Ordre à suivre », en haut du bloc « 📁 Paramètres »,
+détaille la marche à suivre : texte de la lettre et du coupon, affiche
+des produits, texte du mail, puis aperçus avant tout envoi réel.</p>
+<p>Étapes recommandées :</p>
+<p>Ouvrir « 📁 Paramètres » et vérifier/adapter le texte de la lettre,
+le coupon-réponse, le texte du mail et l’affiche des produits recherchés
+— tout se modifie directement dans l’application, sans document Word à
+redéposer.</p>
+<p>Utiliser « 🖨️ Aperçu PDF » et « ✉️ Aperçu du mail » pour contrôler le
+rendu exact pour un magasin au choix, sans rien envoyer.</p>
+<p>Vérifier la liste des magasins et décocher, si besoin, ceux à exclure
+de cet envoi (boutons « Tout cocher » / « Tout décocher »).</p>
 <p>Laisser la case « Test » cochée pour un premier envoi à sa propre
 adresse (éventuellement limité à un seul magasin via « Test sur un seul
 magasin »).</p>
@@ -111,30 +136,31 @@ confirmation, puis cliquer sur « 📧 Envoyer les demandes » pour l’envoi
 réel.</p>
 <p>Chaque mail contient une lettre de demande d’autorisation
 personnalisée en pièce jointe (PDF, 2 pages) : la première page reprend
-le courrier-type avec un coupon-réponse à signer (autorisation oui/non),
-en faisant apparaître en rouge les jours et dates réels de collecte
-prévus pour ce magasin précis (et non la plage complète de la campagne)
-; la seconde page reprend l’affiche « Nous avons besoin de… » des
-produits recherchés.</p>
-<p>Le texte du courrier peut être modifié à tout moment via le bouton «
-✏️ Modifier le texte de la lettre (modèle Word) », qui télécharge le
-modèle actuel. Après modification dans Word, redéposer le fichier au
-même emplacement pour qu’il soit repris automatiquement au prochain
-envoi, sans redémarrage de l’application. Le repère «
-&lt;&lt;PhraseJoursCollecte&gt;&gt; » peut être déplacé n’importe où
-dans le texte : les jours et dates réels de collecte de chaque magasin y
-sont insérés automatiquement, année après année.</p>
-<p>Aucun convertisseur Word→PDF n’étant disponible sur le serveur, la
-mise en page du PDF envoyé est reconstruite indépendamment du modèle
-Word (texte identique, présentation fixée dans le code) : seul le
-contenu texte du modèle Word est repris, pas une mise en page
-personnalisée.</p>
+le texte de la lettre avec le coupon-réponse (case « OUI ☐ NON ☐ » via
+le repère &lt;&lt;autorisation&gt;&gt;), en faisant apparaître en rouge
+les jours et dates réels de collecte prévus pour ce magasin précis
+(repère &lt;&lt;dates&gt;&gt;, et non la plage complète de la campagne)
+; la seconde page reprend l’affiche des produits recherchés déposée dans
+les Paramètres.</p>
+<p>Repères disponibles dans le texte de la lettre : &lt;&lt;Nom&gt;&gt;
+(nom du magasin), &lt;&lt;dates&gt;&gt;, et &lt;&lt;centre&gt;&gt; qui
+centre les lignes suivantes jusqu’au prochain paragraphe (utile pour une
+signature). Dans le coupon-réponse : &lt;&lt;Nom&gt;&gt;,
+&lt;&lt;CodeVIF&gt;&gt;, &lt;&lt;Adresse&gt;&gt;, &lt;&lt;CP&gt;&gt;,
+&lt;&lt;VILLE&gt;&gt;, &lt;&lt;Telephone&gt;&gt;, &lt;&lt;Email&gt;&gt;
+et &lt;&lt;autorisation&gt;&gt;. Dans le texte du mail (distinct du PDF
+joint) : &lt;&lt;Nom&gt;&gt; et &lt;&lt;Annee&gt;&gt;.</p>
+<p>L’affiche des produits recherchés (2ᵉ page du PDF) se dépose en image
+(PNG, JPG ou GIF) — elle est conservée d’une campagne et d’une session à
+l’autre, à ne redéposer qu’en cas de changement réel du visuel.</p>
 <h2 id="localisation-magasins-et-associations">2.2 Localisation magasins
 et associations</h2>
 <p>Le bouton « 🗺️ Voir la carte » ouvre une carte interactive de tous
 les magasins collectés par la BAI et des associations partenaires
 actives de l’année en cours.</p>
-<p><img src="media/rId33.png" style="width:5.83333in;height:3.75in"
+<p><img
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId33.png"
+style="width:5.83333in;height:3.75in"
 alt="Carte de localisation des magasins et associations" /></p>
 <p>Carte de localisation des magasins et associations</p>
 <p>Trois catégories de marqueurs, activables séparément avec les cases à
@@ -200,7 +226,9 @@ correction.</p>
 <h2 id="lancer-une-simulation">3.1 Lancer une simulation</h2>
 <p>Une fois les deux fichiers de la section 1.3 importés, le bouton « 🚀
 Générer les tournées » ouvre le formulaire de paramètres :</p>
-<p><img src="media/rId39.png" style="width:5.83333in;height:3.75in"
+<p><img
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId39.png"
+style="width:5.83333in;height:3.75in"
 alt="Formulaire de génération d’une simulation de tournées" /></p>
 <p>Formulaire de génération d’une simulation de tournées</p>
 <table>
@@ -270,7 +298,9 @@ associé, donc toujours écartées.</p></li>
 <h2 id="consulter-un-résultat">3.2 Consulter un résultat</h2>
 <p>Le bouton « 📊 Voir le résultat » (ou l’historique des générations)
 ouvre le détail d’une version :</p>
-<p><img src="media/rId43.png" style="width:5.83333in;height:3.80833in"
+<p><img
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId43.png"
+style="width:5.83333in;height:3.80833in"
 alt="Page de résultat d’une génération de tournées" /></p>
 <p>Page de résultat d’une génération de tournées</p>
 <p>Cette page offre :</p>
@@ -308,7 +338,9 @@ quatre jours.</p>
 documents réels (Production)</h2>
 <p>Le bouton « 🚛 Générer documents » ouvre la page Production,
 indépendante de la simulation.</p>
-<p><img src="media/rId48.png" style="width:5.83333in;height:6.83333in"
+<p><img
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId48.png"
+style="width:5.83333in;height:6.83333in"
 alt="Page Production : lancement, documents générés et journal" /></p>
 <p>Page Production : lancement, documents générés et journal</p>
 <p>Contrairement à la simulation, la page Production ne calcule pas de
@@ -401,57 +433,130 @@ aux chauffeurs et équipiers</h2>
 <p>Ouvrir « Envoi mail tournées aux chauffeurs/équipiers ». La page
 récupère les affectations du fichier véhicules/planning et regroupe les
 informations par adresse e-mail.</p>
-<p><img src="media/rId52.png" style="width:5.83333in;height:3.75in"
+<p><img
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId52.png"
+style="width:5.83333in;height:3.75in"
 alt="Page d’envoi des mails aux chauffeurs et équipiers" /></p>
 <p>Page d’envoi des mails aux chauffeurs et équipiers</p>
-<p>Le début et la fin du mail sont configurables séparément. La partie
-centrale, qui liste automatiquement les demi-journées, les camions, les
-magasins et les autres personnes affectées, n’est pas modifiée. Modifier
-les champs « Début du mail » et « Fin du mail », puis cliquer sur «
-Enregistrer le texte ». Le marqueur <code>&lt;&lt;nom&gt;&gt;</code> est
-remplacé automatiquement par le nom du destinataire.</p>
-<p>Un ou plusieurs fichiers PDF peuvent être joints avant l’envoi
-(consignes, plan, note complémentaire…) : ils sont à sélectionner à
-nouveau à chaque test ou envoi, rien n’est conservé d’une fois sur
-l’autre.</p>
+<p>Un encart « Ordre à suivre » rappelle la marche à suivre : texte du
+mail, image et pièces jointes (📁 Paramètres), aperçu, test, puis
+envoi.</p>
+<p>Le texte du mail est unique (il n’y a plus de champs « Début » et «
+Fin » séparés) : le repère &lt;&lt;affectations&gt;&gt;, placé sur sa
+propre ligne à l’endroit voulu, est remplacé automatiquement par la
+liste des demi-journées, camions, magasins et autres personnes
+affectées, pour chaque destinataire. Le repère &lt;&lt;nom&gt;&gt; est
+remplacé par son nom, et &lt;&lt;image&gt;&gt; par l’image déposée
+ci-dessous, si elle existe (ex. plan de parking, consignes
+illustrées).</p>
+<p>L’image et les pièces jointes PDF (consignes, note complémentaire…)
+se déposent une fois pour toutes dans le bloc Paramètres : elles sont
+conservées d’une campagne et d’une session à l’autre, sans avoir à les
+resélectionner à chaque test ou envoi — contrairement à l’ancien
+fonctionnement où les pièces jointes devaient être resélectionnées à
+chaque fois.</p>
+<p>Le bouton « ✉️ Aperçu du mail » affiche, pour la personne
+sélectionnée dans la liste, le rendu exact du mail (texte, affectations,
+image), sans rien envoyer (même en test) — pratique pour vérifier la
+mise en forme avant de lancer un test réel.</p>
 <p>Étapes recommandées :</p>
-<ol type="1">
-<li><p>Choisir une personne dans la liste et utiliser « Tester sur mon
-adresse » pour vérifier le contenu.</p></li>
-<li><p>Après vérification, cliquer sur « Envoyer les mails » pour
-envoyer un message personnalisé à chaque chauffeur ou équipier ayant une
-adresse e-mail.</p></li>
-</ol>
+<p>Choisir une personne dans la liste et utiliser « 🧪 Tester sur mon
+adresse » pour vérifier le contenu.</p>
+<p>Après vérification, cliquer sur « 📤 Envoyer les mails » pour envoyer
+un message personnalisé à chaque chauffeur ou équipier ayant une adresse
+e-mail.</p>
 <p>Les personnes sans adresse e-mail sont signalées en haut de la page
 (encart orange) et ne reçoivent pas de message.</p>
 <h1 id="associations-gardant">4. Associations gardant</h1>
 <p>La section « 📁 Associations gardant » concerne les associations qui
 assurent elles-mêmes la collecte d’un ou plusieurs magasins au lieu de
 remettre les produits à la BAI.</p>
-<p><img src="media/rId57.png" style="width:5.83333in;height:3.75in"
+<p><img
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId57.png"
+style="width:5.83333in;height:3.75in"
 alt="Liste des associations gardant leur propre collecte" /></p>
 <p>Liste des associations gardant leur propre collecte</p>
-<p>Étapes :</p>
-<ol type="1">
-<li><p>Cliquer sur « 🏠 Créer la liste » pour croiser la liste des
-magasins et la liste des groupes.</p></li>
-<li><p>Contrôler les associations, les contacts, les adresses e-mail et
-les magasins affichés (page ci-dessus).</p></li>
-<li><p>Télécharger le fichier contrôlé si nécessaire.</p></li>
-<li><p>Ouvrir « 📧 Préparer l’envoi », vérifier le fichier joint et les
-destinataires, puis confirmer l’envoi.</p></li>
-</ol>
-<p>Le mode test est activé par défaut. Pour un envoi réel, le fichier
-Excel doit avoir été contrôlé et la confirmation demandée doit être
-cochée. Les magasins sans association renseignée sont signalés afin
-d’être corrigés avant l’envoi.</p>
-<p>Chaque mail envoyé contient également un lien de saisie en ligne
-propre à l’association, valable 60 jours, qui lui permet de renseigner
-elle-même le poids par magasin et la répartition par produit sans avoir
-à renvoyer les fichiers Excel/PDF joints. Ce formulaire ne nécessite pas
-de compte : chaque case est enregistrée automatiquement dès la saisie,
-avec un bouton « 💾 Enregistrer » en haut et en bas de page en
-secours.</p>
+<h2 id="créer-et-contrôler-la-liste">4.1 Créer et contrôler la
+liste</h2>
+<p>Le bouton « 🏠 Créer la liste » (vert quand les fichiers magasins et
+groupes de l’année sont disponibles, gris et désactivé sinon) croise la
+liste des magasins et la liste des groupes, et génère le fichier Excel
+combiné ainsi que la fiche Excel/PDF personnalisée de chaque
+association.</p>
+<p>« 📋 Contrôler / corriger la liste » (rebaptisé, anciennement «
+Vérifier la liste ») ouvre le détail par association : contacts,
+adresses e-mail, magasins rattachés, et permet de forcer manuellement le
+Code VIF d’une association si l’automatique ne convient pas.</p>
+<p>Un encart « Ordre à suivre » en haut de cette page résume la marche à
+suivre : Paramètres du modèle Excel si besoin, « Créer le fichier Excel
+», contrôle du contenu (détail par association ou téléchargement), puis
+« Préparer l’envoi ».</p>
+<p>Le bloc « 📁 Paramètres (modèle Excel envoyé à chaque association) »
+propose trois façons de modifier ce modèle, à choisir selon le besoin
+:</p>
+<p>« 📦 Modifier la liste des produits » : éditeur en ligne (ajout,
+renommage, suppression de lignes) pour la seule liste des produits — le
+plus simple, sans jamais ouvrir Excel.</p>
+<p>Synchronisation Google Sheets : coller le lien de partage d’une copie
+Google Sheets du modèle, l’éditer librement dans Google Sheets (titres,
+mise en page, commentaires, formules), puis cliquer sur « 🔄
+Synchroniser » pour reprendre la dernière version — à privilégier pour
+une vraie refonte de présentation.</p>
+<p>Dépôt manuel d’un fichier .xlsx modifié depuis son poste, repris
+automatiquement sans redémarrage de l’application.</p>
+<p>Dans les trois cas, l’ancienne version est conservée en sauvegarde,
+et le logo de la Banque Alimentaire est toujours réinséré
+automatiquement par l’application (jamais celui présent dans le fichier
+déposé ou synchronisé) — ceci afin d’éviter un problème de format
+d’image propre aux exports Google Sheets, qui provoquait parfois un
+message « contenu illisible » à l’ouverture dans Excel.</p>
+<h2 id="préparer-et-envoyer">4.2 Préparer et envoyer</h2>
+<p>« 📧 Préparer l’envoi » ouvre la liste des destinataires avec le
+fichier à joindre. Le bloc « 📁 Paramètres (texte du mail) » permet de
+modifier le texte du mail, avec les repères &lt;&lt;association&gt;&gt;,
+&lt;&lt;code&gt;&gt; (Code VIF), &lt;&lt;datecollecte&gt;&gt;,
+&lt;&lt;magasins&gt;&gt; (liste des magasins gardés par l’association)
+et &lt;&lt;lien_saisie&gt;&gt; (lien de saisie en ligne propre à
+l’association).</p>
+<p>Le bouton « ✉️ Aperçu du mail » affiche, pour l’association
+sélectionnée dans la liste, le texte exact du mail, sans rien envoyer
+(même en test).</p>
+<p>Étapes recommandées :</p>
+<p>Vérifier le fichier Excel joint (indiqué en haut de page).</p>
+<p>Laisser la case « Test » cochée pour un premier envoi à sa propre
+adresse (éventuellement limité à une seule association via « Test sur
+une seule association »).</p>
+<p>Une fois vérifié, décocher « Test », cocher la case de confirmation,
+puis cliquer sur « 📧 Envoyer les mails » pour l’envoi réel.</p>
+<p>Les magasins sans association renseignée sont signalés afin d’être
+corrigés avant l’envoi.</p>
+<p>Chaque mail contient également le lien de saisie en ligne propre à
+l’association, valable 60 jours, qui lui permet de renseigner elle-même
+le poids par magasin et la répartition par produit sans avoir à renvoyer
+les fichiers Excel/PDF joints. Ce formulaire ne nécessite pas de compte
+: chaque case est enregistrée automatiquement dès la saisie, avec un
+bouton « 💾 Enregistrer » en secours.</p>
+<h2 id="suivi-des-réponses-et-relances">4.3 Suivi des réponses et
+relances</h2>
+<p>Sur la page « Préparer l’envoi », deux cases à cocher indépendantes
+par association permettent de suivre l’état des échanges tout au long de
+la campagne :</p>
+<p>« Répondu » : l’association a réagi au premier message (mail ou
+fichier reçu).</p>
+<p>« Résultat envoyé » : l’association a transmis son résultat
+(poids/quantités), par mail ou via la saisie en ligne.</p>
+<p>Ces deux cases se cochent à la main, après vérification par l’équipe
+— elles ne se cochent jamais automatiquement. Une colonne « Saisie en
+ligne » affiche, à titre d’indice seulement, l’avancement du formulaire
+de saisie en ligne de l’association (ex. « 18/30 », en vert si complet),
+pour aider à décider si les cases doivent être cochées, sans jamais les
+cocher elle-même.</p>
+<p>Pour relancer une association précise, le bouton 🔁 sur sa ligne
+renvoie exactement le même mail (texte, fichier Excel, PDF) à cette
+seule association. Pour relancer plusieurs associations d’un coup, deux
+boutons en haut du tableau, « 🔁 Relancer les non-répondants » et « 🔁
+Relancer ceux sans résultat », renvoient le mail à toutes les
+associations où la case correspondante n’est pas encore cochée.</p>
 <h1 id="résultat-collecte">5. Résultat collecte</h1>
 <h2 id="initialiser-la-liste-des-magasins">5.1 Initialiser la liste des
 magasins</h2>
@@ -474,7 +579,9 @@ n’apparaîtra plus).</p>
 <p>Le tableau affiche une ligne par magasin et une colonne par
 demi-journée. Chaque case est enregistrée automatiquement dès qu’elle
 est quittée, sans bouton à cliquer.</p>
-<p><img src="media/rId62.png" style="width:5.83333in;height:3.75in"
+<p><img
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId62.png"
+style="width:5.83333in;height:3.75in"
 alt="Page de saisie des cagettes, avec poids et filtres" /></p>
 <p>Page de saisie des cagettes, avec poids et filtres</p>
 <p>Une case reste grisée (« — ») et non modifiable dans deux cas :</p>
@@ -630,6 +737,14 @@ rapprochement avec les fichiers d’import/export externes.</p>
 avant d’exporter le fichier d’import VIF : la quantité exportée
 n’utilise que le poids réel après pesée, jamais une estimation.</p></li>
 </ul>
+<p>Pour le modèle Excel des associations gardant leur collecte,
+privilégier l'éditeur de produits en ligne pour un simple ajout/retrait
+de produit, et la synchronisation Google Sheets seulement pour une vraie
+refonte de mise en page — dans les deux cas, aucune installation d'Excel
+n'est requise sur le poste.</p>
+<p>Tenir à jour les cases « Répondu » / « Résultat envoyé »
+(Associations gardant) au fil de l'eau plutôt qu'en fin de campagne,
+pour que les boutons de relance groupée restent utiles.</p>
 <h1 id="glossaire">8. Glossaire</h1>
 <dl>
 <dt>BAI</dt>

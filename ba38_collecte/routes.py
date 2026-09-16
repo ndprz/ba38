@@ -59,6 +59,7 @@ import pandas as pd
 from docx import Document
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as ImageOpenpyxl
+import lxml.html as _lxml_html
 from flask import (
     render_template, request, redirect, url_for, flash,
     current_app, send_file, jsonify, Response, abort
@@ -1563,6 +1564,114 @@ def _lancer_analyse_8configs_background(app, analyse_id, pdf_path, magasins_path
             conn.close()
 
 
+DOCUMENTS_AIDE_COLLECTE = {
+    "aide": {
+        "docx": "Documentation_Utilisateur_Module_Collecte_BA38.docx",
+        "html": "Documentation_Utilisateur_Module_Collecte_BA38.html",
+        "label": "Aide utilisateur — Module Collecte",
+    },
+    "manuel": {
+        "docx": "Manuel_Utilisation_Collecte_BA38.docx",
+        "html": "Manuel_Utilisation_Collecte_BA38.html",
+        "label": "Manuel d'utilisation détaillé — Module Collecte",
+    },
+}
+
+
+def _decouper_html_par_h1(chemin):
+    """Découpe un document HTML (converti depuis Word par
+    convert_doc_to_html.py) en un fragment par titre de niveau 1, sous la
+    clé "N" pour un titre commençant par "N." (ex. "2. Gestion magasins"
+    -> clé "2"), ou sous son texte exact sinon (ex. "Introduction",
+    "Table des matières"). Tout ce qui précède le premier titre est sous
+    la clé "intro". Ne modifie jamais les images intégrées (déjà réécrites
+    en URL statique par le script de conversion)."""
+    if not os.path.exists(chemin):
+        return {}
+    with open(chemin, "r", encoding="utf-8") as f:
+        contenu = f.read()
+
+    racine = _lxml_html.fromstring(f"<div>{contenu}</div>")
+    sections = {}
+    cle_courante = "intro"
+    elements_courants = []
+
+    def serialiser(elements):
+        return "".join(_lxml_html.tostring(e, encoding="unicode") for e in elements)
+
+    for element in racine.iterchildren():
+        if element.tag == "h1":
+            sections[cle_courante] = serialiser(elements_courants)
+            correspondance = re.match(r"(\d+)\.", element.text_content().strip())
+            cle_courante = correspondance.group(1) if correspondance else element.text_content().strip()
+            elements_courants = [element]
+        else:
+            elements_courants.append(element)
+    sections[cle_courante] = serialiser(elements_courants)
+    return sections
+
+
+def _sections_aide_collecte():
+    """Aide utilisateur du module Collecte, découpée par sujet (clés "1" à
+    "5", une par section de la page d'accueil) — la clé "intro" regroupe la
+    présentation générale, l'accès, la légende des couleurs et les bonnes
+    pratiques (§6), pour n'afficher qu'une présentation générale sur la
+    page d'accueil et l'aide propre à chaque sujet dans ce sujet."""
+    chemin = os.path.join(
+        current_app.root_path, "templates", "docsHtml", DOCUMENTS_AIDE_COLLECTE["aide"]["html"]
+    )
+    brut = _decouper_html_par_h1(chemin)
+    return {
+        "intro": brut.get("intro", "") + brut.get("6", ""),
+        "1": brut.get("1", ""),
+        "2": brut.get("2", ""),
+        "3": brut.get("3", ""),
+        "4": brut.get("4", ""),
+        "5": brut.get("5", ""),
+    }
+
+
+def _sections_manuel_collecte():
+    """Manuel d'utilisation détaillé, découpé de la même façon que l'aide
+    (cf. _sections_aide_collecte) — la clé "intro" regroupe ici
+    l'introduction générale, le déroulé type d'une campagne (§6) et le
+    glossaire (§8) ; les bonnes pratiques (§7) ne sont pas reprises ici
+    (déjà dans l'aide générale, pour éviter la redite)."""
+    chemin = os.path.join(
+        current_app.root_path, "templates", "docsHtml", DOCUMENTS_AIDE_COLLECTE["manuel"]["html"]
+    )
+    brut = _decouper_html_par_h1(chemin)
+    return {
+        "intro": brut.get("Introduction", "") + brut.get("6", "") + brut.get("8", ""),
+        "1": brut.get("1", ""),
+        "2": brut.get("2", ""),
+        "3": brut.get("3", ""),
+        "4": brut.get("4", ""),
+        "5": brut.get("5", ""),
+    }
+
+
+@collecte_bp.route("/collecte/documentation/<cle>")
+@login_required
+@require_access("collecte", "lecture")
+def telecharger_documentation_collecte(cle):
+    """Télécharge l'un des deux documents Word source de l'aide du module
+    (liste blanche fermée — jamais de chemin construit depuis l'entrée
+    utilisateur)."""
+    info = DOCUMENTS_AIDE_COLLECTE.get(cle)
+    if not info:
+        abort(404)
+    chemin = os.path.join("/srv/ba38/documentation_utilisateur/docs", info["docx"])
+    if not os.path.exists(chemin):
+        abort(404)
+    return send_file(
+        chemin,
+        as_attachment=True,
+        download_name=info["docx"],
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+
+
 @collecte_bp.route("/collecte")
 @login_required
 @require_access("collecte", "lecture")
@@ -1603,8 +1712,8 @@ def collecte_main():
         derniere_generation=generations[0] if generations else None,
         nb_generations=len(generations),
         derniere_analyse=derniere_analyse,
-        texte_mail_gardee=_lire_texte_mail_gardee(),
-        url_drive_modele_association=_lire_url_drive_modele_association(),
+        aide=_sections_aide_collecte(),
+        manuel=_sections_manuel_collecte(),
     )
 
 
@@ -3846,7 +3955,7 @@ def telecharger_modele_association():
     chemin = _modele_gardee(nom)
     if not os.path.exists(chemin):
         flash("❌ Modèle introuvable", "danger")
-        return redirect(url_for("collecte.collecte_main", annee=request.args.get("annee", type=int)))
+        return redirect(url_for("collecte.gardee", annee=request.args.get("annee", type=int)))
     return send_file(
         chemin,
         as_attachment=True,
@@ -3869,23 +3978,23 @@ def enregistrer_modele_association():
 
     if not fichier or not fichier.filename:
         flash("⛔ Aucun fichier sélectionné.", "warning")
-        return redirect(url_for("collecte.collecte_main", annee=annee))
+        return redirect(url_for("collecte.gardee", annee=annee))
 
     if not fichier.filename.lower().endswith(".xlsx"):
         flash("⛔ Format non accepté (.xlsx uniquement).", "danger")
-        return redirect(url_for("collecte.collecte_main", annee=annee))
+        return redirect(url_for("collecte.gardee", annee=annee))
 
     tampon = io.BytesIO(fichier.read())
     try:
         wb = load_workbook(tampon)
     except Exception:
         flash("⛔ Fichier Excel invalide ou corrompu — rien n'a été remplacé.", "danger")
-        return redirect(url_for("collecte.collecte_main", annee=annee))
+        return redirect(url_for("collecte.gardee", annee=annee))
 
     manquantes = [feuille for feuille in ("produits", "magasins") if feuille not in wb.sheetnames]
     if manquantes:
         flash(f"⛔ Feuille(s) manquante(s) dans le fichier déposé : {', '.join(manquantes)} — rien n'a été remplacé.", "danger")
-        return redirect(url_for("collecte.collecte_main", annee=annee))
+        return redirect(url_for("collecte.gardee", annee=annee))
 
     nom = "Modele association.xlsx"
     chemin = _modele_gardee(nom)
@@ -3899,7 +4008,7 @@ def enregistrer_modele_association():
 
     flash("✅ Modèle Excel remplacé.", "success")
     write_log(f"📊 Modèle association.xlsx remplacé par {current_user.email}")
-    return redirect(url_for("collecte.collecte_main", annee=annee))
+    return redirect(url_for("collecte.gardee", annee=annee))
 
 
 CHEMIN_URL_DRIVE_MODELE_ASSOCIATION = os.path.join(MODELES_GARDEE_DIR, "modele_association_drive_url.txt")
@@ -3933,7 +4042,7 @@ def enregistrer_url_drive_modele_association():
     url = request.form.get("url_drive", "").strip()
     _ecrire_url_drive_modele_association(url)
     flash("✅ Lien Google Sheets enregistré." if url else "🗑️ Lien Google Sheets effacé.", "success")
-    return redirect(url_for("collecte.collecte_main", annee=annee))
+    return redirect(url_for("collecte.gardee", annee=annee))
 
 
 @collecte_bp.route("/collecte/gardee/modele-excel/synchroniser", methods=["POST"])
@@ -3951,30 +4060,30 @@ def synchroniser_modele_association():
     url_export = _url_export_drive(url)
     if not url_export:
         flash("⛔ Aucun lien Google Sheets valide n'est enregistré.", "danger")
-        return redirect(url_for("collecte.collecte_main", annee=annee))
+        return redirect(url_for("collecte.gardee", annee=annee))
 
     try:
         reponse = requests.get(url_export, timeout=30)
         reponse.raise_for_status()
     except Exception:
         flash("⛔ Échec du téléchargement depuis Google Sheets — rien n'a été remplacé.", "danger")
-        return redirect(url_for("collecte.collecte_main", annee=annee))
+        return redirect(url_for("collecte.gardee", annee=annee))
 
     if not reponse.content.startswith(b"PK"):
         flash("⛔ Contenu invalide reçu de Google Sheets — rien n'a été remplacé.", "danger")
-        return redirect(url_for("collecte.collecte_main", annee=annee))
+        return redirect(url_for("collecte.gardee", annee=annee))
 
     tampon = io.BytesIO(reponse.content)
     try:
         wb = load_workbook(tampon)
     except Exception:
         flash("⛔ Fichier reçu illisible par Excel — rien n'a été remplacé.", "danger")
-        return redirect(url_for("collecte.collecte_main", annee=annee))
+        return redirect(url_for("collecte.gardee", annee=annee))
 
     manquantes = [feuille for feuille in ("produits", "magasins") if feuille not in wb.sheetnames]
     if manquantes:
         flash(f"⛔ Feuille(s) manquante(s) dans la version Google Sheets : {', '.join(manquantes)} — rien n'a été remplacé.", "danger")
-        return redirect(url_for("collecte.collecte_main", annee=annee))
+        return redirect(url_for("collecte.gardee", annee=annee))
 
     nb_images = sum(len(feuille._images) for feuille in wb.worksheets)
     for feuille in wb.worksheets:
@@ -4011,7 +4120,7 @@ def synchroniser_modele_association():
         )
     else:
         flash("✅ Modèle synchronisé depuis Google Sheets.", "success")
-    return redirect(url_for("collecte.collecte_main", annee=annee))
+    return redirect(url_for("collecte.gardee", annee=annee))
 
 
 @collecte_bp.route("/collecte/gardee/modele-produits")
@@ -4085,6 +4194,7 @@ def gardee():
         fichier_excel=os.path.exists(
             os.path.join(_dossier_annee(annee), f"associations_gardant_{annee}.xlsx")
         ),
+        url_drive_modele_association=_lire_url_drive_modele_association(),
     )
 
 
@@ -4770,6 +4880,7 @@ def gardee_envoi():
         annee=annee,
         associations=associations,
         fichier_nom=os.path.basename(chemin),
+        texte_mail=_lire_texte_mail_gardee(),
     )
 
 
@@ -4851,7 +4962,7 @@ def enregistrer_texte_mail_gardee():
         flash("✅ Texte du mail enregistré.", "success")
     else:
         flash("⛔ Le texte ne peut pas être vide.", "warning")
-    return redirect(url_for("collecte.collecte_main", annee=annee))
+    return redirect(url_for("collecte.gardee_envoi", annee=annee))
 
 
 @collecte_bp.route("/collecte/gardee/envoi/apercu")

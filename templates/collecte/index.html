@@ -2,6 +2,24 @@
 
 {% from "macros/buttons.html" import action_button, action_buttons %}
 
+{% macro entete_section(cible, titre, modale_aide, modale_manuel) %}
+<div class="d-flex align-items-stretch gap-2 mt-4">
+    <button class="list-group-item list-group-item-action active text-start d-block flex-grow-1" type="button"
+            data-bs-toggle="collapse" data-bs-target="#{{ cible }}"
+            aria-expanded="false" aria-controls="{{ cible }}">
+        📁 {{ titre }}
+    </button>
+    <button class="btn btn-outline-info" type="button" data-bs-toggle="modal" data-bs-target="#{{ modale_aide }}"
+            title="Aide sur ce sujet">
+        ℹ️
+    </button>
+    <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#{{ modale_manuel }}"
+            title="Documentation détaillée sur ce sujet">
+        📖
+    </button>
+</div>
+{% endmacro %}
+
 {% block title %}Collecte{% endblock %}
 
 {% block content %}
@@ -22,6 +40,14 @@
 
     <p class="text-muted">Paramètres et fichiers de la campagne de collecte.</p>
 
+    <div class="alert alert-info small">
+        <strong>Ordre à suivre :</strong> les 5 sections ci-dessous sont dans l'ordre où elles sont
+        normalement utilisées — 1. Paramètres de la collecte annuelle (dates, fichiers Drive/import),
+        2. Gestion magasins (autorisations, localisation), 3. Gestion tournées (simulation puis
+        production), 4. Associations gardant, 5. Résultat collecte. Chaque section précise elle-même
+        l'ordre de ses propres actions.
+    </div>
+
     <div class="mb-4">
         <label class="form-label">Année de collecte</label>
         <select id="selectAnnee" class="form-select" style="max-width:200px;">
@@ -31,11 +57,7 @@
         </select>
     </div>
 
-    <button class="list-group-item list-group-item-action active mt-4 text-start d-block w-100" type="button"
-            data-bs-toggle="collapse" data-bs-target="#sectionCollecteAnnuelle"
-            aria-expanded="false" aria-controls="sectionCollecteAnnuelle">
-        📁 Paramètres de la collecte annuelle
-    </button>
+    {{ entete_section("sectionCollecteAnnuelle", "Paramètres de la collecte annuelle", "modalAideSection1", "modalManuelSection1") }}
     <div id="sectionCollecteAnnuelle" class="collapse mt-3">
 
     <div class="card mb-4">
@@ -149,14 +171,12 @@
 
     </div>
 
-    <button class="list-group-item list-group-item-action active mt-4 text-start d-block w-100" type="button"
-            data-bs-toggle="collapse" data-bs-target="#sectionGestionMagasins"
-            aria-expanded="false" aria-controls="sectionGestionMagasins">
-        📁 Gestion magasins
-    </button>
+    {% set magasins_prets = campagne and (campagne.fichier_magasins or campagne.drive_magasins) %}
+
+    {{ entete_section("sectionGestionMagasins", "Gestion magasins", "modalAideSection2", "modalManuelSection2") }}
     <div id="sectionGestionMagasins" class="collapse mt-3">
 
-        <div class="card mb-3">
+        <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
             <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div>
                     <h5 class="card-title mb-1">✍️ Demande d'autorisation de collecter</h5>
@@ -164,20 +184,26 @@
                         Publipostage aux magasins ayant un email renseigné et n'ayant pas encore donné leur accord
                         (colonne « Accord » vide dans le fichier magasins).
                     </p>
+                    {% if not magasins_prets %}
+                    <p class="text-warning small mb-0">⚠️ Fichier magasins manquant pour {{ annee }}.</p>
+                    {% endif %}
                 </div>
-                {{ action_button("✍️ Gérer les envois", href=url_for('collecte.autorisations', annee=annee), color="primary") }}
+                {{ action_button("✍️ Gérer les envois", href=url_for('collecte.autorisations', annee=annee), color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
             </div>
         </div>
 
-        <div class="card mb-3">
+        <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
             <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div>
                     <h5 class="card-title mb-1">🗺️ Localisation magasins et associations</h5>
                     <p class="card-text small text-muted mb-0">
                         Vue d'ensemble géographique des magasins collectés cette année et des associations partenaires actives.
                     </p>
+                    {% if not magasins_prets %}
+                    <p class="text-warning small mb-0">⚠️ Fichier magasins manquant pour {{ annee }}.</p>
+                    {% endif %}
                 </div>
-                {{ action_button("🗺️ Voir la carte", href=url_for('collecte.localisation', annee=annee), color="primary") }}
+                {{ action_button("🗺️ Voir la carte", href=url_for('collecte.localisation', annee=annee), color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
             </div>
         </div>
 
@@ -185,11 +211,7 @@
 
     {% set prets = campagne and (campagne.fichier_magasins or campagne.drive_magasins) and campagne.fichier_pdf_precedent %}
 
-    <button class="list-group-item list-group-item-action active mt-4 text-start d-block w-100" type="button"
-            data-bs-toggle="collapse" data-bs-target="#sectionGestionTournees"
-            aria-expanded="false" aria-controls="sectionGestionTournees">
-        📁 Gestion tournées
-    </button>
+    {{ entete_section("sectionGestionTournees", "Gestion tournées", "modalAideSection3", "modalManuelSection3") }}
     <div id="sectionGestionTournees" class="collapse mt-3">
         <h5 class="mb-3">Simulation</h5>
         <div class="card mb-3 {% if not prets %}bg-light{% endif %}">
@@ -223,126 +245,37 @@
             <div class="card mb-3">
                 <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div><h5 class="card-title mb-1">📧 Envoi mail tournées aux chauffeurs/équipiers</h5><p class="card-text small text-muted mb-0">Paramétrer puis envoyer les mails de tournée aux chauffeurs et équipiers.</p></div>
-                    {{ action_button("📧 Envoi mail tournées aux chauffeurs/équipiers", href=url_for('collecte.chauffeurs_equipiers', annee=annee), color="outline-success") }}
+                    {{ action_button("📧 Envoi mail tournées aux chauffeurs/équipiers", href=url_for('collecte.chauffeurs_equipiers', annee=annee), color="primary") }}
                 </div>
             </div>
         </div>
     </div>
 
-    <button class="list-group-item list-group-item-action active mt-4 text-start d-block w-100" type="button"
-            data-bs-toggle="collapse" data-bs-target="#sectionAssociationsGardant"
-            aria-expanded="false" aria-controls="sectionAssociationsGardant">
-        📁 Associations gardant
-    </button>
+    {% set assoc_prets = magasins_prets and campagne and (campagne.fichier_groupes or campagne.drive_groupes) %}
+
+    {{ entete_section("sectionAssociationsGardant", "Associations gardant", "modalAideSection4", "modalManuelSection4") }}
     <div id="sectionAssociationsGardant" class="collapse mt-3">
-        <div class="card mb-3">
+        <div class="card mb-3 {% if not assoc_prets %}bg-light{% endif %}">
             <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div>
                     <h5 class="card-title mb-1">🏠 Envoi fichiers réponse aux associations</h5>
                     <p class="card-text small text-muted mb-0">Créer la liste, la contrôler, puis préparer et envoyer les messages.</p>
+                    {% if not assoc_prets %}
+                    <p class="text-warning small mb-0">⚠️ Fichiers magasins et/ou groupes manquants pour {{ annee }}.</p>
+                    {% endif %}
                 </div>
                 <div class="d-flex flex-wrap gap-2">
-                    {{ action_button("🏠 Créer la liste", href=url_for('collecte.gardee_excel', annee=annee), color="outline-primary") }}
-                    {{ action_button("⏸️ Vérifier la liste", href=url_for('collecte.gardee', annee=annee), color="outline-secondary") }}
+                    {{ action_button("🏠 Créer la liste", href=url_for('collecte.gardee_excel', annee=annee), color="success" if assoc_prets else "outline-secondary", disabled=not assoc_prets) }}
+                    {{ action_button("📋 Contrôler / corriger la liste", href=url_for('collecte.gardee', annee=annee), color="outline-secondary") }}
                     {{ action_button("📧 Préparer l'envoi", href=url_for('collecte.gardee_envoi', annee=annee), color="primary") }}
                 </div>
             </div>
         </div>
-
-        <button class="btn btn-outline-secondary mb-3" type="button"
-                data-bs-toggle="collapse" data-bs-target="#sectionParametresAssociationsGardant"
-                aria-expanded="false" aria-controls="sectionParametresAssociationsGardant">
-            📁 Paramètres (texte du mail, modèle Excel)
-        </button>
-        <div id="sectionParametresAssociationsGardant" class="collapse mb-3">
-            <form method="post" action="{{ url_for('collecte.enregistrer_texte_mail_gardee') }}" class="border rounded p-3 mb-3">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="annee" value="{{ annee }}">
-                <div class="mb-3">
-                    <label for="texte_mail" class="form-label"><strong>Texte du mail</strong></label>
-                    <textarea name="texte_mail" id="texte_mail" class="form-control" rows="16">{{ texte_mail_gardee }}</textarea>
-                    <small class="text-muted">
-                        Repères disponibles : <code>&lt;&lt;association&gt;&gt;</code>, <code>&lt;&lt;code&gt;&gt;</code>
-                        (code VIF), <code>&lt;&lt;datecollecte&gt;&gt;</code>, <code>&lt;&lt;magasins&gt;&gt;</code>
-                        (liste des magasins gardés par l'association) et <code>&lt;&lt;lien_saisie&gt;&gt;</code>
-                        (lien de saisie en ligne propre à l'association). Une ligne vide sépare les paragraphes.
-                        Conservé d'une campagne et d'une session à l'autre, sans modèle Word à redéposer.
-                    </small>
-                </div>
-                <button type="submit" class="btn btn-outline-primary">💾 Enregistrer le texte</button>
-            </form>
-
-            <div class="border rounded p-3 mb-3">
-                <a href="{{ url_for('collecte.gardee_modele_produits', annee=annee) }}" class="btn btn-sm btn-primary">
-                    📦 Modifier la liste des produits
-                </a>
-                <span class="text-muted small">
-                    Ajoutez, renommez ou supprimez des produits directement dans l'application — pas besoin
-                    d'Excel pour ça.
-                </span>
-            </div>
-
-            <div class="border rounded p-3 mb-3">
-                <strong>Édition complète via Google Sheets</strong>
-                <p class="text-muted small mb-2">
-                    Pour modifier les titres, la mise en page, les commentaires ou les formules — tout ce
-                    qu'Excel permet et qu'un simple éditeur en ligne ne permet pas — collez ici le lien de
-                    partage d'une copie Google Sheets du modèle, éditez-la normalement dans Google Sheets,
-                    puis synchronisez pour reprendre la dernière version.
-                </p>
-                <form method="post" action="{{ url_for('collecte.enregistrer_url_drive_modele_association') }}"
-                      class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="annee" value="{{ annee }}">
-                    <label for="url_drive" class="visually-hidden">Lien Google Sheets</label>
-                    <input type="url" name="url_drive" id="url_drive" class="form-control form-control-sm"
-                           style="max-width: 420px;" placeholder="https://docs.google.com/spreadsheets/d/..."
-                           value="{{ url_drive_modele_association }}">
-                    <button type="submit" class="btn btn-sm btn-outline-secondary">💾 Enregistrer le lien</button>
-                </form>
-                {% if url_drive_modele_association %}
-                <form method="post" action="{{ url_for('collecte.synchroniser_modele_association') }}" class="d-inline">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="annee" value="{{ annee }}">
-                    <button type="submit" class="btn btn-sm btn-primary"
-                            onclick="return confirm('Remplacer le modèle actuel par la version Google Sheets ? L’ancienne version sera conservée en sauvegarde.');">
-                        🔄 Synchroniser depuis Google Sheets
-                    </button>
-                </form>
-                {% else %}
-                <span class="text-muted small">Enregistrez d'abord un lien pour activer la synchronisation.</span>
-                {% endif %}
-            </div>
-
-            <div class="border rounded p-3 d-flex flex-wrap align-items-center gap-2">
-                <a href="{{ url_for('collecte.telecharger_modele_association', annee=annee) }}" class="btn btn-sm btn-outline-secondary">
-                    📥 Télécharger le modèle actuel
-                </a>
-                <form method="post" action="{{ url_for('collecte.enregistrer_modele_association') }}"
-                      enctype="multipart/form-data" class="d-flex flex-wrap align-items-center gap-2 m-0">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="annee" value="{{ annee }}">
-                    <label for="modele_excel" class="visually-hidden">Nouveau modèle Excel</label>
-                    <input type="file" name="modele_excel" id="modele_excel" class="form-control form-control-sm"
-                           style="max-width: 320px;" accept=".xlsx" required>
-                    <button type="submit" class="btn btn-sm btn-outline-primary">🔄 Remplacer le modèle</button>
-                </form>
-                <span class="text-muted small w-100">
-                    Ou déposez directement un fichier .xlsx modifié sur votre poste — repris automatiquement,
-                    sans redémarrage de l'application. L'ancienne version est conservée en sauvegarde.
-                </span>
-            </div>
-        </div>
     </div>
 
-    <button class="list-group-item list-group-item-action active mt-4 text-start d-block w-100" type="button"
-            data-bs-toggle="collapse" data-bs-target="#sectionResultatCollecte"
-            aria-expanded="false" aria-controls="sectionResultatCollecte">
-        📁 Résultat collecte
-    </button>
+    {{ entete_section("sectionResultatCollecte", "Résultat collecte", "modalAideSection5", "modalManuelSection5") }}
     <div id="sectionResultatCollecte" class="collapse mt-3">
         <h5 class="mb-3">Résultat collecte bai</h5>
-        {% set magasins_prets = campagne and (campagne.fichier_magasins or campagne.drive_magasins) %}
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
             <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div>
@@ -351,7 +284,7 @@
                         Nombre de cagettes relevé sur la fiche camion demi-journée au retour des camions.
                     </p>
                 </div>
-                {{ action_button("🧺 Saisir", href=url_for('collecte.cagettes', annee=annee) if magasins_prets else '#', color="primary" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
+                {{ action_button("🧺 Saisir", href=url_for('collecte.cagettes', annee=annee) if magasins_prets else '#', color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
             </div>
         </div>
 
@@ -364,7 +297,7 @@
                         Poids en kg relevé sur les fiches de pesée renvoyées par les associations.
                     </p>
                 </div>
-                {{ action_button("⚖️ Saisir", href=url_for('collecte.poids_magasins_gardee', annee=annee) if magasins_prets else '#', color="primary" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
+                {{ action_button("⚖️ Saisir", href=url_for('collecte.poids_magasins_gardee', annee=annee) if magasins_prets else '#', color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
             </div>
         </div>
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
@@ -375,7 +308,7 @@
                         Poids en kg brut par produit et par association, relevé sur les fiches produits renvoyées.
                     </p>
                 </div>
-                {{ action_button("📦 Saisir", href=url_for('collecte.quantites_produits', annee=annee) if magasins_prets else '#', color="primary" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
+                {{ action_button("📦 Saisir", href=url_for('collecte.quantites_produits', annee=annee) if magasins_prets else '#', color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
             </div>
         </div>
     </div>
@@ -383,42 +316,46 @@
 </div>
 
 <!-- ============================================== -->
-<!-- ℹ️ MODALE D'AIDE UTILISATEUR -->
+<!-- ℹ️ MODALES D'AIDE UTILISATEUR (1 générale + 1 par sujet) -->
 <!-- ============================================== -->
-<div class="modal fade" id="modalAideCollecte" tabindex="-1">
+{% macro modale_aide(id, titre, contenu_html) %}
+<div class="modal fade" id="{{ id }}" tabindex="-1">
   <div class="modal-dialog modal-xl">
     <div class="modal-content">
-
       <div class="modal-header">
-        <h5 class="modal-title">🧺 Aide – Collecte annuelle</h5>
+        <h5 class="modal-title">{{ titre }}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-
-      <div class="modal-body" style="
-          max-height: 70vh;
-          overflow:auto;
-          font-size: 0.9rem;
-          line-height: 1.4;
-      ">
-
-        <div class="aide-doc">
-        {% include "docsHtml/Documentation_Utilisateur_Module_Collecte_BA38.html" %}
-        </div>
-
+      <div class="modal-body" style="max-height: 70vh; overflow:auto; font-size: 0.9rem; line-height: 1.4;">
+        <div class="aide-doc">{{ contenu_html|safe }}</div>
       </div>
-
       <div class="modal-footer">
-        <button class="btn btn-outline-primary" onclick="printModal('modalAideCollecte')">
-            🖨️ Imprimer
-        </button>
-        <button class="btn btn-secondary" data-bs-dismiss="modal">
-            Fermer
-        </button>
+        <a href="{{ url_for('collecte.telecharger_documentation_collecte', cle='aide') }}" class="btn btn-outline-secondary btn-sm">
+            📥 Télécharger l'aide (Word)
+        </a>
+        <a href="{{ url_for('collecte.telecharger_documentation_collecte', cle='manuel') }}" class="btn btn-outline-secondary btn-sm">
+            📥 Télécharger le manuel détaillé (Word)
+        </a>
+        <button class="btn btn-outline-primary" onclick="printModal('{{ id }}')">🖨️ Imprimer</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
       </div>
-
     </div>
   </div>
 </div>
+{% endmacro %}
+
+{{ modale_aide("modalAideCollecte", "🧺 Aide – Collecte annuelle (présentation générale)", aide.get("intro", "") + manuel.get("intro", "")) }}
+{{ modale_aide("modalAideSection1", "📁 Aide – Paramètres de la collecte annuelle", aide.get("1", "")) }}
+{{ modale_aide("modalAideSection2", "📁 Aide – Gestion magasins", aide.get("2", "")) }}
+{{ modale_aide("modalAideSection3", "📁 Aide – Gestion tournées", aide.get("3", "")) }}
+{{ modale_aide("modalAideSection4", "📁 Aide – Associations gardant", aide.get("4", "")) }}
+{{ modale_aide("modalAideSection5", "📁 Aide – Résultat collecte", aide.get("5", "")) }}
+
+{{ modale_aide("modalManuelSection1", "📖 Documentation détaillée – Paramètres de la collecte annuelle", manuel.get("1", "")) }}
+{{ modale_aide("modalManuelSection2", "📖 Documentation détaillée – Gestion magasins", manuel.get("2", "")) }}
+{{ modale_aide("modalManuelSection3", "📖 Documentation détaillée – Gestion tournées", manuel.get("3", "")) }}
+{{ modale_aide("modalManuelSection4", "📖 Documentation détaillée – Associations gardant", manuel.get("4", "")) }}
+{{ modale_aide("modalManuelSection5", "📖 Documentation détaillée – Résultat collecte", manuel.get("5", "")) }}
 
 <script>
 document.getElementById("selectAnnee").addEventListener("change", function () {

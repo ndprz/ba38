@@ -68,7 +68,7 @@
                 </div>
 
                 {% call action_buttons() %}
-                    {{ action_button("🚀 Lancer la génération", type="submit", color="success", disabled=(liens_manquants|length > 0)) }}
+                    {{ action_button("🚀 Lancer la génération", type="submit", color="outline-secondary" if liens_manquants|length > 0 else "warning", disabled=(liens_manquants|length > 0)) }}
                 {% endcall %}
             </form>
         </div>
