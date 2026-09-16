@@ -31,15 +31,12 @@
         </select>
     </div>
 
-    <button class="btn btn-outline-secondary mx-auto d-block text-start mb-3" style="width: 675px; max-width: 75%;"
-            type="button"
-            data-bs-toggle="collapse"
-            data-bs-target="#sectionCollecteAnnuelle"
-            aria-expanded="false"
-            aria-controls="sectionCollecteAnnuelle">
+    <button class="list-group-item list-group-item-action active mt-4 text-start d-block w-100" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionCollecteAnnuelle"
+            aria-expanded="false" aria-controls="sectionCollecteAnnuelle">
         📁 Paramètres de la collecte annuelle
     </button>
-    <div id="sectionCollecteAnnuelle" class="collapse">
+    <div id="sectionCollecteAnnuelle" class="collapse mt-3">
 
     <div class="card mb-4">
         <div class="card-body">
@@ -69,18 +66,10 @@
     </div>
 
     <div class="card mb-4">
-        <div class="card-header p-0">
-            <button class="btn btn-outline-secondary mx-auto d-block text-start rounded-0" style="width: 675px; max-width: 75%;"
-                    type="button"
-                    data-bs-toggle="collapse"
-                    data-bs-target=".parametresDrive"
-                    aria-expanded="false"
-                    aria-controls="parametresDrive">
-                🔗 Paramètres des fichiers Google Drive {{ annee }}
-            </button>
+        <div class="card-header">
+            🔗 Paramètres des fichiers Google Drive {{ annee }}
         </div>
-        <div id="parametresDrive" class="collapse parametresDrive">
-          <div class="card-body">
+        <div class="card-body">
             <h5 class="card-title">🔗 Fichiers Google Drive {{ annee }} issus de GOW</h5>
             <p class="card-text text-muted small">
                 Coller les liens des fichiers Google Sheets issus de go-on-web et de la production.
@@ -124,11 +113,10 @@
                     <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
                 </div>
             </form>
-                    </div>
-                </div>
+        </div>
     </div>
 
-    <div class="row g-3 collapse parametresDrive">
+    <div class="row g-3">
         {% for type_fichier, conf in fichiers.items() %}
         {% set le_champ = campagne[conf.champ_le] if campagne else None %}
         {% set par_champ = campagne[conf.champ_par] if campagne else None %}
@@ -154,7 +142,6 @@
                     </form>
                 </div>
             </div>
-            </div>
         </div>
         {% endif %}
         {% endfor %}
@@ -162,18 +149,48 @@
 
     </div>
 
+    <button class="list-group-item list-group-item-action active mt-4 text-start d-block w-100" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionGestionMagasins"
+            aria-expanded="false" aria-controls="sectionGestionMagasins">
+        📁 Gestion magasins
+    </button>
+    <div id="sectionGestionMagasins" class="collapse mt-3">
+
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h5 class="card-title mb-1">✍️ Demande d'autorisation de collecter</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Publipostage aux magasins ayant un email renseigné et n'ayant pas encore donné leur accord
+                        (colonne « Accord » vide dans le fichier magasins).
+                    </p>
+                </div>
+                {{ action_button("✍️ Gérer les envois", href=url_for('collecte.autorisations', annee=annee), color="primary") }}
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h5 class="card-title mb-1">🗺️ Localisation magasins et associations</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Vue d'ensemble géographique des magasins collectés cette année et des associations partenaires actives.
+                    </p>
+                </div>
+                {{ action_button("🗺️ Voir la carte", href=url_for('collecte.localisation', annee=annee), color="primary") }}
+            </div>
+        </div>
+
+    </div>
+
     {% set prets = campagne and (campagne.fichier_magasins or campagne.drive_magasins) and campagne.fichier_pdf_precedent %}
 
-    <button class="btn btn-outline-secondary mx-auto d-block text-start mb-3 mt-4" style="width: 675px; max-width: 75%;"
-            type="button"
-            data-bs-toggle="collapse"
-            data-bs-target="#sectionGestionTournees"
-            aria-expanded="false"
-            aria-controls="sectionGestionTournees">
+    <button class="list-group-item list-group-item-action active mt-4 text-start d-block w-100" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionGestionTournees"
+            aria-expanded="false" aria-controls="sectionGestionTournees">
         📁 Gestion tournées
     </button>
-    <div id="sectionGestionTournees" class="collapse">
-    <div class="border-start border-3 border-primary ps-3 mx-auto" style="width: 675px; max-width: 75%;">
+    <div id="sectionGestionTournees" class="collapse mt-3">
         <h5 class="mb-3">Simulation</h5>
         <div class="card mb-3 {% if not prets %}bg-light{% endif %}">
             <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -212,18 +229,12 @@
         </div>
     </div>
 
-    </div>
-
-    <button class="btn btn-outline-secondary mx-auto d-block text-start mb-3 mt-4" style="width: 675px; max-width: 75%;"
-            type="button"
-            data-bs-toggle="collapse"
-            data-bs-target="#sectionAssociationsGardant"
-            aria-expanded="false"
-            aria-controls="sectionAssociationsGardant">
+    <button class="list-group-item list-group-item-action active mt-4 text-start d-block w-100" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionAssociationsGardant"
+            aria-expanded="false" aria-controls="sectionAssociationsGardant">
         📁 Associations gardant
     </button>
-    <div id="sectionAssociationsGardant" class="collapse">
-    <div class="border-start border-3 border-primary ps-3 mx-auto" style="width: 675px; max-width: 75%;">
+    <div id="sectionAssociationsGardant" class="collapse mt-3">
         <div class="card mb-3">
             <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div>
@@ -237,19 +248,99 @@
                 </div>
             </div>
         </div>
-    </div>
+
+        <button class="btn btn-outline-secondary mb-3" type="button"
+                data-bs-toggle="collapse" data-bs-target="#sectionParametresAssociationsGardant"
+                aria-expanded="false" aria-controls="sectionParametresAssociationsGardant">
+            📁 Paramètres (texte du mail, modèle Excel)
+        </button>
+        <div id="sectionParametresAssociationsGardant" class="collapse mb-3">
+            <form method="post" action="{{ url_for('collecte.enregistrer_texte_mail_gardee') }}" class="border rounded p-3 mb-3">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <div class="mb-3">
+                    <label for="texte_mail" class="form-label"><strong>Texte du mail</strong></label>
+                    <textarea name="texte_mail" id="texte_mail" class="form-control" rows="16">{{ texte_mail_gardee }}</textarea>
+                    <small class="text-muted">
+                        Repères disponibles : <code>&lt;&lt;association&gt;&gt;</code>, <code>&lt;&lt;code&gt;&gt;</code>
+                        (code VIF), <code>&lt;&lt;datecollecte&gt;&gt;</code>, <code>&lt;&lt;magasins&gt;&gt;</code>
+                        (liste des magasins gardés par l'association) et <code>&lt;&lt;lien_saisie&gt;&gt;</code>
+                        (lien de saisie en ligne propre à l'association). Une ligne vide sépare les paragraphes.
+                        Conservé d'une campagne et d'une session à l'autre, sans modèle Word à redéposer.
+                    </small>
+                </div>
+                <button type="submit" class="btn btn-outline-primary">💾 Enregistrer le texte</button>
+            </form>
+
+            <div class="border rounded p-3 mb-3">
+                <a href="{{ url_for('collecte.gardee_modele_produits', annee=annee) }}" class="btn btn-sm btn-primary">
+                    📦 Modifier la liste des produits
+                </a>
+                <span class="text-muted small">
+                    Ajoutez, renommez ou supprimez des produits directement dans l'application — pas besoin
+                    d'Excel pour ça.
+                </span>
+            </div>
+
+            <div class="border rounded p-3 mb-3">
+                <strong>Édition complète via Google Sheets</strong>
+                <p class="text-muted small mb-2">
+                    Pour modifier les titres, la mise en page, les commentaires ou les formules — tout ce
+                    qu'Excel permet et qu'un simple éditeur en ligne ne permet pas — collez ici le lien de
+                    partage d'une copie Google Sheets du modèle, éditez-la normalement dans Google Sheets,
+                    puis synchronisez pour reprendre la dernière version.
+                </p>
+                <form method="post" action="{{ url_for('collecte.enregistrer_url_drive_modele_association') }}"
+                      class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="annee" value="{{ annee }}">
+                    <label for="url_drive" class="visually-hidden">Lien Google Sheets</label>
+                    <input type="url" name="url_drive" id="url_drive" class="form-control form-control-sm"
+                           style="max-width: 420px;" placeholder="https://docs.google.com/spreadsheets/d/..."
+                           value="{{ url_drive_modele_association }}">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">💾 Enregistrer le lien</button>
+                </form>
+                {% if url_drive_modele_association %}
+                <form method="post" action="{{ url_for('collecte.synchroniser_modele_association') }}" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="annee" value="{{ annee }}">
+                    <button type="submit" class="btn btn-sm btn-primary"
+                            onclick="return confirm('Remplacer le modèle actuel par la version Google Sheets ? L’ancienne version sera conservée en sauvegarde.');">
+                        🔄 Synchroniser depuis Google Sheets
+                    </button>
+                </form>
+                {% else %}
+                <span class="text-muted small">Enregistrez d'abord un lien pour activer la synchronisation.</span>
+                {% endif %}
+            </div>
+
+            <div class="border rounded p-3 d-flex flex-wrap align-items-center gap-2">
+                <a href="{{ url_for('collecte.telecharger_modele_association', annee=annee) }}" class="btn btn-sm btn-outline-secondary">
+                    📥 Télécharger le modèle actuel
+                </a>
+                <form method="post" action="{{ url_for('collecte.enregistrer_modele_association') }}"
+                      enctype="multipart/form-data" class="d-flex flex-wrap align-items-center gap-2 m-0">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="annee" value="{{ annee }}">
+                    <label for="modele_excel" class="visually-hidden">Nouveau modèle Excel</label>
+                    <input type="file" name="modele_excel" id="modele_excel" class="form-control form-control-sm"
+                           style="max-width: 320px;" accept=".xlsx" required>
+                    <button type="submit" class="btn btn-sm btn-outline-primary">🔄 Remplacer le modèle</button>
+                </form>
+                <span class="text-muted small w-100">
+                    Ou déposez directement un fichier .xlsx modifié sur votre poste — repris automatiquement,
+                    sans redémarrage de l'application. L'ancienne version est conservée en sauvegarde.
+                </span>
+            </div>
+        </div>
     </div>
 
-    <button class="btn btn-outline-secondary mx-auto d-block text-start mb-3 mt-4" style="width: 675px; max-width: 75%;"
-            type="button"
-            data-bs-toggle="collapse"
-            data-bs-target="#sectionResultatCollecte"
-            aria-expanded="false"
-            aria-controls="sectionResultatCollecte">
+    <button class="list-group-item list-group-item-action active mt-4 text-start d-block w-100" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionResultatCollecte"
+            aria-expanded="false" aria-controls="sectionResultatCollecte">
         📁 Résultat collecte
     </button>
-    <div id="sectionResultatCollecte" class="collapse">
-    <div class="border-start border-3 border-primary ps-3 mx-auto" style="width: 675px; max-width: 75%;">
+    <div id="sectionResultatCollecte" class="collapse mt-3">
         <h5 class="mb-3">Résultat collecte bai</h5>
         {% set magasins_prets = campagne and (campagne.fichier_magasins or campagne.drive_magasins) %}
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
@@ -263,7 +354,30 @@
                 {{ action_button("🧺 Saisir", href=url_for('collecte.cagettes', annee=annee) if magasins_prets else '#', color="primary" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
             </div>
         </div>
-    </div>
+
+        <h5 class="mb-3 mt-4">Résultat collecte gardée</h5>
+        <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
+            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h5 class="card-title mb-1">⚖️ Saisie des poids par magasin gardé</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Poids en kg relevé sur les fiches de pesée renvoyées par les associations.
+                    </p>
+                </div>
+                {{ action_button("⚖️ Saisir", href=url_for('collecte.poids_magasins_gardee', annee=annee) if magasins_prets else '#', color="primary" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
+            </div>
+        </div>
+        <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
+            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h5 class="card-title mb-1">📦 Saisie des quantités par produit</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Poids en kg brut par produit et par association, relevé sur les fiches produits renvoyées.
+                    </p>
+                </div>
+                {{ action_button("📦 Saisir", href=url_for('collecte.quantites_produits', annee=annee) if magasins_prets else '#', color="primary" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
+            </div>
+        </div>
     </div>
 
 </div>

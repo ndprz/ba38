@@ -13,8 +13,9 @@
     {% endcall %}
 
     <p class="text-muted">
-        Le début et la fin sont personnalisables ci-dessous. La partie centrale avec les affectations
-        par demi-journée, les camions et les autres personnes est générée automatiquement.
+        Le texte du mail est personnalisable ci-dessous — la liste des affectations par demi-journée, les
+        camions et les autres personnes est générée automatiquement à l'endroit du repère
+        <code>&lt;&lt;affectations&gt;&gt;</code>.
     </p>
 
     {% if personnes_sans_email %}
@@ -25,22 +26,87 @@
     {% endif %}
 
     {% if destinataires %}
+    <button class="btn btn-outline-secondary mb-3" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionParametresMailChauffeurs"
+            aria-expanded="false" aria-controls="sectionParametresMailChauffeurs">
+        📁 Paramètres (texte du mail, image, pièces jointes)
+    </button>
+    <div id="sectionParametresMailChauffeurs" class="collapse mb-3">
+
     <form method="post" action="{{ url_for('collecte.enregistrer_contenu_mail_chauffeurs_equipiers') }}" class="border rounded p-3 mb-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="annee" value="{{ annee }}">
         <div class="mb-3">
-            <label for="mail_debut" class="form-label"><strong>Début du mail</strong></label>
-            <textarea name="mail_debut" id="mail_debut" class="form-control" rows="4">{{ mail_debut }}</textarea>
-            <small class="text-muted">Vous pouvez utiliser <code>&lt;&lt;nom&gt;&gt;</code>.</small>
-        </div>
-        <div class="mb-3">
-            <label for="mail_fin" class="form-label"><strong>Fin du mail</strong></label>
-            <textarea name="mail_fin" id="mail_fin" class="form-control" rows="3">{{ mail_fin }}</textarea>
+            <label for="mail_texte" class="form-label"><strong>Texte du mail</strong></label>
+            <textarea name="mail_texte" id="mail_texte" class="form-control" rows="16">{{ mail_texte }}</textarea>
+            <small class="text-muted">
+                Vous pouvez utiliser <code>&lt;&lt;nom&gt;&gt;</code>, <code>&lt;&lt;image&gt;&gt;</code>
+                (image déposée ci-dessous, ex. plan de parking) et <code>&lt;&lt;affectations&gt;&gt;</code>
+                sur sa propre ligne, à l'endroit où insérer la liste des tournées (demi-journée / véhicule /
+                magasin / équipiers), générée automatiquement pour chaque destinataire.
+            </small>
         </div>
         <button type="submit" class="btn btn-outline-primary">💾 Enregistrer le texte</button>
     </form>
 
-    <form method="post" class="mb-4 d-flex flex-wrap gap-2">
+    <form method="post" action="{{ url_for('collecte.enregistrer_image_mail_chauffeurs_equipiers') }}"
+          enctype="multipart/form-data" class="border rounded p-3 mb-4 d-flex flex-wrap align-items-center gap-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+        {% if image_url %}
+        <img src="{{ image_url }}" alt="Image du mail" style="max-height:90px;" class="border rounded">
+        {% endif %}
+        <label for="mail_image" class="visually-hidden">Image à insérer dans le mail</label>
+        <input type="file" name="mail_image" id="mail_image" class="form-control" style="max-width: 320px;"
+               accept="image/png,image/jpeg,image/gif" required>
+        <button type="submit" class="btn btn-outline-secondary">
+            {% if image_url %}🔄 Remplacer l'image{% else %}📤 Déposer une image{% endif %}
+        </button>
+        <span class="text-muted small w-100">
+            Insérable dans le texte avec le marqueur <code>&lt;&lt;image&gt;&gt;</code>
+            (ex. plan de parking, consignes illustrées) — conservée d'une campagne et d'une session à
+            l'autre, une seule image à la fois.
+        </span>
+    </form>
+
+    <div class="border rounded p-3 mb-4">
+        <strong>Pièces jointes PDF</strong>
+        <p class="text-muted small mb-2">
+            Conservées d'une session à l'autre et jointes automatiquement à chaque test ou envoi
+            (plusieurs fichiers possibles).
+        </p>
+        {% if pieces_jointes %}
+        <ul class="list-group mb-3">
+            {% for pj in pieces_jointes %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                📎 {{ pj.nom }}
+                <form method="post" action="{{ url_for('collecte.supprimer_piece_jointe_mail_chauffeurs_equipiers') }}" class="m-0">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="annee" value="{{ annee }}">
+                    <input type="hidden" name="fichier" value="{{ pj.nom }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                            onclick="return confirm('Retirer {{ pj.nom }} ?');">🗑️ Retirer</button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted small">Aucune pièce jointe pour l'instant.</p>
+        {% endif %}
+        <form method="post" action="{{ url_for('collecte.ajouter_piece_jointe_mail_chauffeurs_equipiers') }}"
+              enctype="multipart/form-data" class="d-flex flex-wrap align-items-center gap-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="annee" value="{{ annee }}">
+            <label for="pieces_jointes" class="visually-hidden">Ajouter des pièces jointes PDF</label>
+            <input type="file" name="pieces_jointes" id="pieces_jointes" class="form-control" style="max-width: 320px;"
+                   accept="application/pdf" multiple required>
+            <button type="submit" class="btn btn-outline-secondary">➕ Ajouter</button>
+        </form>
+    </div>
+
+    </div>
+
+    <form method="post" class="mb-4 d-flex flex-wrap align-items-center gap-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="annee" value="{{ annee }}">
         <label for="test_destinataire" class="visually-hidden">Personne à tester</label>
@@ -49,6 +115,9 @@
             <option value="{{ personne.email }}">{{ personne.nom }} — {{ personne.role }}</option>
             {% endfor %}
         </select>
+        <button type="button" id="btn-apercu-mail" class="btn btn-outline-info">
+            🖨️ Aperçu
+        </button>
         <button type="submit" name="action" value="test" class="btn btn-outline-info">
             🧪 Tester sur mon adresse
         </button>
@@ -57,6 +126,10 @@
             📤 Envoyer les mails
         </button>
     </form>
+    <p class="text-muted small">
+        L'aperçu ouvre le rendu exact du mail pour la personne sélectionnée ci-dessus, sans rien envoyer
+        (même en test).
+    </p>
 
     <div class="table-responsive">
         <table class="table table-sm table-bordered align-middle">
@@ -89,6 +162,13 @@
             </tbody>
         </table>
     </div>
+    <script>
+    document.getElementById("btn-apercu-mail").addEventListener("click", function () {
+        const email = document.getElementById("test_destinataire").value;
+        const url = "{{ url_for('collecte.chauffeurs_equipiers_apercu', annee=annee) }}?email=" + encodeURIComponent(email);
+        window.open(url, "_blank");
+    });
+    </script>
     {% else %}
     <div class="alert alert-info">Aucune affectation avec adresse email n’a été trouvée.</div>
     {% endif %}

@@ -83,7 +83,7 @@ except Exception:
 def _adresse_siege_html():
     if _get_organisation is not None:
         try:
-            return _get_organisation()["adresse"].replace("\n", "<br>")
+            return _get_organisation()["adresse"].replace("\r\n", "\n").replace("\n", "<br>")
         except Exception:
             pass
     return "11 All&eacute;e de la Pin&eacute;a<br>38600 Fontaine"
@@ -936,6 +936,27 @@ def construire_tournees_depuis_vehicules(args):
     df_veh.columns = [str(c).strip() for c in df_veh.columns]
     cols = list(df_veh.columns)
 
+    # Magasins réellement actifs cette année (référentiel, cf. magasins_actifs) :
+    # un magasin peut rester coché sur une tournée dans liste-vehicule.xlsx
+    # (go-on-web) alors qu'il n'est plus collecté (État changé en cours de
+    # campagne, ou ligne obsolète jamais retirée) — dans ce cas il ne doit pas
+    # se retrouver dans les tournées générées, même si go-on-web dit le
+    # contraire. Repli par Nom en plus du Code VIF : une faute de frappe sur
+    # le VIF dans liste-vehicule.xlsx (constaté en réel — un chiffre manquant)
+    # ne doit pas faire exclure à tort un magasin réellement actif ; et si le
+    # VIF est totalement absent du référentiel (ni actif ni inactif connu),
+    # on ne bloque pas sur une donnée qu'on ne peut pas vérifier.
+    df_ref_filtre = pd.read_excel(args.magasins)
+    df_ref_filtre.columns = [str(c).strip() for c in df_ref_filtre.columns]
+    df_actifs_filtre = magasins_actifs(df_ref_filtre)
+    vifs_actifs = {vif_fmt(r.get('Code VIF', '')) for _, r in df_actifs_filtre.iterrows()}
+    noms_actifs = {str(r.get('Nom', '')).strip() for _, r in df_actifs_filtre.iterrows()}
+    vifs_actifs.discard('')
+    noms_actifs.discard('')
+    tous_vifs_ref = {vif_fmt(r.get('Code VIF', '')) for _, r in df_ref_filtre.iterrows()}
+    tous_vifs_ref.discard('')
+    magasins_non_collectes_exclus = {}   # vif -> nom_mag, retirés malgré leur présence dans le fichier véhicules
+
     # Priorité : une colonne explicite 'Nom camion' / 'Nom véhicule', sinon une
     # colonne 'Véhicule' toute seule (fréquent : 'Code' = code camion type V003,
     # 'Véhicule' = son nom/description type 'CAMION 3ABI 1').
@@ -1004,13 +1025,25 @@ def construire_tournees_depuis_vehicules(args):
 
         vif = vif_fmt(r.get('Code VIF', ''))
         nom_mag = str(r.get('Magasin', '')).strip()
-        if nom_mag and nom_mag != 'nan':
+        if vif in vifs_actifs or nom_mag in noms_actifs:
+            actif = True
+        elif vif in tous_vifs_ref:
+            actif = False   # VIF connu du référentiel mais pas dans le périmètre actif : vraiment exclu
+        else:
+            actif = True    # VIF absent du référentiel (probable faute de frappe) : ne pas bloquer
+        if not actif:
+            magasins_non_collectes_exclus[vif or nom_mag] = nom_mag
+        elif nom_mag and nom_mag != 'nan':
             lst_t = tournee_camion_dj.setdefault((code, dj_key), [])
             if not any(nm == nom_mag for _, nm in lst_t):
                 lst_t.append((vif, nom_mag))
 
     print(f"  → {len(codes_veh)} camions, {len(tournee_camion_dj)} tournées "
           f"(camion x demi-journée) reconstruites depuis {args.vehicules}")
+    if magasins_non_collectes_exclus:
+        print(f"  ATTENTION : {len(magasins_non_collectes_exclus)} magasin(s) présent(s) dans "
+              f"liste-vehicule.xlsx mais retiré(s) car non collecté(s) cette année (État du "
+              f"référentiel) : {', '.join(sorted(magasins_non_collectes_exclus.values()))}")
     if not col_nom_camion:
         print("  INFO : aucune colonne 'Nom camion' détectée dans liste-vehicule.xlsx "
               "→ noms de secours utilisés pour les véhicules connus, vide sinon.")
@@ -1047,6 +1080,7 @@ def construire_tournees_depuis_vehicules(args):
         'codes_veh': codes_veh, 'dim_set': dim_set, 'df_veh': df_veh,
         'nom_camion_par_code': nom_camion_par_code,
         'magasins_sans_camion': magasins_sans_camion,
+        'magasins_non_collectes_exclus': magasins_non_collectes_exclus,
     }
 
 
@@ -1443,8 +1477,8 @@ const COULEURS = ['#e74c3c','#e67e22','#2980b9','#27ae60','#8e44ad',
   '#c0392b','#7f8c8d','#6c5ce7','#00b894','#fd79a8'];
 
 const map = L.map('map').setView(BAI, 11);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-  {attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19,subdomains:'abcd'}).addTo(map);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+  {attribution:'Tiles &copy; Esri',maxZoom:19}).addTo(map);
 
 L.marker(BAI, {icon: L.divIcon({
   className:'',
@@ -2302,6 +2336,7 @@ def main():
     # planifiés' (qui couvre le cas où le magasin n'apparaît nulle part dans
     # liste-vehicule.xlsx).
     DJ_JOURS_CTRL = {
+        'Jeudi':    ('Jeudi Matin',    'Jeudi Apres Midi'),
         'Vendredi': ('Vendredi Matin', 'Vendredi Apres Midi'),
         'Samedi':   ('Samedi Matin',   'Samedi Apres Midi'),
     }
@@ -2327,6 +2362,12 @@ def main():
         for _, r in actifs_ref.iterrows():
             nom_r = str(r.get('Nom', '')).strip()
             if not nom_r or nom_r == 'nan':
+                continue
+            # Collecte gardée (même stockage BAI+) : la collecte est assurée par
+            # l'association, pas de camion BAI garanti chaque demi-journée —
+            # pas une anomalie ici non plus (cf. contrôle 'Magasins-DJ non
+            # couverts' plus bas, même exclusion).
+            if str(r.get('État', '')).strip() == 'Collecte gardée':
                 continue
             vif_r = vif_fmt(r.get('Code VIF', ''))
             if not vif_r:
@@ -2370,6 +2411,13 @@ def main():
         for _, r in actifs_ref.iterrows():
             nom_r = str(r.get('Nom', '')).strip()
             if not nom_r or nom_r == 'nan':
+                continue
+            # Magasins en 'Collecte gardée' (même avec Stockage BAI+, inclus dans
+            # actifs_ref) : la collecte elle-même est assurée par l'association,
+            # pas par un camion BAI — l'absence de camion sur une demi-journée
+            # attendue n'est donc pas une anomalie ici, contrairement aux
+            # magasins 'Collecté par la BAI'.
+            if str(r.get('État', '')).strip() == 'Collecte gardée':
                 continue
             vif_r = vif_fmt(r.get('Code VIF', ''))
             if not vif_r:

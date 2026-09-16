@@ -36,15 +36,21 @@
 
 import io
 import os
+import shutil
 import re
+import csv
 import glob
 import json
 import copy
 import sqlite3
+import zipfile
 import argparse
 import subprocess
-from datetime import datetime
+from io import StringIO
+from datetime import datetime, timedelta
 from threading import Thread
+
+from werkzeug.utils import secure_filename
 
 import anthropic
 import markdown
@@ -52,11 +58,13 @@ import requests
 import pandas as pd
 from docx import Document
 from openpyxl import load_workbook
+from openpyxl.drawing.image import Image as ImageOpenpyxl
 from flask import (
     render_template, request, redirect, url_for, flash,
-    current_app, send_file, jsonify
+    current_app, send_file, jsonify, Response, abort
 )
 from flask_login import login_required, current_user
+from markupsafe import escape
 from weasyprint import HTML
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -66,7 +74,10 @@ from reportlab.lib.utils import ImageReader
 
 from ba38_utilitaires.core import (
     get_db_connection, get_db_path, require_access, write_log, date_fr,
-    envoyer_mail, render_modele_email,
+    envoyer_mail, render_modele_email, is_valid_email,
+    generer_token_localisation, verifier_token_localisation,
+    LOCALISATION_TOKEN_VALIDITE_JOURS,
+    generer_token_saisie_association, verifier_token_saisie_association,
 )
 from ba38_utilitaires.organisation import get_organisation
 from ba38_collecte import collecte_bp
@@ -121,11 +132,22 @@ FICHIERS = {
 }
 
 
-MAIL_DEBUT_DEFAUT = (
+MAIL_TEXTE_DEFAUT = (
     "Bonjour <<nom>>,\n\n"
-    "Voici la liste de vos tournées camions et les personnes affectées avec vous :"
+    "Voici la liste de vos tournées camions et les personnes affectées avec vous :\n\n"
+    "<<affectations>>\n\n"
+    "Merci."
 )
-MAIL_FIN_DEFAUT = "Merci."
+
+# Ordre chronologique de la semaine de collecte (jeudi → dimanche), pour le
+# mail chauffeurs/équipiers — tri alphabétique par défaut ("Dimanche Matin"
+# avant "Jeudi Matin") sinon.
+ORDRE_DEMI_JOURNEES_MAIL = [
+    "Jeudi Matin", "Jeudi Après-midi",
+    "Vendredi Matin", "Vendredi Après-midi",
+    "Samedi Matin", "Samedi Après-midi",
+    "Dimanche Matin", "Dimanche Après-midi",
+]
 
 
 def _dossier_annee(annee):
@@ -258,7 +280,16 @@ def _charger_affectations_chauffeurs_equipiers(annee):
         email = str(ligne.get("Email", "")).strip().lower()
         if email == "nan":
             email = ""
-        role = "chauffeur" if personne.lower().startswith("chauffeur") else "équipier"
+        role_re = str(ligne.get("R/E", "")).strip().upper()
+        if role_re == "R":
+            role = "chauffeur"
+        elif role_re == "E":
+            role = "équipier"
+        else:
+            # Repli si la colonne R/E est vide pour cette ligne : ancienne
+            # heuristique par le nom (utile pour les placeholders type
+            # "Chauffeur BD 1" saisis directement dans la colonne personne).
+            role = "chauffeur" if personne.lower().startswith("chauffeur") else "équipier"
         cle_personne = email or f"nom:{personne.lower()}"
         affectation = {
             "demi_journee": demi_journee,
@@ -287,7 +318,11 @@ def _charger_affectations_chauffeurs_equipiers(annee):
         for affectation in affectations_regroupees.values():
             autres = sorted(personnes_par_affectation[(affectation["demi_journee"], affectation["camion"])] - {personne["nom"]})
             lignes_personne.append({**affectation, "autres": autres})
-        lignes_personne.sort(key=lambda item: (item["demi_journee"], item["camion"]))
+        lignes_personne.sort(key=lambda item: (
+            ORDRE_DEMI_JOURNEES_MAIL.index(item["demi_journee"])
+            if item["demi_journee"] in ORDRE_DEMI_JOURNEES_MAIL else len(ORDRE_DEMI_JOURNEES_MAIL),
+            item["camion"],
+        ))
         personne["affectations"] = lignes_personne
         if personne["email"]:
             destinataires.append(personne)
@@ -296,22 +331,113 @@ def _charger_affectations_chauffeurs_equipiers(annee):
     return destinataires, sorted(personnes_sans_email, key=str.lower)
 
 
+def _charger_magasins_par_camion(annee):
+    """Regroupe les magasins du planning véhicules réel par demi-journée puis
+    camion — pour le filtre de sélection de la page de saisie des cagettes
+    (choisir une demi-journée puis un camion pour ne voir que ses magasins).
+    Même source que _charger_affectations_chauffeurs_equipiers (planning réel
+    du jour, avec Code VIF en colonne — pas la simulation d'optimisation),
+    mais restreint aux libellés de demi-journée de moteur.DEMI_JOURNEES pour
+    matcher les colonnes de la page de saisie."""
+    chemin = _fichier_drive(annee, "vehicules")
+    if not chemin:
+        chemin = os.path.join(_dossier_annee(annee), "liste_vehicules.xlsx")
+    if not os.path.exists(chemin):
+        return {}
+
+    df = pd.read_excel(chemin)
+    df.columns = [str(col).strip() for col in df.columns]
+    jours = {"jeudi": "Jeudi", "vendredi": "Vendredi", "samedi": "Samedi", "dimanche": "Dimanche"}
+
+    par_dj = {}
+    for _, ligne in df.iterrows():
+        code = str(ligne.get("Code", "")).strip()
+        jour = jours.get(str(ligne.get("Tournée", "")).strip().lower())
+        debut = str(ligne.get("Début", "")).strip()
+        if not code or code == "nan" or not jour or not _est_camion_reel(code):
+            continue
+        code_vif_brut = ligne.get("Code VIF")
+        if code_vif_brut is None or (isinstance(code_vif_brut, float) and pd.isna(code_vif_brut)):
+            continue
+        code_vif = _vif_fmt(code_vif_brut)
+        if not code_vif:
+            continue
+        match = re.match(r"(\d+)", debut)
+        periode = "Matin" if not match or int(match.group(1)) < 13 else "Apres Midi"
+        demi_journee = f"{jour} {periode}"
+        if demi_journee not in moteur.DEMI_JOURNEES:
+            continue
+        nom_camion = str(ligne.get("Véhicule", "")).strip()
+        camions = par_dj.setdefault(demi_journee, {})
+        entree = camions.setdefault(
+            code.upper(),
+            {"camion": code.upper(), "nom_camion": "" if nom_camion == "nan" else nom_camion, "codes_vif": set()},
+        )
+        entree["codes_vif"].add(code_vif)
+
+    return {
+        dj: sorted(
+            [{**c, "codes_vif": sorted(c["codes_vif"])} for c in camions.values()],
+            key=lambda c: c["camion"],
+        )
+        for dj, camions in par_dj.items()
+    }
+
+
 def _contenu_mail_affectations(annee):
     with get_db_connection() as conn:
         ligne = conn.execute(
-            "SELECT mail_debut, mail_fin FROM collecte_campagnes WHERE annee = ?",
+            "SELECT mail_texte FROM collecte_campagnes WHERE annee = ?",
             (annee,),
         ).fetchone()
-    debut = ligne["mail_debut"] if ligne and ligne["mail_debut"] else MAIL_DEBUT_DEFAUT
-    fin = ligne["mail_fin"] if ligne and ligne["mail_fin"] else MAIL_FIN_DEFAUT
-    return debut, fin
+    texte = ligne["mail_texte"] if ligne and ligne["mail_texte"] else MAIL_TEXTE_DEFAUT
+    return texte
 
 
-def _corps_mail_affectations(personne, debut=MAIL_DEBUT_DEFAUT, fin=MAIL_FIN_DEFAUT):
-    debut = debut.replace("<<nom>>", personne["nom"]).strip()
-    fin = fin.replace("<<nom>>", personne["nom"]).strip()
-    lignes = [debut, ""]
+def _chemin_image_mail_chauffeurs_equipiers():
+    """Chemin de l'image du mail chauffeurs/équipiers (ex. plan de parking),
+    dans l'emplacement PARTAGÉ du module (comme l'affiche des produits de la
+    demande d'autorisation) : déposée une fois, elle reste disponible d'une
+    campagne et d'une session à l'autre sans redépôt annuel. |None| si
+    absente."""
+    for extension in EXTENSIONS_IMAGE_MAIL_AUTORISEES:
+        chemin = os.path.join(MODELES_GARDEE_DIR, f"mail_chauffeurs_equipiers.{extension}")
+        if os.path.exists(chemin):
+            return chemin
+    return None
+
+
+PIECE_JOINTE_MAIL_PREFIXE = "mail_chauffeurs_equipiers_pj_"
+
+
+def _pieces_jointes_mail():
+    """Liste des pièces jointes PDF persistantes du mail chauffeurs/équipiers
+    — déposées dans l'emplacement partagé du module (comme l'image et
+    l'affiche des produits), donc disponibles d'une campagne et d'une
+    session à l'autre sans redépôt annuel. Le nom affiché retire le préfixe
+    technique utilisé pour les distinguer des autres fichiers partagés."""
+    chemins = sorted(glob.glob(os.path.join(MODELES_GARDEE_DIR, f"{PIECE_JOINTE_MAIL_PREFIXE}*.pdf")))
+    return [
+        {"nom": os.path.basename(chemin)[len(PIECE_JOINTE_MAIL_PREFIXE):], "chemin": chemin}
+        for chemin in chemins
+    ]
+
+
+def _corps_mail_affectations(personne, texte=MAIL_TEXTE_DEFAUT):
+    """Un seul texte modifiable en ligne, avec le repère <<affectations>> à
+    l'endroit où insérer la liste des tournées (demi-journée / véhicule /
+    magasin / équipiers) — sur le même principe que <<dates>> pour la
+    demande d'autorisation de collecter. Si le repère est absent (ancien
+    texte non migré, ou supprimé par erreur), la liste est ajoutée à la
+    fin plutôt que perdue."""
+    texte = texte.replace("<<nom>>", personne["nom"])
+
+    lignes = []
+    demi_journee_precedente = None
     for affectation in personne["affectations"]:
+        if demi_journee_precedente is not None and affectation["demi_journee"] != demi_journee_precedente:
+            lignes.append("")
+        demi_journee_precedente = affectation["demi_journee"]
         camion = affectation["camion"]
         if affectation["nom_camion"] and affectation["nom_camion"] != "nan":
             camion += f" - {affectation['nom_camion']}"
@@ -320,9 +446,29 @@ def _corps_mail_affectations(personne, debut=MAIL_DEBUT_DEFAUT, fin=MAIL_FIN_DEF
             lignes.append(f"    Magasins : {', '.join(affectation['magasins'])}")
         if affectation["autres"]:
             lignes.append(f"  Avec : {', '.join(affectation['autres'])}")
-    if fin:
-        lignes += ["", fin]
-    return "\n".join(lignes)
+    bloc_affectations = "\n".join(lignes)
+
+    if "<<affectations>>" in texte:
+        texte = texte.replace("<<affectations>>", bloc_affectations)
+    else:
+        texte = texte.rstrip() + "\n\n" + bloc_affectations
+    return texte.strip()
+
+
+def _corps_mail_affectations_html(personne, texte, image_url):
+    """Version HTML du mail (mêmes lignes que _corps_mail_affectations),
+    avec le marqueur <<image>> remplacé par une balise <img> pointant vers
+    l'image de campagne (parking, consignes...) si une image a été
+    déposée, sinon simplement retiré."""
+    texte = _corps_mail_affectations(personne, texte)
+    html = str(escape(texte)).replace("\n", "<br>\n")
+    marqueur = str(escape("<<image>>"))
+    if image_url:
+        remplacement = f'<img src="{escape(image_url)}" alt="" style="max-width:100%;">'
+    else:
+        remplacement = ""
+    html = html.replace(marqueur, remplacement)
+    return f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">{html}</div>'
 
 PRODUCTION_FICHIERS_SORTIE = {
     "excel":     {"nom": "Tournees_BAI38_{annee}_GOTW.xlsx", "label": "Classeur Excel (tournées + contrôles)"},
@@ -506,7 +652,7 @@ def _lire_referentiel_magasins_bai(annee, campagne):
 
     magasins = []
     for _, row in df.iterrows():
-        code_vif = str(row["Code VIF"]).strip()
+        code_vif = _vif_fmt(row["Code VIF"])
         nom_magasin = str(row["Nom"]).strip()
         if not code_vif or code_vif.lower() == "nan":
             continue
@@ -514,6 +660,700 @@ def _lire_referentiel_magasins_bai(annee, campagne):
         demi_journees = [dj for dj in moteur.DEMI_JOURNEES if djs is None or dj in djs]
         magasins.append({"code_vif": code_vif, "nom_magasin": nom_magasin, "demi_journees": demi_journees})
     return magasins
+
+
+def _emails_magasin(raw):
+    """Découpe la colonne Email du référentiel magasins — fichier externe
+    maintenu à la main, où plusieurs adresses sont séparées tantôt par ';'
+    tantôt par ',' (contrairement à split_emails(), réservé au champ
+    courriel_association de l'appli qui n'utilise que ';')."""
+    if not raw:
+        return []
+    parties = re.split(r"[;,]", str(raw))
+    nettoyees = [p.strip().strip("<>") for p in parties]
+    return [p for p in nettoyees if is_valid_email(p)]
+
+
+def _jours_collecte_texte(demi_journees):
+    """['Vendredi Matin', 'Vendredi Apres Midi', 'Samedi Matin'] -> 'Vendredi
+    et Samedi' — Dimanche n'a qu'un seul créneau matin dans DEMI_JOURNEES,
+    d'où le libellé spécial 'Dimanche matin' plutôt que juste 'Dimanche'."""
+    jours = [jour for jour in ("Jeudi", "Vendredi", "Samedi")
+             if any(dj.startswith(jour) for dj in demi_journees)]
+    if "Dimanche Matin" in demi_journees:
+        jours.append("Dimanche matin")
+    if not jours:
+        return ""
+    if len(jours) == 1:
+        return jours[0]
+    return ", ".join(jours[:-1]) + " et " + jours[-1]
+
+
+MOIS_FR = ["janvier", "février", "mars", "avril", "mai", "juin",
+           "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
+
+
+def _phrase_jours_collecte(demi_journees, annee):
+    """Phrase à insérer dans la lettre de demande d'autorisation — UNIQUEMENT
+    les jours (avec leur date calendaire) où CE magasin est collecté, pas la
+    plage complète de la campagne (ex. 'le VENDREDI 6 et le SAMEDI 7
+    NOVEMBRE 2026'), calculée à partir de date_debut (toujours un jeudi)."""
+    offsets = {"Jeudi": 0, "Vendredi": 1, "Samedi": 2, "Dimanche": 3}
+    jours_presents = [jour for jour in ("Jeudi", "Vendredi", "Samedi")
+                       if any(dj.startswith(jour) for dj in demi_journees)]
+    if "Dimanche Matin" in demi_journees:
+        jours_presents.append("Dimanche")
+    if not jours_presents:
+        return "aux dates qui vous seront communiquées"
+
+    with get_db_connection() as conn:
+        campagne = conn.execute(
+            "SELECT date_debut FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    if not campagne or not campagne["date_debut"]:
+        return "les jours suivants : " + _jours_collecte_texte(demi_journees)
+
+    debut = datetime.strptime(campagne["date_debut"], "%Y-%m-%d")
+    parties = []
+    for jour in jours_presents:
+        date_jour = debut + timedelta(days=offsets[jour])
+        libelle = jour.upper() + (" (matin)" if jour == "Dimanche" else "")
+        parties.append(f"{libelle} {date_jour.day}")
+    mois_annee = f"{MOIS_FR[debut.month - 1].upper()} {debut.year}"
+
+    if len(parties) == 1:
+        return f"le {parties[0]} {mois_annee}"
+    return "les " + ", ".join(parties[:-1]) + " et " + parties[-1] + " " + mois_annee
+
+
+def _lire_magasins_autorisation(annee):
+    """Magasins de liste_magasins.xlsx avec un email renseigné et sans
+    accord encore donné (colonne 'Accord' vide), hors magasins État='Non
+    collecté' — cible du publipostage de demande d'autorisation de
+    collecter."""
+    try:
+        chemin = _fichier_drive(annee, "magasins") or os.path.join(_dossier_annee(annee), FICHIERS["magasins"]["nom_stockage"])
+    except Exception as erreur:
+        write_log(f"⚠️ Lecture Drive magasins {annee} impossible : {erreur}")
+        chemin = os.path.join(_dossier_annee(annee), FICHIERS["magasins"]["nom_stockage"])
+    if not os.path.exists(chemin):
+        return []
+
+    df = pd.read_excel(chemin)
+    df.columns = [str(c).strip() for c in df.columns]
+    for col in ["Code VIF", "Nom", "État", "Adresse", "Ville", "C.P.", "Téléphone", "Email", "Créneaux", "Accord"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    magasins = []
+    for _, row in df.iterrows():
+        if str(row.get("État", "")).strip() == "Non collecté":
+            continue
+        email_brut = str(row.get("Email", "")).strip()
+        if not email_brut or email_brut.lower() == "nan":
+            continue
+        accord = row.get("Accord")
+        if not (pd.isna(accord) or str(accord).strip() in ("", "nan")):
+            continue
+        code_vif = _vif_fmt(row.get("Code VIF"))
+        if not code_vif or code_vif.lower() == "nan":
+            continue
+        cp_brut = row.get("C.P.", "")
+        try:
+            cp = str(int(float(cp_brut))) if str(cp_brut).strip() not in ("", "nan") else ""
+        except (TypeError, ValueError):
+            cp = str(cp_brut).strip()
+        djs = moteur.parse_creneaux(row.get("Créneaux", ""))
+        demi_journees = [dj for dj in moteur.DEMI_JOURNEES if djs is None or dj in djs]
+        magasins.append({
+            "code_vif": code_vif,
+            "nom": str(row.get("Nom", "")).strip(),
+            "etat": str(row.get("État", "")).strip(),
+            "adresse": str(row.get("Adresse", "")).strip(),
+            "ville": str(row.get("Ville", "")).strip(),
+            "cp": cp,
+            "telephone": str(row.get("Téléphone", "")).strip() if str(row.get("Téléphone", "")).strip().lower() != "nan" else "",
+            "emails": _emails_magasin(email_brut) or [email_brut],
+            "demi_journees": demi_journees,
+            "jours_texte": _jours_collecte_texte(demi_journees),
+        })
+    magasins.sort(key=lambda m: m["nom"].lower())
+    return magasins
+
+
+AUTORISATION_TEXTE_LETTRE_DEFAUT = (
+    "Madame la Directrice, Monsieur le Directeur de <<Nom>>,\n\n"
+    "La Banque Alimentaire de l'Isère organise chaque année fin novembre une collecte "
+    "alimentaire dans les GMS du département.\n\n"
+    "En novembre dernier, nous avons collecté 172 tonnes de marchandises dans notre "
+    "département.\n\n"
+    "Nous nous adressons à vous afin que vous donniez votre accord pour la participation "
+    "de votre magasin à la Collecte Nationale des Banques Alimentaires.\n\n"
+    "<<dates>>\n\n"
+    "Les produits alimentaires que nous souhaitons collecter sont indiqués ci-dessous.\n\n"
+    "Nous vous demandons de nous adresser votre accord rapidement à l'aide du coupon "
+    "ci-dessous, par courrier, mail (ba380.collecte@banquealimentaire.org). Nous aurons "
+    "alors le plaisir de prendre contact avec la personne que vous aurez désignée pour "
+    "finaliser la procédure de mise en place dans votre magasin des bénévoles et du "
+    "matériel de communication.\n\n"
+    "Nous vous prions d'agréer, Madame la Directrice, Monsieur le Directeur, l'assurance "
+    "de nos salutations distinguées.\n\n"
+    "<<centre>>\n"
+    "Pierre Thorel\n"
+    "Responsable Collecte à la Banque Alimentaire de l'Isère"
+)
+
+AUTORISATION_TEXTE_COUPON_DEFAUT = (
+    "NOM DU MAGASIN : <<Nom>>   (Code BA Isère : <<CodeVIF>>)\n"
+    "Adresse : <<Adresse>>   <<CP>> <<VILLE>>\n"
+    "Responsable à contacter : _____________________   N° Tél : <<Telephone>>\n"
+    "Mail : <<Email>>\n"
+    "Horaires ouverture/fermeture : ________________          Nb de portes : ____\n"
+    "<<autorisation>>\n"
+    "Signature du responsable du magasin :"
+)
+
+AUTORISATION_TEXTE_MAIL_DEFAUT = (
+    "Madame la Directrice, Monsieur le Directeur de <<Nom>>,\n\n"
+    "Vous trouverez ci-joint notre demande d'autorisation de collecter à l'occasion de la "
+    "collecte nationale des Banques Alimentaires <<Annee>>.\n\n"
+    "Merci de nous retourner le coupon-réponse complété, par mail "
+    "(ba380.collecte@banquealimentaire.org) ou par courrier.\n\n"
+    "Cordialement,\n"
+    "La Banque Alimentaire de l'Isère"
+)
+
+
+def _donnees_lettre_autorisation(magasin, annee):
+    """Valeurs personnalisées communes aux deux générateurs de lettre
+    (.docx éditable pour le modèle, .pdf réellement envoyé — cf.
+    _creer_pdf_autorisation). Le texte de la lettre ET celui du
+    coupon-réponse sont modifiables en ligne (page Gestion des
+    autorisations, même principe que mail_texte pour les
+    chauffeurs/équipiers) — plus aucun texte n'est repris du modèle Word,
+    seule l'affiche des produits (image) en est encore extraite. Repères
+    <<dates>> (lettre) et <<autorisation>> (coupon, ligne OUI/NON avec
+    cases à cocher) déclenchent un rendu spécial ; à défaut de
+    personnalisation, le texte par défaut est utilisé."""
+    aujourdhui = datetime.now()
+    jour_mail = f"{aujourdhui.day} {MOIS_FR[aujourdhui.month - 1]} {aujourdhui.year}"
+
+    with get_db_connection() as conn:
+        campagne = conn.execute(
+            "SELECT autorisation_texte_lettre, autorisation_texte_coupon "
+            "FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    texte_lettre = (campagne["autorisation_texte_lettre"] if campagne else None) or AUTORISATION_TEXTE_LETTRE_DEFAUT
+    texte_coupon = (campagne["autorisation_texte_coupon"] if campagne else None) or AUTORISATION_TEXTE_COUPON_DEFAUT
+
+    return {
+        "jour_mail": jour_mail,
+        "nom": magasin["nom"],
+        "code_vif": magasin["code_vif"],
+        "adresse": magasin["adresse"],
+        "cp": magasin["cp"],
+        "ville": magasin["ville"].upper(),
+        "telephone": magasin["telephone"],
+        "email": ";".join(magasin["emails"]),
+        "phrase_jours": _phrase_jours_collecte(magasin["demi_journees"], annee),
+        "texte_lettre": texte_lettre,
+        "texte_coupon": texte_coupon,
+    }
+
+
+def _chemin_image_produits_autorisation():
+    """Chemin de l'affiche déposée pour la demande d'autorisation, dans
+    l'emplacement PARTAGÉ (hors des arborescences dev/prod, comme les
+    modèles Word du module — cf. MODELES_GARDEE_DIR) : déposée une fois,
+    elle reste disponible d'une campagne à l'autre et d'une session à
+    l'autre, sans avoir à la redéposer chaque année. |None| si absente."""
+    for extension in EXTENSIONS_IMAGE_MAIL_AUTORISEES:
+        chemin = os.path.join(MODELES_GARDEE_DIR, f"autorisation_produits.{extension}")
+        if os.path.exists(chemin):
+            return chemin
+    return None
+
+
+def _image_produits_autorisation():
+    """Récupère l'affiche « Nous avons besoin de... » (produits souhaités),
+    page 2 du PDF de demande d'autorisation — priorité à l'image déposée
+    directement dans l'application (cf. enregistrer_image_autorisation, même
+    principe que mail_image pour les chauffeurs/équipiers), sans connaissance
+    technique requise ; à défaut, repli sur la plus grande image inline du
+    modèle Word partagé (ancien mécanisme, conservé pour compatibilité)."""
+    chemin_depose = _chemin_image_produits_autorisation()
+    if chemin_depose:
+        with open(chemin_depose, "rb") as f:
+            return f.read()
+
+    source = _modele_gardee("demande_autorisation_collecte.docx")
+    if not os.path.exists(source):
+        return None
+    document = Document(source)
+    plus_grande_taille = 0
+    plus_grande_image = None
+    for shape in document.inline_shapes:
+        taille = shape.width * shape.height
+        if taille > plus_grande_taille:
+            plus_grande_taille = taille
+            plus_grande_image = shape
+    if plus_grande_image is None:
+        return None
+    try:
+        rid = plus_grande_image._inline.graphic.graphicData.pic.blipFill.blip.embed
+        return document.part.rels[rid].target_part.blob
+    except (AttributeError, KeyError):
+        return None
+
+
+def _creer_pdf_autorisation(magasin, annee, dossier):
+    """Génère la lettre de demande d'autorisation en PDF — c'est ce fichier
+    qui est joint au mail (pas le .docx, dont l'ouverture n'est pas garantie
+    chez tous les destinataires externes). Aucun convertisseur Word→PDF
+    n'étant disponible sur le serveur, la mise en page est reconstruite à la
+    main avec reportlab, sur le même principe que _creer_pdf_association :
+    le TEXTE suit les valeurs personnalisées ci-dessus, mais la mise en
+    page visuelle est fixée dans ce code — à adapter ici si la lettre change
+    de structure d'une année à l'autre (au-delà d'un simple changement de
+    texte, qui lui ne nécessite que d'éditer le modèle Word)."""
+    donnees = _donnees_lettre_autorisation(magasin, annee)
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", magasin["nom"]).strip("_").lower() or "magasin"
+    chemin = os.path.join(dossier, f"demande_autorisation_{annee}_{slug}.pdf")
+
+    page_width, page_height = A4
+    marge = 20 * mm
+    pdf = pdf_canvas.Canvas(chemin, pagesize=A4)
+    logo = os.path.join(current_app.root_path, "static", "images", "logo_ba_complet.png")
+
+    y = page_height - 18 * mm
+    if os.path.exists(logo):
+        pdf.drawImage(ImageReader(logo), marge, y - 12 * mm, width=70 * mm, height=12 * mm,
+                       preserveAspectRatio=True, mask="auto")
+    y -= 22 * mm
+
+    pdf.setFont("Helvetica-Bold", 13)
+    pdf.drawCentredString(page_width / 2, y, "COLLECTE NATIONALE DES BANQUES ALIMENTAIRES")
+    y -= 12 * mm
+
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(marge, y, f"Fontaine, le {donnees['jour_mail']}")
+    y -= 14 * mm
+
+    def paragraphe(texte, taille=10, gras=False, interligne=5 * mm, avant=2 * mm):
+        nonlocal y
+        y -= avant
+        police = "Helvetica-Bold" if gras else "Helvetica"
+        pdf.setFont(police, taille)
+        largeur_max = page_width - 2 * marge
+        ligne = ""
+        for mot in texte.split():
+            essai = (ligne + " " + mot).strip()
+            if pdf.stringWidth(essai, police, taille) > largeur_max:
+                pdf.drawString(marge, y, ligne)
+                y -= interligne
+                ligne = mot
+            else:
+                ligne = essai
+        if ligne:
+            pdf.drawString(marge, y, ligne)
+            y -= interligne
+
+    def phrase_dates():
+        nonlocal y
+        y -= 3 * mm
+        pdf.setFont("Helvetica-Bold", 11)
+        pdf.setFillColor(colors.red)
+        pdf.drawCentredString(page_width / 2, y, f"La collecte se déroulera {donnees['phrase_jours']}.")
+        pdf.setFillColor(colors.black)
+        y -= 10 * mm
+
+    def bloc_centre(alinea, avant):
+        nonlocal y
+        y -= avant
+        pdf.setFont("Helvetica", 10)
+        for ligne in alinea.split("\n")[1:]:
+            ligne = ligne.strip()
+            if ligne:
+                pdf.drawCentredString(page_width / 2, y, ligne)
+                y -= 5 * mm
+
+    texte_lettre = donnees["texte_lettre"].replace("<<Nom>>", donnees["nom"])
+    alineas = texte_lettre.split("\n\n")
+    dates_inserees = False
+    for i, alinea in enumerate(alineas):
+        alinea = alinea.strip()
+        if not alinea:
+            continue
+        if alinea == "<<dates>>":
+            phrase_dates()
+            dates_inserees = True
+        elif alinea.startswith("<<centre>>"):
+            bloc_centre(alinea, avant=0 if i == 0 else 6 * mm)
+        else:
+            paragraphe(alinea, avant=0 if i == 0 else 2 * mm)
+    if not dates_inserees:
+        phrase_dates()
+    y -= 8 * mm
+
+    lignes_coupon = [
+        ligne.strip() for ligne in donnees["texte_coupon"]
+        .replace("<<Nom>>", donnees["nom"])
+        .replace("<<CodeVIF>>", donnees["code_vif"])
+        .replace("<<Adresse>>", donnees["adresse"])
+        .replace("<<CP>>", donnees["cp"])
+        .replace("<<VILLE>>", donnees["ville"])
+        .replace("<<Telephone>>", donnees["telephone"])
+        .replace("<<Email>>", donnees["email"])
+        .split("\n")
+        if ligne.strip()
+    ]
+
+    espace_pour_signer = 20 * mm if any(l.startswith("Signature du responsable") for l in lignes_coupon) else 0
+    hauteur_coupon = len(lignes_coupon) * 8 * mm + 6 * mm + espace_pour_signer
+    pdf.rect(marge, y - hauteur_coupon, page_width - 2 * marge, hauteur_coupon)
+    y -= 8 * mm
+    for ligne in lignes_coupon:
+        if ligne == "<<autorisation>>":
+            pdf.setFont("Helvetica-Bold", 10)
+            x = marge + 3 * mm
+            texte = "AUTORISATION DE COLLECTER : OUI"
+            pdf.drawString(x, y, texte)
+            x_case_oui = x + pdf.stringWidth(texte, "Helvetica-Bold", 10) + 4 * mm
+            cote_case = 4.5 * mm
+            pdf.rect(x_case_oui, y - 1 * mm, cote_case, cote_case)
+            x_non = x_case_oui + cote_case + 18 * mm
+            pdf.drawString(x_non, y, "NON")
+            x_case_non = x_non + pdf.stringWidth("NON", "Helvetica-Bold", 10) + 4 * mm
+            pdf.rect(x_case_non, y - 1 * mm, cote_case, cote_case)
+        else:
+            gras = ligne.startswith("NOM DU MAGASIN") or ligne.startswith("Signature du responsable")
+            pdf.setFont("Helvetica-Bold" if gras else "Helvetica", 10)
+            pdf.drawString(marge + 3 * mm, y, ligne)
+        y -= 8 * mm
+
+    pdf.setFont("Helvetica", 8)
+    pdf.drawCentredString(
+        page_width / 2, 12 * mm,
+        "Banque Alimentaire de l'Isère - Tel : 04 76 85 92 50 - Courriel : ba380.collecte@banquealimentaire.org",
+    )
+
+    image_produits = _image_produits_autorisation()
+    if image_produits:
+        pdf.showPage()
+        lecteur = ImageReader(io.BytesIO(image_produits))
+        largeur_image, hauteur_image = lecteur.getSize()
+        marge_page2 = 10 * mm
+        largeur_max = page_width - 2 * marge_page2
+        hauteur_max = page_height - 2 * marge_page2
+        echelle = min(largeur_max / largeur_image, hauteur_max / hauteur_image)
+        largeur_finale = largeur_image * echelle
+        hauteur_finale = hauteur_image * echelle
+        pdf.drawImage(
+            lecteur,
+            (page_width - largeur_finale) / 2, (page_height - hauteur_finale) / 2,
+            width=largeur_finale, height=hauteur_finale, preserveAspectRatio=True, mask="auto",
+        )
+
+    pdf.save()
+    return chemin
+
+
+@collecte_bp.route("/collecte/<int:annee>/autorisations", methods=["GET", "POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def autorisations(annee):
+    """Publipostage de demande d'autorisation de collecter aux magasins
+    ayant un email renseigné et pas encore d'accord (colonne 'Accord' du
+    référentiel magasins) — lettre PDF personnalisée jointe au mail (cf.
+    _creer_pdf_autorisation)."""
+    magasins = _lire_magasins_autorisation(annee)
+    dossier = _dossier_annee(annee)
+
+    if request.method == "POST":
+        if request.form.get("confirmation") != "oui":
+            flash("❌ Confirmez le contrôle avant l'envoi", "danger")
+            return redirect(url_for("collecte.autorisations", annee=annee))
+
+        mode_test = request.form.get("mode_test") == "on"
+        test_un_magasin = request.form.get("test_un_magasin") == "on"
+        code_vif_test = request.form.get("magasin_test_code_vif", "")
+        codes_selectionnes = set(request.form.getlist("magasins"))
+
+        if test_un_magasin:
+            magasins_a_traiter = [m for m in magasins if m["code_vif"] == code_vif_test]
+            if not magasins_a_traiter:
+                flash("❌ Sélectionnez un magasin pour le test", "danger")
+                return redirect(url_for("collecte.autorisations", annee=annee))
+        else:
+            magasins_a_traiter = [m for m in magasins if m["code_vif"] in codes_selectionnes]
+            if not magasins_a_traiter:
+                flash("❌ Aucun magasin sélectionné", "danger")
+                return redirect(url_for("collecte.autorisations", annee=annee))
+
+        if mode_test and not getattr(current_user, "email", ""):
+            flash("❌ Votre compte n'a pas d'adresse email pour le test", "danger")
+            return redirect(url_for("collecte.autorisations", annee=annee))
+
+        with get_db_connection() as conn:
+            campagne_mail = conn.execute(
+                "SELECT autorisation_texte_mail FROM collecte_campagnes WHERE annee = ?", (annee,)
+            ).fetchone()
+        texte_mail_modele = (campagne_mail["autorisation_texte_mail"] if campagne_mail else None) or AUTORISATION_TEXTE_MAIL_DEFAUT
+        texte_mail_modele = texte_mail_modele.replace("<<Annee>>", str(annee))
+
+        maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        envoyes = 0
+        for magasin in magasins_a_traiter:
+            fichier_lettre = _creer_pdf_autorisation(magasin, annee, dossier)
+            destinataires = [current_user.email] if mode_test else magasin["emails"]
+            envoyer_mail(
+                sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — Demande d'autorisation — {magasin['nom']}",
+                destinataires=destinataires,
+                texte=texte_mail_modele.replace("<<Nom>>", magasin["nom"]),
+                sender_override=os.getenv("MAILJET_SENDER"),
+                cc=["ba380.collecte@banquealimentaire.org"],
+                attachment_path=fichier_lettre,
+            )
+            envoyes += 1
+            if not mode_test:
+                with get_db_connection() as conn:
+                    conn.execute("""
+                        INSERT INTO collecte_demandes_autorisation (annee, code_vif, envoye_le, envoye_par)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(annee, code_vif)
+                        DO UPDATE SET envoye_le = excluded.envoye_le, envoye_par = excluded.envoye_par
+                    """, (annee, magasin["code_vif"], maintenant, current_user.email))
+                    conn.commit()
+
+        flash(f"✅ {envoyes} demande(s) d'autorisation {'de test ' if mode_test else ''}envoyée(s)", "success")
+        write_log(f"📧 Envoi demandes autorisation {annee} : {envoyes} envoyé(s) par {current_user.email}")
+        return redirect(url_for("collecte.autorisations", annee=annee))
+
+    with get_db_connection() as conn:
+        deja_envoyes = {
+            r["code_vif"] for r in conn.execute(
+                "SELECT code_vif FROM collecte_demandes_autorisation WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
+        campagne = conn.execute(
+            "SELECT autorisation_texte_lettre, autorisation_texte_coupon, autorisation_texte_mail "
+            "FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    for magasin in magasins:
+        magasin["deja_envoye"] = magasin["code_vif"] in deja_envoyes
+
+    image_produits_url = url_for("collecte.autorisations_image") if _chemin_image_produits_autorisation() else None
+
+    return render_template(
+        "collecte/autorisations.html",
+        annee=annee,
+        magasins=magasins,
+        texte_lettre=(campagne["autorisation_texte_lettre"] if campagne else None) or AUTORISATION_TEXTE_LETTRE_DEFAUT,
+        texte_coupon=(campagne["autorisation_texte_coupon"] if campagne else None) or AUTORISATION_TEXTE_COUPON_DEFAUT,
+        texte_mail=(campagne["autorisation_texte_mail"] if campagne else None) or AUTORISATION_TEXTE_MAIL_DEFAUT,
+        image_produits_url=image_produits_url,
+    )
+
+
+@collecte_bp.route("/collecte/autorisations/texte", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_texte_autorisation():
+    """Enregistre le texte de la lettre, du coupon-réponse et/ou du corps du
+    mail de la demande d'autorisation, personnalisables en ligne comme
+    mail_texte pour les chauffeurs/équipiers (cf.
+    enregistrer_contenu_mail_chauffeurs_equipiers)."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    texte_lettre = request.form.get("texte_lettre", "").strip()
+    texte_coupon = request.form.get("texte_coupon", "").strip()
+    texte_mail = request.form.get("texte_mail", "").strip()
+    with get_db_connection() as conn:
+        conn.execute(
+            "UPDATE collecte_campagnes SET autorisation_texte_lettre = ?, autorisation_texte_coupon = ?, "
+            "autorisation_texte_mail = ? WHERE annee = ?",
+            (texte_lettre or None, texte_coupon or None, texte_mail or None, annee),
+        )
+        conn.commit()
+    flash("✅ Texte de la lettre enregistré.", "success")
+    return redirect(url_for("collecte.autorisations", annee=annee))
+
+
+@collecte_bp.route("/collecte/autorisations/image", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_image_autorisation():
+    """Dépose l'affiche des produits recherchés (2ᵉ page du PDF de demande
+    d'autorisation) directement dans l'application — même principe que
+    mail_image pour les chauffeurs/équipiers, mais dans l'emplacement
+    PARTAGÉ du module (cf. _chemin_image_produits_autorisation) : déposée
+    une fois, elle reste utilisée d'une campagne et d'une session à l'autre,
+    sans avoir à la redéposer chaque année ni dépendre du modèle Word."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    fichier = request.files.get("image_produits")
+
+    if not fichier or not fichier.filename:
+        flash("⛔ Aucun fichier sélectionné.", "warning")
+        return redirect(url_for("collecte.autorisations", annee=annee))
+
+    extension = fichier.filename.rsplit(".", 1)[-1].lower() if "." in fichier.filename else ""
+    if extension not in EXTENSIONS_IMAGE_MAIL_AUTORISEES:
+        flash("⛔ Format non accepté (PNG, JPG ou GIF uniquement).", "danger")
+        return redirect(url_for("collecte.autorisations", annee=annee))
+
+    ancien_chemin = _chemin_image_produits_autorisation()
+    if ancien_chemin and os.path.exists(ancien_chemin):
+        os.remove(ancien_chemin)
+
+    fichier.save(os.path.join(MODELES_GARDEE_DIR, f"autorisation_produits.{extension}"))
+
+    flash("✅ Affiche des produits enregistrée.", "success")
+    return redirect(url_for("collecte.autorisations", annee=annee))
+
+
+@collecte_bp.route("/collecte/autorisations/image")
+@login_required
+@require_access("collecte", "lecture")
+def autorisations_image():
+    """Sert l'affiche des produits déposée pour la demande d'autorisation
+    (aperçu sur la page de gestion) — authentifiée, contrairement à
+    chauffeurs_equipiers_image : cette image n'est jamais chargée par un
+    client mail, seulement intégrée côté serveur dans le PDF envoyé."""
+    chemin = _chemin_image_produits_autorisation()
+    if not chemin:
+        abort(404)
+    return send_file(chemin)
+
+
+@collecte_bp.route("/collecte/<int:annee>/autorisations/apercu")
+@login_required
+@require_access("collecte", "lecture")
+def autorisations_apercu(annee):
+    """Génère et affiche directement dans le navigateur (pas de
+    téléchargement) un exemple de la lettre PDF telle qu'elle serait
+    envoyée à un magasin — pour contrôler le rendu sans passer par le mode
+    test de l'envoi (donc sans consommer d'envoi Mailjet, même de test)."""
+    magasins = _lire_magasins_autorisation(annee)
+    if not magasins:
+        flash("⛔ Aucun magasin disponible pour l'aperçu", "danger")
+        return redirect(url_for("collecte.autorisations", annee=annee))
+    code_vif = request.args.get("code_vif", "")
+    magasin = next((m for m in magasins if m["code_vif"] == code_vif), magasins[0])
+
+    dossier = _dossier_annee(annee)
+    chemin = _creer_pdf_autorisation(magasin, annee, dossier)
+    with open(chemin, "rb") as f:
+        donnees_pdf = f.read()
+    os.remove(chemin)
+
+    return send_file(
+        io.BytesIO(donnees_pdf),
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=f"apercu_demande_autorisation_{annee}.pdf",
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/autorisations/apercu-mail")
+@login_required
+@require_access("collecte", "lecture")
+def autorisations_apercu_mail(annee):
+    """Affiche directement dans le navigateur (pas d'envoi, même de test)
+    le texte exact du corps du mail pour le magasin sélectionné — distinct
+    de l'aperçu PDF (celui-ci montre la lettre jointe, pas le corps du
+    mail qui l'accompagne)."""
+    magasins = _lire_magasins_autorisation(annee)
+    if not magasins:
+        flash("⛔ Aucun magasin disponible pour l'aperçu", "danger")
+        return redirect(url_for("collecte.autorisations", annee=annee))
+    code_vif = request.args.get("code_vif", "")
+    magasin = next((m for m in magasins if m["code_vif"] == code_vif), magasins[0])
+
+    with get_db_connection() as conn:
+        campagne_mail = conn.execute(
+            "SELECT autorisation_texte_mail FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    texte_mail_modele = (campagne_mail["autorisation_texte_mail"] if campagne_mail else None) or AUTORISATION_TEXTE_MAIL_DEFAUT
+    texte = texte_mail_modele.replace("<<Annee>>", str(annee)).replace("<<Nom>>", magasin["nom"])
+    return Response(texte, mimetype="text/plain; charset=utf-8")
+
+
+# Boîte englobante large autour de l'Isère (+ départements limitrophes), pour
+# repérer une adresse mal géocodée ou une coordonnée manifestement fausse
+# dans le référentiel (ex. lat/lon inversées, saisie erronée) — pas une
+# limite administrative précise, juste un garde-fou de plausibilité.
+ZONE_LAT_MIN, ZONE_LAT_MAX = 44.0, 46.3
+ZONE_LON_MIN, ZONE_LON_MAX = 4.2, 6.3
+
+
+def _coords_plausibles(lat, lon):
+    return ZONE_LAT_MIN <= lat <= ZONE_LAT_MAX and ZONE_LON_MIN <= lon <= ZONE_LON_MAX
+
+
+def _charger_magasins_localisation(annee, campagne):
+    """Magasins avec leurs coordonnées GPS, pour la carte « Localisation
+    magasins et associations » — deux catégories affichées (contrairement au
+    périmètre plus étroit de _lire_referentiel_magasins_bai, réservé aux
+    tournées BAI) : magasins collectés par la BAI, ET magasins en collecte
+    gardée (assurée par une association partenaire, quel que soit le
+    Stockage — ici c'est une vue d'ensemble géographique, pas une contrainte
+    de tournée camion). Les magasins 'Non collecté' restent exclus. Reflète
+    l'état courant du fichier magasins (pas de liste figée ici, contrairement
+    aux cagettes : c'est une vue d'ensemble, pas une saisie à préserver dans
+    le temps)."""
+    chemin = _fichier_drive(annee, "magasins") or os.path.join(_dossier_annee(annee), campagne["fichier_magasins"])
+
+    df = pd.read_excel(chemin)
+    df.columns = [c.strip() for c in df.columns]
+    df = df.loc[:, ~df.columns.duplicated()]
+
+    rmap = {}
+    for col in df.columns:
+        cl = col.lower()
+        if "vif" in cl or cl == "code":
+            rmap[col] = "Code VIF"
+        elif ("nom" in cl or "magasin" in cl) and "fiche" not in cl:
+            rmap[col] = "Nom"
+        elif "ville" in cl:
+            rmap[col] = "Ville"
+        elif "lat" in cl:
+            rmap[col] = "Latitude"
+        elif "lon" in cl:
+            rmap[col] = "Longitude"
+    df = df.rename(columns=rmap)
+    df = df.loc[:, ~df.columns.duplicated()]
+
+    for col in ["Code VIF", "Nom", "État", "Stockage", "Ville", "Latitude", "Longitude"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    etat = df["État"].astype(str).str.strip()
+    mask_bai = etat == "Collecté par la BAI"
+    mask_gardee = etat == "Collecte gardée"
+    df = df[mask_bai | mask_gardee].reset_index(drop=True)
+
+    magasins = []
+    adresses_invalides = []
+    for _, row in df.iterrows():
+        code_vif = str(row["Code VIF"]).strip()
+        nom_magasin = str(row["Nom"]).strip()
+        if not code_vif or code_vif.lower() == "nan":
+            continue
+        ville = str(row["Ville"]).strip()
+        try:
+            lat, lon = float(row["Latitude"]), float(row["Longitude"])
+            if not _coords_plausibles(lat, lon):
+                raise ValueError("hors zone")
+        except (ValueError, TypeError):
+            adresses_invalides.append({"nom": nom_magasin, "ville": ville})
+            continue
+        categorie = "bai" if str(row["État"]).strip() == "Collecté par la BAI" else "gardee"
+        stockage = str(row["Stockage"]).strip()
+        magasins.append({
+            "nom": nom_magasin, "ville": ville, "categorie": categorie,
+            "stockage": "" if stockage.lower() == "nan" else stockage,
+            "lat": lat, "lon": lon,
+        })
+    return magasins, adresses_invalides
 
 
 def _charger_lignes_cagettes(annee):
@@ -763,6 +1603,8 @@ def collecte_main():
         derniere_generation=generations[0] if generations else None,
         nb_generations=len(generations),
         derniere_analyse=derniere_analyse,
+        texte_mail_gardee=_lire_texte_mail_gardee(),
+        url_drive_modele_association=_lire_url_drive_modele_association(),
     )
 
 
@@ -773,13 +1615,21 @@ def chauffeurs_equipiers():
     annee = request.args.get("annee", type=int) or request.form.get("annee", type=int) or datetime.now().year
     try:
         destinataires, personnes_sans_email = _charger_affectations_chauffeurs_equipiers(annee)
-        mail_debut, mail_fin = _contenu_mail_affectations(annee)
+        mail_texte = _contenu_mail_affectations(annee)
     except Exception as erreur:
         flash(f"❌ Impossible de charger les affectations : {erreur}", "danger")
         return redirect(url_for("collecte.collecte_main", annee=annee))
 
+    image_url = (
+        url_for("collecte.chauffeurs_equipiers_image", annee=annee, _external=True)
+        if _chemin_image_mail_chauffeurs_equipiers() else None
+    )
+    pieces_jointes = _pieces_jointes_mail()
+    chemins_pj = [pj["chemin"] for pj in pieces_jointes]
+
     if request.method == "POST":
         action = request.form.get("action")
+
         if not destinataires:
             flash("❌ Aucun chauffeur ou équipier avec une adresse email.", "danger")
         elif action == "test":
@@ -792,8 +1642,10 @@ def chauffeurs_equipiers():
                 envoyer_mail(
                     f"[TEST] Affectations tournées {annee}",
                     [adresse_test],
-                    _corps_mail_affectations(exemple, mail_debut, mail_fin),
+                    _corps_mail_affectations_html(exemple, mail_texte, image_url),
                     sender_override="ba380.directeur@banquealimentaire.org",
+                    attachment_paths=chemins_pj or None,
+                    is_html=True,
                 )
                 flash(f"✅ Mail de test envoyé à {adresse_test}.", "success")
         elif action == "envoyer":
@@ -801,8 +1653,10 @@ def chauffeurs_equipiers():
                 envoyer_mail(
                     f"Vos affectations tournées {annee}",
                     [personne["email"]],
-                    _corps_mail_affectations(personne, mail_debut, mail_fin),
+                    _corps_mail_affectations_html(personne, mail_texte, image_url),
                     sender_override="ba380.directeur@banquealimentaire.org",
+                    attachment_paths=chemins_pj or None,
+                    is_html=True,
                 )
             flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
 
@@ -811,9 +1665,31 @@ def chauffeurs_equipiers():
         annee=annee,
         destinataires=destinataires,
         personnes_sans_email=personnes_sans_email,
-        mail_debut=mail_debut,
-        mail_fin=mail_fin,
+        mail_texte=mail_texte,
+        image_url=image_url,
+        pieces_jointes=pieces_jointes,
     )
+
+
+@collecte_bp.route("/collecte/<int:annee>/chauffeurs_equipiers/apercu")
+@login_required
+@require_access("collecte", "lecture")
+def chauffeurs_equipiers_apercu(annee):
+    """Affiche directement dans le navigateur (pas d'envoi, même de test) le
+    rendu HTML exact du mail pour la personne sélectionnée — même principe
+    que l'aperçu PDF de la demande d'autorisation de collecter."""
+    destinataires, _ = _charger_affectations_chauffeurs_equipiers(annee)
+    if not destinataires:
+        abort(404)
+    mail_texte = _contenu_mail_affectations(annee)
+    image_url = (
+        url_for("collecte.chauffeurs_equipiers_image", annee=annee, _external=True)
+        if _chemin_image_mail_chauffeurs_equipiers() else None
+    )
+    email = request.args.get("email", "")
+    personne = next((p for p in destinataires if p["email"] == email), destinataires[0])
+    html = _corps_mail_affectations_html(personne, mail_texte, image_url)
+    return Response(html, mimetype="text/html")
 
 
 @collecte_bp.route("/collecte/chauffeurs_equipiers/contenu-mail", methods=["POST"])
@@ -821,16 +1697,107 @@ def chauffeurs_equipiers():
 @require_access("collecte", "ecriture")
 def enregistrer_contenu_mail_chauffeurs_equipiers():
     annee = request.form.get("annee", type=int) or datetime.now().year
-    debut = request.form.get("mail_debut", "").strip()
-    fin = request.form.get("mail_fin", "").strip()
+    texte = request.form.get("mail_texte", "").strip()
     with get_db_connection() as conn:
         conn.execute(
-            """UPDATE collecte_campagnes
-               SET mail_debut = ?, mail_fin = ?
-               WHERE annee = ?""",
-            (debut, fin, annee),
+            "UPDATE collecte_campagnes SET mail_texte = ? WHERE annee = ?",
+            (texte, annee),
         )
-    flash("✅ Début et fin du mail enregistrés.", "success")
+    flash("✅ Texte du mail enregistré.", "success")
+    return redirect(url_for("collecte.chauffeurs_equipiers", annee=annee))
+
+
+EXTENSIONS_IMAGE_MAIL_AUTORISEES = {"png", "jpg", "jpeg", "gif"}
+
+
+@collecte_bp.route("/collecte/chauffeurs_equipiers/image", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_image_mail_chauffeurs_equipiers():
+    """Dépose l'image (ex. plan de parking) insérable dans le mail
+    chauffeurs/équipiers via le marqueur <<image>> — dans l'emplacement
+    PARTAGÉ du module (comme l'affiche des produits de la demande
+    d'autorisation) : déposée une fois, elle reste disponible d'une
+    campagne et d'une session à l'autre, servie ensuite par une route
+    publique (chauffeurs_equipiers_image) car les clients mail chargent les
+    images sans être authentifiés."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    fichier = request.files.get("mail_image")
+
+    if not fichier or not fichier.filename:
+        flash("⛔ Aucun fichier sélectionné.", "warning")
+        return redirect(url_for("collecte.chauffeurs_equipiers", annee=annee))
+
+    extension = fichier.filename.rsplit(".", 1)[-1].lower() if "." in fichier.filename else ""
+    if extension not in EXTENSIONS_IMAGE_MAIL_AUTORISEES:
+        flash("⛔ Format non accepté (PNG, JPG ou GIF uniquement).", "danger")
+        return redirect(url_for("collecte.chauffeurs_equipiers", annee=annee))
+
+    ancien_chemin = _chemin_image_mail_chauffeurs_equipiers()
+    if ancien_chemin and os.path.exists(ancien_chemin):
+        os.remove(ancien_chemin)
+
+    fichier.save(os.path.join(MODELES_GARDEE_DIR, f"mail_chauffeurs_equipiers.{extension}"))
+
+    flash("✅ Image enregistrée — insérez-la dans le texte avec le marqueur <<image>>.", "success")
+    return redirect(url_for("collecte.chauffeurs_equipiers", annee=annee))
+
+
+@collecte_bp.route("/collecte/<int:annee>/chauffeurs_equipiers/image")
+def chauffeurs_equipiers_image(annee):
+    """Sert l'image du mail chauffeurs/équipiers — volontairement PUBLIQUE
+    (pas de @login_required) : un client mail charge les images sans
+    authentification. Contenu non sensible (plan de parking, consignes).
+    Le paramètre annee est conservé dans l'URL pour ne pas invalider les
+    liens déjà présents dans des mails déjà envoyés, mais l'image elle-même
+    est désormais partagée entre toutes les campagnes."""
+    chemin = _chemin_image_mail_chauffeurs_equipiers()
+    if not chemin:
+        abort(404)
+    return send_file(chemin)
+
+
+@collecte_bp.route("/collecte/chauffeurs_equipiers/pieces_jointes", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def ajouter_piece_jointe_mail_chauffeurs_equipiers():
+    """Ajoute une ou plusieurs pièces jointes PDF persistantes, dans
+    l'emplacement PARTAGÉ du module (conservées d'une campagne et d'une
+    session à l'autre, jointes automatiquement à chaque test/envoi) — à la
+    différence de l'image, plusieurs fichiers peuvent coexister."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+
+    ajoutes = 0
+    for fichier in request.files.getlist("pieces_jointes"):
+        if not fichier or not fichier.filename:
+            continue
+        if not fichier.filename.lower().endswith(".pdf"):
+            flash(f"⛔ « {fichier.filename} » ignoré : seuls les fichiers PDF sont acceptés.", "warning")
+            continue
+        nom = secure_filename(fichier.filename)
+        fichier.save(os.path.join(MODELES_GARDEE_DIR, f"{PIECE_JOINTE_MAIL_PREFIXE}{nom}"))
+        ajoutes += 1
+
+    if ajoutes:
+        flash(f"✅ {ajoutes} pièce(s) jointe(s) ajoutée(s).", "success")
+    else:
+        flash("⛔ Aucun fichier PDF valide sélectionné.", "warning")
+
+    return redirect(url_for("collecte.chauffeurs_equipiers", annee=annee))
+
+
+@collecte_bp.route("/collecte/chauffeurs_equipiers/pieces_jointes/supprimer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def supprimer_piece_jointe_mail_chauffeurs_equipiers():
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    nom_a_retirer = request.form.get("fichier", "")
+
+    chemin = os.path.join(MODELES_GARDEE_DIR, f"{PIECE_JOINTE_MAIL_PREFIXE}{nom_a_retirer}")
+    if os.path.exists(chemin):
+        os.remove(chemin)
+        flash(f"🗑️ « {nom_a_retirer} » retiré.", "success")
+
     return redirect(url_for("collecte.chauffeurs_equipiers", annee=annee))
 
 
@@ -1433,6 +2400,78 @@ def telecharger_fichier_annee(annee, nom_fichier):
     )
 
 
+def _donnees_localisation(annee):
+    with get_db_connection() as conn:
+        campagne = conn.execute(
+            "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+
+    magasins_bai, magasins_gardee, adresses_invalides = [], [], []
+    if campagne and (campagne["fichier_magasins"] or campagne["drive_magasins"]):
+        magasins, adresses_invalides = _charger_magasins_localisation(annee, campagne)
+        magasins_bai = [m for m in magasins if m["categorie"] == "bai"]
+        magasins_gardee = [m for m in magasins if m["categorie"] == "gardee"]
+
+    with get_db_connection() as conn:
+        rows = conn.execute("""
+            SELECT nom_association, COMMUNE, latitude, longitude
+            FROM associations
+            WHERE LOWER(TRIM(COALESCE(validite,''))) = 'oui'
+            ORDER BY nom_association
+        """).fetchall()
+    associations = []
+    for r in rows:
+        lat, lon = r["latitude"], r["longitude"]
+        if lat is None or lon is None or not _coords_plausibles(lat, lon):
+            adresses_invalides.append({"nom": r["nom_association"], "ville": r["COMMUNE"] or ""})
+            continue
+        associations.append({"nom": r["nom_association"], "ville": r["COMMUNE"] or "", "lat": lat, "lon": lon})
+    return magasins_bai, magasins_gardee, associations, adresses_invalides
+
+
+@collecte_bp.route("/collecte/<int:annee>/localisation")
+@login_required
+@require_access("collecte", "lecture")
+def localisation(annee):
+    magasins_bai, magasins_gardee, associations, adresses_invalides = _donnees_localisation(annee)
+    token = generer_token_localisation(annee)
+    lien_partage = url_for("collecte.localisation_lien", annee=annee, token=token, _external=True)
+
+    return render_template(
+        "collecte/localisation.html",
+        annee=annee,
+        magasins_bai=magasins_bai,
+        magasins_gardee=magasins_gardee,
+        associations=associations,
+        adresses_invalides=adresses_invalides,
+        lien_partage=lien_partage,
+        duree_lien_jours=LOCALISATION_TOKEN_VALIDITE_JOURS,
+        est_public=False,
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/localisation-lien/<token>")
+def localisation_lien(annee, token):
+    """Version sans connexion de la carte localisation, pour un lien envoyé
+    par mail à des personnes sans compte sur l'appli (cf. generer_token_localisation)."""
+    payload = verifier_token_localisation(token)
+    if not payload or payload.get("annee") != annee:
+        return render_template("collecte/localisation_lien_invalide.html"), 403
+
+    magasins_bai, magasins_gardee, associations, adresses_invalides = _donnees_localisation(annee)
+
+    return render_template(
+        "collecte/localisation.html",
+        annee=annee,
+        magasins_bai=magasins_bai,
+        magasins_gardee=magasins_gardee,
+        associations=associations,
+        adresses_invalides=adresses_invalides,
+        lien_partage=None,
+        est_public=True,
+    )
+
+
 @collecte_bp.route("/collecte/<int:annee>/cagettes")
 @login_required
 @require_access("collecte", "lecture")
@@ -1449,6 +2488,12 @@ def cagettes(annee):
     initialisee = bool(campagne["cagettes_initialisee_le"])
     lignes = _charger_lignes_cagettes(annee) if initialisee else []
 
+    try:
+        magasins_par_camion = _charger_magasins_par_camion(annee) if initialisee else {}
+    except Exception as erreur:
+        write_log(f"⚠️ Collecte {annee} : filtre camion cagettes indisponible ({erreur})")
+        magasins_par_camion = {}
+
     return render_template(
         "collecte/cagettes.html",
         annee=annee,
@@ -1456,7 +2501,182 @@ def cagettes(annee):
         demi_journees=moteur.DEMI_JOURNEES,
         campagne=campagne,
         initialisee=initialisee,
+        magasins_par_camion=magasins_par_camion,
     )
+
+
+# Constantes fixes du format d'import VIF « Saisie des cagettes par magasin »
+# (réception marchandise) — colonnes et valeurs figées communiquées par
+# l'utilisateur, pas de logique métier derrière, juste le gabarit attendu.
+CAGETTES_EXPORT_SOCIETE = "01"
+CAGETTES_EXPORT_ETAB = "38"
+CAGETTES_EXPORT_LIEU = "01"
+CAGETTES_EXPORT_DEPOT = "05"
+CAGETTES_EXPORT_ARTICLE = "5010000"
+CAGETTES_EXPORT_UNITE = "kg"
+CAGETTES_EXPORT_ORIGINE = "co"
+
+
+@collecte_bp.route("/collecte/<int:annee>/cagettes/export")
+@login_required
+@require_access("collecte", "lecture")
+def exporter_cagettes(annee):
+    """Export CSV « Saisie des cagettes par magasin » pour import VIF —
+    une ligne par magasin (total toutes demi-journées confondues), quantité
+    en poids réel après pesée uniquement (la pesée doit être faite avant
+    l'export), datée du jour de génération de l'export."""
+    with get_db_connection() as conn:
+        campagne = conn.execute(
+            "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    if not campagne:
+        flash(f"⛔ Campagne {annee} introuvable", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    poids_kg = campagne["poids_cagette_pese"] or 0
+    date_reception = datetime.now().strftime("%d/%m/%Y")
+
+    lignes = _charger_lignes_cagettes(annee)
+
+    est_dev = os.getenv("ENVIRONMENT", "DEV").upper() != "PROD"
+    forcer = est_dev and request.args.get("forcer") == "1"
+
+    magasins_zero = [ligne["nom_magasin"] for ligne in lignes if not (ligne.get("total") or 0)]
+    if magasins_zero and not forcer:
+        flash(
+            f"⛔ Export impossible : {len(magasins_zero)} magasin(s) sans aucune cagette saisie — "
+            f"{', '.join(magasins_zero)}",
+            "danger",
+        )
+        return redirect(url_for("collecte.cagettes", annee=annee))
+
+    if magasins_zero and forcer:
+        write_log(f"🧪 Export cagettes {annee} FORCÉ (dev) malgré {len(magasins_zero)} magasin(s) à zéro par {current_user.email}")
+
+    tampon = StringIO()
+    ecrivain = csv.writer(tampon, delimiter=";")
+    # Pas de ligne d'entête : le format d'import VIF n'en attend pas.
+    for ligne in lignes:
+        total = ligne.get("total") or 0
+        if not total:
+            continue
+        ecrivain.writerow([
+            CAGETTES_EXPORT_SOCIETE,
+            CAGETTES_EXPORT_ETAB,
+            date_reception,
+            str(ligne["code_vif"]).zfill(8),
+            CAGETTES_EXPORT_LIEU,
+            CAGETTES_EXPORT_DEPOT,
+            CAGETTES_EXPORT_ARTICLE,
+            round(total * poids_kg),
+            CAGETTES_EXPORT_UNITE,
+            "", "", "", "",
+            CAGETTES_EXPORT_ORIGINE,
+        ])
+
+    write_log(f"📤 Export CSV cagettes {annee} par {current_user.email}")
+
+    return Response(
+        tampon.getvalue().encode("utf-8-sig"),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=saisie_cagettes_par_magasin_{annee}.csv"},
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/cagettes/export-excel")
+@login_required
+@require_access("collecte", "lecture")
+def exporter_cagettes_excel(annee):
+    """Export Excel de la grille de saisie des cagettes telle qu'affichée à
+    l'écran (une ligne par magasin, une colonne par demi-journée avec « — »
+    pour les créneaux non applicables, + les 3 colonnes de total) — pour
+    archivage/contrôle, contrairement à l'export CSV qui suit le format
+    d'import VIF (exporter_cagettes)."""
+    with get_db_connection() as conn:
+        campagne = conn.execute(
+            "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    if not campagne:
+        flash(f"⛔ Campagne {annee} introuvable", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    poids_estime = campagne["poids_cagette_estime"] or 0
+    poids_pese = campagne["poids_cagette_pese"] or 0
+    lignes = _charger_lignes_cagettes(annee)
+
+    colonnes_demi_journees = [dj.replace("Apres Midi", "Après-midi") for dj in moteur.DEMI_JOURNEES]
+    entetes = ["Code VIF", "Magasin"] + colonnes_demi_journees + [
+        "Total cagettes", "Total poids magasin (kg)", "Total poids magasin après pesée (kg)",
+    ]
+    rows = []
+    sommes_dj = {dj: 0 for dj in moteur.DEMI_JOURNEES}
+    total_general = 0
+    for ligne in lignes:
+        total = ligne.get("total") or 0
+        total_general += total
+        row = [str(ligne["code_vif"]).zfill(8), ligne["nom_magasin"]]
+        for dj in moteur.DEMI_JOURNEES:
+            valeur = ligne.get(dj) if ligne.get(f"_appl_{dj}") else None
+            row.append("—" if not ligne.get(f"_appl_{dj}") else valeur)
+            if valeur:
+                sommes_dj[dj] += valeur
+        row.append(total)
+        row.append(round(total * poids_estime, 2))
+        row.append(round(total * poids_pese, 2))
+        rows.append(row)
+
+    ligne_total = ["", "Total"] + [sommes_dj[dj] for dj in moteur.DEMI_JOURNEES] + [
+        total_general, round(total_general * poids_estime, 2), round(total_general * poids_pese, 2),
+    ]
+    rows.insert(0, ligne_total)
+
+    df = pd.DataFrame(rows, columns=entetes)
+    tampon = io.BytesIO()
+    with pd.ExcelWriter(tampon, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Cagettes", index=False)
+    tampon.seek(0)
+
+    write_log(f"📤 Export Excel cagettes {annee} par {current_user.email}")
+
+    return send_file(
+        tampon,
+        as_attachment=True,
+        download_name=f"saisie_cagettes_par_magasin_{annee}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/cagettes/poids", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_poids_cagette(annee):
+    def _valeur_ou_none(nom_champ):
+        brut = request.form.get(nom_champ, "").strip().replace(",", ".")
+        if not brut:
+            return None
+        try:
+            return float(brut)
+        except ValueError:
+            return None
+
+    poids_estime = _valeur_ou_none("poids_cagette_estime")
+    poids_total_pese = _valeur_ou_none("poids_total_pese")
+
+    with get_db_connection() as conn:
+        total_cagettes = conn.execute(
+            "SELECT COALESCE(SUM(nb_cagettes), 0) FROM collecte_cagettes WHERE annee = ?", (annee,)
+        ).fetchone()[0]
+        poids_pese = (poids_total_pese / total_cagettes) if poids_total_pese and total_cagettes else None
+        conn.execute(
+            "UPDATE collecte_campagnes SET poids_cagette_estime = ?, poids_total_pese = ?, poids_cagette_pese = ? WHERE annee = ?",
+            (poids_estime, poids_total_pese, poids_pese, annee),
+        )
+        conn.commit()
+
+    write_log(f"⚖️ Collecte {annee} : poids cagette mis à jour par {current_user.email} "
+              f"(estimé={poids_estime}, total pesé={poids_total_pese}, cagette après pesée={poids_pese})")
+    flash("✅ Poids de la cagette enregistré.", "success")
+    return redirect(url_for("collecte.cagettes", annee=annee))
 
 
 @collecte_bp.route("/collecte/<int:annee>/cagettes/initialiser", methods=["POST"])
@@ -2003,6 +3223,73 @@ def _ensure_table_code_vif_overrides(conn):
     """)
 
 
+def _ensure_table_suivi_gardee(conn):
+    """Table de suivi manuel des réponses des associations gardant leur
+    collecte — deux cases indépendantes (réponse au 1er message, résultat
+    envoyé) cochées à la main par l'équipe collecte, la vérification
+    elle-même se faisant hors de l'application (mail reçu, fichier reçu,
+    ou saisie en ligne consultée) — cf. _saisie_association_avancement
+    pour un indice automatique affiché à titre d'aide, mais qui ne coche
+    jamais rien tout seul."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_gardee_suivi (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            annee INTEGER NOT NULL,
+            nom_association TEXT NOT NULL,
+            repondu INTEGER NOT NULL DEFAULT 0,
+            repondu_le TEXT,
+            repondu_par TEXT,
+            resultat_envoye INTEGER NOT NULL DEFAULT 0,
+            resultat_envoye_le TEXT,
+            resultat_envoye_par TEXT,
+            UNIQUE(annee, nom_association)
+        )
+    """)
+
+
+def _lire_suivi_gardee(annee):
+    """{nom_association: {'repondu': bool, 'resultat_envoye': bool}}"""
+    with get_db_connection() as conn:
+        _ensure_table_suivi_gardee(conn)
+        rows = conn.execute(
+            "SELECT nom_association, repondu, resultat_envoye FROM collecte_gardee_suivi WHERE annee = ?",
+            (annee,),
+        ).fetchall()
+    return {
+        r["nom_association"]: {"repondu": bool(r["repondu"]), "resultat_envoye": bool(r["resultat_envoye"])}
+        for r in rows
+    }
+
+
+def _marquer_suivi_gardee(annee, nom_association, champ, valeur, utilisateur):
+    """champ : 'repondu' ou 'resultat_envoye'."""
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S") if valeur else None
+    with get_db_connection() as conn:
+        _ensure_table_suivi_gardee(conn)
+        conn.execute(f"""
+            INSERT INTO collecte_gardee_suivi (annee, nom_association, {champ}, {champ}_le, {champ}_par)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(annee, nom_association)
+            DO UPDATE SET {champ} = excluded.{champ}, {champ}_le = excluded.{champ}_le, {champ}_par = excluded.{champ}_par
+        """, (annee, nom_association, 1 if valeur else 0, maintenant, utilisateur if valeur else None))
+        conn.commit()
+
+
+def _saisie_association_avancement(annee, nom_association, magasins, produits, poids_magasins, poids_produits):
+    """Indice automatique (nb rempli / nb attendu) de la saisie en ligne
+    pour une association — affiché en aide à la décision à côté des cases
+    à cocher manuelles, jamais utilisé pour les cocher automatiquement
+    (cf. _ensure_table_suivi_gardee)."""
+    codes_magasins = [_vif_fmt(m.get("Code VIF")) for m in magasins]
+    remplis_magasins = sum(1 for c in codes_magasins if poids_magasins.get(c) is not None)
+    remplis_produits = sum(
+        1 for p in produits if poids_produits.get(nom_association, {}).get(p["code"]) is not None
+    )
+    total = len(codes_magasins) + len(produits)
+    remplis = remplis_magasins + remplis_produits
+    return remplis, total
+
+
 def _table_code_vif_associations():
     """Charge depuis la table associations (+ les corrections manuelles
     propres à cette liste) de quoi retrouver le Code VIF d'une association
@@ -2138,6 +3425,127 @@ def _modele_gardee(nom):
     return chemin
 
 
+LIGNE_PREMIER_PRODUIT_MODELE = 16
+
+
+def _derniere_ligne_utilisee(ws, plafond=200, colonnes=10):
+    """Dernière ligne réellement remplie d'une feuille (sur ses premières
+    `colonnes` colonnes), en ignorant le padding vide qu'un export Google
+    Sheets ajoute systématiquement (grille par défaut de 1000x26) —
+    ws.max_row seul n'est pas fiable dans ce cas, il refléterait la taille
+    de la grille et non le contenu. N'utilise jamais ws[r] / ws.iter_rows :
+    ces accès recalculent la largeur de la feuille (self.max_column) à
+    chaque appel, ce qui, répété jusqu'à `plafond` fois sur une grille
+    Google de plusieurs milliers de cellules, provoque un timeout
+    (déjà rencontré en production sur ce fichier)."""
+    for r in range(min(ws.max_row, plafond), 0, -1):
+        if any(ws.cell(r, c).value not in (None, "") for c in range(1, colonnes + 1)):
+            return r
+    return 1
+
+
+def _tronquer_grille_google_sheets(ws, marge_lignes=15, derniere_colonne=15):
+    """Supprime les lignes/colonnes vides que Google Sheets ajoute par
+    défaut (grille 1000x26) au-delà du contenu réel — sans ça, chaque
+    load_workbook()+save() ultérieur (une fois par association générée)
+    traite des dizaines de milliers de cellules vides et ralentit
+    suffisamment pour provoquer un timeout serveur (déjà rencontré en
+    production). Appelé une seule fois à la synchronisation, jamais à la
+    génération des fichiers association elle-même."""
+    derniere_ligne = _derniere_ligne_utilisee(ws, colonnes=derniere_colonne)
+    limite_ligne = derniere_ligne + marge_lignes
+    if ws.max_row > limite_ligne:
+        ws.delete_rows(limite_ligne + 1, ws.max_row - limite_ligne)
+    if ws.max_column > derniere_colonne:
+        ws.delete_cols(derniere_colonne + 1, ws.max_column - derniere_colonne)
+
+
+def _derniere_ligne_produits(ws):
+    """Première ligne à partir de LIGNE_PREMIER_PRODUIT_MODELE dont la
+    colonne A (code) est vide moins un — s'arrête naturellement avant la
+    ligne « Autres » (code vide) sans jamais atteindre les lignes de
+    légende plus bas (« Total », « Type calcul= », qui ont, elles, du
+    contenu en colonne A ou B mais sont hors de la zone produits)."""
+    r = LIGNE_PREMIER_PRODUIT_MODELE
+    while ws.cell(r, 1).value not in (None, ""):
+        r += 1
+    return r - 1
+
+
+def _lire_produits_modele():
+    """Liste des produits (code, libellé) depuis l'onglet « produits » du
+    modèle association — même liste que la fiche produits papier envoyée
+    aux associations, lue dynamiquement pour rester à jour si le modèle
+    évolue (nombre de lignes variable)."""
+    chemin = _modele_gardee("Modele association.xlsx")
+    if not os.path.exists(chemin):
+        return []
+    wb = load_workbook(chemin, data_only=True)
+    ws = wb["produits"]
+    derniere = _derniere_ligne_produits(ws)
+    produits = []
+    for r in range(LIGNE_PREMIER_PRODUIT_MODELE, derniere + 1):
+        code = ws.cell(r, 1).value
+        produits.append({"code": str(code).strip(), "libelle": str(ws.cell(r, 2).value or "").strip()})
+    return produits
+
+
+def _lire_produits_modele_complet():
+    """Comme _lire_produits_modele(), mais avec toutes les colonnes (libellé
+    VIF, type calcul) pour l'éditeur en ligne du modèle."""
+    chemin = _modele_gardee("Modele association.xlsx")
+    if not os.path.exists(chemin):
+        return []
+    wb = load_workbook(chemin, data_only=True)
+    ws = wb["produits"]
+    derniere = _derniere_ligne_produits(ws)
+    produits = []
+    for r in range(LIGNE_PREMIER_PRODUIT_MODELE, derniere + 1):
+        produits.append({
+            "code": str(ws.cell(r, 1).value).strip(),
+            "libelle": str(ws.cell(r, 2).value or "").strip(),
+            "libelle_vif": str(ws.cell(r, 4).value or "").strip(),
+            "type_calcul": str(ws.cell(r, 5).value or "").strip(),
+        })
+    return produits
+
+
+def _enregistrer_produits_modele(produits):
+    """Réécrit la liste des produits (code, libellé, libellé VIF, type
+    calcul) dans le modèle Excel partagé — insère ou supprime des lignes
+    Excel (ws.insert_rows/delete_rows) si le nombre de produits change,
+    pour que les lignes suivantes (« Autres », « Total », « Type calcul= »)
+    restent immédiatement après la liste, à leur position relative
+    d'origine, sans jamais toucher la mise en page (logo, bordures,
+    en-têtes) ni les lignes situées avant la liste. Sauvegarde l'ancienne
+    version avant d'écrire."""
+    chemin = _modele_gardee("Modele association.xlsx")
+    if not os.path.exists(chemin):
+        raise FileNotFoundError("Modèle introuvable")
+
+    wb = load_workbook(chemin)
+    ws = wb["produits"]
+
+    nb_actuels = _derniere_ligne_produits(ws) - LIGNE_PREMIER_PRODUIT_MODELE + 1
+    nb_nouveaux = len(produits)
+
+    if nb_nouveaux > nb_actuels:
+        ws.insert_rows(LIGNE_PREMIER_PRODUIT_MODELE + nb_actuels, amount=nb_nouveaux - nb_actuels)
+    elif nb_nouveaux < nb_actuels:
+        ws.delete_rows(LIGNE_PREMIER_PRODUIT_MODELE + nb_nouveaux, amount=nb_actuels - nb_nouveaux)
+
+    for i, produit in enumerate(produits):
+        r = LIGNE_PREMIER_PRODUIT_MODELE + i
+        ws.cell(r, 1).value = produit["code"]
+        ws.cell(r, 2).value = produit["libelle"]
+        ws.cell(r, 4).value = produit.get("libelle_vif", "")
+        ws.cell(r, 5).value = produit.get("type_calcul", "")
+
+    horodatage = datetime.now().strftime("%Y%m%d_%H%M%S")
+    shutil.copy(chemin, f"{chemin}.bak_avant_edition_produits_{horodatage}")
+    wb.save(chemin)
+
+
 def _nom_fichier_association(nom, annee):
     slug = re.sub(r"[^A-Za-z0-9]+", "_", nom).strip("_").lower() or "association"
     return f"association_gardant_{annee}_{slug}.xlsx"
@@ -2159,6 +3567,25 @@ def _date_collecte(annee):
     except ValueError:
         pass
     return f"du {debut} au {fin}" if fin else debut
+
+
+def _inserer_logo(ws, largeur_px):
+    """Insère le logo BAI en haut de la feuille, toujours depuis le fichier
+    statique de l'application (le même que celui utilisé pour les PDF), et
+    retire toute image héritée du modèle avant. Le modèle Excel partagé
+    peut ainsi être édité librement (y compris via Google Sheets) sans que
+    son propre logo — sujet à un format de dessin que certaines versions
+    d'Excel refusent d'ouvrir après un aller-retour Google Sheets — ne soit
+    jamais utilisé tel quel dans les fichiers générés."""
+    chemin_logo = os.path.join(current_app.root_path, "static", "images", "logo_ba_complet.png")
+    if not os.path.exists(chemin_logo):
+        return
+    ws._images = []
+    image = ImageOpenpyxl(chemin_logo)
+    ratio = image.height / image.width
+    image.width = largeur_px
+    image.height = round(largeur_px * ratio)
+    ws.add_image(image, "A1")
 
 
 def _creer_fichier_association(asso, annee, dossier):
@@ -2194,12 +3621,16 @@ def _creer_fichier_association(asso, annee, dossier):
         for column in range(1, 10):
             ws.cell(row=row, column=column).value = None
     ws["C25"] = "=SUM(C15:C23)"
-    for feuille, zone in ((wb["produits"], "A1:E44"), (ws, "A1:I27")):
+    feuille_produits = wb["produits"]
+    zone_produits = f"A1:E{max(_derniere_ligne_utilisee(feuille_produits), 44)}"
+    for feuille, zone in ((feuille_produits, zone_produits), (ws, "A1:I27")):
         feuille.page_setup.orientation = "portrait"
         feuille.page_setup.fitToWidth = 1
         feuille.page_setup.fitToHeight = 1
         feuille.sheet_properties.pageSetUpPr.fitToPage = True
         feuille.print_area = zone
+    _inserer_logo(feuille_produits, 588)
+    _inserer_logo(ws, 444)
     wb.save(chemin)
     return chemin
 
@@ -2249,8 +3680,9 @@ def _creer_pdf_association(fichier_excel, asso, annee, dossier):
 
     ws = wb["produits"]
     y = entete(ws, "FICHE PRODUITS")
+    derniere_ligne_produits = _derniere_ligne_produits(ws)
     lignes = [[ws.cell(14, c).value for c in range(1, 6)]]
-    lignes.extend([[ws.cell(r, c).value for c in range(1, 6)] for r in range(16, 41) if any(ws.cell(r, c).value is not None for c in range(1, 6))])
+    lignes.extend([[ws.cell(r, c).value for c in range(1, 6)] for r in range(16, derniere_ligne_produits + 2) if any(ws.cell(r, c).value is not None for c in range(1, 6))])
     lignes.append(["", "Total", "", "", ""])
     grille(lignes, [25 * mm, 46 * mm, 22 * mm, 62 * mm, 22 * mm], 10 * mm, y, 6.2 * mm, True)
     pdf.showPage()
@@ -2265,26 +3697,80 @@ def _creer_pdf_association(fichier_excel, asso, annee, dossier):
     return chemin
 
 
-def _texte_modele_gardee(asso, annee):
-    source = _modele_gardee("associations-gardant.docx")
-    if not os.path.exists(source):
-        raise FileNotFoundError("Modèle de mail associations-gardant introuvable")
-    document = Document(source)
+GARDEE_TEXTE_MAIL_DEFAUT = (
+    "De la Banque Alimentaire de l'Isère à <<association>> (code <<code>>)\n\n"
+    "COLLECTE NATIONALE BANQUE ALIMENTAIRE des <<datecollecte>>\n\n"
+    "Vous collectez au titre de la Banque Alimentaire de l'Isère et conservez les produits collectés "
+    "pour les redistribuer à vos bénéficiaires.\n\n"
+    "Nous avons besoin, avec la Fédération des Banques Alimentaires, de connaitre le tonnage collecté "
+    "avec deux axes :\n"
+    "-le tonnage par magasin qui est communiqué aux grandes enseignes pour leurs magasins\n"
+    "-le tonnage par produit qui sert aussi à communiquer au niveau national sur les résultats de la "
+    "collecte\n\n"
+    "Pour cela nous souhaitons :\n"
+    "-idéalement le poids en kg brut de chaque produit\n"
+    "-et aussi idéalement le poids total par magasin en kg brut soit réel soit une estimation\n\n"
+    "Nous vous demandons de nous retourner le plus rapidement possible après la collecte le fichier "
+    "excel joint complété directement en l'envoyant par mail à ba380.collecte@banquealimentaire.org.\n\n"
+    "Nous souhaitons aussi avoir un décompte le plus précis du nombre de bénévoles par demi-journée "
+    "ayant participé à la collecte.\n\n"
+    "Si vous ne pouvez pas compléter ce fichier sur un ordinateur, envoyez-nous une version papier "
+    "manuscrite de ce fichier.\n\n"
+    "Ce fichier a 2 feuilles, une « produits » et une « magasins ».\n"
+    "Les magasins que vous collectez sont :\n"
+    "<<magasins>>\n\n"
+    "<<lien_saisie>>\n\n"
+    "Merci de bien vouloir accuser réception de ce message à l'adresse mail : "
+    "ba380.collecte@banquealimentaire.org.\n\n"
+    "Vous pouvez nous contacter si vous avez besoin de précisions ou d'explications.\n\n"
+    "Merci d'avance pour votre implication dans cette collecte.\n\n"
+    "Responsable collecte de la BA38"
+)
+
+CHEMIN_TEXTE_MAIL_GARDEE = os.path.join(MODELES_GARDEE_DIR, "gardee_mail_texte.txt")
+
+
+def _lire_texte_mail_gardee():
+    """Texte du mail envoyé aux associations gardant leur collecte, dans un
+    fichier texte PARTAGÉ (comme l'image et les pièces jointes du mail
+    chauffeurs/équipiers) — modifiable en ligne, sans passer par un modèle
+    Word, et disponible d'une campagne et d'une session à l'autre sans
+    redépôt annuel."""
+    if os.path.exists(CHEMIN_TEXTE_MAIL_GARDEE):
+        with open(CHEMIN_TEXTE_MAIL_GARDEE, "r", encoding="utf-8") as f:
+            return f.read()
+    return GARDEE_TEXTE_MAIL_DEFAUT
+
+
+def _ecrire_texte_mail_gardee(texte):
+    with open(CHEMIN_TEXTE_MAIL_GARDEE, "w", encoding="utf-8") as f:
+        f.write(texte)
+
+
+def _texte_modele_gardee(asso, annee, lien_saisie=None):
+    """Repères <<association>>, <<code>>, <<datecollecte>>, <<magasins>> et
+    <<lien_saisie>> — ce dernier substitué seulement si présent dans le
+    texte, sinon ajouté en dernier paragraphe (compatibilité avec un texte
+    personnalisé plus ancien qui ne l'aurait pas encore)."""
     magasins = "\n".join(
         f"- {_vif_fmt(m.get('Code VIF'))} — {m.get('Nom', '')} ({m.get('Ville', '')})"
         for m in asso["magasins"]
     )
-    lignes = []
-    for paragraphe in document.paragraphs:
-        texte = paragraphe.text
-        texte = texte.replace("àassociation", asso["nom"])
-        texte = texte.replace("àcode", asso.get("code_vif") or "")
-        texte = texte.replace("àdatecollecte", _date_collecte(annee))
-        texte = texte.replace("àLISTE_MAGASINS", magasins)
-        texte = texte.replace("àresponsable collecte", "Responsable collecte de la BA38")
-        if texte.strip():
-            lignes.append(texte)
-    return "\n\n".join(lignes)
+    texte = _lire_texte_mail_gardee()
+    texte = texte.replace("<<association>>", asso["nom"])
+    texte = texte.replace("<<code>>", asso.get("code_vif") or "")
+    texte = texte.replace("<<datecollecte>>", _date_collecte(annee))
+    texte = texte.replace("<<magasins>>", magasins)
+
+    if "<<lien_saisie>>" in texte:
+        texte = texte.replace("<<lien_saisie>>", lien_saisie or "")
+    elif lien_saisie:
+        texte = texte.rstrip() + (
+            "\n\nVous pouvez aussi saisir directement en ligne le poids par magasin et la répartition "
+            f"par produit, sans avoir besoin de renvoyer les fichiers joints : {lien_saisie}"
+        )
+
+    return texte.strip()
 
 
 def _construire_associations(df_mag, df_groupes):
@@ -2346,6 +3832,221 @@ def _construire_associations(df_mag, df_groupes):
 
     sans_association = df_mag[gardee_par == ""][["Code VIF", "Nom", "Ville", "Stockage"]].to_dict("records")
     return associations, sans_association
+
+
+@collecte_bp.route("/collecte/gardee/modele-excel")
+@login_required
+@require_access("collecte", "lecture")
+def telecharger_modele_association():
+    """Télécharge le modèle Excel utilisé pour générer le fichier
+    personnalisé de chaque association (feuilles « produits » et
+    « magasins ») — à modifier puis redéposer via « 🔄 Remplacer le modèle »
+    sur la page, sans connaissance technique ni accès serveur requis."""
+    nom = "Modele association.xlsx"
+    chemin = _modele_gardee(nom)
+    if not os.path.exists(chemin):
+        flash("❌ Modèle introuvable", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=request.args.get("annee", type=int)))
+    return send_file(
+        chemin,
+        as_attachment=True,
+        download_name=nom,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@collecte_bp.route("/collecte/gardee/modele-excel", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_modele_association():
+    """Remplace le modèle Excel des associations — sauvegarde l'ancienne
+    version avant d'écraser (cf. l'incident de logo dupliqué du modèle
+    précédent), et vérifie que le fichier déposé est un classeur Excel
+    valide avec les deux feuilles attendues avant de l'accepter, pour ne
+    pas casser la génération des fichiers association."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    fichier = request.files.get("modele_excel")
+
+    if not fichier or not fichier.filename:
+        flash("⛔ Aucun fichier sélectionné.", "warning")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    if not fichier.filename.lower().endswith(".xlsx"):
+        flash("⛔ Format non accepté (.xlsx uniquement).", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    tampon = io.BytesIO(fichier.read())
+    try:
+        wb = load_workbook(tampon)
+    except Exception:
+        flash("⛔ Fichier Excel invalide ou corrompu — rien n'a été remplacé.", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    manquantes = [feuille for feuille in ("produits", "magasins") if feuille not in wb.sheetnames]
+    if manquantes:
+        flash(f"⛔ Feuille(s) manquante(s) dans le fichier déposé : {', '.join(manquantes)} — rien n'a été remplacé.", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    nom = "Modele association.xlsx"
+    chemin = _modele_gardee(nom)
+    if os.path.exists(chemin):
+        horodatage = datetime.now().strftime("%Y%m%d_%H%M%S")
+        shutil.copy(chemin, f"{chemin}.bak_avant_remplacement_{horodatage}")
+
+    tampon.seek(0)
+    with open(chemin, "wb") as f:
+        f.write(tampon.read())
+
+    flash("✅ Modèle Excel remplacé.", "success")
+    write_log(f"📊 Modèle association.xlsx remplacé par {current_user.email}")
+    return redirect(url_for("collecte.collecte_main", annee=annee))
+
+
+CHEMIN_URL_DRIVE_MODELE_ASSOCIATION = os.path.join(MODELES_GARDEE_DIR, "modele_association_drive_url.txt")
+
+
+def _lire_url_drive_modele_association():
+    """Lien Google Sheets du modèle association, s'il a été renseigné —
+    fichier partagé (pas de campagne associée, le modèle est indépendant
+    de l'année)."""
+    if not os.path.exists(CHEMIN_URL_DRIVE_MODELE_ASSOCIATION):
+        return ""
+    with open(CHEMIN_URL_DRIVE_MODELE_ASSOCIATION, "r", encoding="utf-8") as f:
+        return f.read().strip()
+
+
+def _ecrire_url_drive_modele_association(url):
+    os.makedirs(MODELES_GARDEE_DIR, exist_ok=True)
+    with open(CHEMIN_URL_DRIVE_MODELE_ASSOCIATION, "w", encoding="utf-8") as f:
+        f.write(url.strip())
+
+
+@collecte_bp.route("/collecte/gardee/modele-excel/lien-drive", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_url_drive_modele_association():
+    """Enregistre le lien Google Sheets utilisé pour synchroniser le modèle
+    association — permet ensuite de l'éditer directement dans Google
+    Sheets (titres, mise en page, commentaires, formules) sans avoir à
+    déposer manuellement un fichier .xlsx à chaque modification."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    url = request.form.get("url_drive", "").strip()
+    _ecrire_url_drive_modele_association(url)
+    flash("✅ Lien Google Sheets enregistré." if url else "🗑️ Lien Google Sheets effacé.", "success")
+    return redirect(url_for("collecte.collecte_main", annee=annee))
+
+
+@collecte_bp.route("/collecte/gardee/modele-excel/synchroniser", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def synchroniser_modele_association():
+    """Télécharge la version actuelle du modèle depuis Google Sheets
+    (même mécanisme que pour la liste des magasins/véhicules) et remplace
+    le modèle Excel partagé — avec sauvegarde préalable et vérification
+    que le fichier obtenu est exploitable (feuilles attendues présentes,
+    logo toujours détecté), car un export Google Sheets peut, dans de
+    rares cas, mal réencoder une image intégrée."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    url = _lire_url_drive_modele_association()
+    url_export = _url_export_drive(url)
+    if not url_export:
+        flash("⛔ Aucun lien Google Sheets valide n'est enregistré.", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    try:
+        reponse = requests.get(url_export, timeout=30)
+        reponse.raise_for_status()
+    except Exception:
+        flash("⛔ Échec du téléchargement depuis Google Sheets — rien n'a été remplacé.", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    if not reponse.content.startswith(b"PK"):
+        flash("⛔ Contenu invalide reçu de Google Sheets — rien n'a été remplacé.", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    tampon = io.BytesIO(reponse.content)
+    try:
+        wb = load_workbook(tampon)
+    except Exception:
+        flash("⛔ Fichier reçu illisible par Excel — rien n'a été remplacé.", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    manquantes = [feuille for feuille in ("produits", "magasins") if feuille not in wb.sheetnames]
+    if manquantes:
+        flash(f"⛔ Feuille(s) manquante(s) dans la version Google Sheets : {', '.join(manquantes)} — rien n'a été remplacé.", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    nb_images = sum(len(feuille._images) for feuille in wb.worksheets)
+    for feuille in wb.worksheets:
+        _tronquer_grille_google_sheets(feuille)
+
+    nom = "Modele association.xlsx"
+    chemin = _modele_gardee(nom)
+    if os.path.exists(chemin):
+        horodatage = datetime.now().strftime("%Y%m%d_%H%M%S")
+        shutil.copy(chemin, f"{chemin}.bak_avant_sync_drive_{horodatage}")
+
+    # Un export Google Sheets écrit ses dessins (logo) avec un préfixe de
+    # namespace (<xdr:wsDr>...) qu'Excel accepte à l'ouverture mais qui a
+    # déjà provoqué un « contenu illisible » une fois reconstruit par des
+    # opérations ultérieures (cf. incident logo dupliqué du 15/09). On ne
+    # sauvegarde donc jamais les octets bruts reçus : on les fait d'abord
+    # repasser par une écriture openpyxl, qui régénère systématiquement
+    # les dessins dans la forme canonique sans préfixe, sûre à re-relire
+    # et re-sauvegarder ensuite (génération des fichiers association).
+    tampon_normalise = io.BytesIO()
+    wb.save(tampon_normalise)
+    tampon_normalise.seek(0)
+
+    with open(chemin, "wb") as f:
+        f.write(tampon_normalise.read())
+
+    write_log(f"📊 Modèle association.xlsx synchronisé depuis Google Sheets par {current_user.email}")
+    if nb_images == 0:
+        flash(
+            "⚠️ Modèle synchronisé, mais aucune image détectée dans le fichier reçu — "
+            "si le logo doit apparaître, vérifiez le fichier généré pour une association "
+            "(l'ancienne version reste disponible en sauvegarde).",
+            "warning",
+        )
+    else:
+        flash("✅ Modèle synchronisé depuis Google Sheets.", "success")
+    return redirect(url_for("collecte.collecte_main", annee=annee))
+
+
+@collecte_bp.route("/collecte/gardee/modele-produits")
+@login_required
+@require_access("collecte", "lecture")
+def gardee_modele_produits():
+    """Éditeur en ligne de la liste des produits du modèle association —
+    ajoute/modifie/supprime des lignes directement dans le fichier Excel
+    partagé, sans avoir besoin d'ouvrir Excel sur un poste."""
+    annee = request.args.get("annee", type=int) or datetime.now().year
+    return render_template(
+        "collecte/gardee_modele_produits.html",
+        annee=annee,
+        produits=_lire_produits_modele_complet(),
+    )
+
+
+@collecte_bp.route("/collecte/gardee/modele-produits/enregistrer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_modele_produits_route():
+    donnees = request.get_json(silent=True) or {}
+    produits = donnees.get("produits") or []
+    produits_valides = [
+        p for p in produits
+        if str(p.get("code", "")).strip() and str(p.get("libelle", "")).strip()
+    ]
+    if not produits_valides:
+        return jsonify({"success": False, "erreur": "La liste ne peut pas être vide"}), 400
+    try:
+        _enregistrer_produits_modele(produits_valides)
+    except Exception as erreur:
+        return jsonify({"success": False, "erreur": str(erreur)}), 500
+    write_log(f"📦 Modèle produits association modifié ({len(produits_valides)} produits) par {current_user.email}")
+    return jsonify({"success": True, "nb": len(produits_valides)})
 
 
 @collecte_bp.route("/collecte/gardee")
@@ -2539,6 +4240,458 @@ def gardee_telecharger():
     )
 
 
+@collecte_bp.route("/collecte/gardee/telecharger_zip")
+@login_required
+@require_access("collecte", "lecture")
+def gardee_telecharger_zip():
+    """Zip du fichier Excel combiné et des fiches Excel/PDF par association
+    (générés par « 🏠 Créer la liste »)."""
+    annee = request.args.get("annee", type=int) or datetime.now().year
+    dossier = _dossier_annee(annee)
+
+    chemins = []
+    combine = os.path.join(dossier, f"associations_gardant_{annee}.xlsx")
+    if os.path.exists(combine):
+        chemins.append(combine)
+    chemins += sorted(glob.glob(os.path.join(dossier, f"association_gardant_{annee}_*.xlsx")))
+    chemins += sorted(glob.glob(os.path.join(dossier, f"association_gardant_{annee}_*.pdf")))
+
+    if not chemins:
+        flash("❌ Aucun fichier à télécharger — créez la liste d'abord", "danger")
+        return redirect(url_for("collecte.gardee", annee=annee))
+
+    tampon = io.BytesIO()
+    with zipfile.ZipFile(tampon, "w", zipfile.ZIP_DEFLATED) as archive:
+        for chemin in chemins:
+            archive.write(chemin, arcname=os.path.basename(chemin))
+    tampon.seek(0)
+
+    return send_file(
+        tampon,
+        as_attachment=True,
+        download_name=f"associations_gardant_{annee}_documents.zip",
+        mimetype="application/zip",
+    )
+
+
+# ============================================================================
+# ⚖️ SAISIE DES POIDS PAR MAGASIN GARDÉ ET DES QUANTITÉS PAR PRODUIT — même
+# principe de grille autosave que les cagettes (ba38_collecte_cagettes), mais
+# une seule valeur en kg par ligne (pas de découpage par demi-journée) :
+# ces poids/quantités sont relevés une fois, par pesée, sur les fiches
+# renvoyées par les associations gardant leur collecte.
+# ============================================================================
+
+@collecte_bp.route("/collecte/<int:annee>/poids-magasins-gardee")
+@login_required
+@require_access("collecte", "lecture")
+def poids_magasins_gardee(annee):
+    df_mag = _lire_magasins_gardes(annee)
+    if df_mag.empty:
+        flash(f"⛔ Liste des magasins gardés {annee} indisponible — importez d'abord le fichier magasins", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    if "Code VIF" in df_mag.columns:
+        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+
+    with get_db_connection() as conn:
+        saisies = {
+            r["code_vif"]: r["poids_kg"]
+            for r in conn.execute(
+                "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
+
+    index_code_vif = _table_code_vif_associations()
+    code_vif_par_association = {}
+
+    lignes = []
+    for _, row in df_mag.iterrows():
+        code_vif = str(row.get("Code VIF", "")).strip()
+        if not code_vif or code_vif.lower() == "nan":
+            continue
+        nom_association = _normaliser_gardee_par(row.get("Gardée par", ""))
+        if nom_association not in code_vif_par_association:
+            code_vif_asso, _, _ = _code_vif_association(nom_association, index_code_vif)
+            code_vif_par_association[nom_association] = code_vif_asso
+        lignes.append({
+            "code_vif": code_vif,
+            "nom_magasin": str(row.get("Nom", "")).strip(),
+            "association": nom_association,
+            "association_code_vif": code_vif_par_association[nom_association] or "",
+            "poids_kg": saisies.get(code_vif),
+        })
+    lignes.sort(key=lambda l: (l["association"].lower(), l["nom_magasin"].lower()))
+
+    return render_template(
+        "collecte/poids_magasins_gardee.html",
+        annee=annee,
+        lignes=lignes,
+    )
+
+
+@collecte_bp.route("/collecte/poids-magasins-gardee/enregistrer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_poids_magasins_gardee():
+    donnees = request.get_json(silent=True) or {}
+    annee = donnees.get("annee")
+    code_vif = str(donnees.get("code_vif", "")).strip()
+    poids_brut = donnees.get("poids_kg")
+
+    if not annee or not code_vif:
+        return jsonify({"success": False, "erreur": "Paramètres manquants"}), 400
+
+    try:
+        poids_kg = float(poids_brut) if poids_brut not in (None, "") else None
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "erreur": "Poids invalide"}), 400
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        conn.execute("""
+            INSERT INTO collecte_poids_magasins_gardee (annee, code_vif, poids_kg, saisi_le, saisi_par)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(annee, code_vif)
+            DO UPDATE SET poids_kg = excluded.poids_kg, saisi_le = excluded.saisi_le, saisi_par = excluded.saisi_par
+        """, (annee, code_vif, poids_kg, maintenant, current_user.email))
+        conn.commit()
+
+    return jsonify({"success": True})
+
+
+@collecte_bp.route("/collecte/<int:annee>/poids-magasins-gardee/export")
+@login_required
+@require_access("collecte", "lecture")
+def exporter_poids_magasins_gardee(annee):
+    """Export CSV « Saisie des poids par magasin gardé » pour import VIF —
+    même format que exporter_cagettes (une ligne par magasin), quantité =
+    poids en kg brut saisi pour ce magasin."""
+    df_mag = _lire_magasins_gardes(annee)
+    if df_mag.empty:
+        flash(f"⛔ Liste des magasins gardés {annee} indisponible", "danger")
+        return redirect(url_for("collecte.poids_magasins_gardee", annee=annee))
+
+    if "Code VIF" in df_mag.columns:
+        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+
+    with get_db_connection() as conn:
+        saisies = {
+            r["code_vif"]: r["poids_kg"]
+            for r in conn.execute(
+                "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
+
+    date_reception = datetime.now().strftime("%d/%m/%Y")
+
+    lignes = []
+    magasins_manquants = []
+    for _, row in df_mag.iterrows():
+        code_vif = str(row.get("Code VIF", "")).strip()
+        if not code_vif or code_vif.lower() == "nan":
+            continue
+        poids_kg = saisies.get(code_vif)
+        if not poids_kg:
+            magasins_manquants.append(str(row.get("Nom", "")).strip())
+            continue
+        lignes.append((code_vif, poids_kg))
+
+    est_dev = os.getenv("ENVIRONMENT", "DEV").upper() != "PROD"
+    forcer = est_dev and request.args.get("forcer") == "1"
+
+    if magasins_manquants and not forcer:
+        flash(
+            f"⛔ Export impossible : {len(magasins_manquants)} magasin(s) sans poids saisi — "
+            f"{', '.join(magasins_manquants)}",
+            "danger",
+        )
+        return redirect(url_for("collecte.poids_magasins_gardee", annee=annee))
+
+    if magasins_manquants and forcer:
+        write_log(f"🧪 Export poids magasins gardée {annee} FORCÉ (dev) malgré {len(magasins_manquants)} magasin(s) sans poids par {current_user.email}")
+
+    tampon = StringIO()
+    ecrivain = csv.writer(tampon, delimiter=";")
+    for code_vif, poids_kg in lignes:
+        ecrivain.writerow([
+            CAGETTES_EXPORT_SOCIETE,
+            CAGETTES_EXPORT_ETAB,
+            date_reception,
+            code_vif,
+            CAGETTES_EXPORT_LIEU,
+            CAGETTES_EXPORT_DEPOT,
+            CAGETTES_EXPORT_ARTICLE,
+            round(poids_kg),
+            CAGETTES_EXPORT_UNITE,
+            "", "", "", "",
+            CAGETTES_EXPORT_ORIGINE,
+        ])
+
+    write_log(f"📤 Export CSV poids magasins gardée {annee} par {current_user.email}")
+
+    return Response(
+        tampon.getvalue().encode("utf-8-sig"),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=saisie_poids_magasins_gardee_{annee}.csv"},
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/quantites-produits")
+@login_required
+@require_access("collecte", "lecture")
+def quantites_produits(annee):
+    produits = _lire_produits_modele()
+    if not produits:
+        flash("⛔ Liste des produits indisponible — modèle association introuvable", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    df_mag = _lire_magasins_gardes(annee)
+    df_groupes = _lire_groupes(annee)
+    if df_mag.empty:
+        flash(f"⛔ Liste des magasins gardés {annee} indisponible — importez d'abord le fichier magasins", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+    associations, _ = _construire_associations(df_mag, df_groupes)
+    noms_associations = sorted({a["nom"] for a in associations}, key=str.lower)
+    index_code_vif = _table_code_vif_associations()
+    code_vif_associations = {}
+    for nom in noms_associations:
+        code_vif_asso, _, _ = _code_vif_association(nom, index_code_vif)
+        code_vif_associations[nom] = code_vif_asso or ""
+
+    with get_db_connection() as conn:
+        saisies = {
+            (r["association"], r["code_produit"]): r["poids_kg"]
+            for r in conn.execute(
+                "SELECT association, code_produit, poids_kg FROM collecte_quantites_produits WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
+
+    lignes = []
+    for produit in produits:
+        ligne = {"code_produit": produit["code"], "libelle": produit["libelle"]}
+        for nom in noms_associations:
+            ligne[nom] = saisies.get((nom, produit["code"]))
+        lignes.append(ligne)
+
+    return render_template(
+        "collecte/quantites_produits.html",
+        annee=annee,
+        lignes=lignes,
+        associations=noms_associations,
+        code_vif_associations=code_vif_associations,
+    )
+
+
+@collecte_bp.route("/collecte/quantites-produits/enregistrer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_quantites_produits():
+    donnees = request.get_json(silent=True) or {}
+    annee = donnees.get("annee")
+    association = str(donnees.get("association", "")).strip()
+    code_produit = str(donnees.get("code_produit", "")).strip()
+    poids_brut = donnees.get("poids_kg")
+
+    if not annee or not association or not code_produit:
+        return jsonify({"success": False, "erreur": "Paramètres manquants"}), 400
+
+    try:
+        poids_kg = float(poids_brut) if poids_brut not in (None, "") else None
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "erreur": "Poids invalide"}), 400
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        conn.execute("""
+            INSERT INTO collecte_quantites_produits (annee, association, code_produit, poids_kg, saisi_le, saisi_par)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(annee, association, code_produit)
+            DO UPDATE SET poids_kg = excluded.poids_kg, saisi_le = excluded.saisi_le, saisi_par = excluded.saisi_par
+        """, (annee, association, code_produit, poids_kg, maintenant, current_user.email))
+        conn.commit()
+
+    return jsonify({"success": True})
+
+
+@collecte_bp.route("/collecte/<int:annee>/saisie-association/<token>", methods=["GET", "POST"])
+def saisie_association(annee, token):
+    """Formulaire public (sans compte) permettant à une association de
+    saisir elle-même ses poids par magasin et ses quantités par produit
+    — lien envoyé par mail en même temps que ses fichiers Excel/PDF
+    personnalisés (cf. generer_token_saisie_association, gardee_envoi)."""
+    payload = verifier_token_saisie_association(token)
+    if not payload or payload.get("annee") != annee:
+        return render_template("collecte/saisie_association_lien_invalide.html"), 403
+    nom_association = payload.get("association", "")
+
+    df_mag = _lire_magasins_gardes(annee)
+    df_groupes = _lire_groupes(annee)
+    if "Code VIF" in df_mag.columns:
+        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+    associations, _ = _construire_associations(df_mag, df_groupes)
+    association = next((a for a in associations if a["nom"] == nom_association), None)
+    if association is None:
+        return render_template("collecte/saisie_association_lien_invalide.html"), 403
+    index_code_vif = _table_code_vif_associations()
+    association_code_vif, _, _ = _code_vif_association(nom_association, index_code_vif)
+
+    produits = _lire_produits_modele()
+
+    if request.method == "POST":
+        maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with get_db_connection() as conn:
+            for magasin in association["magasins"]:
+                code_vif = _vif_fmt(magasin.get("Code VIF"))
+                brut = request.form.get(f"poids_magasin_{code_vif}", "").strip().replace(",", ".")
+                poids_kg = float(brut) if brut else None
+                conn.execute("""
+                    INSERT INTO collecte_poids_magasins_gardee (annee, code_vif, poids_kg, saisi_le, saisi_par)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(annee, code_vif)
+                    DO UPDATE SET poids_kg = excluded.poids_kg, saisi_le = excluded.saisi_le, saisi_par = excluded.saisi_par
+                """, (annee, code_vif, poids_kg, maintenant, f"association:{nom_association}"))
+            for produit in produits:
+                brut = request.form.get(f"poids_produit_{produit['code']}", "").strip().replace(",", ".")
+                poids_kg = float(brut) if brut else None
+                conn.execute("""
+                    INSERT INTO collecte_quantites_produits (annee, association, code_produit, poids_kg, saisi_le, saisi_par)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(annee, association, code_produit)
+                    DO UPDATE SET poids_kg = excluded.poids_kg, saisi_le = excluded.saisi_le, saisi_par = excluded.saisi_par
+                """, (annee, nom_association, produit["code"], poids_kg, maintenant, f"association:{nom_association}"))
+            conn.commit()
+        write_log(f"⚖️ Saisie en ligne association « {nom_association} » {annee} enregistrée")
+        flash("✅ Merci, votre saisie a bien été enregistrée.", "success")
+        return redirect(url_for("collecte.saisie_association", annee=annee, token=token))
+
+    with get_db_connection() as conn:
+        poids_magasins = {
+            r["code_vif"]: r["poids_kg"]
+            for r in conn.execute(
+                "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
+        poids_produits = {
+            r["code_produit"]: r["poids_kg"]
+            for r in conn.execute(
+                "SELECT code_produit, poids_kg FROM collecte_quantites_produits WHERE annee = ? AND association = ?",
+                (annee, nom_association),
+            ).fetchall()
+        }
+
+    magasins = [
+        {
+            "code_vif": _vif_fmt(m.get("Code VIF")),
+            "nom": m.get("Nom", ""),
+            "ville": m.get("Ville", ""),
+            "poids_kg": poids_magasins.get(_vif_fmt(m.get("Code VIF"))),
+        }
+        for m in association["magasins"]
+    ]
+    for produit in produits:
+        produit["poids_kg"] = poids_produits.get(produit["code"])
+
+    return render_template(
+        "collecte/saisie_association.html",
+        annee=annee,
+        token=token,
+        association=nom_association,
+        association_code_vif=association_code_vif,
+        magasins=magasins,
+        produits=produits,
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/saisie-association/<token>/champ", methods=["POST"])
+def saisie_association_enregistrer_champ(annee, token):
+    """Autosave AJAX d'une seule case du formulaire public saisie_association
+    (en plus du bouton « Enregistrer » qui soumet tout le formulaire) — même
+    authentification par token que la page elle-même, pas de compte requis."""
+    payload = verifier_token_saisie_association(token)
+    if not payload or payload.get("annee") != annee:
+        return jsonify({"success": False, "erreur": "Lien invalide ou expiré"}), 403
+    nom_association = payload.get("association", "")
+
+    donnees = request.get_json(silent=True) or {}
+    type_champ = donnees.get("type")
+    code = str(donnees.get("code", "")).strip()
+    poids_brut = donnees.get("poids_kg")
+
+    if type_champ not in ("magasin", "produit") or not code:
+        return jsonify({"success": False, "erreur": "Paramètres manquants"}), 400
+
+    try:
+        poids_kg = float(poids_brut) if poids_brut not in (None, "") else None
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "erreur": "Poids invalide"}), 400
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    saisi_par = f"association:{nom_association}"
+    with get_db_connection() as conn:
+        if type_champ == "magasin":
+            code_vif = _vif_fmt(code)
+            conn.execute("""
+                INSERT INTO collecte_poids_magasins_gardee (annee, code_vif, poids_kg, saisi_le, saisi_par)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(annee, code_vif)
+                DO UPDATE SET poids_kg = excluded.poids_kg, saisi_le = excluded.saisi_le, saisi_par = excluded.saisi_par
+            """, (annee, code_vif, poids_kg, maintenant, saisi_par))
+        else:
+            conn.execute("""
+                INSERT INTO collecte_quantites_produits (annee, association, code_produit, poids_kg, saisi_le, saisi_par)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(annee, association, code_produit)
+                DO UPDATE SET poids_kg = excluded.poids_kg, saisi_le = excluded.saisi_le, saisi_par = excluded.saisi_par
+            """, (annee, nom_association, code, poids_kg, maintenant, saisi_par))
+        conn.commit()
+
+    return jsonify({"success": True})
+
+
+def _envoyer_mail_association(asso, annee, dossier, destinataires, mode_test):
+    """Génère (si besoin) les fichiers Excel/PDF de l'association et lui
+    envoie le mail — factorisé pour être réutilisé par l'envoi initial
+    (à toutes) et par la relance individuelle (à une seule)."""
+    fichier_association = os.path.join(dossier, _nom_fichier_association(asso["nom"], annee))
+    if not os.path.exists(fichier_association):
+        fichier_association = _creer_fichier_association(asso, annee, dossier)
+    fichier_pdf = os.path.splitext(fichier_association)[0] + ".pdf"
+    if not os.path.exists(fichier_pdf):
+        fichier_pdf = _creer_pdf_association(fichier_association, asso, annee, dossier)
+    token_saisie = generer_token_saisie_association(annee, asso["nom"])
+    lien_saisie = url_for("collecte.saisie_association", annee=annee, token=token_saisie, _external=True)
+    envoyer_mail(
+        sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — {asso['nom']}",
+        destinataires=destinataires,
+        texte=_texte_modele_gardee(asso, annee, lien_saisie=lien_saisie),
+        sender_override=os.getenv("MAILJET_SENDER"),
+        cc=["ba380.collecte@banquealimentaire.org"],
+        attachment_path=fichier_association,
+        attachment_paths=[fichier_pdf],
+    )
+
+
+def _associations_gardee_enrichies(annee):
+    """Reconstruit la liste des associations gardant leur collecte, avec
+    emails et Code VIF — factorisé entre gardee_envoi et les routes de
+    suivi/relance qui ont besoin des mêmes données."""
+    df_mag = _lire_magasins_gardes(annee)
+    df_groupes = _lire_groupes(annee)
+    df_participants = _lire_participants(annee)
+    if df_mag.empty or df_groupes.empty:
+        return None
+    if "Code VIF" in df_mag.columns:
+        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+    associations, _ = _construire_associations(df_mag, df_groupes)
+    index_code_vif = _table_code_vif_associations()
+    for asso in associations:
+        asso["referents"] = _referents_association(asso["nom"], df_participants)
+        asso["emails"] = sorted({r["email"] for r in asso["referents"] if "@" in r["email"]})
+        asso["code_vif"], asso["ecart_code_vif"], asso["code_vif_force"] = _code_vif_association(asso["nom"], index_code_vif)
+    return associations
+
+
 @collecte_bp.route("/collecte/gardee/envoi", methods=["GET", "POST"])
 @login_required
 @require_access("collecte", "ecriture")
@@ -2550,20 +4703,10 @@ def gardee_envoi():
         flash("❌ Créez et contrôlez d'abord le fichier Excel", "danger")
         return redirect(url_for("collecte.gardee", annee=annee))
 
-    df_mag = _lire_magasins_gardes(annee)
-    df_groupes = _lire_groupes(annee)
-    df_participants = _lire_participants(annee)
-    if df_mag.empty or df_groupes.empty:
+    associations = _associations_gardee_enrichies(annee)
+    if associations is None:
         flash("❌ Fichier(s) source(s) manquant(s)", "danger")
         return redirect(url_for("collecte.gardee", annee=annee))
-    if "Code VIF" in df_mag.columns:
-        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
-    associations, _ = _construire_associations(df_mag, df_groupes)
-    index_code_vif = _table_code_vif_associations()
-    for asso in associations:
-        asso["referents"] = _referents_association(asso["nom"], df_participants)
-        asso["emails"] = sorted({r["email"] for r in asso["referents"] if "@" in r["email"]})
-        asso["code_vif"], asso["ecart_code_vif"], asso["code_vif_force"] = _code_vif_association(asso["nom"], index_code_vif)
 
     if request.method == "POST":
         if request.form.get("confirmation") != "oui":
@@ -2590,22 +4733,8 @@ def gardee_envoi():
             if not asso["emails"] and not mode_test:
                 sans_email.append(asso["nom"])
                 continue
-            fichier_association = os.path.join(dossier, _nom_fichier_association(asso["nom"], annee))
-            if not os.path.exists(fichier_association):
-                fichier_association = _creer_fichier_association(asso, annee, dossier)
-            fichier_pdf = os.path.splitext(fichier_association)[0] + ".pdf"
-            if not os.path.exists(fichier_pdf):
-                fichier_pdf = _creer_pdf_association(fichier_association, asso, annee, dossier)
             destinataires = [current_user.email] if mode_test else asso["emails"]
-            envoyer_mail(
-                sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — {asso['nom']}",
-                destinataires=destinataires,
-                texte=_texte_modele_gardee(asso, annee),
-                sender_override=os.getenv("MAILJET_SENDER"),
-                cc=["ba380.collecte@banquealimentaire.org"],
-                attachment_path=fichier_association,
-                attachment_paths=[fichier_pdf],
-            )
+            _envoyer_mail_association(asso, annee, dossier, destinataires, mode_test)
             envoyes += 1
 
         portee = "pour une association" if test_une_association else "pour toutes les associations"
@@ -2616,9 +4745,137 @@ def gardee_envoi():
         write_log(f"📧 Envoi Associations gardant {annee} : {envoyes} envoyé(s) par {current_user.email}")
         return redirect(url_for("collecte.gardee", annee=annee))
 
+    suivi = _lire_suivi_gardee(annee)
+    produits = _lire_produits_modele()
+    with get_db_connection() as conn:
+        poids_magasins = {
+            r["code_vif"]: r["poids_kg"]
+            for r in conn.execute(
+                "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
+        poids_produits = {}
+        for r in conn.execute(
+            "SELECT association, code_produit, poids_kg FROM collecte_quantites_produits WHERE annee = ?", (annee,)
+        ).fetchall():
+            poids_produits.setdefault(r["association"], {})[r["code_produit"]] = r["poids_kg"]
+    for asso in associations:
+        asso["suivi"] = suivi.get(asso["nom"], {"repondu": False, "resultat_envoye": False})
+        asso["avancement_saisie"] = _saisie_association_avancement(
+            annee, asso["nom"], asso["magasins"], produits, poids_magasins, poids_produits
+        )
+
     return render_template(
         "collecte/gardee_envoi.html",
         annee=annee,
         associations=associations,
         fichier_nom=os.path.basename(chemin),
     )
+
+
+@collecte_bp.route("/collecte/gardee/envoi/suivi", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def gardee_marquer_suivi():
+    """Coche/décoche à la main l'une des deux cases de suivi (réponse au
+    1er message, résultat envoyé) pour une association — vérification
+    faite par l'équipe hors application (mail reçu, fichier reçu, ou
+    saisie en ligne consultée), jamais automatique."""
+    payload = request.get_json(silent=True) or {}
+    annee = payload.get("annee")
+    nom_association = payload.get("association", "")
+    champ = payload.get("champ", "")
+    valeur = bool(payload.get("valeur"))
+    if champ not in ("repondu", "resultat_envoye") or not annee or not nom_association:
+        return jsonify({"success": False, "erreur": "Paramètres invalides"}), 400
+    _marquer_suivi_gardee(annee, nom_association, champ, valeur, current_user.email)
+    return jsonify({"success": True})
+
+
+@collecte_bp.route("/collecte/gardee/envoi/relancer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def gardee_relancer():
+    """Renvoie le mail (avec les mêmes fichiers Excel/PDF) à une ou
+    plusieurs associations — relance individuelle (une association) ou
+    groupée (toutes celles où la case correspondante n'est pas cochée)."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    dossier = _dossier_annee(annee)
+    associations = _associations_gardee_enrichies(annee)
+    if associations is None:
+        flash("❌ Fichier(s) source(s) manquant(s)", "danger")
+        return redirect(url_for("collecte.gardee_envoi", annee=annee))
+
+    nom_association = request.form.get("association", "")
+    groupe = request.form.get("groupe", "")
+    if nom_association:
+        cible = [a for a in associations if a["nom"] == nom_association]
+        libelle_portee = f"« {nom_association} »"
+    elif groupe in ("repondu", "resultat_envoye"):
+        suivi = _lire_suivi_gardee(annee)
+        cible = [a for a in associations if not suivi.get(a["nom"], {}).get(groupe)]
+        libelle_portee = "sans réponse" if groupe == "repondu" else "sans résultat envoyé"
+    else:
+        flash("❌ Rien à relancer — précisez une association ou un groupe", "danger")
+        return redirect(url_for("collecte.gardee_envoi", annee=annee))
+
+    envoyes = 0
+    sans_email = []
+    for asso in cible:
+        if not asso["emails"]:
+            sans_email.append(asso["nom"])
+            continue
+        _envoyer_mail_association(asso, annee, dossier, asso["emails"], mode_test=False)
+        envoyes += 1
+
+    message = f"✅ Relance envoyée à {envoyes} association(s) {libelle_portee}"
+    if sans_email:
+        message += f" ; sans adresse (non relancées) : {', '.join(sans_email)}"
+    flash(message, "success" if not sans_email else "warning")
+    write_log(f"🔁 Relance Associations gardant {annee} ({libelle_portee}) : {envoyes} envoyé(s) par {current_user.email}")
+    return redirect(url_for("collecte.gardee_envoi", annee=annee))
+
+
+@collecte_bp.route("/collecte/gardee/envoi/texte", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_texte_mail_gardee():
+    """Enregistre le texte du mail envoyé aux associations gardant leur
+    collecte, dans le fichier partagé (cf. _ecrire_texte_mail_gardee) —
+    même principe que le texte du mail chauffeurs/équipiers ou de la
+    demande d'autorisation, plus de modèle Word à redéposer."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    texte = request.form.get("texte_mail", "").strip()
+    if texte:
+        _ecrire_texte_mail_gardee(texte)
+        flash("✅ Texte du mail enregistré.", "success")
+    else:
+        flash("⛔ Le texte ne peut pas être vide.", "warning")
+    return redirect(url_for("collecte.collecte_main", annee=annee))
+
+
+@collecte_bp.route("/collecte/gardee/envoi/apercu")
+@login_required
+@require_access("collecte", "lecture")
+def gardee_envoi_apercu():
+    """Affiche directement dans le navigateur (pas d'envoi, même de test)
+    le texte exact du mail pour l'association sélectionnée — même principe
+    que les aperçus PDF/mail des autres envois du module."""
+    annee = request.args.get("annee", type=int) or datetime.now().year
+    df_mag = _lire_magasins_gardes(annee)
+    df_groupes = _lire_groupes(annee)
+    if df_mag.empty or df_groupes.empty:
+        abort(404)
+    if "Code VIF" in df_mag.columns:
+        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+    associations, _ = _construire_associations(df_mag, df_groupes)
+    if not associations:
+        abort(404)
+    index_code_vif = _table_code_vif_associations()
+    nom = request.args.get("association", "")
+    asso = next((a for a in associations if a["nom"] == nom), associations[0])
+    asso["code_vif"], _, _ = _code_vif_association(asso["nom"], index_code_vif)
+    lien_saisie = url_for("collecte.saisie_association", annee=annee,
+                           token=generer_token_saisie_association(annee, asso["nom"]), _external=True)
+    texte = _texte_modele_gardee(asso, annee, lien_saisie=lien_saisie)
+    return Response(texte, mimetype="text/plain; charset=utf-8")

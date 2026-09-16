@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Quantités par produit {{ annee }}{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
+<style>
+    .tabulator-row.ligne-erreur { background-color: #f8d7da !important; }
+    #tabulator-table .tabulator-col-title {
+        white-space: normal !important;
+        word-break: break-word;
+        line-height: 1.15;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width:1550px;">
+
+    <h2>📦 Quantités par produit {{ annee }}</h2>
+    <p class="text-muted small">
+        Poids en kg brut relevé sur les fiches produits renvoyées par chaque association gardant sa collecte —
+        une ligne par produit, une colonne par association.
+    </p>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+    {% endcall %}
+
+    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+        <input type="text" id="filtre-recherche" class="form-control form-control-sm" style="max-width:320px;"
+               placeholder="🔎 Rechercher (produit…)">
+        <span class="text-muted small ms-auto">💾 Chaque case est enregistrée automatiquement dès la saisie</span>
+    </div>
+
+    <div id="message-enregistrement" class="alert d-none mb-2" role="alert"></div>
+
+    <div id="tabulator-table"></div>
+
+</div>
+
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+const lignes = {{ lignes|tojson }};
+const associations = {{ associations|tojson }};
+const codeVifAssociations = {{ code_vif_associations|tojson }};
+const annee = {{ annee }};
+const urlEnregistrer = "{{ url_for('collecte.enregistrer_quantites_produits') }}";
+const csrfToken = "{{ csrf_token() }}";
+
+function normalizeSearch(text) {
+    return String(text ?? "")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+}
+
+const messageDiv = document.getElementById("message-enregistrement");
+function afficherMessage(texte, classe) {
+    messageDiv.textContent = texte;
+    messageDiv.className = "alert alert-" + classe + " mb-2";
+}
+
+function sauvegarderCellule(cell) {
+    const row = cell.getRow();
+    const data = row.getData();
+    const association = cell.getColumn().getField();
+    row.getElement().classList.remove("ligne-erreur");
+
+    fetch(urlEnregistrer, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+        },
+        body: JSON.stringify({
+            annee: annee,
+            association: association,
+            code_produit: data.code_produit,
+            poids_kg: cell.getValue(),
+        }),
+    })
+    .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+    .then(function (result) {
+        if (result.ok && result.data.success) {
+            afficherMessage("✅ Enregistré — " + data.libelle + " / " + association, "success");
+        } else {
+            row.getElement().classList.add("ligne-erreur");
+            afficherMessage("⛔ Échec de l'enregistrement pour " + data.libelle + " — ressaisissez la valeur", "danger");
+        }
+    })
+    .catch(function () {
+        row.getElement().classList.add("ligne-erreur");
+        afficherMessage("⛔ Erreur réseau — " + data.libelle + " non enregistré, ressaisissez la valeur", "danger");
+    });
+}
+
+const colonnesAssociations = associations.map(function (nom) {
+    const codeVif = codeVifAssociations[nom];
+    return {
+        title: nom + (codeVif ? " (" + codeVif + ")" : ""),
+        field: nom,
+        width: 110,
+        hozAlign: "right",
+        headerWordWrap: true,
+        editor: "number",
+        editorParams: { min: 0, step: 0.1 },
+        topCalc: "sum",
+        topCalcParams: { precision: 1 },
+        formatter: function (cell) {
+            const v = cell.getValue();
+            return (v === null || v === undefined) ? "" : v;
+        },
+        cellEdited: sauvegarderCellule,
+    };
+});
+
+const table = new Tabulator("#tabulator-table", {
+    data: lignes,
+    layout: "fitColumns",
+    height: "calc(100vh - 280px)",
+    placeholder: "Aucun produit",
+    columns: [
+        { title: "Code", field: "code_produit", width: 90, headerFilter: "input", frozen: true },
+        { title: "Produit", field: "libelle", widthGrow: 2, minWidth: 260, headerFilter: "input", frozen: true,
+          topCalcFormatter: function () { return "Total"; } },
+    ].concat(colonnesAssociations),
+});
+
+const filtreInput = document.getElementById("filtre-recherche");
+filtreInput.addEventListener("input", function () {
+    const search = normalizeSearch(this.value);
+    if (!search) { table.clearFilter(); return; }
+    table.setFilter(function (data) {
+        return normalizeSearch(data.libelle).includes(search);
+    });
+});
+</script>
+{% endblock %}

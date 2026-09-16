@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Demandes d'autorisation {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 1100px;">
+    <h2>✍️ Demande d'autorisation de collecter {{ annee }}</h2>
+    <p class="text-muted small">
+        Magasins ayant un email renseigné et n'ayant pas encore donné leur accord (colonne « Accord » vide
+        dans le fichier magasins) — une lettre personnalisée (modèle Word) est générée et jointe à chaque mail.
+    </p>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+    {% endcall %}
+
+    <button class="btn btn-outline-secondary mb-3" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionParametresAutorisation"
+            aria-expanded="false" aria-controls="sectionParametresAutorisation">
+        📁 Paramètres (texte de la lettre, du coupon et du mail, affiche des produits)
+    </button>
+    <div id="sectionParametresAutorisation" class="collapse mb-3">
+
+    <div class="alert alert-info small">
+        <strong>Ordre à suivre :</strong>
+        <ol class="mb-0">
+            <li>Vérifier/adapter le texte de la lettre et du coupon-réponse ci-dessous.</li>
+            <li>Déposer l'affiche des produits recherchés (page 2 du PDF) — <strong>attention</strong>, c'est un
+                visuel propre à cette page, différent de l'image du mail chauffeurs/équipiers (plan de parking) :
+                vérifiez l'aperçu affiché à côté du bouton avant de continuer.</li>
+            <li>Vérifier/adapter le texte du mail (distinct du PDF joint).</li>
+            <li>Utiliser les boutons « Aperçu PDF » et « Aperçu du mail » plus bas pour contrôler le rendu, sans
+                rien envoyer.</li>
+            <li>Sélectionner les magasins puis envoyer, en mode test d'abord.</li>
+        </ol>
+    </div>
+
+    <form method="post" action="{{ url_for('collecte.enregistrer_texte_autorisation') }}" class="border rounded p-3 mb-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+        <div class="mb-3">
+            <label for="texte_lettre" class="form-label"><strong>Texte de la lettre</strong></label>
+            <textarea name="texte_lettre" id="texte_lettre" class="form-control" rows="14">{{ texte_lettre }}</textarea>
+            <small class="text-muted">
+                Vous pouvez utiliser <code>&lt;&lt;Nom&gt;&gt;</code> (nom du magasin),
+                <code>&lt;&lt;dates&gt;&gt;</code> (jours et dates réels de collecte pour ce magasin, affichés en
+                rouge — sur sa propre ligne) et <code>&lt;&lt;centre&gt;&gt;</code> en début d'un dernier
+                paragraphe pour centrer les lignes qui suivent (ex. la signature). Une ligne vide sépare les
+                paragraphes.
+            </small>
+        </div>
+        <div class="mb-3">
+            <label for="texte_coupon" class="form-label"><strong>Texte du coupon-réponse (bas de page)</strong></label>
+            <textarea name="texte_coupon" id="texte_coupon" class="form-control" rows="7">{{ texte_coupon }}</textarea>
+            <small class="text-muted">
+                Repères disponibles : <code>&lt;&lt;Nom&gt;&gt;</code>, <code>&lt;&lt;CodeVIF&gt;&gt;</code>,
+                <code>&lt;&lt;Adresse&gt;&gt;</code>, <code>&lt;&lt;CP&gt;&gt;</code>, <code>&lt;&lt;VILLE&gt;&gt;</code>,
+                <code>&lt;&lt;Telephone&gt;&gt;</code>, <code>&lt;&lt;Email&gt;&gt;</code> et
+                <code>&lt;&lt;autorisation&gt;&gt;</code> (ligne « AUTORISATION DE COLLECTER : OUI ☐ NON ☐ » avec
+                cases à cocher) — une ligne du champ correspond à une ligne du coupon.
+            </small>
+        </div>
+        <div class="mb-3">
+            <label for="texte_mail" class="form-label"><strong>Texte du mail (distinct du PDF joint)</strong></label>
+            <textarea name="texte_mail" id="texte_mail" class="form-control" rows="7">{{ texte_mail }}</textarea>
+            <small class="text-muted">
+                Corps de l'e-mail envoyé avec la lettre en pièce jointe. Repères disponibles :
+                <code>&lt;&lt;Nom&gt;&gt;</code> (nom du magasin) et <code>&lt;&lt;Annee&gt;&gt;</code>.
+            </small>
+        </div>
+        <button type="submit" class="btn btn-outline-primary">💾 Enregistrer le texte</button>
+    </form>
+
+    <form method="post" action="{{ url_for('collecte.enregistrer_image_autorisation') }}"
+          enctype="multipart/form-data" class="border rounded p-3 mb-4 d-flex flex-wrap align-items-center gap-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+        {% if image_produits_url %}
+        <img src="{{ image_produits_url }}" alt="Affiche des produits" style="max-height:90px;" class="border rounded">
+        {% endif %}
+        <label for="image_produits" class="visually-hidden">Affiche des produits recherchés (2ᵉ page du PDF)</label>
+        <input type="file" name="image_produits" id="image_produits" class="form-control" style="max-width: 320px;"
+               accept="image/png,image/jpeg,image/gif" required>
+        <button type="submit" class="btn btn-outline-secondary">
+            {% if image_produits_url %}🔄 Remplacer l'affiche{% else %}📤 Déposer une affiche{% endif %}
+        </button>
+        <span class="text-muted small w-100">
+            Affiche des produits recherchés, insérée en page 2 du PDF envoyé — plus besoin de modèle Word.
+        </span>
+    </form>
+
+    </div>
+
+    <form method="post" id="form-autorisations">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <h5>Destinataires ({{ magasins|length }} magasins)</h5>
+        <div class="mb-2">
+            <button type="button" id="btn-tout-cocher" class="btn btn-sm btn-outline-secondary">☑️ Tout cocher</button>
+            <button type="button" id="btn-tout-decocher" class="btn btn-sm btn-outline-secondary">⬜ Tout décocher</button>
+        </div>
+        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+            <table class="table table-sm table-striped">
+                <thead class="table-light" style="position: sticky; top: 0;">
+                    <tr>
+                        <th></th>
+                        <th>Code VIF</th>
+                        <th>Magasin</th>
+                        <th>État</th>
+                        <th>Ville</th>
+                        <th>Jours collecte</th>
+                        <th>Email(s)</th>
+                        <th>Déjà envoyée</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for m in magasins %}
+                <tr>
+                    <td><input class="case-magasin" type="checkbox" name="magasins" value="{{ m.code_vif }}" checked></td>
+                    <td>{{ m.code_vif }}</td>
+                    <td>{{ m.nom }}</td>
+                    <td>{{ m.etat }}</td>
+                    <td>{{ m.ville }}</td>
+                    <td>{{ m.jours_texte or '—' }}</td>
+                    <td>{{ m.emails|join(', ') }}</td>
+                    <td>{{ '✅' if m.deja_envoye else '—' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="border rounded p-3 mt-3 bg-light">
+            <p class="text-muted small mb-2">
+                Ces options concernent l'envoi dans son ensemble — elles ne font pas partie de la liste des
+                magasins ci-dessus.
+            </p>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="confirmation" value="oui" id="confirmation" required>
+                <label class="form-check-label" for="confirmation">J'ai contrôlé la sélection et le texte de la lettre et je confirme l'envoi.</label>
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="mode_test" id="mode_test" checked>
+                <label class="form-check-label" for="mode_test">Test : envoyer uniquement à l'adresse de test (aux magasins cochés).</label>
+            </div>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" name="test_un_magasin" id="test_un_magasin">
+                <label class="form-check-label" for="test_un_magasin">Test sur un seul magasin.</label>
+            </div>
+            <div class="mb-3 d-flex align-items-end gap-2 flex-wrap" style="max-width: 700px;">
+                <div class="flex-grow-1">
+                    <label class="form-label" for="magasin_test_code_vif">Magasin à tester / prévisualiser</label>
+                    <select class="form-select" name="magasin_test_code_vif" id="magasin_test_code_vif">
+                        {% for m in magasins %}
+                        <option value="{{ m.code_vif }}">{{ m.nom }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="button" id="btn-apercu-pdf" class="btn btn-outline-info">
+                    🖨️ Aperçu PDF
+                </button>
+                <button type="button" id="btn-apercu-mail" class="btn btn-outline-info">
+                    ✉️ Aperçu du mail
+                </button>
+            </div>
+            <p class="text-muted small mb-0">
+                Les aperçus ouvrent le PDF (la lettre jointe) ou le texte du mail exacts qui seraient envoyés
+                pour le magasin sélectionné ci-dessus, sans envoyer aucun mail (même de test).
+            </p>
+        </div>
+
+        <button type="submit" class="btn btn-primary mt-3" id="btn-envoyer-mails">📧 Envoyer les demandes</button>
+    </form>
+</div>
+
+<script>
+const cases = document.querySelectorAll(".case-magasin");
+document.getElementById("btn-tout-cocher").addEventListener("click", function () {
+    cases.forEach(function (c) { c.checked = true; });
+});
+document.getElementById("btn-tout-decocher").addEventListener("click", function () {
+    cases.forEach(function (c) { c.checked = false; });
+});
+
+document.getElementById("btn-apercu-pdf").addEventListener("click", function () {
+    const codeVif = document.getElementById("magasin_test_code_vif").value;
+    const url = "{{ url_for('collecte.autorisations_apercu', annee=annee) }}?code_vif=" + encodeURIComponent(codeVif);
+    window.open(url, "_blank");
+});
+
+document.getElementById("btn-apercu-mail").addEventListener("click", function () {
+    const codeVif = document.getElementById("magasin_test_code_vif").value;
+    const url = "{{ url_for('collecte.autorisations_apercu_mail', annee=annee) }}?code_vif=" + encodeURIComponent(codeVif);
+    window.open(url, "_blank");
+});
+
+document.getElementById("btn-envoyer-mails").addEventListener("click", function (evenement) {
+    if (!document.getElementById("confirmation").checked) {
+        evenement.preventDefault();
+        alert("⚠️ Cochez d'abord « J'ai contrôlé la sélection et le texte de la lettre et je confirme l'envoi » — rien n'a été envoyé.");
+        return;
+    }
+
+    const modeTest = document.getElementById("mode_test").checked;
+    const unSeulMagasin = document.getElementById("test_un_magasin").checked;
+    const nomMagasin = document.getElementById("magasin_test_code_vif").selectedOptions[0].text;
+    const nbSelectionnes = Array.from(cases).filter(function (c) { return c.checked; }).length;
+
+    let message;
+    if (unSeulMagasin) {
+        message = "Envoyer un mail de TEST pour le magasin « " + nomMagasin + " » à votre propre adresse ?";
+    } else if (modeTest) {
+        message = "Envoyer un mail de TEST (pour les " + nbSelectionnes + " magasin(s) cochés, mais tous à votre propre adresse) ?";
+    } else {
+        message = "⚠️ ENVOI RÉEL : envoyer la demande d'autorisation à " + nbSelectionnes + " magasin(s), à leurs vraies adresses ?";
+    }
+
+    if (!confirm(message)) {
+        evenement.preventDefault();
+    }
+});
+</script>
+{% endblock %}

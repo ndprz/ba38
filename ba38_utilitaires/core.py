@@ -1889,6 +1889,105 @@ def verifier_token_validation_pole(token):
     return payload
 
 
+# ============================================================
+# TOKEN LIEN DE PARTAGE — carte localisation collecte (sans connexion)
+# ============================================================
+
+LOCALISATION_TOKEN_VALIDITE_JOURS = 180
+
+
+def generer_token_localisation(annee):
+    """Génère un token signé permettant de consulter la carte de
+    localisation magasins/associations de l'année donnée sans avoir à se
+    connecter à l'application — pour un lien envoyé à plusieurs personnes
+    (bénévoles, partenaires) qui n'ont pas de compte."""
+
+    payload = {
+        "action": "voir_localisation",
+        "annee": annee,
+        "exp": datetime.utcnow() + timedelta(
+            days=LOCALISATION_TOKEN_VALIDITE_JOURS
+        )
+    }
+
+    return jwt.encode(
+        payload,
+        current_app.secret_key,
+        algorithm="HS256"
+    )
+
+
+def verifier_token_localisation(token):
+    """Vérifie le token du lien de partage de la carte localisation.
+    Retourne le payload si valide, sinon None."""
+
+    try:
+        payload = jwt.decode(
+            token,
+            current_app.secret_key,
+            algorithms=["HS256"]
+        )
+
+    except jwt.ExpiredSignatureError:
+        return None
+
+    except jwt.InvalidTokenError:
+        return None
+
+    if payload.get("action") != "voir_localisation":
+        return None
+
+    return payload
+
+
+SAISIE_ASSOCIATION_TOKEN_VALIDITE_JOURS = 60
+
+
+def generer_token_saisie_association(annee, association):
+    """Génère un token signé permettant à une association de saisir en
+    ligne ses poids par magasin et ses quantités par produit, sans compte
+    — pour un lien envoyé par mail en même temps que ses fichiers Excel
+    et PDF personnalisés."""
+
+    payload = {
+        "action": "saisie_association",
+        "annee": annee,
+        "association": association,
+        "exp": datetime.utcnow() + timedelta(
+            days=SAISIE_ASSOCIATION_TOKEN_VALIDITE_JOURS
+        )
+    }
+
+    return jwt.encode(
+        payload,
+        current_app.secret_key,
+        algorithm="HS256"
+    )
+
+
+def verifier_token_saisie_association(token):
+    """Vérifie le token du lien de saisie en ligne d'une association.
+    Retourne le payload (annee, association) si valide, sinon None."""
+
+    try:
+        payload = jwt.decode(
+            token,
+            current_app.secret_key,
+            algorithms=["HS256"]
+        )
+
+    except jwt.ExpiredSignatureError:
+        return None
+
+    except jwt.InvalidTokenError:
+        return None
+
+    if payload.get("action") != "saisie_association":
+        return None
+
+    return payload
+
+
 def generer_token_validation_presidence(engagement_id, email):
     """Génère un token signé permettant à email de valider
     (présidence) l'engagement engagement_id depuis le lien reçu

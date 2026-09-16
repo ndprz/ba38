@@ -1,7 +1,19 @@
-<p><strong>Application BA38 – Module Collecte</strong> Version de la
-documentation : 15/09/2026</p>
-<p>Le module « Collecte » gère la préparation et le suivi de la collecte
-annuelle en magasins, en plusieurs temps :</p>
+<h1 class="TOC-Heading" id="table-des-matières">Table des matières</h1>
+<p><strong>Application BA38 — Manuel d’utilisation détaillé du module
+Collecte</strong> Destiné au/à la responsable de la collecte annuelle.
+Version : 14/09/2026.</p>
+<h1 id="introduction">Introduction</h1>
+<h2 id="objet-de-ce-manuel">Objet de ce manuel</h2>
+<p>Ce manuel décrit, étape par étape, l’utilisation du module « Collecte
+» de l’application BA38 : de la préparation d’une nouvelle campagne
+jusqu’au bilan chiffré des cagettes collectées. Il complète l’aide
+contextuelle disponible dans l’application (bouton « ℹ️ Aide utilisateur
+» de la page Collecte) en détaillant chaque écran avec des captures et
+des explications pas à pas, à destination de la personne qui pilote la
+campagne de bout en bout.</p>
+<h2 id="vue-densemble-du-module">Vue d’ensemble du module</h2>
+<p>Le module « Collecte » couvre trois grandes phases de la campagne
+annuelle :</p>
 <ul>
 <li><p>la <strong>simulation</strong> : calcule automatiquement des
 tournées optimisées (répartition des magasins par camion et
@@ -19,28 +31,35 @@ collecte.</p></li>
 </ul>
 <p>La simulation ne modifie jamais le planning go-on-web : c’est un
 outil d’aide à la décision. Seule la génération des documents réels
-produit ce qui est utilisé sur le terrain.</p>
+(Production) produit ce qui est utilisé sur le terrain.</p>
+<h2 id="accès-et-droits">Accès et droits</h2>
 <p>L’accès à ce module nécessite le droit « lecture » (ou supérieur) sur
 « Collecte ». Le lancement d’une génération (simulation ou production),
 l’import de fichiers, la saisie des cagettes et des poids, la
 modification des textes de mails et les envois nécessitent le droit «
 écriture ».</p>
-<p>Menu → Collecte. Sélectionner l’année de collecte en haut de page
-(une campagne est créée automatiquement au premier import de fichier
-pour une année donnée). Les cinq sections ci-dessous (📁 Paramètres, 📁
-Gestion magasins, 📁 Gestion tournées, 📁 Associations gardant, 📁
-Résultat collecte) sont indépendantes et peuvent être ouvertes
-séparément.</p>
+<h2 id="ouvrir-le-module-et-choisir-lannée">Ouvrir le module et choisir
+l’année</h2>
+<p>Menu → Collecte. La page d’accueil du module (illustrée ci-dessous)
+liste cinq sections dépliables indépendamment : « Paramètres de la
+collecte annuelle », « Gestion magasins », « Gestion tournées », «
+Associations gardant » et « Résultat collecte ». Sélectionner l’année de
+collecte en haut de page — une campagne est créée automatiquement au
+premier import de fichier pour une année donnée.</p>
+<p><img src="media/rId23.png" style="width:5.83333in;height:11.54167in"
+alt="Page d’accueil du module Collecte, sections dépliées" /></p>
+<p>Page d’accueil du module Collecte, sections dépliées</p>
 <h1 id="paramètres-de-la-collecte-annuelle">1. Paramètres de la collecte
 annuelle</h1>
-<h2 id="dates-et-liens-google-drive">1.1 Dates et liens Google
-Drive</h2>
-<p>Renseigner les dates de début et de fin de la collecte une seule fois
-par année. Elles sont reprises automatiquement dans les documents de
-production (date de chaque demi-journée en en-tête des fiches équipier —
-les autres jours sont déduits automatiquement : vendredi = jeudi + 1,
-etc.). Tant qu’aucune date n’est renseignée, seul le libellé du jour
-apparaît (« Vendredi Matin »), sans date précise.</p>
+<h2 id="dates-de-la-collecte">1.1 Dates de la collecte</h2>
+<p>Renseigner les dates de début (jeudi) et de fin (dimanche) de la
+collecte une seule fois par année, dans le premier encart de la section.
+Elles sont reprises automatiquement dans les documents de production
+(date de chaque demi-journée en en-tête des fiches équipier — les autres
+jours sont déduits automatiquement : vendredi = jeudi + 1, etc.). Tant
+qu’aucune date n’est renseignée, seul le libellé du jour apparaît («
+Vendredi Matin »), sans date précise.</p>
+<h2 id="liens-google-drive">1.2 Liens Google Drive</h2>
 <p>Un nouveau dossier Drive étant créé chaque année, coller les liens
 Google Sheets demandés dans « Paramètres des fichiers Google Drive » :
 magasins, véhicules/planning, historique des cagettes, groupes,
@@ -49,14 +68,15 @@ chaque fichier Google Sheets, celui-ci devant être partagé en « Toute
 personne disposant du lien »). Tant qu’un lien n’est pas renseigné pour
 l’année en cours, la génération des documents réels reste
 désactivée.</p>
-<h2 id="fichiers-nécessaires-à-la-simulation">1.2 Fichiers nécessaires à
+<h2 id="fichiers-nécessaires-à-la-simulation">1.3 Fichiers nécessaires à
 la simulation</h2>
 <p>Deux fichiers sont à importer pour pouvoir lancer une simulation,
 avec les boutons « Importer » ou « Remplacer » de cette même section
 :</p>
 <ul>
 <li><p><strong>Liste des magasins</strong> : export go-on-web de l’année
-en cours (adresses, horaires, coordonnées GPS, VIF, état) ;</p></li>
+en cours (adresses, horaires, coordonnées GPS, VIF, état, créneaux)
+;</p></li>
 <li><p><strong>Tournées de la collecte précédente</strong> : le PDF «
 fiches jour-véhicules-magasins » de la collecte précédente, disponible
 dans le dossier camions du drive collecte. Sert de point de départ à
@@ -65,34 +85,60 @@ magasins ajoutés ou arrêtés cette année — les camions (codes et noms) en
 sont aussi extraits directement, aucun fichier véhicules séparé n’est
 nécessaire ici.</p></li>
 </ul>
+<p><strong>À savoir sur la colonne « Créneaux »</strong> du fichier
+magasins : un magasin dont les horaires sont saisis sur une seule ligne
+mais couvrent toute la journée (ex. « samedi 08h15-20h00 ») ouvre les
+colonnes Matin <strong>et</strong> Après-midi de ce jour, pas seulement
+celle correspondant à l’heure de début. Le dimanche ne compte qu’une
+seule demi-journée dans toute l’application (« Dimanche Matin ») : un
+créneau du dimanche, quelle que soit son heure, y est toujours
+rattaché.</p>
 <h1 id="gestion-magasins">2. Gestion magasins</h1>
 <h2 id="gestion-des-autorisations">2.1 Gestion des autorisations</h2>
 <p>Le bouton « ✍️ Gérer les envois » ouvre la liste des magasins ayant
 une adresse e-mail renseignée et n’ayant pas encore donné leur accord
-(colonne « Accord » vide dans le fichier magasins) — les magasins à
+(colonne « Accord » vide dans le fichier magasins). Les magasins à
 l’état « Non collecté » sont exclus de cette liste.</p>
-<p>Chaque magasin peut être coché ou décoché individuellement (boutons «
-Tout cocher » / « Tout décocher ») avant l’envoi.</p>
-<p>Une lettre de demande d’autorisation personnalisée (PDF, 2 pages) est
-générée et jointe automatiquement à chaque mail : la première page
-reprend le courrier-type avec un coupon-réponse à signer, en faisant
-apparaître en rouge les jours et dates réels de collecte prévus pour ce
-magasin précis ; la seconde page reprend l’affiche « Nous avons besoin
-de… » des produits recherchés.</p>
+<p>Étapes :</p>
+<p>Vérifier la liste et décocher, si besoin, les magasins à exclure de
+cet envoi (boutons « Tout cocher » / « Tout décocher » disponibles en
+haut de la liste).</p>
+<p>Laisser la case « Test » cochée pour un premier envoi à sa propre
+adresse (éventuellement limité à un seul magasin via « Test sur un seul
+magasin »).</p>
+<p>Une fois le contenu vérifié, décocher « Test », cocher la case de
+confirmation, puis cliquer sur « 📧 Envoyer les demandes » pour l’envoi
+réel.</p>
+<p>Chaque mail contient une lettre de demande d’autorisation
+personnalisée en pièce jointe (PDF, 2 pages) : la première page reprend
+le courrier-type avec un coupon-réponse à signer (autorisation oui/non),
+en faisant apparaître en rouge les jours et dates réels de collecte
+prévus pour ce magasin précis (et non la plage complète de la campagne)
+; la seconde page reprend l’affiche « Nous avons besoin de… » des
+produits recherchés.</p>
 <p>Le texte du courrier peut être modifié à tout moment via le bouton «
 ✏️ Modifier le texte de la lettre (modèle Word) », qui télécharge le
 modèle actuel. Après modification dans Word, redéposer le fichier au
 même emplacement pour qu’il soit repris automatiquement au prochain
-envoi, sans redémarrage de l’application.</p>
-<p>Comme pour les autres envois du module, le mode test (coché par
-défaut) permet d’envoyer un exemplaire à sa propre adresse avant tout
-envoi réel, y compris pour un seul magasin sélectionné.</p>
+envoi, sans redémarrage de l’application. Le repère «
+&lt;&lt;PhraseJoursCollecte&gt;&gt; » peut être déplacé n’importe où
+dans le texte : les jours et dates réels de collecte de chaque magasin y
+sont insérés automatiquement, année après année.</p>
+<p>Aucun convertisseur Word→PDF n’étant disponible sur le serveur, la
+mise en page du PDF envoyé est reconstruite indépendamment du modèle
+Word (texte identique, présentation fixée dans le code) : seul le
+contenu texte du modèle Word est repris, pas une mise en page
+personnalisée.</p>
 <h2 id="localisation-magasins-et-associations">2.2 Localisation magasins
 et associations</h2>
 <p>Le bouton « 🗺️ Voir la carte » ouvre une carte interactive de tous
 les magasins collectés par la BAI et des associations partenaires
 actives de l’année en cours.</p>
-<p>Trois catégories de marqueurs, activables séparément :</p>
+<p><img src="media/rId33.png" style="width:5.83333in;height:3.75in"
+alt="Carte de localisation des magasins et associations" /></p>
+<p>Carte de localisation des magasins et associations</p>
+<p>Trois catégories de marqueurs, activables séparément avec les cases à
+cocher au-dessus de la carte :</p>
 <ul>
 <li><p>🏪 <strong>Magasins collecte BAI</strong> (vert) — magasins
 collectés directement par la BAI ;</p></li>
@@ -120,14 +166,15 @@ fiable.</p></li>
 par ville, sans tenir compte des accents ni de la casse, et recentre
 automatiquement la carte sur les résultats trouvés. Le bouton plein
 écran agrandit la carte à toute la fenêtre du navigateur.</p>
-<p>Un lien de partage (généré depuis cette page) permet de consulter la
-carte sans connexion à l’application, valable 180 jours — pratique pour
-la transmettre à un partenaire extérieur.</p>
-<h2 id="règles-de-géolocalisation">2.3 Règles de géolocalisation</h2>
+<p>Un lien de partage (généré depuis cette page, visible en haut de la
+carte) permet de consulter la carte sans connexion à l’application,
+valable 180 jours — pratique pour la transmettre à un partenaire
+extérieur.</p>
+<h3 id="règles-de-géolocalisation">Règles de géolocalisation</h3>
 <p>Les adresses des magasins et des associations sont géolocalisées
 automatiquement (aucune saisie manuelle de coordonnées). Trois règles
-s’appliquent pour fiabiliser ce calcul et expliquent pourquoi l’adresse
-affichée peut différer de l’adresse brute du référentiel :</p>
+s’appliquent et expliquent pourquoi l’adresse affichée peut différer de
+l’adresse brute du référentiel :</p>
 <ul>
 <li><p>pour les associations, la commune retenue est déterminée à partir
 du <strong>code postal</strong> (via le référentiel officiel des
@@ -151,8 +198,11 @@ référentiel source, puis revenir sur la carte pour vérifier la
 correction.</p>
 <h1 id="gestion-tournées">3. Gestion tournées</h1>
 <h2 id="lancer-une-simulation">3.1 Lancer une simulation</h2>
-<p>Une fois les deux fichiers importés, le bouton « 🚀 Générer les
-tournées » ouvre le formulaire de paramètres :</p>
+<p>Une fois les deux fichiers de la section 1.3 importés, le bouton « 🚀
+Générer les tournées » ouvre le formulaire de paramètres :</p>
+<p><img src="media/rId39.png" style="width:5.83333in;height:3.75in"
+alt="Formulaire de génération d’une simulation de tournées" /></p>
+<p>Formulaire de génération d’une simulation de tournées</p>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -196,37 +246,49 @@ chacune)</td>
 </tr>
 </tbody>
 </table>
-<p>Chaque génération crée une nouvelle version sans écraser les
-précédentes. La génération peut prendre jusqu’à une minute. Un magasin
-coché comme collecté dans go-on-web mais dont l’état réel n’est pas «
-Collecté par la BAI » (ou « Collecte gardée » avec stockage BAI+) est
-automatiquement exclu du calcul des tournées, quel que soit le contenu
-de go-on-web. Les demi-journées du jeudi et du dimanche sont traitées
+<p>Cliquer sur « 🚀 Lancer la génération ». Chaque génération crée une
+nouvelle version sans écraser les précédentes. Le calcul peut prendre
+jusqu’à une minute.</p>
+<p><strong>Particularités à connaître</strong> :</p>
+<ul>
+<li><p>un magasin coché comme collecté dans go-on-web mais dont l’état
+réel n’est pas « Collecté par la BAI » (ou « Collecte gardée » avec
+stockage BAI+) est automatiquement exclu du calcul des tournées, quel
+que soit le contenu de go-on-web ;</p></li>
+<li><p>les demi-journées du jeudi et du dimanche sont traitées
 exactement comme les autres dans tous les algorithmes de répartition et
 de rattrapage (seule exception : le dimanche accepte un magasin de plus
-par tournée que les autres jours, cf. tableau ci-dessus).</p>
-<p>Seuls les <strong>camions réels</strong> de collecte sont pris en
+par tournée que les autres jours, cf. tableau ci-dessus) ;</p></li>
+<li><p>seuls les <strong>camions réels</strong> de collecte sont pris en
 compte dans les tournées, l’analyse, l’envoi des mails et l’export des
 cagettes : un code commençant par « VX » (camion supplémentaire créé par
 la simulation) ou « V » suivi d’un nombre inférieur à 90 est un camion
 de collecte ; à partir de V090, il s’agit de lignes go-on-web de
 staffing entrepôt (ex. « V090 = BAI Entrepôt »), sans magasin réel
-associé, donc toujours écartées.</p>
+associé, donc toujours écartées.</p></li>
+</ul>
 <h2 id="consulter-un-résultat">3.2 Consulter un résultat</h2>
-<p>La page résultat affiche le détail des tournées (tableau
-filtrable/triable), avec :</p>
+<p>Le bouton « 📊 Voir le résultat » (ou l’historique des générations)
+ouvre le détail d’une version :</p>
+<p><img src="media/rId43.png" style="width:5.83333in;height:3.80833in"
+alt="Page de résultat d’une génération de tournées" /></p>
+<p>Page de résultat d’une génération de tournées</p>
+<p>Cette page offre :</p>
 <ul>
-<li><p>l’export Excel et l’export PDF du tableau,</p></li>
+<li><p>un tableau filtrable/triable, groupé par demi-journée puis
+camion, avec le secteur, les magasins, le tonnage, la distance et la
+durée estimées ;</p></li>
+<li><p>l’export Excel et l’export PDF du tableau ;</p></li>
 <li><p>la carte des secteurs et la carte des tournées (itinéraire réel
-calculé),</p></li>
-<li><p>la sélection d’une autre version générée pour la même
-année,</p></li>
+calculé) ;</p></li>
+<li><p>la sélection d’une autre version générée pour la même année
+;</p></li>
 <li><p>les lignes en rouge signalent un véhicule figé (jamais modifié
 par l’algorithme).</p></li>
 </ul>
-<p>L’historique (bouton « 📋 Historique ») liste toutes les versions
-générées pour l’année, avec leurs paramètres, et permet de les
-consulter, télécharger ou supprimer individuellement.</p>
+<p>Le bouton « 📋 Historique » (sur la page d’accueil du module) liste
+toutes les versions générées pour l’année, avec leurs paramètres, et
+permet de les consulter, télécharger ou supprimer individuellement.</p>
 <h2 id="analyse-comparative-8-scénarios">3.3 Analyse comparative — 8
 scénarios</h2>
 <p>Le bouton « 🔬 Lancer l’analyse des 8 scénarios » compare, en tâche
@@ -246,6 +308,9 @@ quatre jours.</p>
 documents réels (Production)</h2>
 <p>Le bouton « 🚛 Générer documents » ouvre la page Production,
 indépendante de la simulation.</p>
+<p><img src="media/rId48.png" style="width:5.83333in;height:6.83333in"
+alt="Page Production : lancement, documents générés et journal" /></p>
+<p>Page Production : lancement, documents générés et journal</p>
 <p>Contrairement à la simulation, la page Production ne calcule pas de
 tournées : elle <strong>met en forme les documents à partir du planning
 déjà décidé</strong> dans go-on-web (colonnes Quai, Tournée, Début, Code
@@ -320,22 +385,25 @@ cag1 de tous les magasins de cette tournée)</td>
 </tr>
 </tbody>
 </table>
-<p>Après chaque génération, un journal récapitule les anomalies
-détectées dans le planning go-on-web (camion sans quai, magasin actif
-jamais planifié, créneau incomplet — un seul des deux demi-journées d’un
-jour couvert alors que l’autre devrait l’être, cagettes manquantes,
-magasin affecté à plusieurs camions sur la même demi-journée…). Les
-magasins en « Collecte gardée » ne sont jamais signalés comme anomalie
-pour une demi-journée sans camion : c’est normal, ils sont collectés par
-l’association. Ces informations figurent aussi dans les onglets de
-contrôle du classeur Excel (dont un onglet « Explications » qui les
-détaille tous) : à corriger dans go-on-web puis relancer une
-génération.</p>
+<p>Après chaque génération, le journal affiché en bas de page (visible
+sur la capture ci-dessus) récapitule les anomalies détectées dans le
+planning go-on-web (camion sans quai, magasin actif jamais planifié,
+créneau incomplet — un seul des deux demi-journées d’un jour couvert
+alors que l’autre devrait l’être, cagettes manquantes, magasin affecté à
+plusieurs camions sur la même demi-journée…). Les magasins en « Collecte
+gardée » ne sont jamais signalés comme anomalie pour une demi-journée
+sans camion : c’est normal, ils sont collectés par l’association. Ces
+informations figurent aussi dans les onglets de contrôle du classeur
+Excel (dont un onglet « Explications » qui les détaille tous) : à
+corriger dans go-on-web puis relancer une génération.</p>
 <h2 id="envoi-des-mails-aux-chauffeurs-et-équipiers">3.5 Envoi des mails
 aux chauffeurs et équipiers</h2>
 <p>Ouvrir « Envoi mail tournées aux chauffeurs/équipiers ». La page
 récupère les affectations du fichier véhicules/planning et regroupe les
 informations par adresse e-mail.</p>
+<p><img src="media/rId52.png" style="width:5.83333in;height:3.75in"
+alt="Page d’envoi des mails aux chauffeurs et équipiers" /></p>
+<p>Page d’envoi des mails aux chauffeurs et équipiers</p>
 <p>Le début et la fin du mail sont configurables séparément. La partie
 centrale, qui liste automatiquement les demi-journées, les camions, les
 magasins et les autres personnes affectées, n’est pas modifiée. Modifier
@@ -346,24 +414,29 @@ remplacé automatiquement par le nom du destinataire.</p>
 (consignes, plan, note complémentaire…) : ils sont à sélectionner à
 nouveau à chaque test ou envoi, rien n’est conservé d’une fois sur
 l’autre.</p>
-<ul>
+<p>Étapes recommandées :</p>
+<ol type="1">
 <li><p>Choisir une personne dans la liste et utiliser « Tester sur mon
 adresse » pour vérifier le contenu.</p></li>
 <li><p>Après vérification, cliquer sur « Envoyer les mails » pour
 envoyer un message personnalisé à chaque chauffeur ou équipier ayant une
 adresse e-mail.</p></li>
-<li><p>Les personnes sans adresse e-mail sont signalées sur la page et
-ne reçoivent pas de message.</p></li>
-</ul>
+</ol>
+<p>Les personnes sans adresse e-mail sont signalées en haut de la page
+(encart orange) et ne reçoivent pas de message.</p>
 <h1 id="associations-gardant">4. Associations gardant</h1>
 <p>La section « 📁 Associations gardant » concerne les associations qui
 assurent elles-mêmes la collecte d’un ou plusieurs magasins au lieu de
 remettre les produits à la BAI.</p>
+<p><img src="media/rId57.png" style="width:5.83333in;height:3.75in"
+alt="Liste des associations gardant leur propre collecte" /></p>
+<p>Liste des associations gardant leur propre collecte</p>
+<p>Étapes :</p>
 <ol type="1">
 <li><p>Cliquer sur « 🏠 Créer la liste » pour croiser la liste des
 magasins et la liste des groupes.</p></li>
 <li><p>Contrôler les associations, les contacts, les adresses e-mail et
-les magasins affichés.</p></li>
+les magasins affichés (page ci-dessus).</p></li>
 <li><p>Télécharger le fichier contrôlé si nécessaire.</p></li>
 <li><p>Ouvrir « 📧 Préparer l’envoi », vérifier le fichier joint et les
 destinataires, puis confirmer l’envoi.</p></li>
@@ -372,11 +445,13 @@ destinataires, puis confirmer l’envoi.</p></li>
 Excel doit avoir été contrôlé et la confirmation demandée doit être
 cochée. Les magasins sans association renseignée sont signalés afin
 d’être corrigés avant l’envoi.</p>
-<p>Chaque mail contient également un lien de saisie en ligne propre à
-l’association, valable 60 jours, lui permettant de renseigner elle-même
-le poids par magasin et la répartition par produit sans avoir à renvoyer
-les fichiers joints. Chaque case est enregistrée automatiquement dès la
-saisie, avec un bouton « 💾 Enregistrer » en secours.</p>
+<p>Chaque mail envoyé contient également un lien de saisie en ligne
+propre à l’association, valable 60 jours, qui lui permet de renseigner
+elle-même le poids par magasin et la répartition par produit sans avoir
+à renvoyer les fichiers Excel/PDF joints. Ce formulaire ne nécessite pas
+de compte : chaque case est enregistrée automatiquement dès la saisie,
+avec un bouton « 💾 Enregistrer » en haut et en bas de page en
+secours.</p>
 <h1 id="résultat-collecte">5. Résultat collecte</h1>
 <h2 id="initialiser-la-liste-des-magasins">5.1 Initialiser la liste des
 magasins</h2>
@@ -399,6 +474,9 @@ n’apparaîtra plus).</p>
 <p>Le tableau affiche une ligne par magasin et une colonne par
 demi-journée. Chaque case est enregistrée automatiquement dès qu’elle
 est quittée, sans bouton à cliquer.</p>
+<p><img src="media/rId62.png" style="width:5.83333in;height:3.75in"
+alt="Page de saisie des cagettes, avec poids et filtres" /></p>
+<p>Page de saisie des cagettes, avec poids et filtres</p>
 <p>Une case reste grisée (« — ») et non modifiable dans deux cas :</p>
 <ul>
 <li><p>le magasin n’ouvre pas sur cette demi-journée d’après ses
@@ -411,30 +489,24 @@ s’il ouvrirait normalement à ce moment-là).</p></li>
 <p>Une valeur déjà saisie reste toujours visible même si le planning
 change ensuite — seule une nouvelle saisie peut être bloquée par cette
 règle, les données déjà enregistrées ne sont jamais masquées.</p>
-<p><strong>Particularités des créneaux horaires</strong> : un magasin
-dont les horaires sont saisis sur une seule ligne mais couvrent toute la
-journée (ex. « samedi 08h15-20h00 ») ouvre les colonnes Matin
-<strong>et</strong> Après-midi de ce jour, pas seulement celle
-correspondant à l’heure de début. Le dimanche ne compte qu’une seule
-demi-journée dans toute l’application (« Dimanche Matin ») : un créneau
-du dimanche, quelle que soit son heure, y est toujours rattaché — il
-n’existe pas de colonne « Dimanche Après-midi ».</p>
 <p>La case accepte un nombre simple, ou une addition sous la forme « 9+3
 » (utile pour reporter un comptage fait en plusieurs fois sur la fiche
 papier) : le total (12 dans cet exemple) est calculé et enregistré
 automatiquement.</p>
 <p>Un bouton « 💾 Enregistrer » en haut de page renvoie en une seule
-fois toutes les valeurs affichées, en complément de cet enregistrement
-automatique — utile en cas de doute après une coupure réseau.</p>
+fois toutes les valeurs affichées à l’écran, en complément de cet
+enregistrement automatique — utile en cas de doute après une coupure
+réseau, sans avoir à ressaisir case par case.</p>
 <h2 id="rechercher-et-filtrer">5.3 Rechercher et filtrer</h2>
 <ul>
 <li><p>La zone de recherche en haut du tableau filtre les magasins par
 nom, sans tenir compte des accents.</p></li>
-<li><p>Les sélecteurs « Demi-journée » puis « Camion » filtrent le
-tableau aux seuls magasins réellement desservis par le camion choisi sur
-la demi-journée choisie (pratique pour saisir les cagettes d’une seule
-tournée à la fois) ; choisir une demi-journée masque aussi les colonnes
-des autres demi-journées pour ne garder que celle concernée.</p></li>
+<li><p>Les sélecteurs « Demi-journée » puis « Camion » (visibles sur la
+capture ci-dessus) filtrent le tableau aux seuls magasins réellement
+desservis par le camion choisi sur la demi-journée choisie (pratique
+pour saisir les cagettes d’une seule tournée à la fois) ; choisir une
+demi-journée masque aussi les colonnes des autres demi-journées pour ne
+garder que celle concernée.</p></li>
 <li><p>Chaque colonne demi-journée dispose de son propre filtre (case
 sous l’en-tête) : taper <strong>0</strong> retrouve à la fois les cases
 déjà saisies à zéro et les cases pas encore saisies — c’est le filtre le
@@ -475,30 +547,69 @@ Forcer l’export » permet de contourner ce contrôle pour vérifier le
 format du fichier sans attendre une saisie complète ; ce bouton n’existe
 pas en production.)</em></p>
 <p>Le bouton « 📊 Télécharger en Excel » reprend la grille affichée à
-l’écran (poids estimé et poids après pesée, une colonne par
-demi-journée), pour archivage ou contrôle — à la différence de l’export
+l’écran (une colonne par demi-journée, poids estimé et poids après
+pesée), pour archivage ou contrôle visuel — à la différence de l’export
 CSV ci-dessus, qui suit strictement le format d’import VIF (une ligne
-par magasin).</p>
+par magasin, sans détail par demi-journée).</p>
 <h2 id="résultat-collecte-gardée-poids-par-magasin">5.5 Résultat
 collecte gardée — Poids par magasin</h2>
-<p>Le bouton « ⚖️ Saisir » (Poids par magasin gardé) ouvre un tableau
-listant chaque magasin en collecte gardée avec son association, pour y
-indiquer le poids en kg brut relevé sur la fiche de pesée renvoyée.
-Chaque case est enregistrée automatiquement dès la saisie, avec un
-bouton « 💾 Enregistrer » en secours en haut de page.</p>
+<p>Le bouton « ⚖️ Saisir » (Poids par magasin gardé, accessible depuis
+la page d’accueil du module) ouvre un tableau listant chaque magasin en
+collecte gardée avec son association et son code VIF, pour y indiquer le
+poids en kg brut relevé sur la fiche de pesée renvoyée par
+l’association. Chaque case est enregistrée automatiquement dès la
+saisie, avec un bouton « 💾 Enregistrer » en haut de page en
+secours.</p>
 <p>Le bouton « 📤 Exporter CSV (saisie des poids par magasin) » génère
-un fichier au format d’import VIF, bloqué tant qu’un magasin n’a pas de
-poids saisi (sauf option de forçage, réservée à l’environnement de
-test).</p>
+un fichier au format d’import VIF, sur le même principe que l’export des
+cagettes (§5.4) — bloqué tant qu’un magasin n’a pas de poids saisi, sauf
+option de forçage réservée à l’environnement de test.</p>
 <h2 id="résultat-collecte-gardée-quantités-par-produit">5.6 Résultat
 collecte gardée — Quantités par produit</h2>
 <p>Le bouton « 📦 Saisir » (Quantités par produit) ouvre un tableau avec
-une ligne par produit et une colonne par association — la liste des
-produits est lue directement dans le classeur modèle Excel envoyé aux
-associations, pour rester à jour automatiquement s’il évolue. Comme pour
-les poids par magasin, chaque case est enregistrée automatiquement, avec
-un bouton « 💾 Enregistrer » en secours.</p>
-<h1 id="bonnes-pratiques">6. Bonnes pratiques</h1>
+une ligne par produit et une colonne par association. La liste des
+produits n’est pas figée dans le code : elle est lue directement dans le
+classeur modèle Excel envoyé aux associations (§2, feuille « produits
+»), pour rester à jour automatiquement si ce modèle évolue d’une année à
+l’autre.</p>
+<p>Comme pour les poids par magasin, chaque case est enregistrée
+automatiquement dès la saisie, avec un bouton « 💾 Enregistrer » en
+secours.</p>
+<h1 id="déroulé-type-dune-campagne">6. Déroulé type d’une campagne</h1>
+<p>Pour aider à s’y retrouver, voici l’enchaînement habituel des actions
+décrites dans ce manuel, dans l’ordre où elles interviennent au fil
+d’une campagne :</p>
+<ol type="1">
+<li><p><strong>Avant la collecte</strong> — Paramètres (§1) : dates,
+liens Drive, import de la liste des magasins et des tournées de l’année
+précédente.</p></li>
+<li><p><strong>Préparation</strong> — Gestion magasins (§2) : vérifier
+la carte de localisation (stockage renseigné, adresses
+valides).</p></li>
+<li><p><strong>Simulation</strong> — Gestion tournées (§3.1–3.3) :
+générer une ou plusieurs versions de tournées, comparer des scénarios,
+jusqu’à obtenir un planning satisfaisant à reporter dans
+go-on-web.</p></li>
+<li><p><strong>Décision</strong> — une fois le planning validé dans
+go-on-web (en dehors de l’application BA38), générer les documents réels
+de Production (§3.4) et les envoyer aux chauffeurs/équipiers
+(§3.5).</p></li>
+</ol>
+<p>Autorisations — dès que le fichier magasins de l’année est importé
+(§1.3), envoyer les demandes d’autorisation de collecter aux magasins
+qui n’ont pas encore donné leur accord (§2.1), en particulier pour les
+nouveaux magasins.</p>
+<ol start="5" type="1">
+<li><p><strong>Cas particulier</strong> — traiter les associations
+gardant leur propre collecte (§4) en parallèle, dès que la liste des
+magasins et des groupes est disponible.</p></li>
+<li><p><strong>Jour J</strong> — au retour de chaque camion, saisir le
+nombre de cagettes ramené par magasin (§5.1–5.3).</p></li>
+<li><p><strong>Après la pesée</strong> — renseigner le poids total pesé,
+vérifier qu’aucun magasin n’est resté à zéro, puis exporter le fichier
+VIF (§5.4).</p></li>
+</ol>
+<h1 id="bonnes-pratiques">7. Bonnes pratiques</h1>
 <ul>
 <li><p>Toujours vérifier les onglets de contrôle du classeur Excel avant
 impression des documents de production.</p></li>
@@ -511,11 +622,59 @@ nouveaux scénarios, indépendamment de l’état de la production.</p></li>
 stockage renseigné, adresses invalides) pendant la préparation de la
 campagne plutôt qu’au dernier moment.</p></li>
 </ul>
-<p>Le code VIF de chaque magasin, association et produit est désormais
-affiché dans les tableaux de saisie et d’envoi du module, pour faciliter
-le rapprochement avec les fichiers d’import/export.</p>
+<p>Le code VIF de chaque magasin, association et produit est affiché
+dans tous les tableaux de saisie et d’envoi du module, pour faciliter le
+rapprochement avec les fichiers d’import/export externes.</p>
 <ul>
 <li><p>Utiliser le bouton « ⚠️ Magasins à zéro » et peser les cagettes
 avant d’exporter le fichier d’import VIF : la quantité exportée
 n’utilise que le poids réel après pesée, jamais une estimation.</p></li>
 </ul>
+<h1 id="glossaire">8. Glossaire</h1>
+<dl>
+<dt>BAI</dt>
+<dd>
+<p>Banque Alimentaire de l’Isère — l’association organisatrice de la
+collecte.</p>
+</dd>
+<dt>Cagette</dt>
+<dd>
+<p>Caisse standard utilisée pour rapporter les denrées collectées en
+magasin jusqu’à l’entrepôt.</p>
+</dd>
+<dt>Camion réel</dt>
+<dd>
+<p>Véhicule de collecte identifié par un code « VXddd » ou « Vddd » avec
+un nombre inférieur à 90 (à partir de V090, il s’agit de lignes de
+staffing entrepôt, sans magasin associé).</p>
+</dd>
+<dt>Collecte gardée</dt>
+<dd>
+<p>Magasin dont la collecte est assurée directement par une association
+partenaire plutôt que remise à la BAI.</p>
+</dd>
+<dt>Demi-journée</dt>
+<dd>
+<p>Créneau Matin ou Après-midi d’un jour de collecte (Jeudi, Vendredi,
+Samedi, Dimanche — ce dernier n’a qu’une seule demi-journée dans
+l’application).</p>
+</dd>
+<dt>Génération</dt>
+<dd>
+<p>Une version calculée des tournées de collecte (simulation) ou des
+documents réels (production), horodatée et conservée dans l’historique
+(simulation uniquement).</p>
+</dd>
+<dt>Go-on-web (GOW)</dt>
+<dd>
+<p>Outil externe où est saisi et validé le planning réel des tournées
+(camions, magasins, équipiers) avant la génération des documents de
+production.</p>
+</dd>
+<dt>VIF</dt>
+<dd>
+<p>Code d’identification unique d’un magasin ou d’une association dans
+le référentiel de la BAI, utilisé pour le rapprochement entre les
+différents fichiers et pour l’export final des cagettes.</p>
+</dd>
+</dl>

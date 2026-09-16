@@ -69,7 +69,7 @@ def calculer_polygones(data, margin=0.008):
 def generer_html(data, polygones, output_path, annee):
     nb_mag = len(data)
     nb_sec = len(polygones)
-    adresse_siege = get_organisation()["adresse"].replace("\n", ", ")
+    adresse_siege = get_organisation()["adresse"].replace("\r\n", "\n").replace("\n", ", ")
 
     magasins_json = json.dumps(data, ensure_ascii=False)
     polygones_json = json.dumps(polygones, ensure_ascii=False)
@@ -181,8 +181,8 @@ secteurs.forEach(s => {{
 
 // Carte
 const map = L.map('map', {{ center:[45.22,5.72], zoom:11 }});
-L.tileLayer('https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{
-  attribution:'© OpenStreetMap © CARTO', maxZoom:19
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{{z}}/{{y}}/{{x}}', {{
+  attribution:'Tiles © Esri', maxZoom:19
 }}).addTo(map);
 
 // BAI

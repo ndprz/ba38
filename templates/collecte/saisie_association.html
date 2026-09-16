@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Saisie {{ association }} {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 900px;">
+
+    <h2>⚖️ Saisie collecte {{ annee }} — {{ association }} {% if association_code_vif %}<small class="text-muted">(Code VIF {{ association_code_vif }})</small>{% endif %}</h2>
+    <p class="text-muted">
+        Merci de renseigner ci-dessous le poids en kg brut relevé sur votre pesée, magasin par magasin,
+        ainsi que la répartition par produit. Chaque case est enregistrée automatiquement dès la saisie —
+        le bouton « Enregistrer » n'est utile qu'en secours. Vous pouvez revenir compléter plus tard :
+        vos valeurs déjà saisies restent affichées.
+    </p>
+
+    <div id="message-enregistrement" class="alert d-none mb-2" role="alert"></div>
+
+    <form method="post" id="form-saisie">
+        <input type="hidden" name="csrf_token" id="csrf_token" value="{{ csrf_token() }}">
+
+        <button type="submit" class="btn btn-primary mb-3">💾 Enregistrer</button>
+
+        <div class="card mb-4">
+            <div class="card-header"><strong>🏪 Poids par magasin (kg)</strong></div>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Code VIF</th>
+                            <th>Magasin</th>
+                            <th>Ville</th>
+                            <th style="width:140px;">Poids (kg)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for m in magasins %}
+                        <tr>
+                            <td>{{ m.code_vif }}</td>
+                            <td>{{ m.nom }}</td>
+                            <td>{{ m.ville }}</td>
+                            <td>
+                                <input type="number" step="0.1" min="0" class="form-control form-control-sm champ-autosave"
+                                       name="poids_magasin_{{ m.code_vif }}"
+                                       data-type="magasin" data-code="{{ m.code_vif }}"
+                                       value="{{ m.poids_kg if m.poids_kg is not none else '' }}">
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header"><strong>📦 Quantités par produit (kg)</strong></div>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Code</th>
+                            <th>Produit</th>
+                            <th style="width:140px;">Poids (kg)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for p in produits %}
+                        <tr>
+                            <td>{{ p.code }}</td>
+                            <td>{{ p.libelle }}</td>
+                            <td>
+                                <input type="number" step="0.1" min="0" class="form-control form-control-sm champ-autosave"
+                                       name="poids_produit_{{ p.code }}"
+                                       data-type="produit" data-code="{{ p.code }}"
+                                       value="{{ p.poids_kg if p.poids_kg is not none else '' }}">
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+    </form>
+
+</div>
+
+<script>
+const urlEnregistrerChamp = "{{ url_for('collecte.saisie_association_enregistrer_champ', annee=annee, token=token) }}";
+const csrfToken = document.getElementById("csrf_token").value;
+const messageDiv = document.getElementById("message-enregistrement");
+
+function afficherMessage(texte, classe) {
+    messageDiv.textContent = texte;
+    messageDiv.className = "alert alert-" + classe + " mb-2";
+}
+
+document.querySelectorAll(".champ-autosave").forEach(function (input) {
+    input.addEventListener("change", function () {
+        const type = input.dataset.type;
+        const code = input.dataset.code;
+        fetch(urlEnregistrerChamp, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken,
+            },
+            body: JSON.stringify({ type: type, code: code, poids_kg: input.value }),
+        })
+        .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+        .then(function (result) {
+            if (result.ok && result.data.success) {
+                input.classList.remove("is-invalid");
+                afficherMessage("✅ Enregistré", "success");
+            } else {
+                input.classList.add("is-invalid");
+                afficherMessage("⛔ Échec de l'enregistrement — ressaisissez la valeur", "danger");
+            }
+        })
+        .catch(function () {
+            input.classList.add("is-invalid");
+            afficherMessage("⛔ Erreur réseau — ressaisissez la valeur", "danger");
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -986,9 +986,12 @@ def optimiser_tournees(fiches, df_mag, args):
             print(f"    {veh_new} → {dj}: {len(pris)} mag secteur '{sec_cible}' combinés depuis {list(sources.keys())}")
             return len(pris)
 
-        # Chaque VX couvre les 4 demi-journées Vendredi+Samedi
+        # Chaque VX couvre Jeudi+Vendredi+Samedi (hors Dimanche, qui a sa
+        # propre capacité max_dim et n'est volontairement jamais délesté par
+        # un camion supplémentaire, cf. retry MAX+1 "hors dimanche" plus haut)
         # Les VX sont affectés en parallèle : VX300 et VX301 sur les mêmes DJ
-        DJ_VX = ['Vendredi Matin', 'Vendredi Apres Midi', 'Samedi Matin', 'Samedi Apres Midi']
+        DJ_VX = ['Jeudi Matin', 'Jeudi Apres Midi',
+                 'Vendredi Matin', 'Vendredi Apres Midi', 'Samedi Matin', 'Samedi Apres Midi']
 
         # Secteurs prioritaires par numéro de VX :
         # VX300 → délestage général (secteur dominant)
@@ -1155,8 +1158,8 @@ def optimiser_tournees(fiches, df_mag, args):
     # ── Remplissage des tournées légères (2-3 mag) ──────────────────────────
     print("  Remplissage des tournées légères...")
     nb_remplissages = 0
-    for dj in [d for d in DEMI_JOURNEES if d not in DJ_DIMANCHE and 'Jeudi' not in d]:
-        max_c_dj = max_norm
+    for dj in DEMI_JOURNEES:
+        max_c_dj = max_dim if dj in DJ_DIMANCHE else max_norm
         deja_traites = set()  # éviter les boucles A→B→A→B
         modifie = True
         while modifie:
@@ -1216,8 +1219,8 @@ def optimiser_tournees(fiches, df_mag, args):
     # ── Réduction des secteurs : extraire les magasins isolés des tournées à 3+ secteurs ──
     print("  Réduction des secteurs...")
     nb_reductions = 0
-    for dj in [d for d in DEMI_JOURNEES if d not in DJ_DIMANCHE]:
-        max_c_dj = max_norm
+    for dj in DEMI_JOURNEES:
+        max_c_dj = max_dim if dj in DJ_DIMANCHE else max_norm
         modifie = True
         while modifie:
             modifie = False
@@ -1272,8 +1275,8 @@ def optimiser_tournees(fiches, df_mag, args):
     # ── Corriger les magasins mal placés si option activée ──────────────────
     if args.corriger_mal_places:
         nb_corrections_mp = 0
-        for dj in [d for d in DEMI_JOURNEES if d not in DJ_DIMANCHE]:
-            max_c_dj = max_norm
+        for dj in DEMI_JOURNEES:
+            max_c_dj = max_dim if dj in DJ_DIMANCHE else max_norm
             for (d, veh_src), vifs in list(dj_veh.items()):
                 if d != dj: continue
                 if veh_src in VEHICULES_FIGES: continue
@@ -1321,8 +1324,8 @@ def optimiser_tournees(fiches, df_mag, args):
     # ── Fusionner les tournées légères si option activée ────────────────────
     if args.fusionner_legeres:
         nb_fusions = 0
-        for dj in [d for d in DEMI_JOURNEES if d not in DJ_DIMANCHE]:
-            max_c_dj = max_norm
+        for dj in DEMI_JOURNEES:
+            max_c_dj = max_dim if dj in DJ_DIMANCHE else max_norm
             # Trouver les tournées légères (≤ 2 mag, non figées, non gelées)
             legeres = [(veh, list(vifs)) for (d, veh), vifs in dj_veh.items()
                        if d == dj and len(vifs) <= 2
@@ -1367,13 +1370,13 @@ def optimiser_tournees(fiches, df_mag, args):
     vif_djs_2025 = defaultdict(set)
     for fiche in fiches:
         dj_f = fiche.get('demi_journee','')
-        if dj_f in [x for x in DEMI_JOURNEES if x not in DJ_DIMANCHE and 'Jeudi' not in x]:
+        if dj_f in DEMI_JOURNEES:
             for vif in fiche.get('vif_codes',[]):
                 if vif in vifs_actifs:  # seulement les actifs en 2026
                     vif_djs_2025[vif].add(dj_f)
 
-    for dj in [d for d in DEMI_JOURNEES if d not in DJ_DIMANCHE and 'Jeudi' not in d]:
-        max_c_dj = max_norm
+    for dj in DEMI_JOURNEES:
+        max_c_dj = max_dim if dj in DJ_DIMANCHE else max_norm
         vifs_dj = set(v for (d,_), vifs in dj_veh.items() if d==dj for v in vifs)
         # Manquants = anciens présents en 2025 sur cette DJ mais absents en 2026
         #           + nouveaux présents sur d'autres DJ mais absents sur celle-ci
@@ -1381,15 +1384,24 @@ def optimiser_tournees(fiches, df_mag, args):
                              if dj in djs and v not in new_vifs and v not in vifs_dj}
         # Nouveaux absents de cette DJ mais présents sur d'autres
         manquants_nouveaux = {v for (d,_), vifs in dj_veh.items()
-                              if d != dj and d not in DJ_DIMANCHE and 'Jeudi' not in d
+                              if d != dj
                               for v in vifs if v in new_vifs and v not in vifs_dj}
-        # Nouveaux absents de TOUTES les DJ V/S sur cette DJ
+        # Nouveaux absents de TOUTES les autres DJ
         manquants_nouveaux |= {v for v in new_vifs
                                 if v not in vifs_dj
                                 and v not in {x for (d,_), vl in dj_veh.items()
-                                              if d not in DJ_DIMANCHE and 'Jeudi' not in d
                                               for x in vl}}
-        vifs_autres_dj = manquants_anciens | manquants_nouveaux
+        # Magasins existants (ni 'anciens régressés', ni 'nouveaux') dont les
+        # créneaux couvrent désormais cette DJ alors qu'ils n'y étaient pas en
+        # 2025 (ex. horaires élargis incluant le dimanche cette année) — sans
+        # ce troisième cas, ils ne sont jamais rattrapés ici puisqu'ils ne
+        # correspondent ni à une régression 2025→2026 ni à un nouveau magasin.
+        manquants_creneaux = {v for v in vifs_actifs
+                              if v not in vifs_dj
+                              and v not in new_vifs
+                              and vif2row.get(v, {}).get('djs_creneaux') is not None
+                              and dj in vif2row[v]['djs_creneaux']}
+        vifs_autres_dj = manquants_anciens | manquants_nouveaux | manquants_creneaux
         manquants = vifs_autres_dj - vifs_dj
         if not manquants: continue
         for vif in sorted(manquants):
@@ -1404,9 +1416,7 @@ def optimiser_tournees(fiches, df_mag, args):
             lon_v = float(r_v.get('Longitude', BAI_LON))
             nom_v = str(r_v.get('Nom', vif))
             # Chercher la meilleure tournée disponible
-            est_absent_partout = vif not in {v for (d,_), vl in dj_veh.items()
-                                             if d not in DJ_DIMANCHE and 'Jeudi' not in d
-                                             for v in vl}
+            est_absent_partout = vif not in {v for (d,_), vl in dj_veh.items() for v in vl}
             best_key = None; best_dist = float('inf')
             for (d, veh), vifs in dj_veh.items():
                 if d != dj: continue
@@ -1483,8 +1493,8 @@ def optimiser_tournees(fiches, df_mag, args):
     # n'a pu lui être ajouté.
     nb_elimines = 0
     nb_completes_1mag = 0
-    for dj in [d for d in DEMI_JOURNEES if d not in DJ_DIMANCHE]:
-        max_c_dj = max_norm
+    for dj in DEMI_JOURNEES:
+        max_c_dj = max_dim if dj in DJ_DIMANCHE else max_norm
         for (d, veh), vifs in list(dj_veh.items()):
             if d != dj: continue
             if veh in VEHICULES_FIGES: continue  # préserver les figés
@@ -2186,7 +2196,7 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
         cell.font = F_HDR; cell.fill = C_HDR; cell.border = BRD; cell.alignment = A_C
     row_a += 1
 
-    DJ_ANALYSE = {'Vendredi Matin','Vendredi Apres Midi','Samedi Matin','Samedi Apres Midi'}
+    DJ_ANALYSE = set(DEMI_JOURNEES)
 
     # Regrouper df_t par (Demi-journee, Camion) pour compter le total réel de magasins
     # (un camion peut avoir plusieurs lignes dans df_t si rééquilibrage)
@@ -2687,7 +2697,7 @@ def generer_carte_tournees(df_t, df_mag, args, dossier_resultat):
     from collections import defaultdict
 
     FIGES_CT = set(VEHICULES_FIGES)
-    DJ_LIST_CT = ['Vendredi Matin', 'Vendredi Apres Midi', 'Samedi Matin', 'Samedi Apres Midi']
+    DJ_LIST_CT = DEMI_JOURNEES
     BAI_LAT_CT, BAI_LON_CT = BAI_LAT, BAI_LON
 
     # Index nom → coordonnées + adresse
@@ -2804,8 +2814,8 @@ const COULEURS = ['#e74c3c','#e67e22','#2980b9','#27ae60','#8e44ad',
   '#c0392b','#7f8c8d','#6c5ce7','#00b894','#fd79a8'];
 
 const map = L.map('map').setView(BAI, 11);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-  {attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19,subdomains:'abcd'}).addTo(map);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+  {attribution:'Tiles &copy; Esri',maxZoom:19}).addTo(map);
 
 L.marker(BAI, {icon: L.divIcon({
   className:'',
@@ -2996,7 +3006,7 @@ def generer_carte_tournees(df_t, df_mag, args, dossier_resultat):
     from collections import defaultdict
 
     FIGES_CT = set(VEHICULES_FIGES)
-    DJ_LIST_CT = ['Vendredi Matin', 'Vendredi Apres Midi', 'Samedi Matin', 'Samedi Apres Midi']
+    DJ_LIST_CT = DEMI_JOURNEES
     BAI_LAT_CT, BAI_LON_CT = BAI_LAT, BAI_LON
 
     # Index nom → coordonnées + adresse
@@ -3116,8 +3126,8 @@ const COULEURS = ['#e74c3c','#e67e22','#2980b9','#27ae60','#8e44ad',
   '#c0392b','#7f8c8d','#6c5ce7','#00b894','#fd79a8'];
 
 const map = L.map('map').setView(BAI, 11);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-  {attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19,subdomains:'abcd'}).addTo(map);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+  {attribution:'Tiles &copy; Esri',maxZoom:19}).addTo(map);
 
 L.marker(BAI, {icon: L.divIcon({
   className:'',

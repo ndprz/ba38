@@ -9,11 +9,24 @@
 <style>
     .tabulator-row.ligne-erreur { background-color: #f8d7da !important; }
     .cellule-non-applicable { color: #adb5bd; }
+    #tabulator-table .tabulator-col-title {
+        white-space: normal !important;
+        word-break: break-word;
+        line-height: 1.15;
+    }
+    #tabulator-table .tabulator-col {
+        height: auto !important;
+    }
+    #tabulator-table .tabulator-cell[tabulator-field="nom_magasin"] {
+        white-space: pre-wrap !important;
+        word-break: break-word;
+        line-height: 1.2;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4" style="max-width:1300px;">
+<div class="container-fluid mt-4" style="max-width:1550px;">
 
     <h2>🧺 Cagettes collecte bai {{ annee }}</h2>
     <p class="text-muted small">
@@ -23,6 +36,9 @@
 
     {% call action_buttons() %}
         {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+        {% if initialisee %}
+        <button type="button" id="btn-enregistrer-tout" class="btn btn-primary btn-sm">💾 Enregistrer</button>
+        {% endif %}
     {% endcall %}
 
     {% if initialisee %}
@@ -30,16 +46,71 @@
         <p class="text-muted small mb-0">
             🔒 Liste figée le {{ campagne.cagettes_initialisee_le|date_fr }} par {{ campagne.cagettes_initialisee_par }}
         </p>
-        <form method="POST" action="{{ url_for('collecte.initialiser_cagettes', annee=annee) }}" class="ms-auto"
+        <button type="button" id="btn-magasins-zero" class="btn btn-outline-warning btn-sm ms-auto">
+            ⚠️ Magasins à zéro
+        </button>
+        <a href="{{ url_for('collecte.exporter_cagettes', annee=annee) }}" class="btn btn-outline-success btn-sm">
+            📤 Exporter CSV (saisie des cagettes par magasin)
+        </a>
+        <a href="{{ url_for('collecte.exporter_cagettes_excel', annee=annee) }}" class="btn btn-outline-success btn-sm">
+            📊 Télécharger en Excel (saisie des cagettes par magasin)
+        </a>
+        {% if env_name == 'DEV' %}
+        <a href="{{ url_for('collecte.exporter_cagettes', annee=annee, forcer=1) }}" class="btn btn-outline-danger btn-sm"
+           title="Dev uniquement : ignore le contrôle « magasins à zéro »">
+            🧪 Forcer l'export (dev)
+        </a>
+        {% endif %}
+        <form method="POST" action="{{ url_for('collecte.initialiser_cagettes', annee=annee) }}"
               onsubmit="return confirm('Recalculer la liste des magasins depuis le fichier magasins actuel ? Les cagettes déjà saisies sont conservées, mais un magasin retiré de la nouvelle liste n\'apparaîtra plus.');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-outline-secondary btn-sm">🔄 Réinitialiser la liste</button>
         </form>
     </div>
 
+    <div id="alerte-magasins-zero" class="alert alert-warning d-none mb-3"></div>
+
+    <form method="POST" action="{{ url_for('collecte.enregistrer_poids_cagette', annee=annee) }}"
+          class="d-flex align-items-end gap-3 flex-wrap mb-3 border rounded p-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div>
+            <label class="form-label small mb-0" for="poids_cagette_estime">⚖️ Poids de la cagette estimé (kg)</label>
+            <input type="number" step="0.01" min="0" name="poids_cagette_estime" id="poids_cagette_estime"
+                   class="form-control form-control-sm" style="max-width:160px;"
+                   value="{{ campagne.poids_cagette_estime if campagne.poids_cagette_estime is not none else '' }}">
+        </div>
+        <div>
+            <label class="form-label small mb-0" for="poids_total_pese">⚖️ Poids total pesé (kg)</label>
+            <input type="number" step="0.01" min="0" name="poids_total_pese" id="poids_total_pese"
+                   class="form-control form-control-sm" style="max-width:160px;"
+                   value="{{ campagne.poids_total_pese if campagne.poids_total_pese is not none else '' }}">
+        </div>
+        <div>
+            <label class="form-label small mb-0" for="poids_cagette_pese">⚖️ Poids de la cagette calculé après pesée (kg)</label>
+            <input type="text" id="poids_cagette_pese" disabled
+                   class="form-control form-control-sm" style="max-width:160px;"
+                   value="{{ '%.3f'|format(campagne.poids_cagette_pese) if campagne.poids_cagette_pese is not none else '—' }}">
+            <small class="text-muted">= poids total pesé ÷ total cagettes</small>
+        </div>
+        <button type="submit" class="btn btn-outline-primary btn-sm">💾 Enregistrer</button>
+    </form>
+
     <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
         <input type="text" id="filtre-recherche" class="form-control form-control-sm" style="max-width:320px;"
                placeholder="🔎 Rechercher (magasin…)">
+        {% if magasins_par_camion %}
+        <label for="filtre-demi-journee" class="visually-hidden">Demi-journée</label>
+        <select id="filtre-demi-journee" class="form-select form-select-sm" style="max-width:190px;">
+            <option value="">🚚 Toutes les demi-journées</option>
+            {% for dj in demi_journees if dj in magasins_par_camion %}
+            <option value="{{ dj }}">{{ dj.replace("Apres Midi", "Après-midi") }}</option>
+            {% endfor %}
+        </select>
+        <label for="filtre-camion" class="visually-hidden">Camion</label>
+        <select id="filtre-camion" class="form-select form-select-sm" style="max-width:220px;" disabled>
+            <option value="">Tous les camions</option>
+        </select>
+        {% endif %}
         <span class="text-muted small ms-auto">💾 Chaque case est enregistrée automatiquement dès la saisie</span>
     </div>
 
@@ -70,6 +141,29 @@ const demiJournees = {{ demi_journees|tojson }};
 const annee = {{ annee }};
 const urlEnregistrer = "{{ url_for('collecte.enregistrer_cagettes') }}";
 const csrfToken = "{{ csrf_token() }}";
+const poidsCagetteEstime = {{ (campagne.poids_cagette_estime or 0)|tojson }};
+const poidsCagettePese = {{ (campagne.poids_cagette_pese or 0)|tojson }};
+const magasinsParCamion = {{ magasins_par_camion|tojson }};
+
+// Codes VIF réellement collectés par demi-journée d'après le planning
+// véhicules réel (union de tous les camions de la demi-journée) — quand ce
+// planning n'est pas disponible pour l'année (objet vide), on ne restreint
+// pas la saisie au-delà des créneaux d'ouverture (_appl_) déjà en place.
+const codesVifParDemiJournee = {};
+Object.keys(magasinsParCamion).forEach(function (dj) {
+    const ensemble = new Set();
+    magasinsParCamion[dj].forEach(function (c) {
+        c.codes_vif.forEach(function (cv) { ensemble.add(cv); });
+    });
+    codesVifParDemiJournee[dj] = ensemble;
+});
+
+function estSaisissable(data, dj) {
+    if (!data["_appl_" + dj]) return false;
+    const collectes = codesVifParDemiJournee[dj];
+    if (collectes && !collectes.has(data.code_vif)) return false;
+    return true;
+}
 
 function normalizeSearch(text) {
     return String(text ?? "")
@@ -85,7 +179,7 @@ function recalculerTotal(row) {
             total += data[dj];
         }
     });
-    row.update({ total: total });
+    row.update({ total: total, poids_magasin: total * poidsCagetteEstime, poids_magasin_pese: total * poidsCagettePese });
 }
 
 // ── Enregistrement automatique cellule par cellule ─────────────────
@@ -98,10 +192,37 @@ function afficherMessage(texte, classe) {
     messageDiv.className = "alert alert-" + classe + " mb-2";
 }
 
+// Accepte soit un nombre simple, soit une somme façon "9+3" (comptage en
+// plusieurs fois sur la fiche papier) — retourne null si vide, NaN si
+// invalide.
+function calculerValeurCagette(brut) {
+    if (typeof brut === "number") return brut;
+    const texte = String(brut ?? "").trim();
+    if (!texte) return null;
+    const parties = texte.split("+").map(function (p) { return p.trim(); });
+    let somme = 0;
+    for (let i = 0; i < parties.length; i++) {
+        if (parties[i] === "" || isNaN(Number(parties[i]))) return NaN;
+        somme += Number(parties[i]);
+    }
+    return somme;
+}
+
 function sauvegarderCellule(cell) {
     const row = cell.getRow();
-    const data = row.getData();
     const dj = cell.getColumn().getField();
+    const valeur = calculerValeurCagette(cell.getValue());
+
+    if (valeur === null || Number.isNaN(valeur)) {
+        row.getElement().classList.add("ligne-erreur");
+        afficherMessage("⛔ Valeur invalide (" + dj + ") — utilisez un nombre ou une somme comme 9+3", "danger");
+        return;
+    }
+    if (valeur !== cell.getValue()) {
+        cell.setValue(valeur);
+    }
+
+    const data = row.getData();
     recalculerTotal(row);
     row.getElement().classList.remove("ligne-erreur");
 
@@ -113,7 +234,7 @@ function sauvegarderCellule(cell) {
         },
         body: JSON.stringify({
             annee: annee,
-            lignes: [{ code_vif: data.code_vif, demi_journee: dj, nb_cagettes: cell.getValue() }],
+            lignes: [{ code_vif: data.code_vif, demi_journee: dj, nb_cagettes: valeur }],
         }),
     })
     .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
@@ -135,23 +256,46 @@ function sauvegarderCellule(cell) {
 
 const colonnesDemiJournees = demiJournees.map(function (dj) {
     return {
-        title: dj.replace(" Apres Midi", " ap-m").replace(" Matin", " matin"),
+        title: dj.replace("Apres Midi", "Après-midi"),
         field: dj,
         width: 110,
         hozAlign: "right",
-        editable: function (cell) { return !!cell.getRow().getData()["_appl_" + dj]; },
+        headerWordWrap: true,
+        headerFilter: "input",
+        headerFilterFunc: function (headerValue, rowValue, rowData) {
+            if (headerValue === "" || headerValue === null || headerValue === undefined) return true;
+            if (isNaN(Number(headerValue))) return true;
+            if (rowValue === null || rowValue === undefined) {
+                // "0" doit aussi retrouver les cases applicables pas encore
+                // saisies (valeur vide) — pour l'utilisateur, "0" et "pas
+                // encore rempli" sont la même chose à repérer avant l'export.
+                // Les cases non applicables (magasin fermé ce créneau) ne
+                // comptent pas comme des "0".
+                return Number(headerValue) === 0 && !!estSaisissable(rowData, dj);
+            }
+            return rowValue === Number(headerValue);
+        },
+        editable: function (cell) { return estSaisissable(cell.getRow().getData(), dj); },
         formatter: function (cell) {
-            if (!cell.getRow().getData()["_appl_" + dj]) {
+            const v = cell.getValue();
+            // Une valeur déjà saisie reste toujours visible, même si le camion
+            // ne dessert plus ce magasin sur cette demi-journée dans le planning
+            // actuel (le planning peut évoluer après la saisie réelle) — seule
+            // la case vide et non saisissable affiche le tiret.
+            if ((v === null || v === undefined) && !estSaisissable(cell.getRow().getData(), dj)) {
                 cell.getElement().classList.add("cellule-non-applicable");
                 return "—";
             }
-            const v = cell.getValue();
             return (v === null || v === undefined) ? "" : v;
         },
-        editor: "number",
-        editorParams: { min: 0, step: 1 },
+        editor: "input",
         cellEdited: sauvegarderCellule,
     };
+});
+
+lignesCagettes.forEach(function (ligne) {
+    ligne.poids_magasin = (ligne.total || 0) * poidsCagetteEstime;
+    ligne.poids_magasin_pese = (ligne.total || 0) * poidsCagettePese;
 });
 
 const table = new Tabulator("#tabulator-table", {
@@ -161,20 +305,135 @@ const table = new Tabulator("#tabulator-table", {
     placeholder: "Aucun magasin",
     initialSort: [{ column: "nom_magasin", dir: "asc" }],
     columns: [
-        { title: "Magasin", field: "nom_magasin", widthGrow: 2, headerFilter: "input", frozen: true },
-    ].concat(colonnesDemiJournees).concat([
-        { title: "Total", field: "total", width: 100, hozAlign: "right" },
+        { title: "Code VIF", field: "code_vif", width: 100, headerFilter: "input" },
+        { title: "Magasin", field: "nom_magasin", widthGrow: 3, minWidth: 220, headerFilter: "input", frozen: true, formatter: "textarea", topCalcFormatter: function () { return "Total"; } },
+    ].concat(colonnesDemiJournees.map(function (col) {
+        return Object.assign({}, col, { topCalc: "sum", topCalcParams: { precision: 0 } });
+    })).concat([
+        { title: "Total cagettes", field: "total", width: 100, hozAlign: "right", headerWordWrap: true, topCalc: "sum", topCalcParams: { precision: 0 } },
+        {
+            title: "Total poids magasin (kg)", field: "poids_magasin", width: 140, hozAlign: "right", headerWordWrap: true,
+            topCalc: "sum", topCalcParams: { precision: 2 },
+            formatter: function (cell) {
+                const v = cell.getValue();
+                return (v === null || v === undefined) ? "" : v.toFixed(2);
+            },
+        },
+        {
+            title: "Total poids magasin après pesée (kg)", field: "poids_magasin_pese", width: 150, hozAlign: "right", headerWordWrap: true,
+            topCalc: "sum", topCalcParams: { precision: 2 },
+            formatter: function (cell) {
+                const v = cell.getValue();
+                return (v === null || v === undefined) ? "" : v.toFixed(2);
+            },
+        },
     ]),
 });
 
-// ── Recherche globale ──────────────────────────────────────────────
+// ── Recherche + filtre demi-journée/camion combinés ─────────────────
 const filtreInput = document.getElementById("filtre-recherche");
-filtreInput.addEventListener("input", function () {
-    const search = normalizeSearch(this.value);
-    if (!search) { table.clearFilter(); return; }
+const selectDemiJournee = document.getElementById("filtre-demi-journee");
+const selectCamion = document.getElementById("filtre-camion");
+let codesVifCamionActif = null;
+
+function appliquerFiltres() {
+    const search = normalizeSearch(filtreInput.value);
+    if (!search && !codesVifCamionActif) { table.clearFilter(); return; }
     table.setFilter(function (data) {
-        return normalizeSearch(data.nom_magasin).includes(search);
+        if (search && !normalizeSearch(data.nom_magasin).includes(search) && !normalizeSearch(data.code_vif).includes(search)) return false;
+        if (codesVifCamionActif && !codesVifCamionActif.has(data.code_vif)) return false;
+        return true;
     });
+}
+
+filtreInput.addEventListener("input", appliquerFiltres);
+
+function afficherColonneDemiJournee(dj) {
+    demiJournees.forEach(function (autreDj) {
+        if (!dj || autreDj === dj) {
+            table.showColumn(autreDj);
+        } else {
+            table.hideColumn(autreDj);
+        }
+    });
+    table.redraw(true);
+}
+
+if (selectDemiJournee && selectCamion) {
+    selectDemiJournee.addEventListener("change", function () {
+        const dj = this.value;
+        selectCamion.innerHTML = '<option value="">Tous les camions</option>';
+        const camions = dj ? (magasinsParCamion[dj] || []) : [];
+        camions.forEach(function (c) {
+            const option = document.createElement("option");
+            option.value = c.camion;
+            option.textContent = c.camion + (c.nom_camion ? " — " + c.nom_camion : "");
+            option.dataset.codesVif = JSON.stringify(c.codes_vif);
+            selectCamion.appendChild(option);
+        });
+        selectCamion.disabled = !dj;
+        codesVifCamionActif = null;
+        afficherColonneDemiJournee(dj);
+        appliquerFiltres();
+    });
+
+    selectCamion.addEventListener("change", function () {
+        const option = this.options[this.selectedIndex];
+        codesVifCamionActif = (this.value && option.dataset.codesVif) ? new Set(JSON.parse(option.dataset.codesVif)) : null;
+        appliquerFiltres();
+    });
+}
+
+// ── Bouton « Enregistrer » en haut : filet de sécurité en plus de
+// l'autosave par cellule — renvoie toutes les cases applicables en une
+// seule requête groupée (l'endpoint accepte un tableau de lignes).
+document.getElementById("btn-enregistrer-tout").addEventListener("click", function () {
+    const lignesAEnvoyer = [];
+    table.getData().forEach(function (data) {
+        demiJournees.forEach(function (dj) {
+            if (data["_appl_" + dj]) {
+                lignesAEnvoyer.push({ code_vif: data.code_vif, demi_journee: dj, nb_cagettes: data[dj] });
+            }
+        });
+    });
+    afficherMessage("💾 Enregistrement de " + lignesAEnvoyer.length + " case(s) en cours…", "info");
+    fetch(urlEnregistrer, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+        },
+        body: JSON.stringify({ annee: annee, lignes: lignesAEnvoyer }),
+    })
+    .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+    .then(function (result) {
+        if (result.ok && result.data.success) {
+            afficherMessage("✅ Toutes les valeurs (" + lignesAEnvoyer.length + " cases) ont été enregistrées", "success");
+        } else {
+            afficherMessage("⛔ Échec de l'enregistrement groupé", "danger");
+        }
+    })
+    .catch(function () {
+        afficherMessage("⛔ Erreur réseau — enregistrement groupé échoué", "danger");
+    });
+});
+
+// ── Magasins à zéro (aucune cagette saisie) ─────────────────────────
+const alerteMagasinsZero = document.getElementById("alerte-magasins-zero");
+document.getElementById("btn-magasins-zero").addEventListener("click", function () {
+    const magasinsZero = table.getData()
+        .filter(function (data) { return !data.total; })
+        .map(function (data) { return data.nom_magasin; })
+        .sort(function (a, b) { return a.localeCompare(b); });
+
+    if (magasinsZero.length === 0) {
+        alerteMagasinsZero.className = "alert alert-success mb-3";
+        alerteMagasinsZero.textContent = "✅ Aucun magasin à zéro — tous les magasins ont des cagettes saisies.";
+    } else {
+        alerteMagasinsZero.className = "alert alert-warning mb-3";
+        alerteMagasinsZero.innerHTML = "⚠️ " + magasinsZero.length + " magasin(s) sans aucune cagette saisie : "
+            + magasinsZero.join(", ");
+    }
 });
 </script>
 {% endif %}

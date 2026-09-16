@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Poids magasins gardés {{ annee }}{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
+<style>
+    .tabulator-row.ligne-erreur { background-color: #f8d7da !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width:1100px;">
+
+    <h2>⚖️ Poids par magasin gardé {{ annee }}</h2>
+    <p class="text-muted small">
+        Poids en kg relevé sur les fiches de pesée renvoyées par les associations gardant leur collecte —
+        une ligne par magasin.
+    </p>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+        <button type="button" id="btn-enregistrer-tout" class="btn btn-primary btn-sm">💾 Enregistrer</button>
+        {{ action_button("📤 Exporter CSV (saisie des poids par magasin)", href=url_for('collecte.exporter_poids_magasins_gardee', annee=annee), color="outline-success") }}
+        {% if env_name == 'DEV' %}
+        {{ action_button("🧪 Forcer l'export (dev)", href=url_for('collecte.exporter_poids_magasins_gardee', annee=annee, forcer=1), color="outline-danger") }}
+        {% endif %}
+    {% endcall %}
+
+    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+        <input type="text" id="filtre-recherche" class="form-control form-control-sm" style="max-width:320px;"
+               placeholder="🔎 Rechercher (magasin, association…)">
+        <span class="text-muted small ms-auto">💾 Chaque case est enregistrée automatiquement dès la saisie</span>
+    </div>
+
+    <div id="message-enregistrement" class="alert d-none mb-2" role="alert"></div>
+
+    <div id="tabulator-table"></div>
+
+</div>
+
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+const lignes = {{ lignes|tojson }};
+const annee = {{ annee }};
+const urlEnregistrer = "{{ url_for('collecte.enregistrer_poids_magasins_gardee') }}";
+const csrfToken = "{{ csrf_token() }}";
+
+function normalizeSearch(text) {
+    return String(text ?? "")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+}
+
+const messageDiv = document.getElementById("message-enregistrement");
+function afficherMessage(texte, classe) {
+    messageDiv.textContent = texte;
+    messageDiv.className = "alert alert-" + classe + " mb-2";
+}
+
+function sauvegarderCellule(cell) {
+    const row = cell.getRow();
+    const data = row.getData();
+    row.getElement().classList.remove("ligne-erreur");
+
+    fetch(urlEnregistrer, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+        },
+        body: JSON.stringify({
+            annee: annee,
+            code_vif: data.code_vif,
+            poids_kg: cell.getValue(),
+        }),
+    })
+    .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+    .then(function (result) {
+        if (result.ok && result.data.success) {
+            afficherMessage("✅ Enregistré — " + data.nom_magasin, "success");
+        } else {
+            row.getElement().classList.add("ligne-erreur");
+            afficherMessage("⛔ Échec de l'enregistrement pour " + data.nom_magasin + " — ressaisissez la valeur", "danger");
+        }
+    })
+    .catch(function () {
+        row.getElement().classList.add("ligne-erreur");
+        afficherMessage("⛔ Erreur réseau — " + data.nom_magasin + " non enregistré, ressaisissez la valeur", "danger");
+    });
+}
+
+const table = new Tabulator("#tabulator-table", {
+    data: lignes,
+    layout: "fitColumns",
+    height: "calc(100vh - 260px)",
+    placeholder: "Aucun magasin gardé",
+    initialSort: [{ column: "association", dir: "asc" }, { column: "nom_magasin", dir: "asc" }],
+    columns: [
+        { title: "Code VIF association", field: "association_code_vif", width: 150, headerFilter: "input" },
+        { title: "Association", field: "association", widthGrow: 2, headerFilter: "input" },
+        { title: "Code VIF magasin", field: "code_vif", width: 140, headerFilter: "input" },
+        { title: "Magasin", field: "nom_magasin", widthGrow: 2, headerFilter: "input" },
+        {
+            title: "Poids (kg)", field: "poids_kg", width: 140, hozAlign: "right",
+            editor: "number", editorParams: { min: 0, step: 0.1 },
+            topCalc: "sum", topCalcParams: { precision: 1 },
+            formatter: function (cell) {
+                const v = cell.getValue();
+                return (v === null || v === undefined) ? "" : v;
+            },
+            cellEdited: sauvegarderCellule,
+        },
+    ],
+});
+
+document.getElementById("btn-enregistrer-tout").addEventListener("click", function () {
+    const donnees = table.getData();
+    let restants = donnees.length;
+    let erreurs = 0;
+    afficherMessage("💾 Enregistrement de " + restants + " ligne(s) en cours…", "info");
+    donnees.forEach(function (data) {
+        fetch(urlEnregistrer, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken,
+            },
+            body: JSON.stringify({
+                annee: annee,
+                code_vif: data.code_vif,
+                poids_kg: data.poids_kg,
+            }),
+        })
+        .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+        .then(function (result) {
+            if (!result.ok || !result.data.success) { erreurs += 1; }
+        })
+        .catch(function () { erreurs += 1; })
+        .finally(function () {
+            restants -= 1;
+            if (restants === 0) {
+                if (erreurs === 0) {
+                    afficherMessage("✅ Toutes les valeurs (" + donnees.length + ") ont été enregistrées", "success");
+                } else {
+                    afficherMessage("⛔ " + erreurs + " ligne(s) en échec sur " + donnees.length, "danger");
+                }
+            }
+        });
+    });
+});
+
+const filtreInput = document.getElementById("filtre-recherche");
+filtreInput.addEventListener("input", function () {
+    const search = normalizeSearch(this.value);
+    if (!search) { table.clearFilter(); return; }
+    table.setFilter(function (data) {
+        return normalizeSearch(data.nom_magasin).includes(search)
+            || normalizeSearch(data.association).includes(search)
+            || normalizeSearch(data.code_vif).includes(search)
+            || normalizeSearch(data.association_code_vif).includes(search);
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Modèle produits association {{ annee }}{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 1200px;">
+    <h2>📦 Modèle produits — liste envoyée à chaque association</h2>
+    <p class="text-muted small">
+        Ajoutez, modifiez ou supprimez des produits directement ici — enregistré dans le modèle Excel
+        partagé (feuille « produits »), sans avoir besoin d'ouvrir Excel. La mise en page (logo, en-têtes)
+        n'est pas modifiée.
+    </p>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.gardee', annee=annee), color="outline-dark") }}
+    {% endcall %}
+
+    <div class="mb-2 d-flex gap-2">
+        <button type="button" id="btn-ajouter-ligne" class="btn btn-sm btn-outline-secondary">➕ Ajouter un produit</button>
+        <button type="button" id="btn-supprimer-lignes" class="btn btn-sm btn-outline-danger">🗑️ Supprimer la sélection</button>
+    </div>
+
+    <div id="message-enregistrement" class="alert d-none mb-2" role="alert"></div>
+
+    <div id="tabulator-table"></div>
+
+    <button type="button" id="btn-enregistrer" class="btn btn-primary mt-3">💾 Enregistrer</button>
+</div>
+
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+const produitsInitiaux = {{ produits|tojson }};
+const urlEnregistrer = "{{ url_for('collecte.enregistrer_modele_produits_route') }}";
+const csrfToken = "{{ csrf_token() }}";
+
+const messageDiv = document.getElementById("message-enregistrement");
+function afficherMessage(texte, classe) {
+    messageDiv.textContent = texte;
+    messageDiv.className = "alert alert-" + classe + " mb-2";
+}
+
+const table = new Tabulator("#tabulator-table", {
+    data: produitsInitiaux,
+    layout: "fitColumns",
+    height: "calc(100vh - 320px)",
+    placeholder: "Aucun produit",
+    selectableRows: true,
+    columns: [
+        { formatter: "rowSelection", titleFormatter: "rowSelection", hozAlign: "center", width: 40, headerSort: false },
+        { title: "Code", field: "code", width: 110, editor: "input", headerFilter: "input" },
+        { title: "Libellé collecte", field: "libelle", widthGrow: 2, minWidth: 220, editor: "input", headerFilter: "input" },
+        { title: "Libellé VIF", field: "libelle_vif", widthGrow: 2, minWidth: 220, editor: "input", headerFilter: "input" },
+        { title: "Type calcul", field: "type_calcul", width: 150, editor: "input" },
+    ],
+});
+
+document.getElementById("btn-ajouter-ligne").addEventListener("click", function () {
+    table.addRow({ code: "", libelle: "", libelle_vif: "", type_calcul: "" });
+});
+
+document.getElementById("btn-supprimer-lignes").addEventListener("click", function () {
+    const lignes = table.getSelectedRows();
+    if (lignes.length === 0) {
+        afficherMessage("⚠️ Sélectionnez d'abord une ou plusieurs lignes à supprimer (case à gauche).", "warning");
+        return;
+    }
+    lignes.forEach(function (ligne) { ligne.delete(); });
+});
+
+document.getElementById("btn-enregistrer").addEventListener("click", function () {
+    const produits = table.getData().filter(function (p) {
+        return (p.code || "").trim() && (p.libelle || "").trim();
+    });
+    if (produits.length === 0) {
+        afficherMessage("⛔ La liste ne peut pas être vide.", "danger");
+        return;
+    }
+    afficherMessage("💾 Enregistrement en cours…", "info");
+    fetch(urlEnregistrer, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+        },
+        body: JSON.stringify({ produits: produits }),
+    })
+    .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+    .then(function (result) {
+        if (result.ok && result.data.success) {
+            afficherMessage("✅ " + result.data.nb + " produit(s) enregistré(s) dans le modèle.", "success");
+        } else {
+            afficherMessage("⛔ Échec de l'enregistrement" + (result.data.erreur ? " — " + result.data.erreur : ""), "danger");
+        }
+    })
+    .catch(function () {
+        afficherMessage("⛔ Erreur réseau — rien n'a été enregistré.", "danger");
+    });
+});
+</script>
+{% endblock %}

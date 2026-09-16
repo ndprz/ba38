@@ -17,22 +17,94 @@
         Vérifiez que vous avez contrôlé son contenu avant de confirmer.
     </div>
 
+    <p class="text-muted small">
+        📁 Le texte du mail se modifie sur la page d'accueil du module, dans
+        <a href="{{ url_for('collecte.collecte_main', annee=annee) }}#sectionAssociationsGardant">
+        Associations gardant → Paramètres</a>.
+    </p>
+
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <form method="post" action="{{ url_for('collecte.gardee_relancer') }}" class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="annee" value="{{ annee }}">
+            <input type="hidden" name="groupe" value="repondu">
+            <button type="submit" class="btn btn-sm btn-outline-warning"
+                    onclick="return confirm('Relancer toutes les associations dont la case « Répondu » n\'est pas cochée ?');">
+                🔁 Relancer les non-répondants
+            </button>
+        </form>
+        <form method="post" action="{{ url_for('collecte.gardee_relancer') }}" class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="annee" value="{{ annee }}">
+            <input type="hidden" name="groupe" value="resultat_envoye">
+            <button type="submit" class="btn btn-sm btn-outline-warning"
+                    onclick="return confirm('Relancer toutes les associations dont la case « Résultat envoyé » n\'est pas cochée ?');">
+                🔁 Relancer ceux sans résultat
+            </button>
+        </form>
+    </div>
+
     <form method="post">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="annee" value="{{ annee }}">
         <h5>Destinataires ({{ associations|length }} associations)</h5>
-        <table class="table table-sm table-striped">
-            <thead><tr><th>Association</th><th>Adresse(s)</th><th>Magasins</th></tr></thead>
+        <table class="table table-sm table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>Code VIF</th><th>Association</th><th style="max-width: 220px;">Adresse(s)</th><th>Magasins</th>
+                    <th>Répondu</th><th>Résultat envoyé</th><th>Saisie en ligne</th><th></th>
+                </tr>
+            </thead>
             <tbody>
             {% for asso in associations %}
             <tr>
+                <td>{{ asso.code_vif or '—' }}</td>
                 <td>{{ asso.nom }}</td>
-                <td>{{ asso.emails|join(', ') or 'Aucune adresse' }}</td>
+                <td style="max-width: 220px; white-space: normal; word-break: break-word;">{{ asso.emails|join(', ') or 'Aucune adresse' }}</td>
                 <td>{{ asso.magasins|length }}</td>
+                <td>
+                    <input type="checkbox" class="case-suivi" data-champ="repondu" data-association="{{ asso.nom }}"
+                           {% if asso.suivi.repondu %}checked{% endif %}>
+                </td>
+                <td>
+                    <input type="checkbox" class="case-suivi" data-champ="resultat_envoye" data-association="{{ asso.nom }}"
+                           {% if asso.suivi.resultat_envoye %}checked{% endif %}>
+                </td>
+                <td class="small text-muted">
+                    {% set remplis, total = asso.avancement_saisie %}
+                    {% if total %}
+                        {% if remplis == total %}
+                        <span class="badge bg-success">{{ remplis }}/{{ total }} complet</span>
+                        {% elif remplis > 0 %}
+                        <span class="badge bg-warning text-dark">{{ remplis }}/{{ total }}</span>
+                        {% else %}
+                        <span class="badge bg-light text-dark border">0/{{ total }}</span>
+                        {% endif %}
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
+                <td>
+                    <form method="post" action="{{ url_for('collecte.gardee_relancer') }}" class="m-0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="annee" value="{{ annee }}">
+                        <input type="hidden" name="association" value="{{ asso.nom }}">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                onclick="return confirm('Renvoyer le mail à « {{ asso.nom }} » ?');"
+                                {% if not asso.emails %}disabled title="Aucune adresse"{% endif %}>
+                            🔁
+                        </button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
             </tbody>
         </table>
+        <p class="text-muted small">
+            Les cases « Répondu » et « Résultat envoyé » sont à cocher manuellement après vérification
+            (mail reçu, fichier reçu, ou saisie en ligne consultée) — la colonne « Saisie en ligne » n'est
+            qu'un indice automatique, elle ne coche jamais rien toute seule.
+        </p>
 
         <div class="form-check mb-3">
             <input class="form-check-input" type="checkbox" name="confirmation" value="oui" id="confirmation" required>
@@ -46,15 +118,87 @@
             <input class="form-check-input" type="checkbox" name="test_une_association" id="test_une_association">
             <label class="form-check-label" for="test_une_association">Test sur une seule association.</label>
         </div>
-        <div class="mb-3" style="max-width: 520px;">
-            <label class="form-label" for="association_test_nom">Association à tester</label>
-            <select class="form-select" name="association_test_nom" id="association_test_nom">
-                {% for asso in associations %}
-                <option value="{{ asso.nom }}">{{ asso.nom }}</option>
-                {% endfor %}
-            </select>
+        <div class="mb-3 d-flex align-items-end gap-2 flex-wrap" style="max-width: 700px;">
+            <div class="flex-grow-1">
+                <label class="form-label" for="association_test_nom">Association à tester / prévisualiser</label>
+                <select class="form-select" name="association_test_nom" id="association_test_nom">
+                    {% for asso in associations %}
+                    <option value="{{ asso.nom }}">{{ asso.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="button" id="btn-apercu-mail" class="btn btn-outline-info">
+                🖨️ Aperçu
+            </button>
         </div>
-        <button type="submit" class="btn btn-primary">📧 Envoyer les mails</button>
+        <p class="text-muted small">
+            L'aperçu ouvre le texte exact du mail pour l'association sélectionnée ci-dessus, sans rien
+            envoyer (même en test).
+        </p>
+
+        <button type="submit" class="btn btn-primary" id="btn-envoyer-mails">
+            📧 Envoyer les mails
+        </button>
     </form>
 </div>
+
+<script>
+document.querySelectorAll(".case-suivi").forEach(function (case_) {
+    case_.addEventListener("change", function () {
+        fetch("{{ url_for('collecte.gardee_marquer_suivi') }}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": "{{ csrf_token() }}",
+            },
+            body: JSON.stringify({
+                annee: {{ annee }},
+                association: case_.dataset.association,
+                champ: case_.dataset.champ,
+                valeur: case_.checked,
+            }),
+        }).then(function (resp) {
+            if (!resp.ok) {
+                case_.checked = !case_.checked;
+                alert("⛔ Échec de l'enregistrement — réessayez.");
+            }
+        }).catch(function () {
+            case_.checked = !case_.checked;
+            alert("⛔ Erreur réseau — rien n'a été enregistré.");
+        });
+    });
+});
+
+document.getElementById("btn-apercu-mail").addEventListener("click", function () {
+    const nom = document.getElementById("association_test_nom").value;
+    const url = "{{ url_for('collecte.gardee_envoi_apercu') }}?annee={{ annee }}&association=" + encodeURIComponent(nom);
+    window.open(url, "_blank");
+});
+
+document.getElementById("btn-envoyer-mails").addEventListener("click", function (evenement) {
+    if (!document.getElementById("confirmation").checked) {
+        evenement.preventDefault();
+        alert("⚠️ Cochez d'abord « J'ai contrôlé le fichier Excel et je confirme l'envoi » — rien n'a été envoyé.");
+        return;
+    }
+
+    const modeTest = document.getElementById("mode_test").checked;
+    const uneSeuleAssociation = document.getElementById("test_une_association").checked;
+    const nomAssociation = document.getElementById("association_test_nom").value;
+    const nbAssociations = {{ associations|length }};
+
+    let message;
+    if (uneSeuleAssociation) {
+        message = "Envoyer un mail de TEST pour l'association « " + nomAssociation + " » à votre propre adresse ?";
+    } else if (modeTest) {
+        message = "Envoyer un mail de TEST (pour les " + nbAssociations + " associations, mais tous à votre propre adresse) ?";
+    } else {
+        message = "⚠️ ENVOI RÉEL : envoyer le mail à " + nbAssociations + " association(s), à leurs vraies adresses ?";
+    }
+
+    if (!confirm(message)) {
+        evenement.preventDefault();
+    }
+});
+</script>
 {% endblock %}
