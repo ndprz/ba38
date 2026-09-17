@@ -20,7 +20,7 @@
         display: flex; flex-direction: column; align-items: center; justify-content: center;
         height: 100%; text-align: center;
     }
-    #champ-gabarit { font-family: monospace; font-size: 13px; }
+    .champ-ligne-texte { font-family: monospace; }
 </style>
 {% endblock %}
 
@@ -44,14 +44,38 @@
 
     <h5 class="mt-4">🖨️ Mise en page de l'étiquette imprimée</h5>
     <p class="text-muted small">
-        Code HTML complet de la feuille imprimée à chaque pesée (tailles de police, disposition,
-        textes — tout est modifiable ici, en style CSS inline). Espaces réservés disponibles :
-        <code>{{ "{{annee}}" }}</code>, <code>{{ "{{code_vif}}" }}</code>, <code>{{ "{{categorie}}" }}</code>,
-        <code>{{ "{{numero}}" }}</code>, <code>{{ "{{poids}}" }}</code>, <code>{{ "{{date_heure}}" }}</code>
-        — remplacés automatiquement à chaque impression.
+        Une ligne de texte imprimée par ligne ci-dessous, avec sa taille de police — pas de code à
+        écrire. Espaces réservés disponibles, à placer dans le texte entre <code>&gt;&gt;</code> et
+        <code>&lt;&lt;</code> : <code>&gt;&gt;annee&lt;&lt;</code>, <code>&gt;&gt;code_vif&lt;&lt;</code>,
+        <code>&gt;&gt;categorie&lt;&lt;</code>, <code>&gt;&gt;numero&lt;&lt;</code>,
+        <code>&gt;&gt;poids&lt;&lt;</code>, <code>&gt;&gt;date_heure&lt;&lt;</code> — remplacés
+        automatiquement à chaque impression.
     </p>
-    <textarea id="champ-gabarit" class="form-control mb-2" rows="10">{{ gabarit_html }}</textarea>
+    <table class="table table-sm align-middle mb-2" id="table-gabarit">
+        <thead>
+            <tr>
+                <th>Texte de la ligne</th>
+                <th style="width:120px;">Taille (pt)</th>
+                <th style="width:80px;">Gras</th>
+                <th style="width:110px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in gabarit_lignes %}
+            <tr>
+                <td><input type="text" class="form-control form-control-sm champ-ligne-texte" value="{{ ligne.texte }}"></td>
+                <td><input type="number" class="form-control form-control-sm champ-ligne-taille" value="{{ ligne.taille }}"></td>
+                <td class="text-center"><input type="checkbox" class="form-check-input champ-ligne-gras" {% if ligne.gras %}checked{% endif %}></td>
+                <td>
+                    <button type="button" class="btn btn-sm btn-outline-secondary btn-monter-ligne">⬆️</button>
+                    <button type="button" class="btn btn-sm btn-outline-danger btn-supprimer-ligne-gabarit">🗑️</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
     <div class="d-flex gap-2 mb-4">
+        <button type="button" id="btn-ajouter-ligne-gabarit" class="btn btn-outline-primary btn-sm">➕ Ajouter une ligne</button>
         <button type="button" id="btn-apercu-gabarit" class="btn btn-outline-primary btn-sm">👁️ Aperçu (impression test)</button>
         <button type="button" id="btn-reinitialiser-gabarit" class="btn btn-outline-secondary btn-sm">↩️ Modèle par défaut</button>
         <button type="button" id="btn-enregistrer-gabarit" class="btn btn-outline-warning btn-sm">💾 Enregistrer la mise en page</button>
@@ -65,6 +89,8 @@
                 <th>Libellé (collecte)</th>
                 <th style="width:130px;">Code VIF</th>
                 <th>Libellé VIF (mercuriale)</th>
+                <th style="width:90px;">Poids min</th>
+                <th style="width:90px;">Poids max</th>
                 <th style="width:60px;"></th>
             </tr>
         </thead>
@@ -75,6 +101,8 @@
                 <td><input type="text" class="form-control form-control-sm champ-libelle" value="{{ c.libelle }}"></td>
                 <td><input type="text" class="form-control form-control-sm champ-code" value="{{ c.code_vif or '' }}"></td>
                 <td><input type="text" class="form-control form-control-sm champ-libelle-vif" value="{{ c.libelle_vif or '' }}"></td>
+                <td><input type="number" class="form-control form-control-sm champ-poids-min" value="{{ c.poids_min|int }}"></td>
+                <td><input type="number" class="form-control form-control-sm champ-poids-max" value="{{ c.poids_max|int }}"></td>
                 <td>
                     <button type="button" class="btn btn-sm btn-outline-danger btn-supprimer-ligne"
                             {% if c.utilisee %}disabled title="Déjà utilisée dans une pesée"{% endif %}>🗑️</button>
@@ -95,17 +123,67 @@ const urlEnregistrer = "{{ url_for('collecte.palox_categories_enregistrer') }}";
 const urlEnregistrerGabarit = "{{ url_for('collecte.palox_gabarit_etiquette_enregistrer') }}";
 const gabaritDefaut = {{ gabarit_defaut|tojson }};
 
-document.getElementById("btn-reinitialiser-gabarit").addEventListener("click", function () {
-    document.getElementById("champ-gabarit").value = gabaritDefaut;
+function ligneGabaritHtml(ligne) {
+    return `<tr>
+        <td><input type="text" class="form-control form-control-sm champ-ligne-texte" value="${ligne.texte}"></td>
+        <td><input type="number" class="form-control form-control-sm champ-ligne-taille" value="${ligne.taille}"></td>
+        <td class="text-center"><input type="checkbox" class="form-check-input champ-ligne-gras" ${ligne.gras ? "checked" : ""}></td>
+        <td>
+            <button type="button" class="btn btn-sm btn-outline-secondary btn-monter-ligne">⬆️</button>
+            <button type="button" class="btn btn-sm btn-outline-danger btn-supprimer-ligne-gabarit">🗑️</button>
+        </td>
+    </tr>`;
+}
+
+function attacherActionsLigneGabarit(tr) {
+    tr.querySelector(".btn-supprimer-ligne-gabarit").addEventListener("click", function () { tr.remove(); });
+    tr.querySelector(".btn-monter-ligne").addEventListener("click", function () {
+        const precedente = tr.previousElementSibling;
+        if (precedente) { tr.parentNode.insertBefore(tr, precedente); }
+    });
+}
+document.querySelectorAll("#table-gabarit tbody tr").forEach(attacherActionsLigneGabarit);
+
+document.getElementById("btn-ajouter-ligne-gabarit").addEventListener("click", function () {
+    const tbody = document.querySelector("#table-gabarit tbody");
+    const tr = document.createElement("tr");
+    tr.innerHTML = ligneGabaritHtml({ texte: "", taille: 24, gras: false }).replace(/^<tr>|<\/tr>$/g, "");
+    tbody.appendChild(tr);
+    attacherActionsLigneGabarit(tr);
 });
+
+document.getElementById("btn-reinitialiser-gabarit").addEventListener("click", function () {
+    const tbody = document.querySelector("#table-gabarit tbody");
+    tbody.innerHTML = "";
+    gabaritDefaut.forEach(function (ligne) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = ligneGabaritHtml(ligne).replace(/^<tr>|<\/tr>$/g, "");
+        tbody.appendChild(tr);
+        attacherActionsLigneGabarit(tr);
+    });
+});
+
+function lireLignesGabarit() {
+    return Array.from(document.querySelectorAll("#table-gabarit tbody tr")).map(function (tr) {
+        return {
+            texte: tr.querySelector(".champ-ligne-texte").value,
+            taille: tr.querySelector(".champ-ligne-taille").value,
+            gras: tr.querySelector(".champ-ligne-gras").checked,
+        };
+    });
+}
 
 document.getElementById("btn-apercu-gabarit").addEventListener("click", function () {
     const valeurs = {
         annee: new Date().getFullYear(), code_vif: "0110041", categorie: "Exemple de catégorie",
-        numero: "12", poids: "123.4", date_heure: new Date().toLocaleString("fr-FR"),
+        numero: "12", poids: "123", date_heure: new Date().toLocaleString("fr-FR"),
     };
-    let html = document.getElementById("champ-gabarit").value;
-    for (const cle in valeurs) { html = html.split("{{" + cle + "}}").join(valeurs[cle]); }
+    const html = lireLignesGabarit().map(function (ligne) {
+        let texte = ligne.texte;
+        for (const cle in valeurs) { texte = texte.split(">>" + cle + "<<").join(valeurs[cle]); }
+        const style = "font-size:" + ligne.taille + "pt;" + (ligne.gras ? " font-weight:bold;" : "");
+        return "<div style=\"" + style + "\">" + texte + "</div>";
+    }).join("\n");
     document.getElementById("etiquette-contenu").innerHTML = html;
     window.print();
 });
@@ -114,7 +192,7 @@ document.getElementById("btn-enregistrer-gabarit").addEventListener("click", fun
     fetch(urlEnregistrerGabarit, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
-        body: JSON.stringify({ gabarit_html: document.getElementById("champ-gabarit").value }),
+        body: JSON.stringify({ lignes: lireLignesGabarit() }),
     })
     .then(function (r) { return r.json(); })
     .then(function (data) {
@@ -141,6 +219,8 @@ document.getElementById("btn-ajouter-ligne").addEventListener("click", function 
         <td><input type="text" class="form-control form-control-sm champ-libelle" value=""></td>
         <td><input type="text" class="form-control form-control-sm champ-code" value=""></td>
         <td><input type="text" class="form-control form-control-sm champ-libelle-vif" value=""></td>
+        <td><input type="number" class="form-control form-control-sm champ-poids-min" value="10"></td>
+        <td><input type="number" class="form-control form-control-sm champ-poids-max" value="700"></td>
         <td><button type="button" class="btn btn-sm btn-outline-danger btn-supprimer-ligne">🗑️</button></td>`;
     tbody.appendChild(tr);
     attacherSuppression(tr);
@@ -174,6 +254,8 @@ document.getElementById("btn-enregistrer").addEventListener("click", function ()
             libelle: tr.querySelector(".champ-libelle").value,
             code_vif: tr.querySelector(".champ-code").value,
             libelle_vif: tr.querySelector(".champ-libelle-vif").value,
+            poids_min: tr.querySelector(".champ-poids-min").value,
+            poids_max: tr.querySelector(".champ-poids-max").value,
         };
     });
     fetch(urlEnregistrer, {

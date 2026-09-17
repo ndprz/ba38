@@ -1,3 +1,3 @@
-VERSION=1.6.77
-MESSAGE=Collecte : pesee palox (poste de pesee, impression immediate mise en page modifiable, categories, mercuriale) + referentiel magasins collecte (non collectes + export)
-DATE=2026-09-17 16:10
+VERSION=1.6.79
+MESSAGE=Collecte - pesee palox : validation du poids par categorie (reprise du controle Excel, min/max modifiable) + mise en page de l'etiquette imprimee simplifiee en lignes de texte (>>variable<<)
+DATE=2026-09-17 23:05

@@ -55,8 +55,11 @@
                 <input type="number" id="champ-numero" class="form-control" value="{{ prochain_numero }}" required>
             </div>
         </div>
-        <label class="form-label fs-5">Poids (kg)</label>
-        <input type="number" step="0.1" min="0.1" id="champ-poids" class="form-control mb-3" required autofocus>
+        <label class="form-label fs-5">
+            Poids (kg) — nombre entier entre {{ categorie.poids_min|int }} et {{ categorie.poids_max|int }}
+        </label>
+        <input type="number" step="1" min="{{ categorie.poids_min|int }}" max="{{ categorie.poids_max|int }}"
+               id="champ-poids" class="form-control mb-3" required autofocus>
         <button type="submit" class="btn btn-warning btn-lg">🖨️ Enregistrer et imprimer</button>
     </form>
 
@@ -91,7 +94,7 @@ const urlCorriger = "{{ url_for('collecte.palox_corriger', annee=annee, categori
 const urlSupprimer = "{{ url_for('collecte.palox_supprimer', annee=annee, categorie_id=categorie.id) }}";
 const urlReinitialiser = "{{ url_for('collecte.palox_reinitialiser', annee=annee, categorie_id=categorie.id) }}";
 
-const gabaritEtiquette = {{ gabarit_html|tojson }};
+const gabaritLignes = {{ gabarit_lignes|tojson }};
 function remplirEtiquette(numero, poids, dateHeure) {
     const valeurs = {
         annee: {{ annee|tojson }},
@@ -101,10 +104,12 @@ function remplirEtiquette(numero, poids, dateHeure) {
         poids: poids,
         date_heure: dateHeure,
     };
-    let html = gabaritEtiquette;
-    for (const cle in valeurs) {
-        html = html.split("{{" + cle + "}}").join(valeurs[cle]);
-    }
+    const html = gabaritLignes.map(function (ligne) {
+        let texte = ligne.texte;
+        for (const cle in valeurs) { texte = texte.split(">>" + cle + "<<").join(valeurs[cle]); }
+        const style = "font-size:" + ligne.taille + "pt;" + (ligne.gras ? " font-weight:bold;" : "");
+        return "<div style=\"" + style + "\">" + texte + "</div>";
+    }).join("\n");
     document.getElementById("etiquette-contenu").innerHTML = html;
 }
 
@@ -116,10 +121,18 @@ function afficherMessage(texte, classe) {
     messageDiv.className = "alert alert-" + classe + " mb-3";
 }
 
+const poidsMin = {{ categorie.poids_min|int }};
+const poidsMax = {{ categorie.poids_max|int }};
+
 document.getElementById("formPesee").addEventListener("submit", function (evt) {
     evt.preventDefault();
     const poids = parseFloat(champPoids.value);
-    if (!poids || poids <= 0) { afficherMessage("⚠️ Poids invalide.", "warning"); return; }
+    if (!poids || poids <= 0 || poids !== Math.round(poids)) {
+        afficherMessage("⚠️ Le poids doit être un nombre entier.", "warning"); return;
+    }
+    if (poids < poidsMin || poids > poidsMax) {
+        afficherMessage("⚠️ Le poids doit être compris entre " + poidsMin + " et " + poidsMax + " kg.", "warning"); return;
+    }
     const numero = parseInt(champNumero.value, 10);
     if (!numero || numero <= 0) { afficherMessage("⚠️ N° palox invalide.", "warning"); return; }
 

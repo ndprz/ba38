@@ -5081,37 +5081,41 @@ def evolution_magasins_importer_vif(annee):
 # chaque palox à la pesée, une feuille "Articles" de synthèse valorisée en
 # mercuriale (prix €/kg fourni chaque année par la fédération).
 CATEGORIES_PALOX_INITIALES = [
-    (1, "Patisserie", "0110041", "Patisserie / Viennoiserie"),
-    (2, "Biscottes", "0210001", "Biscottes/Pain grillé"),
-    (3, "Biscuits et autres sucrés", "0210031", "Biscuits sucrés"),
-    (4, "Café", "0310001", "Café grain/moulu"),
-    (5, "Thé, tisane", "0310031", "Thé/Infusion/Chicorée"),
-    (6, "Poudre petit déjeuner", "0410001", "Poudre petit déjeuner"),
-    (7, "Céréales", "0410011", "Céréales"),
-    (8, "Chocolat, confiserie", "0610001", "Chocolat noir/lait/noisettes.."),
-    (9, "Lait", "0910051", "Lait ambiant"),
-    (10, "Farine de blé", "1010001", "Farine/maizena"),
-    (11, "Pomme de terre en flocons", "1010031", "Pomme de terre en flocons"),
-    (12, "Pâtes", "1110001", "Pâtes"),
-    (13, "Couscous", "1110031", "Couscous/Semoule/Autre fécul."),
-    (14, "Riz", "1110051", "Riz long/rond"),
-    (15, "Fruits secs", "1210001", "Fruits secs"),
-    (16, "Légumes secs", "1220001", "Légumes secs sous vide"),
-    (17, "Potages liquide", "1310001", "Potages /soupes ambiant"),
-    (18, "Potages déshydratés", "1310011", "Potages déshydratés"),
-    (19, "Condiments, mayo, sauces, sel, poivre", "1410021", "moutardes/mayo/ketchup"),
-    (20, "Huiles", "1710001", "Huiles"),
-    (21, "Sucre en morceaux, en poudre", "1910001", "Sucre en morceaux"),
-    (22, "Confitures, compote, conserve fruits, miel", "2010001", "Confitures/miel/pates a tartiner"),
-    (23, "Petits pots et assimilés BB", "2510001", "Petits pots et assimilés BB"),
-    (24, "Sodas/boissons sucrées/arom.", "2810011", "Sodas/boissons sucrés"),
-    (25, "Conserve plats cuisinés", "4210011", "Platcuisinés viande ambiant"),
-    (26, "Conserve de légumes", "4510001", "Conserve de légumes"),
-    (27, "Conserve poisson crustacé", "4910001", "Conserves  poisson/ crustacé"),
-    (28, "Puériculture", "6010000", "Puériculture"),
-    (29, "Pdts Hygiène Famille", "6010010", "Pdts Hygiene Famille"),
-    (30, "Pdts. Entretien/Lessive", "6010030", "Pdts. Entretien/Lessive"),
-    (31, "Autres", None, None),
+    # (ordre, libellé, code VIF, libellé VIF, poids min (kg), poids max (kg))
+    # Bornes reprises telles quelles de la validation de données Excel de
+    # chaque onglet catégorie du classeur (nombre entier compris entre min
+    # et max) — 10-700 partout sauf le Sucre (10-750).
+    (1, "Patisserie", "0110041", "Patisserie / Viennoiserie", 10, 700),
+    (2, "Biscottes", "0210001", "Biscottes/Pain grillé", 10, 700),
+    (3, "Biscuits et autres sucrés", "0210031", "Biscuits sucrés", 10, 700),
+    (4, "Café", "0310001", "Café grain/moulu", 10, 700),
+    (5, "Thé, tisane", "0310031", "Thé/Infusion/Chicorée", 10, 700),
+    (6, "Poudre petit déjeuner", "0410001", "Poudre petit déjeuner", 10, 700),
+    (7, "Céréales", "0410011", "Céréales", 10, 700),
+    (8, "Chocolat, confiserie", "0610001", "Chocolat noir/lait/noisettes..", 10, 700),
+    (9, "Lait", "0910051", "Lait ambiant", 10, 700),
+    (10, "Farine de blé", "1010001", "Farine/maizena", 10, 700),
+    (11, "Pomme de terre en flocons", "1010031", "Pomme de terre en flocons", 10, 700),
+    (12, "Pâtes", "1110001", "Pâtes", 10, 700),
+    (13, "Couscous", "1110031", "Couscous/Semoule/Autre fécul.", 10, 700),
+    (14, "Riz", "1110051", "Riz long/rond", 10, 700),
+    (15, "Fruits secs", "1210001", "Fruits secs", 10, 700),
+    (16, "Légumes secs", "1220001", "Légumes secs sous vide", 10, 700),
+    (17, "Potages liquide", "1310001", "Potages /soupes ambiant", 10, 700),
+    (18, "Potages déshydratés", "1310011", "Potages déshydratés", 10, 700),
+    (19, "Condiments, mayo, sauces, sel, poivre", "1410021", "moutardes/mayo/ketchup", 10, 700),
+    (20, "Huiles", "1710001", "Huiles", 10, 700),
+    (21, "Sucre en morceaux, en poudre", "1910001", "Sucre en morceaux", 10, 750),
+    (22, "Confitures, compote, conserve fruits, miel", "2010001", "Confitures/miel/pates a tartiner", 10, 700),
+    (23, "Petits pots et assimilés BB", "2510001", "Petits pots et assimilés BB", 10, 700),
+    (24, "Sodas/boissons sucrées/arom.", "2810011", "Sodas/boissons sucrés", 10, 700),
+    (25, "Conserve plats cuisinés", "4210011", "Platcuisinés viande ambiant", 10, 700),
+    (26, "Conserve de légumes", "4510001", "Conserve de légumes", 10, 700),
+    (27, "Conserve poisson crustacé", "4910001", "Conserves  poisson/ crustacé", 10, 700),
+    (28, "Puériculture", "6010000", "Puériculture", 10, 700),
+    (29, "Pdts Hygiène Famille", "6010010", "Pdts Hygiene Famille", 10, 700),
+    (30, "Pdts. Entretien/Lessive", "6010030", "Pdts. Entretien/Lessive", 10, 700),
+    (31, "Autres", None, None, 10, 700),
 ]
 
 
@@ -5125,9 +5129,17 @@ def _ensure_tables_palox(conn):
             ordre INTEGER NOT NULL,
             libelle TEXT NOT NULL,
             code_vif TEXT,
-            libelle_vif TEXT
+            libelle_vif TEXT,
+            poids_min REAL DEFAULT 10,
+            poids_max REAL DEFAULT 700
         )
     """)
+    colonnes_categories = {r[1] for r in conn.execute("PRAGMA table_info(collecte_palox_categories)").fetchall()}
+    if "poids_min" not in colonnes_categories:
+        conn.execute("ALTER TABLE collecte_palox_categories ADD COLUMN poids_min REAL DEFAULT 10")
+    if "poids_max" not in colonnes_categories:
+        conn.execute("ALTER TABLE collecte_palox_categories ADD COLUMN poids_max REAL DEFAULT 700")
+        conn.execute("UPDATE collecte_palox_categories SET poids_max = 750 WHERE libelle = 'Sucre en morceaux, en poudre'")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS collecte_palox_pesees (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -5162,32 +5174,38 @@ def _ensure_tables_palox(conn):
     """)
     nb = conn.execute("SELECT COUNT(*) FROM collecte_palox_categories").fetchone()[0]
     if nb == 0:
-        for ordre, libelle, code_vif, libelle_vif in CATEGORIES_PALOX_INITIALES:
-            conn.execute(
-                "INSERT INTO collecte_palox_categories (ordre, libelle, code_vif, libelle_vif) VALUES (?, ?, ?, ?)",
-                (ordre, libelle, code_vif, libelle_vif),
-            )
+        for ordre, libelle, code_vif, libelle_vif, poids_min, poids_max in CATEGORIES_PALOX_INITIALES:
+            conn.execute("""
+                INSERT INTO collecte_palox_categories (ordre, libelle, code_vif, libelle_vif, poids_min, poids_max)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (ordre, libelle, code_vif, libelle_vif, poids_min, poids_max))
 
 
-GABARIT_ETIQUETTE_PALOX_DEFAUT = """<div style="font-size:22pt; font-weight:bold; text-align:center;">COLLECTE {{annee}}</div>
-<div style="font-size:44pt; font-weight:bold; text-align:center; margin-top:10pt;">{{code_vif}}</div>
-<div style="font-size:52pt; font-weight:bold; text-align:center; margin-top:14pt;">{{categorie}}</div>
-<div style="font-size:38pt; font-weight:bold; text-align:center; margin-top:20pt;">Palette {{numero}}</div>
-<div style="font-size:52pt; font-weight:bold; text-align:center; margin-top:20pt;">
-    Poids <span style="font-size:110pt; margin:0 20pt;">{{poids}}</span><span style="font-size:34pt;">kg</span>
-</div>
-<div style="font-size:10pt; text-align:left; margin-top:20pt; color:#333;">{{date_heure}}</div>"""
+LIGNES_ETIQUETTE_PALOX_DEFAUT = [
+    {"texte": "COLLECTE >>annee<<", "taille": 22, "gras": True},
+    {"texte": ">>code_vif<<", "taille": 44, "gras": True},
+    {"texte": ">>categorie<<", "taille": 52, "gras": True},
+    {"texte": "Palette >>numero<<", "taille": 38, "gras": True},
+    {"texte": "Poids >>poids<< kg", "taille": 70, "gras": True},
+    {"texte": ">>date_heure<<", "taille": 10, "gras": False},
+]
 
 
 def _gabarit_etiquette_palox(conn):
-    """Mise en page complète (HTML + tailles de police en style inline) de
-    l'étiquette imprimée à chaque pesée — reprise au départ de l'onglet
-    "imp" du classeur, entièrement modifiable sans toucher au code via
-    des espaces réservés {{...}} : annee, code_vif, categorie, numero,
-    poids, date_heure. Les règles d'impression (page A4, masquage du
-    reste de l'écran) restent fixes, seul ce contenu est éditable."""
-    r = conn.execute("SELECT valeur FROM collecte_palox_parametres WHERE cle = 'gabarit_html'").fetchone()
-    return r["valeur"] if r and r["valeur"] else GABARIT_ETIQUETTE_PALOX_DEFAUT
+    """Mise en page de l'étiquette imprimée à chaque pesée — reprise au
+    départ de l'onglet "imp" du classeur, sous forme d'une simple liste de
+    lignes de texte (pas de HTML à connaître) : chaque ligne a son texte,
+    sa taille de police et un style gras ou non, modifiables sans toucher
+    au code. Espaces réservés remplacés à l'impression, entre >> et << :
+    >>annee<<, >>code_vif<<, >>categorie<<, >>numero<<, >>poids<<,
+    >>date_heure<<."""
+    r = conn.execute("SELECT valeur FROM collecte_palox_parametres WHERE cle = 'gabarit_lignes'").fetchone()
+    if r and r["valeur"]:
+        try:
+            return json.loads(r["valeur"])
+        except (TypeError, ValueError):
+            pass
+    return LIGNES_ETIQUETTE_PALOX_DEFAUT
 
 
 def _categories_palox(conn):
@@ -5236,14 +5254,14 @@ def palox_categories():
         utilisees = {r[0] for r in conn.execute(
             "SELECT DISTINCT categorie_id FROM collecte_palox_pesees"
         ).fetchall()}
-        gabarit_html = _gabarit_etiquette_palox(conn)
+        gabarit_lignes = _gabarit_etiquette_palox(conn)
     for c in categories:
         c["utilisee"] = c["id"] in utilisees
     return render_template(
         "collecte/palox_categories.html",
         categories=categories,
-        gabarit_html=gabarit_html,
-        gabarit_defaut=GABARIT_ETIQUETTE_PALOX_DEFAUT,
+        gabarit_lignes=gabarit_lignes,
+        gabarit_defaut=LIGNES_ETIQUETTE_PALOX_DEFAUT,
     )
 
 
@@ -5251,19 +5269,30 @@ def palox_categories():
 @login_required
 @require_access("collecte", "ecriture")
 def palox_gabarit_etiquette_enregistrer():
-    """Mise en page complète de l'étiquette imprimée (HTML + tailles de
-    police), modifiable sans toucher au code."""
+    """Mise en page de l'étiquette imprimée (liste de lignes de texte avec
+    taille de police), modifiable sans toucher au code ni au HTML."""
     donnees = request.get_json(force=True) or {}
-    gabarit_html = str(donnees.get("gabarit_html", "")).strip()
-    if not gabarit_html:
+    lignes_brutes = donnees.get("lignes") or []
+
+    lignes = []
+    for ligne in lignes_brutes:
+        texte = str(ligne.get("texte", "")).strip()
+        if not texte:
+            continue
+        try:
+            taille = int(ligne.get("taille"))
+        except (TypeError, ValueError):
+            taille = 24
+        lignes.append({"texte": texte, "taille": taille, "gras": bool(ligne.get("gras"))})
+    if not lignes:
         return jsonify({"success": False, "erreur": "Modèle vide"}), 400
 
     with get_db_connection() as conn:
         _ensure_tables_palox(conn)
         conn.execute("""
-            INSERT INTO collecte_palox_parametres (cle, valeur) VALUES ('gabarit_html', ?)
+            INSERT INTO collecte_palox_parametres (cle, valeur) VALUES ('gabarit_lignes', ?)
             ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur
-        """, (gabarit_html,))
+        """, (json.dumps(lignes),))
         conn.commit()
 
     write_log(f"⚖️ Mise en page de l'étiquette pesée palox modifiée par {current_user.email}")
@@ -5289,17 +5318,26 @@ def palox_categories_enregistrer():
                 ordre = int(ligne.get("ordre"))
             except (TypeError, ValueError):
                 ordre = 999
+            try:
+                poids_min = float(str(ligne.get("poids_min", "")).replace(",", "."))
+            except (TypeError, ValueError):
+                poids_min = 10
+            try:
+                poids_max = float(str(ligne.get("poids_max", "")).replace(",", "."))
+            except (TypeError, ValueError):
+                poids_max = 700
             categorie_id = ligne.get("id")
             if categorie_id:
                 conn.execute("""
-                    UPDATE collecte_palox_categories SET ordre = ?, libelle = ?, code_vif = ?, libelle_vif = ?
+                    UPDATE collecte_palox_categories
+                    SET ordre = ?, libelle = ?, code_vif = ?, libelle_vif = ?, poids_min = ?, poids_max = ?
                     WHERE id = ?
-                """, (ordre, libelle, code_vif, libelle_vif, categorie_id))
+                """, (ordre, libelle, code_vif, libelle_vif, poids_min, poids_max, categorie_id))
             else:
                 conn.execute("""
-                    INSERT INTO collecte_palox_categories (ordre, libelle, code_vif, libelle_vif)
-                    VALUES (?, ?, ?, ?)
-                """, (ordre, libelle, code_vif, libelle_vif))
+                    INSERT INTO collecte_palox_categories (ordre, libelle, code_vif, libelle_vif, poids_min, poids_max)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (ordre, libelle, code_vif, libelle_vif, poids_min, poids_max))
         conn.commit()
 
     write_log(f"⚖️ Référentiel catégories palox mis à jour par {current_user.email} ({len(lignes)} ligne(s))")
@@ -5367,15 +5405,26 @@ def palox_saisie(annee, categorie_id):
             SELECT COALESCE(MAX(numero_palox), 0) FROM collecte_palox_pesees
             WHERE annee = ? AND categorie_id = ?
         """, (annee, categorie_id)).fetchone()[0]
-        gabarit_html = _gabarit_etiquette_palox(conn)
+        gabarit_lignes = _gabarit_etiquette_palox(conn)
     return render_template(
         "collecte/palox_saisie.html",
         annee=annee,
         categorie=dict(categorie),
         prochain_numero=dernier_numero + 1,
         historique=historique,
-        gabarit_html=gabarit_html,
+        gabarit_lignes=gabarit_lignes,
     )
+
+
+def _valider_poids_categorie(poids_kg, categorie):
+    """Reprend la validation de données Excel de l'onglet catégorie
+    (nombre entier compris entre poids_min et poids_max) — bornes propres
+    à chaque catégorie, modifiables sur l'écran ⚙️ Catégories."""
+    if poids_kg != int(poids_kg):
+        return "Le poids doit être un nombre entier"
+    if not (categorie["poids_min"] <= poids_kg <= categorie["poids_max"]):
+        return f"Le poids doit être compris entre {int(categorie['poids_min'])} et {int(categorie['poids_max'])} kg"
+    return None
 
 
 @collecte_bp.route("/collecte/<int:annee>/palox/<int:categorie_id>/enregistrer", methods=["POST"])
@@ -5409,6 +5458,10 @@ def palox_enregistrer(annee, categorie_id):
         ).fetchone()
         if not categorie:
             return jsonify({"success": False, "erreur": "Catégorie inconnue"}), 404
+
+        erreur = _valider_poids_categorie(poids_kg, categorie)
+        if erreur:
+            return jsonify({"success": False, "erreur": erreur}), 400
 
         if numero_force is not None:
             deja_pris = conn.execute("""
@@ -5501,6 +5554,16 @@ def palox_corriger(annee, categorie_id):
 
     maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
+        _ensure_tables_palox(conn)
+        categorie = conn.execute(
+            "SELECT * FROM collecte_palox_categories WHERE id = ?", (categorie_id,)
+        ).fetchone()
+        if not categorie:
+            return jsonify({"success": False, "erreur": "Catégorie inconnue"}), 404
+        erreur = _valider_poids_categorie(poids_corrige, categorie)
+        if erreur:
+            return jsonify({"success": False, "erreur": erreur}), 400
+
         curseur = conn.execute("""
             UPDATE collecte_palox_pesees
             SET poids_corrige_kg = ?, corrige_le = ?, corrige_par = ?
