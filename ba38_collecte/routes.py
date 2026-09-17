@@ -1611,6 +1611,36 @@ def _decouper_html_par_h1(chemin):
     return sections
 
 
+def _decouper_html_par_h2(fragment_html):
+    """Comme _decouper_html_par_h1, mais découpe un fragment déjà extrait
+    (donc sans <h1> à l'intérieur) sur ses titres de niveau 2, sous la clé
+    "N" pour un titre "9.N ..." (dernier chiffre après le point), ou sous
+    son texte exact sinon. Utilisé pour répartir la section « 9. Règles
+    fonctionnelles détaillées » (numérotée 9.1 à 9.5) vers les 5 mêmes
+    clés que le reste du manuel, plutôt que de rester isolée sous la clé
+    "9" où aucune modale ne l'afficherait."""
+    if not fragment_html:
+        return {}
+    racine = _lxml_html.fromstring(f"<div>{fragment_html}</div>")
+    sections = {}
+    cle_courante = "intro"
+    elements_courants = []
+
+    def serialiser(elements):
+        return "".join(_lxml_html.tostring(e, encoding="unicode") for e in elements)
+
+    for element in racine.iterchildren():
+        if element.tag == "h2":
+            sections[cle_courante] = serialiser(elements_courants)
+            correspondance = re.match(r"9\.(\d+)", element.text_content().strip())
+            cle_courante = correspondance.group(1) if correspondance else element.text_content().strip()
+            elements_courants = [element]
+        else:
+            elements_courants.append(element)
+    sections[cle_courante] = serialiser(elements_courants)
+    return sections
+
+
 def _sections_aide_collecte():
     """Aide utilisateur du module Collecte, découpée par sujet (clés "1" à
     "5", une par section de la page d'accueil) — la clé "intro" regroupe la
@@ -1636,18 +1666,23 @@ def _sections_manuel_collecte():
     (cf. _sections_aide_collecte) — la clé "intro" regroupe ici
     l'introduction générale, le déroulé type d'une campagne (§6) et le
     glossaire (§8) ; les bonnes pratiques (§7) ne sont pas reprises ici
-    (déjà dans l'aide générale, pour éviter la redite)."""
+    (déjà dans l'aide générale, pour éviter la redite). La section
+    « 9. Règles fonctionnelles détaillées » (numérotée 9.1 à 9.5) est
+    répartie dans les mêmes clés "1" à "5" que le reste du manuel — sans
+    quoi elle resterait isolée sous la clé "9", jamais affichée nulle
+    part (cf. _decouper_html_par_h2)."""
     chemin = os.path.join(
         current_app.root_path, "templates", "docsHtml", DOCUMENTS_AIDE_COLLECTE["manuel"]["html"]
     )
     brut = _decouper_html_par_h1(chemin)
+    regles = _decouper_html_par_h2(brut.get("9", ""))
     return {
         "intro": brut.get("Introduction", "") + brut.get("6", "") + brut.get("8", ""),
-        "1": brut.get("1", ""),
-        "2": brut.get("2", ""),
-        "3": brut.get("3", ""),
-        "4": brut.get("4", ""),
-        "5": brut.get("5", ""),
+        "1": brut.get("1", "") + regles.get("1", ""),
+        "2": brut.get("2", "") + regles.get("2", ""),
+        "3": brut.get("3", "") + regles.get("3", ""),
+        "4": brut.get("4", "") + regles.get("4", ""),
+        "5": brut.get("5", "") + regles.get("5", ""),
     }
 
 

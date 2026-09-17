@@ -793,3 +793,611 @@ le référentiel de la BAI, utilisé pour le rapprochement entre les
 différents fichiers et pour l’export final des cagettes.</p>
 </dd>
 </dl>
+<h1 id="règles-fonctionnelles-détaillées">9. Règles fonctionnelles
+détaillées</h1>
+<p>Cette section rassemble, sujet par sujet, l'ensemble des règles
+métier précises telles qu'elles sont réellement appliquées par
+l'application (conditions de validation, calculs, seuils, cas limites,
+comportements par défaut) — en complément des explications pas-à-pas des
+sections 1 à 5. Certaines règles concernent des cas rares ou des détails
+de mise en forme ; elles sont incluses ici pour référence complète, sans
+qu'il soit nécessaire de les mémoriser pour un usage courant.</p>
+<h2 id="paramètres-de-la-collecte-annuelle-1">9.1 Paramètres de la
+collecte annuelle</h2>
+<h3 id="dates-de-la-collecte-1">Dates de la collecte</h3>
+<p>Les dates de début et de fin sont saisies une seule fois par campagne
+et réutilisées automatiquement ailleurs (lettres d'autorisation, page
+Production) — l'utilisateur n'a jamais à les ressaisir.</p>
+<p>Les deux dates sont optionnelles à l'enregistrement : un champ vide
+est stocké comme valeur nulle, sans validation de présence sur la date
+de fin ni de cohérence « fin après début ».</p>
+<p>La date de début est censée être un jeudi et la date de fin un
+dimanche (labels du formulaire), mais rien ne vérifie ni ne corrige le
+jour de la semaine saisi : une date qui n'est pas un jeudi décale
+silencieusement tous les calculs de dates par jour (autorisations,
+fiches production), sans avertissement.</p>
+<p>Dans la lettre de demande d'autorisation envoyée à un magasin, seuls
+les jours calendaires où CE magasin précis est collecté sont mentionnés
+(calculés par décalage depuis la date de début : Jeudi = +0, Vendredi =
++1, Samedi = +2, Dimanche = +3), jamais la plage complète de la
+campagne. Si aucune date de début n'est enregistrée, le texte affiche «
+aux dates qui vous seront communiquées » (si aucun créneau n'est
+identifiable) ou une liste de jours sans date calendaire (si des
+créneaux existent mais qu'aucune date de début n'est en base).</p>
+<p>Sur la page Production, si aucune date de début n'est enregistrée, la
+génération se poursuit simplement sans cette date (aucun blocage) — les
+fiches équipier n'affichent alors que le libellé du jour, sans date
+précise.</p>
+<p>Pour la fiche d'une association gardant sa collecte, la période
+affichée est « du JJ/MM/AAAA au JJ/MM/AAAA » si les deux dates sont
+renseignées, seulement la date de début si la fin est absente, ou
+simplement l'année brute (ex. « 2026 ») si aucune date de début n'est
+enregistrée.</p>
+<h3 id="liens-google-drive-1">Liens Google Drive</h3>
+<p>Six liens Drive distincts peuvent être enregistrés par campagne :
+magasins, véhicules/planning, historique cagettes, groupes,
+participants, participants pour mailing — chacun doit correspondre à un
+fichier Google Sheets partagé en « Toute personne disposant du lien
+».</p>
+<p>Un lien est validé uniquement par la présence d'un identifiant Drive
+reconnaissable dans l'URL. Si un ou plusieurs liens saisis n'en
+contiennent pas, TOUS les liens de la campagne sont rejetés en bloc (y
+compris les valides), avec un message listant les libellés en cause.</p>
+<p>Un champ de lien laissé vide est accepté (aucun lien n'est
+obligatoire).</p>
+<p>Quand un lien Drive est renseigné pour un type de donnée donné, il
+est toujours prioritaire sur le fichier importé manuellement : à chaque
+utilisation, l'application retélécharge l'export Google Sheets à la
+volée pour refléter le dernier état go-on-web. Le fichier importé
+manuellement ne sert de secours que si aucun lien Drive n'est
+renseigné.</p>
+<p>Un téléchargement Drive est jugé invalide si le contenu récupéré ne
+commence pas par la signature binaire d'un fichier xlsx (les octets « PK
+») — cas typique d'un lien pointant vers une page de connexion Google
+plutôt qu'un export direct (partage non public).</p>
+<p>En cas d'échec de téléchargement (réseau, contenu invalide, délai de
+30 secondes dépassé), le comportement diffère selon l'écran : pour la
+demande d'autorisation, la vue magasins gardés, les listes
+groupes/participants, l'échec est absorbé silencieusement (juste
+journalisé) avec repli sur le dernier fichier importé manuellement s'il
+existe ; pour la génération des tournées (simulation) et l'analyse 8
+scénarios, l'échec remonte comme une erreur bloquante affichée à
+l'utilisateur.</p>
+<p>Sur la page Production, seuls trois des six liens (magasins,
+véhicules, cagettes) sont requis ; si l'un manque, la génération est
+bloquée avec un message précisant le(s) lien(s) manquant(s).</p>
+<p>La liste figée de saisie des cagettes n'utilise le référentiel
+magasins (Drive ou import) que pour (ré)initialiser la liste une fois ;
+la page de saisie reste ensuite stable même si le fichier magasins est
+remplacé en cours de campagne — contrairement aux vues « localisation »
+ou « magasins gardés », qui reflètent toujours l'état courant du
+fichier.</p>
+<p>Les liens sont stockés par année : un nouveau jeu de liens est
+attendu chaque année (nouveau dossier Drive), jamais réutilisé
+automatiquement d'une année sur l'autre.</p>
+<h3 id="import-de-fichiers">Import de fichiers</h3>
+<p>Quatre types de fichiers peuvent être importés manuellement par
+campagne : liste des magasins, PDF des tournées de la collecte
+précédente, liste des groupes, liste des participants — chacun avec une
+extension attendue stricte.</p>
+<p>Toute extension ne correspondant pas au type attendu est rejetée,
+avec un message précisant les extensions acceptées ; le fichier n'est
+pas enregistré.</p>
+<p>L'absence de fichier sélectionné, une année manquante, ou un type de
+fichier inconnu bloquent également l'import, sans modification en
+base.</p>
+<p>Chaque import écrase le fichier précédent du même type (nom de
+stockage fixe par type) : il n'existe aucun historique de versions des
+fichiers importés.</p>
+<p>Chaque import réussi horodate la date/heure et l'auteur (utilisateur
+connecté), affichés ensuite comme « Importé le … par … » ; tant qu'aucun
+fichier n'a été importé, l'interface affiche « Aucun fichier importé
+pour {année} ».</p>
+<p>L'accès aux actions en aval dépend de la présence d'au moins une
+source de données valable : la section « Gestion magasins » n'est
+activée que si un fichier magasins a été importé OU qu'un lien Drive
+magasins est renseigné (sans vérifier que le lien fonctionne réellement)
+; la section « Gestion tournées » exige en plus la présence du PDF des
+tournées précédentes.</p>
+<h2 id="gestion-magasins-1">9.2 Gestion magasins</h2>
+<h3 id="demande-dautorisation-de-collecter">Demande d'autorisation de
+collecter</h3>
+<p>Un magasin est éligible au publipostage si toutes les conditions
+suivantes sont réunies : son état n'est pas « Non collecté » ; il a un
+email renseigné ; sa colonne « Accord » est vide (un accord déjà donné
+l'exclut) ; son Code VIF est présent et exploitable.</p>
+<p>Le champ Email peut contenir plusieurs adresses séparées par « ; » ;
+à défaut de parsing, l'email brut est utilisé tel quel comme unique
+destinataire.</p>
+<p>Les jours de collecte réels par magasin sont déduits du parsing des
+créneaux horaires ; si le parsing échoue, tous les jours sont considérés
+applicables par défaut. Seuls Jeudi/Vendredi/Samedi sont cités par leur
+nom ; le dimanche, qui n'a qu'un seul créneau, est toujours libellé «
+Dimanche matin ».</p>
+<p>La phrase de dates de la lettre calcule la date calendaire réelle de
+chaque jour de collecte du magasin à partir de la date de début de
+campagne (Jeudi=+0, Vendredi=+1, Samedi=+2, Dimanche=+3 jours). Si le
+magasin n'a aucun jour identifié, la phrase de repli est « aux dates qui
+vous seront communiquées » ; si la campagne n'a pas de date de début,
+repli sur une liste de jours sans dates.</p>
+<p>Les textes de la lettre, du coupon-réponse et du mail sont
+personnalisables par campagne ; à défaut de personnalisation, des textes
+par défaut codés en dur s'appliquent (plus aucun n'est repris d'un
+modèle Word).</p>
+<p>Le repère &lt;&lt;dates&gt;&gt; insère la phrase de dates calculée
+(centrée, rouge, gras) — si ce repère est absent du texte personnalisé,
+la phrase est quand même ajoutée automatiquement en fin de lettre. Le
+repère &lt;&lt;centre&gt;&gt; (en préfixe de paragraphe) centre chaque
+ligne du bloc au lieu du rendu justifié à gauche par défaut.</p>
+<p>Dans le coupon, le repère &lt;&lt;autorisation&gt;&gt; génère une
+ligne « AUTORISATION DE COLLECTER : OUI ☐ NON ☐ » avec deux vraies cases
+à cocher dessinées, plutôt qu'un texte brut. La ville est toujours
+affichée en MAJUSCULES.</p>
+<p>Un espace supplémentaire de 20 mm est réservé sous le cadre du coupon
+uniquement si une ligne commence par « Signature du responsable » ; la
+hauteur totale du cadre est recalculée dynamiquement selon le nombre de
+lignes effectivement présentes dans le texte du coupon.</p>
+<p>L'affiche des produits recherchés (page 2 du PDF) suit un ordre de
+priorité : image déposée directement dans l'application (persistante) ;
+à défaut, la plus grande image intégrée de l'ancien modèle Word partagé
+(compatibilité) ; si aucune des deux n'existe, le PDF n'a qu'une seule
+page.</p>
+<p>Aucun convertisseur Word→PDF n'étant disponible côté serveur, la
+lettre PDF envoyée est reconstruite entièrement par l'application (pas
+une conversion du .docx) ; seul le texte suit la personnalisation, la
+mise en page reste fixée dans le code.</p>
+<p>Le mode test envoie la lettre uniquement à l'email du compte connecté
+(bloqué si ce compte n'a pas d'adresse), sans mise en copie du service
+collecte, et sans enregistrer de trace d'envoi. Un envoi réel met
+automatiquement ba380.collecte@banquealimentaire.org en copie et
+enregistre la date/l'auteur d'envoi par magasin.</p>
+<p>Une confirmation explicite (case cochée) est obligatoire avant tout
+envoi.</p>
+<p>Les aperçus (PDF de la lettre, texte du mail) sont des rendus
+purement locaux affichés dans le navigateur, accessibles sans consommer
+d'envoi Mailjet, y compris en mode test.</p>
+<h3 id="localisation-magasins-et-associations-1">Localisation magasins
+et associations</h3>
+<p>La carte affiche les magasins à l'état « Collecté par la BAI » et «
+Collecte gardée » du référentiel courant (pas une liste figée) ; les
+magasins « Non collecté » sont toujours exclus.</p>
+<p>Une coordonnée n'est retenue que si elle tombe dans une boîte
+englobante large Isère + départements limitrophes (latitude 44,0–46,3,
+longitude 4,2–6,3) — un garde-fou de plausibilité, pas une frontière
+administrative précise.</p>
+<p>Seules les associations dont le champ « validité » vaut « oui » sont
+affichées ; coordonnées manquantes ou hors zone → association basculée
+dans la liste des « adresses invalides » plutôt qu'affichée sur la
+carte.</p>
+<p>Nettoyage d'adresse avant géocodage : suppression des emails collés à
+l'adresse, des mentions « BP&lt;nombre&gt; », des mentions « cedex », et
+des doublons de mots consécutifs identiques.</p>
+<p>Résolution de la commune : priorité à l'API gouvernementale à partir
+du code postal (plus fiable qu'un champ commune libre contenant parfois
+« Cedex »/« BP... ») ; repli sur le champ commune brut nettoyé si le
+code postal est absent/invalide.</p>
+<p>Cas particulier « siège national hors zone » : si les coordonnées du
+siège d'une association tombent hors de la zone Isère (ex. siège à
+Paris), le script tente l'adresse de distribution locale et ne la
+retient que si elle, elle-même, tombe dans la zone plausible.</p>
+<p>Le lien de partage public de la carte (sans connexion) est un token
+signé qui expire après 180 jours ; un token expiré, invalide, ou d'une
+autre année que celle demandée renvoie une page d'erreur dédiée.</p>
+<p>Trois couches de marqueurs indépendamment activables : magasins
+collecte BAI (vert), magasins collecte gardée (violet), associations
+(orange) ; seuls les magasins affichent l'information de Stockage dans
+leur bulle, pas les associations.</p>
+<p>La recherche porte sur le nom et la ville, sans tenir compte des
+accents ni de la casse, et recentre automatiquement la carte sur les
+résultats trouvés.</p>
+<h2 id="gestion-tournées-1">9.3 Gestion tournées</h2>
+<h3 id="simulation-contraintes-générales">Simulation — contraintes
+générales</h3>
+<p>Le nombre maximum de magasins par tournée est réglable (par défaut
+4), sauf le dimanche où la limite est toujours ce chiffre +1
+automatiquement.</p>
+<p>Par défaut, seuls les nouveaux magasins de l'année peuvent être
+déplacés entre tournées pendant l'optimisation (rééquilibrage, échanges
+géographiques, correction des mal placés) ; les magasins déjà présents
+l'année précédente restent figés dans leur tournée d'origine sauf
+activation explicite de l'optimisation des anciens.</p>
+<p>Deux mécanismes de gel cumulatifs : des véhicules entièrement figés
+(jamais touchés, sur aucune demi-journée) et des couples
+véhicule+demi-journée gelés précisément (ex. un véhicule ramené par une
+association partenaire, ou n'existant que sur un seul jour). Toutes les
+passes d'optimisation respectent ces deux gels.</p>
+<p>Une tournée réduite à un seul magasin : si c'est un camion
+supplémentaire créé pour l'occasion, il est supprimé et son magasin
+rattaché à la tournée la plus proche ; si c'est un véhicule existant non
+figé, l'algorithme tente d'abord de le compléter avec un magasin proche
+du même secteur.</p>
+<p>Déduplication systématique : suppression des doublons internes à une
+tournée ; si un magasin apparaît dans plusieurs tournées le même jour,
+il n'est conservé que dans celle qui a le plus de magasins.</p>
+<p>Contrôle final de couverture : tout magasin actif doit apparaître sur
+au moins une des demi-journées Vendredi/Samedi (le jeudi et le dimanche
+ne sont pas contrôlés de cette façon), sauf les magasins identifiés «
+Jeudi only ».</p>
+<h3 id="simulation-magasins-en-collecte-gardée">Simulation — magasins en
+collecte gardée</h3>
+<p>Seuls les magasins à l'état « Collecté par la BAI » sont retenus par
+défaut.</p>
+<p>Un magasin à l'état « Collecte gardée » est quand même inclus dans la
+simulation si son champ Stockage contient « BAI+ » — la BAI doit alors
+passer un camion pour le stockage partagé, même sans assurer elle-même
+la collecte. Les magasins « Non collecté » et les « Collecte gardée »
+sans stockage BAI+ sont toujours exclus.</p>
+<h3 id="simulation-jeudi-et-dimanche">Simulation — Jeudi et
+Dimanche</h3>
+<p>Le dimanche n'a qu'une seule demi-journée possible (« Dimanche Matin
+») quelle que soit l'heure indiquée dans les créneaux, et n'est jamais
+délesté par un camion supplémentaire (les camions supplémentaires ne
+couvrent que Jeudi/Vendredi/Samedi). La tolérance d'un magasin en léger
+dépassement de capacité (« max+1 ») est explicitement exclue le
+dimanche.</p>
+<p>Un magasin est qualifié « Jeudi only » s'il apparaissait l'année
+précédente uniquement le jeudi (jamais vendredi/samedi) ; ces magasins
+sont volontairement exclus de l'alerte de couverture Vendredi/Samedi
+pour éviter de fausses alertes.</p>
+<h3 id="simulation-ancrage-de-magasins-spécifiques">Simulation — ancrage
+de magasins spécifiques</h3>
+<p>Deux magasins (Carrefour et ALDI de St Egrève) sont ancrés en dur au
+véhicule de l'association familiale de St Egrève, sans figer tout le
+reste de ce véhicule qui reste optimisable normalement. Cet ancrage est
+réappliqué en tout dernier, après toutes les autres passes, pour
+garantir le résultat quel que soit le chemin suivi entretemps.</p>
+<h3 id="simulation-paramètres-réglables-par-lutilisateur">Simulation —
+paramètres réglables par l'utilisateur</h3>
+<p>Année de la campagne (défaut : année courante) ; nombre de camions
+supplémentaires à créer dynamiquement (défaut 0) ; poids forfaitaire
+attribué à un magasin nouveau sans historique pour l'estimation de
+tonnage (défaut 200 kg) ; nombre maximum de magasins par tournée hors
+dimanche (défaut 4) ; autorisation de déplacer les anciens magasins
+pendant l'optimisation ; correction automatique des magasins trop
+éloignés du centre de leur tournée (plus de 8 km) ; fusion automatique
+des tournées légères (2 magasins ou moins).</p>
+<p>Chaque combinaison de paramètres (camions supplémentaires, max
+magasins) génère son propre sous-dossier de résultats, pour comparer
+plusieurs essais sans écraser les résultats précédents.</p>
+<h3 id="simulation-injection-des-nouveaux-magasins">Simulation —
+injection des nouveaux magasins</h3>
+<p>Un nouveau magasin (absent du planning de l'année précédente) est
+injecté par ordre de priorité décroissant : tournée de son secteur exact
+la plus proche ; sinon tournée voisine à moins de 7 km si la cohérence
+sectorielle reste respectée ; sinon camion supplémentaire libre ou
+créneau inoccupé ; sinon (hors dimanche) tolérance de dépassement sur
+une tournée du même secteur ; en dernier recours, tournée la plus proche
+tous secteurs confondus, signalée comme anomalie « placé hors secteur »,
+ou signalée comme non affecté si aucun camion n'est disponible ce
+jour-là. L'injection respecte toujours les créneaux horaires déclarés du
+magasin.</p>
+<h3 id="simulation-créneaux-horaires">Simulation — créneaux
+horaires</h3>
+<p>Convention de découpage : heure de début avant 13h → demi-journée
+Matin, heure de fin à 13h ou après → Après-midi. Un créneau exprimé sur
+une seule ligne mais couvrant toute la journée compte pour les deux
+demi-journées, pas seulement celle du début. Le dimanche n'a toujours
+qu'une seule demi-journée, quelle que soit l'heure indiquée.</p>
+<p>Absence de créneaux déclarés = magasin considéré disponible partout ;
+créneaux déclarés mais tous hors des demi-journées connues = magasin
+considéré disponible nulle part — ces deux cas sont distingués
+explicitement.</p>
+<h3
+id="simulation-camions-supplémentaires-et-répartition-de-charge">Simulation
+— camions supplémentaires et répartition de charge</h3>
+<p>Les camions supplémentaires ne couvrent jamais le dimanche. Ils sont
+peuplés en « délestant » les tournées existantes les plus chargées, en
+gardant au moins 2 magasins dans la tournée délestée.</p>
+<p>Passes de correction appliquées : rééquilibrage des charges entre
+camions surchargés et sous-chargés par demi-journée ; regroupement
+géographique par échange de magasins pour réduire la distance totale ;
+remplissage des tournées légères en piochant dans les tournées plus
+chargées, sans jamais descendre la tournée source sous 2 magasins ;
+déplacement d'un magasin isolé (seul représentant d'un secteur
+minoritaire) vers une tournée de son propre secteur.</p>
+<p>Une passe finale rattrape les magasins manquants sur une demi-journée
+: magasins régressés (présents l'an dernier, absents cette année),
+nouveaux magasins présents ailleurs mais absents de cette demi-journée
+précise, et magasins dont les créneaux couvrent désormais cette
+demi-journée alors que ce n'était pas le cas l'an dernier.</p>
+<h3 id="simulation-tonnage-et-secteurs-géographiques">Simulation —
+tonnage et secteurs géographiques</h3>
+<p>Le tonnage estimé d'un magasin est son tonnage connu de l'année
+précédente divisé par son nombre de passages ; un nouveau magasin sans
+historique reçoit le poids forfaitaire paramétré (200 kg par
+défaut).</p>
+<p>Le secteur géographique par défaut est la ville normalisée du
+magasin, avec plusieurs regroupements fixes pour certaines zones. Une
+ville de plus de 6 magasins est subdivisée en sous-secteurs (7 zones
+fixes pour Grenoble selon coordonnées GPS, découpage Nord/Sud pour les
+autres grandes villes). Des coefficients de trafic routier sont
+appliqués uniquement à l'estimation de durée affichée pour chaque
+tournée, jamais à l'algorithme d'affectation lui-même.</p>
+<p>La carte des secteurs réutilise directement les secteurs déjà
+calculés par le moteur de tournées (garantit la cohérence carte/tournées
+réelles) ; c'est un outil de visualisation pure, qui ne participe à
+aucune décision d'affectation.</p>
+<h3 id="analyse-comparative-8-scénarios-1">Analyse comparative (8
+scénarios)</h3>
+<p>L'analyse compare exactement 8 scénarios, croisement de 4 valeurs de
+camions supplémentaires (1 à 4) et de 2 valeurs de maximum de magasins
+par tournée (4 ou 5) ; les autres paramètres sont fixes pour tous les
+scénarios.</p>
+<p>Seuls les indicateurs chiffrés sont conservés (nombre de tournées par
+taille, surcharges, tournées à 3 secteurs ou plus, kilomètres estimés,
+moyenne de magasins par tournée, camions supplémentaires effectivement
+créés, durée moyenne estimée) — aucun fichier Excel ni carte n'est
+généré pour ces 8 scénarios, jugé disproportionné pour un résultat
+jetable.</p>
+<p>Une tournée est en « surcharge » uniquement si son nombre de magasins
+dépasse strictement le maximum du scénario considéré (ex. 5 magasins =
+surcharge avec un maximum de 4, mais pas avec un maximum de 5).</p>
+<p>La génération d'un texte d'analyse rédactionnel (verdicts,
+recommandation) via une IA est une étape séparée et optionnelle,
+déclenchée manuellement après le calcul des 8 scénarios — jamais
+automatique pendant le calcul lui-même.</p>
+<h3 id="génération-des-documents-réels-production">Génération des
+documents réels (Production)</h3>
+<p>La génération nécessite les 3 liens Drive préconfigurés (magasins,
+véhicules, cagettes) ; les fichiers sont retéléchargés à chaque
+génération, jamais un import ponctuel figé.</p>
+<p>Un code camion saisi pour une génération ciblée est nettoyé de tout
+caractère non alphanumérique, pour empêcher toute injection dans le nom
+de fichier généré.</p>
+<p>Le mode « camion seul » ne produit que la fiche de collecte PDF de ce
+camion, sans toucher aux 6 documents officiels. La génération complète
+régénère les 6 documents officiels et la carte HTML des tournées ; les
+anciennes cartes horodatées sont supprimées avant relance (pas
+d'historique conservé).</p>
+<p>Anomalies détectées et critères exacts : quai manquant pour un camion
+identifié ; camion cité sur une tournée mais absent du référentiel
+véhicules ; camion présent au référentiel mais sans aucun magasin
+affecté ; un même magasin affecté à plusieurs camions DIFFÉRENTS sur la
+même demi-journée (un même magasin affecté plusieurs fois au même camion
+n'est pas signalé) ; ligne magasin sans camion renseigné ; couple
+(magasin, demi-journée) sans entrée dans le fichier cagettes ; magasin
+actif n'apparaissant dans aucune tournée ; un même jour couvert sur une
+seule des deux demi-journées alors que les deux sont normalement
+attendues.</p>
+<p>Exception commune à plusieurs contrôles d'anomalies : un magasin à
+l'état « Collecte gardée » est systématiquement exclu, la collecte y
+étant assurée par l'association elle-même — l'absence de camion BAI
+n'est donc pas une anomalie pour ce magasin.</p>
+<p>Une tournée traversant 3 secteurs géographiques distincts est mise en
+évidence en orange dans le classeur Excel produit, et en rouge au-delà
+de 3 secteurs — signal visuel d'optimisation possible, sans blocage.</p>
+<h3 id="envoi-mail-chauffeurs-et-équipiers">Envoi mail chauffeurs et
+équipiers</h3>
+<p>Les affectations sont construites depuis le planning réel (pas la
+simulation). Chaque ligne est rattachée à une demi-journée (Matin si
+l'heure de début est avant 13h, sinon Après-midi) ; le rôle
+chauffeur/équipier est lu dans le planning, avec un repli heuristique
+sur le nom si la colonne est vide.</p>
+<p>Une personne est identifiée par son email si renseigné, sinon par son
+nom — ce qui signifie que deux homonymes sans email partagé sont
+regroupés sous la même clé, alors que deux emails différents restent
+distincts même à nom identique.</p>
+<p>Le texte du mail contient un repère &lt;&lt;nom&gt;&gt; et un repère
+&lt;&lt;affectations&gt;&gt; où la liste des tournées est insérée ; si
+ce dernier est absent du texte, la liste est simplement ajoutée à la fin
+plutôt que perdue. Le repère &lt;&lt;image&gt;&gt; insère l'image de
+campagne si elle existe, ou est simplement retiré sinon (pas de lien
+cassé).</p>
+<p>L'image et les pièces jointes PDF sont stockées dans un emplacement
+partagé, conservées d'une campagne et d'une session à l'autre sans
+redépôt annuel — seule l'image est unique (remplacée à chaque dépôt),
+plusieurs pièces jointes PDF peuvent coexister.</p>
+<p>Seules les personnes avec une adresse email reçoivent un mail ; les
+personnes sans email sont recensées à part sur la page, sans email
+envoyé. Un envoi test envoie le rendu d'une personne choisie vers
+l'adresse du compte connecté ; l'envoi réel envoie un mail individuel et
+personnalisé à chaque destinataire.</p>
+<p>Tous les mails (test et réel) sont envoyés avec un expéditeur fixe
+(ba380.directeur@banquealimentaire.org), jamais l'adresse de
+l'utilisateur connecté.</p>
+<h2 id="associations-gardant-1">9.4 Associations gardant</h2>
+<h3
+id="détermination-des-associations-et-rattachement-des-magasins">Détermination
+des associations et rattachement des magasins</h3>
+<p>La liste des associations gardant leur collecte vient uniquement de
+la colonne « Gardée par » du fichier magasins, jamais de la liste des
+groupes — une association présente dans les groupes mais sans magasin
+rattaché n'apparaît pas dans la liste.</p>
+<p>Un préfixe « BAI+ » collé au nom (cas des magasins à stockage
+partagé) est retiré avant toute comparaison, des deux côtés (magasins et
+groupes).</p>
+<p>Un magasin peut être rattaché à une deuxième association si la
+colonne Stockage contient un texte du type « NomA+NomB » : la colonne «
+Gardée par » n'en retient qu'une, le texte Stockage révèle la seconde.
+Le mot « BAI » dans ce texte est ignoré (stockage partagé avec la BAI,
+pas une association), de même que le nom déjà retenu comme
+principal.</p>
+<p>Une association trouvée dans « Gardée par » sans correspondance dans
+la liste des groupes apparaît quand même dans la liste, avec seulement
+son nom et ses magasins — aucun magasin n'est jamais perdu faute de
+correspondance. Les magasins sans association renseignée sont recensés à
+part.</p>
+<p>Le nom d'une association pour la correspondance avec la liste des
+groupes est normalisé (casse, accents, ponctuation, mots de liaison) et
+certaines abréviations connues sont résolues automatiquement (ex. CR →
+Croix Rouge, CS → Centre Social), en complément d'une table d'alias
+explicites pour les cas non couverts.</p>
+<h3 id="détermination-du-code-vif">Détermination du Code VIF</h3>
+<p>Le Code VIF est recherché par le nom normalisé de l'association dans
+le référentiel des associations. Si plusieurs antennes déclinées par
+jour de passage existent pour un même nom, c'est la première par ordre
+alphabétique qui est retenue automatiquement, sans signaler d'écart.</p>
+<p>Cas d'écart signalés : association introuvable dans le référentiel
+(nom à vérifier) ; plusieurs associations distinctes portent exactement
+le même nom (à vérifier manuellement) ; association trouvée mais Code
+VIF non renseigné.</p>
+<p>Une correction manuelle du Code VIF, propre à cette seule liste, est
+toujours prioritaire sur la recherche automatique et supprime tout
+message d'écart. Cette correction n'écrit jamais dans le référentiel des
+associations (partagé avec Indicateurs, Cotisations, etc.) et peut être
+effacée à tout moment pour revenir à la détection automatique.</p>
+<h3 id="fiche-produits-et-référents">Fiche produits et référents</h3>
+<p>Les contacts d'une association sont dédoublonnés par (Nom, Email) ;
+ceux marqués référent désigné (mention « (Ref) », insensible aux
+accents) sont placés en tête de liste. Les emails d'envoi retenus sont
+uniquement ceux des contacts valides, dédupliqués.</p>
+<h3 id="génération-du-fichier-excelpdf-personnalisé">Génération du
+fichier Excel/PDF personnalisé</h3>
+<p>Le fichier est généré depuis le modèle Excel partagé en remplaçant
+des repères texte (nom de l'association, Code VIF, dates de campagne,
+année). Si le nombre de magasins de l'association dépasse la place
+prévue, des lignes supplémentaires sont insérées automatiquement sans
+écraser la mise en page suivante ; les lignes non utilisées sont vidées
+pour ne laisser aucun résidu du modèle.</p>
+<p>Le logo est toujours réinséré depuis le fichier statique de
+l'application, jamais celui embarqué dans le modèle Excel — précaution
+nécessaire car un aller-retour par Google Sheets peut produire un format
+de dessin qu'Excel refuse ensuite d'ouvrir.</p>
+<p>Les fiches PDF sont générées directement en dessinant la grille du
+fichier Excel généré (pas de conversion Excel→PDF) ; les libellés trop
+longs sont tronqués à l'affichage.</p>
+<h3
+id="modèle-excel-partagé-dépôt-manuel-et-synchronisation-google-sheets">Modèle
+Excel partagé — dépôt manuel et synchronisation Google Sheets</h3>
+<p>Un dépôt manuel est accepté seulement si le fichier a l'extension
+.xlsx, est un classeur Excel valide, et contient les deux feuilles «
+produits » et « magasins » — sinon rejet sans remplacement, avec le
+détail de ce qui manque. Une sauvegarde horodatée de l'ancien modèle est
+toujours créée avant tout remplacement accepté.</p>
+<p>La synchronisation depuis Google Sheets applique les mêmes contrôles
+(signature de fichier valide, feuilles présentes), puis borne la grille
+reçue en ignorant le padding vide qu'ajoute systématiquement un export
+Google Sheets (grille par défaut de 1000×26 cellules) — ce troncage n'a
+lieu qu'à la synchronisation, jamais lors de la génération répétée des
+fichiers association.</p>
+<p>Si aucune image n'est détectée dans le fichier reçu de Google Sheets,
+le modèle est quand même remplacé mais un avertissement invite à
+vérifier la présence du logo sur un fichier généré. Le fichier n'est
+jamais enregistré tel que reçu : il est d'abord rechargé puis resauvé
+pour normaliser le format interne des images.</p>
+<h3 id="éditeur-en-ligne-des-produits">Éditeur en ligne des
+produits</h3>
+<p>La liste des produits proposée dans le formulaire d'envoi et de
+saisie en ligne est lue dynamiquement depuis le modèle Excel partagé
+(jamais une liste codée en dur) — elle suit donc automatiquement toute
+modification du modèle.</p>
+<p>Un enregistrement est rejeté si la liste soumise est vide ou ne
+contient aucun produit avec à la fois un code et un libellé non vides.
+Si le nombre de produits change, les lignes Excel sont insérées ou
+supprimées pour que les lignes suivantes (Autres, Total, Type calcul=)
+restent immédiatement après, à leur position relative d'origine, sans
+jamais toucher la mise en page ni les lignes précédentes.</p>
+<h3 id="lien-de-saisie-en-ligne">Lien de saisie en ligne</h3>
+<p>Le lien envoyé à chaque association est valable 60 jours à compter de
+sa génération ; passé ce délai, falsifié, ou destiné à une autre
+action/année, il est rejeté (page « lien invalide »).</p>
+<p>Le formulaire public (sans compte) permet de saisir le poids par
+magasin géré et la quantité par produit ; une case laissée vide efface
+la valeur existante plutôt que d'être ignorée. Chaque champ dispose d'un
+autosave individuel, en plus du bouton d'enregistrement global. Les
+saisies faites via ce lien sont tracées comme provenant de l'association
+elle-même, distinctes d'une saisie interne.</p>
+<h3 id="suivi-manuel-et-indice-davancement">Suivi manuel et indice
+d'avancement</h3>
+<p>Le suivi comporte deux cases indépendantes par association et par
+année : « Répondu » et « Résultat envoyé ». Ces deux cases sont
+exclusivement cochées à la main par l'équipe collecte ; la vérification
+elle-même se fait hors de l'application.</p>
+<p>Un indice automatique d'avancement de la saisie en ligne est calculé
+et affiché à titre d'aide à la décision à côté de ces cases, mais ne
+coche jamais aucune case automatiquement — aucune synchronisation entre
+l'indice et le suivi manuel.</p>
+<h3 id="envoi-initial-et-relances">Envoi initial et relances</h3>
+<p>L'envoi exige que le fichier Excel combiné ait déjà été généré, et
+une confirmation explicite avant tout envoi réel.</p>
+<p>En mode test, les mails partent uniquement vers l'adresse du compte
+connecté (jamais vers les vraies associations), sans mise en copie de
+l'adresse collecte. L'option « tester sur une seule association » n'est
+autorisée que si le mode test est également actif.</p>
+<p>Une association sans aucune adresse email connue est exclue de
+l'envoi réel (sauf en mode test) et listée comme « sans adresse » dans
+le message de résultat.</p>
+<p>Chaque envoi (initial ou relance) génère un nouveau lien de saisie en
+ligne (nouvelle fenêtre de validité de 60 jours), avant d'expédier le
+mail avec les fichiers Excel et PDF en pièces jointes. Le mail réel
+(hors mode test) est systématiquement mis en copie à
+ba380.collecte@banquealimentaire.org.</p>
+<p>La relance groupée cible soit toutes les associations où la case «
+Répondu » n'est pas cochée, soit toutes celles où « Résultat envoyé »
+n'est pas cochée — le critère est exclusivement l'état actuel des cases
+de suivi manuelles, jamais l'indice d'avancement automatique ni une date
+d'envoi précédente.</p>
+<h3 id="texte-du-mail">Texte du mail</h3>
+<p>Le texte est stocké dans un fichier partagé modifiable en ligne,
+commun à toutes les campagnes (pas de redépôt annuel). Repères
+disponibles : &lt;&lt;association&gt;&gt;, &lt;&lt;code&gt;&gt;,
+&lt;&lt;datecollecte&gt;&gt;, &lt;&lt;magasins&gt;&gt;,
+&lt;&lt;lien_saisie&gt;&gt; — si ce dernier est absent d'un texte
+personnalisé plus ancien, le lien est quand même ajouté automatiquement
+en dernier paragraphe, pour rester compatible avec les textes
+personnalisés avant l'introduction de la saisie en ligne.</p>
+<h2 id="résultat-collecte-1">9.5 Résultat collecte</h2>
+<h3 id="saisie-des-cagettes-collecte-directe-bai">Saisie des cagettes
+(collecte directe BAI)</h3>
+<p>La page est inaccessible tant que la campagne n'a pas de fichier
+magasins. La liste à saisir doit être « figée » avant toute saisie :
+l'initialisation ne garde que les magasins du périmètre BAI (état «
+Collecté par la BAI », ou « Collecte gardée » avec Stockage contenant «
+BAI+ ») avec leurs demi-journées d'ouverture déduites des créneaux.</p>
+<p>Une fois figée, la liste reste stable même si le fichier magasins est
+ensuite remplacé en cours de campagne — la page de saisie ne relit
+jamais le fichier directement. Une ré-initialisation supprime et
+régénère entièrement la liste de l'année.</p>
+<p>Les demi-journées possibles sont fixes : Jeudi, Vendredi, Samedi
+(Matin + Après-midi), et Dimanche Matin seul (le dimanche n'a jamais de
+créneau après-midi).</p>
+<p>Un créneau qui commence avant 13h compte pour le Matin, un créneau
+qui finit à 13h ou après compte pour l'Après-midi ; un créneau sur une
+seule ligne couvrant toute la journée compte pour les deux
+demi-journées. Tout créneau du dimanche est rattaché uniquement à
+Dimanche Matin.</p>
+<p>Une case de la grille est grisée (non saisissable) selon les créneaux
+horaires déclarés au moment de l'initialisation (magasin fermé sur cette
+demi-journée) — ce grisage est indépendant du filtre par camion, qui,
+lui, s'appuie sur le planning véhicules réel pour restreindre
+l'affichage sans jamais griser de case sur cette base.</p>
+<p>Le total par magasin est la somme des cagettes saisies sur toutes les
+demi-journées applicables ; une case applicable mais non saisie compte
+pour 0.</p>
+<p>Deux poids de cagette sont gérés séparément : un poids estimé (saisi
+directement) et un poids « après pesée », calculé automatiquement en
+divisant le poids total pesé par le total de cagettes de la campagne. Le
+poids utilisé pour l'export VIF est exclusivement le poids après
+pesée.</p>
+<p>L'export CSV (format d'import VIF) est une ligne par magasin, sans
+en-tête, avec la quantité arrondie (total cagettes × poids après pesée)
+; un magasin à zéro cagette saisie bloque tout l'export (message listant
+les magasins concernés). Ce blocage ne peut être contourné qu'en
+environnement de développement, jamais en production.</p>
+<p>L'export Excel (distinct du CSV) reproduit la grille écran avec les
+colonnes calculées (total cagettes, poids estimé, poids après pesée) et
+une ligne de total général ; il n'est jamais bloqué par des lignes à
+zéro, contrairement à l'export CSV — il sert à l'archivage/contrôle, pas
+à l'import VIF.</p>
+<h3 id="poids-par-magasin-gardé">Poids par magasin gardé</h3>
+<p>La page est inaccessible tant que la liste des magasins gardés de
+l'année est indisponible. Une seule valeur en kg par magasin gardé (pas
+de découpage par demi-journée), relevée une fois sur la fiche de pesée
+renvoyée par l'association.</p>
+<p>La saisie se fait par cellule, avec sauvegarde immédiate ; une valeur
+vide remet le poids à vide, une valeur non numérique est refusée.</p>
+<p>L'export CSV suit le même format que l'export cagettes, avec la
+quantité = poids en kg brut saisi (sans multiplication par un facteur,
+contrairement aux cagettes). Un magasin sans poids saisi bloque l'export
+global, avec le même mécanisme de contournement réservé au
+développement.</p>
+<h3 id="quantités-par-produit">Quantités par produit</h3>
+<p>La page nécessite à la fois une liste de produits valide et une liste
+de magasins gardés valide. La liste des produits provient dynamiquement
+de l'onglet « produits » du modèle Excel partagé (jamais d'une liste
+figée en base) — elle se met donc à jour automatiquement si ce modèle
+est modifié.</p>
+<p>La grille est structurée en lignes = produits, colonnes =
+associations ; chaque cellule = poids en kg saisi pour ce couple. Mêmes
+règles de validation que pour les poids par magasin gardé (vide →
+effacé, non numérique → refusé).</p>

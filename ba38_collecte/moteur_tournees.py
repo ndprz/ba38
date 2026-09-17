@@ -778,7 +778,7 @@ def optimiser_tournees(fiches, df_mag, args):
                     best_proche = (dj, veh)
 
             if best_proche:
-                # Vérifier cohérence sectorielle : max 2 secteurs distincts après ajout
+                # Vérifier cohérence sectorielle : max 3 secteurs distincts après ajout
                 vifs_proche = dj_veh[best_proche]
                 secs_proche = set(s for v in vifs_proche if (s := _secteur_vif_calc2(v)))
                 secs_proche.add(sec_new)
@@ -1139,7 +1139,7 @@ def optimiser_tournees(fiches, df_mag, args):
                             max_c_echange = max_dim if dj in DJ_DIMANCHE else max_norm
                             if len(new_a) > max_c_echange or len(new_b) > max_c_echange:
                                 continue
-                            # Vérifier cohérence sectorielle : max 2 secteurs distincts
+                            # Vérifier cohérence sectorielle : max 3 secteurs distincts
                             secs_a = set(s for v in new_a if (s := _secteur_vif_calc2(v)))
                             secs_b = set(s for v in new_b if (s := _secteur_vif_calc2(v)))
                             if len(secs_a) > 3 or len(secs_b) > 3:
@@ -1342,7 +1342,7 @@ def optimiser_tournees(fiches, df_mag, args):
                     if veh2 in fusionne: continue
                     total = len(vifs1) + len(vifs2)
                     if total > max_c_dj: continue
-                    # Vérifier cohérence sectorielle (max 2 secteurs)
+                    # Vérifier cohérence sectorielle (max 3 secteurs)
                     secs = set()
                     for v in vifs1 + vifs2:
                         s = _secteur_vif_calc2(v)
