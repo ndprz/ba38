@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Référentiel magasins collecte {{ annee }}{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width:1400px;">
+
+    <h2>📇 Référentiel magasins collecte {{ annee }}</h2>
+    <p class="text-muted small">
+        Tous les magasins réellement collectés cette année (« Collecté par la BAI » ou « Collecte
+        gardée »), avec leurs coordonnées de contact. L'adresse mail n'est renseignée que pour les
+        magasins présents dans l'export go-on-web (fiche magasin renseignée côté GOW) — un magasin
+        sans mail n'y est probablement pas encore correctement rattaché.
+    </p>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+    {% endcall %}
+
+    {% if not magasins %}
+    <div class="alert alert-warning">
+        ⛔ Fichier magasins {{ annee }} indisponible ou sans magasin collecté.
+        <a href="{{ url_for('collecte.collecte_main', annee=annee) }}">Importer les fichiers</a>
+    </div>
+    {% else %}
+
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <p class="mb-0">
+            <strong>{{ magasins|length }}</strong> magasin(s) collecté(s)
+            {% if nb_sans_email %}
+            — <span class="text-warning">⚠️ {{ nb_sans_email }} sans adresse mail (absents ou mal
+            rattachés dans go-on-web)</span>
+            {% else %}
+            — <span class="text-success">✅ tous ont une adresse mail</span>
+            {% endif %}
+        </p>
+        <input type="text" id="filtre-recherche" class="form-control form-control-sm" style="max-width:280px;"
+               placeholder="🔎 Rechercher (nom, ville…)">
+    </div>
+
+    <div id="tabulator-table"></div>
+    {% endif %}
+</div>
+
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+const magasins = {{ magasins|tojson }};
+
+if (document.getElementById("tabulator-table")) {
+const table = new Tabulator("#tabulator-table", {
+    data: magasins,
+    layout: "fitColumns",
+    height: "calc(100vh - 320px)",
+    placeholder: "Aucun magasin",
+    columns: [
+        { title: "Code VIF", field: "code_vif", width: 110, headerFilter: "input" },
+        { title: "Nom", field: "nom", widthGrow: 2, minWidth: 220, headerFilter: "input" },
+        { title: "État", field: "etat", width: 160 },
+        { title: "Ville", field: "ville", width: 150, headerFilter: "input" },
+        { title: "Adresse", field: "adresse", widthGrow: 2, minWidth: 220 },
+        { title: "Téléphone", field: "telephone", width: 130 },
+        {
+            title: "Email", field: "email", widthGrow: 2, minWidth: 200,
+            formatter: function (cell) {
+                const v = cell.getValue();
+                return v ? v : "<span class='text-warning'>⚠️ absent</span>";
+            },
+        },
+        { title: "Stockage", field: "stockage", width: 130 },
+    ],
+});
+
+const champRecherche = document.getElementById("filtre-recherche");
+if (champRecherche) {
+    champRecherche.addEventListener("input", function () {
+        const texte = this.value.trim();
+        if (!texte) { table.clearFilter(); return; }
+        table.setFilter([[
+            { field: "nom", type: "like", value: texte },
+            { field: "ville", type: "like", value: texte },
+        ]], "or");
+    });
+}
+}
+</script>
+{% endblock %}

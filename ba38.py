@@ -416,8 +416,9 @@ _migrate_email_verifie()
 app.jinja_env.globals['has_access'] = has_access
 
 # Alerte SMS active (ex: crédit SmsFactor épuisé) affichée en bandeau
-from ba38_sms.routes import get_sms_alerte_active
+from ba38_sms.routes import get_sms_alerte_active, get_nb_sms_reponses_non_lues
 app.jinja_env.globals['sms_alerte_active'] = get_sms_alerte_active
+app.jinja_env.globals['nb_sms_reponses_non_lues'] = get_nb_sms_reponses_non_lues
 
 
 @app.context_processor

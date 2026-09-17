@@ -38,6 +38,12 @@
         <div class="dropdown">
             <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
                 {{ groupe }}
+                {% if groupe == "Exploitation" and has_access('sms_benevoles', 'lecture') %}
+                    {% set nb_sms_non_lus = nb_sms_reponses_non_lues() %}
+                    {% if nb_sms_non_lus %}
+                    <span class="badge bg-danger rounded-pill">{{ nb_sms_non_lus }}</span>
+                    {% endif %}
+                {% endif %}
             </button>
 
             <ul class="dropdown-menu">

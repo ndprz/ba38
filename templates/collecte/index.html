@@ -207,6 +207,22 @@
             </div>
         </div>
 
+        <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
+            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h5 class="card-title mb-1">📇 Référentiel magasins collecte</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Tous les magasins réellement collectés cette année, avec leurs coordonnées de
+                        contact — adresse mail affichée pour ceux présents dans go-on-web.
+                    </p>
+                    {% if not magasins_prets %}
+                    <p class="text-warning small mb-0">⚠️ Fichier magasins manquant pour {{ annee }}.</p>
+                    {% endif %}
+                </div>
+                {{ action_button("📇 Voir le référentiel", href=url_for('collecte.referentiel_collecte', annee=annee), color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
+            </div>
+        </div>
+
     </div>
 
     {% set prets = campagne and (campagne.fichier_magasins or campagne.drive_magasins) and campagne.fichier_pdf_precedent %}

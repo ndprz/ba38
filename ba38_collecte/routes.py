@@ -57,7 +57,7 @@ import markdown
 import requests
 import pandas as pd
 from docx import Document
-from openpyxl import load_workbook
+from openpyxl import load_workbook, Workbook
 from openpyxl.drawing.image import Image as ImageOpenpyxl
 import lxml.html as _lxml_html
 from flask import (
@@ -2616,6 +2616,25 @@ def localisation_lien(annee, token):
     )
 
 
+@collecte_bp.route("/collecte/<int:annee>/referentiel-collecte")
+@login_required
+@require_access("collecte", "lecture")
+def referentiel_collecte(annee):
+    """Référentiel des magasins réellement collectés cette année (BAI ou
+    gardée), avec leurs coordonnées de contact — l'adresse mail n'est
+    renseignée que pour les magasins présents dans l'export go-on-web
+    (colonne Email du fichier magasins), les autres l'ont vide."""
+    magasins_annee = _lire_fichier_magasins_brut(annee)
+    magasins = [m for m in magasins_annee if m["etat"] != "Non collecté"]
+    magasins.sort(key=lambda m: m["nom"].lower())
+    return render_template(
+        "collecte/referentiel_collecte.html",
+        annee=annee,
+        magasins=magasins,
+        nb_sans_email=sum(1 for m in magasins if not m["email"]),
+    )
+
+
 @collecte_bp.route("/collecte/<int:annee>/cagettes")
 @login_required
 @require_access("collecte", "lecture")
@@ -4664,6 +4683,10 @@ def enregistrer_quantites_produits():
 # ============================================================================
 FICHIER_EVOLUTION_MAGASINS = "/srv/ba38/uploads/collectes magasins evolution.xlsx"
 FICHIER_REFERENTIEL_MAGASINS = "/srv/ba38/uploads/liste-magasins-réferentiel.xlsx"
+# Les résultats jusqu'en 2025 inclus proviennent tels quels du fichier
+# historique (repris une fois par le script d'import) — le premier extrait
+# VIF importable dans l'application concerne la collecte 2026.
+PREMIERE_ANNEE_IMPORT_VIF = 2026
 
 
 def _ensure_tables_evolution_magasins(conn):
@@ -4745,15 +4768,15 @@ def _lire_fichier_magasins_brut(annee):
             continue
         magasins.append({
             "code_vif": code_vif,
-            "nom": str(row["Nom"] or "").strip(),
-            "etat": str(row["État"] or "").strip(),
-            "adresse": str(row["Adresse"] or "").strip(),
-            "ville": str(row["Ville"] or "").strip(),
-            "code_postal": str(row["C.P."] or "").strip(),
-            "telephone": str(row["Téléphone"] or "").strip(),
-            "email": str(row["Email"] or "").strip(),
-            "stockage": str(row["Stockage"] or "").strip(),
-            "gardee_par": str(row["Gardée par"] or "").strip(),
+            "nom": str(_valeur_propre(row["Nom"])).strip(),
+            "etat": str(_valeur_propre(row["État"])).strip(),
+            "adresse": str(_valeur_propre(row["Adresse"])).strip(),
+            "ville": str(_valeur_propre(row["Ville"])).strip(),
+            "code_postal": str(_valeur_propre(row["C.P."])).strip(),
+            "telephone": str(_valeur_propre(row["Téléphone"])).strip(),
+            "email": str(_valeur_propre(row["Email"])).strip(),
+            "stockage": str(_valeur_propre(row["Stockage"])).strip(),
+            "gardee_par": str(_valeur_propre(row["Gardée par"])).strip(),
         })
     return magasins
 
@@ -4798,6 +4821,75 @@ def evolution_magasins():
         annee=annee,
         magasins=magasins,
         annees=annees,
+    )
+
+
+@collecte_bp.route("/collecte/evolution-magasins/export")
+@login_required
+@require_access("collecte", "lecture")
+def evolution_magasins_export():
+    """Export Excel du référentiel pluriannuel — une ligne par magasin, une
+    colonne par année, avec l'évolution et le % d'évolution calculés entre
+    les deux années les plus récentes (mêmes règles que le tableau à
+    l'écran)."""
+    magasins, annees = _lire_referentiel_evolution()
+
+    wb_export = Workbook()
+    ws = wb_export.active
+    ws.title = "magasins"
+    entetes = ["Code VIF", "Nom", "État", "Ville", "Stockage", "Évolution /an-1 (kg)", "% évolution"] + [str(a) for a in annees]
+    ws.append(entetes)
+
+    lignes = []
+    somme_evolution = 0.0
+    somme_annee_prec = 0.0
+    sommes_annees = {a: 0.0 for a in annees}
+    for m in magasins:
+        resultats = m["resultats"]
+        evolution = pct = None
+        if len(annees) >= 2:
+            cette_annee = resultats.get(annees[0])
+            annee_prec = resultats.get(annees[1])
+            if cette_annee is not None and annee_prec is not None:
+                evolution = cette_annee - annee_prec
+                pct = (evolution / annee_prec) if annee_prec else None
+                somme_evolution += evolution
+                somme_annee_prec += annee_prec
+        for a in annees:
+            valeur = resultats.get(a)
+            if valeur is not None:
+                sommes_annees[a] += valeur
+        lignes.append([
+            m["code_vif"], m["nom"], m["etat"], m["ville"], m["stockage"],
+            round(evolution, 1) if evolution is not None else None,
+            round(pct * 100, 1) if pct is not None else None,
+        ] + [resultats.get(a) for a in annees])
+
+    pct_global = (somme_evolution / somme_annee_prec * 100) if somme_annee_prec else None
+    ligne_total = ["", "Total", "", "", "",
+                   round(somme_evolution, 1),
+                   round(pct_global, 1) if pct_global is not None else None,
+                   ] + [round(sommes_annees[a], 1) for a in annees]
+    ws.append(ligne_total)
+    for ligne in lignes:
+        ws.append(ligne)
+
+    for colonne in ws.columns:
+        lettre = colonne[0].column_letter
+        ws.column_dimensions[lettre].width = 14 if lettre != "B" else 32
+
+    ws.freeze_panes = "A3"
+    ws.auto_filter.ref = ws.dimensions
+
+    tampon = io.BytesIO()
+    wb_export.save(tampon)
+    tampon.seek(0)
+    nom_fichier = f"evolution_magasins_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return send_file(
+        tampon,
+        as_attachment=True,
+        download_name=nom_fichier,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 
@@ -4850,6 +4942,14 @@ def evolution_magasins_ajouter():
 @login_required
 @require_access("collecte", "ecriture")
 def evolution_magasins_importer_vif(annee):
+    if annee < PREMIERE_ANNEE_IMPORT_VIF:
+        flash(
+            f"⛔ Les résultats {annee} proviennent du fichier historique (repris tels quels) — "
+            f"l'import d'extrait VIF n'est disponible qu'à partir de {PREMIERE_ANNEE_IMPORT_VIF}.",
+            "danger",
+        )
+        return redirect(url_for("collecte.evolution_magasins", annee=annee))
+
     fichier = request.files.get("extrait_vif")
     if not fichier or not fichier.filename:
         flash("⛔ Aucun fichier sélectionné.", "warning")

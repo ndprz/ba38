@@ -47,6 +47,9 @@
         <button type="button" id="btn-importer-vif" class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalImportVif">
             📥 Importer un extrait VIF
         </button>
+        <a href="{{ url_for('collecte.evolution_magasins_export') }}" class="btn btn-outline-secondary btn-sm">
+            📤 Télécharger (Excel)
+        </a>
         <input type="text" id="filtre-recherche" class="form-control form-control-sm ms-auto" style="max-width:280px;"
                placeholder="🔎 Rechercher (nom, ville…)">
     </div>
@@ -134,19 +137,37 @@ const donnees = magasins.map(function (m) {
 
 const colonnes = [
     { title: "Code VIF", field: "code_vif", width: 100, headerFilter: "input" },
-    { title: "Nom", field: "nom", widthGrow: 2, minWidth: 220, headerFilter: "input" },
+    { title: "Nom", field: "nom", widthGrow: 2, minWidth: 220, headerFilter: "input",
+      topCalcFormatter: function () { return "Total"; } },
     { title: "État", field: "etat", width: 150 },
     { title: "Ville", field: "ville", width: 130 },
     { title: "Stockage", field: "stockage", width: 130 },
     { title: "Évolution /an-1 (kg)", field: "evolution", width: 140, hozAlign: "right",
-      formatter: function (cell) { const v = cell.getValue(); return v == null ? "" : v.toFixed(1); } },
+      formatter: function (cell) { const v = cell.getValue(); return v == null ? "" : v.toFixed(1); },
+      topCalc: "sum", topCalcParams: { precision: 1 } },
     { title: "% évolution", field: "pct_evolution", width: 110, hozAlign: "right",
-      formatter: function (cell) { const v = cell.getValue(); return v == null ? "" : (v * 100).toFixed(1) + " %"; } },
+      formatter: function (cell) { const v = cell.getValue(); return v == null ? "" : (v * 100).toFixed(1) + " %"; },
+      topCalcFormatter: function (cell) {
+          const v = cell.getValue();
+          return v == null ? "" : (v * 100).toFixed(1) + " %";
+      },
+      // Pourcentage global = somme des évolutions / somme des résultats de l'année précédente
+      // (jamais la moyenne des pourcentages ligne à ligne, qui n'aurait pas de sens ici).
+      topCalc: function (values, data) {
+          const champAnneePrec = "annee_" + annees[1];
+          let sommeEvolution = 0, sommeAnneePrec = 0;
+          data.forEach(function (ligne) {
+              if (ligne.evolution != null) sommeEvolution += ligne.evolution;
+              if (ligne[champAnneePrec] != null) sommeAnneePrec += ligne[champAnneePrec];
+          });
+          return sommeAnneePrec !== 0 ? sommeEvolution / sommeAnneePrec : null;
+      } },
 ];
 annees.forEach(function (a) {
     colonnes.push({
         title: String(a), field: "annee_" + a, width: 100, hozAlign: "right",
         formatter: function (cell) { const v = cell.getValue(); return v == null ? "—" : v.toFixed(1); },
+        topCalc: "sum", topCalcParams: { precision: 1 },
     });
 });
 
