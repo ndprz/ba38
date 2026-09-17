@@ -946,11 +946,14 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
             or "ba380.informatique2@banquealimentaire.org"
         ]
         bcc = None
+        cc = None
 
     elif session_test_mode:
         sujet = f"[TEST] {sujet}"
         repli = current_user.email if (current_user and current_user.is_authenticated) else mail_test_to
         destinataires = [repli] if repli else []
+        bcc = None
+        cc = None
 
     # -----------------------------
     # Mode TEST (global, MAIL_MODE=TEST dans .env) → utilisé hors
@@ -1005,7 +1008,7 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
 
     write_log(
         f"📧 Mailjet : FROM={sender} TO={destinataires} "
-        f"BCC={bcc_list if bcc_list else 'none'} SUBJECT={sujet}"
+        f"CC={cc_list if cc_list else 'none'} BCC={bcc_list if bcc_list else 'none'} SUBJECT={sujet}"
     )
 
 

@@ -1112,7 +1112,7 @@ def autorisations(annee):
                 destinataires=destinataires,
                 texte=texte_mail_modele.replace("<<Nom>>", magasin["nom"]),
                 sender_override=os.getenv("MAILJET_SENDER"),
-                cc=["ba380.collecte@banquealimentaire.org"],
+                cc=None if mode_test else ["ba380.collecte@banquealimentaire.org"],
                 attachment_path=fichier_lettre,
             )
             envoyes += 1
@@ -4776,7 +4776,7 @@ def _envoyer_mail_association(asso, annee, dossier, destinataires, mode_test):
         destinataires=destinataires,
         texte=_texte_modele_gardee(asso, annee, lien_saisie=lien_saisie),
         sender_override=os.getenv("MAILJET_SENDER"),
-        cc=["ba380.collecte@banquealimentaire.org"],
+        cc=None if mode_test else ["ba380.collecte@banquealimentaire.org"],
         attachment_path=fichier_association,
         attachment_paths=[fichier_pdf],
     )
