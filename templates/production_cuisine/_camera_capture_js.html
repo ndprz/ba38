@@ -1,0 +1,50 @@
+<script>
+(function () {
+  document.querySelectorAll(".camera-multi-capture").forEach(function (container) {
+    var addBtn = container.querySelector(".camera-add-btn");
+    var hiddenInput = container.querySelector(".camera-hidden-input");
+    var submitInput = container.querySelector(".camera-submit-input");
+    var preview = container.querySelector(".camera-preview");
+    var fichiers = [];
+
+    function syncSubmitInput() {
+      var dt = new DataTransfer();
+      fichiers.forEach(function (f) { dt.items.add(f); });
+      submitInput.files = dt.files;
+    }
+
+    function renderPreview() {
+      preview.innerHTML = "";
+      fichiers.forEach(function (file, idx) {
+        var url = URL.createObjectURL(file);
+        var wrap = document.createElement("div");
+        wrap.className = "position-relative";
+        wrap.style.width = "80px";
+        wrap.innerHTML =
+          '<img src="' + url + '" style="height:80px;width:80px;object-fit:cover;border-radius:4px;">' +
+          '<button type="button" class="btn btn-sm btn-danger position-absolute top-0 end-0 p-0" ' +
+          'style="width:22px;height:22px;line-height:1;">×</button>';
+        wrap.querySelector("button").addEventListener("click", function () {
+          fichiers.splice(idx, 1);
+          renderPreview();
+          syncSubmitInput();
+        });
+        preview.appendChild(wrap);
+      });
+    }
+
+    addBtn.addEventListener("click", function () {
+      hiddenInput.value = "";
+      hiddenInput.click();
+    });
+
+    hiddenInput.addEventListener("change", function () {
+      if (hiddenInput.files && hiddenInput.files.length) {
+        fichiers.push(hiddenInput.files[0]);
+        renderPreview();
+        syncSubmitInput();
+      }
+    });
+  });
+})();
+</script>

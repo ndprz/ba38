@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Évolution magasins{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width:1550px;">
+
+    <h2>📈 Évolution pluriannuelle des magasins</h2>
+    <p class="text-muted small">
+        Suivi indépendant de l'année de campagne : un référentiel cumulatif de tous les magasins jamais
+        collectés, et un résultat en kg par magasin et par année — reprise des fichiers Excel
+        historiques (2011 à aujourd'hui), maintenus désormais dans l'application.
+    </p>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+    {% endcall %}
+
+    <div class="alert alert-info small">
+        <strong>Ordre à suivre chaque année :</strong>
+        <ol class="mb-0">
+            <li>« 🔍 Détecter les nouveaux magasins » — compare le fichier magasins de l'année (déjà
+                importé) au référentiel, et propose d'ajouter en un clic ceux qui manquent.</li>
+            <li>Une fois la collecte terminée et l'extrait VIF de l'année obtenu, « 📥 Importer un
+                extrait VIF » pour ajouter la colonne de résultats de l'année.</li>
+        </ol>
+    </div>
+
+    <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
+        <div>
+            <label class="form-label mb-0">Année concernée</label>
+            <select id="select-annee" class="form-select form-select-sm" style="max-width:120px;">
+                {% for a in range(annee, annee - 5, -1) %}
+                <option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="button" id="btn-detecter" class="btn btn-outline-primary btn-sm">
+            🔍 Détecter les nouveaux magasins
+        </button>
+        <button type="button" id="btn-importer-vif" class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalImportVif">
+            📥 Importer un extrait VIF
+        </button>
+        <input type="text" id="filtre-recherche" class="form-control form-control-sm ms-auto" style="max-width:280px;"
+               placeholder="🔎 Rechercher (nom, ville…)">
+    </div>
+
+    <div id="zone-nouveaux" class="d-none border rounded p-3 mb-3 bg-light">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong id="titre-nouveaux"></strong>
+            <button type="button" class="btn-close" id="btn-fermer-nouveaux"></button>
+        </div>
+        <div id="liste-nouveaux"></div>
+        <button type="button" id="btn-ajouter-nouveaux" class="btn btn-primary btn-sm mt-2">
+            ➕ Ajouter la sélection au référentiel
+        </button>
+    </div>
+
+    <div id="message-evolution" class="alert d-none mb-2" role="alert"></div>
+
+    <div id="tabulator-table"></div>
+</div>
+
+<!-- Modale import extrait VIF -->
+<div class="modal fade" id="modalImportVif" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" id="formImportVif" enctype="multipart/form-data">
+        <div class="modal-header">
+          <h5 class="modal-title">📥 Importer un extrait VIF</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <p class="text-muted small">
+            Dépose le rapport texte exporté depuis VIF (quantités par magasin, articles 5010000 et
+            5010010) — remplit ou remplace la colonne de résultats de l'année sélectionnée ci-dessus
+            pour chaque magasin déjà présent dans le référentiel. Les Code VIF absents du référentiel
+            sont ignorés et listés après import — à ajouter d'abord via « Détecter les nouveaux
+            magasins » si besoin.
+          </p>
+          <input type="file" name="extrait_vif" class="form-control" accept=".txt" required>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-success">Importer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+const magasins = {{ magasins|tojson }};
+const annees = {{ annees|tojson }};
+const csrfToken = "{{ csrf_token() }}";
+const urlDetecter = "{{ url_for('collecte.evolution_magasins_detecter', annee=0) }}".replace('/0/', '/__ANNEE__/');
+const urlAjouter = "{{ url_for('collecte.evolution_magasins_ajouter') }}";
+const urlImporterVif = "{{ url_for('collecte.evolution_magasins_importer_vif', annee=0) }}".replace('/0/', '/__ANNEE__/');
+
+document.getElementById("formImportVif").action = urlImporterVif.replace('__ANNEE__', document.getElementById('select-annee').value);
+document.getElementById("select-annee").addEventListener("change", function () {
+    document.getElementById("formImportVif").action = urlImporterVif.replace('__ANNEE__', this.value);
+});
+
+const messageDiv = document.getElementById("message-evolution");
+function afficherMessage(texte, classe) {
+    messageDiv.textContent = texte;
+    messageDiv.className = "alert alert-" + classe + " mb-2";
+}
+
+const donnees = magasins.map(function (m) {
+    const ligne = {
+        code_vif: m.code_vif, nom: m.nom, etat: m.etat, ville: m.ville, stockage: m.stockage,
+    };
+    annees.forEach(function (a) { ligne["annee_" + a] = m.resultats[a] ?? null; });
+    if (annees.length >= 2) {
+        const cette_annee = m.resultats[annees[0]];
+        const annee_prec = m.resultats[annees[1]];
+        if (cette_annee != null && annee_prec != null) {
+            ligne["evolution"] = cette_annee - annee_prec;
+            ligne["pct_evolution"] = annee_prec !== 0 ? (cette_annee - annee_prec) / annee_prec : null;
+        }
+    }
+    return ligne;
+});
+
+const colonnes = [
+    { title: "Code VIF", field: "code_vif", width: 100, headerFilter: "input" },
+    { title: "Nom", field: "nom", widthGrow: 2, minWidth: 220, headerFilter: "input" },
+    { title: "État", field: "etat", width: 150 },
+    { title: "Ville", field: "ville", width: 130 },
+    { title: "Stockage", field: "stockage", width: 130 },
+    { title: "Évolution /an-1 (kg)", field: "evolution", width: 140, hozAlign: "right",
+      formatter: function (cell) { const v = cell.getValue(); return v == null ? "" : v.toFixed(1); } },
+    { title: "% évolution", field: "pct_evolution", width: 110, hozAlign: "right",
+      formatter: function (cell) { const v = cell.getValue(); return v == null ? "" : (v * 100).toFixed(1) + " %"; } },
+];
+annees.forEach(function (a) {
+    colonnes.push({
+        title: String(a), field: "annee_" + a, width: 100, hozAlign: "right",
+        formatter: function (cell) { const v = cell.getValue(); return v == null ? "—" : v.toFixed(1); },
+    });
+});
+
+const table = new Tabulator("#tabulator-table", {
+    data: donnees,
+    layout: "fitDataStretch",
+    height: "calc(100vh - 340px)",
+    placeholder: "Aucun magasin dans le référentiel",
+    columns: colonnes,
+});
+
+document.getElementById("filtre-recherche").addEventListener("input", function () {
+    const texte = this.value.trim();
+    if (!texte) { table.clearFilter(); return; }
+    table.setFilter([[
+        { field: "nom", type: "like", value: texte },
+        { field: "ville", type: "like", value: texte },
+    ]], "or");
+});
+
+let derniersNouveaux = [];
+
+document.getElementById("btn-detecter").addEventListener("click", function () {
+    const annee = document.getElementById("select-annee").value;
+    afficherMessage("🔍 Recherche en cours…", "info");
+    fetch(urlDetecter.replace('__ANNEE__', annee))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.success) {
+                afficherMessage("⛔ " + (data.erreur || "Échec de la détection"), "danger");
+                return;
+            }
+            derniersNouveaux = data.nouveaux;
+            const zone = document.getElementById("zone-nouveaux");
+            const liste = document.getElementById("liste-nouveaux");
+            document.getElementById("titre-nouveaux").textContent =
+                data.nouveaux.length + " nouveau(x) magasin(s) trouvé(s) dans le fichier " + annee + " :";
+            if (data.nouveaux.length === 0) {
+                liste.innerHTML = "<p class='text-muted mb-0'>Aucun nouveau magasin — le référentiel est à jour.</p>";
+            } else {
+                liste.innerHTML = "<ul class='list-group'>" + data.nouveaux.map(function (m, i) {
+                    return "<li class='list-group-item'><input type='checkbox' class='form-check-input me-2 case-nouveau' data-index='" + i + "' checked>"
+                        + "[" + m.code_vif + "] <strong>" + m.nom + "</strong> — " + m.ville + " (" + m.etat + ")</li>";
+                }).join("") + "</ul>";
+            }
+            zone.classList.remove("d-none");
+            messageDiv.classList.add("d-none");
+        })
+        .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
+});
+
+document.getElementById("btn-fermer-nouveaux").addEventListener("click", function () {
+    document.getElementById("zone-nouveaux").classList.add("d-none");
+});
+
+document.getElementById("btn-ajouter-nouveaux").addEventListener("click", function () {
+    const cases = document.querySelectorAll(".case-nouveau:checked");
+    const selection = Array.from(cases).map(function (c) { return derniersNouveaux[parseInt(c.dataset.index)]; });
+    if (selection.length === 0) {
+        afficherMessage("⚠️ Sélectionnez au moins un magasin.", "warning");
+        return;
+    }
+    afficherMessage("💾 Ajout en cours…", "info");
+    fetch(urlAjouter, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ magasins: selection }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        if (data.success) {
+            afficherMessage("✅ " + data.nb + " magasin(s) ajouté(s) — rechargement…", "success");
+            setTimeout(function () { window.location.reload(); }, 1000);
+        } else {
+            afficherMessage("⛔ " + (data.erreur || "Échec de l'ajout"), "danger");
+        }
+    })
+    .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
+});
+</script>
+{% endblock %}

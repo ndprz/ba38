@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "production_cuisine/_macros.html" import camera_capture %}
 
 {% block title %}Nouvelle réception{% endblock %}
 
@@ -79,12 +80,10 @@
 
     <div class="row g-3 mb-4">
       <div class="col-6">
-        <label class="form-label">📷 Photo(s) produit</label>
-        <input type="file" name="photos_produit" accept="image/*" capture="environment" multiple class="form-control">
+        {{ camera_capture("photos_produit", "📷 Photo(s) produit") }}
       </div>
       <div class="col-6">
-        <label class="form-label">📷 Photo(s) étiquette</label>
-        <input type="file" name="photos_etiquette" accept="image/*" capture="environment" multiple class="form-control">
+        {{ camera_capture("photos_etiquette", "📷 Photo(s) étiquette") }}
         <div class="form-text">La photo de l'étiquette fait foi pour la DLC/DDM et le n° de lot — inutile de les ressaisir.</div>
       </div>
     </div>
@@ -96,4 +95,5 @@
   </form>
 
 </div>
+{% include "production_cuisine/_camera_capture_js.html" %}
 {% endblock %}

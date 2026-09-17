@@ -4659,6 +4659,241 @@ def enregistrer_quantites_produits():
     return jsonify({"success": True})
 
 
+# ============================================================================
+# 📈 Évolution magasins (suivi pluriannuel, hors campagne annuelle)
+# ============================================================================
+FICHIER_EVOLUTION_MAGASINS = "/srv/ba38/uploads/collectes magasins evolution.xlsx"
+FICHIER_REFERENTIEL_MAGASINS = "/srv/ba38/uploads/liste-magasins-réferentiel.xlsx"
+
+
+def _ensure_tables_evolution_magasins(conn):
+    """Tables du suivi pluriannuel des magasins, reprises une fois depuis les
+    deux fichiers Excel maintenus à la main jusqu'ici (cf.
+    scripts/importer_historique_magasins_evolution.py) — indépendantes de
+    l'année de campagne, contrairement au reste du module."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_magasins_referentiel (
+            code_vif TEXT PRIMARY KEY,
+            nom TEXT,
+            etat TEXT,
+            adresse TEXT,
+            ville TEXT,
+            code_postal TEXT,
+            telephone TEXT,
+            email TEXT,
+            stockage TEXT,
+            gardee_par TEXT,
+            ajoute_le TEXT,
+            ajoute_par TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_magasins_resultats (
+            code_vif TEXT NOT NULL,
+            annee INTEGER NOT NULL,
+            resultat_kg REAL,
+            importe_le TEXT,
+            importe_par TEXT,
+            PRIMARY KEY (code_vif, annee)
+        )
+    """)
+
+
+def _lire_referentiel_evolution():
+    with get_db_connection() as conn:
+        _ensure_tables_evolution_magasins(conn)
+        magasins = [dict(r) for r in conn.execute(
+            "SELECT * FROM collecte_magasins_referentiel ORDER BY nom COLLATE NOCASE"
+        ).fetchall()]
+        resultats = conn.execute("SELECT code_vif, annee, resultat_kg FROM collecte_magasins_resultats").fetchall()
+    par_magasin = {}
+    annees = set()
+    for r in resultats:
+        par_magasin.setdefault(r["code_vif"], {})[r["annee"]] = r["resultat_kg"]
+        annees.add(r["annee"])
+    for m in magasins:
+        m["resultats"] = par_magasin.get(m["code_vif"], {})
+    return magasins, sorted(annees, reverse=True)
+
+
+def _lire_fichier_magasins_brut(annee):
+    """Relit le fichier magasins de la campagne (Drive ou upload), sans
+    filtrage par état — contrairement à _lire_referentiel_magasins_bai,
+    utilisé ici pour détecter TOUS les magasins (y compris non collectés ou
+    gardés) absents du référentiel pluriannuel."""
+    with get_db_connection() as conn:
+        campagne = conn.execute("SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)).fetchone()
+    if not campagne:
+        return []
+    chemin = _fichier_drive(annee, "magasins") or (
+        os.path.join(_dossier_annee(annee), campagne["fichier_magasins"]) if campagne["fichier_magasins"] else None
+    )
+    if not chemin or not os.path.exists(chemin):
+        return []
+
+    df = pd.read_excel(chemin)
+    df.columns = [str(c).strip() for c in df.columns]
+    df = df.loc[:, ~df.columns.duplicated()]
+    for col in ["Code VIF", "Nom", "État", "Adresse", "Ville", "C.P.", "Téléphone", "Email", "Stockage", "Gardée par"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    magasins = []
+    for _, row in df.iterrows():
+        code_vif = _vif_fmt(row["Code VIF"])
+        if not code_vif or code_vif.lower() == "nan":
+            continue
+        magasins.append({
+            "code_vif": code_vif,
+            "nom": str(row["Nom"] or "").strip(),
+            "etat": str(row["État"] or "").strip(),
+            "adresse": str(row["Adresse"] or "").strip(),
+            "ville": str(row["Ville"] or "").strip(),
+            "code_postal": str(row["C.P."] or "").strip(),
+            "telephone": str(row["Téléphone"] or "").strip(),
+            "email": str(row["Email"] or "").strip(),
+            "stockage": str(row["Stockage"] or "").strip(),
+            "gardee_par": str(row["Gardée par"] or "").strip(),
+        })
+    return magasins
+
+
+def _parser_extrait_vif_collecte(contenu):
+    """Parse un extrait VIF (rapport texte tabulé, encodage cp1252) listant
+    les quantités par magasin (colonne « Fournisseur » = Code VIF) — somme
+    toutes les lignes trouvées pour un même Code VIF, quel que soit
+    l'article (5010000 collecte directe / 5010010 collecte gardée) ou
+    l'enseigne, pour couvrir le cas où un magasin apparaît sur plusieurs
+    lignes. Les lignes de sous-total (« TOTAL Enseigne »/« TOTAL Article »,
+    Fournisseur vide) sont naturellement ignorées, leur premier champ ne
+    correspondant jamais à un Code VIF."""
+    resultats = {}
+    for ligne in contenu.splitlines():
+        champs = ligne.split("\t")
+        if len(champs) < 5:
+            continue
+        code_vif_brut = champs[0].strip()
+        if not re.match(r"^\d{6,10}$", code_vif_brut):
+            continue
+        code_vif = _vif_fmt(code_vif_brut)
+        brut = champs[2].strip()
+        if not brut:
+            continue
+        try:
+            valeur = float(brut.replace(".", "").replace(",", "."))
+        except ValueError:
+            continue
+        resultats[code_vif] = resultats.get(code_vif, 0.0) + valeur
+    return resultats
+
+
+@collecte_bp.route("/collecte/evolution-magasins")
+@login_required
+@require_access("collecte", "lecture")
+def evolution_magasins():
+    annee = request.args.get("annee", type=int) or datetime.now().year
+    magasins, annees = _lire_referentiel_evolution()
+    return render_template(
+        "collecte/evolution_magasins.html",
+        annee=annee,
+        magasins=magasins,
+        annees=annees,
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/evolution-magasins/detecter-nouveaux")
+@login_required
+@require_access("collecte", "lecture")
+def evolution_magasins_detecter(annee):
+    magasins_annee = _lire_fichier_magasins_brut(annee)
+    if not magasins_annee:
+        return jsonify({"success": False, "erreur": f"Fichier magasins {annee} indisponible"}), 400
+    with get_db_connection() as conn:
+        _ensure_tables_evolution_magasins(conn)
+        codes_connus = {r[0] for r in conn.execute("SELECT code_vif FROM collecte_magasins_referentiel").fetchall()}
+    nouveaux = [m for m in magasins_annee if m["code_vif"] not in codes_connus]
+    return jsonify({"success": True, "nouveaux": nouveaux})
+
+
+@collecte_bp.route("/collecte/evolution-magasins/ajouter", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def evolution_magasins_ajouter():
+    donnees = request.get_json(silent=True) or {}
+    magasins = donnees.get("magasins") or []
+    if not magasins:
+        return jsonify({"success": False, "erreur": "Aucun magasin sélectionné"}), 400
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        _ensure_tables_evolution_magasins(conn)
+        for m in magasins:
+            code_vif = str(m.get("code_vif", "")).strip()
+            if not code_vif:
+                continue
+            conn.execute("""
+                INSERT INTO collecte_magasins_referentiel
+                    (code_vif, nom, etat, adresse, ville, code_postal, telephone, email, stockage, gardee_par, ajoute_le, ajoute_par)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(code_vif) DO NOTHING
+            """, (
+                code_vif, m.get("nom"), m.get("etat"), m.get("adresse"), m.get("ville"),
+                m.get("code_postal"), m.get("telephone"), m.get("email"), m.get("stockage"), m.get("gardee_par"),
+                maintenant, current_user.email,
+            ))
+        conn.commit()
+    write_log(f"📈 Évolution magasins : {len(magasins)} magasin(s) ajouté(s) au référentiel par {current_user.email}")
+    return jsonify({"success": True, "nb": len(magasins)})
+
+
+@collecte_bp.route("/collecte/<int:annee>/evolution-magasins/importer-vif", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def evolution_magasins_importer_vif(annee):
+    fichier = request.files.get("extrait_vif")
+    if not fichier or not fichier.filename:
+        flash("⛔ Aucun fichier sélectionné.", "warning")
+        return redirect(url_for("collecte.evolution_magasins", annee=annee))
+
+    contenu_brut = fichier.read()
+    try:
+        contenu = contenu_brut.decode("cp1252")
+    except UnicodeDecodeError:
+        contenu = contenu_brut.decode("utf-8", errors="replace")
+
+    resultats = _parser_extrait_vif_collecte(contenu)
+    if not resultats:
+        flash("⛔ Aucune ligne de résultat reconnue dans ce fichier.", "danger")
+        return redirect(url_for("collecte.evolution_magasins", annee=annee))
+
+    with get_db_connection() as conn:
+        _ensure_tables_evolution_magasins(conn)
+        codes_connus = {r[0] for r in conn.execute("SELECT code_vif FROM collecte_magasins_referentiel").fetchall()}
+        maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        nb_maj, inconnus = 0, []
+        for code_vif, kg in resultats.items():
+            if code_vif not in codes_connus:
+                inconnus.append(code_vif)
+                continue
+            conn.execute("""
+                INSERT INTO collecte_magasins_resultats (code_vif, annee, resultat_kg, importe_le, importe_par)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(code_vif, annee) DO UPDATE SET
+                    resultat_kg = excluded.resultat_kg, importe_le = excluded.importe_le, importe_par = excluded.importe_par
+            """, (code_vif, annee, round(kg, 2), maintenant, current_user.email))
+            nb_maj += 1
+        conn.commit()
+
+    message = f"✅ Résultats {annee} importés pour {nb_maj} magasin(s)."
+    if inconnus:
+        message += f" ⚠️ {len(inconnus)} Code VIF absent(s) du référentiel, ignorés : {', '.join(inconnus[:10])}" + (
+            "…" if len(inconnus) > 10 else ""
+        )
+    flash(message, "success" if not inconnus else "warning")
+    write_log(f"📈 Évolution magasins : import extrait VIF {annee}, {nb_maj} magasin(s) par {current_user.email}")
+    return redirect(url_for("collecte.evolution_magasins", annee=annee))
+
+
 @collecte_bp.route("/collecte/<int:annee>/saisie-association/<token>", methods=["GET", "POST"])
 def saisie_association(annee, token):
     """Formulaire public (sans compte) permettant à une association de

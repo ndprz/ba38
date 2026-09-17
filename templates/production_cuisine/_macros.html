@@ -1,0 +1,21 @@
+{# ============================================================
+   📷 Macro de capture photo "appareil photo d'abord"
+   ============================================================
+   `capture="environment"` seul suffit sur un <input type="file">,
+   mais combiné à `multiple` de nombreux navigateurs Android basculent
+   sur le sélecteur générique (Fichiers/Galerie/Drive) au lieu de
+   lancer l'appareil photo directement — exactement ce qu'on veut
+   éviter sur les tablettes dédiées.
+   Ici, chaque tap ouvre un input caché SANS `multiple` (donc
+   l'appareil photo s'ouvre systématiquement), et les photos prises
+   s'accumulent en JS dans l'input réellement soumis au formulaire
+   (même `name`, donc aucun changement côté route Flask). #}
+{% macro camera_capture(name, label="📷 Photo(s)") %}
+<div class="camera-multi-capture mb-2">
+  <label class="form-label">{{ label }}</label>
+  <div class="d-flex flex-wrap gap-2 mb-2 camera-preview"></div>
+  <button type="button" class="btn btn-outline-primary camera-add-btn">📷 Prendre une photo</button>
+  <input type="file" accept="image/*" capture="environment" class="d-none camera-hidden-input">
+  <input type="file" name="{{ name }}" multiple class="d-none camera-submit-input">
+</div>
+{% endmacro %}

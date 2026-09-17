@@ -311,6 +311,20 @@
                 {{ action_button("📦 Saisir", href=url_for('collecte.quantites_produits', annee=annee) if magasins_prets else '#', color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
             </div>
         </div>
+
+        <h5 class="mb-3 mt-4">Suivi pluriannuel</h5>
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h5 class="card-title mb-1">📈 Évolution magasins (toutes années)</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Référentiel cumulatif des magasins et résultats en kg par année — détection des
+                        nouveaux magasins et import d'un extrait VIF, sans passer par Excel.
+                    </p>
+                </div>
+                {{ action_button("📈 Ouvrir", href=url_for('collecte.evolution_magasins', annee=annee), color="primary") }}
+            </div>
+        </div>
     </div>
 
 </div>

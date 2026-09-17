@@ -13,10 +13,11 @@ from ba38_sms.smsfactor_client import (
 )
 from ba38_utilitaires.core import (
     get_db_connection, get_db_path, write_log, require_access, has_access, upload_database,
-    envoyer_mail
+    envoyer_mail, get_real_ip
 )
 
 ALERTE_MAIL_DESTINATAIRE = "ba380.informatique2@banquealimentaire.org"
+SMSFACTOR_WEBHOOK_IPS = {"20.216.193.64", "20.216.200.241"}
 
 TYPE_BENE_PARAM = "type_benevole"
 
@@ -107,6 +108,34 @@ def get_sms_alerte_active():
     return dict(row) if row else None
 
 
+def _find_benevole_by_phone(numero):
+    """Retrouve un bénévole par téléphone portable (comparaison sur le numéro
+    normalisé, le format stocké en base contenant des espaces)."""
+    cible = normalize_phone_fr(numero)
+    if not cible:
+        return None
+
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT id, telephone_portable FROM benevoles "
+        "WHERE telephone_portable IS NOT NULL AND TRIM(telephone_portable) != ''"
+    ).fetchall()
+    conn.close()
+
+    for r in rows:
+        if normalize_phone_fr(r["telephone_portable"]) == cible:
+            return r["id"]
+    return None
+
+
+def get_nb_sms_reponses_non_lues():
+    conn = get_db_connection()
+    n = conn.execute("SELECT COUNT(*) FROM sms_reponses WHERE lu = 0").fetchone()[0]
+    conn.close()
+    return n
+
+
 def envoyer_sms_lot_background(app, db_path, lot_id, destinataires, texte):
     """
     Tourne dans un Thread séparé (même pattern que envoyer_indicateurs_background,
@@ -147,10 +176,10 @@ def envoyer_sms_lot_background(app, db_path, lot_id, destinataires, texte):
                 if mode_test and real_sent:
                     resultat = None  # destinataires suivants simulés, pas d'appel API
                 elif mode_test:
-                    resultat = envoyer_sms_reel(test_number, f"[TEST] {texte}")
+                    resultat = envoyer_sms_reel(test_number, f"[TEST] {texte}", gsmsmsid=envoi_id)
                     real_sent = True
                 else:
-                    resultat = envoyer_sms_reel(numero, texte)
+                    resultat = envoyer_sms_reel(numero, texte, gsmsmsid=envoi_id)
 
                 if resultat is None:
                     statut, ticket, cout, erreur = "simule_dev", None, 0, None
@@ -301,6 +330,7 @@ def envoi_sms_benevoles():
         selected_fonctions=selected_fonctions,
         selected_types=selected_types,
         destinataires=destinataires,
+        nb_reponses_non_lues=get_nb_sms_reponses_non_lues(),
         textes=textes,
     )
 
@@ -319,7 +349,9 @@ def lot_detail(lot_id):
         return redirect(url_for("sms.envoi_sms_benevoles"))
 
     envois = conn.execute("""
-        SELECT e.*, b.nom, b.prenom
+        SELECT e.*, b.nom, b.prenom,
+               (SELECT r.message FROM sms_reponses r WHERE r.envoi_id = e.id ORDER BY r.id DESC LIMIT 1) AS reponse_message,
+               (SELECT r.date_reception FROM sms_reponses r WHERE r.envoi_id = e.id ORDER BY r.id DESC LIMIT 1) AS reponse_date
         FROM sms_envois e
         JOIN benevoles b ON b.id = e.benevole_id
         WHERE e.lot_id = ?
@@ -415,6 +447,85 @@ def delete_texte_sms(tid):
     upload_database()
     flash("🗑️ Texte supprimé.", "warning")
     return redirect(url_for("sms.textes_predefinis_sms"))
+
+
+@sms_bp.route("/sms/webhook/mo", methods=["POST"])
+def sms_webhook_mo():
+    """
+    Webhook 'MO' (Mobile Originated) SmsFactor : appelé par leurs serveurs
+    quand un bénévole répond à un SMS. Pas de login (appel externe) —
+    exempté de CSRF dans ba38.py, sécurisé par allowlist IP SmsFactor
+    (documentée : 20.216.193.64 / 20.216.200.241). La signature HMAC
+    optionnelle (X-SMSFactor-Signature) n'est pas vérifiée strictement : son
+    algorithme exact n'est pas documenté publiquement (cf. doc technique
+    09_module_sms_benevoles) — l'IP est la garde-fou réel pour l'instant.
+    """
+    ip = get_real_ip()
+    if ip not in SMSFACTOR_WEBHOOK_IPS:
+        write_log(f"⛔ Webhook SMS MO refusé, IP inattendue : {ip}")
+        return "forbidden", 403
+
+    payload = request.get_json(silent=True) or {}
+    write_log(f"🪝 Webhook SMS MO reçu : {payload}")
+
+    numero = str(payload.get("from") or "").strip()
+    message = payload.get("message") or ""
+    last_message_id = payload.get("last_message_id")
+    date_reception = payload.get("date") or datetime.now().isoformat(timespec="seconds")
+
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+
+    envoi_id = None
+    benevole_id = None
+
+    if last_message_id:
+        envoi = conn.execute(
+            "SELECT id, benevole_id FROM sms_envois WHERE id = ?", (last_message_id,)
+        ).fetchone()
+        if envoi:
+            envoi_id = envoi["id"]
+            benevole_id = envoi["benevole_id"]
+
+    if benevole_id is None and numero:
+        benevole_id = _find_benevole_by_phone(numero)
+
+    conn.execute(
+        "INSERT INTO sms_reponses (envoi_id, benevole_id, numero_expediteur, message, date_reception) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (envoi_id, benevole_id, numero, message, date_reception),
+    )
+    conn.commit()
+    conn.close()
+
+    return "", 200
+
+
+@sms_bp.route("/sms/reponses")
+@login_required
+@require_access("sms_benevoles", "lecture")
+def reponses_sms():
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    reponses = conn.execute("""
+        SELECT r.*, b.nom, b.prenom
+        FROM sms_reponses r
+        LEFT JOIN benevoles b ON b.id = r.benevole_id
+        ORDER BY r.id DESC
+    """).fetchall()
+    conn.close()
+    return render_template("sms/reponses.html", reponses=[dict(r) for r in reponses])
+
+
+@sms_bp.route("/sms/reponses/marquer_lu", methods=["POST"])
+@login_required
+@require_access("sms_benevoles", "lecture")
+def marquer_lu_reponses_sms():
+    conn = get_db_connection()
+    conn.execute("UPDATE sms_reponses SET lu = 1 WHERE lu = 0")
+    conn.commit()
+    conn.close()
+    return redirect(url_for("sms.reponses_sms"))
 
 
 @sms_bp.route("/sms/alertes/<int:alerte_id>/resoudre", methods=["POST"])

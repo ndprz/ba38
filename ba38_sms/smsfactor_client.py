@@ -25,17 +25,24 @@ def normalize_phone_fr(raw):
     return None
 
 
-def envoyer_sms_reel(numero, texte):
+def envoyer_sms_reel(numero, texte, gsmsmsid=None):
     """
     Envoie réellement un SMS via l'API SmsFactor.
+    gsmsmsid : identifiant de tracking (on y met l'id de la ligne sms_envois)
+    renvoyé tel quel par SmsFactor comme 'last_message_id' dans le webhook de
+    réponse (MO), pour relier une réponse SMS à l'envoi d'origine.
     Retourne le dict JSON de réponse (contient 'status', 'ticket', 'cost'...)
     ou lève une exception réseau.
     """
     token = os.environ["SMSFACTOR_API_TOKEN"]
 
+    params = {"text": texte, "to": numero}
+    if gsmsmsid is not None:
+        params["gsmsmsid"] = str(gsmsmsid)
+
     resp = requests.get(
         SMSFACTOR_SEND_URL,
-        params={"text": texte, "to": numero},
+        params=params,
         headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
         timeout=10,
     )

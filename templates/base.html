@@ -36,6 +36,20 @@
 
      {% block extra_css %}{% endblock %}
 
+     <!-- =====================================================
+         PWA CUISINE : installation plein écran sur les tablettes
+         dédiées ("Ajouter à l'écran d'accueil"), uniquement sur les
+         pages du module Cuisine — n'affecte pas le reste du site.
+    ====================================================== -->
+     {% if request.blueprint in ('production_cuisine', 'cuisine_hygiene') %}
+     <link rel="manifest" href="{{ url_for('static', filename='pwa/manifest_cuisine.json') }}">
+     <meta name="theme-color" content="#f27830">
+     <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/icon-192.png') }}">
+     <meta name="mobile-web-app-capable" content="yes">
+     <meta name="apple-mobile-web-app-capable" content="yes">
+     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+     <meta name="apple-mobile-web-app-title" content="Cuisine BA38">
+     {% endif %}
 
      <!-- =====================================================
          CSS SPÉCIFIQUE PAGE (optionnel)

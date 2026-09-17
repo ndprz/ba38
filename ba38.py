@@ -93,6 +93,7 @@ from ba38_utilitaires import emails_bp
 from ba38_tresorerie import participation_bp
 from ba38_admin import applications_bp
 from ba38_sms import sms_bp
+from ba38_sms.routes import sms_webhook_mo
 from ba38_admin import organisation_bp
 from ba38_collecte import collecte_bp
 from ba38_utilitaires import vif_bp
@@ -109,6 +110,10 @@ csrf = CSRFProtect(app)
 # Webhook Yousign : appelé par un serveur externe, pas de token CSRF possible
 # (authentification propre par signature HMAC, cf. ba38_annexe1bis.webhook_yousign)
 csrf.exempt(webhook_yousign)
+
+# Webhook SmsFactor (réponses SMS entrantes) : appelé par un serveur externe,
+# pas de token CSRF possible (authentification par allowlist IP, cf. ba38_sms.routes.sms_webhook_mo)
+csrf.exempt(sms_webhook_mo)
 
 @app.errorhandler(CSRFError)
 def handle_csrf_error(e):

@@ -1,0 +1,25 @@
+{
+  "name": "Cuisine - BA38",
+  "short_name": "Cuisine BA38",
+  "description": "Production, traçabilité et hygiène - Cuisine 3 étoiles solidaire - Banque Alimentaire de l'Isère",
+  "start_url": "/production-cuisine/",
+  "scope": "/",
+  "display": "fullscreen",
+  "background_color": "#f5f5f5",
+  "theme_color": "#f27830",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "/static/images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
