@@ -2616,22 +2616,101 @@ def localisation_lien(annee, token):
     )
 
 
+def _construire_referentiel_collecte(annee):
+    """Fusionne le fichier magasins de l'année avec le référentiel
+    pluriannuel (collecte_magasins_referentiel, cf. Résultat collecte →
+    Évolution magasins) : un magasin qui y figure mais absent du fichier
+    magasins de l'année est considéré « Non collecté » cette année-là,
+    plutôt que de dépendre uniquement du champ État — parfois incomplet ou
+    absent — du fichier de l'année lui-même. Renvoie TOUS les magasins,
+    y compris les « Non collecté » — au tri par nom de la route/export de
+    filtrer si besoin."""
+    magasins_annee = {m["code_vif"]: m for m in _lire_fichier_magasins_brut(annee)}
+
+    with get_db_connection() as conn:
+        _ensure_tables_evolution_magasins(conn)
+        referentiel = {r["code_vif"]: dict(r) for r in conn.execute(
+            "SELECT * FROM collecte_magasins_referentiel"
+        ).fetchall()}
+
+    fusion = {}
+    for code_vif, m in magasins_annee.items():
+        fusion[code_vif] = m
+    for code_vif, r in referentiel.items():
+        if code_vif in fusion:
+            continue
+        fusion[code_vif] = {
+            "code_vif": code_vif,
+            "nom": r["nom"] or "",
+            "etat": "Non collecté",
+            "adresse": r["adresse"] or "",
+            "ville": r["ville"] or "",
+            "code_postal": r["code_postal"] or "",
+            "telephone": r["telephone"] or "",
+            "email": r["email"] or "",
+            "stockage": r["stockage"] or "",
+            "gardee_par": r["gardee_par"] or "",
+        }
+
+    magasins = list(fusion.values())
+    magasins.sort(key=lambda m: m["nom"].lower())
+    return magasins
+
+
 @collecte_bp.route("/collecte/<int:annee>/referentiel-collecte")
 @login_required
 @require_access("collecte", "lecture")
 def referentiel_collecte(annee):
-    """Référentiel des magasins réellement collectés cette année (BAI ou
-    gardée), avec leurs coordonnées de contact — l'adresse mail n'est
-    renseignée que pour les magasins présents dans l'export go-on-web
-    (colonne Email du fichier magasins), les autres l'ont vide."""
-    magasins_annee = _lire_fichier_magasins_brut(annee)
-    magasins = [m for m in magasins_annee if m["etat"] != "Non collecté"]
-    magasins.sort(key=lambda m: m["nom"].lower())
+    """Référentiel des magasins de l'année (collectés ou non), avec leurs
+    coordonnées de contact — l'adresse mail n'est renseignée que pour les
+    magasins présents dans l'export go-on-web (colonne Email du fichier
+    magasins), les autres l'ont vide."""
+    magasins = _construire_referentiel_collecte(annee)
+    nb_collectes = sum(1 for m in magasins if m["etat"] != "Non collecté")
     return render_template(
         "collecte/referentiel_collecte.html",
         annee=annee,
         magasins=magasins,
-        nb_sans_email=sum(1 for m in magasins if not m["email"]),
+        nb_collectes=nb_collectes,
+        nb_sans_email=sum(1 for m in magasins if m["etat"] != "Non collecté" and not m["email"]),
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/referentiel-collecte/export")
+@login_required
+@require_access("collecte", "lecture")
+def referentiel_collecte_export(annee):
+    """Export Excel du référentiel magasins collecte, mêmes colonnes que
+    le tableau à l'écran (y compris les « Non collecté »)."""
+    magasins = _construire_referentiel_collecte(annee)
+
+    wb_export = Workbook()
+    ws = wb_export.active
+    ws.title = "magasins"
+    entetes = ["Code VIF", "Nom", "État", "Ville", "Adresse", "Téléphone", "Email", "Stockage", "Gardée par"]
+    ws.append(entetes)
+    for m in magasins:
+        ws.append([
+            m["code_vif"], m["nom"], m["etat"], m["ville"], m["adresse"],
+            m["telephone"], m["email"], m["stockage"], m["gardee_par"],
+        ])
+
+    for colonne in ws.columns:
+        lettre = colonne[0].column_letter
+        ws.column_dimensions[lettre].width = 14 if lettre not in ("B", "E") else 32
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+
+    tampon = io.BytesIO()
+    wb_export.save(tampon)
+    tampon.seek(0)
+    nom_fichier = f"referentiel_collecte_{annee}.xlsx"
+    return send_file(
+        tampon,
+        as_attachment=True,
+        download_name=nom_fichier,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 
@@ -4992,6 +5071,600 @@ def evolution_magasins_importer_vif(annee):
     flash(message, "success" if not inconnus else "warning")
     write_log(f"📈 Évolution magasins : import extrait VIF {annee}, {nb_maj} magasin(s) par {current_user.email}")
     return redirect(url_for("collecte.evolution_magasins", annee=annee))
+
+
+# ============================================================================
+# ⚖️ Pesée palox (poste de pesée + synthèse valorisée)
+# ============================================================================
+# Reprise du classeur "palox-<année> définitif pesée.xlsm" tenu à la main
+# jusqu'ici : une feuille par catégorie de produit pour saisir le poids de
+# chaque palox à la pesée, une feuille "Articles" de synthèse valorisée en
+# mercuriale (prix €/kg fourni chaque année par la fédération).
+CATEGORIES_PALOX_INITIALES = [
+    (1, "Patisserie", "0110041", "Patisserie / Viennoiserie"),
+    (2, "Biscottes", "0210001", "Biscottes/Pain grillé"),
+    (3, "Biscuits et autres sucrés", "0210031", "Biscuits sucrés"),
+    (4, "Café", "0310001", "Café grain/moulu"),
+    (5, "Thé, tisane", "0310031", "Thé/Infusion/Chicorée"),
+    (6, "Poudre petit déjeuner", "0410001", "Poudre petit déjeuner"),
+    (7, "Céréales", "0410011", "Céréales"),
+    (8, "Chocolat, confiserie", "0610001", "Chocolat noir/lait/noisettes.."),
+    (9, "Lait", "0910051", "Lait ambiant"),
+    (10, "Farine de blé", "1010001", "Farine/maizena"),
+    (11, "Pomme de terre en flocons", "1010031", "Pomme de terre en flocons"),
+    (12, "Pâtes", "1110001", "Pâtes"),
+    (13, "Couscous", "1110031", "Couscous/Semoule/Autre fécul."),
+    (14, "Riz", "1110051", "Riz long/rond"),
+    (15, "Fruits secs", "1210001", "Fruits secs"),
+    (16, "Légumes secs", "1220001", "Légumes secs sous vide"),
+    (17, "Potages liquide", "1310001", "Potages /soupes ambiant"),
+    (18, "Potages déshydratés", "1310011", "Potages déshydratés"),
+    (19, "Condiments, mayo, sauces, sel, poivre", "1410021", "moutardes/mayo/ketchup"),
+    (20, "Huiles", "1710001", "Huiles"),
+    (21, "Sucre en morceaux, en poudre", "1910001", "Sucre en morceaux"),
+    (22, "Confitures, compote, conserve fruits, miel", "2010001", "Confitures/miel/pates a tartiner"),
+    (23, "Petits pots et assimilés BB", "2510001", "Petits pots et assimilés BB"),
+    (24, "Sodas/boissons sucrées/arom.", "2810011", "Sodas/boissons sucrés"),
+    (25, "Conserve plats cuisinés", "4210011", "Platcuisinés viande ambiant"),
+    (26, "Conserve de légumes", "4510001", "Conserve de légumes"),
+    (27, "Conserve poisson crustacé", "4910001", "Conserves  poisson/ crustacé"),
+    (28, "Puériculture", "6010000", "Puériculture"),
+    (29, "Pdts Hygiène Famille", "6010010", "Pdts Hygiene Famille"),
+    (30, "Pdts. Entretien/Lessive", "6010030", "Pdts. Entretien/Lessive"),
+    (31, "Autres", None, None),
+]
+
+
+def _ensure_tables_palox(conn):
+    """Tables du module pesée palox — le référentiel des catégories est
+    indépendant de l'année de campagne (repris une fois du classeur), les
+    pesées et la mercuriale sont propres à chaque année."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_palox_categories (
+            id INTEGER PRIMARY KEY,
+            ordre INTEGER NOT NULL,
+            libelle TEXT NOT NULL,
+            code_vif TEXT,
+            libelle_vif TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_palox_pesees (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            annee INTEGER NOT NULL,
+            categorie_id INTEGER NOT NULL,
+            numero_palox INTEGER NOT NULL,
+            poids_kg REAL,
+            poids_corrige_kg REAL,
+            saisi_le TEXT,
+            saisi_par TEXT,
+            corrige_le TEXT,
+            corrige_par TEXT,
+            UNIQUE(annee, categorie_id, numero_palox)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_palox_mercuriale (
+            annee INTEGER NOT NULL,
+            code_vif TEXT NOT NULL,
+            libelle TEXT,
+            prix_kg REAL,
+            importe_le TEXT,
+            importe_par TEXT,
+            PRIMARY KEY (annee, code_vif)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_palox_parametres (
+            cle TEXT PRIMARY KEY,
+            valeur TEXT
+        )
+    """)
+    nb = conn.execute("SELECT COUNT(*) FROM collecte_palox_categories").fetchone()[0]
+    if nb == 0:
+        for ordre, libelle, code_vif, libelle_vif in CATEGORIES_PALOX_INITIALES:
+            conn.execute(
+                "INSERT INTO collecte_palox_categories (ordre, libelle, code_vif, libelle_vif) VALUES (?, ?, ?, ?)",
+                (ordre, libelle, code_vif, libelle_vif),
+            )
+
+
+GABARIT_ETIQUETTE_PALOX_DEFAUT = """<div style="font-size:22pt; font-weight:bold; text-align:center;">COLLECTE {{annee}}</div>
+<div style="font-size:44pt; font-weight:bold; text-align:center; margin-top:10pt;">{{code_vif}}</div>
+<div style="font-size:52pt; font-weight:bold; text-align:center; margin-top:14pt;">{{categorie}}</div>
+<div style="font-size:38pt; font-weight:bold; text-align:center; margin-top:20pt;">Palette {{numero}}</div>
+<div style="font-size:52pt; font-weight:bold; text-align:center; margin-top:20pt;">
+    Poids <span style="font-size:110pt; margin:0 20pt;">{{poids}}</span><span style="font-size:34pt;">kg</span>
+</div>
+<div style="font-size:10pt; text-align:left; margin-top:20pt; color:#333;">{{date_heure}}</div>"""
+
+
+def _gabarit_etiquette_palox(conn):
+    """Mise en page complète (HTML + tailles de police en style inline) de
+    l'étiquette imprimée à chaque pesée — reprise au départ de l'onglet
+    "imp" du classeur, entièrement modifiable sans toucher au code via
+    des espaces réservés {{...}} : annee, code_vif, categorie, numero,
+    poids, date_heure. Les règles d'impression (page A4, masquage du
+    reste de l'écran) restent fixes, seul ce contenu est éditable."""
+    r = conn.execute("SELECT valeur FROM collecte_palox_parametres WHERE cle = 'gabarit_html'").fetchone()
+    return r["valeur"] if r and r["valeur"] else GABARIT_ETIQUETTE_PALOX_DEFAUT
+
+
+def _categories_palox(conn):
+    return [dict(r) for r in conn.execute(
+        "SELECT * FROM collecte_palox_categories ORDER BY ordre"
+    ).fetchall()]
+
+
+def _parser_mercuriale(contenu):
+    """Parse le rapport texte mercuriale (export VIF, encodage cp1252,
+    tabulé) : ignore l'en-tête jusqu'à la ligne de titres de colonnes
+    (« Article » / « Libellé »), puis lit code / libellé / coût EUR/Kgn pour
+    chaque ligne — prix en notation française (virgule décimale)."""
+    prix = {}
+    lignes_apres_entete = False
+    for ligne in contenu.splitlines():
+        champs = ligne.split("\t")
+        if not lignes_apres_entete:
+            if champs[0].strip() == "Article" and len(champs) > 1 and champs[1].strip().startswith("Libell"):
+                lignes_apres_entete = True
+            continue
+        if len(champs) < 4:
+            continue
+        code = champs[0].strip()
+        if not code:
+            continue
+        try:
+            valeur = float(champs[3].strip().replace(",", "."))
+        except ValueError:
+            continue
+        prix[code] = (champs[1].strip(), valeur)
+    return prix
+
+
+@collecte_bp.route("/collecte/palox/categories")
+@login_required
+@require_access("collecte", "lecture")
+def palox_categories():
+    """Gestion du référentiel des catégories de produit (pluriannuel,
+    indépendant de l'année de campagne) — code VIF utilisé pour retrouver
+    le prix mercuriale, à tenir à jour si un code change ou si une
+    catégorie est ajoutée/retirée d'une année sur l'autre."""
+    with get_db_connection() as conn:
+        _ensure_tables_palox(conn)
+        categories = _categories_palox(conn)
+        utilisees = {r[0] for r in conn.execute(
+            "SELECT DISTINCT categorie_id FROM collecte_palox_pesees"
+        ).fetchall()}
+        gabarit_html = _gabarit_etiquette_palox(conn)
+    for c in categories:
+        c["utilisee"] = c["id"] in utilisees
+    return render_template(
+        "collecte/palox_categories.html",
+        categories=categories,
+        gabarit_html=gabarit_html,
+        gabarit_defaut=GABARIT_ETIQUETTE_PALOX_DEFAUT,
+    )
+
+
+@collecte_bp.route("/collecte/palox/gabarit-etiquette/enregistrer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def palox_gabarit_etiquette_enregistrer():
+    """Mise en page complète de l'étiquette imprimée (HTML + tailles de
+    police), modifiable sans toucher au code."""
+    donnees = request.get_json(force=True) or {}
+    gabarit_html = str(donnees.get("gabarit_html", "")).strip()
+    if not gabarit_html:
+        return jsonify({"success": False, "erreur": "Modèle vide"}), 400
+
+    with get_db_connection() as conn:
+        _ensure_tables_palox(conn)
+        conn.execute("""
+            INSERT INTO collecte_palox_parametres (cle, valeur) VALUES ('gabarit_html', ?)
+            ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur
+        """, (gabarit_html,))
+        conn.commit()
+
+    write_log(f"⚖️ Mise en page de l'étiquette pesée palox modifiée par {current_user.email}")
+    return jsonify({"success": True})
+
+
+@collecte_bp.route("/collecte/palox/categories/enregistrer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def palox_categories_enregistrer():
+    donnees = request.get_json(force=True) or {}
+    lignes = donnees.get("categories") or []
+
+    with get_db_connection() as conn:
+        _ensure_tables_palox(conn)
+        for ligne in lignes:
+            libelle = str(ligne.get("libelle", "")).strip()
+            if not libelle:
+                continue
+            code_vif = str(ligne.get("code_vif") or "").strip() or None
+            libelle_vif = str(ligne.get("libelle_vif") or "").strip() or None
+            try:
+                ordre = int(ligne.get("ordre"))
+            except (TypeError, ValueError):
+                ordre = 999
+            categorie_id = ligne.get("id")
+            if categorie_id:
+                conn.execute("""
+                    UPDATE collecte_palox_categories SET ordre = ?, libelle = ?, code_vif = ?, libelle_vif = ?
+                    WHERE id = ?
+                """, (ordre, libelle, code_vif, libelle_vif, categorie_id))
+            else:
+                conn.execute("""
+                    INSERT INTO collecte_palox_categories (ordre, libelle, code_vif, libelle_vif)
+                    VALUES (?, ?, ?, ?)
+                """, (ordre, libelle, code_vif, libelle_vif))
+        conn.commit()
+
+    write_log(f"⚖️ Référentiel catégories palox mis à jour par {current_user.email} ({len(lignes)} ligne(s))")
+    return jsonify({"success": True})
+
+
+@collecte_bp.route("/collecte/palox/categories/<int:categorie_id>/supprimer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def palox_categories_supprimer(categorie_id):
+    with get_db_connection() as conn:
+        utilisee = conn.execute(
+            "SELECT 1 FROM collecte_palox_pesees WHERE categorie_id = ? LIMIT 1", (categorie_id,)
+        ).fetchone()
+        if utilisee:
+            return jsonify({"success": False, "erreur": "Catégorie déjà utilisée dans une pesée, suppression impossible"}), 400
+        conn.execute("DELETE FROM collecte_palox_categories WHERE id = ?", (categorie_id,))
+        conn.commit()
+
+    write_log(f"⚖️ Catégorie palox {categorie_id} supprimée par {current_user.email}")
+    return jsonify({"success": True})
+
+
+@collecte_bp.route("/collecte/<int:annee>/palox")
+@login_required
+@require_access("collecte", "lecture")
+def palox_accueil(annee):
+    """Poste de pesée — choix de la catégorie avant de démarrer la saisie
+    (un poste se fixe en général sur une catégorie pour toute la durée de
+    la collecte)."""
+    with get_db_connection() as conn:
+        _ensure_tables_palox(conn)
+        categories = _categories_palox(conn)
+        nb_par_categorie = dict(conn.execute(
+            "SELECT categorie_id, COUNT(*) FROM collecte_palox_pesees WHERE annee = ? GROUP BY categorie_id",
+            (annee,),
+        ).fetchall())
+    for c in categories:
+        c["nb_palox"] = nb_par_categorie.get(c["id"], 0)
+    return render_template("collecte/palox_accueil.html", annee=annee, categories=categories)
+
+
+@collecte_bp.route("/collecte/<int:annee>/palox/<int:categorie_id>")
+@login_required
+@require_access("collecte", "lecture")
+def palox_saisie(annee, categorie_id):
+    """Poste de pesée pour une catégorie donnée — pensé pour aller vite :
+    un champ poids, impression immédiate de la feuille A4 dès l'enregistrement
+    (gabarit dans le template, sans confirmation manuelle — nécessite que le
+    navigateur du poste soit lancé en mode kiosque d'impression, sans quoi
+    le navigateur affichera sa boîte de dialogue d'impression standard)."""
+    with get_db_connection() as conn:
+        _ensure_tables_palox(conn)
+        categorie = conn.execute(
+            "SELECT * FROM collecte_palox_categories WHERE id = ?", (categorie_id,)
+        ).fetchone()
+        if not categorie:
+            abort(404)
+        historique = [dict(r) for r in conn.execute("""
+            SELECT * FROM collecte_palox_pesees
+            WHERE annee = ? AND categorie_id = ?
+            ORDER BY numero_palox DESC LIMIT 15
+        """, (annee, categorie_id)).fetchall()]
+        dernier_numero = conn.execute("""
+            SELECT COALESCE(MAX(numero_palox), 0) FROM collecte_palox_pesees
+            WHERE annee = ? AND categorie_id = ?
+        """, (annee, categorie_id)).fetchone()[0]
+        gabarit_html = _gabarit_etiquette_palox(conn)
+    return render_template(
+        "collecte/palox_saisie.html",
+        annee=annee,
+        categorie=dict(categorie),
+        prochain_numero=dernier_numero + 1,
+        historique=historique,
+        gabarit_html=gabarit_html,
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/palox/<int:categorie_id>/enregistrer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def palox_enregistrer(annee, categorie_id):
+    donnees = request.get_json(force=True) or {}
+    try:
+        poids_kg = float(str(donnees.get("poids_kg", "")).replace(",", "."))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "erreur": "Poids invalide"}), 400
+    if poids_kg <= 0:
+        return jsonify({"success": False, "erreur": "Poids invalide"}), 400
+
+    numero_force = donnees.get("numero_palox")
+    if numero_force not in (None, ""):
+        try:
+            numero_force = int(numero_force)
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "erreur": "N° palox invalide"}), 400
+        if numero_force <= 0:
+            return jsonify({"success": False, "erreur": "N° palox invalide"}), 400
+    else:
+        numero_force = None
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        _ensure_tables_palox(conn)
+        categorie = conn.execute(
+            "SELECT * FROM collecte_palox_categories WHERE id = ?", (categorie_id,)
+        ).fetchone()
+        if not categorie:
+            return jsonify({"success": False, "erreur": "Catégorie inconnue"}), 404
+
+        if numero_force is not None:
+            deja_pris = conn.execute("""
+                SELECT 1 FROM collecte_palox_pesees WHERE annee = ? AND categorie_id = ? AND numero_palox = ?
+            """, (annee, categorie_id, numero_force)).fetchone()
+            if deja_pris:
+                return jsonify({"success": False, "erreur": f"Le n° {numero_force} est déjà utilisé"}), 400
+            numero_palox = numero_force
+        else:
+            numero_palox = conn.execute("""
+                SELECT COALESCE(MAX(numero_palox), 0) + 1 FROM collecte_palox_pesees
+                WHERE annee = ? AND categorie_id = ?
+            """, (annee, categorie_id)).fetchone()[0]
+
+        conn.execute("""
+            INSERT INTO collecte_palox_pesees (annee, categorie_id, numero_palox, poids_kg, saisi_le, saisi_par)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (annee, categorie_id, numero_palox, poids_kg, maintenant, current_user.email))
+        conn.commit()
+
+    return jsonify({
+        "success": True,
+        "numero_palox": numero_palox,
+        "prochain_numero": numero_palox + 1,
+        "poids_kg": poids_kg,
+        "date_heure": maintenant,
+        "categorie": {
+            "libelle": categorie["libelle"],
+            "code_vif": categorie["code_vif"],
+            "libelle_vif": categorie["libelle_vif"],
+        },
+        "annee": annee,
+    })
+
+
+@collecte_bp.route("/collecte/<int:annee>/palox/<int:categorie_id>/supprimer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def palox_supprimer(annee, categorie_id):
+    """Supprime une pesée entièrement (erreur de saisie sur la mauvaise
+    catégorie par exemple) — contrairement à la correction, qui ne fait que
+    remplacer le poids d'un palox existant."""
+    donnees = request.get_json(force=True) or {}
+    numero_palox = donnees.get("numero_palox")
+    if not numero_palox:
+        return jsonify({"success": False, "erreur": "N° palox manquant"}), 400
+
+    with get_db_connection() as conn:
+        curseur = conn.execute("""
+            DELETE FROM collecte_palox_pesees WHERE annee = ? AND categorie_id = ? AND numero_palox = ?
+        """, (annee, categorie_id, numero_palox))
+        conn.commit()
+    if curseur.rowcount == 0:
+        return jsonify({"success": False, "erreur": "Palox introuvable"}), 404
+
+    write_log(f"⚖️ Collecte {annee} : palox {categorie_id}/{numero_palox} supprimé par {current_user.email}")
+    return jsonify({"success": True})
+
+
+@collecte_bp.route("/collecte/<int:annee>/palox/<int:categorie_id>/reinitialiser", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def palox_reinitialiser(annee, categorie_id):
+    """Efface toutes les pesées de la catégorie pour l'année — équivalent
+    de la macro "reinit" du classeur (remise à zéro de la numérotation en
+    début de collecte)."""
+    with get_db_connection() as conn:
+        curseur = conn.execute(
+            "DELETE FROM collecte_palox_pesees WHERE annee = ? AND categorie_id = ?", (annee, categorie_id)
+        )
+        conn.commit()
+
+    write_log(f"⚖️ Collecte {annee} : numérotation catégorie {categorie_id} réinitialisée "
+              f"({curseur.rowcount} pesée(s) effacée(s)) par {current_user.email}")
+    return jsonify({"success": True, "nb_effacees": curseur.rowcount})
+
+
+@collecte_bp.route("/collecte/<int:annee>/palox/<int:categorie_id>/corriger", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def palox_corriger(annee, categorie_id):
+    donnees = request.get_json(force=True) or {}
+    numero_palox = donnees.get("numero_palox")
+    try:
+        poids_corrige = float(str(donnees.get("poids_corrige_kg", "")).replace(",", "."))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "erreur": "Poids invalide"}), 400
+    if not numero_palox or poids_corrige <= 0:
+        return jsonify({"success": False, "erreur": "Paramètres invalides"}), 400
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        curseur = conn.execute("""
+            UPDATE collecte_palox_pesees
+            SET poids_corrige_kg = ?, corrige_le = ?, corrige_par = ?
+            WHERE annee = ? AND categorie_id = ? AND numero_palox = ?
+        """, (poids_corrige, maintenant, current_user.email, annee, categorie_id, numero_palox))
+        conn.commit()
+    if curseur.rowcount == 0:
+        return jsonify({"success": False, "erreur": "Palox introuvable"}), 404
+
+    write_log(f"⚖️ Collecte {annee} : palox {categorie_id}/{numero_palox} corrigé "
+              f"({poids_corrige} kg) par {current_user.email}")
+    return jsonify({"success": True})
+
+
+def _synthese_palox(annee):
+    """Équivalent de la feuille "Articles" du classeur : poids et % de
+    répartition par catégorie (poids corrigé si présent, sinon poids
+    saisi), valorisation en mercuriale (seulement si la mercuriale de
+    l'année a été importée) et comparaison au poids de l'année précédente,
+    calculée directement à partir de notre propre historique."""
+    with get_db_connection() as conn:
+        _ensure_tables_palox(conn)
+        categories = _categories_palox(conn)
+        pesees = conn.execute(
+            "SELECT categorie_id, poids_kg, poids_corrige_kg FROM collecte_palox_pesees WHERE annee = ?",
+            (annee,),
+        ).fetchall()
+        pesees_prec = conn.execute(
+            "SELECT categorie_id, poids_kg, poids_corrige_kg FROM collecte_palox_pesees WHERE annee = ?",
+            (annee - 1,),
+        ).fetchall()
+        prix = {r["code_vif"]: r["prix_kg"] for r in conn.execute(
+            "SELECT code_vif, prix_kg FROM collecte_palox_mercuriale WHERE annee = ?", (annee,)
+        ).fetchall()}
+        mercuriale_importee = conn.execute(
+            "SELECT COUNT(*) FROM collecte_palox_mercuriale WHERE annee = ?", (annee,)
+        ).fetchone()[0] > 0
+
+    def _poids_effectif(r):
+        return r["poids_corrige_kg"] if r["poids_corrige_kg"] is not None else (r["poids_kg"] or 0)
+
+    poids_par_categorie, nb_par_categorie, poids_prec_par_categorie = {}, {}, {}
+    for r in pesees:
+        poids_par_categorie[r["categorie_id"]] = poids_par_categorie.get(r["categorie_id"], 0) + _poids_effectif(r)
+        nb_par_categorie[r["categorie_id"]] = nb_par_categorie.get(r["categorie_id"], 0) + 1
+    for r in pesees_prec:
+        poids_prec_par_categorie[r["categorie_id"]] = poids_prec_par_categorie.get(r["categorie_id"], 0) + _poids_effectif(r)
+
+    poids_total = sum(poids_par_categorie.values())
+    lignes, valeur_totale = [], 0.0
+    for cat in categories:
+        poids = poids_par_categorie.get(cat["id"], 0)
+        prix_kg = prix.get(cat["code_vif"]) if cat["code_vif"] else None
+        valeur = poids * prix_kg if prix_kg is not None else None
+        if valeur is not None:
+            valeur_totale += valeur
+        poids_prec = poids_prec_par_categorie.get(cat["id"])
+        lignes.append({
+            "id": cat["id"], "libelle": cat["libelle"], "code_vif": cat["code_vif"],
+            "nb_palox": nb_par_categorie.get(cat["id"], 0),
+            "poids_kg": round(poids, 1),
+            "pct_poids": round(poids / poids_total * 100, 1) if poids_total else 0,
+            "prix_kg": prix_kg,
+            "valeur": round(valeur, 2) if valeur is not None else None,
+            "poids_annee_precedente": round(poids_prec, 1) if poids_prec is not None else None,
+        })
+
+    return {
+        "annee": annee,
+        "lignes": lignes,
+        "poids_total": round(poids_total, 1),
+        "valeur_totale": round(valeur_totale, 2),
+        "mercuriale_importee": mercuriale_importee,
+    }
+
+
+@collecte_bp.route("/collecte/<int:annee>/palox/synthese")
+@login_required
+@require_access("collecte", "lecture")
+def palox_synthese(annee):
+    return render_template("collecte/palox_synthese.html", **_synthese_palox(annee))
+
+
+@collecte_bp.route("/collecte/<int:annee>/palox/synthese/export")
+@login_required
+@require_access("collecte", "lecture")
+def palox_synthese_export(annee):
+    synthese = _synthese_palox(annee)
+
+    wb_export = Workbook()
+    ws = wb_export.active
+    ws.title = "pesée palox"
+    entetes = ["Catégorie", "Code VIF", "Nb palox", "Poids (kg)", "% du total",
+               "Prix mercuriale (€/kg)", "Valeur (€)", "Poids année précédente (kg)"]
+    ws.append(entetes)
+    ws.append([
+        "Total", "", sum(l["nb_palox"] for l in synthese["lignes"]), synthese["poids_total"], 100,
+        "", synthese["valeur_totale"],
+        round(sum(l["poids_annee_precedente"] or 0 for l in synthese["lignes"]), 1),
+    ])
+    for l in synthese["lignes"]:
+        ws.append([
+            l["libelle"], l["code_vif"], l["nb_palox"], l["poids_kg"], l["pct_poids"],
+            l["prix_kg"], l["valeur"], l["poids_annee_precedente"],
+        ])
+
+    for colonne in ws.columns:
+        lettre = colonne[0].column_letter
+        ws.column_dimensions[lettre].width = 14 if lettre != "A" else 34
+
+    ws.freeze_panes = "A3"
+    ws.auto_filter.ref = ws.dimensions
+
+    tampon = io.BytesIO()
+    wb_export.save(tampon)
+    tampon.seek(0)
+    nom_fichier = f"pesee_palox_{annee}.xlsx"
+    return send_file(
+        tampon,
+        as_attachment=True,
+        download_name=nom_fichier,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/palox/mercuriale/importer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def palox_mercuriale_importer(annee):
+    """Import du rapport de prix mercuriale — n'a de sens qu'une fois la
+    pesée terminée, pour valoriser les résultats (la saisie au poste de
+    pesée ne dépend pas de la mercuriale)."""
+    fichier = request.files.get("fichier_mercuriale")
+    if not fichier or not fichier.filename:
+        flash("⛔ Aucun fichier sélectionné.", "warning")
+        return redirect(url_for("collecte.palox_synthese", annee=annee))
+
+    contenu_brut = fichier.read()
+    try:
+        contenu = contenu_brut.decode("cp1252")
+    except UnicodeDecodeError:
+        contenu = contenu_brut.decode("utf-8", errors="replace")
+
+    prix = _parser_mercuriale(contenu)
+    if not prix:
+        flash("⛔ Aucune ligne de prix reconnue dans ce fichier.", "danger")
+        return redirect(url_for("collecte.palox_synthese", annee=annee))
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        _ensure_tables_palox(conn)
+        for code, (libelle, valeur) in prix.items():
+            conn.execute("""
+                INSERT INTO collecte_palox_mercuriale (annee, code_vif, libelle, prix_kg, importe_le, importe_par)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(annee, code_vif) DO UPDATE SET
+                    libelle = excluded.libelle, prix_kg = excluded.prix_kg,
+                    importe_le = excluded.importe_le, importe_par = excluded.importe_par
+            """, (annee, code, libelle, valeur, maintenant, current_user.email))
+        conn.commit()
+
+    flash(f"✅ Mercuriale {annee} importée ({len(prix)} article(s)).", "success")
+    write_log(f"⚖️ Collecte {annee} : mercuriale importée ({len(prix)} article(s)) par {current_user.email}")
+    return redirect(url_for("collecte.palox_synthese", annee=annee))
 
 
 @collecte_bp.route("/collecte/<int:annee>/saisie-association/<token>", methods=["GET", "POST"])

@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Pesée {{ categorie.libelle }} {{ annee }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    #etiquette-impression { display: none; }
+    @media print {
+        body * { visibility: hidden; }
+        #etiquette-impression, #etiquette-impression * { visibility: visible; }
+        #etiquette-impression {
+            display: block !important;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        }
+        @page { size: A4 landscape; margin: 10mm; }
+    }
+    .etiquette-page {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        height: 100%; text-align: center;
+    }
+
+    #champ-poids { font-size: 3rem; height: 5rem; text-align: center; }
+    #champ-numero { font-size: 1.5rem; width: 100px; text-align: center; }
+    .ligne-corrigee { background-color: #fff3cd; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width:900px;">
+
+    <h2>⚖️ {{ categorie.libelle }} — Collecte {{ annee }}</h2>
+    {% if categorie.code_vif %}
+    <p class="text-muted small">Code VIF {{ categorie.code_vif }} — {{ categorie.libelle_vif }}</p>
+    {% endif %}
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Autre catégorie", href=url_for('collecte.palox_accueil', annee=annee), color="outline-dark") }}
+        {{ action_button("📊 Synthèse", href=url_for('collecte.palox_synthese', annee=annee), color="outline-secondary") }}
+        <button type="button" id="btn-reinitialiser" class="btn btn-outline-danger btn-sm">🔄 Réinitialiser la numérotation</button>
+    {% endcall %}
+
+    <div class="alert alert-info small">
+        Saisissez le poids et validez (Entrée ou bouton) — la feuille du palox s'imprime
+        immédiatement, aucune autre manipulation n'est nécessaire.
+    </div>
+
+    <div id="message-palox" class="alert d-none mb-3" role="alert"></div>
+
+    <form id="formPesee" class="card p-4 mb-4">
+        <div class="d-flex align-items-end gap-3 mb-3">
+            <div>
+                <label class="form-label mb-0">N° palox</label>
+                <input type="number" id="champ-numero" class="form-control" value="{{ prochain_numero }}" required>
+            </div>
+        </div>
+        <label class="form-label fs-5">Poids (kg)</label>
+        <input type="number" step="0.1" min="0.1" id="champ-poids" class="form-control mb-3" required autofocus>
+        <button type="submit" class="btn btn-warning btn-lg">🖨️ Enregistrer et imprimer</button>
+    </form>
+
+    <h5>Derniers palox saisis</h5>
+    <table class="table table-sm" id="table-historique">
+        <thead>
+            <tr><th>N°</th><th>Poids saisi</th><th>Poids corrigé</th><th>Heure</th><th colspan="2"></th></tr>
+        </thead>
+        <tbody>
+            {% for h in historique %}
+            <tr data-numero="{{ h.numero_palox }}" class="{{ 'ligne-corrigee' if h.poids_corrige_kg is not none else '' }}">
+                <td>{{ h.numero_palox }}</td>
+                <td class="cellule-poids">{{ h.poids_kg }}</td>
+                <td class="cellule-poids-corrige">{{ h.poids_corrige_kg if h.poids_corrige_kg is not none else "" }}</td>
+                <td>{{ h.saisi_le[-8:] if h.saisi_le else "" }}</td>
+                <td><button type="button" class="btn btn-sm btn-outline-secondary btn-corriger">✏️ Corriger</button></td>
+                <td><button type="button" class="btn btn-sm btn-outline-danger btn-supprimer">🗑️</button></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div id="etiquette-impression">
+    <div class="etiquette-page" id="etiquette-contenu"></div>
+</div>
+
+<script>
+const csrfToken = "{{ csrf_token() }}";
+const urlEnregistrer = "{{ url_for('collecte.palox_enregistrer', annee=annee, categorie_id=categorie.id) }}";
+const urlCorriger = "{{ url_for('collecte.palox_corriger', annee=annee, categorie_id=categorie.id) }}";
+const urlSupprimer = "{{ url_for('collecte.palox_supprimer', annee=annee, categorie_id=categorie.id) }}";
+const urlReinitialiser = "{{ url_for('collecte.palox_reinitialiser', annee=annee, categorie_id=categorie.id) }}";
+
+const gabaritEtiquette = {{ gabarit_html|tojson }};
+function remplirEtiquette(numero, poids, dateHeure) {
+    const valeurs = {
+        annee: {{ annee|tojson }},
+        code_vif: {{ (categorie.code_vif or "")|tojson }},
+        categorie: {{ (categorie.libelle_vif or categorie.libelle)|tojson }},
+        numero: numero,
+        poids: poids,
+        date_heure: dateHeure,
+    };
+    let html = gabaritEtiquette;
+    for (const cle in valeurs) {
+        html = html.split("{{" + cle + "}}").join(valeurs[cle]);
+    }
+    document.getElementById("etiquette-contenu").innerHTML = html;
+}
+
+const champPoids = document.getElementById("champ-poids");
+const champNumero = document.getElementById("champ-numero");
+const messageDiv = document.getElementById("message-palox");
+function afficherMessage(texte, classe) {
+    messageDiv.textContent = texte;
+    messageDiv.className = "alert alert-" + classe + " mb-3";
+}
+
+document.getElementById("formPesee").addEventListener("submit", function (evt) {
+    evt.preventDefault();
+    const poids = parseFloat(champPoids.value);
+    if (!poids || poids <= 0) { afficherMessage("⚠️ Poids invalide.", "warning"); return; }
+    const numero = parseInt(champNumero.value, 10);
+    if (!numero || numero <= 0) { afficherMessage("⚠️ N° palox invalide.", "warning"); return; }
+
+    fetch(urlEnregistrer, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ poids_kg: poids, numero_palox: numero }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        if (!data.success) {
+            afficherMessage("⛔ " + (data.erreur || "Échec de l'enregistrement"), "danger");
+            return;
+        }
+        remplirEtiquette(data.numero_palox, data.poids_kg, data.date_heure);
+        window.print();
+
+        const tbody = document.querySelector("#table-historique tbody");
+        const tr = document.createElement("tr");
+        tr.dataset.numero = data.numero_palox;
+        tr.innerHTML = "<td>" + data.numero_palox + "</td>"
+            + "<td class='cellule-poids'>" + data.poids_kg + "</td>"
+            + "<td class='cellule-poids-corrige'></td>"
+            + "<td>" + data.date_heure.slice(-8) + "</td>"
+            + "<td><button type='button' class='btn btn-sm btn-outline-secondary btn-corriger'>✏️ Corriger</button></td>"
+            + "<td><button type='button' class='btn btn-sm btn-outline-danger btn-supprimer'>🗑️</button></td>";
+        tbody.insertBefore(tr, tbody.firstChild);
+        attacherActions(tr);
+
+        champNumero.value = data.prochain_numero;
+        champPoids.value = "";
+        champPoids.focus();
+        messageDiv.classList.add("d-none");
+    })
+    .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
+});
+
+function attacherActions(tr) {
+    tr.querySelector(".btn-corriger").addEventListener("click", function () {
+        const numero = tr.dataset.numero;
+        const actuel = tr.querySelector(".cellule-poids-corrige").textContent.trim()
+            || tr.querySelector(".cellule-poids").textContent.trim();
+        const nouveau = prompt("Poids corrigé (kg) pour le palox n° " + numero, actuel);
+        if (nouveau === null) return;
+        const valeur = parseFloat(nouveau.replace(",", "."));
+        if (!valeur || valeur <= 0) { afficherMessage("⚠️ Poids invalide.", "warning"); return; }
+
+        fetch(urlCorriger, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+            body: JSON.stringify({ numero_palox: parseInt(numero, 10), poids_corrige_kg: valeur }),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.success) {
+                afficherMessage("⛔ " + (data.erreur || "Échec de la correction"), "danger");
+                return;
+            }
+            tr.querySelector(".cellule-poids-corrige").textContent = valeur;
+            tr.classList.add("ligne-corrigee");
+            afficherMessage("✅ Palox n° " + numero + " corrigé.", "success");
+        })
+        .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
+    });
+
+    tr.querySelector(".btn-supprimer").addEventListener("click", function () {
+        const numero = tr.dataset.numero;
+        if (!confirm("Supprimer entièrement le palox n° " + numero + " ?")) return;
+        fetch(urlSupprimer, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+            body: JSON.stringify({ numero_palox: parseInt(numero, 10) }),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.success) {
+                afficherMessage("⛔ " + (data.erreur || "Échec de la suppression"), "danger");
+                return;
+            }
+            tr.remove();
+            afficherMessage("✅ Palox n° " + numero + " supprimé.", "success");
+        })
+        .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
+    });
+}
+document.querySelectorAll("#table-historique tbody tr").forEach(attacherActions);
+
+document.getElementById("btn-reinitialiser").addEventListener("click", function () {
+    if (!confirm("Effacer toutes les pesées de cette catégorie pour {{ annee }} et repartir du n° 1 ?")) return;
+    fetch(urlReinitialiser, { method: "POST", headers: { "X-CSRFToken": csrfToken } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.success) { window.location.reload(); }
+            else { afficherMessage("⛔ " + (data.erreur || "Échec de la réinitialisation"), "danger"); }
+        })
+        .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
+});
+</script>
+{% endblock %}

@@ -13,14 +13,16 @@
 
     <h2>📇 Référentiel magasins collecte {{ annee }}</h2>
     <p class="text-muted small">
-        Tous les magasins réellement collectés cette année (« Collecté par la BAI » ou « Collecte
-        gardée »), avec leurs coordonnées de contact. L'adresse mail n'est renseignée que pour les
-        magasins présents dans l'export go-on-web (fiche magasin renseignée côté GOW) — un magasin
-        sans mail n'y est probablement pas encore correctement rattaché.
+        Tous les magasins du référentiel pluriannuel, collectés cette année (« Collecté par la BAI »
+        ou « Collecte gardée ») ou non (« Non collecté »), avec leurs coordonnées de contact.
+        L'adresse mail n'est renseignée que pour les magasins présents dans l'export go-on-web (fiche
+        magasin renseignée côté GOW) — un magasin sans mail n'y est probablement pas encore
+        correctement rattaché.
     </p>
 
     {% call action_buttons() %}
         {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+        {{ action_button("📤 Télécharger (Excel)", href=url_for('collecte.referentiel_collecte_export', annee=annee), color="outline-secondary") }}
     {% endcall %}
 
     {% if not magasins %}
@@ -32,12 +34,13 @@
 
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <p class="mb-0">
-            <strong>{{ magasins|length }}</strong> magasin(s) collecté(s)
+            <strong>{{ magasins|length }}</strong> magasin(s) au référentiel,
+            dont <strong>{{ nb_collectes }}</strong> collecté(s) cette année
             {% if nb_sans_email %}
             — <span class="text-warning">⚠️ {{ nb_sans_email }} sans adresse mail (absents ou mal
             rattachés dans go-on-web)</span>
             {% else %}
-            — <span class="text-success">✅ tous ont une adresse mail</span>
+            — <span class="text-success">✅ tous les collectés ont une adresse mail</span>
             {% endif %}
         </p>
         <input type="text" id="filtre-recherche" class="form-control form-control-sm" style="max-width:280px;"
@@ -61,7 +64,13 @@ const table = new Tabulator("#tabulator-table", {
     columns: [
         { title: "Code VIF", field: "code_vif", width: 110, headerFilter: "input" },
         { title: "Nom", field: "nom", widthGrow: 2, minWidth: 220, headerFilter: "input" },
-        { title: "État", field: "etat", width: 160 },
+        {
+            title: "État", field: "etat", width: 160,
+            formatter: function (cell) {
+                const v = cell.getValue();
+                return v === "Non collecté" ? "<span class='text-muted'>" + v + "</span>" : v;
+            },
+        },
         { title: "Ville", field: "ville", width: 150, headerFilter: "input" },
         { title: "Adresse", field: "adresse", widthGrow: 2, minWidth: 220 },
         { title: "Téléphone", field: "telephone", width: 130 },

@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Catégories pesée palox{% endblock %}
+
+{% block extra_css %}
+<style>
+    #etiquette-impression { display: none; }
+    @media print {
+        body * { visibility: hidden; }
+        #etiquette-impression, #etiquette-impression * { visibility: visible; }
+        #etiquette-impression {
+            display: block !important;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        }
+        @page { size: A4 landscape; margin: 10mm; }
+    }
+    .etiquette-page {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        height: 100%; text-align: center;
+    }
+    #champ-gabarit { font-family: monospace; font-size: 13px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width:1200px;">
+
+    <h2>⚙️ Catégories de produit — Pesée palox</h2>
+    <p class="text-muted small">
+        Référentiel pluriannuel des catégories utilisées au poste de pesée — le Code VIF sert à
+        retrouver le prix mercuriale sur l'écran de synthèse. Une catégorie déjà utilisée dans une
+        pesée ne peut plus être supprimée.
+    </p>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main'), color="outline-dark") }}
+        <button type="button" id="btn-ajouter-ligne" class="btn btn-outline-primary btn-sm">➕ Ajouter une catégorie</button>
+        <button type="button" id="btn-enregistrer" class="btn btn-warning btn-sm">💾 Enregistrer</button>
+    {% endcall %}
+
+    <div id="message-categories" class="alert d-none mb-3" role="alert"></div>
+
+    <h5 class="mt-4">🖨️ Mise en page de l'étiquette imprimée</h5>
+    <p class="text-muted small">
+        Code HTML complet de la feuille imprimée à chaque pesée (tailles de police, disposition,
+        textes — tout est modifiable ici, en style CSS inline). Espaces réservés disponibles :
+        <code>{{ "{{annee}}" }}</code>, <code>{{ "{{code_vif}}" }}</code>, <code>{{ "{{categorie}}" }}</code>,
+        <code>{{ "{{numero}}" }}</code>, <code>{{ "{{poids}}" }}</code>, <code>{{ "{{date_heure}}" }}</code>
+        — remplacés automatiquement à chaque impression.
+    </p>
+    <textarea id="champ-gabarit" class="form-control mb-2" rows="10">{{ gabarit_html }}</textarea>
+    <div class="d-flex gap-2 mb-4">
+        <button type="button" id="btn-apercu-gabarit" class="btn btn-outline-primary btn-sm">👁️ Aperçu (impression test)</button>
+        <button type="button" id="btn-reinitialiser-gabarit" class="btn btn-outline-secondary btn-sm">↩️ Modèle par défaut</button>
+        <button type="button" id="btn-enregistrer-gabarit" class="btn btn-outline-warning btn-sm">💾 Enregistrer la mise en page</button>
+    </div>
+
+    <h5>Catégories</h5>
+    <table class="table table-sm align-middle" id="table-categories">
+        <thead>
+            <tr>
+                <th style="width:70px;">Ordre</th>
+                <th>Libellé (collecte)</th>
+                <th style="width:130px;">Code VIF</th>
+                <th>Libellé VIF (mercuriale)</th>
+                <th style="width:60px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in categories %}
+            <tr data-id="{{ c.id }}">
+                <td><input type="number" class="form-control form-control-sm champ-ordre" value="{{ c.ordre }}"></td>
+                <td><input type="text" class="form-control form-control-sm champ-libelle" value="{{ c.libelle }}"></td>
+                <td><input type="text" class="form-control form-control-sm champ-code" value="{{ c.code_vif or '' }}"></td>
+                <td><input type="text" class="form-control form-control-sm champ-libelle-vif" value="{{ c.libelle_vif or '' }}"></td>
+                <td>
+                    <button type="button" class="btn btn-sm btn-outline-danger btn-supprimer-ligne"
+                            {% if c.utilisee %}disabled title="Déjà utilisée dans une pesée"{% endif %}>🗑️</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div id="etiquette-impression">
+    <div class="etiquette-page" id="etiquette-contenu"></div>
+</div>
+
+<script>
+const csrfToken = "{{ csrf_token() }}";
+const urlEnregistrer = "{{ url_for('collecte.palox_categories_enregistrer') }}";
+const urlEnregistrerGabarit = "{{ url_for('collecte.palox_gabarit_etiquette_enregistrer') }}";
+const gabaritDefaut = {{ gabarit_defaut|tojson }};
+
+document.getElementById("btn-reinitialiser-gabarit").addEventListener("click", function () {
+    document.getElementById("champ-gabarit").value = gabaritDefaut;
+});
+
+document.getElementById("btn-apercu-gabarit").addEventListener("click", function () {
+    const valeurs = {
+        annee: new Date().getFullYear(), code_vif: "0110041", categorie: "Exemple de catégorie",
+        numero: "12", poids: "123.4", date_heure: new Date().toLocaleString("fr-FR"),
+    };
+    let html = document.getElementById("champ-gabarit").value;
+    for (const cle in valeurs) { html = html.split("{{" + cle + "}}").join(valeurs[cle]); }
+    document.getElementById("etiquette-contenu").innerHTML = html;
+    window.print();
+});
+
+document.getElementById("btn-enregistrer-gabarit").addEventListener("click", function () {
+    fetch(urlEnregistrerGabarit, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ gabarit_html: document.getElementById("champ-gabarit").value }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        if (data.success) { afficherMessage("✅ Mise en page enregistrée.", "success"); }
+        else { afficherMessage("⛔ " + (data.erreur || "Échec de l'enregistrement"), "danger"); }
+    })
+    .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
+});
+
+const urlSupprimerBase = "{{ url_for('collecte.palox_categories_supprimer', categorie_id=0) }}".replace('/0/', '/__ID__/');
+
+const messageDiv = document.getElementById("message-categories");
+function afficherMessage(texte, classe) {
+    messageDiv.textContent = texte;
+    messageDiv.className = "alert alert-" + classe + " mb-3";
+}
+
+document.getElementById("btn-ajouter-ligne").addEventListener("click", function () {
+    const tbody = document.querySelector("#table-categories tbody");
+    const tr = document.createElement("tr");
+    tr.dataset.id = "";
+    tr.innerHTML = `
+        <td><input type="number" class="form-control form-control-sm champ-ordre" value="${tbody.children.length + 1}"></td>
+        <td><input type="text" class="form-control form-control-sm champ-libelle" value=""></td>
+        <td><input type="text" class="form-control form-control-sm champ-code" value=""></td>
+        <td><input type="text" class="form-control form-control-sm champ-libelle-vif" value=""></td>
+        <td><button type="button" class="btn btn-sm btn-outline-danger btn-supprimer-ligne">🗑️</button></td>`;
+    tbody.appendChild(tr);
+    attacherSuppression(tr);
+});
+
+function attacherSuppression(tr) {
+    const bouton = tr.querySelector(".btn-supprimer-ligne");
+    bouton.addEventListener("click", function () {
+        const id = tr.dataset.id;
+        if (!id) { tr.remove(); return; }
+        if (!confirm("Supprimer cette catégorie ?")) return;
+        fetch(urlSupprimerBase.replace('__ID__', id), {
+            method: "POST",
+            headers: { "X-CSRFToken": csrfToken },
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.success) { tr.remove(); }
+            else { afficherMessage("⛔ " + (data.erreur || "Échec de la suppression"), "danger"); }
+        })
+        .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
+    });
+}
+document.querySelectorAll("#table-categories tbody tr").forEach(attacherSuppression);
+
+document.getElementById("btn-enregistrer").addEventListener("click", function () {
+    const lignes = Array.from(document.querySelectorAll("#table-categories tbody tr")).map(function (tr) {
+        return {
+            id: tr.dataset.id || null,
+            ordre: tr.querySelector(".champ-ordre").value,
+            libelle: tr.querySelector(".champ-libelle").value,
+            code_vif: tr.querySelector(".champ-code").value,
+            libelle_vif: tr.querySelector(".champ-libelle-vif").value,
+        };
+    });
+    fetch(urlEnregistrer, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ categories: lignes }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        if (data.success) { afficherMessage("✅ Référentiel enregistré — rechargement…", "success"); setTimeout(function () { window.location.reload(); }, 800); }
+        else { afficherMessage("⛔ " + (data.erreur || "Échec de l'enregistrement"), "danger"); }
+    })
+    .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
+});
+</script>
+{% endblock %}

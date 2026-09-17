@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Pesée palox {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width:1100px;">
+
+    <h2>⚖️ Pesée palox {{ annee }}</h2>
+    <p class="text-muted small">
+        Choisissez la catégorie de produit du poste — chaque poste se fixe en général sur une
+        catégorie pour toute la durée de la collecte.
+    </p>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+        {{ action_button("📊 Synthèse", href=url_for('collecte.palox_synthese', annee=annee), color="outline-secondary") }}
+        {{ action_button("⚙️ Catégories", href=url_for('collecte.palox_categories'), color="outline-secondary") }}
+    {% endcall %}
+
+    <div class="row g-3">
+        {% for c in categories %}
+        <div class="col-6 col-md-4">
+            <a href="{{ url_for('collecte.palox_saisie', annee=annee, categorie_id=c.id) }}"
+               class="btn btn-outline-primary w-100 h-100 py-3 d-flex flex-column align-items-center justify-content-center">
+                <span class="fw-bold">{{ c.libelle }}</span>
+                <span class="text-muted small">{{ c.nb_palox }} palox saisi(s)</span>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

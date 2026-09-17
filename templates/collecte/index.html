@@ -303,6 +303,19 @@
                 {{ action_button("🧺 Saisir", href=url_for('collecte.cagettes', annee=annee) if magasins_prets else '#', color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
             </div>
         </div>
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h5 class="card-title mb-1">⚖️ Pesée palox (poids trié à l'entrepôt)</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Saisie du poids de chaque palox par catégorie de produit avec impression
+                        immédiate de la feuille, et synthèse valorisée en mercuriale une fois la
+                        pesée terminée.
+                    </p>
+                </div>
+                {{ action_button("⚖️ Ouvrir", href=url_for('collecte.palox_accueil', annee=annee), color="primary") }}
+            </div>
+        </div>
 
         <h5 class="mb-3 mt-4">Résultat collecte gardée</h5>
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
