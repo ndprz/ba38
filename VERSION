@@ -1,3 +1,3 @@
-VERSION=1.6.79
-MESSAGE=Collecte - pesee palox : validation du poids par categorie (reprise du controle Excel, min/max modifiable) + mise en page de l'etiquette imprimee simplifiee en lignes de texte (>>variable<<)
-DATE=2026-09-17 23:05
+VERSION=1.6.80
+MESSAGE=Collecte - pesee palox : liste produits en tableau plein ecran avec totaux (nb palox + poids), retour auto apres saisie, etiquette imprimee affinee (annee en haut, date/heure fixe en bas a droite)
+DATE=2026-09-18 11:50

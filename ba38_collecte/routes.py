@@ -5183,11 +5183,9 @@ def _ensure_tables_palox(conn):
 
 LIGNES_ETIQUETTE_PALOX_DEFAUT = [
     {"texte": "COLLECTE >>annee<<", "taille": 22, "gras": True},
-    {"texte": ">>code_vif<<", "taille": 44, "gras": True},
     {"texte": ">>categorie<<", "taille": 52, "gras": True},
     {"texte": "Palette >>numero<<", "taille": 38, "gras": True},
     {"texte": "Poids >>poids<< kg", "taille": 70, "gras": True},
-    {"texte": ">>date_heure<<", "taille": 10, "gras": False},
 ]
 
 
@@ -5371,13 +5369,26 @@ def palox_accueil(annee):
     with get_db_connection() as conn:
         _ensure_tables_palox(conn)
         categories = _categories_palox(conn)
-        nb_par_categorie = dict(conn.execute(
-            "SELECT categorie_id, COUNT(*) FROM collecte_palox_pesees WHERE annee = ? GROUP BY categorie_id",
-            (annee,),
-        ).fetchall())
+        stats_par_categorie = {
+            r["categorie_id"]: (r["nb"], r["poids"]) for r in conn.execute("""
+                SELECT categorie_id, COUNT(*) AS nb, SUM(COALESCE(poids_corrige_kg, poids_kg)) AS poids
+                FROM collecte_palox_pesees WHERE annee = ? GROUP BY categorie_id
+            """, (annee,)).fetchall()
+        }
     for c in categories:
-        c["nb_palox"] = nb_par_categorie.get(c["id"], 0)
-    return render_template("collecte/palox_accueil.html", annee=annee, categories=categories)
+        c["nb_palox"], c["poids_total"] = stats_par_categorie.get(c["id"], (0, 0))
+        c["poids_total"] = round(c["poids_total"] or 0, 1)
+    nb_palox_total = sum(c["nb_palox"] for c in categories)
+    poids_total_general = round(sum(c["poids_total"] for c in categories), 1)
+    for c in categories:
+        c["pct_poids"] = round(c["poids_total"] / poids_total_general * 100, 1) if poids_total_general else 0
+    return render_template(
+        "collecte/palox_accueil.html",
+        annee=annee,
+        categories=categories,
+        nb_palox_total=nb_palox_total,
+        poids_total_general=poids_total_general,
+    )
 
 
 @collecte_bp.route("/collecte/<int:annee>/palox/<int:categorie_id>")

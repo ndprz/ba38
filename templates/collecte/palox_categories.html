@@ -17,8 +17,12 @@
         @page { size: A4 landscape; margin: 10mm; }
     }
     .etiquette-page {
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        height: 100%; text-align: center;
+        display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+        height: 100%; text-align: center; padding-top: 15mm;
+        position: relative;
+    }
+    .etiquette-date-heure {
+        position: absolute; bottom: 0; right: 0; font-size: 12pt; color: #333;
     }
     .champ-ligne-texte { font-family: monospace; }
 </style>
@@ -48,8 +52,9 @@
         écrire. Espaces réservés disponibles, à placer dans le texte entre <code>&gt;&gt;</code> et
         <code>&lt;&lt;</code> : <code>&gt;&gt;annee&lt;&lt;</code>, <code>&gt;&gt;code_vif&lt;&lt;</code>,
         <code>&gt;&gt;categorie&lt;&lt;</code>, <code>&gt;&gt;numero&lt;&lt;</code>,
-        <code>&gt;&gt;poids&lt;&lt;</code>, <code>&gt;&gt;date_heure&lt;&lt;</code> — remplacés
-        automatiquement à chaque impression.
+        <code>&gt;&gt;poids&lt;&lt;</code>, <code>&gt;&gt;date&lt;&lt;</code> (aaaa-mm-jj),
+        <code>&gt;&gt;date_heure&lt;&lt;</code> (avec l'heure) — remplacés automatiquement à chaque
+        impression.
     </p>
     <table class="table table-sm align-middle mb-2" id="table-gabarit">
         <thead>
@@ -114,7 +119,10 @@
 </div>
 
 <div id="etiquette-impression">
-    <div class="etiquette-page" id="etiquette-contenu"></div>
+    <div class="etiquette-page">
+        <div id="etiquette-contenu"></div>
+        <div class="etiquette-date-heure" id="et-date-heure-footer"></div>
+    </div>
 </div>
 
 <script>
@@ -177,6 +185,7 @@ document.getElementById("btn-apercu-gabarit").addEventListener("click", function
     const valeurs = {
         annee: new Date().getFullYear(), code_vif: "0110041", categorie: "Exemple de catégorie",
         numero: "12", poids: "123", date_heure: new Date().toLocaleString("fr-FR"),
+        date: new Date().toISOString().slice(0, 10),
     };
     const html = lireLignesGabarit().map(function (ligne) {
         let texte = ligne.texte;
@@ -185,6 +194,7 @@ document.getElementById("btn-apercu-gabarit").addEventListener("click", function
         return "<div style=\"" + style + "\">" + texte + "</div>";
     }).join("\n");
     document.getElementById("etiquette-contenu").innerHTML = html;
+    document.getElementById("et-date-heure-footer").textContent = valeurs.date_heure;
     window.print();
 });
 

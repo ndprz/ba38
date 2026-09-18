@@ -17,8 +17,12 @@
         @page { size: A4 landscape; margin: 10mm; }
     }
     .etiquette-page {
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        height: 100%; text-align: center;
+        display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+        height: 100%; text-align: center; padding-top: 15mm;
+        position: relative;
+    }
+    .etiquette-date-heure {
+        position: absolute; bottom: 0; right: 0; font-size: 12pt; color: #333;
     }
 
     #champ-poids { font-size: 3rem; height: 5rem; text-align: center; }
@@ -84,7 +88,10 @@
 </div>
 
 <div id="etiquette-impression">
-    <div class="etiquette-page" id="etiquette-contenu"></div>
+    <div class="etiquette-page">
+        <div id="etiquette-contenu"></div>
+        <div class="etiquette-date-heure" id="et-date-heure-footer"></div>
+    </div>
 </div>
 
 <script>
@@ -93,6 +100,7 @@ const urlEnregistrer = "{{ url_for('collecte.palox_enregistrer', annee=annee, ca
 const urlCorriger = "{{ url_for('collecte.palox_corriger', annee=annee, categorie_id=categorie.id) }}";
 const urlSupprimer = "{{ url_for('collecte.palox_supprimer', annee=annee, categorie_id=categorie.id) }}";
 const urlReinitialiser = "{{ url_for('collecte.palox_reinitialiser', annee=annee, categorie_id=categorie.id) }}";
+const urlAccueil = "{{ url_for('collecte.palox_accueil', annee=annee) }}";
 
 const gabaritLignes = {{ gabarit_lignes|tojson }};
 function remplirEtiquette(numero, poids, dateHeure) {
@@ -103,6 +111,7 @@ function remplirEtiquette(numero, poids, dateHeure) {
         numero: numero,
         poids: poids,
         date_heure: dateHeure,
+        date: dateHeure.split(" ")[0],
     };
     const html = gabaritLignes.map(function (ligne) {
         let texte = ligne.texte;
@@ -111,6 +120,7 @@ function remplirEtiquette(numero, poids, dateHeure) {
         return "<div style=\"" + style + "\">" + texte + "</div>";
     }).join("\n");
     document.getElementById("etiquette-contenu").innerHTML = html;
+    document.getElementById("et-date-heure-footer").textContent = dateHeure;
 }
 
 const champPoids = document.getElementById("champ-poids");
@@ -148,24 +158,15 @@ document.getElementById("formPesee").addEventListener("submit", function (evt) {
             return;
         }
         remplirEtiquette(data.numero_palox, data.poids_kg, data.date_heure);
+
+        // Retour automatique sur la liste des catégories une fois
+        // l'impression déclenchée (imprime immédiatement sur l'imprimante
+        // par défaut du poste — silencieusement si le navigateur est lancé
+        // en mode kiosque d'impression), comme "RETOUR Articles" dans le
+        // classeur d'origine.
+        window.onafterprint = function () { window.location.href = urlAccueil; };
         window.print();
-
-        const tbody = document.querySelector("#table-historique tbody");
-        const tr = document.createElement("tr");
-        tr.dataset.numero = data.numero_palox;
-        tr.innerHTML = "<td>" + data.numero_palox + "</td>"
-            + "<td class='cellule-poids'>" + data.poids_kg + "</td>"
-            + "<td class='cellule-poids-corrige'></td>"
-            + "<td>" + data.date_heure.slice(-8) + "</td>"
-            + "<td><button type='button' class='btn btn-sm btn-outline-secondary btn-corriger'>✏️ Corriger</button></td>"
-            + "<td><button type='button' class='btn btn-sm btn-outline-danger btn-supprimer'>🗑️</button></td>";
-        tbody.insertBefore(tr, tbody.firstChild);
-        attacherActions(tr);
-
-        champNumero.value = data.prochain_numero;
-        champPoids.value = "";
-        champPoids.focus();
-        messageDiv.classList.add("d-none");
+        setTimeout(function () { window.location.href = urlAccueil; }, 3000);
     })
     .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
 });
