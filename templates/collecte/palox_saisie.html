@@ -28,11 +28,12 @@
     #champ-poids { font-size: 3rem; height: 5rem; text-align: center; }
     #champ-numero { font-size: 1.5rem; width: 100px; text-align: center; }
     .ligne-corrigee { background-color: #fff3cd; }
+    #conteneur-palox-saisie:fullscreen { background: #fff; padding: 20px; overflow: auto; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4" style="max-width:900px;">
+<div class="container-fluid mt-4" style="max-width:900px;" id="conteneur-palox-saisie">
 
     <h2>⚖️ {{ categorie.libelle }} — Collecte {{ annee }}</h2>
     {% if categorie.code_vif %}
@@ -40,9 +41,9 @@
     {% endif %}
 
     {% call action_buttons() %}
-        {{ action_button("↩️ Autre catégorie", href=url_for('collecte.palox_accueil', annee=annee), color="outline-dark") }}
-        {{ action_button("📊 Synthèse", href=url_for('collecte.palox_synthese', annee=annee), color="outline-secondary") }}
+        {{ action_button("↩️ Retour à la liste", href=url_for('collecte.palox_synthese', annee=annee), color="outline-dark") }}
         <button type="button" id="btn-reinitialiser" class="btn btn-outline-danger btn-sm">🔄 Réinitialiser la numérotation</button>
+        <button type="button" id="btnPleinEcran" class="btn btn-outline-primary btn-sm">⛶ Plein écran</button>
     {% endcall %}
 
     <div class="alert alert-info small">
@@ -100,7 +101,7 @@ const urlEnregistrer = "{{ url_for('collecte.palox_enregistrer', annee=annee, ca
 const urlCorriger = "{{ url_for('collecte.palox_corriger', annee=annee, categorie_id=categorie.id) }}";
 const urlSupprimer = "{{ url_for('collecte.palox_supprimer', annee=annee, categorie_id=categorie.id) }}";
 const urlReinitialiser = "{{ url_for('collecte.palox_reinitialiser', annee=annee, categorie_id=categorie.id) }}";
-const urlAccueil = "{{ url_for('collecte.palox_accueil', annee=annee) }}";
+const urlAccueil = "{{ url_for('collecte.palox_synthese', annee=annee) }}";
 
 const gabaritLignes = {{ gabarit_lignes|tojson }};
 function remplirEtiquette(numero, poids, dateHeure) {
@@ -231,5 +232,28 @@ document.getElementById("btn-reinitialiser").addEventListener("click", function 
         })
         .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
 });
+
+// ── Plein écran ─────────────────────────────────────────────────────
+// Même mécanisme que sur la synthèse : mémorisation dans sessionStorage
+// pour tenter de rétablir le plein écran après chaque navigation (retour
+// automatique vers la synthèse après impression, ou "Retour à la liste").
+const conteneurEl = document.getElementById("conteneur-palox-saisie");
+const btnPleinEcran = document.getElementById("btnPleinEcran");
+btnPleinEcran.addEventListener("click", function () {
+    if (document.fullscreenElement) {
+        document.exitFullscreen();
+    } else if (conteneurEl.requestFullscreen) {
+        conteneurEl.requestFullscreen();
+    }
+});
+document.addEventListener("fullscreenchange", function () {
+    const enPlein = document.fullscreenElement === conteneurEl;
+    btnPleinEcran.textContent = enPlein ? "⛶ Quitter le plein écran" : "⛶ Plein écran";
+    if (enPlein) { sessionStorage.setItem("palox_plein_ecran", "1"); }
+    else { sessionStorage.removeItem("palox_plein_ecran"); }
+});
+if (sessionStorage.getItem("palox_plein_ecran") === "1" && conteneurEl.requestFullscreen) {
+    conteneurEl.requestFullscreen().catch(function () {});
+}
 </script>
 {% endblock %}

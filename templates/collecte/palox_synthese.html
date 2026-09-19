@@ -6,30 +6,39 @@
 
 {% block extra_css %}
 <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
+<style>
+    #tabulator-table .tabulator-row { cursor: pointer; }
+    #tabulator-table .tabulator-cell { padding-top: 3px; padding-bottom: 3px; font-size: 0.9rem; }
+    #conteneur-palox-synthese:fullscreen { background: #fff; padding: 10px 20px; overflow: auto; }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4" style="max-width:1400px;">
+<div class="container-fluid mt-2" id="conteneur-palox-synthese">
 
-    <h2>📊 Synthèse pesée palox {{ annee }}</h2>
-    <p class="text-muted small">
-        Poids et répartition par catégorie (poids corrigé si une correction a été saisie),
-        comparaison à l'année précédente, et valorisation en mercuriale une fois la pesée
-        terminée.
-    </p>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
+        <h2 class="mb-0 fs-4">📊 Pesée palox {{ annee }}
+            <span class="fs-6 text-muted ms-2">
+                {{ poids_total }} kg{% if mercuriale_importee %} — {{ "%.2f"|format(valeur_totale) }} €{% endif %}
+            </span>
+        </h2>
+        <div class="d-flex gap-2">
+            {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+            {{ action_button("⚙️ Catégories", href=url_for('collecte.palox_categories'), color="outline-secondary") }}
+            {{ action_button("📤 Télécharger (Excel)", href=url_for('collecte.palox_synthese_export', annee=annee), color="outline-secondary") }}
+            <button type="button" id="btnPleinEcran" class="btn btn-outline-primary btn-sm">⛶ Plein écran</button>
+        </div>
+    </div>
 
-    {% call action_buttons() %}
-        {{ action_button("↩️ Retour", href=url_for('collecte.palox_accueil', annee=annee), color="outline-dark") }}
-        {{ action_button("📤 Télécharger (Excel)", href=url_for('collecte.palox_synthese_export', annee=annee), color="outline-secondary") }}
-    {% endcall %}
-
-    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-        <p class="mb-0">
-            <strong>{{ poids_total }}</strong> kg au total
-            {% if mercuriale_importee %}
-            — valorisation estimée <strong>{{ "%.2f"|format(valeur_totale) }} €</strong>
-            {% endif %}
-        </p>
+    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+        <input type="text" id="filtre-recherche" class="form-control form-control-sm" style="max-width:280px;"
+               placeholder="🔎 Rechercher un produit (nom, code VIF)…">
+        <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="toggle-colonnes-mercuriale">
+            <label class="form-check-label small" for="toggle-colonnes-mercuriale">
+                Afficher mercuriale / comparaison année précédente
+            </label>
+        </div>
         <form method="post" action="{{ url_for('collecte.palox_mercuriale_importer', annee=annee) }}"
               enctype="multipart/form-data" class="d-flex align-items-center gap-2">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -40,7 +49,7 @@
         </form>
     </div>
     {% if not mercuriale_importee %}
-    <div class="alert alert-warning small">
+    <div class="alert alert-warning small py-1 mb-2">
         ⚠️ Mercuriale {{ annee }} non importée — la colonne valeur restera vide tant qu'elle n'est
         pas déposée ci-dessus (à faire une fois la pesée terminée).
     </div>
@@ -52,11 +61,12 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
 <script>
 const lignes = {{ lignes|tojson }};
+const urlSaisieBase = "{{ url_for('collecte.palox_saisie', annee=annee, categorie_id=0) }}".replace('/0', '/__ID__');
 
 const table = new Tabulator("#tabulator-table", {
     data: lignes,
     layout: "fitColumns",
-    height: "calc(100vh - 360px)",
+    height: "calc(100vh - 190px)",
     placeholder: "Aucune pesée enregistrée",
     columns: [
         { title: "Catégorie", field: "libelle", widthGrow: 2, minWidth: 220,
@@ -68,15 +78,64 @@ const table = new Tabulator("#tabulator-table", {
         { title: "% du total", field: "pct_poids", width: 110, hozAlign: "right",
           formatter: function (cell) { return cell.getValue().toFixed(1) + " %"; },
           topCalcFormatter: function () { return "100 %"; } },
-        { title: "Prix mercuriale (€/kg)", field: "prix_kg", width: 150, hozAlign: "right",
+        { title: "Prix mercuriale (€/kg)", field: "prix_kg", width: 150, hozAlign: "right", visible: false,
           formatter: function (cell) { const v = cell.getValue(); return v == null ? "—" : v.toFixed(2); } },
-        { title: "Valeur (€)", field: "valeur", width: 130, hozAlign: "right",
+        { title: "Valeur (€)", field: "valeur", width: 130, hozAlign: "right", visible: false,
           formatter: function (cell) { const v = cell.getValue(); return v == null ? "—" : v.toFixed(2); },
           topCalc: "sum", topCalcParams: { precision: 2 } },
-        { title: "Poids année précédente (kg)", field: "poids_annee_precedente", width: 170, hozAlign: "right",
+        { title: "Poids année précédente (kg)", field: "poids_annee_precedente", width: 170, hozAlign: "right", visible: false,
           formatter: function (cell) { const v = cell.getValue(); return v == null ? "—" : v.toFixed(1); },
           topCalc: "sum", topCalcParams: { precision: 1 } },
     ],
 });
+
+table.on("rowClick", function (e, row) {
+    window.location.href = urlSaisieBase.replace('__ID__', row.getData().id);
+});
+
+document.getElementById("toggle-colonnes-mercuriale").addEventListener("change", function () {
+    const visible = this.checked;
+    ["prix_kg", "valeur", "poids_annee_precedente"].forEach(function (champ) {
+        visible ? table.showColumn(champ) : table.hideColumn(champ);
+    });
+    table.redraw(true);
+});
+
+document.getElementById("filtre-recherche").addEventListener("input", function () {
+    const texte = this.value.trim();
+    if (!texte) { table.clearFilter(); return; }
+    table.setFilter([[
+        { field: "libelle", type: "like", value: texte },
+        { field: "code_vif", type: "like", value: texte },
+    ]], "or");
+});
+
+// ── Plein écran ─────────────────────────────────────────────────────
+// Le plein écran se coupe à chaque changement de page (limitation du
+// navigateur) — on mémorise l'état dans sessionStorage pour tenter de le
+// rétablir automatiquement sur la page suivante (poste de pesée, puis
+// retour ici). Ce ré-essai automatique ne fonctionne pas dans tous les
+// navigateurs (l'API plein écran exige normalement un clic direct) ; en
+// mode kiosque (--kiosk-printing) certains navigateurs l'autorisent quand
+// même après une navigation.
+const conteneurEl = document.getElementById("conteneur-palox-synthese");
+const btnPleinEcran = document.getElementById("btnPleinEcran");
+btnPleinEcran.addEventListener("click", function () {
+    if (document.fullscreenElement) {
+        document.exitFullscreen();
+    } else if (conteneurEl.requestFullscreen) {
+        conteneurEl.requestFullscreen();
+    }
+});
+document.addEventListener("fullscreenchange", function () {
+    const enPlein = document.fullscreenElement === conteneurEl;
+    btnPleinEcran.textContent = enPlein ? "⛶ Quitter le plein écran" : "⛶ Plein écran";
+    if (enPlein) { sessionStorage.setItem("palox_plein_ecran", "1"); }
+    else { sessionStorage.removeItem("palox_plein_ecran"); }
+    table.redraw(true);
+});
+if (sessionStorage.getItem("palox_plein_ecran") === "1" && conteneurEl.requestFullscreen) {
+    conteneurEl.requestFullscreen().catch(function () {});
+}
 </script>
 {% endblock %}

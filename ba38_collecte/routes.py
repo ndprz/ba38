@@ -5363,32 +5363,10 @@ def palox_categories_supprimer(categorie_id):
 @login_required
 @require_access("collecte", "lecture")
 def palox_accueil(annee):
-    """Poste de pesée — choix de la catégorie avant de démarrer la saisie
-    (un poste se fixe en général sur une catégorie pour toute la durée de
-    la collecte)."""
-    with get_db_connection() as conn:
-        _ensure_tables_palox(conn)
-        categories = _categories_palox(conn)
-        stats_par_categorie = {
-            r["categorie_id"]: (r["nb"], r["poids"]) for r in conn.execute("""
-                SELECT categorie_id, COUNT(*) AS nb, SUM(COALESCE(poids_corrige_kg, poids_kg)) AS poids
-                FROM collecte_palox_pesees WHERE annee = ? GROUP BY categorie_id
-            """, (annee,)).fetchall()
-        }
-    for c in categories:
-        c["nb_palox"], c["poids_total"] = stats_par_categorie.get(c["id"], (0, 0))
-        c["poids_total"] = round(c["poids_total"] or 0, 1)
-    nb_palox_total = sum(c["nb_palox"] for c in categories)
-    poids_total_general = round(sum(c["poids_total"] for c in categories), 1)
-    for c in categories:
-        c["pct_poids"] = round(c["poids_total"] / poids_total_general * 100, 1) if poids_total_general else 0
-    return render_template(
-        "collecte/palox_accueil.html",
-        annee=annee,
-        categories=categories,
-        nb_palox_total=nb_palox_total,
-        poids_total_general=poids_total_general,
-    )
+    """Ancienne liste des catégories, fusionnée dans la Synthèse (qui
+    permet désormais aussi de cliquer une catégorie pour la peser) —
+    route conservée pour ne pas casser d'éventuels liens existants."""
+    return redirect(url_for("collecte.palox_synthese", annee=annee))
 
 
 @collecte_bp.route("/collecte/<int:annee>/palox/<int:categorie_id>")
