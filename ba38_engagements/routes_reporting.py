@@ -76,8 +76,13 @@ def _build_query(filters, voir_tout):
     en fonction des filtres reçus.
     """
 
-    where = ["COALESCE(e.deleted, 0) = 0"]
+    where = ["1=1"]
     params = []
+
+    if filters.get("archive") == "actifs":
+        where.append("COALESCE(e.deleted, 0) = 0")
+    elif filters.get("archive") == "archives":
+        where.append("COALESCE(e.deleted, 0) = 1")
 
     if not voir_tout:
         where.append("e.demandeur_id = ?")
@@ -284,6 +289,7 @@ def engagements_reporting():
         "rubrique":     request.form.get("rubrique", "").strip(),
         "subvention_id":request.form.get("subvention_id", "").strip(),
         "statut":       request.form.get("statut", "").strip(),
+        "archive":      request.form.get("archive", "").strip(),
     }
 
     rows = []
@@ -459,6 +465,7 @@ def engagements_reporting_excel():
         "rubrique":      request.form.get("rubrique", "").strip(),
         "subvention_id": request.form.get("subvention_id", "").strip(),
         "statut":        request.form.get("statut", "").strip(),
+        "archive":       request.form.get("archive", "").strip(),
     }
 
     with sqlite3.connect(db_path) as conn:
@@ -827,6 +834,7 @@ def engagements_reporting_pdf():
         "rubrique":      request.form.get("rubrique", "").strip(),
         "subvention_id": request.form.get("subvention_id", "").strip(),
         "statut":        request.form.get("statut", "").strip(),
+        "archive":       request.form.get("archive", "").strip(),
     }
 
     with sqlite3.connect(db_path) as conn:

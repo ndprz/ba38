@@ -219,6 +219,27 @@
                     </select>
                 </div>
 
+                {# Archivés #}
+                <div class="d-flex flex-column" style="min-width: 170px;">
+                    <label class="form-label fw-semibold">
+                        🗑 Archivés
+                    </label>
+                    <select name="archive" class="form-select form-select-sm">
+                        <option value=""
+                            {% if filters.archive == "" %}selected{% endif %}>
+                            Tous (archivés inclus)
+                        </option>
+                        <option value="actifs"
+                            {% if filters.archive == "actifs" %}selected{% endif %}>
+                            Actifs uniquement
+                        </option>
+                        <option value="archives"
+                            {% if filters.archive == "archives" %}selected{% endif %}>
+                            Archivés uniquement
+                        </option>
+                    </select>
+                </div>
+
             </div>{# /flex filtres #}
 
             {% call action_buttons() %}
@@ -418,6 +439,7 @@
             <input type="hidden" name="rubrique"      value="{{ filters.rubrique }}">
             <input type="hidden" name="subvention_id" value="{{ filters.subvention_id }}">
             <input type="hidden" name="statut"        value="{{ filters.statut }}">
+            <input type="hidden" name="archive"       value="{{ filters.archive }}">
             <button type="submit"
                     class="btn btn-success btn-sm">
                 📥 Export Excel
@@ -436,6 +458,7 @@
             <input type="hidden" name="rubrique"      value="{{ filters.rubrique }}">
             <input type="hidden" name="subvention_id" value="{{ filters.subvention_id }}">
             <input type="hidden" name="statut"        value="{{ filters.statut }}">
+            <input type="hidden" name="archive"       value="{{ filters.archive }}">
             <button type="submit"
                     class="btn btn-danger btn-sm">
                 📄 Export PDF
