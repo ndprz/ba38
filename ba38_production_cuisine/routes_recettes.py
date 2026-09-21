@@ -362,10 +362,12 @@ def renommer_production(production_id):
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
         production = conn.execute(
-            "SELECT nom_recette FROM cuisine_productions WHERE id = ?", (production_id,)
+            "SELECT nom_recette, statut FROM cuisine_productions WHERE id = ?", (production_id,)
         ).fetchone()
         if not production:
             return jsonify({"ok": False, "error": "Production introuvable."}), 404
+        if production["statut"] == "terminee":
+            return jsonify({"ok": False, "error": "Production terminée : la recette ne peut plus être changée."}), 400
 
         ancien_nom = production["nom_recette"]
         cur = conn.cursor()

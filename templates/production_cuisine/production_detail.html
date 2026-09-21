@@ -43,6 +43,14 @@
   <!-- ============================================================ -->
   <!-- 🔄 Changer de recette -->
   <!-- ============================================================ -->
+  {% if production.statut == 'terminee' %}
+  <div class="card mb-4">
+    <div class="card-header">🔄 Changer de recette</div>
+    <div class="card-body text-muted">
+      🔒 Production terminée — la recette ne peut plus être changée.
+    </div>
+  </div>
+  {% else %}
   <div class="card mb-4">
     <div class="card-header">🔄 Changer de recette</div>
     <div class="card-body">
@@ -59,6 +67,7 @@
       {% endif %}
     </div>
   </div>
+  {% endif %}
 
   <!-- ============================================================ -->
   <!-- ⏱️ Étapes de fabrication -->
@@ -419,6 +428,7 @@
 
 </div>
 
+{% if production.statut != 'terminee' %}
 <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
 <script>
   var recettesReferentiel = {{ recettes_referentiel | tojson }};
@@ -494,6 +504,7 @@
       .catch(function () { alert("Erreur réseau lors du changement de recette."); });
   }
 </script>
+{% endif %}
 {% include "production_cuisine/_camera_capture_js.html" %}
 {% include "production_cuisine/_scroll_restore.html" %}
 {% endblock %}
