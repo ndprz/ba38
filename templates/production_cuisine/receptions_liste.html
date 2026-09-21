@@ -11,6 +11,9 @@
       <a href="{{ url_for('production_cuisine.liste_productions', date=date_filtre) }}" class="btn btn-outline-secondary">
         🍲 Productions du jour
       </a>
+      <a href="{{ url_for('production_cuisine.etat_journalier_receptions', date=date_filtre) }}" class="btn btn-outline-secondary">
+        📊 État journalier
+      </a>
       <a href="{{ url_for('production_cuisine.creer_reception') }}" class="btn btn-primary btn-lg">
         ➕ Nouvelle réception
       </a>

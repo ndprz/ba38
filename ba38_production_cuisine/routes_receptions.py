@@ -80,6 +80,50 @@ def liste_receptions():
     )
 
 
+@production_cuisine_bp.route("/receptions/etat-journalier")
+@login_required
+@require_access("production_cuisine", "lecture")
+def etat_journalier_receptions():
+    """État journalier des réceptions — équivalent numérique de la feuille
+    papier "CONTROLE DES VIANDES ET POISSONS A RECEPTION" (documents
+    Nicolas.xlsx, onglet 2) : les réceptions du jour, groupées par groupe
+    d'ingrédient (Boeuf, Agneau, Poisson...), avec sous-total et total kg."""
+    date_filtre = request.args.get("date") or today_paris()
+
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        receptions = conn.execute(
+            """
+            SELECT r.*, f.nom AS fournisseur_nom
+            FROM cuisine_receptions r
+            LEFT JOIN fournisseurs f ON f.id = r.fournisseur_id
+            WHERE r.date_reception = ? AND r.actif = 1
+            ORDER BY r.heure_arrivee, r.id
+            """,
+            (date_filtre,),
+        ).fetchall()
+
+    groupes = {}
+    total_kg = 0.0
+    for r in receptions:
+        groupe = r["ingredient_groupe"] or "Autres / non référencé"
+        entree = groupes.setdefault(groupe, {"lignes": [], "sous_total": 0.0})
+        poids = r["poids_kg"] or 0
+        entree["lignes"].append(r)
+        entree["sous_total"] += poids
+        total_kg += poids
+
+    groupes_tries = sorted(groupes.items(), key=lambda kv: kv[0].lower())
+
+    return render_template(
+        "production_cuisine/receptions_etat_journalier.html",
+        date_filtre=date_filtre,
+        groupes=groupes_tries,
+        total_kg=total_kg,
+        nb_receptions=len(receptions),
+    )
+
+
 @production_cuisine_bp.route("/receptions/<int:reception_id>/affecter", methods=["POST"])
 @login_required
 @require_access("production_cuisine", "ecriture")

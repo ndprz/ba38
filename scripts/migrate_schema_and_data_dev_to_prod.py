@@ -9,11 +9,28 @@ Règles :
     * intégrale si table absente
     * colonne par colonne si table existante
 - Aucune suppression
+
+⚠️ EXCLUDE_TABLES : tables dont le contenu est maintenu indépendamment en
+DEV et en PROD (écran d'admin propre à chaque environnement, ex. un
+référentiel corrigé sur le terrain côté PROD). Pour ces tables-là, le
+schéma est quand même créé s'il manque côté PROD (sinon l'appli plante),
+mais on ne copie JAMAIS les données depuis DEV — ni la copie intégrale à
+la création, ni le backfill d'une nouvelle colonne par id. Ce backfill par
+id serait dangereux ici : une fois la table éditée séparément dans les
+deux bases, les mêmes id ne désignent plus la même ligne des deux côtés
+(cf. incident cuisine_ingredients_carnes, 2026-09-21 — la copie intégrale
+initiale était sans risque tant que PROD n'avait encore rien édité, mais
+laisser le mécanisme actif expose à un backfill corrompu au premier ajout
+de colonne futur).
 """
 
 import sqlite3
 from pathlib import Path
 from dotenv import dotenv_values
+
+EXCLUDE_TABLES = {
+    "cuisine_ingredients_carnes",
+}
 
 # -------------------------------------------------------------------
 # Chargement EXPLICITE des .env
@@ -84,6 +101,7 @@ def main():
         prod_tables = get_table_names(prod)
 
         for table in dev_tables:
+            exclue = table in EXCLUDE_TABLES
             if table not in prod_tables:
                 print(f"🆕 Création table {table}")
                 schema = dev.execute(
@@ -91,7 +109,12 @@ def main():
                     (table,)
                 ).fetchone()[0]
                 prod.execute(schema)
-                copy_table(dev, prod, table)
+                if exclue:
+                    print(f"⏭️  {table} : contenu géré séparément en PROD — schéma créé, données non copiées")
+                else:
+                    copy_table(dev, prod, table)
+            elif exclue:
+                print(f"⏭️  {table} : contenu géré séparément en PROD — ignorée (ni colonne, ni donnée)")
             else:
                 dev_cols = get_columns(dev, table)
                 prod_cols = get_columns(prod, table)

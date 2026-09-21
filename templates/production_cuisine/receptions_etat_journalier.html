@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}État journalier des réceptions{% endblock %}
+
+{% block extra_css %}
+<style>
+  @media print {
+    header, nav, .no-print { display: none !important; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">📊 État journalier des réceptions</h2>
+    <div class="d-flex gap-2 no-print">
+      <a href="{{ url_for('production_cuisine.liste_receptions', date=date_filtre) }}" class="btn btn-outline-secondary">← Retour</a>
+      <button type="button" class="btn btn-outline-dark" onclick="window.print()">🖨️ Imprimer</button>
+    </div>
+  </div>
+
+  <form method="GET" class="row g-2 align-items-end mb-3 no-print">
+    <div class="col-auto">
+      <label class="form-label">Date</label>
+      <input type="date" name="date" value="{{ date_filtre }}" class="form-control"
+             onchange="this.form.submit()">
+    </div>
+  </form>
+
+  <p class="fw-bold fs-5">
+    {{ date_filtre }} — {{ nb_receptions }} réception(s) — Total : {{ "%.1f"|format(total_kg) }} kg
+  </p>
+
+  {% if not groupes %}
+    <p class="text-muted">Aucune réception enregistrée pour cette date.</p>
+  {% endif %}
+
+  {% for groupe, data in groupes %}
+  <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <strong>{{ groupe }}</strong>
+      <span class="badge bg-secondary">{{ "%.1f"|format(data.sous_total) }} kg</span>
+    </div>
+    <table class="table table-sm mb-0">
+      <thead>
+        <tr>
+          <th>Produit</th>
+          <th>Fournisseur</th>
+          <th>Heure</th>
+          <th class="text-end">Poids (kg)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in data.lignes %}
+        <tr>
+          <td>{{ r.ingredient_produit or r.libelle_produit or "—" }}</td>
+          <td>{{ r.fournisseur_nom or "—" }}</td>
+          <td>{{ r.heure_arrivee or "—" }}</td>
+          <td class="text-end">{{ r.poids_kg if r.poids_kg is not none else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+
+  {% if groupes %}
+  <div class="d-flex justify-content-end fw-bold fs-4 mt-3 pe-2">
+    TOTAL RÉCEPTION : {{ "%.1f"|format(total_kg) }} kg
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
