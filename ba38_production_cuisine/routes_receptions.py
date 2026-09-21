@@ -17,10 +17,24 @@ from ba38_production_cuisine.utils import (
 )
 
 CONFORMITE_CHOICES = ("conforme", "non_conforme")
+GROUPE_AUTRE = "__autre__"
 
 
 def _clean_conformite(val):
     return val if val in CONFORMITE_CHOICES else None
+
+
+def _ingredients_par_groupe(conn):
+    """{groupe: [produit, ...]} — référentiel des ingrédients carnés, pour
+    le sélecteur en 2 temps (groupe puis produit) de l'écran de réception."""
+    rows = conn.execute(
+        """SELECT groupe, produit FROM cuisine_ingredients_carnes
+           WHERE actif = 1 ORDER BY groupe COLLATE NOCASE, produit COLLATE NOCASE"""
+    ).fetchall()
+    par_groupe = {}
+    for row in rows:
+        par_groupe.setdefault(row["groupe"], []).append(row["produit"])
+    return par_groupe
 
 
 @production_cuisine_bp.route("/receptions")
@@ -138,6 +152,7 @@ def creer_reception():
         fournisseurs = conn.execute(
             "SELECT id, nom FROM fournisseurs WHERE actif = 'oui' ORDER BY nom COLLATE NOCASE"
         ).fetchall()
+        ingredients_par_groupe = _ingredients_par_groupe(conn)
 
     if request.method == "POST":
         # Champs communs à toute la livraison — saisis une seule fois même
@@ -157,22 +172,43 @@ def creer_reception():
         indices = sorted({
             int(m.group(1))
             for k in request.form
-            for m in [re.match(r"^libelle_produit_(\d+)$", k)]
+            for m in [re.match(r"^ingredient_groupe_(\d+)$", k)]
             if m
         })
 
         lignes = []
         for i in indices:
+            groupe = (request.form.get(f"ingredient_groupe_{i}") or "").strip()
+            if groupe == GROUPE_AUTRE:
+                # Produit hors référentiel (ex. légumes) : saisie libre.
+                produit = (request.form.get(f"ingredient_produit_autre_{i}") or "").strip()
+                ingredient_groupe, ingredient_produit = None, None
+                libelle_produit = produit
+            else:
+                produit = (request.form.get(f"ingredient_produit_{i}") or "").strip()
+                ingredient_groupe = groupe or None
+                ingredient_produit = produit or None
+                # Pas de repli sur le seul groupe : un groupe choisi sans
+                # produit doit être signalé comme une erreur, pas enregistré
+                # tel quel (cf. validation plus bas sur libelle_produit vide).
+                libelle_produit = f"{groupe} – {produit}" if groupe and produit else ""
             lignes.append({
                 "idx": i,
-                "libelle_produit": (request.form.get(f"libelle_produit_{i}") or "").strip(),
+                "groupe": groupe,
+                "produit": produit,
+                "libelle_produit": libelle_produit,
+                "ingredient_groupe": ingredient_groupe,
+                "ingredient_produit": ingredient_produit,
                 "poids_kg": request.form.get(f"poids_kg_{i}") or None,
                 "aspect_conforme": _clean_conformite(request.form.get(f"aspect_conforme_{i}")),
                 "emballage_conforme": _clean_conformite(request.form.get(f"emballage_conforme_{i}")),
                 "etiquetage_conforme": _clean_conformite(request.form.get(f"etiquetage_conforme_{i}")),
                 "commentaire": (request.form.get(f"commentaire_{i}") or "").strip() or None,
             })
-        lignes_remplies = [l for l in lignes if l["libelle_produit"]]
+        # Une ligne où seul un groupe a été choisi compte comme "démarrée" :
+        # il manque alors juste le produit, ce qui doit être signalé comme
+        # une erreur (et non silencieusement ignoré comme une ligne vide).
+        lignes_remplies = [l for l in lignes if l["groupe"]]
 
         erreur = None
         if not benevole:
@@ -181,11 +217,14 @@ def creer_reception():
             erreur = "⚠️ Merci de renseigner au moins un produit réceptionné."
         else:
             for num, ligne in enumerate(lignes_remplies, start=1):
-                if not (ligne["aspect_conforme"] and ligne["emballage_conforme"] and ligne["etiquetage_conforme"]):
+                if not ligne["libelle_produit"]:
+                    erreur = f"⚠️ Produit {num} : merci de choisir (ou préciser) le produit réceptionné."
+                elif not (ligne["aspect_conforme"] and ligne["emballage_conforme"] and ligne["etiquetage_conforme"]):
                     erreur = (
                         f"⚠️ Produit {num} ({ligne['libelle_produit']}) : merci d'indiquer "
                         "les 3 conformités (aspect, emballage, étiquetage)."
                     )
+                if erreur:
                     break
 
         if erreur:
@@ -193,6 +232,7 @@ def creer_reception():
             return render_template(
                 "production_cuisine/receptions_creer.html",
                 fournisseurs=fournisseurs,
+                ingredients_par_groupe=ingredients_par_groupe,
                 date_defaut=date_reception,
                 form=request.form,
                 lignes_soumises=lignes,
@@ -208,13 +248,15 @@ def creer_reception():
                         """
                         INSERT INTO cuisine_receptions
                         (date_reception, heure_arrivee, fournisseur_id, camion_libelle,
-                         libelle_produit, temperature_mesuree, poids_kg, aspect_conforme,
+                         libelle_produit, ingredient_groupe, ingredient_produit,
+                         temperature_mesuree, poids_kg, aspect_conforme,
                          emballage_conforme, etiquetage_conforme, commentaire, user_creation)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             date_reception, heure_arrivee, fournisseur_id, camion_libelle,
-                            ligne["libelle_produit"], temperature_mesuree, ligne["poids_kg"],
+                            ligne["libelle_produit"], ligne["ingredient_groupe"], ligne["ingredient_produit"],
+                            temperature_mesuree, ligne["poids_kg"],
                             ligne["aspect_conforme"], ligne["emballage_conforme"], ligne["etiquetage_conforme"],
                             ligne["commentaire"], benevole,
                         ),
@@ -252,6 +294,7 @@ def creer_reception():
             return render_template(
                 "production_cuisine/receptions_creer.html",
                 fournisseurs=fournisseurs,
+                ingredients_par_groupe=ingredients_par_groupe,
                 date_defaut=date_reception,
                 form=request.form,
                 lignes_soumises=lignes,
@@ -260,6 +303,7 @@ def creer_reception():
     return render_template(
         "production_cuisine/receptions_creer.html",
         fournisseurs=fournisseurs,
+        ingredients_par_groupe=ingredients_par_groupe,
         date_defaut=today_paris(),
         form={},
         lignes_soumises=[],
@@ -299,11 +343,23 @@ def detail_reception(reception_id):
             (reception["date_reception"],),
         ).fetchall()
 
+    # Bouton "← Retour" contextuel : si on arrive depuis la fiche recette
+    # (lien "Détail" d'un lot en traçabilité), on y revient plutôt que sur
+    # la liste générale des réceptions. Le paramètre n'est suivi que s'il
+    # correspond bien à la production réelle de cette réception (sinon on
+    # retombe sur la liste).
+    depuis_production = request.args.get("depuis_production", type=int)
+    if depuis_production and depuis_production == reception["production_id"]:
+        retour_url = url_for("production_cuisine.detail_production", production_id=depuis_production)
+    else:
+        retour_url = url_for("production_cuisine.liste_receptions")
+
     return render_template(
         "production_cuisine/receptions_detail.html",
         reception=reception,
         photos=photos,
         productions_du_jour=productions_du_jour,
+        retour_url=retour_url,
     )
 
 

@@ -263,7 +263,7 @@
                 {% if r.poids_kg is not none %} · {{ r.poids_kg }} kg{% endif %}
                 {% if r.temperature_mesuree is not none %} · {{ r.temperature_mesuree }}°C{% endif %}
               </span>
-              <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id) }}" class="small">Détail</a>
+              <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id, depuis_production=production.id) }}" class="small">Détail</a>
             </div>
             {% if photos_par_reception.get(r.id) %}
             <div class="d-flex flex-wrap gap-2 mt-2">

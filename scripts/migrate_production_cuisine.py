@@ -123,6 +123,21 @@ BEGIN
   UPDATE cuisine_recettes_referentiel SET date_modif = datetime('now','utc') WHERE id = NEW.id;
 END;
 
+-- Référentiel des ingrédients carnés (import du fichier Excel du
+-- responsable cuisine "documents Nicolas.xlsx", onglet "liste produit ").
+-- Utilisé par l'écran de réception marchandises : on choisit d'abord le
+-- groupe (Boeuf, Agneau, Poisson, Gibier, Divers...), puis le produit dans
+-- ce groupe (ex. "Boeuf" / "Langue").
+CREATE TABLE IF NOT EXISTS cuisine_ingredients_carnes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  groupe TEXT NOT NULL,
+  produit TEXT NOT NULL,
+  actif INTEGER DEFAULT 1,
+  date_creation TEXT DEFAULT (datetime('now','utc')),
+  UNIQUE(groupe, produit)
+);
+CREATE INDEX IF NOT EXISTS idx_cuisine_ingredients_carnes_groupe ON cuisine_ingredients_carnes(groupe);
+
 CREATE TABLE IF NOT EXISTS cuisine_productions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   date_production TEXT NOT NULL,
@@ -567,6 +582,8 @@ def main():
         add_missing_columns(conn, "cuisine_receptions", [
             ("production_id", "INTEGER REFERENCES cuisine_productions(id)"),
             ("libelle_produit", "TEXT"),
+            ("ingredient_groupe", "TEXT"),
+            ("ingredient_produit", "TEXT"),
         ])
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cuisine_receptions_production ON cuisine_receptions(production_id)")
         add_missing_columns(conn, "cuisine_etapes_ref", [

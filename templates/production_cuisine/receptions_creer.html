@@ -75,9 +75,22 @@
     </div>
     <div class="card-body">
       <div class="mb-3">
+        <label class="form-label fw-bold">Groupe *</label>
+        <select name="ingredient_groupe_IDXTOKEN" class="form-select form-select-lg ingredient-groupe-select" required>
+          <option value="">-- Choisir --</option>
+          {% for g in ingredients_par_groupe %}
+            <option value="{{ g }}">{{ g }}</option>
+          {% endfor %}
+          <option value="__autre__">Autre (préciser)</option>
+        </select>
+      </div>
+      <div class="mb-3">
         <label class="form-label fw-bold">Produit réceptionné *</label>
-        <input type="text" name="libelle_produit_IDXTOKEN" class="form-control form-control-lg" required
-               placeholder="Ex : bœuf, poulet, légumes, cagettes de tomates…">
+        <select name="ingredient_produit_IDXTOKEN" class="form-select form-select-lg ingredient-produit-select" required disabled>
+          <option value="">-- Choisir un groupe d'abord --</option>
+        </select>
+        <input type="text" name="ingredient_produit_autre_IDXTOKEN" class="form-control form-control-lg mt-2 ingredient-produit-autre"
+               style="display:none;" placeholder="Préciser le produit…">
       </div>
       <div class="mb-3">
         <label class="form-label">Poids (kg)</label>
@@ -116,6 +129,7 @@
 <script>
 (function () {
   var lignesSoumises = {{ lignes_soumises | tojson }};
+  var ingredientsParGroupe = {{ ingredients_par_groupe | tojson }};
   var container = document.getElementById('lignes-produits');
   var template = document.getElementById('template-ligne-produit');
   var btnAjouter = document.getElementById('btn-ajouter-ligne');
@@ -136,9 +150,52 @@
     wrapper.innerHTML = html;
     var ligne = wrapper.firstElementChild;
 
+    var groupeSelect = ligne.querySelector('[name="ingredient_groupe_' + idx + '"]');
+    var produitSelect = ligne.querySelector('[name="ingredient_produit_' + idx + '"]');
+    var produitAutre = ligne.querySelector('[name="ingredient_produit_autre_' + idx + '"]');
+
+    function majProduit(valeurProduitAConserver) {
+      var groupe = groupeSelect.value;
+      if (groupe === '__autre__') {
+        produitSelect.style.display = 'none';
+        produitSelect.disabled = true;
+        produitSelect.required = false;
+        produitAutre.style.display = '';
+        produitAutre.required = true;
+      } else {
+        produitAutre.style.display = 'none';
+        produitAutre.required = false;
+        produitSelect.style.display = '';
+        produitSelect.disabled = false;
+        produitSelect.required = true;
+        var produits = ingredientsParGroupe[groupe] || [];
+        produitSelect.innerHTML = '';
+        var optDefaut = document.createElement('option');
+        optDefaut.value = '';
+        optDefaut.textContent = groupe ? '-- Choisir --' : "-- Choisir un groupe d'abord --";
+        produitSelect.appendChild(optDefaut);
+        produits.forEach(function (p) {
+          var opt = document.createElement('option');
+          opt.value = p;
+          opt.textContent = p;
+          produitSelect.appendChild(opt);
+        });
+        if (valeurProduitAConserver && produits.indexOf(valeurProduitAConserver) !== -1) {
+          produitSelect.value = valeurProduitAConserver;
+        }
+      }
+    }
+
+    groupeSelect.addEventListener('change', function () { majProduit(null); });
+    majProduit(null);
+
     if (valeurs) {
-      if (valeurs.libelle_produit) {
-        ligne.querySelector('[name="libelle_produit_' + idx + '"]').value = valeurs.libelle_produit;
+      if (valeurs.groupe) {
+        groupeSelect.value = valeurs.groupe;
+        majProduit(valeurs.produit);
+        if (valeurs.groupe === '__autre__' && valeurs.produit) {
+          produitAutre.value = valeurs.produit;
+        }
       }
       if (valeurs.poids_kg) {
         ligne.querySelector('[name="poids_kg_' + idx + '"]').value = valeurs.poids_kg;

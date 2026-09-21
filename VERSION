@@ -1,3 +1,3 @@
-VERSION=1.6.86
-MESSAGE=Cuisine : verrouiller le changement de recette une fois la production terminee
-DATE=2026-09-21 13:13
+VERSION=1.6.87
+MESSAGE=Cuisine : mode cuisson auto depuis recette, referentiel ingredients carnes (reception + maintenance), fix navigation retour traca
+DATE=2026-09-21 17:00

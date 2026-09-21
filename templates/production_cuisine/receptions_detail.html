@@ -7,7 +7,7 @@
 
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h2 class="mb-0">📥 Réception #{{ reception.id }} — {{ reception.libelle_produit or "produit non renseigné" }}</h2>
-    <a href="{{ url_for('production_cuisine.liste_receptions') }}" class="btn btn-outline-secondary">← Retour</a>
+    <a href="{{ retour_url }}" class="btn btn-outline-secondary">← Retour</a>
   </div>
 
   <table class="table">

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}{{ "Modifier" if ingredient else "Nouvel" }} ingrédient{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 640px;">
+
+  <h2 class="mb-3">🥩 {{ "Modifier l'ingrédient" if ingredient else "Nouvel ingrédient" }}</h2>
+
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">Groupe *</label>
+      <input type="text" name="groupe" class="form-control form-control-lg" required
+             list="groupes-existants" value="{{ form.groupe or '' }}"
+             placeholder="Ex : Boeuf, Agneau, Poisson…">
+      <datalist id="groupes-existants">
+        {% for g in groupes_existants %}
+          <option value="{{ g }}">
+        {% endfor %}
+      </datalist>
+      <div class="form-text">Un groupe existant s'affiche en suggestion — taper un nouveau nom crée un nouveau groupe.</div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">Produit *</label>
+      <input type="text" name="produit" class="form-control form-control-lg" required
+             value="{{ form.produit or '' }}" placeholder="Ex : Langue, Jarret…">
+    </div>
+
+    <div class="d-flex justify-content-between">
+      <a href="{{ url_for('production_cuisine.liste_ingredients_carnes') }}" class="btn btn-outline-secondary btn-lg">Annuler</a>
+      <button type="submit" class="btn btn-primary btn-lg">💾 Enregistrer</button>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

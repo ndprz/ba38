@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Référentiel ingrédients carnés{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_bootstrap5.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">🥩 Référentiel des ingrédients carnés</h2>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('production_cuisine.liste_productions') }}" class="btn btn-outline-secondary">← Retour</a>
+      <a href="{{ url_for('production_cuisine.creer_ingredient_carne') }}" class="btn btn-primary">
+        ➕ Nouvel ingrédient
+      </a>
+    </div>
+  </div>
+
+  <p class="text-muted">
+    {{ nb_ingredients }} ingrédient(s) — utilisés dans le sélecteur "Produit réceptionné" de l'écran de réception
+    (choix du groupe, puis du produit dans ce groupe). Filtrez par groupe/produit directement dans les en-têtes de colonnes.
+  </p>
+
+  <div id="ingredients-table"></div>
+
+</div>
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+  var ingredientsData = {{ ingredients_json | tojson }};
+  var urlModifierBase = "{{ url_for('production_cuisine.modifier_ingredient_carne', ingredient_id=0) }}".slice(0, -1);
+  var urlSupprimerBase = "{{ url_for('production_cuisine.supprimer_ingredient_carne', ingredient_id=0) }}".slice(0, -1);
+  var csrfToken = "{{ csrf_token() }}";
+
+  var table = new Tabulator("#ingredients-table", {
+    data: ingredientsData,
+    layout: "fitColumns",
+    height: "70vh",
+    columns: [
+      { title: "Groupe", field: "groupe", widthGrow: 1, headerFilter: "input" },
+      { title: "Produit", field: "produit", widthGrow: 2, headerFilter: "input" },
+      {
+        title: "", field: "id", headerSort: false, width: 110,
+        formatter: function (cell) {
+          var data = cell.getData();
+          var wrap = document.createElement("div");
+          wrap.className = "d-flex gap-1";
+
+          var editLink = document.createElement("a");
+          editLink.href = urlModifierBase + data.id;
+          editLink.className = "btn btn-sm btn-outline-secondary";
+          editLink.textContent = "✏️";
+          wrap.appendChild(editLink);
+
+          var delBtn = document.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "btn btn-sm btn-outline-danger";
+          delBtn.textContent = "🗑️";
+          delBtn.addEventListener("click", function () {
+            if (!confirm("Supprimer « " + data.groupe + " / " + data.produit + " » du référentiel ?")) return;
+            var form = document.createElement("form");
+            form.method = "POST";
+            form.action = urlSupprimerBase + data.id;
+            var csrf = document.createElement("input");
+            csrf.type = "hidden";
+            csrf.name = "csrf_token";
+            csrf.value = csrfToken;
+            form.appendChild(csrf);
+            document.body.appendChild(form);
+            form.submit();
+          });
+          wrap.appendChild(delBtn);
+          return wrap;
+        },
+      },
+    ],
+  });
+</script>
+{% endblock %}

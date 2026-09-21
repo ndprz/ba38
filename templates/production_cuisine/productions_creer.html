@@ -66,12 +66,13 @@
 
     <div class="mb-3">
       <label class="form-label">Mode de cuisson</label>
-      <select name="mode_cuisson" class="form-select">
+      <select name="mode_cuisson" id="mode-cuisson-select" class="form-select">
         <option value="">-- Choisir --</option>
         {% for t in types_cuisson %}
           <option value="{{ t }}" {% if form.mode_cuisson == t %}selected{% endif %}>{{ t }}</option>
         {% endfor %}
       </select>
+      <div class="form-text">Repris automatiquement de la recette choisie ci-dessus — modifiable si besoin.</div>
     </div>
 
     <div class="card mb-3">
@@ -135,6 +136,13 @@
     document.getElementById("recette-referentiel-id-hidden").value = recette.id;
     document.getElementById("nom-recette-hidden").value = recette.nom;
     document.getElementById("espece-input").value = recette.sous_famille_1 || "";
+    if (recette.type_cuisson) {
+      var modeCuissonSelect = document.getElementById("mode-cuisson-select");
+      var optionExiste = Array.prototype.some.call(modeCuissonSelect.options, function (o) {
+        return o.value === recette.type_cuisson;
+      });
+      if (optionExiste) modeCuissonSelect.value = recette.type_cuisson;
+    }
     var choisie = document.getElementById("recette-choisie");
     choisie.style.display = "block";
     choisie.textContent = "✅ Recette choisie : " + recette.nom + (recette.code ? " (code " + recette.code + ")" : "");
