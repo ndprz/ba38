@@ -101,6 +101,31 @@
       background: #2ecc71;
     }
 
+    .pastille.non_applicable {
+      background: transparent;
+      border: 2px solid #777;
+    }
+
+    .conformite-globale {
+      display: inline-block;
+      margin-left: 0.5rem;
+      padding: 0.1rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: bold;
+      vertical-align: middle;
+    }
+
+    .conformite-globale.conforme {
+      background: #2ecc71;
+      color: #111;
+    }
+
+    .conformite-globale.non_conforme {
+      background: #e74c3c;
+      color: #fff;
+    }
+
     .vide {
       text-align: center;
       color: #777;
@@ -156,16 +181,24 @@
             if (e.statut === "terminee") {
               classeConf = e.conforme === "non_conforme" ? "non_conforme" : "conforme";
             }
+            let libelle = e.statut === "non_applicable" ? e.libelle + " (non applicable)" : e.libelle;
             return `
               <div class="etape-ligne">
                 <div class="pastille ${e.statut} ${classeConf}"></div>
-                <div>${e.libelle}</div>
+                <div>${libelle}</div>
               </div>
             `;
           }).join("");
 
+          let badgeConformite = "";
+          if (p.conformite_globale === "conforme") {
+            badgeConformite = '<span class="conformite-globale conforme">✅ Conforme</span>';
+          } else if (p.conformite_globale === "non_conforme") {
+            badgeConformite = '<span class="conformite-globale non_conforme">⚠️ NON CONFORME</span>';
+          }
+
           div.innerHTML = `
-            <h2>${p.nom_recette}</h2>
+            <h2>${p.nom_recette}${badgeConformite}</h2>
             <div class="sous-titre">${sousTitre}</div>
             ${lignes}
           `;

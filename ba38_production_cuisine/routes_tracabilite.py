@@ -13,7 +13,7 @@ from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_production_cuisine import production_cuisine_bp
 from ba38_production_cuisine.utils import (
     _connect, now_paris_str, upload_dir_traca_lot, save_uploaded_files,
-    etape_bloquante, heure_fin_max_precedentes,
+    etape_bloquante, heure_fin_max_precedentes, calculer_conformite_production,
 )
 
 CONFORMITE_CHOICES = ("conforme", "non_conforme")
@@ -211,6 +211,38 @@ def etape_production(production_id):
                 )
             conn.commit()
             flash(f"⏹️ {etape_ref['libelle']} terminée.", "success")
+
+            if etape_code == "conditionnement":
+                # Mise en cellule : toujours démarrée avec l'heure/température
+                # de fin de conditionnement (jamais ressaisie manuellement).
+                deja_demarree = conn.execute(
+                    """SELECT 1 FROM cuisine_production_etapes
+                       WHERE production_id = ? AND etape_code = 'refroidissement_cellule'""",
+                    (production_id,),
+                ).fetchone()
+                if not deja_demarree:
+                    conn.execute(
+                        """INSERT INTO cuisine_production_etapes
+                           (production_id, etape_code, heure_debut, temperature_debut, user_creation)
+                           VALUES (?, 'refroidissement_cellule', ?, ?, ?)""",
+                        (production_id, heure_fin, temperature, benevole or None),
+                    )
+                    conn.commit()
+                    flash("▶️ Mise en cellule démarrée automatiquement (reprend la fin du conditionnement).", "success")
+
+            elif etape_code == "refroidissement_cellule":
+                statut_conformite, motif = calculer_conformite_production(conn, production_id)
+                if statut_conformite:
+                    conn.execute(
+                        """UPDATE cuisine_production_etapes SET conforme = ?
+                           WHERE production_id = ? AND etape_code = 'refroidissement_cellule'""",
+                        (statut_conformite, production_id),
+                    )
+                    conn.commit()
+                    if statut_conformite == "conforme":
+                        flash(f"✅ Production conforme. {motif}", "success")
+                    else:
+                        flash(f"⚠️ Production NON CONFORME. {motif}", "danger")
 
     upload_database()
     return _redirect_run(production_id)

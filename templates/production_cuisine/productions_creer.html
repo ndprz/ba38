@@ -2,19 +2,18 @@
 
 {% block title %}Nouvelle production{% endblock %}
 
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_bootstrap5.min.css" rel="stylesheet">
+{% endblock %}
+
 {% block content %}
-<div class="container mt-4" style="max-width: 640px;">
+<div class="container mt-4" style="max-width: 720px;">
 
   <h2 class="mb-3">🍲 Nouvelle production</h2>
 
-  <form method="POST">
+  <form method="POST" id="form-production">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-    <div class="mb-3">
-      <label class="form-label fw-bold">Bénévole *</label>
-      <input type="text" name="benevole" class="form-control form-control-lg" required
-             value="{{ form.benevole or '' }}" placeholder="Prénom du bénévole">
-    </div>
+    <input type="hidden" name="recette_referentiel_id" id="recette-referentiel-id-hidden" value="{{ form.recette_referentiel_id or '' }}">
 
     <div class="mb-3">
       <label class="form-label">Date de production</label>
@@ -51,25 +50,46 @@
 
     <div class="mb-3">
       <label class="form-label fw-bold">Recette *</label>
-      <input type="text" name="nom_recette" class="form-control form-control-lg" required
-             list="recettes-liste" value="{{ form.nom_recette or '' }}"
-             placeholder="Saisir ou choisir une recette">
-      <datalist id="recettes-liste">
-        {% for r in recettes %}
-          <option value="{{ r.nom }}">
-        {% endfor %}
-      </datalist>
-      <div class="form-text">Si le nom saisi n'existe pas encore, une nouvelle recette sera créée automatiquement.</div>
+      <div id="recette-choisie" class="alert alert-success" style="display:none;"></div>
+      <input type="text" id="recette-recherche" class="form-control form-control-lg mb-2"
+             placeholder="🔍 Rechercher (code, nom, famille, sous-famille, cuisson...)">
+      <div id="recettes-table"></div>
+      <input type="text" name="nom_recette" id="nom-recette-hidden" class="form-control mt-2" required
+             value="{{ form.nom_recette or '' }}" placeholder="Nom de la recette (rempli par la sélection ci-dessus, modifiable)">
+      <div class="form-text">Si la recette n'existe pas dans le référentiel, tapez son nom directement dans le champ ci-dessus — elle sera créée en tant que production sans lien référentiel.</div>
     </div>
 
     <div class="mb-3">
       <label class="form-label">Espèce</label>
-      <input type="text" name="espece" class="form-control">
+      <input type="text" name="espece" id="espece-input" class="form-control" value="{{ form.espece or '' }}">
     </div>
 
     <div class="mb-3">
       <label class="form-label">Mode de cuisson</label>
-      <input type="text" name="mode_cuisson" class="form-control">
+      <select name="mode_cuisson" class="form-select">
+        <option value="">-- Choisir --</option>
+        {% for t in types_cuisson %}
+          <option value="{{ t }}" {% if form.mode_cuisson == t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header">🧊 Décongélation (si nécessaire)</div>
+      <div class="card-body">
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="decongelation-non-applicable-check">
+          <label class="form-check-label" for="decongelation-non-applicable-check">
+            🚫 Non applicable (produit à température ambiante)
+          </label>
+        </div>
+        <div id="decongelation-avant">
+          <button type="button" class="btn btn-outline-primary" id="btn-decongelation-depart">▶️ Départ décongélation</button>
+        </div>
+        <div id="decongelation-confirmee" class="text-success fw-bold" style="display:none;"></div>
+        <input type="hidden" name="decongelation_heure_debut" id="decongelation-heure-debut-hidden">
+        <input type="hidden" name="decongelation_non_applicable" id="decongelation-non-applicable-hidden" value="">
+      </div>
     </div>
 
     <div class="d-flex justify-content-between">
@@ -79,4 +99,79 @@
   </form>
 
 </div>
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+  var recettesReferentiel = {{ recettes_referentiel | tojson }};
+
+  var tableRecettes = new Tabulator("#recettes-table", {
+    data: recettesReferentiel,
+    layout: "fitColumns",
+    height: "320px",
+    columns: [
+      { title: "Code", field: "code", width: 90 },
+      { title: "Nom", field: "nom", widthGrow: 2 },
+      { title: "Famille", field: "famille" },
+      { title: "Sous-famille 1", field: "sous_famille_1" },
+      { title: "Sous-famille 2", field: "sous_famille_2" },
+      { title: "Cuisson", field: "type_cuisson" },
+    ],
+  });
+
+  document.getElementById("recette-recherche").addEventListener("input", function (e) {
+    var terme = e.target.value.trim().toLowerCase();
+    if (!terme) {
+      tableRecettes.clearFilter();
+      return;
+    }
+    tableRecettes.setFilter(function (data) {
+      return ["code", "nom", "famille", "sous_famille_1", "sous_famille_2", "type_cuisson"].some(function (champ) {
+        return data[champ] != null && String(data[champ]).toLowerCase().indexOf(terme) !== -1;
+      });
+    });
+  });
+
+  tableRecettes.on("rowClick", function (e, row) {
+    var recette = row.getData();
+    document.getElementById("recette-referentiel-id-hidden").value = recette.id;
+    document.getElementById("nom-recette-hidden").value = recette.nom;
+    document.getElementById("espece-input").value = recette.sous_famille_1 || "";
+    var choisie = document.getElementById("recette-choisie");
+    choisie.style.display = "block";
+    choisie.textContent = "✅ Recette choisie : " + recette.nom + (recette.code ? " (code " + recette.code + ")" : "");
+  });
+
+  // Si on modifie le nom à la main après une sélection, on ne sait plus si
+  // ça correspond encore à la recette du référentiel : on retire le lien.
+  document.getElementById("nom-recette-hidden").addEventListener("input", function () {
+    document.getElementById("recette-referentiel-id-hidden").value = "";
+  });
+
+  document.getElementById('decongelation-non-applicable-check').addEventListener('change', function () {
+    var checked = this.checked;
+    document.getElementById('decongelation-avant').style.display = checked ? 'none' : 'block';
+    document.getElementById('decongelation-non-applicable-hidden').value = checked ? '1' : '';
+    if (checked) {
+      document.getElementById('decongelation-heure-debut-hidden').value = '';
+      document.getElementById('decongelation-confirmee').style.display = 'none';
+    }
+  });
+
+  document.getElementById('btn-decongelation-depart').addEventListener('click', function () {
+    var btn = this;
+    btn.disabled = true;
+    fetch("{{ url_for('production_cuisine.api_heure_actuelle') }}")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        document.getElementById('decongelation-heure-debut-hidden').value = data.heure;
+        document.getElementById('decongelation-avant').style.display = 'none';
+        var conf = document.getElementById('decongelation-confirmee');
+        conf.style.display = 'block';
+        conf.textContent = '✅ Décongélation démarrée à ' + data.heure;
+      })
+      .catch(function () {
+        btn.disabled = false;
+        alert('Erreur réseau, réessayez.');
+      });
+  });
+</script>
 {% endblock %}

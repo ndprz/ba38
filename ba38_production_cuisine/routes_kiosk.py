@@ -51,10 +51,14 @@ def api_production_active():
                 derniere_par_code[e["etape_code"]] = e
 
             etapes = []
+            conformite_globale = None
             for ref in etapes_ref:
                 ligne = derniere_par_code.get(ref["code"])
                 if ligne is None:
                     statut = "non_demarree"
+                    conforme = None
+                elif ligne["non_applicable"]:
+                    statut = "non_applicable"
                     conforme = None
                 elif ligne["heure_fin"] is None:
                     statut = "en_cours"
@@ -62,6 +66,9 @@ def api_production_active():
                 else:
                     statut = "terminee"
                     conforme = ligne["conforme"]
+
+                if ref["code"] == "refroidissement_cellule" and statut == "terminee":
+                    conformite_globale = conforme
 
                 etapes.append({
                     "code": ref["code"],
@@ -77,6 +84,7 @@ def api_production_active():
                 "espece": prod["espece"],
                 "mode_cuisson": prod["mode_cuisson"],
                 "etapes": etapes,
+                "conformite_globale": conformite_globale,
             })
 
     return jsonify({"date": date_jour, "productions": data})

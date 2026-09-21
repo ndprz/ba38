@@ -465,13 +465,13 @@ def create_fournisseur():
             cursor.execute("""
                 INSERT INTO fournisseurs
                 (nom, enseigne, type_frs, famille_fournisseur, tel, mail, iban, sans_coordonnees,
-                 adresse, ville, notes,
+                 adresse, ville, notes, actif,
                  date_creation, date_modif, user_modif)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 nom, enseigne, type_frs, famille_fournisseur, tel, mail, iban,
                 "oui" if sans_coordonnees else "non",
-                adresse, ville, notes,
+                adresse, ville, notes, "oui",
                 now, now,
                 current_user.username or current_user.email
             ))

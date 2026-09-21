@@ -87,41 +87,76 @@ def temperatures_historique():
 
 
 # ------------------------------------------------------------
-# 🧽 Nettoyage des zones
+# 🧽 Nettoyage — Plan de Nettoyage et Désinfection (PND) du site :
+#     14 zones, chacune avec plusieurs surfaces (fréquence/produit/point
+#     clef propres). Remplace l'ancien registre "zone unique"
+#     (cuisine_hygiene_zones_nettoyage / cuisine_hygiene_nettoyages,
+#     laissées en base mais plus utilisées ici).
+#     Import : scripts/import_pnd_nettoyage.py (source : PND C3ES.xlsx).
 # ------------------------------------------------------------
-@cuisine_hygiene_bp.route("/nettoyage", methods=["GET", "POST"])
+@cuisine_hygiene_bp.route("/nettoyage")
 @login_required
 @require_access("cuisine_hygiene", "ecriture")
 def nettoyage():
-    if request.method == "POST":
-        zone_id = request.form.get("zone_id")
-        conforme = _clean_conformite(request.form.get("conforme"), default="conforme")
-        benevole = (request.form.get("benevole") or "").strip()
-        commentaire = (request.form.get("commentaire") or "").strip() or None
-
-        if not zone_id:
-            flash("⚠️ Merci de choisir une zone.", "warning")
-            return redirect(url_for("cuisine_hygiene.nettoyage"))
-
-        with _connect() as conn:
-            conn.execute(
-                """INSERT INTO cuisine_hygiene_nettoyages
-                   (zone_id, conforme, user_creation, commentaire)
-                   VALUES (?, ?, ?, ?)""",
-                (zone_id, conforme, benevole or None, commentaire),
-            )
-            conn.commit()
-        upload_database()
-        flash("✅ Nettoyage enregistré.", "success")
-        return redirect(url_for("cuisine_hygiene.nettoyage"))
-
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
         zones = conn.execute(
-            "SELECT * FROM cuisine_hygiene_zones_nettoyage WHERE actif = 1 ORDER BY ordre"
+            """SELECT z.*, COUNT(s.id) AS nb_surfaces
+               FROM cuisine_pnd_zones z
+               LEFT JOIN cuisine_pnd_surfaces s ON s.zone_id = z.id AND s.actif = 1
+               WHERE z.actif = 1
+               GROUP BY z.id
+               ORDER BY z.ordre"""
         ).fetchall()
 
     return render_template("cuisine_hygiene/nettoyage.html", zones=zones)
+
+
+@cuisine_hygiene_bp.route("/nettoyage/<int:zone_id>", methods=["GET", "POST"])
+@login_required
+@require_access("cuisine_hygiene", "ecriture")
+def zone_nettoyage(zone_id):
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        zone = conn.execute("SELECT * FROM cuisine_pnd_zones WHERE id = ?", (zone_id,)).fetchone()
+        if not zone:
+            flash("⛔ Zone introuvable.", "danger")
+            return redirect(url_for("cuisine_hygiene.nettoyage"))
+
+        if request.method == "POST":
+            surface_id = request.form.get("surface_id")
+            conforme = _clean_conformite(request.form.get("conforme"), default="conforme")
+            benevole = (request.form.get("benevole") or "").strip()
+            commentaire = (request.form.get("commentaire") or "").strip() or None
+
+            if not surface_id:
+                flash("⚠️ Merci de choisir une surface.", "warning")
+                return redirect(url_for("cuisine_hygiene.zone_nettoyage", zone_id=zone_id))
+
+            conn.execute(
+                """INSERT INTO cuisine_pnd_nettoyages
+                   (surface_id, conforme, user_creation, commentaire)
+                   VALUES (?, ?, ?, ?)""",
+                (surface_id, conforme, benevole or None, commentaire),
+            )
+            conn.commit()
+            upload_database()
+            flash("✅ Nettoyage enregistré.", "success")
+            return redirect(url_for("cuisine_hygiene.zone_nettoyage", zone_id=zone_id))
+
+        surfaces = conn.execute(
+            """SELECT s.*,
+                      (SELECT date_nettoyage FROM cuisine_pnd_nettoyages n
+                        WHERE n.surface_id = s.id ORDER BY n.date_nettoyage DESC LIMIT 1) AS dernier_nettoyage,
+                      (SELECT conforme FROM cuisine_pnd_nettoyages n
+                        WHERE n.surface_id = s.id ORDER BY n.date_nettoyage DESC LIMIT 1) AS dernier_conforme
+               FROM cuisine_pnd_surfaces s
+               WHERE s.zone_id = ? AND s.actif = 1
+               ORDER BY s.ordre""",
+            (zone_id,),
+        ).fetchall()
+
+    return render_template("cuisine_hygiene/zone_nettoyage.html", zone=zone, surfaces=surfaces)
 
 
 @cuisine_hygiene_bp.route("/nettoyage/historique")
@@ -132,9 +167,10 @@ def nettoyage_historique():
         conn.row_factory = sqlite3.Row
         nettoyages = conn.execute(
             """
-            SELECT n.*, z.libelle AS zone_libelle
-            FROM cuisine_hygiene_nettoyages n
-            JOIN cuisine_hygiene_zones_nettoyage z ON z.id = n.zone_id
+            SELECT n.*, s.nom_surface, z.libelle AS zone_libelle
+            FROM cuisine_pnd_nettoyages n
+            JOIN cuisine_pnd_surfaces s ON s.id = n.surface_id
+            JOIN cuisine_pnd_zones z ON z.id = s.zone_id
             ORDER BY n.date_nettoyage DESC
             LIMIT 200
             """

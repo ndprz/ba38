@@ -12,6 +12,12 @@
         📥 Réceptions du jour
         {% if nb_receptions_attente %}<span class="badge bg-danger">{{ nb_receptions_attente }} en attente</span>{% endif %}
       </a>
+      <a href="{{ url_for('production_cuisine.liste_recettes_referentiel') }}" class="btn btn-outline-secondary btn-lg">
+        📖 Référentiel recettes
+      </a>
+      <a href="{{ url_for('production_cuisine.parametres') }}" class="btn btn-outline-secondary btn-lg">
+        ⚙️ Paramètres
+      </a>
       <a href="{{ url_for('production_cuisine.creer_production') }}" class="btn btn-primary btn-lg">
         ➕ Nouvelle production
       </a>

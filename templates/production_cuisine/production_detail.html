@@ -3,6 +3,10 @@
 
 {% block title %}{{ production.nom_recette }}{% endblock %}
 
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_bootstrap5.min.css" rel="stylesheet">
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4" style="max-width: 900px;">
 
@@ -17,6 +21,13 @@
             {% if production.statut == 'terminee' %}bg-success
             {% elif production.statut == 'annulee' %}bg-secondary
             {% else %}bg-warning text-dark{% endif %}">{{ production.statut }}</span>
+        {% if conformite_globale %}
+          {% if conformite_globale == 'conforme' %}
+            <span class="badge bg-success">✅ Conforme</span>
+          {% else %}
+            <span class="badge bg-danger">⚠️ NON CONFORME</span>
+          {% endif %}
+        {% endif %}
       </div>
     </div>
     <div class="d-flex gap-2">
@@ -29,22 +40,19 @@
     </div>
   </div>
 
-  <div class="card mb-4 bg-light">
-    <div class="card-body">
-      <label class="form-label fw-bold">👤 Bénévole (identifiant pour toutes les saisies ci-dessous)</label>
-      <input type="text" id="benevole-global" class="form-control form-control-lg" placeholder="Prénom du bénévole">
-    </div>
-  </div>
-
   <!-- ============================================================ -->
-  <!-- ✏️ Renommer -->
+  <!-- 🔄 Changer de recette -->
   <!-- ============================================================ -->
   <div class="card mb-4">
-    <div class="card-header">✏️ Renommer la recette</div>
+    <div class="card-header">🔄 Changer de recette</div>
     <div class="card-body">
-      <div class="input-group">
+      <div id="recette-choisie" class="alert alert-success" style="display:none;"></div>
+      <input type="text" id="recette-recherche" class="form-control mb-2"
+             placeholder="🔍 Rechercher (code, nom, famille, sous-famille, cuisson...)">
+      <div id="recettes-table"></div>
+      <div class="input-group mt-2">
         <input type="text" id="nouveau-nom" class="form-control" value="{{ production.nom_recette }}">
-        <button class="btn btn-outline-primary" onclick="renommer()">Renommer</button>
+        <button class="btn btn-outline-primary" onclick="changerRecette()">Valider</button>
       </div>
       {% if production.nom_recette != production.nom_recette_initial %}
         <div class="form-text">Nom initial : {{ production.nom_recette_initial }}</div>
@@ -65,7 +73,7 @@
         <div class="border rounded p-3 mb-3 {% if bloquante %}bg-light{% endif %}">
           <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div>
-              <strong>{{ ref.ordre }}. {{ ref.libelle }}</strong>
+              <strong>{% if ref.code == 'decongelation' %}🧊{% else %}{{ ref.ordre }}.{% endif %} {{ ref.libelle }}</strong>
               {% if ref.optionnelle %}<span class="badge bg-info text-dark ms-1">optionnelle</span>{% endif %}
               {% if ligne and ligne.non_applicable %}
                 <div class="text-muted small">🚫 Non applicable</div>
@@ -95,11 +103,10 @@
               {% endif %}
             </div>
 
-            {% if not bloquante and ref.saisie_debut and not ligne %}
+            {% if not bloquante and ref.saisie_debut and not ligne and ref.code not in ('decongelation', 'refroidissement_cellule') %}
             <form method="POST" action="{{ url_for('production_cuisine.etape_production', production_id=production.id) }}"
-                  class="benevole-form d-flex flex-wrap gap-2 align-items-end">
+                  class="d-flex flex-wrap gap-2 align-items-end">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="hidden" name="benevole" class="benevole-sync">
               <input type="hidden" name="etape_code" value="{{ ref.code }}">
               <input type="hidden" name="action" value="demarrer">
               {% if ref.saisie_temperature_debut %}
@@ -111,12 +118,17 @@
               <button type="submit" class="btn btn-success btn-lg">▶️ Démarrer</button>
             </form>
             {% endif %}
+            {% if not ligne and ref.code == 'decongelation' %}
+            <div class="text-muted small">▶️ Se démarre depuis l'écran de création de la recette.</div>
+            {% endif %}
+            {% if not ligne and ref.code == 'refroidissement_cellule' and not bloquante %}
+            <div class="text-muted small">▶️ Démarre automatiquement à la fin du conditionnement.</div>
+            {% endif %}
 
             {% if not bloquante and not resolue and not ligne %}
             <form method="POST" action="{{ url_for('production_cuisine.etape_production', production_id=production.id) }}"
                   onsubmit="return confirm('Marquer « {{ ref.libelle }} » comme non applicable à cette recette ?');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="hidden" name="benevole" class="benevole-sync">
               <input type="hidden" name="etape_code" value="{{ ref.code }}">
               <input type="hidden" name="action" value="non_applicable">
               <button type="submit" class="btn btn-outline-secondary">🚫 Non applicable</button>
@@ -126,9 +138,8 @@
 
           {% if not bloquante and ((not ref.saisie_debut and not ligne) or (ligne and ligne.heure_fin is none)) %}
           <form method="POST" action="{{ url_for('production_cuisine.etape_production', production_id=production.id) }}"
-                class="benevole-form mt-2 row g-2 align-items-end">
+                class="mt-2 row g-2 align-items-end">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="benevole" class="benevole-sync">
             <input type="hidden" name="etape_code" value="{{ ref.code }}">
             <input type="hidden" name="action" value="terminer">
 
@@ -168,9 +179,8 @@
           <details class="mt-2">
             <summary class="text-muted small" style="cursor:pointer;">✏️ Corriger l'heure/température (oubli de saisie sur le moment)</summary>
             <form method="POST" action="{{ url_for('production_cuisine.corriger_etape_production', production_id=production.id, etape_id=ligne.id) }}"
-                  class="benevole-form row g-2 align-items-end mt-1">
+                  class="row g-2 align-items-end mt-1">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="hidden" name="benevole" class="benevole-sync">
               {% if ref.saisie_debut %}
               <div class="col-auto">
                 <label class="form-label small">Début</label>
@@ -313,9 +323,8 @@
           ➕ Ajouter un lot manuel (marchandise non couverte par une réception)
         </summary>
         <form method="POST" action="{{ url_for('production_cuisine.ajouter_lot', production_id=production.id) }}"
-              enctype="multipart/form-data" class="benevole-form mt-3">
+              enctype="multipart/form-data" class="mt-3">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="benevole" class="benevole-sync">
 
           <label class="form-label fw-bold">Fournisseur</label>
           <div class="d-flex flex-wrap gap-2 mb-3">
@@ -380,11 +389,8 @@
         </p>
       {% endif %}
 
-      <form method="POST" action="{{ url_for('production_cuisine.validation_production', production_id=production.id) }}"
-            class="benevole-form">
+      <form method="POST" action="{{ url_for('production_cuisine.validation_production', production_id=production.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="benevole" class="benevole-sync">
-        <input type="hidden" name="valide_par" class="benevole-sync">
 
         <label class="form-label fw-bold d-block">Plat témoin conservé ?</label>
         <div class="btn-group mb-3" role="group">
@@ -413,22 +419,61 @@
 
 </div>
 
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
 <script>
-  // Synchronise le champ "Bénévole" saisi une fois en haut de page vers
-  // tous les mini-formulaires indépendants de l'écran (un POST par action).
-  document.querySelectorAll('.benevole-form').forEach(function (form) {
-    form.addEventListener('submit', function () {
-      var valeur = document.getElementById('benevole-global').value;
-      form.querySelectorAll('.benevole-sync').forEach(function (input) {
-        input.value = valeur;
+  var recettesReferentiel = {{ recettes_referentiel | tojson }};
+  var recetteReferentielIdChoisie = null;
+
+  var tableRecettes = new Tabulator("#recettes-table", {
+    data: recettesReferentiel,
+    layout: "fitColumns",
+    height: "320px",
+    columns: [
+      { title: "Code", field: "code", width: 90 },
+      { title: "Nom", field: "nom", widthGrow: 2 },
+      { title: "Famille", field: "famille" },
+      { title: "Sous-famille 1", field: "sous_famille_1" },
+      { title: "Sous-famille 2", field: "sous_famille_2" },
+      { title: "Cuisson", field: "type_cuisson" },
+    ],
+  });
+
+  document.getElementById("recette-recherche").addEventListener("input", function (e) {
+    var terme = e.target.value.trim().toLowerCase();
+    if (!terme) {
+      tableRecettes.clearFilter();
+      return;
+    }
+    tableRecettes.setFilter(function (data) {
+      return ["code", "nom", "famille", "sous_famille_1", "sous_famille_2", "type_cuisson"].some(function (champ) {
+        return data[champ] != null && String(data[champ]).toLowerCase().indexOf(terme) !== -1;
       });
     });
   });
 
-  function renommer() {
+  tableRecettes.on("rowClick", function (e, row) {
+    var recette = row.getData();
+    recetteReferentielIdChoisie = recette.id;
+    document.getElementById("nouveau-nom").value = recette.nom;
+    var choisie = document.getElementById("recette-choisie");
+    choisie.style.display = "block";
+    choisie.textContent = "✅ Recette choisie : " + recette.nom + (recette.code ? " (code " + recette.code + ")" : "");
+  });
+
+  document.getElementById("nouveau-nom").addEventListener("input", function () {
+    // Modification manuelle après sélection : on ne sait plus si ça
+    // correspond encore à la recette du référentiel choisie.
+    recetteReferentielIdChoisie = null;
+  });
+
+  function changerRecette() {
     var nouveauNom = document.getElementById('nouveau-nom').value.trim();
-    var benevole = document.getElementById('benevole-global').value;
     if (!nouveauNom) return;
+
+    var corps = { nouveau_nom: nouveauNom };
+    if (recetteReferentielIdChoisie) {
+      corps.recette_referentiel_id = recetteReferentielIdChoisie;
+    }
 
     fetch("{{ url_for('production_cuisine.renommer_production', production_id=production.id) }}", {
       method: "POST",
@@ -436,17 +481,17 @@
         "Content-Type": "application/x-www-form-urlencoded",
         "X-CSRFToken": "{{ csrf_token() }}"
       },
-      body: new URLSearchParams({ nouveau_nom: nouveauNom, benevole: benevole })
+      body: new URLSearchParams(corps)
     })
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (data.ok) {
           document.getElementById('titre-recette').textContent = data.nouveau_nom;
         } else {
-          alert(data.error || "Erreur lors du renommage.");
+          alert(data.error || "Erreur lors du changement de recette.");
         }
       })
-      .catch(function () { alert("Erreur réseau lors du renommage."); });
+      .catch(function () { alert("Erreur réseau lors du changement de recette."); });
   }
 </script>
 {% include "production_cuisine/_camera_capture_js.html" %}

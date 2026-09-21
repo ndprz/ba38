@@ -38,29 +38,19 @@
       </div>
     </div>
 
-    <!-- Zones de nettoyage -->
+    <!-- Nettoyage : géré par le Plan de Nettoyage et Désinfection -->
     <div class="col-md-4">
       <div class="card h-100">
-        <div class="card-header">🧽 Zones de nettoyage</div>
+        <div class="card-header">🧽 Nettoyage</div>
         <div class="card-body">
-          <ul class="list-group mb-3">
-            {% for z in zones_nettoyage %}
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-              <span class="{% if not z.actif %}text-muted text-decoration-line-through{% endif %}">{{ z.libelle }}</span>
-              <form method="POST" action="{{ url_for('cuisine_hygiene.toggle_zone_nettoyage', zone_id=z.id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-sm {% if z.actif %}btn-outline-danger{% else %}btn-outline-success{% endif %}">
-                  {% if z.actif %}Désactiver{% else %}Activer{% endif %}
-                </button>
-              </form>
-            </li>
-            {% endfor %}
-          </ul>
-          <form method="POST" action="{{ url_for('cuisine_hygiene.ajouter_zone_nettoyage') }}" class="d-flex gap-2">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="text" name="libelle" class="form-control" placeholder="Nouvelle zone" required>
-            <button type="submit" class="btn btn-primary">➕</button>
-          </form>
+          <p class="text-muted">
+            Les zones et surfaces de nettoyage viennent maintenant du Plan de
+            Nettoyage et Désinfection (PND) du site — 14 zones, chacune avec
+            ses surfaces, fréquences et produits propres.
+          </p>
+          <a href="{{ url_for('cuisine_hygiene.nettoyage') }}" class="btn btn-outline-primary">
+            Voir l'écran de nettoyage →
+          </a>
         </div>
       </div>
     </div>

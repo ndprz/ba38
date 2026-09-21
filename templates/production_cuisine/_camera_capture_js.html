@@ -1,6 +1,9 @@
 <script>
 (function () {
-  document.querySelectorAll(".camera-multi-capture").forEach(function (container) {
+  function initCameraCapture(root) {
+    (root || document).querySelectorAll(".camera-multi-capture").forEach(function (container) {
+    if (container.dataset.cameraInit) return;
+    container.dataset.cameraInit = "1";
     var addBtn = container.querySelector(".camera-add-btn");
     var hiddenInput = container.querySelector(".camera-hidden-input");
     var submitInput = container.querySelector(".camera-submit-input");
@@ -45,6 +48,10 @@
         syncSubmitInput();
       }
     });
-  });
+    });
+  }
+
+  window.initCameraCapture = initCameraCapture;
+  initCameraCapture(document);
 })();
 </script>

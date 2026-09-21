@@ -40,7 +40,7 @@
       <thead>
         <tr>
           <th>Heure</th><th>Produit</th><th>Fournisseur</th><th>Camion</th><th>Temp.</th><th>Poids (kg)</th>
-          <th>Aspect</th><th>Emballage</th><th>Étiquetage</th><th>Bénévole</th><th></th>
+          <th>Aspect</th><th>Emballage</th><th>Étiquetage</th><th>Réceptionnaire</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -79,6 +79,11 @@
               </ul>
             </div>
             {% endif %}
+            <form method="POST" action="{{ url_for('production_cuisine.supprimer_reception', reception_id=r.id) }}"
+                  onsubmit="return confirm('Supprimer cette réception ?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
+            </form>
           </td>
         </tr>
         {% endfor %}
@@ -96,7 +101,7 @@
       <thead>
         <tr>
           <th>Heure</th><th>Produit</th><th>Fournisseur</th><th>Camion</th><th>Poids (kg)</th>
-          <th>Recette</th><th>Bénévole</th><th></th>
+          <th>Recette</th><th>Réceptionnaire</th><th></th>
         </tr>
       </thead>
       <tbody>

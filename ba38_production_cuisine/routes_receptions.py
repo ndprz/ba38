@@ -2,6 +2,7 @@
 # 📥 Réceptions marchandises (contrôle à réception)
 # ============================================================
 
+import re
 import sqlite3
 
 import os
@@ -103,6 +104,31 @@ def affecter_reception(reception_id):
     return redirect(url_for("production_cuisine.liste_receptions"))
 
 
+@production_cuisine_bp.route("/receptions/<int:reception_id>/supprimer", methods=["POST"])
+@login_required
+@require_access("production_cuisine", "ecriture")
+def supprimer_reception(reception_id):
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        reception = conn.execute(
+            "SELECT id, production_id FROM cuisine_receptions WHERE id = ?", (reception_id,)
+        ).fetchone()
+        if not reception:
+            flash("⛔ Réception introuvable.", "danger")
+            return redirect(url_for("production_cuisine.liste_receptions"))
+
+        if reception["production_id"] is not None:
+            flash("⛔ Impossible de supprimer : cette réception est affectée à une recette en cours.", "danger")
+            return redirect(url_for("production_cuisine.liste_receptions"))
+
+        conn.execute("UPDATE cuisine_receptions SET actif = 0 WHERE id = ?", (reception_id,))
+        conn.commit()
+
+    upload_database()
+    flash("🗑️ Réception supprimée.", "success")
+    return redirect(url_for("production_cuisine.liste_receptions"))
+
+
 @production_cuisine_bp.route("/receptions/creer", methods=["GET", "POST"])
 @login_required
 @require_access("production_cuisine", "ecriture")
@@ -114,69 +140,111 @@ def creer_reception():
         ).fetchall()
 
     if request.method == "POST":
+        # Champs communs à toute la livraison — saisis une seule fois même
+        # si plusieurs produits différents sont réceptionnés en même temps
+        # (ex. un même camion apportant viande + légumes).
         benevole = (request.form.get("benevole") or "").strip()
         date_reception = request.form.get("date_reception") or today_paris()
         heure_arrivee = request.form.get("heure_arrivee") or None
         fournisseur_id = request.form.get("fournisseur_id") or None
         camion_libelle = (request.form.get("camion_libelle") or "").strip() or None
-        libelle_produit = (request.form.get("libelle_produit") or "").strip() or None
         temperature_mesuree = request.form.get("temperature_mesuree") or None
-        poids_kg = request.form.get("poids_kg") or None
-        aspect_conforme = _clean_conformite(request.form.get("aspect_conforme"))
-        emballage_conforme = _clean_conformite(request.form.get("emballage_conforme"))
-        etiquetage_conforme = _clean_conformite(request.form.get("etiquetage_conforme"))
-        dlc_ddm = request.form.get("dlc_ddm") or None
-        numero_lot = (request.form.get("numero_lot") or "").strip() or None
-        commentaire = (request.form.get("commentaire") or "").strip() or None
 
-        if not benevole or not libelle_produit:
-            flash("⚠️ Merci d'indiquer le prénom du bénévole et le produit réceptionné.", "warning")
+        # Les lignes produit sont ajoutées/retirées dynamiquement côté client
+        # (JS) — leurs index ne sont donc pas forcément contigus (ex. 0 et 2
+        # si la ligne 1 a été retirée). On les retrouve en scannant les clés
+        # du formulaire plutôt qu'en supposant range(nb_lignes).
+        indices = sorted({
+            int(m.group(1))
+            for k in request.form
+            for m in [re.match(r"^libelle_produit_(\d+)$", k)]
+            if m
+        })
+
+        lignes = []
+        for i in indices:
+            lignes.append({
+                "idx": i,
+                "libelle_produit": (request.form.get(f"libelle_produit_{i}") or "").strip(),
+                "poids_kg": request.form.get(f"poids_kg_{i}") or None,
+                "aspect_conforme": _clean_conformite(request.form.get(f"aspect_conforme_{i}")),
+                "emballage_conforme": _clean_conformite(request.form.get(f"emballage_conforme_{i}")),
+                "etiquetage_conforme": _clean_conformite(request.form.get(f"etiquetage_conforme_{i}")),
+                "commentaire": (request.form.get(f"commentaire_{i}") or "").strip() or None,
+            })
+        lignes_remplies = [l for l in lignes if l["libelle_produit"]]
+
+        erreur = None
+        if not benevole:
+            erreur = "⚠️ Merci d'indiquer le nom du réceptionnaire."
+        elif not lignes_remplies:
+            erreur = "⚠️ Merci de renseigner au moins un produit réceptionné."
+        else:
+            for num, ligne in enumerate(lignes_remplies, start=1):
+                if not (ligne["aspect_conforme"] and ligne["emballage_conforme"] and ligne["etiquetage_conforme"]):
+                    erreur = (
+                        f"⚠️ Produit {num} ({ligne['libelle_produit']}) : merci d'indiquer "
+                        "les 3 conformités (aspect, emballage, étiquetage)."
+                    )
+                    break
+
+        if erreur:
+            flash(erreur, "warning")
             return render_template(
                 "production_cuisine/receptions_creer.html",
                 fournisseurs=fournisseurs,
-                date_defaut=today_paris(),
+                date_defaut=date_reception,
                 form=request.form,
+                lignes_soumises=lignes,
             )
 
         try:
+            reception_ids = []
             with _connect() as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
-                cur.execute(
-                    """
-                    INSERT INTO cuisine_receptions
-                    (date_reception, heure_arrivee, fournisseur_id, camion_libelle,
-                     libelle_produit, temperature_mesuree, poids_kg, aspect_conforme,
-                     emballage_conforme, etiquetage_conforme, dlc_ddm, numero_lot,
-                     commentaire, user_creation)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        date_reception, heure_arrivee, fournisseur_id, camion_libelle,
-                        libelle_produit, temperature_mesuree, poids_kg, aspect_conforme,
-                        emballage_conforme, etiquetage_conforme, dlc_ddm, numero_lot,
-                        commentaire, benevole,
-                    ),
-                )
-                reception_id = cur.lastrowid
+                for ligne in lignes_remplies:
+                    cur.execute(
+                        """
+                        INSERT INTO cuisine_receptions
+                        (date_reception, heure_arrivee, fournisseur_id, camion_libelle,
+                         libelle_produit, temperature_mesuree, poids_kg, aspect_conforme,
+                         emballage_conforme, etiquetage_conforme, commentaire, user_creation)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            date_reception, heure_arrivee, fournisseur_id, camion_libelle,
+                            ligne["libelle_produit"], temperature_mesuree, ligne["poids_kg"],
+                            ligne["aspect_conforme"], ligne["emballage_conforme"], ligne["etiquetage_conforme"],
+                            ligne["commentaire"], benevole,
+                        ),
+                    )
+                    reception_id = cur.lastrowid
+                    reception_ids.append(reception_id)
 
-                # 📸 Photos produit / étiquette (capture tablette)
-                dossier = upload_dir_reception(reception_id)
-                for type_photo, champ in (("produit", "photos_produit"), ("etiquette", "photos_etiquette")):
-                    fichiers = request.files.getlist(champ)
-                    chemins = save_uploaded_files(fichiers, dossier, prefix=type_photo)
-                    for ordre, chemin in enumerate(chemins):
-                        cur.execute(
-                            """INSERT INTO cuisine_reception_photos
-                               (reception_id, type_photo, chemin_fichier, ordre)
-                               VALUES (?, ?, ?, ?)""",
-                            (reception_id, type_photo, chemin, ordre),
-                        )
+                    # 📸 Photos produit / étiquette (capture tablette)
+                    dossier = upload_dir_reception(reception_id)
+                    for type_photo, champ in (
+                        ("produit", f"photos_produit_{ligne['idx']}"),
+                        ("etiquette", f"photos_etiquette_{ligne['idx']}"),
+                    ):
+                        fichiers = request.files.getlist(champ)
+                        chemins = save_uploaded_files(fichiers, dossier, prefix=type_photo)
+                        for ordre, chemin in enumerate(chemins):
+                            cur.execute(
+                                """INSERT INTO cuisine_reception_photos
+                                   (reception_id, type_photo, chemin_fichier, ordre)
+                                   VALUES (?, ?, ?, ?)""",
+                                (reception_id, type_photo, chemin, ordre),
+                            )
 
                 conn.commit()
             upload_database()
-            flash("✅ Réception enregistrée.", "success")
-            return redirect(url_for("production_cuisine.detail_reception", reception_id=reception_id))
+            if len(reception_ids) == 1:
+                flash("✅ Réception enregistrée.", "success")
+                return redirect(url_for("production_cuisine.detail_reception", reception_id=reception_ids[0]))
+            flash(f"✅ {len(reception_ids)} réceptions enregistrées.", "success")
+            return redirect(url_for("production_cuisine.liste_receptions"))
 
         except Exception as e:
             write_log(f"❌ Erreur création réception cuisine : {e}")
@@ -184,8 +252,9 @@ def creer_reception():
             return render_template(
                 "production_cuisine/receptions_creer.html",
                 fournisseurs=fournisseurs,
-                date_defaut=today_paris(),
+                date_defaut=date_reception,
                 form=request.form,
+                lignes_soumises=lignes,
             )
 
     return render_template(
@@ -193,6 +262,7 @@ def creer_reception():
         fournisseurs=fournisseurs,
         date_defaut=today_paris(),
         form={},
+        lignes_soumises=[],
     )
 
 

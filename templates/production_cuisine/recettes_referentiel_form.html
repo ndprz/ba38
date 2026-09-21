@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}{{ "Modifier" if recette else "Nouvelle" }} recette{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 640px;">
+
+  <h2 class="mb-3">📖 {{ "Modifier la recette" if recette else "Nouvelle recette" }}</h2>
+
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="mb-3">
+      <label class="form-label">Bénévole</label>
+      <input type="text" name="benevole" class="form-control" placeholder="Prénom du bénévole">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">Code</label>
+      <input type="number" name="code" class="form-control" value="{{ form.code if form.code is not none else '' }}"
+             placeholder="Ex : 1001">
+      <div class="form-text">Laisser vide si le code n'est pas encore attribué.</div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">Nom de la recette *</label>
+      <input type="text" name="nom" class="form-control form-control-lg" required
+             value="{{ form.nom or '' }}">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Famille</label>
+      <select name="famille" class="form-select">
+        <option value="">-- Choisir --</option>
+        {% if form.famille and form.famille not in parametres.cuisine_famille %}
+          <option value="{{ form.famille }}" selected>{{ form.famille }} (retiré des paramètres)</option>
+        {% endif %}
+        {% for v in parametres.cuisine_famille %}
+          <option value="{{ v }}" {% if form.famille == v %}selected{% endif %}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-6">
+        <label class="form-label">Sous-famille 1</label>
+        <select name="sous_famille_1" class="form-select">
+          <option value="">-- Choisir --</option>
+          {% if form.sous_famille_1 and form.sous_famille_1 not in parametres.cuisine_sous_famille_1 %}
+            <option value="{{ form.sous_famille_1 }}" selected>{{ form.sous_famille_1 }} (retiré des paramètres)</option>
+          {% endif %}
+          {% for v in parametres.cuisine_sous_famille_1 %}
+            <option value="{{ v }}" {% if form.sous_famille_1 == v %}selected{% endif %}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6">
+        <label class="form-label">Sous-famille 2</label>
+        <select name="sous_famille_2" class="form-select">
+          <option value="">-- Choisir --</option>
+          {% if form.sous_famille_2 and form.sous_famille_2 not in parametres.cuisine_sous_famille_2 %}
+            <option value="{{ form.sous_famille_2 }}" selected>{{ form.sous_famille_2 }} (retiré des paramètres)</option>
+          {% endif %}
+          {% for v in parametres.cuisine_sous_famille_2 %}
+            <option value="{{ v }}" {% if form.sous_famille_2 == v %}selected{% endif %}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="mb-4">
+      <label class="form-label">Type de cuisson</label>
+      <select name="type_cuisson" class="form-select">
+        <option value="">-- Choisir --</option>
+        {% if form.type_cuisson and form.type_cuisson not in parametres.cuisine_type_cuisson %}
+          <option value="{{ form.type_cuisson }}" selected>{{ form.type_cuisson }} (retiré des paramètres)</option>
+        {% endif %}
+        {% for v in parametres.cuisine_type_cuisson %}
+          <option value="{{ v }}" {% if form.type_cuisson == v %}selected{% endif %}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="d-flex justify-content-between">
+      <a href="{{ url_for('production_cuisine.liste_recettes_referentiel') }}" class="btn btn-outline-secondary btn-lg">Annuler</a>
+      <button type="submit" class="btn btn-primary btn-lg">💾 Enregistrer</button>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

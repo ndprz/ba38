@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Référentiel recettes{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_bootstrap5.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">📖 Référentiel des recettes C3ES</h2>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('production_cuisine.liste_productions') }}" class="btn btn-outline-secondary">← Retour</a>
+      <a href="{{ url_for('production_cuisine.creer_recette_referentiel') }}" class="btn btn-primary">
+        ➕ Nouvelle recette
+      </a>
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    <a href="{{ url_for('production_cuisine.export_recettes_referentiel', suffixe='05') }}" class="btn btn-outline-success">
+      📤 Export étiqueteuse — DLC 5 jours
+    </a>
+    <a href="{{ url_for('production_cuisine.export_recettes_referentiel', suffixe='03') }}" class="btn btn-outline-success">
+      📤 Export étiqueteuse — DLC 3 jours
+    </a>
+  </div>
+
+  <p class="text-muted">{{ nb_recettes }} recette(s) — recherchez par code/nom (texte libre) ou filtrez par famille/sous-famille/cuisson (liste) directement dans les en-têtes de colonnes.</p>
+
+  <div id="recettes-table"></div>
+
+</div>
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+  var recettesData = {{ recettes_json | tojson }};
+  var urlModifierBase = "{{ url_for('production_cuisine.modifier_recette_referentiel', recette_id=0) }}".slice(0, -1);
+  var urlSupprimerBase = "{{ url_for('production_cuisine.supprimer_recette_referentiel', recette_id=0) }}".slice(0, -1);
+  var csrfToken = "{{ csrf_token() }}";
+
+  var table = new Tabulator("#recettes-table", {
+    data: recettesData,
+    layout: "fitColumns",
+    height: "70vh",
+    columns: [
+      { title: "Code", field: "code", width: 90, headerFilter: "input" },
+      { title: "Nom", field: "nom", widthGrow: 2, headerFilter: "input" },
+      { title: "Famille", field: "famille", headerFilter: "select", headerFilterParams: { valuesLookup: true, clearable: true } },
+      { title: "Sous-famille 1", field: "sous_famille_1", headerFilter: "select", headerFilterParams: { valuesLookup: true, clearable: true } },
+      { title: "Sous-famille 2", field: "sous_famille_2", headerFilter: "select", headerFilterParams: { valuesLookup: true, clearable: true } },
+      { title: "Cuisson", field: "type_cuisson", headerFilter: "select", headerFilterParams: { valuesLookup: true, clearable: true } },
+      {
+        title: "", field: "id", headerSort: false, width: 110,
+        formatter: function (cell) {
+          var data = cell.getData();
+          var wrap = document.createElement("div");
+          wrap.className = "d-flex gap-1";
+
+          var editLink = document.createElement("a");
+          editLink.href = urlModifierBase + data.id;
+          editLink.className = "btn btn-sm btn-outline-secondary";
+          editLink.textContent = "✏️";
+          wrap.appendChild(editLink);
+
+          var delBtn = document.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "btn btn-sm btn-outline-danger";
+          delBtn.textContent = "🗑️";
+          delBtn.addEventListener("click", function () {
+            if (!confirm("Supprimer la recette « " + data.nom + " » du référentiel ?")) return;
+            var form = document.createElement("form");
+            form.method = "POST";
+            form.action = urlSupprimerBase + data.id;
+            var csrf = document.createElement("input");
+            csrf.type = "hidden";
+            csrf.name = "csrf_token";
+            csrf.value = csrfToken;
+            form.appendChild(csrf);
+            document.body.appendChild(form);
+            form.submit();
+          });
+          wrap.appendChild(delBtn);
+          return wrap;
+        },
+      },
+    ],
+  });
+</script>
+{% endblock %}

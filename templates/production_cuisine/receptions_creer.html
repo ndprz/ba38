@@ -8,13 +8,13 @@
 
   <h2 class="mb-3">📥 Nouvelle réception marchandise</h2>
 
-  <form method="POST" enctype="multipart/form-data">
+  <form method="POST" enctype="multipart/form-data" id="form-reception">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="mb-3">
-      <label class="form-label fw-bold">Bénévole *</label>
+      <label class="form-label fw-bold">Nom du réceptionnaire *</label>
       <input type="text" name="benevole" class="form-control form-control-lg" required
-             value="{{ form.benevole or '' }}" placeholder="Prénom du bénévole">
+             value="{{ form.benevole or '' }}" placeholder="Prénom du bénévole ou du salarié">
     </div>
 
     <div class="row g-3 mb-3">
@@ -38,55 +38,26 @@
       </select>
     </div>
 
-    <div class="mb-3">
-      <label class="form-label fw-bold">Produit réceptionné *</label>
-      <input type="text" name="libelle_produit" class="form-control form-control-lg" required
-             value="{{ form.libelle_produit or '' }}" placeholder="Ex : bœuf, poulet, légumes, cagettes de tomates…">
-    </div>
-
-    <div class="mb-3">
-      <label class="form-label">Camion / transporteur</label>
-      <input type="text" name="camion_libelle" class="form-control" value="{{ form.camion_libelle or '' }}">
-    </div>
-
-    <div class="row g-3 mb-3">
+    <div class="row g-3 mb-2">
+      <div class="col-6">
+        <label class="form-label">Camion / transporteur</label>
+        <input type="text" name="camion_libelle" class="form-control" value="{{ form.camion_libelle or '' }}">
+      </div>
       <div class="col-6">
         <label class="form-label">Température mesurée (°C)</label>
-        <input type="number" inputmode="decimal" step="0.1" name="temperature_mesuree" class="form-control">
-      </div>
-      <div class="col-6">
-        <label class="form-label">Poids (kg)</label>
-        <input type="number" inputmode="decimal" step="0.1" name="poids_kg" class="form-control">
+        <input type="number" inputmode="decimal" step="0.1" name="temperature_mesuree" class="form-control"
+               value="{{ form.temperature_mesuree or '' }}">
       </div>
     </div>
-
-    {% for champ, label in (('aspect_conforme', 'Aspect'), ('emballage_conforme', 'Emballage'), ('etiquetage_conforme', 'Étiquetage')) %}
-    <div class="mb-3">
-      <label class="form-label fw-bold">{{ label }}</label>
-      <div class="btn-group w-100" role="group">
-        <input type="radio" class="btn-check" name="{{ champ }}" id="{{ champ }}_ok" value="conforme" autocomplete="off">
-        <label class="btn btn-outline-success btn-lg" for="{{ champ }}_ok">✅ Conforme</label>
-
-        <input type="radio" class="btn-check" name="{{ champ }}" id="{{ champ }}_nc" value="non_conforme" autocomplete="off">
-        <label class="btn btn-outline-danger btn-lg" for="{{ champ }}_nc">⚠️ Non conforme</label>
-      </div>
-    </div>
-    {% endfor %}
-
-    <div class="mb-3">
-      <label class="form-label">Commentaire</label>
-      <textarea name="commentaire" class="form-control" rows="2"></textarea>
+    <div class="form-text mb-3">
+      Ces informations sont communes à toute la livraison — pas besoin de les ressaisir pour chaque produit ci-dessous.
     </div>
 
-    <div class="row g-3 mb-4">
-      <div class="col-6">
-        {{ camera_capture("photos_produit", "📷 Photo(s) produit") }}
-      </div>
-      <div class="col-6">
-        {{ camera_capture("photos_etiquette", "📷 Photo(s) étiquette") }}
-        <div class="form-text">La photo de l'étiquette fait foi pour la DLC/DDM et le n° de lot — inutile de les ressaisir.</div>
-      </div>
-    </div>
+    <hr>
+
+    <div id="lignes-produits"></div>
+
+    <button type="button" class="btn btn-outline-primary mb-3" id="btn-ajouter-ligne">➕ Ajouter un autre produit</button>
 
     <div class="d-flex justify-content-between">
       <a href="{{ url_for('production_cuisine.liste_receptions') }}" class="btn btn-outline-secondary btn-lg">Annuler</a>
@@ -95,5 +66,110 @@
   </form>
 
 </div>
+
+<template id="template-ligne-produit">
+  <div class="card mb-3 ligne-produit">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span class="ligne-produit-titre">📦 Produit</span>
+      <button type="button" class="btn btn-sm btn-outline-danger btn-retirer-ligne">🗑️ Retirer</button>
+    </div>
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label fw-bold">Produit réceptionné *</label>
+        <input type="text" name="libelle_produit_IDXTOKEN" class="form-control form-control-lg" required
+               placeholder="Ex : bœuf, poulet, légumes, cagettes de tomates…">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Poids (kg)</label>
+        <input type="number" inputmode="decimal" step="0.1" name="poids_kg_IDXTOKEN" class="form-control">
+      </div>
+      {% for champ, label in (('aspect_conforme', 'Aspect'), ('emballage_conforme', 'Emballage'), ('etiquetage_conforme', 'Étiquetage')) %}
+      <div class="mb-3">
+        <label class="form-label fw-bold">{{ label }}</label>
+        <div class="btn-group w-100" role="group">
+          <input type="radio" class="btn-check" name="{{ champ }}_IDXTOKEN" id="{{ champ }}_IDXTOKEN_ok" value="conforme" autocomplete="off" required>
+          <label class="btn btn-outline-success btn-lg" for="{{ champ }}_IDXTOKEN_ok">✅ Conforme</label>
+
+          <input type="radio" class="btn-check" name="{{ champ }}_IDXTOKEN" id="{{ champ }}_IDXTOKEN_nc" value="non_conforme" autocomplete="off" required>
+          <label class="btn btn-outline-danger btn-lg" for="{{ champ }}_IDXTOKEN_nc">⚠️ Non conforme</label>
+        </div>
+      </div>
+      {% endfor %}
+      <div class="mb-3">
+        <label class="form-label">Commentaire</label>
+        <textarea name="commentaire_IDXTOKEN" class="form-control" rows="2"></textarea>
+      </div>
+      <div class="row g-3">
+        <div class="col-6">
+          {{ camera_capture("photos_produit_IDXTOKEN", "📷 Photo(s) produit") }}
+        </div>
+        <div class="col-6">
+          {{ camera_capture("photos_etiquette_IDXTOKEN", "📷 Photo(s) étiquette") }}
+          <div class="form-text">La photo de l'étiquette fait foi pour la DLC/DDM et le n° de lot — inutile de les ressaisir.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
 {% include "production_cuisine/_camera_capture_js.html" %}
+<script>
+(function () {
+  var lignesSoumises = {{ lignes_soumises | tojson }};
+  var container = document.getElementById('lignes-produits');
+  var template = document.getElementById('template-ligne-produit');
+  var btnAjouter = document.getElementById('btn-ajouter-ligne');
+  var compteur = 0;
+
+  function renumeroter() {
+    var lignes = container.querySelectorAll('.ligne-produit');
+    lignes.forEach(function (ligne, i) {
+      ligne.querySelector('.ligne-produit-titre').textContent = '📦 Produit ' + (i + 1);
+      ligne.querySelector('.btn-retirer-ligne').style.display = lignes.length > 1 ? '' : 'none';
+    });
+  }
+
+  function ajouterLigne(valeurs) {
+    var idx = compteur++;
+    var html = template.innerHTML.split('IDXTOKEN').join(idx);
+    var wrapper = document.createElement('div');
+    wrapper.innerHTML = html;
+    var ligne = wrapper.firstElementChild;
+
+    if (valeurs) {
+      if (valeurs.libelle_produit) {
+        ligne.querySelector('[name="libelle_produit_' + idx + '"]').value = valeurs.libelle_produit;
+      }
+      if (valeurs.poids_kg) {
+        ligne.querySelector('[name="poids_kg_' + idx + '"]').value = valeurs.poids_kg;
+      }
+      if (valeurs.commentaire) {
+        ligne.querySelector('[name="commentaire_' + idx + '"]').value = valeurs.commentaire;
+      }
+      ['aspect_conforme', 'emballage_conforme', 'etiquetage_conforme'].forEach(function (champ) {
+        if (valeurs[champ]) {
+          var radio = ligne.querySelector('[name="' + champ + '_' + idx + '"][value="' + valeurs[champ] + '"]');
+          if (radio) radio.checked = true;
+        }
+      });
+    }
+
+    ligne.querySelector('.btn-retirer-ligne').addEventListener('click', function () {
+      ligne.remove();
+      renumeroter();
+    });
+    container.appendChild(ligne);
+    if (window.initCameraCapture) window.initCameraCapture(ligne);
+    renumeroter();
+  }
+
+  btnAjouter.addEventListener('click', function () { ajouterLigne(null); });
+
+  if (lignesSoumises && lignesSoumises.length) {
+    lignesSoumises.forEach(function (l) { ajouterLigne(l); });
+  } else {
+    ajouterLigne(null);
+  }
+})();
+</script>
 {% endblock %}

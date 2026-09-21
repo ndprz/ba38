@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Nettoyage — {{ zone.libelle }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 720px;">
+
+  {% include "cuisine_hygiene/_nav.html" %}
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+      <h2 class="mb-0">🧽 {{ zone.libelle }}</h2>
+      {% if zone.description %}<div class="text-muted small">{{ zone.description }}</div>{% endif %}
+    </div>
+    <a href="{{ url_for('cuisine_hygiene.nettoyage') }}" class="btn btn-outline-secondary">← Zones</a>
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label fw-bold">👤 Bénévole</label>
+    <input type="text" id="benevole-global" class="form-control form-control-lg" placeholder="Prénom du bénévole">
+  </div>
+
+  {% if not surfaces %}
+    <p class="text-muted">Aucune surface définie pour cette zone.</p>
+  {% endif %}
+
+  {% for s in surfaces %}
+  <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <strong>{{ s.nom_surface }}</strong>
+      <span class="badge bg-secondary">{{ s.frequence or "—" }}</span>
+    </div>
+    <div class="card-body">
+      <div class="small text-muted mb-2">
+        {% if s.produit_dose and s.produit_dose != 'aucun' %}Produit : {{ s.produit_dose }}{% endif %}
+        {% if s.point_clef %}<br>💡 {{ s.point_clef }}{% endif %}
+      </div>
+
+      {% if s.dernier_nettoyage %}
+      <div class="small mb-2">
+        Dernier nettoyage : {{ s.dernier_nettoyage }}
+        {% if s.dernier_conforme == 'conforme' %}<span class="badge bg-success">Conforme</span>
+        {% else %}<span class="badge bg-danger">Non conforme</span>{% endif %}
+      </div>
+      {% endif %}
+
+      <div class="d-flex flex-wrap gap-2">
+        <form method="POST" action="{{ url_for('cuisine_hygiene.zone_nettoyage', zone_id=zone.id) }}" class="benevole-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="benevole" class="benevole-sync">
+          <input type="hidden" name="surface_id" value="{{ s.id }}">
+          <input type="hidden" name="conforme" value="conforme">
+          <button type="submit" class="btn btn-success">✅ Nettoyé, conforme</button>
+        </form>
+        <form method="POST" action="{{ url_for('cuisine_hygiene.zone_nettoyage', zone_id=zone.id) }}" class="benevole-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="benevole" class="benevole-sync">
+          <input type="hidden" name="surface_id" value="{{ s.id }}">
+          <input type="hidden" name="conforme" value="non_conforme">
+          <button type="submit" class="btn btn-outline-danger">⚠️ Non conforme</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+<script>
+  document.querySelectorAll('.benevole-form').forEach(function (form) {
+    form.addEventListener('submit', function () {
+      var valeur = document.getElementById('benevole-global').value;
+      form.querySelectorAll('.benevole-sync').forEach(function (input) { input.value = valeur; });
+    });
+  });
+</script>
+{% include "production_cuisine/_scroll_restore.html" %}
+{% endblock %}

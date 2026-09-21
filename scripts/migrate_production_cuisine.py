@@ -95,10 +95,39 @@ CREATE TABLE IF NOT EXISTS cuisine_recettes (
   date_modif TEXT, user_modif TEXT
 );
 
+-- Référentiel officiel des recettes C3ES (import du fichier Excel du
+-- responsable cuisine, onglet "05"). Table distincte de cuisine_recettes
+-- (catalogue léger utilisé au fil de l'eau en production) : celle-ci porte
+-- le code interne, la famille/sous-familles et le mode de cuisson, sert de
+-- base aux exports pour l'étiqueteuse automatique (code suffixé -05 ou -03
+-- selon la DLC choisie à l'export, pas stocké ici).
+CREATE TABLE IF NOT EXISTS cuisine_recettes_referentiel (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code INTEGER UNIQUE,
+  nom TEXT NOT NULL,
+  famille TEXT,
+  sous_famille_1 TEXT,
+  sous_famille_2 TEXT,
+  type_cuisson TEXT,
+  actif INTEGER DEFAULT 1,
+  date_creation TEXT DEFAULT (datetime('now','utc')),
+  date_modif TEXT, user_creation TEXT, user_modif TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cuisine_recettes_ref_code ON cuisine_recettes_referentiel(code);
+CREATE INDEX IF NOT EXISTS idx_cuisine_recettes_ref_famille ON cuisine_recettes_referentiel(famille);
+
+CREATE TRIGGER IF NOT EXISTS trg_cuisine_recettes_referentiel_datemodif
+AFTER UPDATE ON cuisine_recettes_referentiel
+FOR EACH ROW
+BEGIN
+  UPDATE cuisine_recettes_referentiel SET date_modif = datetime('now','utc') WHERE id = NEW.id;
+END;
+
 CREATE TABLE IF NOT EXISTS cuisine_productions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   date_production TEXT NOT NULL,
   recette_id INTEGER REFERENCES cuisine_recettes(id),
+  recette_referentiel_id INTEGER REFERENCES cuisine_recettes_referentiel(id),
   nom_recette TEXT NOT NULL,
   nom_recette_initial TEXT NOT NULL,
   espece TEXT,
@@ -212,6 +241,46 @@ CREATE TABLE IF NOT EXISTS cuisine_hygiene_nettoyages (
 );
 CREATE INDEX IF NOT EXISTS idx_cuisine_hyg_nettoyage_date ON cuisine_hygiene_nettoyages(date_nettoyage);
 
+-- Remplacement du nettoyage "zone unique" par le vrai Plan de Nettoyage et
+-- Désinfection (PND) du site, importé depuis "PND C3ES.xlsx" (14 onglets =
+-- 14 zones, chacune avec plusieurs surfaces à nettoyer, fréquence/produit/
+-- point clef propres à chaque surface). cuisine_hygiene_zones_nettoyage /
+-- cuisine_hygiene_nettoyages ci-dessus restent en base (historique) mais
+-- ne sont plus utilisées par l'écran "Nettoyage" — remplacées par les
+-- tables suivantes.
+CREATE TABLE IF NOT EXISTS cuisine_pnd_zones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT UNIQUE,
+  libelle TEXT NOT NULL,
+  description TEXT,
+  ordre INTEGER DEFAULT 0,
+  actif INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS cuisine_pnd_surfaces (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  zone_id INTEGER NOT NULL REFERENCES cuisine_pnd_zones(id),
+  nom_surface TEXT NOT NULL,
+  frequence TEXT,
+  produit_dose TEXT,
+  point_clef TEXT,
+  ordre INTEGER DEFAULT 0,
+  actif INTEGER DEFAULT 1,
+  date_creation TEXT DEFAULT (datetime('now','utc')),
+  date_modif TEXT, user_modif TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cuisine_pnd_surfaces_zone ON cuisine_pnd_surfaces(zone_id);
+
+CREATE TABLE IF NOT EXISTS cuisine_pnd_nettoyages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  surface_id INTEGER NOT NULL REFERENCES cuisine_pnd_surfaces(id),
+  date_nettoyage TEXT DEFAULT (datetime('now','utc')),
+  conforme TEXT CHECK (conforme IN ('conforme','non_conforme')) DEFAULT 'conforme',
+  user_creation TEXT, commentaire TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cuisine_pnd_nettoyages_date ON cuisine_pnd_nettoyages(date_nettoyage);
+CREATE INDEX IF NOT EXISTS idx_cuisine_pnd_nettoyages_surface ON cuisine_pnd_nettoyages(surface_id);
+
 CREATE TABLE IF NOT EXISTS cuisine_hygiene_thermometres (
   id INTEGER PRIMARY KEY AUTOINCREMENT, numero INTEGER UNIQUE NOT NULL,
   libelle TEXT, actif INTEGER DEFAULT 1
@@ -263,7 +332,7 @@ ETAPES_REF = [
     ("refroidissement_eau", "Refroidissement à l'eau", 4, 0, 1, 1, 0, 0, 0, 0),
     ("conditionnement", "Conditionnement", 5, 1, 1, 1, 0, 0, 0, 1),
     ("refroidissement_cellule", "Mise en cellule", 6, 1, 1, 1, 0, 1, 0, 1),
-    ("decongelation", "Décongélation", 7, 1, 1, 0, 0, 0, 1, 0),
+    ("decongelation", "Décongélation", 0, 1, 1, 0, 0, 0, 1, 1),
 ]
 
 ZONES_TEMPERATURE = [
@@ -412,6 +481,66 @@ def seed(conn):
     )
 
 
+# Paramètres cuisine : réutilise la table générique `parametres`
+# (param_name/param_value/categorie) déjà utilisée ailleurs dans l'appli
+# (ex. ba38_fournisseurs/routes.py::create_fournisseur), plutôt qu'une
+# table dédiée. Seedé une fois avec les valeurs déjà présentes dans
+# cuisine_recettes_referentiel au moment de l'écriture de ce script ;
+# ensuite modifiable via /production-cuisine/parametres.
+PARAMETRES_CUISINE = {
+    "cuisine_type_cuisson": ["Four", "Sauteuse", "Courte", "Cuisson de nuit"],
+    "cuisine_famille": [
+        "Féculents", "Gibier", "Légumes", "Légumineuses", "Oeufs", "Poisson", "Viande",
+    ],
+    "cuisine_sous_famille_1": [
+        "01-Agneau", "02-Boeuf", "03-Porc", "04-Veau", "05-Volaille",
+        "06-Œufs/gibier", "07-Poisson", "08-Féculents", "09-Légumes/légumineuses",
+    ],
+    "cuisine_sous_famille_2": [
+        "Abats", "Agneau", "Aubergine", "Autruche", "Blanquette", "Cabillaud", "Caille",
+        "Calamar", "Canard", "Carottes", "Cerf", "Chevreuil", "Chou fleur", "Chou vert",
+        "Choucroute", "Coco", "Coq/coquelet", "Courge", "Courgettes", "Couscous",
+        "Crevettes", "Céleri", "Côtes", "Dinde", "Dorade", "Emisole", "Espadon", "Faisan",
+        "Filet mignon", "Haricots rouge", "Haricots verts", "Lapin", "Lentilles",
+        "Lieu noir", "Lièvre", "Légumes", "Merlan", "Mijoté", "Mixte", "Omelette",
+        "Patate douce", "Paupiette", "Petits pois", "Pigeon", "Pintade", "Pièce grillée",
+        "Polenta", "Pomme de terre", "Poule", "Poulet", "Pâtes", "Raie", "Requin", "Riz",
+        "Roussette", "Rôti", "Sanglier", "Saucisse", "Saucisson cuit", "Saumon", "Sauté",
+        "Semoule", "Thon", "Tortillas", "Travers", "Truite", "Tête", "Viande haché",
+        "Volaille", "Volaille de fête", "Végétarien", "Œufs",
+    ],
+    # Valeurs déjà présentes dans le PND C3ES.xlsx (13/5 valeurs distinctes,
+    # fautes de frappe/espaces du fichier source normalisés).
+    "cuisine_frequence_nettoyage": [
+        "chaque jour", "chaque jour ou après utilisation", "après chaque utilisation",
+        "chaque semaine", "1 semaine sur 2", "mardi/jeudi", "mercredi matin",
+        "avant chaque vacances", "1 fois par mois", "1 fois par semestre",
+        "2 fois par an", "En fin de journée", "Après utilisation",
+    ],
+    "cuisine_produit_nettoyage": [
+        "ASTRASURF 1% auto", "Détergent graisses cuites", "FAR 4en1", "Manulav", "aucun",
+    ],
+}
+
+
+def seed_parametres_cuisine(conn):
+    cur = conn.cursor()
+    total = 0
+    for param_name, valeurs in PARAMETRES_CUISINE.items():
+        for valeur in valeurs:
+            existe = cur.execute(
+                "SELECT 1 FROM parametres WHERE param_name = ? AND param_value = ?",
+                (param_name, valeur),
+            ).fetchone()
+            if not existe:
+                cur.execute(
+                    "INSERT INTO parametres (param_name, param_value, categorie) VALUES (?, ?, 'liste')",
+                    (param_name, valeur),
+                )
+                total += 1
+    print(f"✓ parametres cuisine : {total} valeur(s) ajoutée(s) (INSERT si absent)")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env", choices=["dev", "prod", "dev_test", "prod_test"], default="dev")
@@ -447,7 +576,11 @@ def main():
             ("temperature_debut", "REAL"),
             ("non_applicable", "INTEGER DEFAULT 0"),
         ])
+        add_missing_columns(conn, "cuisine_productions", [
+            ("recette_referentiel_id", "INTEGER REFERENCES cuisine_recettes_referentiel(id)"),
+        ])
         seed(conn)
+        seed_parametres_cuisine(conn)
         conn.commit()
 
     print("✓ Migration terminée.")
