@@ -165,7 +165,8 @@ def envoyer_factures_background(app, db_path, lot_id, items, pdf_path,
                     texte=corps,
                     sender_override=mail_sender,
                     attachment_path=fichier,
-                    bcc=[mail_sender]
+                    bcc=[mail_sender],
+                    current_user_email=current_user_email
                 )
 
                 mj_status, mj_ids = None, None

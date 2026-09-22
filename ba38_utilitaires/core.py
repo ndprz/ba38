@@ -901,7 +901,7 @@ def get_drive_folder_id_from_path(drive_path, shared_drive_id):
 # 📧 MAILJET
 # ============================================================================
 
-def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None, is_html=False, bcc=None, cc=None, attachment_paths=None, sender_name=None, reply_to=None):
+def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None, is_html=False, bcc=None, cc=None, attachment_paths=None, sender_name=None, reply_to=None, current_user_email=None):
 
     api_key = os.getenv("MAILJET_API_KEY")
     api_secret = os.getenv("MAILJET_API_SECRET")
@@ -939,6 +939,13 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
         destinataire_dev = None
         if has_request_context() and current_user and current_user.is_authenticated:
             destinataire_dev = current_user.email
+
+        # Hors contexte de requête (envoi en Thread arrière-plan avec
+        # app.app_context() seul) : current_user est inaccessible, donc
+        # l'appelant doit avoir capturé current_user.email AVANT de
+        # lancer le Thread et le repasser ici explicitement.
+        if not destinataire_dev:
+            destinataire_dev = current_user_email
 
         destinataires = [
             destinataire_dev

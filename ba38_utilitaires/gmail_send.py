@@ -17,6 +17,8 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
+from flask import has_request_context
+from flask_login import current_user
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -61,12 +63,21 @@ def envoyer_mail_gmail(sujet, destinataires, texte, attachment_path=None,
     service = _get_gmail_service()
 
     # 🔒 Garde-fou DEV : cette fonction contourne Mailjet (donc le garde-fou
-    # déjà en place dans utils.py::envoyer_mail) — sur l'instance DEV, on
-    # force donc ici aussi l'envoi vers une adresse de test unique, jamais
-    # vers un vrai destinataire.
+    # déjà en place dans core.py::envoyer_mail) — sur l'instance DEV, on
+    # force donc ici aussi l'envoi vers l'utilisateur connecté (même logique
+    # que envoyer_mail), jamais vers un vrai destinataire.
     if os.getenv("ENVIRONMENT", "").upper() == "DEV":
         sujet = f"🧪 [DEV] {sujet}"
-        destinataires = [os.getenv("MAIL_TEST_TO") or "ba380.informatique2@banquealimentaire.org"]
+
+        destinataire_dev = None
+        if has_request_context() and current_user and current_user.is_authenticated:
+            destinataire_dev = current_user.email
+
+        destinataires = [
+            destinataire_dev
+            or os.getenv("MAIL_TEST_TO")
+            or "ba380.informatique2@banquealimentaire.org"
+        ]
 
     message = MIMEMultipart()
     message["To"] = ", ".join(destinataires)

@@ -119,7 +119,8 @@ def envoyer_indicateurs_background(app, db_path, campagne_id, campagne, lignes,
                     destinataires=emails,
                     texte=corps,
                     sender_override=sender,
-                    attachment_path=pdf_path
+                    attachment_path=pdf_path,
+                    current_user_email=current_user_email
                 )
 
                 mj_status, mj_ids = None, None
@@ -150,7 +151,8 @@ def envoyer_indicateurs_background(app, db_path, campagne_id, campagne, lignes,
                         destinataires=[sender],
                         texte=f"Copie d'archive automatique — destinataire(s) réel(s) : {', '.join(emails)}\n\n---\n\n{corps}",
                         sender_override=sender,
-                        attachment_path=pdf_path
+                        attachment_path=pdf_path,
+                        current_user_email=current_user_email
                     )
                 except Exception as e_archive:
                     write_log(f"⚠️ Erreur envoi copie archive pour {association['nom_association']} : {e_archive}")

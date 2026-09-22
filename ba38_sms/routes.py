@@ -136,7 +136,7 @@ def get_nb_sms_reponses_non_lues():
     return n
 
 
-def envoyer_sms_lot_background(app, db_path, lot_id, destinataires, texte):
+def envoyer_sms_lot_background(app, db_path, lot_id, destinataires, texte, current_user_email=None):
     """
     Tourne dans un Thread séparé (même pattern que envoyer_indicateurs_background,
     ba38_utilitaires/emails.py) : envoie les SMS un par un via SmsFactor et met à
@@ -235,6 +235,7 @@ def envoyer_sms_lot_background(app, db_path, lot_id, destinataires, texte):
                     sujet="🚨 Crédit SmsFactor épuisé",
                     destinataires=[ALERTE_MAIL_DESTINATAIRE],
                     texte=message,
+                    current_user_email=current_user_email,
                 )
             except Exception as e:
                 write_log(f"⚠️ Erreur envoi mail alerte crédit SMS : {e}")
@@ -312,9 +313,10 @@ def envoi_sms_benevoles():
             upload_database()
 
             app_obj = current_app._get_current_object()
+            current_user_email = getattr(current_user, "email", None) or None
             Thread(
                 target=envoyer_sms_lot_background,
-                args=(app_obj, get_db_path(), lot_id, a_envoyer, texte),
+                args=(app_obj, get_db_path(), lot_id, a_envoyer, texte, current_user_email),
                 daemon=True,
             ).start()
 

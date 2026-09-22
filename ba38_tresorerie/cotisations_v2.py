@@ -267,7 +267,8 @@ def envoyer_cotisations_v2_background(app, db_path, campagne_id, items, mail_mod
                     texte=item["corps"],
                     sender_override="ba380.comptable@banquealimentaire.org",
                     attachment_path=pdf_path,
-                    bcc=["ba380.comptable@banquealimentaire.org"]
+                    bcc=["ba380.comptable@banquealimentaire.org"],
+                    current_user_email=current_user_email
                 )
 
                 mj_status, mj_ids = None, None

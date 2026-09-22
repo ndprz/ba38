@@ -4,7 +4,7 @@ from datetime import datetime
 from threading import Thread
 
 from flask import request, render_template, flash, redirect, url_for, session, current_app
-from flask_login import login_required
+from flask_login import login_required, current_user
 
 from ba38_utilitaires.core import get_db_path, write_log, envoyer_mail, split_emails, require_access, get_google_services
 
@@ -361,7 +361,7 @@ def cotisations_relance_start():
 
 def envoyer_relances_background(app, db_path, items, sujet_modele, corps_modele,
                                  numero_relance, annee, mail_sender, mail_mode,
-                                 mail_test_to, folder_id_factures):
+                                 mail_test_to, folder_id_factures, current_user_email=None):
     """
     Envoi des relances de cotisations en arrière-plan (Thread).
 
@@ -434,7 +434,8 @@ def envoyer_relances_background(app, db_path, items, sujet_modele, corps_modele,
                     texte=texte_mail,
                     sender_override=mail_sender,
                     is_html=True,
-                    bcc=[mail_sender]
+                    bcc=[mail_sender],
+                    current_user_email=current_user_email
                 )
 
                 mj_status, mj_ids = None, None
@@ -663,12 +664,13 @@ def cotisations_relance():
 
         app_reel = current_app._get_current_object()
         db_path = get_db_path()
+        current_user_email = current_user.email if current_user.is_authenticated else None
 
         Thread(
             target=envoyer_relances_background,
             args=(app_reel, db_path, items, sujet_modele, corps_modele,
                   numero_relance, annee, mail_sender, mail_mode,
-                  mail_test_to, FOLDER_ID_FACTURES)
+                  mail_test_to, FOLDER_ID_FACTURES, current_user_email)
         ).start()
 
         if mail_mode == "TEST":

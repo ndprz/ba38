@@ -441,7 +441,8 @@ def envoyer_participation_background(app, db_path, campagne_id, items, mail_mode
                     texte=item["corps"],
                     sender_override="ba380.comptable@banquealimentaire.org",
                     attachment_path=pdf_path,
-                    bcc=["ba380.comptable@banquealimentaire.org"]
+                    bcc=["ba380.comptable@banquealimentaire.org"],
+                    current_user_email=current_user_email
                 )
 
                 mj_status, mj_ids = None, None
@@ -1113,7 +1114,7 @@ def _resoudre_lignes_email(rows):
 
 def envoyer_relances_participation_background(app, db_path, items, sujet_modele, corps_modele,
                                                numero_relance, annee, trimestre, mail_sender,
-                                               mail_mode, mail_test_to):
+                                               mail_mode, mail_test_to, current_user_email=None):
     """
     Envoi des relances de participation en arrière-plan (Thread).
 
@@ -1192,7 +1193,8 @@ def envoyer_relances_participation_background(app, db_path, items, sujet_modele,
                     texte=texte_mail,
                     sender_override=mail_sender,
                     attachment_path=pdf_path,
-                    bcc=[mail_sender]
+                    bcc=[mail_sender],
+                    current_user_email=current_user_email
                 )
 
                 mj_status, mj_ids = None, None
@@ -1431,12 +1433,13 @@ def relance(campagne_id):
 
         app_reel = current_app._get_current_object()
         db_path = get_db_path()
+        current_user_email_relance = current_user.email if current_user.is_authenticated else None
 
         Thread(
             target=envoyer_relances_participation_background,
             args=(app_reel, db_path, items, sujet_modele, corps_modele,
                   numero_relance, campagne["annee"], campagne["trimestre"],
-                  mail_sender, mail_mode, mail_test_to)
+                  mail_sender, mail_mode, mail_test_to, current_user_email_relance)
         ).start()
 
         if mail_mode == "TEST":
