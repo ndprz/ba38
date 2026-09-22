@@ -4,6 +4,13 @@
 
 {% block extra_css %}
 <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_bootstrap5.min.css" rel="stylesheet">
+<style>
+  #mouvements-table .tabulator-col-title {
+    font-size: 0.8rem;
+    white-space: normal;
+    line-height: 1.1;
+  }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -61,9 +68,9 @@
     height: "70vh",
     initialSort: [{ column: "date_creation", dir: "desc" }],
     columns: [
-      { title: "Date ajout", field: "date_creation", width: 150, headerFilter: "input" },
+      { title: "Date ajout", field: "date_creation", width: 170, minWidth: 160, headerFilter: "input" },
       {
-        title: "Recette", field: "libelle_recette", widthGrow: 2, headerFilter: "input",
+        title: "Recette", field: "libelle_recette", widthGrow: 2, minWidth: 160, headerFilter: "input",
         formatter: function (cell) {
           var data = cell.getData();
           var a = document.createElement("a");
@@ -72,10 +79,10 @@
           return a;
         },
       },
-      { title: "Taille", field: "taille", width: 90, headerFilter: "select", headerFilterParams: { valuesLookup: true, clearable: true } },
-      { title: "Quantité", field: "quantite", width: 100, hozAlign: "right" },
-      { title: "Fin de recette", field: "date_fin_recette", width: 150, headerFilter: "input" },
-      { title: "N° cellule", field: "cellule_numero", width: 100, headerFilter: "select", headerFilterParams: { valuesLookup: true, clearable: true } },
+      { title: "Taille", field: "taille", width: 90, minWidth: 90, headerFilter: "select", headerFilterParams: { valuesLookup: true, clearable: true } },
+      { title: "Qté", field: "quantite", width: 80, minWidth: 80, hozAlign: "right" },
+      { title: "Fin recette", field: "date_fin_recette", width: 170, minWidth: 160, headerFilter: "input" },
+      { title: "Cellule", field: "cellule_numero", width: 100, minWidth: 90, headerFilter: "select", headerFilterParams: { valuesLookup: true, clearable: true } },
       {
         title: "", field: "id", headerSort: false, width: 60,
         formatter: function (cell) {
