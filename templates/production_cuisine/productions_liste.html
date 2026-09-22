@@ -65,6 +65,9 @@
               {% else %}bg-warning text-dark{% endif %}">
               {{ p.statut }}
             </span>
+            {% if p.id in etapes_actuelles %}
+              <span class="text-muted small">{{ etapes_actuelles[p.id] }}</span>
+            {% endif %}
           </div>
         </div>
       </a>

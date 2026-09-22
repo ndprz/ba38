@@ -23,6 +23,18 @@ def now_paris_str() -> str:
     return datetime.now(PARIS_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def parse_temperature(valeur):
+    """Normalise une température saisie au clavier tablette : le champ est
+    en `type="text"` (pas `type="number"`) pour que le signe "-" reste
+    disponible sur les claviers virtuels qui le masquent sinon — donc plus
+    de normalisation automatique du séparateur décimal par le navigateur.
+    Remplace la virgule (clavier français) par un point pour rester un
+    nombre valide en base (sinon stocké tel quel comme texte, faussant
+    silencieusement les totaux/comparaisons)."""
+    valeur = (valeur or "").strip().replace(",", ".")
+    return valeur or None
+
+
 def _connect():
     conn = get_db_connection()
     return conn
@@ -97,6 +109,38 @@ def etape_bloquante(conn, production_id, etape_code):
         if p["code"] not in codes_resolus:
             return p["libelle"]
     return None
+
+
+def etape_actuelle_libelle(conn, production_id):
+    """Libellé court de l'étape où en est une production (en cours, ou
+    prochaine à faire) — pour affichage dans la liste des productions du
+    jour, à côté du statut, sans avoir à ouvrir la fiche."""
+    if decongelation_en_cours(conn, production_id):
+        return "🧊 Décongélation en cours"
+
+    etapes_ref = conn.execute(
+        "SELECT code, libelle, ordre, optionnelle FROM cuisine_etapes_ref WHERE actif = 1 ORDER BY ordre"
+    ).fetchall()
+    etapes_saisies = conn.execute(
+        "SELECT etape_code, heure_fin FROM cuisine_production_etapes WHERE production_id = ? ORDER BY id",
+        (production_id,),
+    ).fetchall()
+    etapes_par_code = {e["etape_code"]: e for e in etapes_saisies}
+    codes_resolus = {e["etape_code"] for e in etapes_saisies if e["heure_fin"] is not None}
+
+    for ref in etapes_ref:
+        if ref["code"] in codes_resolus:
+            continue
+        precedentes = [r for r in etapes_ref if r["ordre"] < ref["ordre"] and not r["optionnelle"]]
+        bloquante = next((p for p in precedentes if p["code"] not in codes_resolus), None)
+        if bloquante:
+            continue
+        ligne = etapes_par_code.get(ref["code"])
+        if ligne and ligne["heure_fin"] is None:
+            return f"⏳ {ref['libelle']} en cours"
+        return f"▶️ {ref['libelle']}"
+
+    return "✅ Étapes terminées"
 
 
 def heure_fin_max_precedentes(conn, production_id, etape_code):

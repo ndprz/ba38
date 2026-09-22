@@ -10,7 +10,7 @@ from flask_login import login_required
 
 from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_production_cuisine import cuisine_hygiene_bp
-from ba38_production_cuisine.utils import _connect
+from ba38_production_cuisine.utils import _connect, parse_temperature
 
 CONFORMITE_CHOICES = ("conforme", "non_conforme")
 
@@ -28,7 +28,7 @@ def _clean_conformite(val, default=None):
 def temperatures():
     if request.method == "POST":
         zone_id = request.form.get("zone_id")
-        temperature = request.form.get("temperature")
+        temperature = parse_temperature(request.form.get("temperature"))
         benevole = (request.form.get("benevole") or "").strip()
         commentaire = (request.form.get("commentaire") or "").strip() or None
 

@@ -13,7 +13,7 @@ from flask_login import login_required
 from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_production_cuisine import production_cuisine_bp
 from ba38_production_cuisine.utils import (
-    _connect, today_paris, now_paris_str, upload_dir_reception, save_uploaded_files,
+    _connect, today_paris, now_paris_str, upload_dir_reception, save_uploaded_files, parse_temperature,
 )
 
 CONFORMITE_CHOICES = ("conforme", "non_conforme")
@@ -207,7 +207,7 @@ def creer_reception():
         heure_arrivee = request.form.get("heure_arrivee") or None
         fournisseur_id = request.form.get("fournisseur_id") or None
         camion_libelle = (request.form.get("camion_libelle") or "").strip() or None
-        temperature_mesuree = request.form.get("temperature_mesuree") or None
+        temperature_mesuree = parse_temperature(request.form.get("temperature_mesuree"))
 
         # Les lignes produit sont ajoutées/retirées dynamiquement côté client
         # (JS) — leurs index ne sont donc pas forcément contigus (ex. 0 et 2

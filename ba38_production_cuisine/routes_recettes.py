@@ -9,7 +9,9 @@ from flask_login import login_required
 
 from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_production_cuisine import production_cuisine_bp
-from ba38_production_cuisine.utils import _connect, today_paris, now_paris_str, decongelation_en_cours
+from ba38_production_cuisine.utils import (
+    _connect, today_paris, now_paris_str, decongelation_en_cours, etape_actuelle_libelle,
+)
 
 STATUTS = ("en_cours", "terminee", "annulee")
 
@@ -59,6 +61,13 @@ def liste_productions():
         sql += " ORDER BY id DESC"
         productions = conn.execute(sql, params).fetchall()
 
+        # Étape en cours (ou prochaine) affichée à côté du statut — inutile
+        # de calculer pour une production terminée/annulée.
+        etapes_actuelles = {
+            p["id"]: etape_actuelle_libelle(conn, p["id"])
+            for p in productions if p["statut"] == "en_cours"
+        }
+
         nb_receptions_attente = conn.execute(
             """SELECT COUNT(*) FROM cuisine_receptions
                WHERE date_reception = ? AND actif = 1 AND production_id IS NULL""",
@@ -72,6 +81,7 @@ def liste_productions():
         statut_filtre=statut_filtre,
         statuts=STATUTS,
         nb_receptions_attente=nb_receptions_attente,
+        etapes_actuelles=etapes_actuelles,
     )
 
 

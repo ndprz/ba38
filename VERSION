@@ -1,3 +1,3 @@
-VERSION=1.6.89
-MESSAGE=Cuisine : lot manuel toujours visible, clavier temperature negative, n. cellule saisissable avant terminer
-DATE=2026-09-22 12:17
+VERSION=1.6.90
+MESSAGE=Cuisine : etape actuelle sur liste productions + fix reel clavier temperature negative (type=text inputmode=decimal, normalisation virgule serveur)
+DATE=2026-09-22 12:26

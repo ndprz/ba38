@@ -13,7 +13,7 @@ from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_production_cuisine import production_cuisine_bp
 from ba38_production_cuisine.utils import (
     _connect, now_paris_str, upload_dir_traca_lot, save_uploaded_files,
-    etape_bloquante, heure_fin_max_precedentes, calculer_conformite_production,
+    etape_bloquante, heure_fin_max_precedentes, calculer_conformite_production, parse_temperature,
 )
 
 CONFORMITE_CHOICES = ("conforme", "non_conforme")
@@ -143,7 +143,7 @@ def etape_production(production_id):
             flash(f"🚫 {etape_ref['libelle']} marquée non applicable.", "success")
 
         elif action == "demarrer":
-            temperature_debut = request.form.get("temperature_debut") or None
+            temperature_debut = parse_temperature(request.form.get("temperature_debut"))
             cur.execute(
                 """INSERT INTO cuisine_production_etapes
                    (production_id, etape_code, heure_debut, temperature_debut, user_creation)
@@ -195,7 +195,7 @@ def etape_production(production_id):
                     flash(f"🔒 Terminez d'abord « {bloquante} » avant « {etape_ref['libelle']} ».", "warning")
                     return _redirect_run(production_id)
 
-            temperature = request.form.get("temperature") or None
+            temperature = parse_temperature(request.form.get("temperature"))
             cellule_numero = request.form.get("cellule_numero") or None
             conforme = _clean_conformite(request.form.get("conforme"))
             commentaire = (request.form.get("commentaire") or "").strip() or None
@@ -306,8 +306,8 @@ def corriger_etape_production(production_id, etape_id):
 
         heure_debut = _datetime_local_vers_stockage(request.form.get("heure_debut"))
         heure_fin = _datetime_local_vers_stockage(request.form.get("heure_fin"))
-        temperature_debut = request.form.get("temperature_debut") or None
-        temperature = request.form.get("temperature") or None
+        temperature_debut = parse_temperature(request.form.get("temperature_debut"))
+        temperature = parse_temperature(request.form.get("temperature"))
         cellule_numero = request.form.get("cellule_numero") or None
         conforme = _clean_conformite(request.form.get("conforme"))
 
