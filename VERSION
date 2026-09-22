@@ -1,3 +1,3 @@
-VERSION=1.6.91
-MESSAGE=Cuisine : bouton +/- pour saisir une temperature negative sur tablette (fiable quel que soit le clavier)
-DATE=2026-09-22 13:01
+VERSION=1.6.92
+MESSAGE=Cuisine : fix contraste badge statut terminee/annulee (texte blanc) sur liste productions
+DATE=2026-09-22 13:19
