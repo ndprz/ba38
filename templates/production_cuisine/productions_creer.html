@@ -75,6 +75,16 @@
       <div class="form-text">Repris automatiquement de la recette choisie ci-dessus — modifiable si besoin.</div>
     </div>
 
+    <div class="mb-3">
+      <label class="form-label fw-bold">Catégorie *</label>
+      <select name="categorie_produit" id="categorie-produit-select" class="form-select" required>
+        <option value="">-- Choisir --</option>
+        <option value="carne" {% if form.categorie_produit == 'carne' %}selected{% endif %}>🥩 Carné (viande, poisson, gibier)</option>
+        <option value="legumes" {% if form.categorie_produit == 'legumes' %}selected{% endif %}>🥬 Légumes (légumes, pâtes, riz, féculents...)</option>
+      </select>
+      <div class="form-text">Suggérée depuis la recette choisie ci-dessus si possible — à vérifier, obligatoire pour créer la production.</div>
+    </div>
+
     <div class="card mb-3">
       <div class="card-header">🧊 Décongélation (si nécessaire)</div>
       <div class="card-body">
@@ -142,6 +152,9 @@
         return o.value === recette.type_cuisson;
       });
       if (optionExiste) modeCuissonSelect.value = recette.type_cuisson;
+    }
+    if (recette.categorie) {
+      document.getElementById("categorie-produit-select").value = recette.categorie;
     }
     var choisie = document.getElementById("recette-choisie");
     choisie.style.display = "block";

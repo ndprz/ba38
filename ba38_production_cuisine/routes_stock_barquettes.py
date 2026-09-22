@@ -232,11 +232,11 @@ def ajouter_stock_barquettes(production_id):
                 cur.execute(
                     """INSERT INTO cuisine_stock_barquettes
                        (article_id, production_id, libelle_recette, date_fin_recette,
-                        cellule_numero, quantite, user_creation)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        cellule_numero, quantite, categorie_produit, user_creation)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (article_id, production_id, production["nom_recette"],
                      mise_en_cellule["heure_fin"], mise_en_cellule["cellule_numero"],
-                     quantite, benevole or None),
+                     quantite, production["categorie_produit"], benevole or None),
                 )
                 nb_lignes += 1
 
@@ -263,7 +263,10 @@ def liste_stock_barquettes():
         stock_total = conn.execute(
             """
             SELECT a.id, a.taille, a.libelle, a.nb_portions,
-                   COALESCE(SUM(s.quantite), 0) AS quantite_stock
+                   COALESCE(SUM(s.quantite), 0) AS quantite_stock,
+                   COALESCE(SUM(CASE WHEN s.categorie_produit = 'carne' THEN s.quantite ELSE 0 END), 0) AS quantite_carne,
+                   COALESCE(SUM(CASE WHEN s.categorie_produit = 'legumes' THEN s.quantite ELSE 0 END), 0) AS quantite_legumes,
+                   COALESCE(SUM(CASE WHEN s.categorie_produit IS NULL THEN s.quantite ELSE 0 END), 0) AS quantite_non_classe
             FROM cuisine_articles_barquettes a
             LEFT JOIN cuisine_stock_barquettes s ON s.article_id = a.id AND s.actif = 1
             WHERE a.actif = 1
@@ -283,6 +286,9 @@ def liste_stock_barquettes():
             """
         ).fetchall()
         mouvements_json = [dict(m) for m in mouvements]
+        libelles_categorie = {"carne": "🥩 Carné", "legumes": "🥬 Légumes"}
+        for m in mouvements_json:
+            m["categorie_label"] = libelles_categorie.get(m["categorie_produit"], "❓ Non classé")
 
     return render_template(
         "production_cuisine/stock_barquettes_liste.html",

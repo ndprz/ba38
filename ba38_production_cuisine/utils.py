@@ -12,6 +12,19 @@ from ba38_utilitaires.core import get_db_connection, write_log
 
 PARIS_TZ = ZoneInfo("Europe/Paris")
 
+# Familles du référentiel recettes (cuisine_recettes_referentiel.famille)
+# classées "carné" — tout le reste (Légumes, Légumineuses, Féculents,
+# Œufs...) est "légumes", règle confirmée par le responsable cuisine.
+FAMILLES_CARNEES = {"Viande", "Poisson", "Gibier"}
+
+
+def categorie_depuis_famille(famille):
+    """'carne' si la famille du référentiel recettes est Viande/Poisson/
+    Gibier, sinon 'legumes' (y compris famille inconnue/absente — la
+    catégorie reste de toute façon à confirmer par l'utilisateur, ce n'est
+    qu'une suggestion de pré-remplissage)."""
+    return "carne" if (famille or "").strip() in FAMILLES_CARNEES else "legumes"
+
 
 def today_paris() -> str:
     """Date du jour (AAAA-MM-JJ) en heure de Paris — PAS UTC brut (cf. bug de

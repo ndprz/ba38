@@ -11,20 +11,26 @@ from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_production_cuisine import production_cuisine_bp
 from ba38_production_cuisine.utils import (
     _connect, today_paris, now_paris_str, decongelation_en_cours, etape_actuelle_libelle,
+    categorie_depuis_famille,
 )
 
 STATUTS = ("en_cours", "terminee", "annulee")
+CATEGORIES_PRODUIT = ("carne", "legumes")
 
 
 def _recettes_referentiel_json(conn):
     """Liste des recettes actives du référentiel, sérialisable pour la
     grille Tabulator de sélection (création de production, changement de
-    recette)."""
+    recette). `categorie` sert à pré-remplir le champ Catégorie (carné/
+    légumes) de l'écran de création — reste modifiable par l'utilisateur."""
     rows = conn.execute(
         """SELECT id, code, nom, famille, sous_famille_1, sous_famille_2, type_cuisson
            FROM cuisine_recettes_referentiel WHERE actif = 1 ORDER BY code"""
     ).fetchall()
-    return [dict(r) for r in rows]
+    recettes = [dict(r) for r in rows]
+    for r in recettes:
+        r["categorie"] = categorie_depuis_famille(r["famille"])
+    return recettes
 
 
 def _get_or_create_recette(conn, nom):
@@ -130,13 +136,20 @@ def creer_production():
         nom_recette = (request.form.get("nom_recette") or "").strip()
         espece = (request.form.get("espece") or "").strip() or None
         mode_cuisson = (request.form.get("mode_cuisson") or "").strip() or None
+        categorie_produit = request.form.get("categorie_produit") or None
         recette_referentiel_id = request.form.get("recette_referentiel_id") or None
         reception_ids = [int(v) for v in request.form.getlist("reception_ids") if v.isdigit()]
         decongelation_heure_debut = (request.form.get("decongelation_heure_debut") or "").strip() or None
         decongelation_non_applicable = request.form.get("decongelation_non_applicable") == "1"
 
+        erreur = None
         if not nom_recette:
-            flash("⚠️ Merci de saisir le nom de la recette.", "warning")
+            erreur = "⚠️ Merci de saisir le nom de la recette."
+        elif categorie_produit not in CATEGORIES_PRODUIT:
+            erreur = "⚠️ Merci d'indiquer la catégorie du produit (Carné ou Légumes)."
+
+        if erreur:
+            flash(erreur, "warning")
             return render_template(
                 "production_cuisine/productions_creer.html",
                 recettes_referentiel=recettes_referentiel, types_cuisson=types_cuisson,
@@ -153,11 +166,11 @@ def creer_production():
                     """
                     INSERT INTO cuisine_productions
                     (date_production, recette_id, recette_referentiel_id, nom_recette,
-                     nom_recette_initial, espece, mode_cuisson, statut, user_creation)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 'en_cours', ?)
+                     nom_recette_initial, espece, mode_cuisson, categorie_produit, statut, user_creation)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'en_cours', ?)
                     """,
                     (date_production, recette_id, recette_referentiel_id, nom_normalise, nom_normalise,
-                     espece, mode_cuisson, benevole or None),
+                     espece, mode_cuisson, categorie_produit, benevole or None),
                 )
                 production_id = cur.lastrowid
 

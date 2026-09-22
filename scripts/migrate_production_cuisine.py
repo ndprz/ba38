@@ -645,6 +645,10 @@ def main():
         ])
         add_missing_columns(conn, "cuisine_productions", [
             ("recette_referentiel_id", "INTEGER REFERENCES cuisine_recettes_referentiel(id)"),
+            ("categorie_produit", "TEXT CHECK (categorie_produit IN ('carne','legumes'))"),
+        ])
+        add_missing_columns(conn, "cuisine_stock_barquettes", [
+            ("categorie_produit", "TEXT"),
         ])
         seed(conn)
         seed_parametres_cuisine(conn)

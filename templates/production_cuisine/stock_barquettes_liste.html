@@ -40,7 +40,12 @@
           <h5 class="card-title">{{ a.libelle }}</h5>
           <p class="display-6 mb-0">{{ a.quantite_stock }}</p>
           <p class="text-muted mb-0">barquette(s) en stock</p>
-          <p class="text-muted small">{{ a.nb_portions }} portion(s)/barquette · {{ a.quantite_stock * a.nb_portions }} portion(s) au total</p>
+          <p class="text-muted small mb-2">{{ a.nb_portions }} portion(s)/barquette · {{ a.quantite_stock * a.nb_portions }} portion(s) au total</p>
+          <p class="mb-0">🥩 Carné : <strong>{{ a.quantite_carne }}</strong></p>
+          <p class="mb-0">🥬 Légumes : <strong>{{ a.quantite_legumes }}</strong></p>
+          {% if a.quantite_non_classe %}
+            <p class="mb-0 text-muted">❓ Non classé : {{ a.quantite_non_classe }}</p>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -80,6 +85,7 @@
         },
       },
       { title: "Taille", field: "article_libelle", width: 110, minWidth: 100, headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
+      { title: "Catégorie", field: "categorie_label", width: 130, minWidth: 120, headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
       { title: "Qté", field: "quantite", width: 80, minWidth: 80, hozAlign: "right" },
       { title: "Fin recette", field: "date_fin_recette", width: 170, minWidth: 160, headerFilter: "input" },
       { title: "Cellule", field: "cellule_numero", width: 100, minWidth: 90, headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },

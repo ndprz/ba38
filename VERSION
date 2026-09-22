@@ -1,3 +1,3 @@
-VERSION=1.7.3
-MESSAGE=Cuisine : libelle barquettes renomme dynamiquement dans les templates (quantites conditionnees, stock)
-DATE=2026-09-22 15:04
+VERSION=1.7.4
+MESSAGE=Cuisine : categorie produit (Carne/Legumes) obligatoire a la creation production, snapshot sur stock barquettes, repartition dans la visu stock
+DATE=2026-09-22 15:29

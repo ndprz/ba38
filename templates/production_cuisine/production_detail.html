@@ -17,6 +17,8 @@
         {{ production.date_production }}
         {% if production.espece %} · {{ production.espece }}{% endif %}
         {% if production.mode_cuisson %} · {{ production.mode_cuisson }}{% endif %}
+        {% if production.categorie_produit == 'carne' %} · 🥩 Carné
+        {% elif production.categorie_produit == 'legumes' %} · 🥬 Légumes{% endif %}
         · <span class="badge
             {% if production.statut == 'terminee' %}bg-success
             {% elif production.statut == 'annulee' %}bg-secondary
