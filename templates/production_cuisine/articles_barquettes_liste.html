@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Référentiel articles barquettes{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_bootstrap5.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">📦 Référentiel articles barquettes</h2>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('production_cuisine.liste_stock_barquettes') }}" class="btn btn-outline-secondary">
+        📊 Voir le stock
+      </a>
+      <a href="{{ url_for('production_cuisine.liste_productions') }}" class="btn btn-outline-secondary">← Retour</a>
+      <a href="{{ url_for('production_cuisine.creer_article_barquette') }}" class="btn btn-primary">
+        ➕ Nouvel article
+      </a>
+    </div>
+  </div>
+
+  <p class="text-muted">{{ nb_articles }} article(s) — taille de barquette et nombre de portions correspondant.</p>
+
+  <div id="articles-table"></div>
+
+</div>
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+  var articlesData = {{ articles_json | tojson }};
+  var urlModifierBase = "{{ url_for('production_cuisine.modifier_article_barquette', article_id=0) }}".slice(0, -1);
+  var urlSupprimerBase = "{{ url_for('production_cuisine.supprimer_article_barquette', article_id=0) }}".slice(0, -1);
+  var csrfToken = "{{ csrf_token() }}";
+
+  var table = new Tabulator("#articles-table", {
+    data: articlesData,
+    layout: "fitColumns",
+    columns: [
+      { title: "Taille", field: "taille", width: 100 },
+      { title: "Code article", field: "code_article", width: 130 },
+      { title: "Libellé", field: "libelle", widthGrow: 2 },
+      { title: "Portions", field: "nb_portions", width: 100 },
+      {
+        title: "", field: "id", headerSort: false, width: 110,
+        formatter: function (cell) {
+          var data = cell.getData();
+          var wrap = document.createElement("div");
+          wrap.className = "d-flex gap-1";
+
+          var editLink = document.createElement("a");
+          editLink.href = urlModifierBase + data.id;
+          editLink.className = "btn btn-sm btn-outline-secondary";
+          editLink.textContent = "✏️";
+          wrap.appendChild(editLink);
+
+          var delBtn = document.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "btn btn-sm btn-outline-danger";
+          delBtn.textContent = "🗑️";
+          delBtn.addEventListener("click", function () {
+            if (!confirm("Supprimer l'article « " + data.libelle + " » du référentiel ?")) return;
+            var form = document.createElement("form");
+            form.method = "POST";
+            form.action = urlSupprimerBase + data.id;
+            var csrf = document.createElement("input");
+            csrf.type = "hidden";
+            csrf.name = "csrf_token";
+            csrf.value = csrfToken;
+            form.appendChild(csrf);
+            document.body.appendChild(form);
+            form.submit();
+          });
+          wrap.appendChild(delBtn);
+          return wrap;
+        },
+      },
+    ],
+  });
+</script>
+{% endblock %}

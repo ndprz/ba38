@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}{{ "Modifier" if article else "Nouvel" }} article barquette{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 640px;">
+
+  <h2 class="mb-3">📦 {{ "Modifier l'article" if article else "Nouvel article" }}</h2>
+
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">Taille *</label>
+      <select name="taille" class="form-select" required>
+        <option value="">-- Choisir --</option>
+        {% for t in tailles %}
+          <option value="{{ t }}" {% if form.taille == t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Code article</label>
+      <input type="text" name="code_article" class="form-control" value="{{ form.code_article or '' }}">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">Libellé *</label>
+      <input type="text" name="libelle" class="form-control form-control-lg" required value="{{ form.libelle or '' }}">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">Nombre de portions *</label>
+      <input type="number" min="1" name="nb_portions" class="form-control" required
+             value="{{ form.nb_portions if form.nb_portions is not none else '' }}">
+    </div>
+
+    <div class="d-flex justify-content-between">
+      <a href="{{ url_for('production_cuisine.liste_articles_barquettes') }}" class="btn btn-outline-secondary btn-lg">Annuler</a>
+      <button type="submit" class="btn btn-primary btn-lg">💾 Enregistrer</button>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

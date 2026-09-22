@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Stock barquettes{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">📊 Stock barquettes</h2>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('production_cuisine.liste_articles_barquettes') }}" class="btn btn-outline-secondary">
+        📦 Référentiel articles
+      </a>
+      <a href="{{ url_for('production_cuisine.liste_productions') }}" class="btn btn-outline-secondary">← Retour</a>
+    </div>
+  </div>
+
+  <div class="form-text mb-3">
+    Alimenté automatiquement depuis les quantités conditionnées de chaque production (bouton "Ajouter au stock"
+    sur la fiche recette) — pas de saisie manuelle. Uniquement une entrée de stock pour l'instant : les bons de
+    livraison / factures qui viendront décrémenter ce stock ne sont pas encore développés.
+  </div>
+
+  <div class="row g-3 mb-4">
+    {% for a in stock_total %}
+    <div class="col-md-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <h5 class="card-title">{{ a.libelle }}</h5>
+          <p class="display-6 mb-0">{{ a.quantite_stock }}</p>
+          <p class="text-muted mb-0">barquette(s) en stock</p>
+          <p class="text-muted small">{{ a.nb_portions }} portion(s)/barquette · {{ a.quantite_stock * a.nb_portions }} portion(s) au total</p>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <h5 class="mb-2">🧾 Détail des entrées de stock</h5>
+  {% if not mouvements %}
+    <p class="text-muted">Aucune entrée de stock pour l'instant.</p>
+  {% else %}
+  <div class="table-responsive">
+    <table class="table table-sm table-striped">
+      <thead>
+        <tr>
+          <th>Date ajout</th>
+          <th>Recette</th>
+          <th>Taille</th>
+          <th class="text-end">Quantité</th>
+          <th>Fin de recette</th>
+          <th>N° cellule</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in mouvements %}
+        <tr>
+          <td>{{ m.date_creation }}</td>
+          <td>
+            <a href="{{ url_for('production_cuisine.detail_production', production_id=m.production_id) }}">
+              {{ m.libelle_recette }}
+            </a>
+          </td>
+          <td>{{ m.taille }}</td>
+          <td class="text-end">{{ m.quantite }}</td>
+          <td>{{ m.date_fin_recette or "—" }}</td>
+          <td>{{ m.cellule_numero if m.cellule_numero is not none else "—" }}</td>
+          <td>
+            <form method="POST" action="{{ url_for('production_cuisine.supprimer_stock_barquette', stock_id=m.id) }}"
+                  onsubmit="return confirm('Retirer cette ligne du stock ?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

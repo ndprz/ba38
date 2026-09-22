@@ -337,6 +337,13 @@ def detail_production(production_id):
             (production_id,),
         ).fetchall()
 
+        stock_barquettes = conn.execute(
+            """SELECT s.*, a.taille FROM cuisine_stock_barquettes s
+               JOIN cuisine_articles_barquettes a ON a.id = s.article_id
+               WHERE s.production_id = ? AND s.actif = 1 ORDER BY a.taille""",
+            (production_id,),
+        ).fetchall()
+
     return render_template(
         "production_cuisine/production_detail.html",
         production=production,
@@ -355,6 +362,7 @@ def detail_production(production_id):
         today=today_paris(),
         conformite_globale=conformite_globale,
         recettes_referentiel=recettes_referentiel,
+        stock_barquettes=stock_barquettes,
     )
 
 

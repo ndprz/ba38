@@ -415,6 +415,25 @@
           <button type="submit" class="btn btn-primary btn-lg">💾 Enregistrer</button>
         </div>
       </form>
+
+      <hr>
+      {% set cellule_ligne = etapes_par_code.get('refroidissement_cellule') %}
+      {% if stock_barquettes %}
+        <div class="alert alert-success py-2">
+          ✅ Ajouté au stock barquettes :
+          {% for s in stock_barquettes %}{{ s.taille }} × {{ s.quantite }}{% if not loop.last %} · {% endif %}{% endfor %}
+        </div>
+      {% endif %}
+      {% if cellule_ligne and cellule_ligne.heure_fin %}
+        <form method="POST" action="{{ url_for('production_cuisine.ajouter_stock_barquettes', production_id=production.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-outline-success">
+            📦 {{ "Mettre à jour le stock" if stock_barquettes else "Ajouter au stock barquettes" }}
+          </button>
+        </form>
+      {% else %}
+        <div class="text-muted small">📦 Le stock pourra être alimenté une fois la mise en cellule terminée.</div>
+      {% endif %}
     </div>
   </div>
 

@@ -219,6 +219,39 @@ CREATE TABLE IF NOT EXISTS cuisine_production_quantites (
   UNIQUE(production_id, taille)
 );
 
+-- Référentiel des articles barquettes (module Stock & Ventes barquettes) :
+-- une ligne par taille de barquette, avec son nombre de portions.
+CREATE TABLE IF NOT EXISTS cuisine_articles_barquettes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  taille TEXT NOT NULL UNIQUE CHECK (taille IN ('1/2','1/4','1/8')),
+  code_article TEXT,
+  libelle TEXT NOT NULL,
+  nb_portions INTEGER NOT NULL,
+  actif INTEGER DEFAULT 1,
+  date_creation TEXT DEFAULT (datetime('now','utc')),
+  date_modif TEXT, user_creation TEXT, user_modif TEXT
+);
+
+-- Stock barquettes : une ligne par (production, taille) une fois la
+-- recette conditionnée — alimenté depuis "Quantités conditionnées" sur la
+-- fiche production (bouton "Ajouter au stock"), jamais saisi à la main.
+-- Sert de base aux futurs bons de livraison / factures (pas encore
+-- développés — pour l'instant uniquement un stock entrant, sans sortie).
+CREATE TABLE IF NOT EXISTS cuisine_stock_barquettes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  article_id INTEGER NOT NULL REFERENCES cuisine_articles_barquettes(id),
+  production_id INTEGER NOT NULL REFERENCES cuisine_productions(id) ON DELETE CASCADE,
+  libelle_recette TEXT NOT NULL,
+  date_fin_recette TEXT,
+  cellule_numero INTEGER,
+  quantite INTEGER NOT NULL,
+  actif INTEGER DEFAULT 1,
+  date_creation TEXT DEFAULT (datetime('now','utc')),
+  user_creation TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cuisine_stock_barquettes_production ON cuisine_stock_barquettes(production_id);
+CREATE INDEX IF NOT EXISTS idx_cuisine_stock_barquettes_article ON cuisine_stock_barquettes(article_id);
+
 CREATE TABLE IF NOT EXISTS cuisine_production_validations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   production_id INTEGER NOT NULL UNIQUE REFERENCES cuisine_productions(id) ON DELETE CASCADE,
@@ -350,6 +383,13 @@ ETAPES_REF = [
     ("decongelation", "Décongélation", 0, 1, 1, 0, 0, 0, 1, 1),
 ]
 
+# (taille, code_article, libelle, nb_portions)
+ARTICLES_BARQUETTES = [
+    ("1/2", "1/2", "Barquette 1/2", 1),
+    ("1/4", "1/4", "Barquette 1/4", 4),
+    ("1/8", "1/8", "Barquette 1/8", 10),
+]
+
 ZONES_TEMPERATURE = [
     "CF RECEPTION N°4",
     "CF LEGUMES N°7",
@@ -454,6 +494,16 @@ def seed(conn):
         ETAPES_REF,
     )
     print(f"✓ cuisine_etapes_ref : {len(ETAPES_REF)} ligne(s) synchronisées (upsert)")
+
+    # --- articles barquettes (module Stock & Ventes barquettes) ---
+    cur.executemany(
+        """INSERT INTO cuisine_articles_barquettes (taille, code_article, libelle, nb_portions)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(taille) DO UPDATE SET
+             libelle=excluded.libelle, nb_portions=excluded.nb_portions""",
+        ARTICLES_BARQUETTES,
+    )
+    print(f"✓ cuisine_articles_barquettes : {len(ARTICLES_BARQUETTES)} ligne(s) synchronisées (upsert)")
 
     # --- zones de relevé température ---
     rows = [(slugify(lib), lib, i + 1) for i, lib in enumerate(ZONES_TEMPERATURE)]
