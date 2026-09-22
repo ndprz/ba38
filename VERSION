@@ -1,3 +1,3 @@
-VERSION=1.6.88
-MESSAGE=Cuisine : etat journalier des receptions + garde-fou EXCLUDE_TABLES sur migration schema/data
-DATE=2026-09-21 17:19
+VERSION=1.6.89
+MESSAGE=Cuisine : lot manuel toujours visible, clavier temperature negative, n. cellule saisissable avant terminer
+DATE=2026-09-22 12:17

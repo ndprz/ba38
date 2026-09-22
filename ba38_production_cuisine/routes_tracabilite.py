@@ -95,11 +95,11 @@ def ajouter_lot(production_id):
 @login_required
 @require_access("production_cuisine", "ecriture")
 def etape_production(production_id):
-    action = request.form.get("action")  # 'demarrer' | 'terminer' | 'non_applicable'
+    action = request.form.get("action")  # 'demarrer' | 'terminer' | 'non_applicable' | 'cellule'
     etape_code = request.form.get("etape_code")
     benevole = (request.form.get("benevole") or "").strip()
 
-    if not etape_code or action not in ("demarrer", "terminer", "non_applicable"):
+    if not etape_code or action not in ("demarrer", "terminer", "non_applicable", "cellule"):
         flash("⚠️ Étape ou action invalide.", "warning")
         return _redirect_run(production_id)
 
@@ -152,6 +152,27 @@ def etape_production(production_id):
             )
             conn.commit()
             flash(f"▶️ {etape_ref['libelle']} démarrée.", "success")
+
+        elif action == "cellule":
+            # Enregistrer le n° de cellule dès la mise en cellule (avant le
+            # refroidissement), sans attendre "Terminer" — la température
+            # ne sera relevée que plus tard, une fois le produit froid.
+            cellule_numero = request.form.get("cellule_numero") or None
+            derniere = conn.execute(
+                """SELECT id FROM cuisine_production_etapes
+                   WHERE production_id = ? AND etape_code = ? AND heure_fin IS NULL
+                   ORDER BY id DESC LIMIT 1""",
+                (production_id, etape_code),
+            ).fetchone()
+            if not derniere:
+                flash("⚠️ Aucune étape en cours pour enregistrer le n° de cellule.", "warning")
+                return _redirect_run(production_id)
+            cur.execute(
+                "UPDATE cuisine_production_etapes SET cellule_numero = ?, user_modif = ? WHERE id = ?",
+                (cellule_numero, benevole or None, derniere["id"]),
+            )
+            conn.commit()
+            flash("🧊 N° cellule enregistré.", "success")
 
         else:  # terminer
             derniere = conn.execute(

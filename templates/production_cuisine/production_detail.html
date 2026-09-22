@@ -96,6 +96,7 @@
                 <div class="text-warning small">
                   En cours depuis {{ ligne.heure_debut }}
                   {% if ligne.temperature_debut is not none %} · {{ ligne.temperature_debut }}°C{% endif %}
+                  {% if ligne.cellule_numero is not none %} · Cellule n°{{ ligne.cellule_numero }}{% endif %}
                 </div>
               {% else %}
                 <div class="text-success small">
@@ -121,7 +122,7 @@
               {% if ref.saisie_temperature_debut %}
               <div>
                 <label class="form-label small">Température début (°C)</label>
-                <input type="number" inputmode="decimal" step="0.1" name="temperature_debut" class="form-control" required>
+                <input type="number" step="0.1" name="temperature_debut" class="form-control" required>
               </div>
               {% endif %}
               <button type="submit" class="btn btn-success btn-lg">▶️ Démarrer</button>
@@ -145,6 +146,21 @@
             {% endif %}
           </div>
 
+          {% if ref.saisie_cellule and ligne and ligne.heure_fin is none %}
+          <form method="POST" action="{{ url_for('production_cuisine.etape_production', production_id=production.id) }}"
+                class="d-flex flex-wrap gap-2 align-items-end mt-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="etape_code" value="{{ ref.code }}">
+            <input type="hidden" name="action" value="cellule">
+            <div class="col-auto">
+              <label class="form-label small">N° cellule (1-6)</label>
+              <input type="number" min="1" max="6" name="cellule_numero" class="form-control"
+                     value="{{ ligne.cellule_numero if ligne.cellule_numero is not none else '' }}">
+            </div>
+            <button type="submit" class="btn btn-outline-primary">🧊 Enregistrer le n° cellule</button>
+          </form>
+          {% endif %}
+
           {% if not bloquante and ((not ref.saisie_debut and not ligne) or (ligne and ligne.heure_fin is none)) %}
           <form method="POST" action="{{ url_for('production_cuisine.etape_production', production_id=production.id) }}"
                 class="mt-2 row g-2 align-items-end">
@@ -155,14 +171,15 @@
             {% if ref.saisie_temperature %}
             <div class="col-auto">
               <label class="form-label small">Température {{ "fin" if ref.saisie_temperature_debut else "" }} (°C)</label>
-              <input type="number" inputmode="decimal" step="0.1" name="temperature" class="form-control" required>
+              <input type="number" step="0.1" name="temperature" class="form-control" required>
             </div>
             {% endif %}
 
             {% if ref.saisie_cellule %}
             <div class="col-auto">
               <label class="form-label small">N° cellule (1-6)</label>
-              <input type="number" min="1" max="6" name="cellule_numero" class="form-control">
+              <input type="number" min="1" max="6" name="cellule_numero" class="form-control"
+                     value="{{ ligne.cellule_numero if ligne and ligne.cellule_numero is not none else '' }}">
             </div>
             {% endif %}
 
@@ -199,7 +216,7 @@
               {% if ref.saisie_temperature_debut %}
               <div class="col-auto">
                 <label class="form-label small">Temp. début (°C)</label>
-                <input type="number" inputmode="decimal" step="0.1" name="temperature_debut" class="form-control"
+                <input type="number" step="0.1" name="temperature_debut" class="form-control"
                        value="{{ ligne.temperature_debut if ligne.temperature_debut is not none else '' }}">
               </div>
               {% endif %}
@@ -212,7 +229,7 @@
               {% if ref.saisie_temperature %}
               <div class="col-auto">
                 <label class="form-label small">Temp. fin (°C)</label>
-                <input type="number" inputmode="decimal" step="0.1" name="temperature" class="form-control"
+                <input type="number" step="0.1" name="temperature" class="form-control"
                        value="{{ ligne.temperature if ligne.temperature is not none else '' }}">
               </div>
               {% endif %}
@@ -327,32 +344,28 @@
         </div>
       {% endif %}
 
-      <details>
-        <summary class="text-muted" style="cursor:pointer;">
-          ➕ Ajouter un lot manuel (marchandise non couverte par une réception)
-        </summary>
-        <form method="POST" action="{{ url_for('production_cuisine.ajouter_lot', production_id=production.id) }}"
-              enctype="multipart/form-data" class="mt-3">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h6 class="text-muted mt-3">➕ Ajouter un lot manuel (marchandise non couverte par une réception)</h6>
+      <form method="POST" action="{{ url_for('production_cuisine.ajouter_lot', production_id=production.id) }}"
+            enctype="multipart/form-data" class="mt-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-          <label class="form-label fw-bold">Fournisseur</label>
-          <div class="d-flex flex-wrap gap-2 mb-3">
-            {% for f in fournisseurs %}
-              <input type="radio" class="btn-check" name="fournisseur_id" id="frs_{{ f.id }}" value="{{ f.id }}" autocomplete="off">
-              <label class="btn btn-outline-primary" for="frs_{{ f.id }}">{{ f.nom }}</label>
-            {% endfor %}
-          </div>
+        <label class="form-label fw-bold">Fournisseur</label>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          {% for f in fournisseurs %}
+            <input type="radio" class="btn-check" name="fournisseur_id" id="frs_{{ f.id }}" value="{{ f.id }}" autocomplete="off">
+            <label class="btn btn-outline-primary" for="frs_{{ f.id }}">{{ f.nom }}</label>
+          {% endfor %}
+        </div>
 
-          {{ camera_capture("photos", "📷 Photos (étiquette / produit)") }}
+        {{ camera_capture("photos", "📷 Photos (étiquette / produit)") }}
 
-          <div class="mb-3">
-            <label class="form-label">Commentaire</label>
-            <input type="text" name="commentaire" class="form-control">
-          </div>
+        <div class="mb-3">
+          <label class="form-label">Commentaire</label>
+          <input type="text" name="commentaire" class="form-control">
+        </div>
 
-          <button type="submit" class="btn btn-primary btn-lg">➕ Ajouter le lot</button>
-        </form>
-      </details>
+        <button type="submit" class="btn btn-primary btn-lg">➕ Ajouter le lot</button>
+      </form>
     </div>
   </div>
 
