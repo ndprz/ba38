@@ -1,3 +1,3 @@
-VERSION=1.6.95
-MESSAGE=Cuisine : nouveau module Stock et Ventes barquettes (referentiel articles + alimentation depuis quantites conditionnees + visu stock)
-DATE=2026-09-22 13:46
+VERSION=1.6.96
+MESSAGE=Garde-fou EXCLUDE_TABLES : ajout cuisine_stock_barquettes (references production_id divergent dev/prod)
+DATE=2026-09-22 13:48

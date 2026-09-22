@@ -22,6 +22,17 @@ deux bases, les mêmes id ne désignent plus la même ligne des deux côtés
 initiale était sans risque tant que PROD n'avait encore rien édité, mais
 laisser le mécanisme actif expose à un backfill corrompu au premier ajout
 de colonne futur).
+
+Deuxième cas à exclure, découvert le 2026-09-22 : une table TOUTE NEUVE
+peut aussi être dangereuse à copier intégralement si elle référence par id
+une autre table qui, elle, diverge déjà entre DEV et PROD (ex.
+cuisine_stock_barquettes.production_id → cuisine_productions.id). La copie
+intégrale "table absente côté PROD" a bien créé la table mais avec des
+production_id qui ne désignaient PAS les mêmes productions réelles côté
+PROD (coïncidence sur les tout premiers id, divergence sur les suivants) —
+corrompu silencieusement jusqu'à vérification manuelle après coup. Toute
+nouvelle table qui référence une table déjà en usage indépendant des deux
+côtés doit être exclue dès sa création, pas seulement une fois éditée.
 """
 
 import sqlite3
@@ -30,6 +41,7 @@ from dotenv import dotenv_values
 
 EXCLUDE_TABLES = {
     "cuisine_ingredients_carnes",
+    "cuisine_stock_barquettes",
 }
 
 # -------------------------------------------------------------------
