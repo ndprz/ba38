@@ -1,3 +1,3 @@
-VERSION=1.7.1
-MESSAGE=Fix garde-fou mail DEV : redirection vers l'utilisateur connecté même en envoi arrière-plan (Thread) sur Collecte/Trésorerie/Indicateurs/SMS + module Renvoi Gmail
-DATE=2026-09-22 14:50
+VERSION=1.7.2
+MESSAGE=Cuisine : correction portions barquettes (1/2=10P, 1/4=4P, 1/8=1P) et renommage libelles
+DATE=2026-09-22 15:01

@@ -385,9 +385,9 @@ ETAPES_REF = [
 
 # (taille, code_article, libelle, nb_portions)
 ARTICLES_BARQUETTES = [
-    ("1/2", "1/2", "Barquette 1/2", 1),
-    ("1/4", "1/4", "Barquette 1/4", 4),
-    ("1/8", "1/8", "Barquette 1/8", 10),
+    ("1/2", "1/2", "1/2 10P", 10),
+    ("1/4", "1/4", "1/4 4P", 4),
+    ("1/8", "1/8", "1/8 1P", 1),
 ]
 
 ZONES_TEMPERATURE = [
