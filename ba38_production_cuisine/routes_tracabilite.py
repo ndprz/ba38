@@ -63,9 +63,9 @@ def ajouter_lot(production_id):
             cur = conn.cursor()
             cur.execute(
                 """INSERT INTO cuisine_traca_lots
-                   (production_id, fournisseur_id, commentaire, user_creation)
-                   VALUES (?, ?, ?, ?)""",
-                (production_id, fournisseur_id, commentaire, benevole or None),
+                   (production_id, fournisseur_id, horodatage, commentaire, user_creation)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (production_id, fournisseur_id, now_paris_str(), commentaire, benevole or None),
             )
             lot_id = cur.lastrowid
 
@@ -398,20 +398,21 @@ def validation_production(production_id):
     try:
         with _connect() as conn:
             cur = conn.cursor()
+            date_validation = now_paris_str()
             cur.execute(
                 """
                 INSERT INTO cuisine_production_validations
-                (production_id, plat_temoin, plat_temoin_poids_g, valide_par, commentaire)
-                VALUES (?, ?, ?, ?, ?)
+                (production_id, plat_temoin, plat_temoin_poids_g, valide_par, commentaire, date_validation)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(production_id) DO UPDATE SET
                     plat_temoin = excluded.plat_temoin,
                     plat_temoin_poids_g = excluded.plat_temoin_poids_g,
                     valide_par = excluded.valide_par,
                     commentaire = excluded.commentaire,
-                    date_validation = datetime('now','utc')
+                    date_validation = excluded.date_validation
                 """,
                 (production_id, plat_temoin, poids_g if plat_temoin == "oui" else None,
-                 valide_par, commentaire),
+                 valide_par, commentaire, date_validation),
             )
             cur.execute(
                 "UPDATE cuisine_productions SET statut = 'terminee', user_modif = ? WHERE id = ?",

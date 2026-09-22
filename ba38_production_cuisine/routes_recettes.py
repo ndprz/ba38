@@ -398,9 +398,9 @@ def renommer_production(production_id):
             )
         cur.execute(
             """INSERT INTO cuisine_productions_renommages
-               (production_id, ancien_nom, nouveau_nom, user_creation)
-               VALUES (?, ?, ?, ?)""",
-            (production_id, ancien_nom, nouveau_nom, benevole or None),
+               (production_id, ancien_nom, nouveau_nom, date_renommage, user_creation)
+               VALUES (?, ?, ?, ?, ?)""",
+            (production_id, ancien_nom, nouveau_nom, now_paris_str(), benevole or None),
         )
         conn.commit()
 

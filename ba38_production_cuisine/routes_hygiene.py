@@ -10,7 +10,7 @@ from flask_login import login_required
 
 from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_production_cuisine import cuisine_hygiene_bp
-from ba38_production_cuisine.utils import _connect, parse_temperature
+from ba38_production_cuisine.utils import _connect, parse_temperature, now_paris_str
 
 CONFORMITE_CHOICES = ("conforme", "non_conforme")
 
@@ -49,9 +49,9 @@ def temperatures():
         with _connect() as conn:
             conn.execute(
                 """INSERT INTO cuisine_hygiene_releves_temperature
-                   (zone_id, temperature, conforme, user_creation, commentaire)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (zone_id, temperature_f, conforme, benevole or None, commentaire),
+                   (zone_id, temperature, conforme, user_creation, commentaire, date_releve)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (zone_id, temperature_f, conforme, benevole or None, commentaire, now_paris_str()),
             )
             conn.commit()
         upload_database()
@@ -135,9 +135,9 @@ def zone_nettoyage(zone_id):
 
             conn.execute(
                 """INSERT INTO cuisine_pnd_nettoyages
-                   (surface_id, conforme, user_creation, commentaire)
-                   VALUES (?, ?, ?, ?)""",
-                (surface_id, conforme, benevole or None, commentaire),
+                   (surface_id, conforme, user_creation, commentaire, date_nettoyage)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (surface_id, conforme, benevole or None, commentaire, now_paris_str()),
             )
             conn.commit()
             upload_database()
@@ -213,10 +213,10 @@ def etalonnage():
             conn.execute(
                 """INSERT INTO cuisine_hygiene_etalonnages
                    (thermometre_id, test_glace_valeur, test_glace_resultat,
-                    test_ebullition_valeur, test_ebullition_resultat, user_creation, commentaire)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    test_ebullition_valeur, test_ebullition_resultat, user_creation, commentaire, date_test)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (thermometre_id, test_glace_valeur, test_glace_resultat,
-                 test_ebullition_valeur, test_ebullition_resultat, benevole or None, commentaire),
+                 test_ebullition_valeur, test_ebullition_resultat, benevole or None, commentaire, now_paris_str()),
             )
             conn.commit()
         upload_database()
