@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "production_cuisine/_macros.html" import champ_temperature %}
 
 {% block title %}Relevés de température{% endblock %}
 
@@ -35,7 +36,7 @@
 
     <div class="mb-3">
       <label class="form-label">Température mesurée (°C) *</label>
-      <input type="text" inputmode="decimal" pattern="-?[0-9]*[.,]?[0-9]*" name="temperature" class="form-control form-control-lg" required>
+      {{ champ_temperature("temperature", required=true, size='lg') }}
     </div>
 
     <div class="mb-3">
@@ -63,5 +64,6 @@
     document.getElementById('benevole-hidden').value = document.getElementById('benevole-global').value;
   });
 </script>
+{% include "production_cuisine/_temp_toggle_js.html" %}
 {% include "production_cuisine/_scroll_restore.html" %}
 {% endblock %}

@@ -19,3 +19,21 @@
   <input type="file" name="{{ name }}" multiple class="d-none camera-submit-input">
 </div>
 {% endmacro %}
+
+{# ============================================================
+   🌡️ Champ température avec bouton ± (négatif possible en 1 tap)
+   ============================================================
+   Le clavier tactile ne propose pas toujours de signe "-" (Android
+   masque le signe moins dès qu'un inputmode restreint est utilisé, et
+   même le clavier "plein" varie selon les tablettes) — indispensable
+   pourtant pour saisir une température de congélateur. Le bouton ± évite
+   de dépendre du clavier : il inverse le signe de la valeur en cours. #}
+{% macro champ_temperature(name, required=False, value='', size='') %}
+<div class="input-group temp-input-group" style="max-width: 220px;">
+  <input type="text" pattern="-?[0-9]*[.,]?[0-9]*" name="{{ name }}"
+         class="form-control temp-input {% if size == 'lg' %}form-control-lg{% endif %}"
+         {% if required %}required{% endif %} value="{{ value }}" placeholder="ex : -18">
+  <button type="button" class="btn btn-outline-secondary temp-toggle-sign {% if size == 'lg' %}btn-lg{% endif %}"
+          tabindex="-1">±</button>
+</div>
+{% endmacro %}

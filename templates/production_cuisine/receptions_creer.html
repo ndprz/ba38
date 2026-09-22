@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "production_cuisine/_macros.html" import camera_capture %}
+{% from "production_cuisine/_macros.html" import camera_capture, champ_temperature %}
 
 {% block title %}Nouvelle réception{% endblock %}
 
@@ -45,8 +45,7 @@
       </div>
       <div class="col-6">
         <label class="form-label">Température mesurée (°C)</label>
-        <input type="text" inputmode="decimal" pattern="-?[0-9]*[.,]?[0-9]*" name="temperature_mesuree" class="form-control"
-               value="{{ form.temperature_mesuree or '' }}">
+        {{ champ_temperature("temperature_mesuree", value=form.temperature_mesuree or '') }}
       </div>
     </div>
     <div class="form-text mb-3">
@@ -126,6 +125,7 @@
 </template>
 
 {% include "production_cuisine/_camera_capture_js.html" %}
+{% include "production_cuisine/_temp_toggle_js.html" %}
 <script>
 (function () {
   var lignesSoumises = {{ lignes_soumises | tojson }};

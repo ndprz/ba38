@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "production_cuisine/_macros.html" import camera_capture %}
+{% from "production_cuisine/_macros.html" import camera_capture, champ_temperature %}
 
 {% block title %}{{ production.nom_recette }}{% endblock %}
 
@@ -122,7 +122,7 @@
               {% if ref.saisie_temperature_debut %}
               <div>
                 <label class="form-label small">Température début (°C)</label>
-                <input type="text" inputmode="decimal" pattern="-?[0-9]*[.,]?[0-9]*" name="temperature_debut" class="form-control" required>
+                {{ champ_temperature("temperature_debut", required=true) }}
               </div>
               {% endif %}
               <button type="submit" class="btn btn-success btn-lg">▶️ Démarrer</button>
@@ -171,7 +171,7 @@
             {% if ref.saisie_temperature %}
             <div class="col-auto">
               <label class="form-label small">Température {{ "fin" if ref.saisie_temperature_debut else "" }} (°C)</label>
-              <input type="text" inputmode="decimal" pattern="-?[0-9]*[.,]?[0-9]*" name="temperature" class="form-control" required>
+              {{ champ_temperature("temperature", required=true) }}
             </div>
             {% endif %}
 
@@ -216,8 +216,7 @@
               {% if ref.saisie_temperature_debut %}
               <div class="col-auto">
                 <label class="form-label small">Temp. début (°C)</label>
-                <input type="text" inputmode="decimal" pattern="-?[0-9]*[.,]?[0-9]*" name="temperature_debut" class="form-control"
-                       value="{{ ligne.temperature_debut if ligne.temperature_debut is not none else '' }}">
+                {{ champ_temperature("temperature_debut", value=ligne.temperature_debut if ligne.temperature_debut is not none else '') }}
               </div>
               {% endif %}
               {% endif %}
@@ -229,8 +228,7 @@
               {% if ref.saisie_temperature %}
               <div class="col-auto">
                 <label class="form-label small">Temp. fin (°C)</label>
-                <input type="text" inputmode="decimal" pattern="-?[0-9]*[.,]?[0-9]*" name="temperature" class="form-control"
-                       value="{{ ligne.temperature if ligne.temperature is not none else '' }}">
+                {{ champ_temperature("temperature", value=ligne.temperature if ligne.temperature is not none else '') }}
               </div>
               {% endif %}
               {% if ref.saisie_cellule %}
@@ -519,5 +517,6 @@
 </script>
 {% endif %}
 {% include "production_cuisine/_camera_capture_js.html" %}
+{% include "production_cuisine/_temp_toggle_js.html" %}
 {% include "production_cuisine/_scroll_restore.html" %}
 {% endblock %}
