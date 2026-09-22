@@ -400,15 +400,15 @@
             class="row g-3 align-items-end">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="col-auto">
-          <label class="form-label">1/2</label>
+          <label class="form-label">{{ libelles_barquettes.get('1/2', '1/2') }}</label>
           <input type="number" inputmode="numeric" name="qte_1_2" class="form-control" value="{{ quantites['1/2'] }}">
         </div>
         <div class="col-auto">
-          <label class="form-label">1/4</label>
+          <label class="form-label">{{ libelles_barquettes.get('1/4', '1/4') }}</label>
           <input type="number" inputmode="numeric" name="qte_1_4" class="form-control" value="{{ quantites['1/4'] }}">
         </div>
         <div class="col-auto">
-          <label class="form-label">1/8</label>
+          <label class="form-label">{{ libelles_barquettes.get('1/8', '1/8') }}</label>
           <input type="number" inputmode="numeric" name="qte_1_8" class="form-control" value="{{ quantites['1/8'] }}">
         </div>
         <div class="col-auto">
@@ -421,7 +421,7 @@
       {% if stock_barquettes %}
         <div class="alert alert-success py-2">
           ✅ Ajouté au stock barquettes :
-          {% for s in stock_barquettes %}{{ s.taille }} × {{ s.quantite }}{% if not loop.last %} · {% endif %}{% endfor %}
+          {% for s in stock_barquettes %}{{ libelles_barquettes.get(s.taille, s.taille) }} × {{ s.quantite }}{% if not loop.last %} · {% endif %}{% endfor %}
         </div>
       {% endif %}
       {% if cellule_ligne and cellule_ligne.heure_fin %}

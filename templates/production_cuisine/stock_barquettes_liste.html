@@ -79,7 +79,7 @@
           return a;
         },
       },
-      { title: "Taille", field: "taille", width: 90, minWidth: 90, headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
+      { title: "Taille", field: "article_libelle", width: 110, minWidth: 100, headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
       { title: "Qté", field: "quantite", width: 80, minWidth: 80, hozAlign: "right" },
       { title: "Fin recette", field: "date_fin_recette", width: 170, minWidth: 160, headerFilter: "input" },
       { title: "Cellule", field: "cellule_numero", width: 100, minWidth: 90, headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
@@ -92,7 +92,7 @@
           btn.className = "btn btn-sm btn-outline-danger";
           btn.textContent = "🗑️";
           btn.addEventListener("click", function () {
-            if (!confirm("Retirer « " + data.libelle_recette + " · " + data.taille + " » du stock ?")) return;
+            if (!confirm("Retirer « " + data.libelle_recette + " · " + data.article_libelle + " » du stock ?")) return;
             var form = document.createElement("form");
             form.method = "POST";
             form.action = urlSupprimerBase + data.id;

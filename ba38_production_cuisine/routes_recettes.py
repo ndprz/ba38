@@ -344,6 +344,13 @@ def detail_production(production_id):
             (production_id,),
         ).fetchall()
 
+        libelles_barquettes = {
+            row["taille"]: row["libelle"]
+            for row in conn.execute(
+                "SELECT taille, libelle FROM cuisine_articles_barquettes WHERE actif = 1"
+            ).fetchall()
+        }
+
     # Bouton "← Retour" contextuel : si on arrive depuis le stock barquettes
     # (lien recette du détail de stock), on y revient plutôt que sur la
     # liste générale des productions.
@@ -372,6 +379,7 @@ def detail_production(production_id):
         recettes_referentiel=recettes_referentiel,
         stock_barquettes=stock_barquettes,
         retour_url=retour_url,
+        libelles_barquettes=libelles_barquettes,
     )
 
 
