@@ -1,3 +1,3 @@
-VERSION=1.6.92
-MESSAGE=Cuisine : fix contraste badge statut terminee/annulee (texte blanc) sur liste productions
-DATE=2026-09-22 13:19
+VERSION=1.6.93
+MESSAGE=Cuisine : recherche fournisseur sur ajout de lot manuel (liste plafonnee + filtrable, 125 fournisseurs)
+DATE=2026-09-22 13:27

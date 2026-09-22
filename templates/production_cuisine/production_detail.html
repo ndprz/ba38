@@ -348,10 +348,12 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <label class="form-label fw-bold">Fournisseur</label>
-        <div class="d-flex flex-wrap gap-2 mb-3">
+        <div id="lot-fournisseur-choisi" class="alert alert-success py-1 px-2 mb-2" style="display:none;"></div>
+        <input type="text" class="form-control mb-2" id="lot-fournisseur-recherche" placeholder="🔍 Rechercher un fournisseur...">
+        <div class="d-flex flex-wrap gap-2 mb-3" id="lot-fournisseur-liste" style="max-height: 220px; overflow-y: auto;">
           {% for f in fournisseurs %}
             <input type="radio" class="btn-check" name="fournisseur_id" id="frs_{{ f.id }}" value="{{ f.id }}" autocomplete="off">
-            <label class="btn btn-outline-primary" for="frs_{{ f.id }}">{{ f.nom }}</label>
+            <label class="btn btn-outline-primary fournisseur-option" for="frs_{{ f.id }}" data-nom="{{ f.nom|lower }}">{{ f.nom }}</label>
           {% endfor %}
         </div>
 
@@ -364,6 +366,27 @@
 
         <button type="submit" class="btn btn-primary btn-lg">➕ Ajouter le lot</button>
       </form>
+      <script>
+        (function () {
+          var recherche = document.getElementById("lot-fournisseur-recherche");
+          var liste = document.getElementById("lot-fournisseur-liste");
+          var choisi = document.getElementById("lot-fournisseur-choisi");
+
+          recherche.addEventListener("input", function (e) {
+            var terme = e.target.value.trim().toLowerCase();
+            liste.querySelectorAll(".fournisseur-option").forEach(function (label) {
+              label.style.display = (!terme || label.dataset.nom.indexOf(terme) !== -1) ? "" : "none";
+            });
+          });
+
+          liste.querySelectorAll(".fournisseur-option").forEach(function (label) {
+            label.addEventListener("click", function () {
+              choisi.style.display = "block";
+              choisi.textContent = "✅ Fournisseur choisi : " + label.textContent.trim();
+            });
+          });
+        })();
+      </script>
     </div>
   </div>
 
