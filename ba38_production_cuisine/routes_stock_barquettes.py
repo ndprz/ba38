@@ -282,11 +282,12 @@ def liste_stock_barquettes():
             LIMIT 300
             """
         ).fetchall()
+        mouvements_json = [dict(m) for m in mouvements]
 
     return render_template(
         "production_cuisine/stock_barquettes_liste.html",
         stock_total=stock_total,
-        mouvements=mouvements,
+        mouvements=mouvements_json,
     )
 
 

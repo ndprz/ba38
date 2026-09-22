@@ -2,6 +2,10 @@
 
 {% block title %}Stock barquettes{% endblock %}
 
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_bootstrap5.min.css" rel="stylesheet">
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4">
 
@@ -40,45 +44,63 @@
   {% if not mouvements %}
     <p class="text-muted">Aucune entrée de stock pour l'instant.</p>
   {% else %}
-  <div class="table-responsive">
-    <table class="table table-sm table-striped">
-      <thead>
-        <tr>
-          <th>Date ajout</th>
-          <th>Recette</th>
-          <th>Taille</th>
-          <th class="text-end">Quantité</th>
-          <th>Fin de recette</th>
-          <th>N° cellule</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for m in mouvements %}
-        <tr>
-          <td>{{ m.date_creation }}</td>
-          <td>
-            <a href="{{ url_for('production_cuisine.detail_production', production_id=m.production_id) }}">
-              {{ m.libelle_recette }}
-            </a>
-          </td>
-          <td>{{ m.taille }}</td>
-          <td class="text-end">{{ m.quantite }}</td>
-          <td>{{ m.date_fin_recette or "—" }}</td>
-          <td>{{ m.cellule_numero if m.cellule_numero is not none else "—" }}</td>
-          <td>
-            <form method="POST" action="{{ url_for('production_cuisine.supprimer_stock_barquette', stock_id=m.id) }}"
-                  onsubmit="return confirm('Retirer cette ligne du stock ?');">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <div id="mouvements-table"></div>
   {% endif %}
 
 </div>
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+  var mouvementsData = {{ mouvements | tojson }};
+  var urlDetailBase = "{{ url_for('production_cuisine.detail_production', production_id=0, depuis_stock=1) }}".replace("0?", "PID?");
+  var urlSupprimerBase = "{{ url_for('production_cuisine.supprimer_stock_barquette', stock_id=0) }}".slice(0, -1);
+  var csrfToken = "{{ csrf_token() }}";
+
+  var table = new Tabulator("#mouvements-table", {
+    data: mouvementsData,
+    layout: "fitColumns",
+    height: "70vh",
+    initialSort: [{ column: "date_creation", dir: "desc" }],
+    columns: [
+      { title: "Date ajout", field: "date_creation", width: 150, headerFilter: "input" },
+      {
+        title: "Recette", field: "libelle_recette", widthGrow: 2, headerFilter: "input",
+        formatter: function (cell) {
+          var data = cell.getData();
+          var a = document.createElement("a");
+          a.href = urlDetailBase.replace("PID", data.production_id);
+          a.textContent = data.libelle_recette;
+          return a;
+        },
+      },
+      { title: "Taille", field: "taille", width: 90, headerFilter: "select", headerFilterParams: { valuesLookup: true, clearable: true } },
+      { title: "Quantité", field: "quantite", width: 100, hozAlign: "right" },
+      { title: "Fin de recette", field: "date_fin_recette", width: 150, headerFilter: "input" },
+      { title: "N° cellule", field: "cellule_numero", width: 100, headerFilter: "select", headerFilterParams: { valuesLookup: true, clearable: true } },
+      {
+        title: "", field: "id", headerSort: false, width: 60,
+        formatter: function (cell) {
+          var data = cell.getData();
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "btn btn-sm btn-outline-danger";
+          btn.textContent = "🗑️";
+          btn.addEventListener("click", function () {
+            if (!confirm("Retirer « " + data.libelle_recette + " · " + data.taille + " » du stock ?")) return;
+            var form = document.createElement("form");
+            form.method = "POST";
+            form.action = urlSupprimerBase + data.id;
+            var csrf = document.createElement("input");
+            csrf.type = "hidden";
+            csrf.name = "csrf_token";
+            csrf.value = csrfToken;
+            form.appendChild(csrf);
+            document.body.appendChild(form);
+            form.submit();
+          });
+          return btn;
+        },
+      },
+    ],
+  });
+</script>
 {% endblock %}

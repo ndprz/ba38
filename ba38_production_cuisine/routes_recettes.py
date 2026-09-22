@@ -344,6 +344,14 @@ def detail_production(production_id):
             (production_id,),
         ).fetchall()
 
+    # Bouton "← Retour" contextuel : si on arrive depuis le stock barquettes
+    # (lien recette du détail de stock), on y revient plutôt que sur la
+    # liste générale des productions.
+    if request.args.get("depuis_stock"):
+        retour_url = url_for("production_cuisine.liste_stock_barquettes")
+    else:
+        retour_url = url_for("production_cuisine.liste_productions")
+
     return render_template(
         "production_cuisine/production_detail.html",
         production=production,
@@ -363,6 +371,7 @@ def detail_production(production_id):
         conformite_globale=conformite_globale,
         recettes_referentiel=recettes_referentiel,
         stock_barquettes=stock_barquettes,
+        retour_url=retour_url,
     )
 
 

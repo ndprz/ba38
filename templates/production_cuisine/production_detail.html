@@ -31,7 +31,7 @@
       </div>
     </div>
     <div class="d-flex gap-2">
-      <a href="{{ url_for('production_cuisine.liste_productions') }}" class="btn btn-outline-secondary">← Retour</a>
+      <a href="{{ retour_url }}" class="btn btn-outline-secondary">← Retour</a>
       <form method="POST" action="{{ url_for('production_cuisine.supprimer_production', production_id=production.id) }}"
             onsubmit="return confirm('Supprimer cette production ? Les réceptions liées redeviendront disponibles.');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
