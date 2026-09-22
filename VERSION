@@ -1,3 +1,3 @@
-VERSION=1.6.98
-MESSAGE=Cuisine : fix taille police en-tetes tableau detail stock barquettes (titres tronques)
-DATE=2026-09-22 14:07
+VERSION=1.6.99
+MESSAGE=Cuisine : fix filtres colonne (headerFilter select invalide en Tabulator 6, renomme en list) sur stock barquettes et referentiel recettes
+DATE=2026-09-22 14:10

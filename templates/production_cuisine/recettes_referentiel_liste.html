@@ -47,10 +47,10 @@
     columns: [
       { title: "Code", field: "code", width: 90, headerFilter: "input" },
       { title: "Nom", field: "nom", widthGrow: 2, headerFilter: "input" },
-      { title: "Famille", field: "famille", headerFilter: "select", headerFilterParams: { valuesLookup: true, clearable: true } },
-      { title: "Sous-famille 1", field: "sous_famille_1", headerFilter: "select", headerFilterParams: { valuesLookup: true, clearable: true } },
-      { title: "Sous-famille 2", field: "sous_famille_2", headerFilter: "select", headerFilterParams: { valuesLookup: true, clearable: true } },
-      { title: "Cuisson", field: "type_cuisson", headerFilter: "select", headerFilterParams: { valuesLookup: true, clearable: true } },
+      { title: "Famille", field: "famille", headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
+      { title: "Sous-famille 1", field: "sous_famille_1", headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
+      { title: "Sous-famille 2", field: "sous_famille_2", headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
+      { title: "Cuisson", field: "type_cuisson", headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
       {
         title: "", field: "id", headerSort: false, width: 110,
         formatter: function (cell) {
