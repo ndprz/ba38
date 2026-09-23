@@ -10,6 +10,7 @@
 #       sortie de stock n'est enregistrée (bons de livraison à venir).
 # ============================================================
 
+import math
 import sqlite3
 from datetime import date
 
@@ -36,6 +37,26 @@ CATEGORIES = (("carne", "🥩 Carné"), ("legumes", "🥬 Légumes"))
 
 def _csv_list(valeur):
     return [v.strip() for v in (valeur or "").split(",") if v.strip()]
+
+
+def parse_tailles(valeur):
+    """"1/2:60,1/4:40" -> {"1/2": 60, "1/4": 40} ; "1/4" -> {"1/4": None}.
+    Le pourcentage (part des portions livrées dans chaque taille) n'est
+    renseigné que quand plusieurs tailles sont panachées ; format stocké
+    dans la colonne tailles_barquettes existante (pas de nouvelle colonne :
+    la table est exclue de la synchro dev→prod, qui n'y ajouterait rien)."""
+    tailles = {}
+    for item in _csv_list(valeur):
+        taille, _, pct = item.partition(":")
+        tailles[taille.strip()] = int(pct) if pct.strip().isdigit() else None
+    return tailles
+
+
+def _portions_par_taille(conn):
+    return {
+        r["taille"]: r["nb_portions"]
+        for r in conn.execute("SELECT taille, nb_portions FROM cuisine_articles_barquettes WHERE actif = 1")
+    }
 
 
 def libelle_periodicite(consigne):
@@ -102,6 +123,40 @@ def repartir(portions_voulues, tailles_acceptees, stock, portions_par_taille):
     return livre, portions
 
 
+def repartir_selon_pourcentages(portions_voulues, pct_tailles, stock, portions_par_taille):
+    """Comme `repartir`, mais en respectant la part (% des portions) de
+    chaque taille quand le client en panache plusieurs : chaque taille sauf
+    la plus petite reçoit round(portions × % / taille) barquettes, la plus
+    petite complète (arrondi au-dessus). Si une taille manque de stock, le
+    manque est comblé ensuite avec les autres tailles acceptées."""
+    tailles = sorted(
+        (t for t in pct_tailles if portions_par_taille.get(t)),
+        key=lambda t: portions_par_taille[t], reverse=True,
+    )
+    if len(tailles) < 2 or any(pct_tailles[t] is None for t in tailles):
+        return repartir(portions_voulues, tailles, stock, portions_par_taille)
+
+    livre = {}
+    servi = 0
+    for i, t in enumerate(tailles):
+        p = portions_par_taille[t]
+        if i < len(tailles) - 1:
+            n = round(portions_voulues * pct_tailles[t] / 100 / p)
+        else:
+            n = math.ceil(max(0, portions_voulues - servi) / p)
+        n = min(n, stock.get(t, 0))
+        if n:
+            livre[t] = n
+            stock[t] -= n
+            servi += n * p
+    if servi < portions_voulues:
+        complement, _ = repartir(portions_voulues - servi, tailles, stock, portions_par_taille)
+        for t, n in complement.items():
+            livre[t] = livre.get(t, 0) + n
+    portions = sum(n * portions_par_taille[t] for t, n in livre.items())
+    return livre, portions
+
+
 def panacher(livre, recettes, portions_par_taille, deja=None):
     """Répartit les barquettes `livre` ({taille: nb}) d'un client entre les
     `recettes` choisies (liste de dicts avec "stock" {taille: nb}, modifié
@@ -144,7 +199,8 @@ def _clients(conn):
     for r in rows:
         d = dict(r)
         d["a_consigne"] = r["consigne_id"] is not None
-        d["tailles"] = _csv_list(r["tailles_barquettes"])
+        d["pct_tailles"] = parse_tailles(r["tailles_barquettes"])
+        d["tailles"] = list(d["pct_tailles"])
         d["periodicite_label"] = libelle_periodicite(r) if d["a_consigne"] else ""
         clients.append(d)
     return clients
@@ -159,7 +215,11 @@ def _clients(conn):
 def liste_consignes_clients():
     with _connect() as conn:
         clients = _clients(conn)
-    return render_template("production_cuisine/consignes_clients_liste.html", clients=clients)
+        portions_par_taille = _portions_par_taille(conn)
+    return render_template(
+        "production_cuisine/consignes_clients_liste.html",
+        clients=clients, portions_par_taille=portions_par_taille,
+    )
 
 
 @production_cuisine_bp.route("/consignes-clients/<int:association_id>", methods=["GET", "POST"])
@@ -175,6 +235,7 @@ def modifier_consigne_client(association_id):
         consigne = conn.execute(
             "SELECT * FROM cuisine_consignes_clients WHERE association_id = ?", (association_id,)
         ).fetchone()
+        portions_par_taille = _portions_par_taille(conn)
 
     if not association:
         flash("⛔ Association introuvable.", "danger")
@@ -195,7 +256,7 @@ def modifier_consigne_client(association_id):
             return cast(valeur) if valeur else None
 
         form = {
-            "tailles_barquettes": ",".join(tailles),
+            "tailles_barquettes": ",".join(tailles),  # complété avec les % plus bas
             "periodicite": periodicite,
             "jours_semaine": ",".join(jours),
             "semaine_du_mois": int(semaine_du_mois) if semaine_du_mois else None,
@@ -214,6 +275,18 @@ def modifier_consigne_client(association_id):
             erreurs.append("Périodicité invalide.")
         if not tailles:
             erreurs.append("Cochez au moins une taille de barquette.")
+        elif len(tailles) > 1 and not recoit_reliquat:
+            pcts = {}
+            for t in tailles:
+                valeur = (f.get(f"pct_{t}") or "").strip()
+                pcts[t] = int(valeur) if valeur.isdigit() else None
+            if any(v is None or v <= 0 for v in pcts.values()):
+                erreurs.append("Indiquez le pourcentage (> 0) de chaque taille de barquette panachée.")
+            elif sum(pcts.values()) != 100:
+                erreurs.append(f"Les pourcentages des tailles doivent faire 100 % (actuellement {sum(pcts.values())} %).")
+            form["tailles_barquettes"] = ",".join(
+                f"{t}:{pcts[t]}" if pcts[t] is not None else t for t in tailles
+            )
         if periodicite in ("hebdomadaire", "mensuelle") and not jours:
             erreurs.append("Cochez au moins un jour de livraison.")
         if periodicite == "mensuelle" and not form["semaine_du_mois"]:
@@ -265,12 +338,12 @@ def modifier_consigne_client(association_id):
                 write_log(f"❌ Erreur enregistrement consigne cuisine (association {association_id}) : {e}")
                 flash("❌ Erreur lors de l'enregistrement.", "danger")
 
-    form["tailles"] = _csv_list(form.get("tailles_barquettes"))
+    form["pct_tailles"] = parse_tailles(form.get("tailles_barquettes"))
     form["jours"] = _csv_list(form.get("jours_semaine"))
     return render_template(
         "production_cuisine/consignes_clients_form.html",
         association=association, consigne=consigne, form=form,
-        tailles=TAILLES, jours_semaine=JOURS_SEMAINE, periodicites=PERIODICITES,
+        tailles=TAILLES, portions_par_taille=portions_par_taille, jours_semaine=JOURS_SEMAINE, periodicites=PERIODICITES,
         semaines_du_mois=SEMAINES_DU_MOIS,
     )
 
@@ -380,8 +453,8 @@ def simulation_repartition():
         }
         if inclus:
             for cat in categories:
-                livre, portions = repartir(
-                    ligne["voulu"][cat], c["tailles"], _stock_cumule(cat), portions_par_taille,
+                livre, portions = repartir_selon_pourcentages(
+                    ligne["voulu"][cat], c["pct_tailles"], _stock_cumule(cat), portions_par_taille,
                 )
                 ligne["livre"][cat] = livre
                 ligne["detail"][cat] = panacher(livre, recettes_du_jour[cat], portions_par_taille)

@@ -16,16 +16,22 @@
 
     <div class="mb-3">
       <label class="form-label fw-bold">Tailles de barquettes à livrer *</label>
-      <div>
-        {% for t in tailles %}
-        <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" name="tailles_barquettes" value="{{ t }}" id="taille_{{ loop.index }}"
-                 {% if t in form.tailles %}checked{% endif %}>
-          <label class="form-check-label" for="taille_{{ loop.index }}">{{ t }}</label>
+      {% for t in tailles %}
+      <div class="d-flex align-items-center gap-3 mb-1">
+        <div class="form-check mb-0" style="min-width: 110px;">
+          <input class="form-check-input case-taille" type="checkbox" name="tailles_barquettes" value="{{ t }}" id="taille_{{ loop.index }}"
+                 {% if t in form.pct_tailles %}checked{% endif %}>
+          <label class="form-check-label" for="taille_{{ loop.index }}">{{ t }} <span class="text-muted">({{ portions_par_taille.get(t, '?') }}p)</span></label>
         </div>
-        {% endfor %}
+        <div class="input-group input-group-sm bloc-pct" style="width: 130px;">
+          <input type="number" min="1" max="100" name="pct_{{ t }}" class="form-control pct-taille"
+                 value="{{ form.pct_tailles.get(t) if form.pct_tailles.get(t) is not none else '' }}">
+          <span class="input-group-text">%</span>
+        </div>
       </div>
-      <div class="form-text">Plusieurs tailles possibles : la simulation utilise d'abord les plus grosses.</div>
+      {% endfor %}
+      <div class="small mt-1" id="total-pct"></div>
+      <div class="form-text">Plusieurs tailles = panachage : indiquez la part de chaque taille en % des portions livrées (total 100 %).</div>
     </div>
 
     <fieldset class="border rounded p-3 mb-3">
@@ -141,8 +147,27 @@
         : "Ex. Lundi à Jeudi = tous les jours du lundi au jeudi.";
       etoile.style.display = reliquat.checked ? "none" : "";
     }
+    var casesTaille = document.querySelectorAll(".case-taille");
+    var totalPct = document.getElementById("total-pct");
+    function majTailles() {
+      var cochees = Array.prototype.filter.call(casesTaille, function (c) { return c.checked; });
+      var panache = cochees.length > 1 && !reliquat.checked;
+      var total = 0;
+      casesTaille.forEach(function (c) {
+        var bloc = c.closest(".d-flex").querySelector(".bloc-pct");
+        var visible = panache && c.checked;
+        bloc.style.visibility = visible ? "visible" : "hidden";
+        if (visible) total += parseInt(bloc.querySelector("input").value || "0", 10);
+      });
+      totalPct.textContent = panache ? "Total : " + total + " %" : "";
+      totalPct.className = "small mt-1 " + (panache && total !== 100 ? "text-danger fw-bold" : "text-success");
+    }
+    casesTaille.forEach(function (c) { c.addEventListener("change", majTailles); });
+    document.querySelectorAll(".pct-taille").forEach(function (i) { i.addEventListener("input", majTailles); });
+    majTailles();
     radios.forEach(function (r) { r.addEventListener("change", maj); });
     reliquat.addEventListener("change", maj);
+    reliquat.addEventListener("change", majTailles);
     maj();
   })();
 </script>

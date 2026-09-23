@@ -2,10 +2,18 @@
 
 {% block title %}Simulation répartition cuisine{% endblock %}
 
+{% macro tailles_client(c, defaut) -%}
+  {%- set parts = [] -%}
+  {%- for t, pct in c.pct_tailles.items() -%}
+    {%- set _ = parts.append(t ~ " (" ~ portions_par_taille.get(t, "?") ~ "p)" ~ (" " ~ pct ~ " %" if pct is not none else "")) -%}
+  {%- endfor -%}
+  {{ parts | join(", ") if parts else defaut }}
+{%- endmacro %}
+
 {% macro barquettes(livre) -%}
   {%- set parts = [] -%}
   {%- for t in tailles if livre and livre.get(t) -%}
-    {%- set _ = parts.append(livre[t] ~ " × " ~ t) -%}
+    {%- set _ = parts.append(livre[t] ~ " × " ~ t ~ " (" ~ portions_par_taille[t] ~ "p)") -%}
   {%- endfor -%}
   {{ parts | join(" + ") if parts else "—" }}
 {%- endmacro %}
@@ -47,7 +55,8 @@
     (d'après leur périodicité) sont pré-cochés ; vous pouvez en ajouter / retirer et modifier les portions,
     puis cliquer sur « Recalculer ».
     Règle : grosses barquettes d'abord, puis une barquette de la plus petite taille acceptée pour compléter
-    (arrondi au-dessus). Chaque client reçoit un <strong>panachage équilibré</strong> des recettes cochées
+    (arrondi au-dessus) ; si le client panache plusieurs tailles, le % de chaque taille est respecté
+    autant que le stock le permet. Chaque client reçoit un <strong>panachage équilibré</strong> des recettes cochées
     (autant de portions que possible de chacune, selon le stock et ses tailles). Les clients sont servis dans
     l'ordre du tableau ; le client « reliquat » reçoit ensuite tout le reste des recettes cochées.
   </div>
@@ -77,7 +86,7 @@
             <th rowspan="2"><input class="form-check-input" type="checkbox" id="toutes-recettes" title="Tout cocher / décocher"></th>
             <th rowspan="2" class="text-start">Recette</th>
             <th rowspan="2">Production</th>
-            {% for t in tailles %}<th colspan="2">{{ libelle_taille[t] }}</th>{% endfor %}
+            {% for t in tailles %}<th colspan="2">{{ t }} ({{ portions_par_taille[t] }}p)</th>{% endfor %}
             <th colspan="2">Portions</th>
           </tr>
           <tr>
@@ -137,7 +146,7 @@
             </td>
             <td>
               <strong>{{ c.nom_association }}</strong>
-              <div class="small text-muted">Barquettes : {{ c.tailles | join(", ") or "aucune taille !" }}</div>
+              <div class="small text-muted">Barquettes : {{ tailles_client(c, "aucune taille !") }}</div>
             </td>
             <td>
               {{ c.periodicite_label }}
@@ -174,7 +183,7 @@
             </td>
             <td>
               <strong>{{ c.nom_association }}</strong> <span class="badge bg-info text-dark">Reliquat</span>
-              <div class="small text-muted">Barquettes : {{ c.tailles | join(", ") or "toutes" }}</div>
+              <div class="small text-muted">Barquettes : {{ tailles_client(c, "toutes") }}</div>
             </td>
             <td>
               {{ c.periodicite_label }}

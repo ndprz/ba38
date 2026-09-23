@@ -47,7 +47,11 @@
             {% if c.jour_de_passage_a_la_BAI %}<div class="small text-muted">Passage BAI (fiche) : {{ c.jour_de_passage_a_la_BAI }}</div>{% endif %}
           </td>
           {% if c.a_consigne %}
-            <td>{{ c.tailles | join(", ") or "—" }}</td>
+            <td>
+              {% for t, pct in c.pct_tailles.items() %}
+                <div class="text-nowrap">{{ t }} <span class="text-muted">({{ portions_par_taille.get(t, '?') }}p)</span>{% if pct is not none %} : <strong>{{ pct }} %</strong>{% endif %}</div>
+              {% else %}—{% endfor %}
+            </td>
             <td>{{ c.periodicite_label }}</td>
             <td class="text-end">{{ c.nb_portions_carne if c.nb_portions_carne is not none else ("Reste du stock" if c.recoit_reliquat else "—") }}</td>
             <td class="text-end">{{ c.pourcentage_legumes if c.pourcentage_legumes is not none else 100 }} %</td>
