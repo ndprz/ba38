@@ -193,9 +193,11 @@
       <a class="btn btn-outline-primary mb-2 w-100" href="{{ url_for('debug_bp.mail_utilisateurs') }}">
         📧 Envoyer un mail aux utilisateurs
       </a>
+      {% if env_name|upper == 'DEV' %}
       <a href="{{ url_for('debug_bp.run_sync_test_schemas') }}" class="btn btn-outline-primary mb-2 w-100">
         🔄 Synchroniser les bases TEST (schéma + données)
       </a>
+      {% endif %}
       <form method="POST" action="{{ url_for('debug_bp.restaurer_version') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button onclick="return confirm('⚠️ Restaurer cette version ? Cela va écraser la PROD.')" type="submit"
