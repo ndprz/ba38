@@ -1422,8 +1422,14 @@ def update_benevoles_table():
 
 @benevoles_bp.route('/photo_benevole_mobile', methods=['GET', 'POST'])
 @login_required
-@require_access("benevoles", "ecriture")
 def photo_benevole_mobile():
+    if not (
+        has_access("benevoles", "ecriture")
+        or has_access("photos_benevoles", "ecriture")
+    ):
+        flash("⛔ Accès refusé", "danger")
+        return redirect(url_for("index"))
+
     conn = get_db_connection()
     cursor = conn.cursor()
     tous_les_benevoles = cursor.execute("""
