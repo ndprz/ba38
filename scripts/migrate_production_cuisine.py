@@ -19,6 +19,7 @@ Crée (idempotent, CREATE TABLE IF NOT EXISTS) :
 - cuisine_hygiene_zones_temperature / cuisine_hygiene_releves_temperature
 - cuisine_hygiene_zones_nettoyage / cuisine_hygiene_nettoyages
 - cuisine_hygiene_thermometres / cuisine_hygiene_etalonnages
+- cuisine_consignes_clients (consignes de livraison des partenaires cuisine)
 
 Seed (INSERT OR IGNORE, idempotent) :
 - cuisine_etapes_ref (7 étapes)
@@ -251,6 +252,34 @@ CREATE TABLE IF NOT EXISTS cuisine_stock_barquettes (
 );
 CREATE INDEX IF NOT EXISTS idx_cuisine_stock_barquettes_production ON cuisine_stock_barquettes(production_id);
 CREATE INDEX IF NOT EXISTS idx_cuisine_stock_barquettes_article ON cuisine_stock_barquettes(article_id);
+
+-- Consignes de livraison des "clients" cuisine : une ligne par association
+-- partenaire (associations.partenaire_cuisine = 'oui'). Référence
+-- associations.id, qui DIVERGE entre DEV et PROD → table exclue de la
+-- synchro dev→prod (EXCLUDE_TABLES de migrate_schema_and_data_dev_to_prod.py).
+--   periodicite : 'hebdomadaire' (jours_semaine = "1,2,3,4", 1 = lundi),
+--                 'mensuelle' (jours_semaine + semaine_du_mois 1..4, 5 = dernier),
+--                 'a_la_demande' (jamais pré-sélectionné dans la simulation).
+--   tailles_barquettes : tailles acceptées, CSV ("1/2,1/4").
+--   pourcentage_legumes : portions légumes = nb_portions_carne × % / 100.
+--   prix_portion_carne : inclut les légumes (livrés gratuitement).
+--   recoit_reliquat : reçoit le reste du stock après les autres clients du jour.
+CREATE TABLE IF NOT EXISTS cuisine_consignes_clients (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  association_id INTEGER NOT NULL UNIQUE REFERENCES associations(id),
+  tailles_barquettes TEXT,
+  periodicite TEXT NOT NULL DEFAULT 'hebdomadaire'
+    CHECK (periodicite IN ('hebdomadaire','mensuelle','a_la_demande')),
+  jours_semaine TEXT,
+  semaine_du_mois INTEGER,
+  nb_portions_carne INTEGER,
+  pourcentage_legumes INTEGER DEFAULT 100,
+  prix_portion_carne REAL,
+  recoit_reliquat INTEGER DEFAULT 0,
+  commentaire TEXT,
+  date_creation TEXT DEFAULT (datetime('now','utc')),
+  date_modif TEXT, user_creation TEXT, user_modif TEXT
+);
 
 CREATE TABLE IF NOT EXISTS cuisine_production_validations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

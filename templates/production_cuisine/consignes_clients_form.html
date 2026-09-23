@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Consigne {{ association.nom_association }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 720px;">
+
+  <h2 class="mb-1">🚚 Consigne de livraison</h2>
+  <p class="lead mb-1">{{ association.nom_association }}</p>
+  {% if association.jour_de_passage_a_la_BAI %}
+    <p class="text-muted small">Jour de passage indiqué dans la fiche association : {{ association.jour_de_passage_a_la_BAI }}</p>
+  {% endif %}
+
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">Tailles de barquettes à livrer *</label>
+      <div>
+        {% for t in tailles %}
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" name="tailles_barquettes" value="{{ t }}" id="taille_{{ loop.index }}"
+                 {% if t in form.tailles %}checked{% endif %}>
+          <label class="form-check-label" for="taille_{{ loop.index }}">{{ t }}</label>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="form-text">Plusieurs tailles possibles : la simulation utilise d'abord les plus grosses.</div>
+    </div>
+
+    <fieldset class="border rounded p-3 mb-3">
+      <legend class="fs-6 fw-bold w-auto px-1 mb-2">Périodicité *</legend>
+      {% for code, libelle in periodicites %}
+      <div class="form-check">
+        <input class="form-check-input" type="radio" name="periodicite" value="{{ code }}" id="perio_{{ code }}"
+               {% if form.periodicite == code %}checked{% endif %}>
+        <label class="form-check-label" for="perio_{{ code }}">{{ libelle }}</label>
+      </div>
+      {% endfor %}
+
+      <div id="bloc-semaine-du-mois" class="mt-2">
+        <label class="form-label">Semaine du mois</label>
+        <select name="semaine_du_mois" class="form-select w-auto">
+          <option value="">--</option>
+          {% for n, lib in semaines_du_mois %}
+            <option value="{{ n }}" {% if form.semaine_du_mois == n %}selected{% endif %}>{{ lib }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div id="bloc-jours" class="mt-2">
+        <label class="form-label">Jour(s) de livraison</label>
+        <div>
+          {% for n, lib in jours_semaine %}
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="checkbox" name="jours_semaine" value="{{ n }}" id="jour_{{ n }}"
+                   {% if n|string in form.jours %}checked{% endif %}>
+            <label class="form-check-label" for="jour_{{ n }}">{{ lib }}</label>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="form-text" id="aide-jours"></div>
+      </div>
+      <div class="form-text mt-2" id="aide-a-la-demande">
+        Jamais pré-sélectionné dans la simulation : à cocher à la main le jour venu. Précisez le rythme en commentaire.
+      </div>
+    </fieldset>
+
+    <div class="mb-3 form-check">
+      <input class="form-check-input" type="checkbox" name="recoit_reliquat" value="1" id="recoit_reliquat"
+             {% if form.recoit_reliquat %}checked{% endif %}>
+      <label class="form-check-label" for="recoit_reliquat">
+        Reçoit le <strong>reliquat</strong> (tout le stock restant après les autres clients du jour)
+      </label>
+      <div class="form-text">Un seul client à la fois (ex. BAI Dépôt Pinéa, pour redistribution aux associations).</div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-sm-4">
+        <label class="form-label fw-bold">Portions carnées / livraison <span id="etoile-portions">*</span></label>
+        <input type="number" min="0" name="nb_portions_carne" class="form-control"
+               value="{{ form.nb_portions_carne if form.nb_portions_carne is not none else '' }}">
+      </div>
+      <div class="col-sm-4">
+        <label class="form-label fw-bold">Légumes (% des portions carnées)</label>
+        <div class="input-group">
+          <input type="number" min="0" max="300" name="pourcentage_legumes" class="form-control"
+                 value="{{ form.pourcentage_legumes if form.pourcentage_legumes is not none else '' }}">
+          <span class="input-group-text">%</span>
+        </div>
+        <div class="form-text">100 % = autant de portions de légumes que de carné, 0 % = pas de légumes.</div>
+      </div>
+      <div class="col-sm-4">
+        <label class="form-label fw-bold">Prix portion carnée</label>
+        <div class="input-group">
+          <input type="text" inputmode="decimal" name="prix_portion_carne" class="form-control"
+                 value="{{ form.prix_portion_carne if form.prix_portion_carne is not none else '' }}">
+          <span class="input-group-text">€</span>
+        </div>
+        <div class="form-text">Légumes inclus (livrés gratuitement).</div>
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Commentaire</label>
+      <textarea name="commentaire" rows="2" class="form-control">{{ form.commentaire or '' }}</textarea>
+    </div>
+
+    <div class="d-flex justify-content-between">
+      <a href="{{ url_for('production_cuisine.liste_consignes_clients') }}" class="btn btn-outline-secondary btn-lg">Annuler</a>
+      <button type="submit" class="btn btn-primary btn-lg">💾 Enregistrer</button>
+    </div>
+  </form>
+
+  {% if consigne %}
+  <form method="POST" action="{{ url_for('production_cuisine.supprimer_consigne_client', association_id=association.id) }}"
+        class="mt-4 text-end" onsubmit="return confirm('Supprimer la consigne de {{ association.nom_association|e }} ?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-sm btn-outline-danger">🗑️ Supprimer la consigne</button>
+  </form>
+  {% endif %}
+
+</div>
+<script>
+  (function () {
+    var radios = document.querySelectorAll('input[name="periodicite"]');
+    var blocJours = document.getElementById("bloc-jours");
+    var blocSemaine = document.getElementById("bloc-semaine-du-mois");
+    var aideDemande = document.getElementById("aide-a-la-demande");
+    var aideJours = document.getElementById("aide-jours");
+    var reliquat = document.getElementById("recoit_reliquat");
+    var etoile = document.getElementById("etoile-portions");
+
+    function maj() {
+      var p = (document.querySelector('input[name="periodicite"]:checked') || {}).value;
+      blocJours.style.display = p === "a_la_demande" ? "none" : "";
+      blocSemaine.style.display = p === "mensuelle" ? "" : "none";
+      aideDemande.style.display = p === "a_la_demande" ? "" : "none";
+      aideJours.textContent = p === "mensuelle"
+        ? "Ex. « 1er » + Mardi = le premier mardi de chaque mois."
+        : "Ex. Lundi à Jeudi = tous les jours du lundi au jeudi.";
+      etoile.style.display = reliquat.checked ? "none" : "";
+    }
+    radios.forEach(function (r) { r.addEventListener("change", maj); });
+    reliquat.addEventListener("change", maj);
+    maj();
+  })();
+</script>
+{% endblock %}

@@ -42,6 +42,7 @@ from dotenv import dotenv_values
 EXCLUDE_TABLES = {
     "cuisine_ingredients_carnes",
     "cuisine_stock_barquettes",
+    "cuisine_consignes_clients",  # référence associations.id (diverge DEV/PROD)
 }
 
 # -------------------------------------------------------------------

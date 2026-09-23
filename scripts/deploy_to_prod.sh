@@ -306,8 +306,8 @@ else
     fi
   done
 
-  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://127.0.0.1:8001/login || echo "000")
-  if [ "$RECHARGE_OK" -eq 1 ] && [ "$HTTP_CODE" -lt 500 ] && [ "$HTTP_CODE" != "000" ]; then
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://127.0.0.1:8001/__ping || echo "000")
+  if [ "$RECHARGE_OK" -eq 1 ] && [ "$HTTP_CODE" = "200" ]; then
     echo "✅ Rechargement à chaud OK (HTTP $HTTP_CODE)"
   else
     restart_complet "rechargement à chaud KO : workers remplacés=$RECHARGE_OK, HTTP=$HTTP_CODE"

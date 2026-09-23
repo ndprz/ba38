@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Consignes clients cuisine{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">🚚 Consignes clients</h2>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('production_cuisine.simulation_repartition') }}" class="btn btn-primary">
+        🧮 Simulation de répartition
+      </a>
+      <a href="{{ url_for('production_cuisine.liste_stock_barquettes') }}" class="btn btn-outline-secondary">📊 Stock barquettes</a>
+      <a href="{{ url_for('production_cuisine.liste_productions') }}" class="btn btn-outline-secondary">← Retour</a>
+    </div>
+  </div>
+
+  <div class="form-text mb-3">
+    Clients = associations dont la fiche a <strong>Partenaire cuisine = oui</strong> (famille « Planification »).
+    Pour ajouter un client, cochez ce champ dans sa fiche association.
+  </div>
+
+  {% if not clients %}
+    <p class="text-muted">Aucune association partenaire cuisine pour l'instant.</p>
+  {% else %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Client</th>
+          <th>Barquettes</th>
+          <th>Livraison</th>
+          <th class="text-end">Portions carnées</th>
+          <th class="text-end">Légumes</th>
+          <th class="text-end">Prix / portion</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in clients %}
+        <tr>
+          <td>
+            <strong>{{ c.nom_association }}</strong>
+            {% if c.recoit_reliquat %}<span class="badge bg-info text-dark ms-1">Reçoit le reliquat</span>{% endif %}
+            {% if c.partenaire_cuisine != 'oui' %}<span class="badge bg-warning text-dark ms-1">N'est plus partenaire cuisine</span>{% endif %}
+            {% if c.jour_de_passage_a_la_BAI %}<div class="small text-muted">Passage BAI (fiche) : {{ c.jour_de_passage_a_la_BAI }}</div>{% endif %}
+          </td>
+          {% if c.a_consigne %}
+            <td>{{ c.tailles | join(", ") or "—" }}</td>
+            <td>{{ c.periodicite_label }}</td>
+            <td class="text-end">{{ c.nb_portions_carne if c.nb_portions_carne is not none else ("Reste du stock" if c.recoit_reliquat else "—") }}</td>
+            <td class="text-end">{{ c.pourcentage_legumes if c.pourcentage_legumes is not none else 100 }} %</td>
+            <td class="text-end">{{ "%.2f"|format(c.prix_portion_carne) ~ " €" if c.prix_portion_carne is not none else "—" }}</td>
+            <td class="text-end">
+              <a href="{{ url_for('production_cuisine.modifier_consigne_client', association_id=c.association_id) }}" class="btn btn-sm btn-outline-primary">✏️ Modifier</a>
+            </td>
+          {% else %}
+            <td colspan="5" class="text-muted fst-italic">Aucune consigne enregistrée</td>
+            <td class="text-end">
+              <a href="{{ url_for('production_cuisine.modifier_consigne_client', association_id=c.association_id) }}" class="btn btn-sm btn-primary">➕ Saisir</a>
+            </td>
+          {% endif %}
+        </tr>
+        {% if c.commentaire %}
+        <tr class="table-light"><td colspan="7" class="small">💬 {{ c.commentaire }}</td></tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
