@@ -3,7 +3,7 @@ from datetime import datetime
 from threading import Thread
 
 from flask import (
-    render_template, request, redirect, url_for, flash, current_app
+    render_template, request, redirect, url_for, flash, current_app, session
 )
 from flask_login import login_required, current_user
 
@@ -130,8 +130,23 @@ def _find_benevole_by_phone(numero):
 
 
 def get_nb_sms_reponses_non_lues():
+    """
+    Nombre de réponses non lues concernant l'utilisateur courant : une
+    notification ne concerne que la personne qui a lancé l'envoi d'origine
+    (sms_lots.envoye_par), pas toute l'équipe. Les admins globaux voient le
+    total (y compris les réponses orphelines, non rattachées à un envoi).
+    """
     conn = get_db_connection()
-    n = conn.execute("SELECT COUNT(*) FROM sms_reponses WHERE lu = 0").fetchone()[0]
+    if session.get("user_role") == "admin":
+        n = conn.execute("SELECT COUNT(*) FROM sms_reponses WHERE lu = 0").fetchone()[0]
+    else:
+        user_email = getattr(current_user, "email", "") or ""
+        n = conn.execute("""
+            SELECT COUNT(*) FROM sms_reponses r
+            JOIN sms_envois e ON e.id = r.envoi_id
+            JOIN sms_lots l ON l.id = e.lot_id
+            WHERE r.lu = 0 AND l.envoye_par = ?
+        """, (user_email,)).fetchone()[0]
     conn.close()
     return n
 
@@ -507,14 +522,33 @@ def sms_webhook_mo():
 @login_required
 @require_access("sms_benevoles", "lecture")
 def reponses_sms():
+    """
+    Page personnelle : chacun ne voit que les réponses aux SMS qu'il/elle a
+    lui-même envoyés (sms_lots.envoye_par). Les admins globaux voient tout,
+    y compris les réponses orphelines (non rattachées à un envoi connu).
+    """
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
-    reponses = conn.execute("""
-        SELECT r.*, b.nom, b.prenom
-        FROM sms_reponses r
-        LEFT JOIN benevoles b ON b.id = r.benevole_id
-        ORDER BY r.id DESC
-    """).fetchall()
+
+    if session.get("user_role") == "admin":
+        reponses = conn.execute("""
+            SELECT r.*, b.nom, b.prenom
+            FROM sms_reponses r
+            LEFT JOIN benevoles b ON b.id = r.benevole_id
+            ORDER BY r.id DESC
+        """).fetchall()
+    else:
+        user_email = getattr(current_user, "email", "") or ""
+        reponses = conn.execute("""
+            SELECT r.*, b.nom, b.prenom
+            FROM sms_reponses r
+            LEFT JOIN benevoles b ON b.id = r.benevole_id
+            JOIN sms_envois e ON e.id = r.envoi_id
+            JOIN sms_lots l ON l.id = e.lot_id
+            WHERE l.envoye_par = ?
+            ORDER BY r.id DESC
+        """, (user_email,)).fetchall()
+
     conn.close()
     return render_template("sms/reponses.html", reponses=[dict(r) for r in reponses])
 
@@ -524,7 +558,20 @@ def reponses_sms():
 @require_access("sms_benevoles", "lecture")
 def marquer_lu_reponses_sms():
     conn = get_db_connection()
-    conn.execute("UPDATE sms_reponses SET lu = 1 WHERE lu = 0")
+
+    if session.get("user_role") == "admin":
+        conn.execute("UPDATE sms_reponses SET lu = 1 WHERE lu = 0")
+    else:
+        user_email = getattr(current_user, "email", "") or ""
+        conn.execute("""
+            UPDATE sms_reponses SET lu = 1
+            WHERE lu = 0 AND envoi_id IN (
+                SELECT e.id FROM sms_envois e
+                JOIN sms_lots l ON l.id = e.lot_id
+                WHERE l.envoye_par = ?
+            )
+        """, (user_email,))
+
     conn.commit()
     conn.close()
     return redirect(url_for("sms.reponses_sms"))

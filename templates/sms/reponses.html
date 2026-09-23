@@ -7,6 +7,13 @@
 <div class="container mt-4">
 
   <h2>💬 Réponses SMS reçues</h2>
+  <p class="text-muted small">
+    {% if session.user_role == "admin" %}
+      Vue administrateur : toutes les réponses, tous expéditeurs confondus.
+    {% else %}
+      Réponses aux SMS que vous avez vous-même envoyés.
+    {% endif %}
+  </p>
 
   {% include "sms/_banner_alerte.html" %}
 
