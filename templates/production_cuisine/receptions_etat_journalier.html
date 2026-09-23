@@ -21,20 +21,53 @@
     </div>
   </div>
 
-  <form method="GET" class="row g-2 align-items-end mb-3 no-print">
+  <form method="GET" id="form-etat" class="row g-2 align-items-end mb-3 no-print">
+    <input type="hidden" name="vue" value="{{ vue }}">
+    <div class="col-auto">
+      <label class="form-label">Période</label>
+      <select name="periode" class="form-select" onchange="this.form.submit()">
+        {% for code, libelle in periodes %}
+        <option value="{{ code }}" {% if code == periode %}selected{% endif %}>{{ libelle }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if periode == "jour" %}
     <div class="col-auto">
       <label class="form-label">Date</label>
       <input type="date" name="date" value="{{ date_filtre }}" class="form-control"
              onchange="this.form.submit()">
     </div>
+    {% elif periode == "perso" %}
+    <div class="col-auto">
+      <label class="form-label">Du</label>
+      <input type="date" name="du" value="{{ date_debut }}" class="form-control"
+             onchange="this.form.submit()">
+    </div>
+    <div class="col-auto">
+      <label class="form-label">Au</label>
+      <input type="date" name="au" value="{{ date_fin }}" class="form-control"
+             onchange="this.form.submit()">
+    </div>
+    {% endif %}
+    <div class="col-auto">
+      <div class="btn-group" role="group" aria-label="Regroupement">
+        <button type="button" onclick="this.form.vue.value='fournisseur'; this.form.submit()"
+                class="btn {{ 'btn-dark' if vue == 'fournisseur' else 'btn-outline-dark' }}">🚚 Par fournisseur</button>
+        <button type="button" onclick="this.form.vue.value='produit'; this.form.submit()"
+                class="btn {{ 'btn-dark' if vue == 'produit' else 'btn-outline-dark' }}">🥩 Par produit</button>
+      </div>
+    </div>
   </form>
 
   <p class="fw-bold fs-5">
-    {{ date_filtre }} — {{ nb_receptions }} réception(s) — Total : {{ "%.1f"|format(total_kg) }} kg
+    {% if multi_jours %}Du {{ date_debut[8:10] }}/{{ date_debut[5:7] }}/{{ date_debut[0:4] }} au {{ date_fin[8:10] }}/{{ date_fin[5:7] }}/{{ date_fin[0:4] }}
+    {% else %}{{ date_debut[8:10] }}/{{ date_debut[5:7] }}/{{ date_debut[0:4] }}{% endif %}
+    — {{ nb_receptions }} réception(s) — Total : {{ "%.1f"|format(total_kg) }} kg
+    <span class="text-muted fs-6 fw-normal">(regroupé par {{ vue }})</span>
   </p>
 
   {% if not groupes %}
-    <p class="text-muted">Aucune réception enregistrée pour cette date.</p>
+    <p class="text-muted">Aucune réception enregistrée pour cette période.</p>
   {% endif %}
 
   {% for groupe, data in groupes %}
@@ -46,8 +79,14 @@
     <table class="table table-sm mb-0">
       <thead>
         <tr>
+          {% if multi_jours %}<th>Date</th>{% endif %}
+          {% if vue == "fournisseur" %}
+          <th>Groupe</th>
+          <th>Produit</th>
+          {% else %}
           <th>Produit</th>
           <th>Fournisseur</th>
+          {% endif %}
           <th>Heure</th>
           <th class="text-end">Poids (kg)</th>
         </tr>
@@ -55,8 +94,14 @@
       <tbody>
         {% for r in data.lignes %}
         <tr>
+          {% if multi_jours %}<td>{{ r.date_reception[8:10] }}/{{ r.date_reception[5:7] }}/{{ r.date_reception[0:4] }}</td>{% endif %}
+          {% if vue == "fournisseur" %}
+          <td>{{ r.ingredient_groupe or "—" }}</td>
+          <td>{{ r.ingredient_produit or r.libelle_produit or "—" }}</td>
+          {% else %}
           <td>{{ r.ingredient_produit or r.libelle_produit or "—" }}</td>
           <td>{{ r.fournisseur_nom or "—" }}</td>
+          {% endif %}
           <td>{{ r.heure_arrivee or "—" }}</td>
           <td class="text-end">{{ r.poids_kg if r.poids_kg is not none else "—" }}</td>
         </tr>

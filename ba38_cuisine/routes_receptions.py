@@ -4,6 +4,7 @@
 
 import re
 import sqlite3
+from datetime import date, timedelta
 
 import os
 
@@ -80,15 +81,74 @@ def liste_receptions():
     )
 
 
+PERIODES_ETAT = (
+    ("jour", "Jour"),
+    ("hier", "Hier"),
+    ("semaine", "Semaine en cours"),
+    ("mois", "Mois en cours"),
+    ("trimestre", "Trimestre en cours"),
+    ("annee", "Année en cours"),
+    ("perso", "Dates personnalisées"),
+)
+
+
+def _bornes_periode(periode, date_jour):
+    """(date_debut, date_fin) AAAA-MM-JJ incluses. "jour" = la date choisie ;
+    les autres périodes sont calculées par rapport à aujourd'hui (Paris)."""
+    if periode == "jour":
+        return date_jour, date_jour
+    today = date.fromisoformat(today_paris())
+    if periode == "hier":
+        debut = fin = today - timedelta(days=1)
+    elif periode == "semaine":
+        debut = today - timedelta(days=today.weekday())
+        fin = debut + timedelta(days=6)
+    elif periode == "mois":
+        debut = today.replace(day=1)
+        fin = (debut + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    elif periode == "trimestre":
+        mois_debut = 3 * ((today.month - 1) // 3) + 1
+        debut = today.replace(month=mois_debut, day=1)
+        fin = (debut + timedelta(days=95)).replace(day=1) - timedelta(days=1)
+    else:  # annee
+        debut = today.replace(month=1, day=1)
+        fin = today.replace(month=12, day=31)
+    return debut.isoformat(), fin.isoformat()
+
+
 @production_cuisine_bp.route("/receptions/etat-journalier")
 @login_required
 @require_access("production_cuisine", "lecture")
 def etat_journalier_receptions():
     """État journalier des réceptions — équivalent numérique de la feuille
     papier "CONTROLE DES VIANDES ET POISSONS A RECEPTION" (documents
-    Nicolas.xlsx, onglet 2) : les réceptions du jour, groupées par groupe
-    d'ingrédient (Boeuf, Agneau, Poisson...), avec sous-total et total kg."""
+    Nicolas.xlsx, onglet 2). Vue par défaut : groupée par fournisseur (demande
+    du cuisinier) ; vue "produit" : groupée par groupe d'ingrédient (Boeuf,
+    Agneau, Poisson...). Sous-total par groupe et total kg, sur une période."""
+    periodes_valides = {code for code, _ in PERIODES_ETAT}
+    periode = request.args.get("periode")
+    if periode not in periodes_valides:
+        periode = "jour"
+    vue = "produit" if request.args.get("vue") == "produit" else "fournisseur"
     date_filtre = request.args.get("date") or today_paris()
+    try:
+        date.fromisoformat(date_filtre)
+    except ValueError:
+        date_filtre = today_paris()
+
+    if periode == "perso":
+        date_debut = request.args.get("du") or date_filtre
+        date_fin = request.args.get("au") or date_debut
+        try:
+            date.fromisoformat(date_debut)
+            date.fromisoformat(date_fin)
+        except ValueError:
+            date_debut = date_fin = date_filtre
+        if date_fin < date_debut:
+            date_debut, date_fin = date_fin, date_debut
+    else:
+        date_debut, date_fin = _bornes_periode(periode, date_filtre)
+    multi_jours = date_debut != date_fin
 
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
@@ -97,16 +157,19 @@ def etat_journalier_receptions():
             SELECT r.*, f.nom AS fournisseur_nom
             FROM cuisine_receptions r
             LEFT JOIN fournisseurs f ON f.id = r.fournisseur_id
-            WHERE r.date_reception = ? AND r.actif = 1
-            ORDER BY r.heure_arrivee, r.id
+            WHERE r.date_reception BETWEEN ? AND ? AND r.actif = 1
+            ORDER BY r.date_reception, r.heure_arrivee, r.id
             """,
-            (date_filtre,),
+            (date_debut, date_fin),
         ).fetchall()
 
     groupes = {}
     total_kg = 0.0
     for r in receptions:
-        groupe = r["ingredient_groupe"] or "Autres / non référencé"
+        if vue == "fournisseur":
+            groupe = r["fournisseur_nom"] or "Fournisseur non renseigné"
+        else:
+            groupe = r["ingredient_groupe"] or "Autres / non référencé"
         entree = groupes.setdefault(groupe, {"lignes": [], "sous_total": 0.0})
         poids = r["poids_kg"] or 0
         entree["lignes"].append(r)
@@ -118,6 +181,12 @@ def etat_journalier_receptions():
     return render_template(
         "production_cuisine/receptions_etat_journalier.html",
         date_filtre=date_filtre,
+        periode=periode,
+        periodes=PERIODES_ETAT,
+        vue=vue,
+        date_debut=date_debut,
+        date_fin=date_fin,
+        multi_jours=multi_jours,
         groupes=groupes_tries,
         total_kg=total_kg,
         nb_receptions=len(receptions),
