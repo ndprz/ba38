@@ -5,6 +5,7 @@
     color="primary",
     type=None,
     formaction=None,
+    form=None,
     disabled=False
 ) %}
 {% if href %}
@@ -18,6 +19,7 @@
         class="btn btn-{{ color }}"
         {% if onclick %}onclick="{{ onclick }}"{% endif %}
         {% if formaction %}formaction="{{ formaction }}"{% endif %}
+        {% if form %}form="{{ form }}"{% endif %}
         {% if disabled %}disabled{% endif %}>
     {{ label }}
 </button>
@@ -37,6 +39,7 @@
                     color=btn.color or 'primary',
                     type=btn.type,
                     formaction=btn.formaction,
+                    form=btn.form,
                     disabled=btn.disabled
                 ) }}
             {% endfor %}

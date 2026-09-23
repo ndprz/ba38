@@ -15,6 +15,7 @@
     {% call action_buttons() %}
         {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAideDroitImage')).show()", color="outline-info") }}
         {{ action_button("📊 Export Excel", href=url_for('droit_image.export_droit_image', acceptation=filtre), color="success") }}
+        {{ action_button("💾 Enregistrer", type="submit", form="formDroitImage", color="primary", disabled=lecture_seule) }}
         {{ action_button("↩️ Retour Bénévoles", href=url_for('benevoles.benevoles'), color="outline-dark") }}
         {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
     {% endcall %}
@@ -98,7 +99,7 @@
     </div>
 
 
-    <form method="post" action="{{ url_for('droit_image.update_droit_image') }}">
+    <form method="post" action="{{ url_for('droit_image.update_droit_image') }}" id="formDroitImage">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <table class="table table-striped table-bordered" id="table">
@@ -198,6 +199,55 @@
         })
 
     })
+
+    // ===============================================
+    // 🔥 DETECTION MODIFICATIONS (DROIT A L'IMAGE)
+    // ===============================================
+    let formDirty = false;
+
+    const formDroitImage = document.getElementById("formDroitImage");
+
+    formDroitImage.addEventListener("change", function (e) {
+        if (e.target.matches("input, select, textarea")) {
+            formDirty = true;
+        }
+    });
+
+    // ===============================================
+    // 🚫 Alerte fermeture / reload
+    // ===============================================
+    window.addEventListener("beforeunload", function (e) {
+        if (!formDirty) return;
+
+        e.preventDefault();
+        e.returnValue = '';
+    });
+
+    // ===============================================
+    // 🔘 Boutons internes (retour, liens, etc.)
+    // ===============================================
+    document.querySelectorAll("a, button").forEach(el => {
+
+        // ne pas bloquer submit
+        if (el.type === "submit") return;
+
+        el.addEventListener("click", function (e) {
+
+            if (!formDirty) return;
+
+            const ok = confirm("⚠️ Vous avez des modifications non enregistrées. Continuer sans enregistrer ?");
+            if (!ok) {
+                e.preventDefault();
+            }
+        });
+    });
+
+    // ===============================================
+    // ✅ Reset après enregistrement
+    // ===============================================
+    formDroitImage.addEventListener("submit", () => {
+        formDirty = false;
+    });
 
 </script>
 
