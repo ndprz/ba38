@@ -4,7 +4,8 @@
 #       (associations.partenaire_cuisine = 'oui') — tailles de barquettes,
 #       périodicité, portions carnées/livraison, % légumes, prix portion.
 #     - Simulation d'une journée : clients prévus ce jour-là (périodicité)
-#       servis sur le stock barquettes actuel, le reste allant au client
+#       servis sur le stock barquettes actuel (recettes du jour cochées,
+#       panachées de façon équilibrée par client), le reste allant au client
 #       "reçoit le reliquat" (BAI Dépôt Pinéa). Lecture seule : aucune
 #       sortie de stock n'est enregistrée (bons de livraison à venir).
 # ============================================================
@@ -99,6 +100,29 @@ def repartir(portions_voulues, tailles_acceptees, stock, portions_par_taille):
                 break
     portions = sum(n * portions_par_taille[t] for t, n in livre.items())
     return livre, portions
+
+
+def panacher(livre, recettes, portions_par_taille, deja=None):
+    """Répartit les barquettes `livre` ({taille: nb}) d'un client entre les
+    `recettes` choisies (liste de dicts avec "stock" {taille: nb}, modifié
+    sur place) pour un mélange le plus équilibré possible : chaque
+    barquette, des plus grosses aux plus petites, va à la recette qui a
+    encore du stock dans cette taille et qui totalise le MOINS de portions
+    pour ce client (à égalité : la production la plus ancienne).
+    Retourne {nom_recette: {taille: nb}}."""
+    portions_client = dict(deja or {})
+    detail = {}
+    for t in sorted(livre, key=lambda t: portions_par_taille[t], reverse=True):
+        for _ in range(livre[t]):
+            candidates = [r for r in recettes if r["stock"].get(t, 0) > 0]
+            if not candidates:
+                break
+            r = min(candidates, key=lambda r: (portions_client.get(r["nom"], 0), r["date"] or ""))
+            r["stock"][t] -= 1
+            detail.setdefault(r["nom"], {})
+            detail[r["nom"]][t] = detail[r["nom"]].get(t, 0) + 1
+            portions_client[r["nom"]] = portions_client.get(r["nom"], 0) + portions_par_taille[t]
+    return detail
 
 
 def _clients(conn):
@@ -277,7 +301,8 @@ def simulation_repartition():
         jour = date.fromisoformat(today_paris())
         date_str = jour.isoformat()
     # "recalcul" présent = l'utilisateur a validé le formulaire : on respecte
-    # ses cases cochées / portions modifiées au lieu de la périodicité.
+    # ses cases cochées (clients, recettes) / portions modifiées au lieu de
+    # la périodicité et de "toutes les recettes".
     recalcul = "recalcul" in request.args
 
     with _connect() as conn:
@@ -285,24 +310,51 @@ def simulation_repartition():
         articles = conn.execute(
             "SELECT taille, libelle, nb_portions FROM cuisine_articles_barquettes WHERE actif = 1 ORDER BY nb_portions DESC"
         ).fetchall()
+        # Stock par recette (même nom = même recette, toutes productions
+        # confondues ; la plus ancienne sert à départager le panachage).
         stock_rows = conn.execute(
-            """SELECT a.taille, s.categorie_produit, SUM(s.quantite) AS quantite
+            """SELECT TRIM(s.libelle_recette) AS nom, s.categorie_produit, a.taille,
+                      SUM(s.quantite) AS quantite, MIN(s.date_fin_recette) AS date
                FROM cuisine_stock_barquettes s
                JOIN cuisine_articles_barquettes a ON a.id = s.article_id
                WHERE s.actif = 1 AND a.actif = 1
-               GROUP BY a.taille, s.categorie_produit"""
+               GROUP BY TRIM(s.libelle_recette) COLLATE NOCASE, s.categorie_produit, a.taille"""
         ).fetchall()
 
     portions_par_taille = {a["taille"]: a["nb_portions"] for a in articles}
     libelle_taille = {a["taille"]: a["libelle"] for a in articles}
-    stock_initial = {cat: {t: 0 for t in portions_par_taille} for cat, _ in CATEGORIES}
+    categories = dict(CATEGORIES)
+
+    recettes = {}
     non_classe = 0
     for r in stock_rows:
-        if r["categorie_produit"] in stock_initial and r["taille"] in portions_par_taille:
-            stock_initial[r["categorie_produit"]][r["taille"]] += r["quantite"] or 0
-        else:
+        if r["categorie_produit"] not in categories or r["taille"] not in portions_par_taille:
             non_classe += r["quantite"] or 0
-    stock = {cat: dict(v) for cat, v in stock_initial.items()}
+            continue
+        cle = f"{r['categorie_produit']}|{r['nom']}"
+        rec = recettes.setdefault(cle, {
+            "cle": cle, "nom": r["nom"], "cat": r["categorie_produit"], "date": r["date"],
+            "initial": {t: 0 for t in portions_par_taille},
+        })
+        rec["initial"][r["taille"]] += r["quantite"] or 0
+        rec["date"] = min(filter(None, [rec["date"], r["date"]]), default=None)
+    recettes = sorted(recettes.values(), key=lambda r: (r["cat"], r["date"] or "", r["nom"].lower()))
+
+    choisies = set(request.args.getlist("recettes")) if recalcul else {r["cle"] for r in recettes}
+    for r in recettes:
+        r["choisie"] = r["cle"] in choisies
+        r["stock"] = dict(r["initial"])
+    recettes_du_jour = {cat: [r for r in recettes if r["choisie"] and r["cat"] == cat] for cat in categories}
+
+    def _stock_cumule(cat):
+        cumul = {t: 0 for t in portions_par_taille}
+        for r in recettes_du_jour[cat]:
+            for t, n in r["stock"].items():
+                cumul[t] += n
+        return cumul
+
+    def _portions(s):
+        return sum(n * portions_par_taille[t] for t, n in s.items())
 
     reliquat = next((c for c in clients if c["recoit_reliquat"]), None)
     lignes = []
@@ -324,48 +376,61 @@ def simulation_repartition():
         ligne = {
             "client": c, "prevu": prevu, "inclus": inclus,
             "voulu": {"carne": portions_carne, "legumes": round(portions_carne * pct / 100)},
-            "livre": {}, "portions": {}, "manque": {},
+            "livre": {}, "detail": {}, "portions": {}, "manque": {},
         }
         if inclus:
-            for cat, _ in CATEGORIES:
-                livre, portions = repartir(ligne["voulu"][cat], c["tailles"], stock[cat], portions_par_taille)
+            for cat in categories:
+                livre, portions = repartir(
+                    ligne["voulu"][cat], c["tailles"], _stock_cumule(cat), portions_par_taille,
+                )
                 ligne["livre"][cat] = livre
+                ligne["detail"][cat] = panacher(livre, recettes_du_jour[cat], portions_par_taille)
                 ligne["portions"][cat] = portions
                 ligne["manque"][cat] = max(0, ligne["voulu"][cat] - portions)
             ligne["montant"] = ligne["portions"]["carne"] * (c["prix_portion_carne"] or 0)
         lignes.append(ligne)
 
-    # Reliquat : tout le stock restant (tailles acceptées si renseignées),
-    # seulement si le client reliquat est livré ce jour-là (ou coché).
+    # Reliquat : tout le reste des recettes du jour (tailles acceptées si
+    # renseignées), seulement si le client reliquat est livré ce jour-là
+    # (ou coché). Les recettes non choisies restent en stock.
     ligne_reliquat = None
     if reliquat:
         prevu = livre_le(reliquat, jour)
         inclus = (f"inclure_{reliquat['association_id']}" in request.args) if recalcul else prevu
-        ligne_reliquat = {"client": reliquat, "prevu": prevu, "inclus": inclus, "livre": {}, "portions": {}}
+        ligne_reliquat = {"client": reliquat, "prevu": prevu, "inclus": inclus,
+                          "livre": {}, "detail": {}, "portions": {}}
         if inclus:
             tailles_ok = reliquat["tailles"] or list(portions_par_taille)
-            for cat, _ in CATEGORIES:
-                livre = {t: n for t, n in stock[cat].items() if n and t in tailles_ok}
-                for t in livre:
-                    stock[cat][t] = 0
+            for cat in categories:
+                detail = {}
+                for r in recettes_du_jour[cat]:
+                    part = {t: n for t, n in r["stock"].items() if n and t in tailles_ok}
+                    for t in part:
+                        r["stock"][t] = 0
+                    if part:
+                        detail[r["nom"]] = part
+                livre = {t: sum(d.get(t, 0) for d in detail.values()) for t in portions_par_taille}
+                livre = {t: n for t, n in livre.items() if n}
                 ligne_reliquat["livre"][cat] = livre
-                ligne_reliquat["portions"][cat] = sum(n * portions_par_taille[t] for t, n in livre.items())
+                ligne_reliquat["detail"][cat] = detail
+                ligne_reliquat["portions"][cat] = _portions(livre)
             ligne_reliquat["montant"] = ligne_reliquat["portions"]["carne"] * (reliquat["prix_portion_carne"] or 0)
 
-    def _portions(s):
-        return sum(n * portions_par_taille[t] for t, n in s.items())
-
+    for r in recettes:
+        r["portions_initial"] = _portions(r["initial"])
+        r["portions_reste"] = _portions(r["stock"])
     totaux = {
         cat: {
-            "initial": stock_initial[cat], "reste": stock[cat],
-            "portions_initial": _portions(stock_initial[cat]), "portions_reste": _portions(stock[cat]),
+            "portions_initial": sum(r["portions_initial"] for r in recettes if r["cat"] == cat),
+            "portions_choisies": sum(r["portions_initial"] for r in recettes_du_jour[cat]),
+            "portions_reste": sum(r["portions_reste"] for r in recettes if r["cat"] == cat),
         }
-        for cat, _ in CATEGORIES
+        for cat in categories
     }
     return render_template(
         "production_cuisine/consignes_clients_simulation.html",
         date_str=date_str, jour_label=dict(JOURS_SEMAINE)[jour.isoweekday()],
-        lignes=lignes, ligne_reliquat=ligne_reliquat, totaux=totaux,
+        lignes=lignes, ligne_reliquat=ligne_reliquat, recettes=recettes, totaux=totaux,
         tailles=list(portions_par_taille), libelle_taille=libelle_taille,
         portions_par_taille=portions_par_taille, categories=CATEGORIES,
         non_classe=non_classe,

@@ -10,6 +10,18 @@
   {{ parts | join(" + ") if parts else "—" }}
 {%- endmacro %}
 
+{% macro detail_recettes(detail) -%}
+  {%- if detail -%}
+  <ul class="list-unstyled small mb-1 mt-1">
+    {%- for nom, livre in detail | dictsort -%}
+      {%- set ns = namespace(p=0) -%}
+      {%- for t, n in livre.items() -%}{%- set ns.p = ns.p + n * portions_par_taille[t] -%}{%- endfor -%}
+      <li>• {{ nom }} : {{ barquettes(livre) }} <span class="text-muted">({{ ns.p }} p.)</span></li>
+    {%- endfor -%}
+  </ul>
+  {%- endif -%}
+{%- endmacro %}
+
 {% block content %}
 <div class="container-fluid mt-4 px-4">
 
@@ -31,14 +43,21 @@
 
   <div class="form-text mb-3">
     Simulation seulement, sur le <strong>stock barquettes actuel</strong> : rien n'est retiré du stock.
-    Les clients prévus ce jour-là (d'après leur périodicité) sont pré-cochés ; vous pouvez en ajouter / retirer
-    et modifier les portions, puis cliquer sur « Recalculer ».
+    Cochez les <strong>recettes à livrer</strong> ce jour-là (toutes par défaut). Les clients prévus ce jour-là
+    (d'après leur périodicité) sont pré-cochés ; vous pouvez en ajouter / retirer et modifier les portions,
+    puis cliquer sur « Recalculer ».
     Règle : grosses barquettes d'abord, puis une barquette de la plus petite taille acceptée pour compléter
-    (arrondi au-dessus). Les clients sont servis dans l'ordre du tableau ; le client « reliquat » reçoit ensuite tout le reste.
+    (arrondi au-dessus). Chaque client reçoit un <strong>panachage équilibré</strong> des recettes cochées
+    (autant de portions que possible de chacune, selon le stock et ses tailles). Les clients sont servis dans
+    l'ordre du tableau ; le client « reliquat » reçoit ensuite tout le reste des recettes cochées.
   </div>
 
   {% if non_classe %}
     <div class="alert alert-warning py-2">❓ {{ non_classe }} barquette(s) en stock sans catégorie carné/légumes : ignorées par la simulation.</div>
+  {% endif %}
+
+  {% if not recettes %}
+    <div class="alert alert-warning py-2">Aucune barquette carné/légumes en stock : rien à répartir.</div>
   {% endif %}
 
   {% if not lignes and not ligne_reliquat %}
@@ -48,6 +67,54 @@
   <form method="GET">
     <input type="hidden" name="date" value="{{ date_str }}">
     <input type="hidden" name="recalcul" value="1">
+
+    {% if recettes %}
+    <h5>🍲 Recettes du jour</h5>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle text-center">
+        <thead class="table-light">
+          <tr>
+            <th rowspan="2"><input class="form-check-input" type="checkbox" id="toutes-recettes" title="Tout cocher / décocher"></th>
+            <th rowspan="2" class="text-start">Recette</th>
+            <th rowspan="2">Production</th>
+            {% for t in tailles %}<th colspan="2">{{ libelle_taille[t] }}</th>{% endfor %}
+            <th colspan="2">Portions</th>
+          </tr>
+          <tr>
+            {% for t in tailles %}<th class="small">Stock</th><th class="small">Reste</th>{% endfor %}
+            <th class="small">Stock</th><th class="small">Reste</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in recettes %}
+          <tr class="{{ '' if r.choisie else 'text-muted' }}">
+            <td><input class="form-check-input case-recette" type="checkbox" name="recettes" value="{{ r.cle }}" {% if r.choisie %}checked{% endif %}></td>
+            <td class="text-start">{{ '🥩' if r.cat == 'carne' else '🥬' }} {{ r.nom }}</td>
+            <td class="small">{{ (r.date or '')[:10] }}</td>
+            {% for t in tailles %}
+              <td>{{ r.initial[t] or '' }}</td>
+              <td class="{{ 'fw-bold' if r.stock[t] else 'text-muted' }}">{{ r.stock[t] if r.initial[t] else '' }}</td>
+            {% endfor %}
+            <td>{{ r.portions_initial }}</td>
+            <td class="fw-bold">{{ r.portions_reste }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light">
+          {% for cat, lib in categories %}
+          <tr>
+            <td></td>
+            <td class="text-start" colspan="{{ 2 + 2 * tailles|length }}">{{ lib }} : {{ totaux[cat].portions_choisies }} portion(s) cochée(s) sur {{ totaux[cat].portions_initial }} en stock</td>
+            <td>{{ totaux[cat].portions_initial }}</td>
+            <td class="fw-bold">{{ totaux[cat].portions_reste }}</td>
+          </tr>
+          {% endfor %}
+        </tfoot>
+      </table>
+    </div>
+    {% endif %}
+
+    <h5 class="mt-3">🚚 Clients</h5>
     <div class="table-responsive">
       <table class="table align-middle">
         <thead class="table-light">
@@ -83,8 +150,9 @@
             {% if l.inclus %}
               {% for cat, _ in categories %}
               <td>
-                {{ barquettes(l.livre[cat]) }}
+                <strong>{{ barquettes(l.livre[cat]) }}</strong>
                 <div class="small">{{ l.portions[cat] }} / {{ l.voulu[cat] }} portion(s)</div>
+                {{ detail_recettes(l.detail[cat]) }}
                 {% if l.manque[cat] %}<span class="badge bg-danger">Manque {{ l.manque[cat] }} portion(s)</span>{% endif %}
               </td>
               {% endfor %}
@@ -115,7 +183,7 @@
             <td class="small">Tout le reste</td>
             {% if l.inclus %}
               {% for cat, _ in categories %}
-              <td>{{ barquettes(l.livre[cat]) }}<div class="small">{{ l.portions[cat] }} portion(s)</div></td>
+              <td><strong>{{ barquettes(l.livre[cat]) }}</strong><div class="small">{{ l.portions[cat] }} portion(s)</div>{{ detail_recettes(l.detail[cat]) }}</td>
               {% endfor %}
               <td class="text-end">
                 {% if c.prix_portion_carne is not none %}{{ "%.2f"|format(l.montant) }} €{% else %}<span class="text-muted">—</span>{% endif %}
@@ -135,36 +203,16 @@
   </form>
   {% endif %}
 
-  <h5>📦 Stock : avant / après la journée simulée</h5>
-  <div class="table-responsive" style="max-width: 760px;">
-    <table class="table table-sm table-bordered text-center align-middle">
-      <thead class="table-light">
-        <tr>
-          <th rowspan="2" class="text-start">Taille</th>
-          {% for cat, lib in categories %}<th colspan="2">{{ lib }}</th>{% endfor %}
-        </tr>
-        <tr>{% for cat, _ in categories %}<th>Avant</th><th>Reste</th>{% endfor %}</tr>
-      </thead>
-      <tbody>
-        {% for t in tailles %}
-        <tr>
-          <td class="text-start">{{ libelle_taille[t] }}</td>
-          {% for cat, _ in categories %}
-            <td>{{ totaux[cat].initial[t] }}</td>
-            <td class="{{ 'fw-bold' if totaux[cat].reste[t] else 'text-muted' }}">{{ totaux[cat].reste[t] }}</td>
-          {% endfor %}
-        </tr>
-        {% endfor %}
-        <tr class="table-light">
-          <td class="text-start">Portions</td>
-          {% for cat, _ in categories %}
-            <td>{{ totaux[cat].portions_initial }}</td>
-            <td class="fw-bold">{{ totaux[cat].portions_reste }}</td>
-          {% endfor %}
-        </tr>
-      </tbody>
-    </table>
-  </div>
-
 </div>
+<script>
+  (function () {
+    var toutes = document.getElementById("toutes-recettes");
+    if (!toutes) return;
+    var cases = document.querySelectorAll(".case-recette");
+    function maj() { toutes.checked = Array.prototype.every.call(cases, function (c) { return c.checked; }); }
+    toutes.addEventListener("change", function () { cases.forEach(function (c) { c.checked = toutes.checked; }); });
+    cases.forEach(function (c) { c.addEventListener("change", maj); });
+    maj();
+  })();
+</script>
 {% endblock %}
