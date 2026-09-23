@@ -17,7 +17,7 @@ import json
 import time
 import sqlite3
 from datetime import datetime
-from threading import Thread
+from ba38_utilitaires.taches_fond import lancer_tache_fond
 
 from flask import Blueprint, request, render_template, flash, redirect, url_for, jsonify, send_file, current_app, session
 from flask_login import login_required, current_user
@@ -883,10 +883,12 @@ def envoyer(campagne_id):
     app_reel = current_app._get_current_object()
     current_user_email = current_user.email
 
-    Thread(
+    lancer_tache_fond(
         target=envoyer_participation_background,
-        args=(app_reel, db_path, campagne_id, items, mail_mode, mail_test_to, current_user_email)
-    ).start()
+        args=(app_reel, db_path, campagne_id, items, mail_mode, mail_test_to, current_user_email),
+        nom="Envoi participation",
+        utilisateur=current_user_email,
+    )
 
     if mail_mode == "TEST":
         flash("🧪 Envoi TEST lancé en arrière-plan (2 mails max vers l'adresse de test).", "warning")
@@ -1435,12 +1437,14 @@ def relance(campagne_id):
         db_path = get_db_path()
         current_user_email_relance = current_user.email if current_user.is_authenticated else None
 
-        Thread(
+        lancer_tache_fond(
             target=envoyer_relances_participation_background,
             args=(app_reel, db_path, items, sujet_modele, corps_modele,
                   numero_relance, campagne["annee"], campagne["trimestre"],
-                  mail_sender, mail_mode, mail_test_to, current_user_email_relance)
-        ).start()
+                  mail_sender, mail_mode, mail_test_to, current_user_email_relance),
+            nom="Relances participation",
+            utilisateur=current_user_email_relance,
+        )
 
         if mail_mode == "TEST":
             flash("🧪 Envoi TEST des relances lancé en arrière-plan (2 mails max vers l'adresse de test).", "warning")

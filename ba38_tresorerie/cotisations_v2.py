@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 from datetime import datetime, date
 from pathlib import Path
-from threading import Thread
+from ba38_utilitaires.taches_fond import lancer_tache_fond
 
 from flask import request, render_template, flash, redirect, url_for, jsonify, send_file, current_app, session
 from flask_login import login_required, current_user
@@ -692,10 +692,12 @@ def cotisations_v2_envoyer(campagne_id):
     app_reel = current_app._get_current_object()
     current_user_email = current_user.email
 
-    Thread(
+    lancer_tache_fond(
         target=envoyer_cotisations_v2_background,
-        args=(app_reel, db_path, campagne_id, items, mail_mode, mail_test_to, current_user_email)
-    ).start()
+        args=(app_reel, db_path, campagne_id, items, mail_mode, mail_test_to, current_user_email),
+        nom="Envoi cotisations V2",
+        utilisateur=current_user_email,
+    )
 
     if mail_mode == "TEST":
         flash("🧪 Envoi TEST lancé en arrière-plan (2 mails max vers l'adresse de test).", "warning")

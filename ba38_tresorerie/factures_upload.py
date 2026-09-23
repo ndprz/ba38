@@ -4,7 +4,7 @@ import time
 import sqlite3
 import tempfile
 from datetime import datetime
-from threading import Thread
+from ba38_utilitaires.taches_fond import lancer_tache_fond
 
 from PyPDF2 import PdfReader, PdfWriter
 
@@ -577,11 +577,13 @@ def factures_envoyer(lot_id):
     app_reel = current_app._get_current_object()
     current_user_email = current_user.email
 
-    Thread(
+    lancer_tache_fond(
         target=envoyer_factures_background,
         args=(app_reel, db_path, lot_id, items, lot["pdf_path"],
-              mail_mode, mail_test_to, lot["sender"], current_user_email)
-    ).start()
+              mail_mode, mail_test_to, lot["sender"], current_user_email),
+        nom="Envoi factures",
+        utilisateur=current_user_email,
+    )
 
     if mail_mode == "TEST":
         flash("🧪 Envoi TEST lancé en arrière-plan (2 mails max vers l'adresse de test).", "warning")

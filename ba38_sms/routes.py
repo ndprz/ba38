@@ -1,6 +1,6 @@
 import sqlite3
 from datetime import datetime
-from threading import Thread
+from ba38_utilitaires.taches_fond import lancer_tache_fond
 
 from flask import (
     render_template, request, redirect, url_for, flash, current_app, session
@@ -329,11 +329,13 @@ def envoi_sms_benevoles():
 
             app_obj = current_app._get_current_object()
             current_user_email = getattr(current_user, "email", None) or None
-            Thread(
+            lancer_tache_fond(
                 target=envoyer_sms_lot_background,
                 args=(app_obj, get_db_path(), lot_id, a_envoyer, texte, current_user_email),
                 daemon=True,
-            ).start()
+                nom="Envoi SMS",
+                utilisateur=current_user_email,
+            )
 
             flash(f"✅ Envoi lancé pour {len(benevoles)} destinataire(s).", "success")
             return redirect(url_for("sms.lot_detail", lot_id=lot_id))

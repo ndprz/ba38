@@ -119,6 +119,40 @@ if [ "$tables_count" -eq 0 ]; then
 fi
 
 # ============================================================================
+# 📨 Tâches en arrière-plan en cours en PROD (envois emails/SMS, analyses)
+# ============================================================================
+# Témoins déposés par ba38_utilitaires/taches_fond.py. Le rechargement de
+# gunicorn tuerait ces tâches (envoi partiel) → on arrête AVANT de toucher
+# à quoi que ce soit. Un témoin dont le process n'est plus un worker PROD
+# vivant (plantage, PID réutilisé) est ignoré.
+echo "📨 Vérification des tâches en arrière-plan PROD"
+
+TACHES_DIR="$PROD_DIR/run/taches"
+TACHES_EN_COURS=""
+for temoin in "$TACHES_DIR"/*.json; do
+  [ -e "$temoin" ] || continue
+  pid=$(basename "$temoin" | cut -d '-' -f1)
+  cmdline=$(tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline" || true)
+  if [[ "$cmdline" == *"$PROD_DIR/venv/bin/gunicorn"* ]]; then
+    detail=$(python3 - "$temoin" <<'PY' 2>/dev/null || basename "$temoin"
+import json, sys
+t = json.load(open(sys.argv[1], encoding="utf-8"))
+print(f"{t.get('nom')} — lancé par {t.get('utilisateur') or '?'} le {t.get('debut')}")
+PY
+)
+    TACHES_EN_COURS+="   • $detail"$'\n'
+  fi
+done
+
+if [ -n "$TACHES_EN_COURS" ]; then
+  echo "❌ Déploiement annulé : tâche(s) en cours en PROD, qui seraient interrompues :"
+  printf "%s" "$TACHES_EN_COURS"
+  echo "➡️ Rien n'a été modifié. Relancer le déploiement une fois l'envoi terminé."
+  exit 1
+fi
+echo "✅ Aucune tâche en cours"
+
+# ============================================================================
 # 📦 Installation dépendances
 # ============================================================================
 echo "📦 Vérification des dépendances Python"
@@ -195,6 +229,7 @@ rsync -av --delete \
   --exclude ".git_OLD_ba380DEV/" \
   --exclude ".vscode/" \
   --exclude "logs/" \
+  --exclude "/run/" \
   --exclude "*.log" \
   --exclude "*.log.*" \
   --exclude "instance/" \
@@ -227,8 +262,57 @@ echo "DATE=$DATE_NOW" >> "$DEV_DIR/VERSION"
 # ============================================================================
 # 🔄 RESTART
 # ============================================================================
-echo "🔄 Redémarrage ba38-prod"
-sudo systemctl restart ba38-prod.service
+# Rechargement à chaud (SIGHUP) : gunicorn démarre les nouveaux workers
+# avant d'arrêter proprement les anciens → aucune coupure côté utilisateurs.
+# Repli sur un restart complet si le master est introuvable, si gunicorn
+# lui-même a été mis à jour (le master ne se recharge pas), ou si les
+# nouveaux workers ne démarrent pas.
+restart_complet() {
+  echo "🔄 Redémarrage complet ba38-prod ($1)"
+  sudo systemctl restart ba38-prod.service
+}
+
+PROD_MASTER=$(systemctl show -p MainPID --value ba38-prod.service)
+GUNICORN_MAJ=0
+if [ "$PROD_MASTER" != "0" ] && [ -n "$PROD_MASTER" ]; then
+  MASTER_DEBUT=$(date -d "$(ps -o lstart= -p "$PROD_MASTER")" +%s)
+  GUNICORN_PKG=$(ls -d "$PROD_DIR"/venv/lib/python*/site-packages/gunicorn 2>/dev/null | head -1)
+  if [ -n "$GUNICORN_PKG" ] && [ "$(stat -c %Y "$GUNICORN_PKG")" -gt "$MASTER_DEBUT" ]; then
+    GUNICORN_MAJ=1
+  fi
+fi
+
+if [ "$PROD_MASTER" = "0" ] || [ -z "$PROD_MASTER" ]; then
+  restart_complet "service arrêté"
+elif [ "$GUNICORN_MAJ" -eq 1 ]; then
+  restart_complet "gunicorn mis à jour"
+else
+  echo "🔄 Rechargement à chaud ba38-prod (SIGHUP, master $PROD_MASTER)"
+  ANCIENS_WORKERS=$(pgrep -P "$PROD_MASTER" | sort || true)
+  kill -HUP "$PROD_MASTER"
+
+  # Attendre que les nouveaux workers soient démarrés (max 20 s). On n'attend
+  # pas la fin des anciens (ils terminent leurs requêtes en cours jusqu'à 30 s) :
+  # le script est lancé depuis une requête DEV soumise au timeout gunicorn.
+  NB_ANCIENS=$(echo "$ANCIENS_WORKERS" | grep -c . || true)
+  RECHARGE_OK=0
+  for _ in $(seq 1 20); do
+    sleep 1
+    ACTUELS=$(pgrep -P "$PROD_MASTER" | sort || true)
+    NB_NOUVEAUX=$(comm -13 <(echo "$ANCIENS_WORKERS") <(echo "$ACTUELS") | grep -c . || true)
+    if [ "$NB_NOUVEAUX" -ge 1 ] && [ "$NB_NOUVEAUX" -ge "$NB_ANCIENS" ]; then
+      RECHARGE_OK=1
+      break
+    fi
+  done
+
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://127.0.0.1:8001/login || echo "000")
+  if [ "$RECHARGE_OK" -eq 1 ] && [ "$HTTP_CODE" -lt 500 ] && [ "$HTTP_CODE" != "000" ]; then
+    echo "✅ Rechargement à chaud OK (HTTP $HTTP_CODE)"
+  else
+    restart_complet "rechargement à chaud KO : workers remplacés=$RECHARGE_OK, HTTP=$HTTP_CODE"
+  fi
+fi
 
 # ============================================================================
 # 📦 COMMIT GIT

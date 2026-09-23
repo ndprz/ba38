@@ -16,6 +16,7 @@ venv/
 *.log
 *.log.*
 logs/
+run/
 
 # Backups
 backup/

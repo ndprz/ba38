@@ -4,7 +4,7 @@ import sqlite3
 import os
 from datetime import datetime
 from functools import wraps
-from threading import Thread
+from ba38_utilitaires.taches_fond import lancer_tache_fond
 from ba38_utilitaires.core import get_db_path, require_access, has_access, write_log, envoyer_mail, render_modele_email, get_templates_pdf_dir, copier_modele_email_vers_prod
 from ba38_utilitaires.pdf_form import remplir_pdf_indicateurs
 
@@ -399,12 +399,14 @@ def envoyer_mails(campagne_id):
         modele_dict = dict(modele)
         lignes_dicts = [dict(l) for l in lignes]
 
-        Thread(
+        lancer_tache_fond(
             target=envoyer_indicateurs_background,
             args=(app_reel, db_path, campagne_id, campagne_dict, lignes_dicts,
                   modele_dict, sender, mode_test_local, type_periode, periode,
-                  current_user_email)
-        ).start()
+                  current_user_email),
+            nom="Envoi indicateurs",
+            utilisateur=current_user_email,
+        )
 
         # ============================================================================
         # 📢 MESSAGE IMMÉDIAT (l'envoi continue en arrière-plan)

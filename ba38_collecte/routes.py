@@ -48,7 +48,7 @@ import argparse
 import subprocess
 from io import StringIO
 from datetime import datetime, timedelta
-from threading import Thread
+from ba38_utilitaires.taches_fond import lancer_tache_fond
 
 from werkzeug.utils import secure_filename
 
@@ -2152,10 +2152,12 @@ def lancer_analyse():
     magasins_path = _fichier_drive(annee, "magasins") or os.path.join(dossier, campagne["fichier_magasins"])
     app_reel = current_app._get_current_object()
 
-    Thread(
+    lancer_tache_fond(
         target=_lancer_analyse_8configs_background,
-        args=(app_reel, analyse_id, pdf_path, magasins_path, params_communs, annee)
-    ).start()
+        args=(app_reel, analyse_id, pdf_path, magasins_path, params_communs, annee),
+        nom="Collecte : analyse 8 scénarios",
+        utilisateur=current_user.email,
+    )
 
     write_log(f"🔬 Collecte {annee} : analyse 8 scénarios #{analyse_id} lancée par {current_user.email}")
     flash("🔬 Analyse des 8 scénarios lancée en arrière-plan (compter 1 à 2 minutes)", "info")
@@ -2323,7 +2325,7 @@ def generer_redaction(analyse_id):
         conn.commit()
 
     app_reel = current_app._get_current_object()
-    Thread(target=_generer_redaction_background, args=(app_reel, analyse_id, prompt)).start()
+    lancer_tache_fond(target=_generer_redaction_background, args=(app_reel, analyse_id, prompt), nom="Collecte : rédaction IA analyse", utilisateur=current_user.email)
 
     write_log(f"🤖 Collecte : rédaction IA de l'analyse #{analyse_id} lancée par {current_user.email}")
     flash("🤖 Génération de la partie rédactionnelle lancée (compter 30 à 60 secondes)", "info")
