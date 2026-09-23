@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "production_cuisine/_macros.html" import camera_capture, champ_temperature %}
+{% from "production_cuisine/_macros.html" import champ_temperature %}
 
 {% block title %}Nouvelle réception{% endblock %}
 
@@ -24,7 +24,7 @@
       </div>
       <div class="col-6">
         <label class="form-label">Heure d'arrivée</label>
-        <input type="time" name="heure_arrivee" class="form-control">
+        <input type="time" name="heure_arrivee" class="form-control" value="{{ form.heure_arrivee or '' }}">
       </div>
     </div>
 
@@ -33,7 +33,7 @@
       <select name="fournisseur_id" class="form-select">
         <option value="">-- Choisir --</option>
         {% for f in fournisseurs %}
-          <option value="{{ f.id }}">{{ f.nom }}</option>
+          <option value="{{ f.id }}" {% if form.fournisseur_id == f.id|string %}selected{% endif %}>{{ f.nom }}</option>
         {% endfor %}
       </select>
     </div>
@@ -66,167 +66,6 @@
 
 </div>
 
-<template id="template-ligne-produit">
-  <div class="card mb-3 ligne-produit">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <span class="ligne-produit-titre">📦 Produit</span>
-      <button type="button" class="btn btn-sm btn-outline-danger btn-retirer-ligne">🗑️ Retirer</button>
-    </div>
-    <div class="card-body">
-      <div class="mb-3">
-        <label class="form-label fw-bold">Groupe *</label>
-        <select name="ingredient_groupe_IDXTOKEN" class="form-select form-select-lg ingredient-groupe-select" required>
-          <option value="">-- Choisir --</option>
-          {% for g in ingredients_par_groupe %}
-            <option value="{{ g }}">{{ g }}</option>
-          {% endfor %}
-          <option value="__autre__">Autre (préciser)</option>
-        </select>
-      </div>
-      <div class="mb-3">
-        <label class="form-label fw-bold">Produit réceptionné *</label>
-        <select name="ingredient_produit_IDXTOKEN" class="form-select form-select-lg ingredient-produit-select" required disabled>
-          <option value="">-- Choisir un groupe d'abord --</option>
-        </select>
-        <input type="text" name="ingredient_produit_autre_IDXTOKEN" class="form-control form-control-lg mt-2 ingredient-produit-autre"
-               style="display:none;" placeholder="Préciser le produit…">
-      </div>
-      <div class="mb-3">
-        <label class="form-label">Poids (kg)</label>
-        <input type="number" inputmode="decimal" step="0.1" name="poids_kg_IDXTOKEN" class="form-control">
-      </div>
-      {% for champ, label in (('aspect_conforme', 'Aspect'), ('emballage_conforme', 'Emballage'), ('etiquetage_conforme', 'Étiquetage')) %}
-      <div class="mb-3">
-        <label class="form-label fw-bold">{{ label }}</label>
-        <div class="btn-group w-100" role="group">
-          <input type="radio" class="btn-check" name="{{ champ }}_IDXTOKEN" id="{{ champ }}_IDXTOKEN_ok" value="conforme" autocomplete="off" required>
-          <label class="btn btn-outline-success btn-lg" for="{{ champ }}_IDXTOKEN_ok">✅ Conforme</label>
-
-          <input type="radio" class="btn-check" name="{{ champ }}_IDXTOKEN" id="{{ champ }}_IDXTOKEN_nc" value="non_conforme" autocomplete="off" required>
-          <label class="btn btn-outline-danger btn-lg" for="{{ champ }}_IDXTOKEN_nc">⚠️ Non conforme</label>
-        </div>
-      </div>
-      {% endfor %}
-      <div class="mb-3">
-        <label class="form-label">Commentaire</label>
-        <textarea name="commentaire_IDXTOKEN" class="form-control" rows="2"></textarea>
-      </div>
-      <div class="row g-3">
-        <div class="col-6">
-          {{ camera_capture("photos_produit_IDXTOKEN", "📷 Photo(s) produit") }}
-        </div>
-        <div class="col-6">
-          {{ camera_capture("photos_etiquette_IDXTOKEN", "📷 Photo(s) étiquette") }}
-          <div class="form-text">La photo de l'étiquette fait foi pour la DLC/DDM et le n° de lot — inutile de les ressaisir.</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
-{% include "production_cuisine/_camera_capture_js.html" %}
-{% include "production_cuisine/_temp_toggle_js.html" %}
-<script>
-(function () {
-  var lignesSoumises = {{ lignes_soumises | tojson }};
-  var ingredientsParGroupe = {{ ingredients_par_groupe | tojson }};
-  var container = document.getElementById('lignes-produits');
-  var template = document.getElementById('template-ligne-produit');
-  var btnAjouter = document.getElementById('btn-ajouter-ligne');
-  var compteur = 0;
-
-  function renumeroter() {
-    var lignes = container.querySelectorAll('.ligne-produit');
-    lignes.forEach(function (ligne, i) {
-      ligne.querySelector('.ligne-produit-titre').textContent = '📦 Produit ' + (i + 1);
-      ligne.querySelector('.btn-retirer-ligne').style.display = lignes.length > 1 ? '' : 'none';
-    });
-  }
-
-  function ajouterLigne(valeurs) {
-    var idx = compteur++;
-    var html = template.innerHTML.split('IDXTOKEN').join(idx);
-    var wrapper = document.createElement('div');
-    wrapper.innerHTML = html;
-    var ligne = wrapper.firstElementChild;
-
-    var groupeSelect = ligne.querySelector('[name="ingredient_groupe_' + idx + '"]');
-    var produitSelect = ligne.querySelector('[name="ingredient_produit_' + idx + '"]');
-    var produitAutre = ligne.querySelector('[name="ingredient_produit_autre_' + idx + '"]');
-
-    function majProduit(valeurProduitAConserver) {
-      var groupe = groupeSelect.value;
-      if (groupe === '__autre__') {
-        produitSelect.style.display = 'none';
-        produitSelect.disabled = true;
-        produitSelect.required = false;
-        produitAutre.style.display = '';
-        produitAutre.required = true;
-      } else {
-        produitAutre.style.display = 'none';
-        produitAutre.required = false;
-        produitSelect.style.display = '';
-        produitSelect.disabled = false;
-        produitSelect.required = true;
-        var produits = ingredientsParGroupe[groupe] || [];
-        produitSelect.innerHTML = '';
-        var optDefaut = document.createElement('option');
-        optDefaut.value = '';
-        optDefaut.textContent = groupe ? '-- Choisir --' : "-- Choisir un groupe d'abord --";
-        produitSelect.appendChild(optDefaut);
-        produits.forEach(function (p) {
-          var opt = document.createElement('option');
-          opt.value = p;
-          opt.textContent = p;
-          produitSelect.appendChild(opt);
-        });
-        if (valeurProduitAConserver && produits.indexOf(valeurProduitAConserver) !== -1) {
-          produitSelect.value = valeurProduitAConserver;
-        }
-      }
-    }
-
-    groupeSelect.addEventListener('change', function () { majProduit(null); });
-    majProduit(null);
-
-    if (valeurs) {
-      if (valeurs.groupe) {
-        groupeSelect.value = valeurs.groupe;
-        majProduit(valeurs.produit);
-        if (valeurs.groupe === '__autre__' && valeurs.produit) {
-          produitAutre.value = valeurs.produit;
-        }
-      }
-      if (valeurs.poids_kg) {
-        ligne.querySelector('[name="poids_kg_' + idx + '"]').value = valeurs.poids_kg;
-      }
-      if (valeurs.commentaire) {
-        ligne.querySelector('[name="commentaire_' + idx + '"]').value = valeurs.commentaire;
-      }
-      ['aspect_conforme', 'emballage_conforme', 'etiquetage_conforme'].forEach(function (champ) {
-        if (valeurs[champ]) {
-          var radio = ligne.querySelector('[name="' + champ + '_' + idx + '"][value="' + valeurs[champ] + '"]');
-          if (radio) radio.checked = true;
-        }
-      });
-    }
-
-    ligne.querySelector('.btn-retirer-ligne').addEventListener('click', function () {
-      ligne.remove();
-      renumeroter();
-    });
-    container.appendChild(ligne);
-    if (window.initCameraCapture) window.initCameraCapture(ligne);
-    renumeroter();
-  }
-
-  btnAjouter.addEventListener('click', function () { ajouterLigne(null); });
-
-  if (lignesSoumises && lignesSoumises.length) {
-    lignesSoumises.forEach(function (l) { ajouterLigne(l); });
-  } else {
-    ajouterLigne(null);
-  }
-})();
-</script>
+{% set lignes_multiples = true %}
+{% include "production_cuisine/_reception_lignes_produit.html" %}
 {% endblock %}

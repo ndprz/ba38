@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% from "production_cuisine/_macros.html" import champ_temperature %}
+
+{% block title %}Modifier la réception #{{ reception.id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 720px;">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">✏️ Modifier la réception #{{ reception.id }}</h2>
+    <a href="{{ url_for('production_cuisine.detail_reception', reception_id=reception.id) }}" class="btn btn-outline-secondary">← Retour</a>
+  </div>
+
+  <div class="alert alert-info">
+    Modification possible tant que la réception n'est pas utilisée dans une production.
+    Réceptionnée par <strong>{{ reception.user_creation or "—" }}</strong>.
+  </div>
+
+  <form method="POST" enctype="multipart/form-data" id="form-reception">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="mb-3">
+      <label class="form-label fw-bold">Votre nom (personne qui corrige) *</label>
+      <input type="text" name="benevole" class="form-control form-control-lg" required
+             value="{{ form.benevole or '' }}" placeholder="Prénom du bénévole ou du salarié">
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-6">
+        <label class="form-label">Date</label>
+        <input type="date" name="date_reception" class="form-control" value="{{ form.date_reception or '' }}">
+      </div>
+      <div class="col-6">
+        <label class="form-label">Heure d'arrivée</label>
+        <input type="time" name="heure_arrivee" class="form-control" value="{{ form.heure_arrivee or '' }}">
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Fournisseur</label>
+      <select name="fournisseur_id" class="form-select">
+        <option value="">-- Choisir --</option>
+        {% for f in fournisseurs %}
+          <option value="{{ f.id }}" {% if form.fournisseur_id == f.id|string %}selected{% endif %}>{{ f.nom }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-6">
+        <label class="form-label">Camion / transporteur</label>
+        <input type="text" name="camion_libelle" class="form-control" value="{{ form.camion_libelle or '' }}">
+      </div>
+      <div class="col-6">
+        <label class="form-label">Température mesurée (°C)</label>
+        {{ champ_temperature("temperature_mesuree", value=form.temperature_mesuree) }}
+      </div>
+    </div>
+
+    <hr>
+
+    <div id="lignes-produits"></div>
+
+    {% if photos %}
+    <h6>📷 Photos déjà enregistrées</h6>
+    <div class="row g-2 mb-3">
+      {% for p in photos %}
+      <div class="col-4 col-md-3">
+        <a href="{{ url_for('production_cuisine.photo_reception', photo_id=p.id) }}" target="_blank" class="card text-decoration-none">
+          <img src="{{ url_for('production_cuisine.photo_reception', photo_id=p.id) }}" class="card-img-top" style="height:100px;object-fit:cover;" alt="{{ p.type_photo }}">
+          <div class="card-body p-1"><span class="badge bg-secondary">{{ p.type_photo }}</span></div>
+        </a>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="form-text mb-3">Les photos ajoutées ci-dessus viennent s'ajouter à celles-ci.</div>
+    {% endif %}
+
+    <div class="d-flex justify-content-between">
+      <a href="{{ url_for('production_cuisine.detail_reception', reception_id=reception.id) }}" class="btn btn-outline-secondary btn-lg">Annuler</a>
+      <button type="submit" class="btn btn-primary btn-lg">💾 Enregistrer les modifications</button>
+    </div>
+  </form>
+
+</div>
+
+{% set lignes_multiples = false %}
+{% set lignes_soumises = [ligne] %}
+{% include "production_cuisine/_reception_lignes_produit.html" %}
+{% endblock %}

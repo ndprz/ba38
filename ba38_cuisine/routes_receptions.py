@@ -25,6 +25,89 @@ def _clean_conformite(val):
     return val if val in CONFORMITE_CHOICES else None
 
 
+def _parse_poids(valeur):
+    """Poids saisi (virgule tolérée) → float > 0, sinon None."""
+    valeur = (valeur or "").strip().replace(",", ".")
+    try:
+        poids = float(valeur)
+    except ValueError:
+        return None
+    return poids if poids > 0 else None
+
+
+def _lire_ligne_produit(form, i):
+    """Lit la ligne produit d'index `i` du formulaire (champs suffixés _<i>),
+    commune aux écrans de création (plusieurs lignes) et de modification
+    (une seule ligne, index 0)."""
+    groupe = (form.get(f"ingredient_groupe_{i}") or "").strip()
+    if groupe == GROUPE_AUTRE:
+        # Produit hors référentiel (ex. légumes) : saisie libre.
+        produit = (form.get(f"ingredient_produit_autre_{i}") or "").strip()
+        ingredient_groupe, ingredient_produit = None, None
+        libelle_produit = produit
+    else:
+        produit = (form.get(f"ingredient_produit_{i}") or "").strip()
+        ingredient_groupe = groupe or None
+        ingredient_produit = produit or None
+        # Pas de repli sur le seul groupe : un groupe choisi sans
+        # produit doit être signalé comme une erreur, pas enregistré
+        # tel quel (cf. _erreur_ligne_produit sur libelle_produit vide).
+        libelle_produit = f"{groupe} – {produit}" if groupe and produit else ""
+    poids_saisi = (form.get(f"poids_kg_{i}") or "").strip()
+    return {
+        "idx": i,
+        "groupe": groupe,
+        "produit": produit,
+        "libelle_produit": libelle_produit,
+        "ingredient_groupe": ingredient_groupe,
+        "ingredient_produit": ingredient_produit,
+        # poids_kg = valeur saisie (réaffichée telle quelle en cas d'erreur),
+        # poids_valide = float > 0 réellement enregistré.
+        "poids_kg": poids_saisi or None,
+        "poids_valide": _parse_poids(poids_saisi),
+        "aspect_conforme": _clean_conformite(form.get(f"aspect_conforme_{i}")),
+        "emballage_conforme": _clean_conformite(form.get(f"emballage_conforme_{i}")),
+        "etiquetage_conforme": _clean_conformite(form.get(f"etiquetage_conforme_{i}")),
+        "commentaire": (form.get(f"commentaire_{i}") or "").strip() or None,
+    }
+
+
+def _erreur_ligne_produit(num, ligne):
+    """Message d'erreur pour une ligne produit incomplète, sinon None."""
+    if not ligne["libelle_produit"]:
+        return f"⚠️ Produit {num} : merci de choisir (ou préciser) le produit réceptionné."
+    if ligne["poids_valide"] is None:
+        return f"⚠️ Produit {num} ({ligne['libelle_produit']}) : merci d'indiquer le poids (en kg, supérieur à 0)."
+    if not (ligne["aspect_conforme"] and ligne["emballage_conforme"] and ligne["etiquetage_conforme"]):
+        return (
+            f"⚠️ Produit {num} ({ligne['libelle_produit']}) : merci d'indiquer "
+            "les 3 conformités (aspect, emballage, étiquetage)."
+        )
+    return None
+
+
+def _enregistrer_photos(cur, reception_id, idx):
+    """📸 Photos produit / étiquette (capture tablette) de la ligne `idx`."""
+    dossier = upload_dir_reception(reception_id)
+    for type_photo, champ in (
+        ("produit", f"photos_produit_{idx}"),
+        ("etiquette", f"photos_etiquette_{idx}"),
+    ):
+        fichiers = request.files.getlist(champ)
+        chemins = save_uploaded_files(fichiers, dossier, prefix=type_photo)
+        debut = cur.execute(
+            "SELECT COALESCE(MAX(ordre) + 1, 0) FROM cuisine_reception_photos WHERE reception_id = ? AND type_photo = ?",
+            (reception_id, type_photo),
+        ).fetchone()[0]
+        for ordre, chemin in enumerate(chemins, start=debut):
+            cur.execute(
+                """INSERT INTO cuisine_reception_photos
+                   (reception_id, type_photo, chemin_fichier, ordre)
+                   VALUES (?, ?, ?, ?)""",
+                (reception_id, type_photo, chemin, ordre),
+            )
+
+
 def _ingredients_par_groupe(conn):
     """{groupe: [produit, ...]} — référentiel des ingrédients carnés, pour
     le sélecteur en 2 temps (groupe puis produit) de l'écran de réception."""
@@ -289,35 +372,7 @@ def creer_reception():
             if m
         })
 
-        lignes = []
-        for i in indices:
-            groupe = (request.form.get(f"ingredient_groupe_{i}") or "").strip()
-            if groupe == GROUPE_AUTRE:
-                # Produit hors référentiel (ex. légumes) : saisie libre.
-                produit = (request.form.get(f"ingredient_produit_autre_{i}") or "").strip()
-                ingredient_groupe, ingredient_produit = None, None
-                libelle_produit = produit
-            else:
-                produit = (request.form.get(f"ingredient_produit_{i}") or "").strip()
-                ingredient_groupe = groupe or None
-                ingredient_produit = produit or None
-                # Pas de repli sur le seul groupe : un groupe choisi sans
-                # produit doit être signalé comme une erreur, pas enregistré
-                # tel quel (cf. validation plus bas sur libelle_produit vide).
-                libelle_produit = f"{groupe} – {produit}" if groupe and produit else ""
-            lignes.append({
-                "idx": i,
-                "groupe": groupe,
-                "produit": produit,
-                "libelle_produit": libelle_produit,
-                "ingredient_groupe": ingredient_groupe,
-                "ingredient_produit": ingredient_produit,
-                "poids_kg": request.form.get(f"poids_kg_{i}") or None,
-                "aspect_conforme": _clean_conformite(request.form.get(f"aspect_conforme_{i}")),
-                "emballage_conforme": _clean_conformite(request.form.get(f"emballage_conforme_{i}")),
-                "etiquetage_conforme": _clean_conformite(request.form.get(f"etiquetage_conforme_{i}")),
-                "commentaire": (request.form.get(f"commentaire_{i}") or "").strip() or None,
-            })
+        lignes = [_lire_ligne_produit(request.form, i) for i in indices]
         # Une ligne où seul un groupe a été choisi compte comme "démarrée" :
         # il manque alors juste le produit, ce qui doit être signalé comme
         # une erreur (et non silencieusement ignoré comme une ligne vide).
@@ -330,13 +385,7 @@ def creer_reception():
             erreur = "⚠️ Merci de renseigner au moins un produit réceptionné."
         else:
             for num, ligne in enumerate(lignes_remplies, start=1):
-                if not ligne["libelle_produit"]:
-                    erreur = f"⚠️ Produit {num} : merci de choisir (ou préciser) le produit réceptionné."
-                elif not (ligne["aspect_conforme"] and ligne["emballage_conforme"] and ligne["etiquetage_conforme"]):
-                    erreur = (
-                        f"⚠️ Produit {num} ({ligne['libelle_produit']}) : merci d'indiquer "
-                        "les 3 conformités (aspect, emballage, étiquetage)."
-                    )
+                erreur = _erreur_ligne_produit(num, ligne)
                 if erreur:
                     break
 
@@ -369,7 +418,7 @@ def creer_reception():
                         (
                             date_reception, heure_arrivee, fournisseur_id, camion_libelle,
                             ligne["libelle_produit"], ligne["ingredient_groupe"], ligne["ingredient_produit"],
-                            temperature_mesuree, ligne["poids_kg"],
+                            temperature_mesuree, ligne["poids_valide"],
                             ligne["aspect_conforme"], ligne["emballage_conforme"], ligne["etiquetage_conforme"],
                             ligne["commentaire"], benevole,
                         ),
@@ -377,21 +426,7 @@ def creer_reception():
                     reception_id = cur.lastrowid
                     reception_ids.append(reception_id)
 
-                    # 📸 Photos produit / étiquette (capture tablette)
-                    dossier = upload_dir_reception(reception_id)
-                    for type_photo, champ in (
-                        ("produit", f"photos_produit_{ligne['idx']}"),
-                        ("etiquette", f"photos_etiquette_{ligne['idx']}"),
-                    ):
-                        fichiers = request.files.getlist(champ)
-                        chemins = save_uploaded_files(fichiers, dossier, prefix=type_photo)
-                        for ordre, chemin in enumerate(chemins):
-                            cur.execute(
-                                """INSERT INTO cuisine_reception_photos
-                                   (reception_id, type_photo, chemin_fichier, ordre)
-                                   VALUES (?, ?, ?, ?)""",
-                                (reception_id, type_photo, chemin, ordre),
-                            )
+                    _enregistrer_photos(cur, reception_id, ligne["idx"])
 
                 conn.commit()
             upload_database()
@@ -474,6 +509,138 @@ def detail_reception(reception_id):
         productions_du_jour=productions_du_jour,
         retour_url=retour_url,
     )
+
+
+def _ligne_depuis_reception(reception):
+    """Pré-remplissage de la ligne produit de l'écran de modification à
+    partir d'une réception enregistrée (même format que _lire_ligne_produit)."""
+    if reception["ingredient_groupe"]:
+        groupe, produit = reception["ingredient_groupe"], reception["ingredient_produit"] or ""
+    else:
+        groupe, produit = GROUPE_AUTRE, reception["libelle_produit"] or ""
+    return {
+        "idx": 0,
+        "groupe": groupe,
+        "produit": produit,
+        "poids_kg": reception["poids_kg"],
+        "aspect_conforme": reception["aspect_conforme"],
+        "emballage_conforme": reception["emballage_conforme"],
+        "etiquetage_conforme": reception["etiquetage_conforme"],
+        "commentaire": reception["commentaire"],
+    }
+
+
+@production_cuisine_bp.route("/receptions/<int:reception_id>/modifier", methods=["GET", "POST"])
+@login_required
+@require_access("production_cuisine", "ecriture")
+def modifier_reception(reception_id):
+    """Correction d'une réception tant qu'elle n'est pas encore utilisée dans
+    une production (production_id NULL). Une fois affectée, elle fait partie
+    de la traçabilité de la recette : il faut d'abord la remettre en attente."""
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        reception = conn.execute(
+            "SELECT * FROM cuisine_receptions WHERE id = ? AND actif = 1", (reception_id,)
+        ).fetchone()
+        if not reception:
+            flash("⛔ Réception introuvable.", "danger")
+            return redirect(url_for("production_cuisine.liste_receptions"))
+        if reception["production_id"] is not None:
+            flash("⛔ Modification impossible : cette réception est déjà utilisée dans une production.", "danger")
+            return redirect(url_for("production_cuisine.detail_reception", reception_id=reception_id))
+
+        fournisseurs = conn.execute(
+            "SELECT id, nom FROM fournisseurs WHERE actif = 'oui' ORDER BY nom COLLATE NOCASE"
+        ).fetchall()
+        ingredients_par_groupe = _ingredients_par_groupe(conn)
+        photos = conn.execute(
+            "SELECT * FROM cuisine_reception_photos WHERE reception_id = ? ORDER BY type_photo, ordre",
+            (reception_id,),
+        ).fetchall()
+
+    # Groupe/produit enregistrés mais désactivés depuis dans le référentiel :
+    # on les garde proposés pour ne pas forcer un changement de produit.
+    if reception["ingredient_groupe"]:
+        produits = ingredients_par_groupe.setdefault(reception["ingredient_groupe"], [])
+        if reception["ingredient_produit"] and reception["ingredient_produit"] not in produits:
+            produits.append(reception["ingredient_produit"])
+
+    def _rendu(form, ligne):
+        return render_template(
+            "production_cuisine/receptions_modifier.html",
+            reception=reception,
+            fournisseurs=fournisseurs,
+            ingredients_par_groupe=ingredients_par_groupe,
+            photos=photos,
+            form=form,
+            ligne=ligne,
+        )
+
+    if request.method == "GET":
+        form = {
+            "date_reception": reception["date_reception"],
+            "heure_arrivee": reception["heure_arrivee"] or "",
+            "fournisseur_id": str(reception["fournisseur_id"] or ""),
+            "camion_libelle": reception["camion_libelle"] or "",
+            "temperature_mesuree": "" if reception["temperature_mesuree"] is None else reception["temperature_mesuree"],
+        }
+        return _rendu(form, _ligne_depuis_reception(reception))
+
+    benevole = (request.form.get("benevole") or "").strip()
+    date_reception = request.form.get("date_reception") or reception["date_reception"]
+    heure_arrivee = request.form.get("heure_arrivee") or None
+    fournisseur_id = request.form.get("fournisseur_id") or None
+    camion_libelle = (request.form.get("camion_libelle") or "").strip() or None
+    temperature_mesuree = parse_temperature(request.form.get("temperature_mesuree"))
+    ligne = _lire_ligne_produit(request.form, 0)
+
+    if not benevole:
+        erreur = "⚠️ Merci d'indiquer votre nom (personne qui corrige la réception)."
+    elif not ligne["groupe"]:
+        erreur = "⚠️ Merci de renseigner le produit réceptionné."
+    else:
+        erreur = _erreur_ligne_produit(1, ligne)
+    if erreur:
+        flash(erreur, "warning")
+        return _rendu(request.form, ligne)
+
+    try:
+        with _connect() as conn:
+            cur = conn.cursor()
+            # Garde en base : la réception a pu être affectée à une recette
+            # entre l'ouverture du formulaire et son enregistrement.
+            cur.execute(
+                """
+                UPDATE cuisine_receptions
+                SET date_reception = ?, heure_arrivee = ?, fournisseur_id = ?, camion_libelle = ?,
+                    libelle_produit = ?, ingredient_groupe = ?, ingredient_produit = ?,
+                    temperature_mesuree = ?, poids_kg = ?, aspect_conforme = ?,
+                    emballage_conforme = ?, etiquetage_conforme = ?, commentaire = ?,
+                    date_modif = ?, user_modif = ?
+                WHERE id = ? AND actif = 1 AND production_id IS NULL
+                """,
+                (
+                    date_reception, heure_arrivee, fournisseur_id, camion_libelle,
+                    ligne["libelle_produit"], ligne["ingredient_groupe"], ligne["ingredient_produit"],
+                    temperature_mesuree, ligne["poids_valide"],
+                    ligne["aspect_conforme"], ligne["emballage_conforme"], ligne["etiquetage_conforme"],
+                    ligne["commentaire"], now_paris_str(), benevole, reception_id,
+                ),
+            )
+            if cur.rowcount == 0:
+                flash("⛔ Modification impossible : cette réception vient d'être utilisée dans une production.", "danger")
+                return redirect(url_for("production_cuisine.detail_reception", reception_id=reception_id))
+            _enregistrer_photos(cur, reception_id, 0)
+            conn.commit()
+    except Exception as e:
+        write_log(f"❌ Erreur modification réception cuisine #{reception_id} : {e}")
+        flash("❌ Erreur lors de l'enregistrement de la modification.", "danger")
+        return _rendu(request.form, ligne)
+
+    write_log(f"✏️ Réception cuisine #{reception_id} modifiée par {benevole}")
+    upload_database()
+    flash("✅ Réception modifiée.", "success")
+    return redirect(url_for("production_cuisine.detail_reception", reception_id=reception_id))
 
 
 @production_cuisine_bp.route("/photo/reception/<int:photo_id>")

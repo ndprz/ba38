@@ -62,6 +62,8 @@
           <td class="d-flex flex-wrap gap-1">
             <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id) }}"
                class="btn btn-sm btn-outline-secondary">Voir</a>
+            <a href="{{ url_for('production_cuisine.modifier_reception', reception_id=r.id) }}"
+               class="btn btn-sm btn-outline-primary" title="Modifier">✏️</a>
             <a href="{{ url_for('production_cuisine.creer_production', date_production=r.date_reception, reception_id=r.id) }}"
                class="btn btn-sm btn-success">🍲 Nouvelle recette avec {{ r.libelle_produit or "ce produit" }}</a>
             {% if productions_du_jour %}
