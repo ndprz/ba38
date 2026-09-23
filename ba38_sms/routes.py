@@ -532,15 +532,17 @@ def reponses_sms():
 
     if session.get("user_role") == "admin":
         reponses = conn.execute("""
-            SELECT r.*, b.nom, b.prenom
+            SELECT r.*, b.nom, b.prenom, l.id AS lot_id, l.texte AS texte_original
             FROM sms_reponses r
             LEFT JOIN benevoles b ON b.id = r.benevole_id
+            LEFT JOIN sms_envois e ON e.id = r.envoi_id
+            LEFT JOIN sms_lots l ON l.id = e.lot_id
             ORDER BY r.id DESC
         """).fetchall()
     else:
         user_email = getattr(current_user, "email", "") or ""
         reponses = conn.execute("""
-            SELECT r.*, b.nom, b.prenom
+            SELECT r.*, b.nom, b.prenom, l.id AS lot_id, l.texte AS texte_original
             FROM sms_reponses r
             LEFT JOIN benevoles b ON b.id = r.benevole_id
             JOIN sms_envois e ON e.id = r.envoi_id

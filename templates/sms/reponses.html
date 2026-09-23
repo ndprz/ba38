@@ -27,7 +27,13 @@
 
   <table class="table table-striped">
     <thead>
-      <tr><th style="width: 160px;">Reçu le</th><th>Bénévole</th><th>Numéro</th><th>Message</th></tr>
+      <tr>
+        <th style="width: 140px;">Reçu le</th>
+        <th>Bénévole</th>
+        <th>Numéro</th>
+        <th>Réponse</th>
+        <th>SMS d'origine</th>
+      </tr>
     </thead>
     <tbody>
     {% for r in reponses %}
@@ -40,9 +46,21 @@
         </td>
         <td>{{ r.numero_expediteur }}</td>
         <td style="white-space: pre-wrap;">{{ r.message }}</td>
+        <td class="text-muted small">
+          {% if r.texte_original %}
+            <span title="{{ r.texte_original }}">
+              {{ r.texte_original[:60] }}{% if r.texte_original|length > 60 %}…{% endif %}
+            </span>
+            {% if r.lot_id %}
+              <br><a href="{{ url_for('sms.lot_detail', lot_id=r.lot_id) }}">Voir l'envoi complet</a>
+            {% endif %}
+          {% else %}
+            <span class="fst-italic">SMS d'origine introuvable</span>
+          {% endif %}
+        </td>
       </tr>
     {% else %}
-      <tr><td colspan="4" class="text-muted">Aucune réponse reçue pour l'instant.</td></tr>
+      <tr><td colspan="5" class="text-muted">Aucune réponse reçue pour l'instant.</td></tr>
     {% endfor %}
     </tbody>
   </table>
