@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Bon de livraison {{ bon.numero }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 980px;">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">🧾 {{ bon.numero }}
+      <span class="badge {{ 'bg-success' if bon.statut == 'valide' else ('bg-secondary' if bon.statut == 'annule' else 'bg-info text-dark') }} fs-6 align-middle">
+        {{ statuts.get(bon.statut, bon.statut) }}
+      </span>
+    </h2>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('production_cuisine.pdf_bon_livraison', bon_id=bon.id) }}" target="_blank" class="btn btn-primary">📄 PDF</a>
+      <a href="{{ url_for('production_cuisine.simulation_repartition', date=bon.date_livraison) }}" class="btn btn-outline-secondary">🧮 Simulation du {{ bon.date_livraison }}</a>
+      <a href="{{ url_for('production_cuisine.liste_bons_livraison') }}" class="btn btn-outline-secondary">← Bons de livraison</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-muted small">Client</div>
+        <div class="fs-5 fw-bold">{{ bon.nom_association }}</div>
+        <div>Livraison du <strong>{{ bon.date_livraison }}</strong></div>
+        <div class="small text-muted">Créé le {{ bon.date_creation }}{% if bon.user_creation %} par {{ bon.user_creation }}{% endif %}</div>
+        {% if bon.statut == 'annule' %}
+          <div class="small text-danger mt-1">Annulé le {{ bon.date_annulation }}{% if bon.user_annulation %} par {{ bon.user_annulation }}{% endif %}{% if bon.motif_annulation %} — {{ bon.motif_annulation }}{% endif %}</div>
+        {% endif %}
+      </div></div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body">
+        <div>🥩 Portions carnées : <strong>{{ bon.portions_carne }}</strong></div>
+        <div>🥬 Portions légumes (incluses) : <strong>{{ bon.portions_legumes }}</strong></div>
+        {% if bon.prix_portion_carne is not none %}
+          <div>Prix / portion carnée : {{ "%.2f"|format(bon.prix_portion_carne) }} €</div>
+          <div class="fs-5">Montant : <strong>{{ "%.2f"|format(bon.montant or 0) }} €</strong></div>
+        {% endif %}
+      </div></div>
+    </div>
+  </div>
+
+  <table class="table table-sm table-bordered align-middle">
+    <thead class="table-light">
+      <tr><th>Catégorie</th><th>Recette</th><th>Production (fin)</th><th>Barquette</th><th class="text-end">Qté</th><th class="text-end">Portions</th></tr>
+    </thead>
+    <tbody>
+      {% for l in lignes %}
+      <tr>
+        <td>{{ categories.get(l.categorie_produit, '') }}</td>
+        <td><a href="{{ url_for('production_cuisine.detail_production', production_id=l.production_id) }}">{{ l.libelle_recette }}</a></td>
+        <td class="small">{{ l.date_fin_recette or '' }}</td>
+        <td>{{ l.taille }} ({{ l.nb_portions_barquette }}p)</td>
+        <td class="text-end">{{ l.quantite }}</td>
+        <td class="text-end">{{ l.quantite * l.nb_portions_barquette }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if bon.statut == 'valide' %}
+  <div class="card border-danger mt-4">
+    <div class="card-body">
+      <h6 class="card-title text-danger">↩️ Annuler ce bon de livraison</h6>
+      <p class="small mb-2">Les barquettes du bon reviennent en stock. Le numéro n'est pas réutilisé. Impossible une fois le bon facturé.</p>
+      <form method="POST" action="{{ url_for('production_cuisine.annuler_bon_livraison', bon_id=bon.id) }}"
+            class="d-flex gap-2 flex-wrap" onsubmit="return confirm('Annuler le bon {{ bon.numero }} et remettre les barquettes en stock ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="motif" class="form-control" style="max-width: 420px;" placeholder="Motif (facultatif)">
+        <button type="submit" class="btn btn-outline-danger">Annuler le bon</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

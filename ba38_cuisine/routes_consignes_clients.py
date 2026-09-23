@@ -14,12 +14,14 @@ import math
 import sqlite3
 from datetime import date
 
+from urllib.parse import urlencode
+
 from flask import render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 
 from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_cuisine import production_cuisine_bp
-from ba38_cuisine.utils import _connect, today_paris
+from ba38_cuisine.utils import _connect, today_paris, now_paris_str, stock_lignes_disponibles
 from ba38_cuisine.routes_stock_barquettes import TAILLES
 
 JOURS_SEMAINE = [
@@ -363,11 +365,16 @@ def supprimer_consigne_client(association_id):
 # ------------------------------------------------------------
 # 🧮 Simulation de répartition d'une journée
 # ------------------------------------------------------------
-@production_cuisine_bp.route("/consignes-clients/simulation")
-@login_required
-@require_access("production_cuisine", "lecture")
-def simulation_repartition():
-    date_str = request.args.get("date") or today_paris()
+def calculer_simulation(conn, args):
+    """Calcule la répartition d'une journée. `args` = paramètres du
+    formulaire de simulation (MultiDict : request.args en consultation,
+    request.form à la génération d'un bon de livraison — même calcul, donc
+    le BL reprend exactement ce qui était affiché).
+
+    Stock = disponible réel (entrées − BL non annulés). Les clients qui ont
+    déjà un BL non annulé pour cette date ne sont plus servis par la
+    simulation : leur part est déjà sortie du stock réel."""
+    date_str = args.get("date") or today_paris()
     try:
         jour = date.fromisoformat(date_str)
     except ValueError:
@@ -376,44 +383,47 @@ def simulation_repartition():
     # "recalcul" présent = l'utilisateur a validé le formulaire : on respecte
     # ses cases cochées (clients, recettes) / portions modifiées au lieu de
     # la périodicité et de "toutes les recettes".
-    recalcul = "recalcul" in request.args
+    recalcul = "recalcul" in args
 
-    with _connect() as conn:
-        clients = [c for c in _clients(conn) if c["a_consigne"]]
-        articles = conn.execute(
-            "SELECT taille, libelle, nb_portions FROM cuisine_articles_barquettes WHERE actif = 1 ORDER BY nb_portions DESC"
+    clients = [c for c in _clients(conn) if c["a_consigne"]]
+    articles = conn.execute(
+        "SELECT id, taille, libelle, nb_portions FROM cuisine_articles_barquettes WHERE actif = 1 ORDER BY nb_portions DESC"
+    ).fetchall()
+    bons_du_jour = {
+        b["association_id"]: dict(b)
+        for b in conn.execute(
+            """SELECT id, numero, association_id, statut FROM cuisine_bons_livraison
+               WHERE date_livraison = ? AND statut != 'annule'""",
+            (date_str,),
         ).fetchall()
-        # Stock par recette (même nom = même recette, toutes productions
-        # confondues ; la plus ancienne sert à départager le panachage).
-        stock_rows = conn.execute(
-            """SELECT TRIM(s.libelle_recette) AS nom, s.categorie_produit, a.taille,
-                      SUM(s.quantite) AS quantite, MIN(s.date_fin_recette) AS date
-               FROM cuisine_stock_barquettes s
-               JOIN cuisine_articles_barquettes a ON a.id = s.article_id
-               WHERE s.actif = 1 AND a.actif = 1
-               GROUP BY TRIM(s.libelle_recette) COLLATE NOCASE, s.categorie_produit, a.taille"""
-        ).fetchall()
+    }
 
     portions_par_taille = {a["taille"]: a["nb_portions"] for a in articles}
     libelle_taille = {a["taille"]: a["libelle"] for a in articles}
     categories = dict(CATEGORIES)
 
+    # Stock par recette (même nom = même recette, toutes productions
+    # confondues ; la plus ancienne sert à départager le panachage et sera
+    # servie en premier sur le BL).
     recettes = {}
     non_classe = 0
-    for r in stock_rows:
-        if r["categorie_produit"] not in categories or r["taille"] not in portions_par_taille:
-            non_classe += r["quantite"] or 0
+    for l in stock_lignes_disponibles(conn):
+        if l["disponible"] <= 0:
             continue
-        cle = f"{r['categorie_produit']}|{r['nom']}"
+        if l["categorie_produit"] not in categories or l["taille"] not in portions_par_taille:
+            non_classe += l["disponible"]
+            continue
+        nom = (l["libelle_recette"] or "").strip()
+        cle = f"{l['categorie_produit']}|{nom.lower()}"
         rec = recettes.setdefault(cle, {
-            "cle": cle, "nom": r["nom"], "cat": r["categorie_produit"], "date": r["date"],
+            "cle": cle, "nom": nom, "cat": l["categorie_produit"], "date": l["date_fin_recette"],
             "initial": {t: 0 for t in portions_par_taille},
         })
-        rec["initial"][r["taille"]] += r["quantite"] or 0
-        rec["date"] = min(filter(None, [rec["date"], r["date"]]), default=None)
+        rec["initial"][l["taille"]] += l["disponible"]
+        rec["date"] = min(filter(None, [rec["date"], l["date_fin_recette"]]), default=None)
     recettes = sorted(recettes.values(), key=lambda r: (r["cat"], r["date"] or "", r["nom"].lower()))
 
-    choisies = set(request.args.getlist("recettes")) if recalcul else {r["cle"] for r in recettes}
+    choisies = set(args.getlist("recettes")) if recalcul else {r["cle"] for r in recettes}
     for r in recettes:
         r["choisie"] = r["cle"] in choisies
         r["stock"] = dict(r["initial"])
@@ -437,21 +447,22 @@ def simulation_repartition():
         prevu = livre_le(c, jour)
         aid = c["association_id"]
         if recalcul:
-            inclus = f"inclure_{aid}" in request.args
+            inclus = f"inclure_{aid}" in args
             try:
-                portions_carne = int(request.args[f"portions_{aid}"])
+                portions_carne = int(args[f"portions_{aid}"])
             except (KeyError, ValueError):
                 portions_carne = c["nb_portions_carne"] or 0
         else:
             inclus = prevu
             portions_carne = c["nb_portions_carne"] or 0
         pct = c["pourcentage_legumes"] if c["pourcentage_legumes"] is not None else 100
+        bon = bons_du_jour.get(aid)
         ligne = {
-            "client": c, "prevu": prevu, "inclus": inclus,
+            "client": c, "prevu": prevu, "inclus": inclus and not bon, "bon": bon,
             "voulu": {"carne": portions_carne, "legumes": round(portions_carne * pct / 100)},
             "livre": {}, "detail": {}, "portions": {}, "manque": {},
         }
-        if inclus:
+        if ligne["inclus"]:
             for cat in categories:
                 livre, portions = repartir_selon_pourcentages(
                     ligne["voulu"][cat], c["pct_tailles"], _stock_cumule(cat), portions_par_taille,
@@ -469,10 +480,11 @@ def simulation_repartition():
     ligne_reliquat = None
     if reliquat:
         prevu = livre_le(reliquat, jour)
-        inclus = (f"inclure_{reliquat['association_id']}" in request.args) if recalcul else prevu
-        ligne_reliquat = {"client": reliquat, "prevu": prevu, "inclus": inclus,
+        inclus = (f"inclure_{reliquat['association_id']}" in args) if recalcul else prevu
+        bon = bons_du_jour.get(reliquat["association_id"])
+        ligne_reliquat = {"client": reliquat, "prevu": prevu, "inclus": inclus and not bon, "bon": bon,
                           "livre": {}, "detail": {}, "portions": {}}
-        if inclus:
+        if ligne_reliquat["inclus"]:
             tailles_ok = reliquat["tailles"] or list(portions_par_taille)
             for cat in categories:
                 detail = {}
@@ -500,11 +512,128 @@ def simulation_repartition():
         }
         for cat in categories
     }
-    return render_template(
-        "production_cuisine/consignes_clients_simulation.html",
+    return dict(
         date_str=date_str, jour_label=dict(JOURS_SEMAINE)[jour.isoweekday()],
         lignes=lignes, ligne_reliquat=ligne_reliquat, recettes=recettes, totaux=totaux,
         tailles=list(portions_par_taille), libelle_taille=libelle_taille,
         portions_par_taille=portions_par_taille, categories=CATEGORIES,
-        non_classe=non_classe,
+        non_classe=non_classe, article_id_par_taille={a["taille"]: a["id"] for a in articles},
     )
+
+
+@production_cuisine_bp.route("/consignes-clients/simulation")
+@login_required
+@require_access("production_cuisine", "lecture")
+def simulation_repartition():
+    with _connect() as conn:
+        ctx = calculer_simulation(conn, request.args)
+    return render_template("production_cuisine/consignes_clients_simulation.html", **ctx)
+
+
+# ------------------------------------------------------------
+# 🧾 Génération d'un bon de livraison depuis la simulation
+# ------------------------------------------------------------
+def _prochain_numero_bl(conn, annee):
+    prefixe = f"BL-{annee}-"
+    dernier = conn.execute(
+        "SELECT MAX(CAST(SUBSTR(numero, ?) AS INTEGER)) FROM cuisine_bons_livraison WHERE numero LIKE ?",
+        (len(prefixe) + 1, prefixe + "%"),
+    ).fetchone()[0]
+    return f"{prefixe}{(dernier or 0) + 1:04d}"
+
+
+@production_cuisine_bp.route("/consignes-clients/simulation/bon-livraison", methods=["POST"])
+@login_required
+@require_access("production_cuisine", "ecriture")
+def generer_bon_livraison():
+    # Paramètres de la simulation à réafficher ensuite (sans le jeton CSRF).
+    params = [(k, v) for k, v in request.form.items(multi=True) if k not in ("csrf_token", "generer_pour")]
+    retour = url_for("production_cuisine.simulation_repartition") + "?" + urlencode(params)
+    try:
+        association_id = int(request.form.get("generer_pour") or 0)
+    except ValueError:
+        association_id = 0
+
+    conn = _connect()
+    try:
+        # Verrou d'écriture dès le début : le calcul et l'enregistrement
+        # voient le même stock (double clic / deux postes en même temps).
+        conn.execute("BEGIN IMMEDIATE")
+        ctx = calculer_simulation(conn, request.form)
+        toutes = ctx["lignes"] + ([ctx["ligne_reliquat"]] if ctx["ligne_reliquat"] else [])
+        ligne = next((l for l in toutes if l["client"]["association_id"] == association_id), None)
+
+        if not ligne:
+            conn.rollback()
+            flash("⛔ Client introuvable dans la simulation.", "danger")
+            return redirect(retour)
+        if ligne["bon"]:
+            conn.rollback()
+            flash(f"⚠️ Un bon de livraison existe déjà pour ce client à cette date ({ligne['bon']['numero']}).", "warning")
+            return redirect(retour)
+        if not ligne["inclus"] or not any(ligne["livre"].get(cat) for cat, _ in CATEGORIES):
+            conn.rollback()
+            flash("⚠️ Rien à livrer pour ce client dans la simulation (client non coché ou stock épuisé).", "warning")
+            return redirect(retour)
+
+        # Détail recette × taille → lots réels, production la plus ancienne d'abord.
+        lots = {}
+        for l in stock_lignes_disponibles(conn):
+            if l["disponible"] > 0:
+                cle = (l["categorie_produit"], (l["libelle_recette"] or "").strip().lower(), l["taille"])
+                lots.setdefault(cle, []).append(dict(l))
+        for liste in lots.values():
+            liste.sort(key=lambda l: (l["date_fin_recette"] or "", l["production_id"]))
+
+        lignes_bl = []
+        for cat, _ in CATEGORIES:
+            for nom, par_taille in ligne["detail"].get(cat, {}).items():
+                for taille, n in par_taille.items():
+                    reste = n
+                    for lot in lots.get((cat, nom.lower(), taille), []):
+                        if reste <= 0:
+                            break
+                        prise = min(reste, lot["disponible"])
+                        if prise <= 0:
+                            continue
+                        lot["disponible"] -= prise
+                        reste -= prise
+                        lignes_bl.append((lot, cat, prise))
+                    if reste > 0:
+                        raise RuntimeError(f"stock insuffisant pour {nom} {taille} (manque {reste})")
+
+        client = ligne["client"]
+        numero = _prochain_numero_bl(conn, ctx["date_str"][:4])
+        prix = client["prix_portion_carne"]
+        utilisateur = getattr(current_user, "username", None) or getattr(current_user, "email", None)
+        cur = conn.execute(
+            """INSERT INTO cuisine_bons_livraison
+               (numero, association_id, nom_association, date_livraison, statut,
+                portions_carne, portions_legumes, prix_portion_carne, montant, user_creation, date_creation)
+               VALUES (?, ?, ?, ?, 'valide', ?, ?, ?, ?, ?, ?)""",
+            (numero, association_id, client["nom_association"], ctx["date_str"],
+             ligne["portions"].get("carne", 0), ligne["portions"].get("legumes", 0),
+             prix, ligne["portions"].get("carne", 0) * (prix or 0), utilisateur, now_paris_str()),
+        )
+        bon_id = cur.lastrowid
+        for lot, cat, quantite in lignes_bl:
+            conn.execute(
+                """INSERT INTO cuisine_bons_livraison_lignes
+                   (bon_id, production_id, article_id, libelle_recette, categorie_produit,
+                    taille, nb_portions_barquette, quantite, date_fin_recette)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (bon_id, lot["production_id"], lot["article_id"], lot["libelle_recette"].strip(), cat,
+                 lot["taille"], lot["nb_portions"], quantite, lot["date_fin_recette"]),
+            )
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        write_log(f"❌ Erreur génération bon de livraison cuisine (association {association_id}) : {e}")
+        flash("❌ Erreur lors de la génération du bon de livraison — rien n'a été enregistré.", "danger")
+        return redirect(retour)
+    finally:
+        conn.close()
+
+    upload_database()
+    flash(f"✅ Bon de livraison {numero} créé pour {client['nom_association']} — stock mis à jour.", "success")
+    return redirect(retour)

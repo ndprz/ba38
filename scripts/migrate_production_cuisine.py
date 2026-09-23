@@ -20,6 +20,7 @@ Crée (idempotent, CREATE TABLE IF NOT EXISTS) :
 - cuisine_hygiene_zones_nettoyage / cuisine_hygiene_nettoyages
 - cuisine_hygiene_thermometres / cuisine_hygiene_etalonnages
 - cuisine_consignes_clients (consignes de livraison des partenaires cuisine)
+- cuisine_bons_livraison / cuisine_bons_livraison_lignes (sorties de stock)
 
 Seed (INSERT OR IGNORE, idempotent) :
 - cuisine_etapes_ref (7 étapes)
@@ -280,6 +281,52 @@ CREATE TABLE IF NOT EXISTS cuisine_consignes_clients (
   date_creation TEXT DEFAULT (datetime('now','utc')),
   date_modif TEXT, user_creation TEXT, user_modif TEXT
 );
+
+-- Bons de livraison cuisine : générés un par un (un client, une date)
+-- depuis la simulation de répartition. Le stock disponible d'une ligne de
+-- cuisine_stock_barquettes = quantite − SUM(lignes de BL non annulés) sur
+-- (production_id, article_id) : les lignes d'entrée ne sont jamais
+-- décrémentées (elles sont recréées à chaque "Ajouter au stock"), et annuler
+-- un BL (statut 'annule') remet donc le stock sans autre écriture.
+-- Annulation interdite une fois statut = 'facture'.
+-- Références associations.id / cuisine_productions.id (divergent DEV/PROD)
+-- → tables exclues de la synchro dev→prod (EXCLUDE_TABLES).
+CREATE TABLE IF NOT EXISTS cuisine_bons_livraison (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero TEXT NOT NULL UNIQUE,
+  association_id INTEGER NOT NULL REFERENCES associations(id),
+  nom_association TEXT NOT NULL,
+  date_livraison TEXT NOT NULL,
+  statut TEXT NOT NULL DEFAULT 'valide' CHECK (statut IN ('valide','annule','facture')),
+  portions_carne INTEGER DEFAULT 0,
+  portions_legumes INTEGER DEFAULT 0,
+  prix_portion_carne REAL,
+  montant REAL DEFAULT 0,
+  commentaire TEXT,
+  date_creation TEXT DEFAULT (datetime('now','utc')),
+  user_creation TEXT,
+  date_annulation TEXT,
+  user_annulation TEXT,
+  motif_annulation TEXT,
+  date_facturation TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cuisine_bl_date ON cuisine_bons_livraison(date_livraison);
+CREATE INDEX IF NOT EXISTS idx_cuisine_bl_association ON cuisine_bons_livraison(association_id);
+
+CREATE TABLE IF NOT EXISTS cuisine_bons_livraison_lignes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bon_id INTEGER NOT NULL REFERENCES cuisine_bons_livraison(id) ON DELETE CASCADE,
+  production_id INTEGER NOT NULL REFERENCES cuisine_productions(id),
+  article_id INTEGER NOT NULL REFERENCES cuisine_articles_barquettes(id),
+  libelle_recette TEXT NOT NULL,
+  categorie_produit TEXT,
+  taille TEXT NOT NULL,
+  nb_portions_barquette INTEGER NOT NULL,
+  quantite INTEGER NOT NULL,
+  date_fin_recette TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cuisine_bl_lignes_bon ON cuisine_bons_livraison_lignes(bon_id);
+CREATE INDEX IF NOT EXISTS idx_cuisine_bl_lignes_stock ON cuisine_bons_livraison_lignes(production_id, article_id);
 
 CREATE TABLE IF NOT EXISTS cuisine_production_validations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

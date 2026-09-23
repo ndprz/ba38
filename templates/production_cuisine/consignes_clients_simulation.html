@@ -10,6 +10,17 @@
   {{ parts | join(", ") if parts else defaut }}
 {%- endmacro %}
 
+{% macro cellule_bl(l) -%}
+  <td class="text-nowrap">
+    {%- if l.bon -%}
+      <a href="{{ url_for('production_cuisine.detail_bon_livraison', bon_id=l.bon.id) }}" class="btn btn-sm btn-outline-success">🧾 {{ l.bon.numero }}</a>
+    {%- elif l.inclus and (l.portions.get('carne') or l.portions.get('legumes')) -%}
+      <button type="button" class="btn btn-sm btn-success btn-generer-bl" data-aid="{{ l.client.association_id }}"
+              data-nom="{{ l.client.nom_association }}">🧾 Générer le BL</button>
+    {%- endif -%}
+  </td>
+{%- endmacro %}
+
 {% macro barquettes(livre) -%}
   {%- set parts = [] -%}
   {%- for t in tailles if livre and livre.get(t) -%}
@@ -37,6 +48,7 @@
     <h2 class="mb-0">🧮 Simulation de répartition</h2>
     <div class="d-flex gap-2">
       <a href="{{ url_for('production_cuisine.liste_consignes_clients') }}" class="btn btn-outline-secondary">🚚 Consignes clients</a>
+      <a href="{{ url_for('production_cuisine.liste_bons_livraison') }}" class="btn btn-outline-secondary">🧾 Bons de livraison</a>
       <a href="{{ url_for('production_cuisine.liste_stock_barquettes') }}" class="btn btn-outline-secondary">📊 Stock barquettes</a>
     </div>
   </div>
@@ -50,7 +62,8 @@
   </form>
 
   <div class="form-text mb-3">
-    Simulation seulement, sur le <strong>stock barquettes actuel</strong> : rien n'est retiré du stock.
+    Simulation sur le <strong>stock barquettes disponible</strong> : rien n'est retiré du stock tant qu'on ne clique pas
+    sur « 🧾 Générer le BL » d'un client (un bon par client, avec exactement la répartition affichée).
     Cochez les <strong>recettes à livrer</strong> ce jour-là (toutes par défaut). Les clients prévus ce jour-là
     (d'après leur périodicité) sont pré-cochés ; vous pouvez en ajouter / retirer et modifier les portions,
     puis cliquer sur « Recalculer ».
@@ -73,7 +86,7 @@
     <p class="text-muted">Aucune consigne client enregistrée — commencez par
       <a href="{{ url_for('production_cuisine.liste_consignes_clients') }}">saisir les consignes</a>.</p>
   {% else %}
-  <form method="GET">
+  <form method="GET" id="form-simulation">
     <input type="hidden" name="date" value="{{ date_str }}">
     <input type="hidden" name="recalcul" value="1">
 
@@ -135,6 +148,7 @@
             <th>🥩 Carné livré</th>
             <th>🥬 Légumes livrés</th>
             <th class="text-end">Montant</th>
+            <th>Bon de livraison</th>
           </tr>
         </thead>
         <tbody>
@@ -142,7 +156,7 @@
           {% set c = l.client %}
           <tr class="{{ '' if l.inclus else 'text-muted' }}">
             <td>
-              <input class="form-check-input" type="checkbox" name="inclure_{{ c.association_id }}" value="1" {% if l.inclus %}checked{% endif %}>
+              <input class="form-check-input" type="checkbox" name="inclure_{{ c.association_id }}" value="1" {% if l.inclus %}checked{% endif %} {% if l.bon %}disabled{% endif %}>
             </td>
             <td>
               <strong>{{ c.nom_association }}</strong>
@@ -169,8 +183,9 @@
                 {% if c.prix_portion_carne is not none %}{{ "%.2f"|format(l.montant) }} €{% else %}<span class="text-muted">prix ?</span>{% endif %}
               </td>
             {% else %}
-              <td colspan="3" class="fst-italic">Non livré ce jour</td>
+              <td colspan="3" class="fst-italic">{{ "Bon émis : déjà sorti du stock" if l.bon else "Non livré ce jour" }}</td>
             {% endif %}
+            {{ cellule_bl(l) }}
           </tr>
           {% endfor %}
 
@@ -179,7 +194,7 @@
           {% set c = l.client %}
           <tr class="table-info {{ '' if l.inclus else 'text-muted' }}">
             <td>
-              <input class="form-check-input" type="checkbox" name="inclure_{{ c.association_id }}" value="1" {% if l.inclus %}checked{% endif %}>
+              <input class="form-check-input" type="checkbox" name="inclure_{{ c.association_id }}" value="1" {% if l.inclus %}checked{% endif %} {% if l.bon %}disabled{% endif %}>
             </td>
             <td>
               <strong>{{ c.nom_association }}</strong> <span class="badge bg-info text-dark">Reliquat</span>
@@ -198,8 +213,9 @@
                 {% if c.prix_portion_carne is not none %}{{ "%.2f"|format(l.montant) }} €{% else %}<span class="text-muted">—</span>{% endif %}
               </td>
             {% else %}
-              <td colspan="3" class="fst-italic">Non livré ce jour — le reste demeure en stock</td>
+              <td colspan="3" class="fst-italic">{{ "Bon émis : déjà sorti du stock" if l.bon else "Non livré ce jour — le reste demeure en stock" }}</td>
             {% endif %}
+            {{ cellule_bl(l) }}
           </tr>
           {% endif %}
         </tbody>
@@ -214,6 +230,43 @@
 
 </div>
 <script>
+  // Générer un BL = renvoyer en POST les paramètres de la simulation
+  // affichée : le serveur refait exactement le même calcul. Si le
+  // formulaire a été modifié sans recalculer, l'affichage ne correspond
+  // plus : on impose "Recalculer" d'abord.
+  (function () {
+    var form = document.getElementById("form-simulation");
+    if (!form) return;
+    var modifie = false;
+    form.addEventListener("change", function () { modifie = true; });
+    form.addEventListener("input", function () { modifie = true; });
+    document.querySelectorAll(".btn-generer-bl").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        if (modifie) {
+          alert("Vous avez modifié la simulation : cliquez d'abord sur « Recalculer » pour vérifier la répartition.");
+          return;
+        }
+        if (!confirm("Générer le bon de livraison de « " + btn.dataset.nom + " » et sortir ces barquettes du stock ?")) return;
+        var post = document.createElement("form");
+        post.method = "POST";
+        post.action = "{{ url_for('production_cuisine.generer_bon_livraison') }}";
+        var donnees = new FormData(form);
+        donnees.append("generer_pour", btn.dataset.aid);
+        donnees.append("csrf_token", "{{ csrf_token() }}");
+        donnees.forEach(function (valeur, nom) {
+          var champ = document.createElement("input");
+          champ.type = "hidden";
+          champ.name = nom;
+          champ.value = valeur;
+          post.appendChild(champ);
+        });
+        document.body.appendChild(post);
+        btn.disabled = true;
+        post.submit();
+      });
+    });
+  })();
+
   (function () {
     var toutes = document.getElementById("toutes-recettes");
     if (!toutes) return;

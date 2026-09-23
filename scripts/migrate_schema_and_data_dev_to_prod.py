@@ -43,6 +43,8 @@ EXCLUDE_TABLES = {
     "cuisine_ingredients_carnes",
     "cuisine_stock_barquettes",
     "cuisine_consignes_clients",  # référence associations.id (diverge DEV/PROD)
+    "cuisine_bons_livraison",  # idem
+    "cuisine_bons_livraison_lignes",  # référence cuisine_productions.id (diverge)
 }
 
 # -------------------------------------------------------------------

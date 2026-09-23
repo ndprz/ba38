@@ -275,3 +275,43 @@ def save_uploaded_files(files, dossier, prefix=""):
         except Exception as e:
             write_log(f"❌ Erreur sauvegarde fichier production_cuisine ({filename}) : {e}")
     return chemins
+
+
+# Barquettes sorties du stock par des bons de livraison non annulés, par
+# (production_id, article_id) — clé stable d'une ligne de
+# cuisine_stock_barquettes (recréée à chaque "Ajouter au stock", donc jamais
+# décrémentée elle-même).
+SQL_QUANTITES_LIVREES = """
+    SELECT l.production_id, l.article_id, SUM(l.quantite) AS quantite_livree
+    FROM cuisine_bons_livraison_lignes l
+    JOIN cuisine_bons_livraison b ON b.id = l.bon_id
+    WHERE b.statut != 'annule'
+    GROUP BY l.production_id, l.article_id
+"""
+
+
+def stock_lignes_disponibles(conn):
+    """Lignes de stock actives avec quantite_livree et disponible
+    (= quantite − livré), plus taille / nb_portions / libellé de l'article."""
+    return conn.execute(
+        f"""
+        SELECT s.*, a.taille, a.nb_portions, a.libelle AS article_libelle,
+               COALESCE(lv.quantite_livree, 0) AS quantite_livree,
+               s.quantite - COALESCE(lv.quantite_livree, 0) AS disponible
+        FROM cuisine_stock_barquettes s
+        JOIN cuisine_articles_barquettes a ON a.id = s.article_id
+        LEFT JOIN ({SQL_QUANTITES_LIVREES}) lv
+               ON lv.production_id = s.production_id AND lv.article_id = s.article_id
+        WHERE s.actif = 1 AND a.actif = 1
+        """
+    ).fetchall()
+
+
+def quantites_livrees_production(conn, production_id):
+    """{article_id: barquettes livrées (BL non annulés)} pour une production."""
+    return {
+        r["article_id"]: r["quantite_livree"]
+        for r in conn.execute(
+            f"SELECT * FROM ({SQL_QUANTITES_LIVREES}) WHERE production_id = ?", (production_id,)
+        ).fetchall()
+    }

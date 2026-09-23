@@ -4,8 +4,9 @@
 #     - cuisine_stock_barquettes : stock entrant, alimenté depuis les
 #       "Quantités conditionnées" d'une production (bouton dédié sur la
 #       fiche recette), jamais saisi à la main.
-#     Pas encore de sortie de stock (bons de livraison / factures) — ce
-#     module ne gère que l'entrée, à développer plus tard.
+#     Sorties = bons de livraison (routes_bons_livraison.py) : le stock
+#     disponible est calculé (entrée − BL non annulés), les lignes d'entrée
+#     ne sont jamais décrémentées.
 # ============================================================
 
 import sqlite3
@@ -15,7 +16,7 @@ from flask_login import login_required
 
 from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_cuisine import production_cuisine_bp
-from ba38_cuisine.utils import _connect
+from ba38_cuisine.utils import _connect, stock_lignes_disponibles, quantites_livrees_production
 
 TAILLES = ("1/2", "1/4", "1/8")
 
@@ -215,6 +216,23 @@ def ajouter_stock_barquettes(production_id):
 
         benevole = (request.form.get("benevole") or "").strip()
 
+        # Des barquettes de cette production déjà parties sur un bon de
+        # livraison ne peuvent pas "disparaître" du stock par resynchro.
+        livrees = quantites_livrees_production(conn, production_id)
+        taille_par_article_id = {v: k for k, v in article_id_par_taille.items()}
+        conflits = [
+            f"{taille_par_article_id.get(aid, '?')} : {n} livrée(s), {quantites_par_taille.get(taille_par_article_id.get(aid), 0) or 0} conditionnée(s)"
+            for aid, n in livrees.items()
+            if n > (quantites_par_taille.get(taille_par_article_id.get(aid)) or 0)
+        ]
+        if conflits:
+            flash(
+                "⛔ Impossible : des barquettes de cette production sont déjà sur des bons de livraison ("
+                + " ; ".join(conflits) + "). Annulez d'abord les bons concernés.",
+                "danger",
+            )
+            return redirect(url_for("production_cuisine.detail_production", production_id=production_id))
+
         try:
             cur = conn.cursor()
             # Resynchronisation idempotente : on repart des quantités
@@ -260,32 +278,29 @@ def liste_stock_barquettes():
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
 
-        stock_total = conn.execute(
-            """
-            SELECT a.id, a.taille, a.libelle, a.nb_portions,
-                   COALESCE(SUM(s.quantite), 0) AS quantite_stock,
-                   COALESCE(SUM(CASE WHEN s.categorie_produit = 'carne' THEN s.quantite ELSE 0 END), 0) AS quantite_carne,
-                   COALESCE(SUM(CASE WHEN s.categorie_produit = 'legumes' THEN s.quantite ELSE 0 END), 0) AS quantite_legumes,
-                   COALESCE(SUM(CASE WHEN s.categorie_produit IS NULL THEN s.quantite ELSE 0 END), 0) AS quantite_non_classe
-            FROM cuisine_articles_barquettes a
-            LEFT JOIN cuisine_stock_barquettes s ON s.article_id = a.id AND s.actif = 1
-            WHERE a.actif = 1
-            GROUP BY a.id
-            ORDER BY a.taille
-            """
+        articles = conn.execute(
+            "SELECT id, taille, libelle, nb_portions FROM cuisine_articles_barquettes WHERE actif = 1 ORDER BY taille"
         ).fetchall()
+        stock_total = {
+            a["id"]: {
+                "taille": a["taille"], "libelle": a["libelle"], "nb_portions": a["nb_portions"],
+                "quantite_stock": 0, "quantite_livree": 0,
+                "quantite_carne": 0, "quantite_legumes": 0, "quantite_non_classe": 0,
+            }
+            for a in articles
+        }
+        lignes = stock_lignes_disponibles(conn)
+        for l in lignes:
+            t = stock_total.get(l["article_id"])
+            if not t:
+                continue
+            t["quantite_stock"] += l["disponible"]
+            t["quantite_livree"] += l["quantite_livree"]
+            cle = {"carne": "quantite_carne", "legumes": "quantite_legumes"}.get(l["categorie_produit"], "quantite_non_classe")
+            t[cle] += l["disponible"]
+        stock_total = list(stock_total.values())
 
-        mouvements = conn.execute(
-            """
-            SELECT s.*, a.taille, a.libelle AS article_libelle
-            FROM cuisine_stock_barquettes s
-            JOIN cuisine_articles_barquettes a ON a.id = s.article_id
-            WHERE s.actif = 1
-            ORDER BY s.date_creation DESC
-            LIMIT 300
-            """
-        ).fetchall()
-        mouvements_json = [dict(m) for m in mouvements]
+        mouvements_json = sorted((dict(m) for m in lignes), key=lambda m: m["date_creation"] or "", reverse=True)[:300]
         libelles_categorie = {"carne": "🥩 Carné", "legumes": "🥬 Légumes"}
         for m in mouvements_json:
             m["categorie_label"] = libelles_categorie.get(m["categorie_produit"], "❓ Non classé")
@@ -303,10 +318,13 @@ def liste_stock_barquettes():
 def supprimer_stock_barquette(stock_id):
     with _connect() as conn:
         existe = conn.execute(
-            "SELECT id FROM cuisine_stock_barquettes WHERE id = ?", (stock_id,)
+            "SELECT id, production_id, article_id FROM cuisine_stock_barquettes WHERE id = ?", (stock_id,)
         ).fetchone()
         if not existe:
             flash("⛔ Ligne de stock introuvable.", "danger")
+            return redirect(url_for("production_cuisine.liste_stock_barquettes"))
+        if quantites_livrees_production(conn, existe["production_id"]).get(existe["article_id"]):
+            flash("⛔ Des barquettes de cette ligne sont sur un bon de livraison : annulez d'abord le bon.", "danger")
             return redirect(url_for("production_cuisine.liste_stock_barquettes"))
         conn.execute("UPDATE cuisine_stock_barquettes SET actif = 0 WHERE id = ?", (stock_id,))
         conn.commit()

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Bons de livraison cuisine{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_bootstrap5.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">🧾 Bons de livraison</h2>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('production_cuisine.simulation_repartition') }}" class="btn btn-primary">🧮 Simulation / nouveau BL</a>
+      <a href="{{ url_for('production_cuisine.liste_stock_barquettes') }}" class="btn btn-outline-secondary">📊 Stock barquettes</a>
+      <a href="{{ url_for('production_cuisine.liste_consignes_clients') }}" class="btn btn-outline-secondary">← Retour</a>
+    </div>
+  </div>
+
+  <div class="form-text mb-3">
+    Les bons se créent un par un depuis la <strong>simulation de répartition</strong> (bouton « Générer le BL » sur la
+    ligne du client). Un bon non facturé peut être annulé depuis sa fiche : ses barquettes reviennent en stock.
+  </div>
+
+  {% if not bons %}
+    <p class="text-muted">Aucun bon de livraison pour l'instant.</p>
+  {% else %}
+  <div id="bons-table"></div>
+  {% endif %}
+
+</div>
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+  var bonsData = {{ bons | tojson }};
+  var urlDetailBase = "{{ url_for('production_cuisine.detail_bon_livraison', bon_id=0) }}".slice(0, -1);
+  var urlPdfBase = "{{ url_for('production_cuisine.pdf_bon_livraison', bon_id=0) }}".replace("/0/pdf", "/");
+
+  if (bonsData.length) new Tabulator("#bons-table", {
+    data: bonsData,
+    layout: "fitColumns",
+    height: "70vh",
+    rowFormatter: function (row) {
+      if (row.getData().statut === "annule") row.getElement().style.opacity = "0.55";
+    },
+    columns: [
+      {
+        title: "N°", field: "numero", width: 140, headerFilter: "input",
+        formatter: function (cell) {
+          var a = document.createElement("a");
+          a.href = urlDetailBase + cell.getData().id;
+          a.textContent = cell.getValue();
+          return a;
+        },
+      },
+      { title: "Livraison", field: "date_livraison", width: 120, headerFilter: "input" },
+      { title: "Client", field: "nom_association", widthGrow: 2, minWidth: 180, headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
+      { title: "Statut", field: "statut_label", width: 120, headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
+      { title: "Barq.", field: "nb_barquettes", width: 80, hozAlign: "right" },
+      { title: "Port. carné", field: "portions_carne", width: 100, hozAlign: "right" },
+      { title: "Port. lég.", field: "portions_legumes", width: 100, hozAlign: "right" },
+      { title: "Montant", field: "montant", width: 100, hozAlign: "right", formatter: "money", formatterParams: { decimal: ",", thousand: " ", symbol: " €", symbolAfter: true } },
+      {
+        title: "", field: "id", headerSort: false, width: 70,
+        formatter: function (cell) {
+          var a = document.createElement("a");
+          a.href = urlPdfBase + cell.getValue() + "/pdf";
+          a.target = "_blank";
+          a.className = "btn btn-sm btn-outline-secondary";
+          a.textContent = "📄";
+          a.title = "PDF";
+          return a;
+        },
+      },
+    ],
+  });
+</script>
+{% endblock %}
