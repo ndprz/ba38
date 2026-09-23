@@ -9,8 +9,8 @@ from flask import render_template, request, redirect, url_for, flash
 from flask_login import login_required
 
 from ba38_utilitaires.core import require_access, write_log, upload_database
-from ba38_production_cuisine import cuisine_hygiene_bp
-from ba38_production_cuisine.utils import _connect, parse_temperature, now_paris_str
+from ba38_cuisine import cuisine_hygiene_bp
+from ba38_cuisine.utils import _connect, parse_temperature, now_paris_str
 
 CONFORMITE_CHOICES = ("conforme", "non_conforme")
 

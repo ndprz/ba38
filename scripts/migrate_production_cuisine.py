@@ -7,7 +7,7 @@ Migration : module Cuisine — Étape 1 : traçabilité production + hygiène si
 `planning_cuisine_bp`, templates `templates/planning/cuisine/`) existe déjà
 et gère le planning des équipes (horaires bénévoles) — sans rapport avec ce
 module. Ce script crée un ensemble de tables totalement séparé, préfixé
-`cuisine_*`, pour le nouveau module `ba38_production_cuisine/`
+`cuisine_*`, pour le nouveau module `ba38_cuisine/`
 (blueprints `production_cuisine_bp` et `cuisine_hygiene_bp`).
 
 Crée (idempotent, CREATE TABLE IF NOT EXISTS) :

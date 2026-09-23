@@ -77,7 +77,7 @@ from scripts.rename_field import rename_bp
 from ba38_admin import admin_bp
 from ba38_export import export_data_bp
 from ba38_fournisseurs import fournisseurs_bp
-from ba38_production_cuisine import production_cuisine_bp, cuisine_hygiene_bp
+from ba38_cuisine import production_cuisine_bp, cuisine_hygiene_bp
 from ba38_tresorerie import tresorerie_bp
 from ba38_partenaires import fiches_visite_bp
 from ba38_partenaires import annexe1bis_bp, webhook_yousign

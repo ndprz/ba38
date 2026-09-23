@@ -1,5 +1,5 @@
 # ============================================================
-# 📦 ba38_production_cuisine — Module Cuisine, Étape 1
+# 📦 ba38_cuisine — Module Cuisine, Étape 1
 # ============================================================
 # Traçabilité production (réceptions, recettes, étapes de fabrication,
 # lots fournisseurs) + registres hygiène site (températures, nettoyage,
@@ -20,13 +20,13 @@ from flask import Blueprint
 production_cuisine_bp = Blueprint("production_cuisine", __name__)
 cuisine_hygiene_bp = Blueprint("cuisine_hygiene", __name__)
 
-from ba38_production_cuisine import routes_receptions
-from ba38_production_cuisine import routes_recettes
-from ba38_production_cuisine import routes_recettes_referentiel
-from ba38_production_cuisine import routes_ingredients_carnes
-from ba38_production_cuisine import routes_stock_barquettes
-from ba38_production_cuisine import routes_parametres
-from ba38_production_cuisine import routes_tracabilite
-from ba38_production_cuisine import routes_kiosk
-from ba38_production_cuisine import routes_hygiene
-from ba38_production_cuisine import routes_referentiels
+from ba38_cuisine import routes_receptions
+from ba38_cuisine import routes_recettes
+from ba38_cuisine import routes_recettes_referentiel
+from ba38_cuisine import routes_ingredients_carnes
+from ba38_cuisine import routes_stock_barquettes
+from ba38_cuisine import routes_parametres
+from ba38_cuisine import routes_tracabilite
+from ba38_cuisine import routes_kiosk
+from ba38_cuisine import routes_hygiene
+from ba38_cuisine import routes_referentiels

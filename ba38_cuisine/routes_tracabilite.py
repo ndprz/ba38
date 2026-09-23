@@ -10,8 +10,8 @@ from flask import request, redirect, url_for, flash, send_file, abort
 from flask_login import login_required
 
 from ba38_utilitaires.core import require_access, write_log, upload_database
-from ba38_production_cuisine import production_cuisine_bp
-from ba38_production_cuisine.utils import (
+from ba38_cuisine import production_cuisine_bp
+from ba38_cuisine.utils import (
     _connect, now_paris_str, upload_dir_traca_lot, save_uploaded_files,
     etape_bloquante, heure_fin_max_precedentes, calculer_conformite_production, parse_temperature,
 )

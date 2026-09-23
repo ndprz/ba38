@@ -14,8 +14,8 @@ from flask import render_template, request, redirect, url_for, flash
 from flask_login import login_required
 
 from ba38_utilitaires.core import require_access, upload_database
-from ba38_production_cuisine import production_cuisine_bp
-from ba38_production_cuisine.utils import _connect
+from ba38_cuisine import production_cuisine_bp
+from ba38_cuisine.utils import _connect
 
 PARAM_NAMES = {
     "cuisine_famille": "Famille",

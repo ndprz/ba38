@@ -13,8 +13,8 @@ import sqlite3
 
 from flask import render_template, jsonify
 
-from ba38_production_cuisine import production_cuisine_bp
-from ba38_production_cuisine.utils import _connect, today_paris
+from ba38_cuisine import production_cuisine_bp
+from ba38_cuisine.utils import _connect, today_paris
 
 
 @production_cuisine_bp.route("/api/production_active")
