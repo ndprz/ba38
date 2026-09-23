@@ -618,8 +618,21 @@ def convertir_pptx_en_pdf(pptx_abs_path: str) -> str | None:
 def save_uploaded_file(file_storage) -> str:
     upload_dir = get_upload_dir()
     filename = secure_filename(file_storage.filename)
-    abs_path = os.path.join(upload_dir, filename)
     os.makedirs(upload_dir, exist_ok=True)
+
+    # Nom libre : ne jamais écraser un fichier existant (autre événement, ou
+    # ancien fichier de l'événement modifié, supprimé juste après l'envoi).
+    # On vérifie aussi le .pdf issu d'une conversion PPTX.
+    stem, ext_orig = os.path.splitext(filename)
+    n = 1
+    while any(
+        os.path.exists(os.path.join(upload_dir, f"{stem}{e}"))
+        for e in {ext_orig, ".pdf", ".pptx"}
+    ):
+        n += 1
+        stem = f"{os.path.splitext(filename)[0]}-{n}"
+    filename = f"{stem}{ext_orig}"
+    abs_path = os.path.join(upload_dir, filename)
     file_storage.save(abs_path)
     write_log(f"💾 Fichier sauvegardé : {abs_path}")
 

@@ -175,12 +175,12 @@
     <table class="table table-evenements table-striped align-middle">
       <thead>
         <tr>
-          <th>ID</th>
-          <th title="Position dans la rotation de l'écran en ce moment">Ordre</th>
+          <th class="th-tri" data-tri="id" role="button" title="Trier par ID">ID <span class="tri-fleche">↕</span></th>
+          <th class="th-tri" data-tri="ordre" role="button" title="Position dans la rotation de l'écran en ce moment — cliquer pour trier">Ordre <span class="tri-fleche">↕</span></th>
           <th>Actif</th>
           <th>Type</th>
           <th>Titre</th>
-          <th>Début</th>
+          <th class="th-tri" data-tri="debut" role="button" title="Trier par date de début">Début <span class="tri-fleche">↕</span></th>
           <th>Fin</th>
           <th>Durée</th>
           <th>Fichier</th>
@@ -189,10 +189,11 @@
       </thead>
       <tbody>
         {% for e in evenements %}
-        <tr class="{% if e.actif == 0 %}table-secondary{% endif %}">
+        <tr class="{% if e.actif == 0 %}table-secondary{% endif %}"
+            data-id="{{ e.id }}" data-ordre="{{ e.ordre_passage or '' }}" data-debut="{{ e.date_debut or '' }}">
           <td>{{ e.id }}</td>
           <td class="text-center">
-            {% if e.ordre_passage %}<span class="badge bg-success" title="Affiché en ce moment à l'écran">{{ e.ordre_passage }}/{{ nb_en_rotation }}</span>{% endif %}
+            {% if e.ordre_passage %}<span class="badge bg-success text-white" title="Affiché en ce moment à l'écran">{{ e.ordre_passage }}/{{ nb_en_rotation }}</span>{% endif %}
           </td>
 
           <!-- ✅ bouton ON/OFF -->
@@ -515,6 +516,51 @@
     }
     return iso;
   }
+
+  // Tri du tableau (ID / Ordre de passage / Début) ; les événements hors rotation vont en fin de tri "Ordre"
+  (function () {
+    const table = document.querySelector('.table-evenements');
+    if (!table) return;
+    const tbody = table.tBodies[0];
+    let cle = null, sens = 1;
+
+    function valeur(tr, k) {
+      const v = tr.dataset[k] || '';
+      if (k === 'debut') return v;
+      return v === '' ? Infinity : Number(v);
+    }
+
+    function trier(k, s) {
+      cle = k; sens = s;
+      const lignes = [...tbody.rows];
+      lignes.sort((a, b) => {
+        const va = valeur(a, k), vb = valeur(b, k);
+        if (k === 'ordre' && (va === Infinity || vb === Infinity)) {
+          return va === vb ? 0 : (va === Infinity ? 1 : -1);
+        }
+        return (va < vb ? -1 : va > vb ? 1 : 0) * sens;
+      });
+      lignes.forEach(tr => tbody.appendChild(tr));
+      table.querySelectorAll('.th-tri').forEach(th => {
+        th.querySelector('.tri-fleche').textContent =
+          th.dataset.tri === cle ? (sens === 1 ? '▲' : '▼') : '↕';
+      });
+      try { localStorage.setItem('evenements_tri', JSON.stringify([cle, sens])); } catch (e) {}
+    }
+
+    table.querySelectorAll('.th-tri').forEach(th => {
+      th.style.cursor = 'pointer';
+      th.addEventListener('click', () => {
+        const k = th.dataset.tri;
+        trier(k, cle === k ? -sens : 1);
+      });
+    });
+
+    try {
+      const t = JSON.parse(localStorage.getItem('evenements_tri') || 'null');
+      if (t && ['id', 'ordre', 'debut'].includes(t[0])) trier(t[0], t[1] === -1 ? -1 : 1);
+    } catch (e) {}
+  })();
 
   // Ouvre la modale avec les données de l'événement sélectionné
   function ouvrirModale(e) {
