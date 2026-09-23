@@ -90,7 +90,15 @@ def gestion_evenements():
                     (eid,)
                 ).fetchone()
 
-                if row:
+                # Fichier partagé (ex. double envoi du formulaire) : on garde les fichiers
+                partage = row and row["fichier_path"] and cur.execute(
+                    "SELECT 1 FROM evenements WHERE fichier_path = ? AND id != ?",
+                    (row["fichier_path"], eid)
+                ).fetchone()
+                if partage:
+                    write_log(f"ℹ️ Fichier {row['fichier_path']} utilisé par un autre événement : conservé")
+
+                if row and not partage:
 
                     paths = []
 
@@ -259,7 +267,12 @@ def gestion_evenements():
                     (eid,)
                 ).fetchone()
 
-                if old and old["fichier_path"]:
+                partage = old and old["fichier_path"] and cur.execute(
+                    "SELECT 1 FROM evenements WHERE fichier_path = ? AND id != ?",
+                    (old["fichier_path"], eid)
+                ).fetchone()
+
+                if old and old["fichier_path"] and not partage:
 
                     base = base_noext(
                         to_abs_path(old["fichier_path"])
@@ -358,6 +371,27 @@ def gestion_evenements():
     evenements = [dict(r) for r in ev_rows]
     benevoles = [dict(r) for r in ben_rows]
 
+    # Ordre de passage à l'écran en ce moment (même filtre/tri que api_evenements_actifs)
+    maintenant = datetime.now(ZoneInfo("Europe/Paris")).strftime("%Y-%m-%dT%H:%M")
+    en_rotation = sorted(
+        (e for e in evenements
+         if e.get("actif") == 1
+         and (e.get("date_debut") or "") <= maintenant <= (e.get("date_fin") or "")),
+        key=lambda e: (e.get("date_debut") or "", e["id"])
+    )
+    for rang, e in enumerate(en_rotation, start=1):
+        e["ordre_passage"] = rang
+    nb_en_rotation = len(en_rotation)
+
+    # Fichier réellement utilisé par l'écran (affiché dans la liste et la modale)
+    for e in evenements:
+        fichier_web = (e.get("fichier_path") or "").strip()
+        if fichier_web:
+            abs_path = to_abs_path(fichier_web)
+            e["fichier_nom"] = os.path.basename(fichier_web)
+            e["fichier_existe"] = os.path.exists(abs_path)
+            e["nb_images"] = len(lister_images_derivees(base_noext(abs_path)))
+
     # premier événement actif
     evenement_actif = next(
         (e for e in evenements if e.get("actif")),
@@ -369,6 +403,7 @@ def gestion_evenements():
         evenements=evenements,
         evenement_actif=evenement_actif,
         benevoles=benevoles,
+        nb_en_rotation=nb_en_rotation,
         planning_config=get_planning_config()
     )
 
@@ -445,6 +480,24 @@ def base_noext(path: str) -> str:
     return os.path.splitext(os.path.basename(path))[0]
 
 
+def lister_images_derivees(base: str) -> list[str]:
+    """
+    Images générées depuis un PDF/PPTX : {base}_page_N.jpg / {base}_slide_N.jpg.
+    Correspondance STRICTE (N numérique) : un motif {base}_*.jpg attrapait
+    aussi les images d'un autre événement (base_2_page_1.jpg...).
+    Retourne les chemins absolus triés par numéro de page.
+    """
+    upload_dir = get_upload_dir()
+    regex = re.compile(rf"^{re.escape(base)}_(page|slide)_(\d+)\.jpg$")
+    trouves = []
+    for nom in os.listdir(upload_dir) if os.path.isdir(upload_dir) else []:
+        m = regex.match(nom)
+        if m:
+            trouves.append((m.group(1), int(m.group(2)), os.path.join(upload_dir, nom)))
+    trouves.sort()
+    return [fp for _, _, fp in trouves]
+
+
 def remove_all_files_for_base(base: str):
     """
     Supprime TOUS les fichiers liés à un événement
@@ -452,19 +505,14 @@ def remove_all_files_for_base(base: str):
     de la suppression d’un événement.
     """
     upload_dir = get_upload_dir()
-    patterns = [
-        f"{base}.*",
-        f"{base}_page_*.jpg",
-        f"{base}_slide_*.jpg",
-        f"{base}_*.jpg",
-    ]
-    for pat in patterns:
-        for fp in glob.glob(os.path.join(upload_dir, pat)):
-            try:
-                os.remove(fp)
-                write_log(f"🗑️ Fichier supprimé : {fp}")
-            except Exception as e:
-                write_log(f"⚠️ Suppression échouée {fp} : {e}")
+    fichiers = glob.glob(os.path.join(upload_dir, f"{glob.escape(base)}.*"))
+    fichiers += lister_images_derivees(base)
+    for fp in fichiers:
+        try:
+            os.remove(fp)
+            write_log(f"🗑️ Fichier supprimé : {fp}")
+        except Exception as e:
+            write_log(f"⚠️ Suppression échouée {fp} : {e}")
 
 def remove_derived_files_for_base(base: str):
     """
@@ -477,43 +525,36 @@ def remove_derived_files_for_base(base: str):
         f"{base}.pptx",
         f"{base}.vtt",
         f"{base}.srt",
-        f"{base}_page_*.jpg",
-        f"{base}_slide_*.jpg",
-        f"{base}_*.jpg",
     ]
-    for pat in patterns:
-        for fp in glob.glob(os.path.join(upload_dir, pat)):
-            try:
-                os.remove(fp)
-                write_log(f"🧹 Fichier dérivé supprimé : {fp}")
-            except Exception as e:
-                write_log(f"⚠️ Suppression échouée {fp} : {e}")
+    fichiers = [fp for pat in patterns for fp in glob.glob(os.path.join(upload_dir, glob.escape(pat)))]
+    fichiers += lister_images_derivees(base)
+    for fp in fichiers:
+        try:
+            os.remove(fp)
+            write_log(f"🧹 Fichier dérivé supprimé : {fp}")
+        except Exception as e:
+            write_log(f"⚠️ Suppression échouée {fp} : {e}")
 
 
 def remove_files_for_base(base: str):
     """
     Supprime tous les fichiers liés à une base (sans extension) :
     - .pptx / .pdf / .mp4 / .webm / .mov / .jpg / .jpeg / .png / .gif / .webp
-    - _page_*.jpg / _slide_*.jpg / *_*.jpg dérivés
+    - _page_N.jpg / _slide_N.jpg dérivés (voir lister_images_derivees)
     """
     upload_dir = get_upload_dir()
     deleted = 0
     extensions = ["pptx", "pdf", "mp4", "webm", "mov", "jpg", "jpeg", "png", "gif", "webp"]
-    patterns = [os.path.join(upload_dir, f"{base}.{ext}") for ext in extensions]
-    patterns += [
-        os.path.join(upload_dir, base + "_page_*.jpg"),
-        os.path.join(upload_dir, base + "_slide_*.jpg"),
-        os.path.join(upload_dir, base + "_*.jpg"),
-    ]
-    for pat in patterns:
-        for fp in glob.glob(pat):
-            try:
-                os.remove(fp)
-                deleted += 1
-            except FileNotFoundError:
-                pass
-            except Exception as e:
-                write_log(f"⚠️ Suppression échouée {fp} : {e}")
+    fichiers = [os.path.join(upload_dir, f"{base}.{ext}") for ext in extensions]
+    fichiers += lister_images_derivees(base)
+    for fp in fichiers:
+        try:
+            os.remove(fp)
+            deleted += 1
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            write_log(f"⚠️ Suppression échouée {fp} : {e}")
     if deleted:
         write_log(f"🧹 {deleted} fichier(s) supprimé(s) pour base '{base}'.")
 
@@ -779,20 +820,7 @@ def api_evenements_actifs():
 
         if fichier_web:
             base = base_noext(to_abs_path(fichier_web))
-            upload_dir = get_upload_dir()
-            patterns = [
-                os.path.join(upload_dir, f"{base}_page_*.jpg"),
-                os.path.join(upload_dir, f"{base}_slide_*.jpg"),
-                os.path.join(upload_dir, f"{base}_*.jpg"),
-            ]
-            found = []
-            for pat in patterns:
-                found.extend(sorted(glob.glob(pat)))
-            seen = set()
-            for fp in found:
-                if fp not in seen:
-                    seen.add(fp)
-                    images.append(to_web_path(fp))
+            images = [to_web_path(fp) for fp in lister_images_derivees(base)]
         if images:
             d["images"] = images
         data.append(d)

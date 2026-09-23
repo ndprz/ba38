@@ -219,7 +219,7 @@
       position: fixed;
       right: 8px;
       bottom: 8px;
-      opacity: .25;
+      opacity: .45;
       font-size: .8rem;
     }
 
@@ -238,7 +238,7 @@
     </div>
   </div>
 
-  <div class="badge">BA380 • Écran événements</div>
+  <div class="badge" id="badgeEvenement">BA380 • Écran événements</div>
 
   <script>
 
@@ -465,6 +465,12 @@
       }
 
       const ev = playlist[index];
+
+      // Identifie l'événement affiché (même numéro/ID que la page de gestion)
+      document.getElementById("badgeEvenement").textContent =
+        `BA380 • ${index + 1}/${playlist.length}` +
+        (typeof ev.id === "number" ? ` • #${ev.id}` : "") +
+        (ev.titre ? ` • ${ev.titre}` : "");
 
       zone.classList.add("hidden");
 

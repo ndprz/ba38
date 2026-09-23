@@ -87,7 +87,8 @@
   <!-- ============================================= -->
   <!-- 🧾 FORMULAIRE D'AJOUT D'UN NOUVEL ÉVÉNEMENT -->
   <!-- ============================================= -->
-  <form method="post" enctype="multipart/form-data" class="card p-3 mt-2">
+  <form method="post" enctype="multipart/form-data" class="card p-3 mt-2"
+    onsubmit="this.querySelectorAll('button[type=submit]').forEach(b => { b.disabled = true; b.textContent = '⏳ Envoi…'; });">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="ajouter">
 
@@ -175,6 +176,7 @@
       <thead>
         <tr>
           <th>ID</th>
+          <th title="Position dans la rotation de l'écran en ce moment">Ordre</th>
           <th>Actif</th>
           <th>Type</th>
           <th>Titre</th>
@@ -189,6 +191,9 @@
         {% for e in evenements %}
         <tr class="{% if e.actif == 0 %}table-secondary{% endif %}">
           <td>{{ e.id }}</td>
+          <td class="text-center">
+            {% if e.ordre_passage %}<span class="badge bg-success" title="Affiché en ce moment à l'écran">{{ e.ordre_passage }}/{{ nb_en_rotation }}</span>{% endif %}
+          </td>
 
           <!-- ✅ bouton ON/OFF -->
           <td>
@@ -225,9 +230,14 @@
               
               <a href="{{ e.fichier_path }}" target="_blank"
                 class="text-truncate d-inline-block"
-                style="max-width:120px;">
+                style="max-width:120px;" title="{{ nom_fichier }}">
                 {{ nom_fichier }}
               </a>
+              {% if not e.fichier_existe %}
+              <div class="text-danger" title="Le fichier n'existe plus sur le serveur">⚠️ fichier introuvable</div>
+              {% elif e.type == 'document' and not e.nb_images %}
+              <div class="text-warning" title="Pas d'image générée : l'écran affiche le PDF brut (avec vignettes)">⚠️ sans image</div>
+              {% endif %}
 
             {% endif %}
           </td>
@@ -388,6 +398,7 @@
           <div class="col-md-6">
             <label class="form-label">Nouveau fichier (optionnel)</label>
             <input type="file" name="fichier" class="form-control">
+            <div class="form-text" id="edit_fichier_actuel"></div>
           </div>
 
           <!-- Image -->
@@ -517,6 +528,25 @@
     document.getElementById('edit_date_fin').value = toLocalDT(e.date_fin);
     document.getElementById('edit_duree').value = e.duree_affichage || 15;
     document.getElementById('edit_recurrence').value = e.recurrence || 'aucune';
+    const actuel = document.getElementById('edit_fichier_actuel');
+    actuel.textContent = '';
+    if (e.fichier_path) {
+      actuel.append('Fichier actuel : ');
+      const a = document.createElement('a');
+      a.href = e.fichier_path;
+      a.target = '_blank';
+      a.textContent = e.fichier_nom || e.fichier_path.split('/').pop();
+      actuel.append(a);
+      if (!e.fichier_existe) {
+        actuel.append(' — ⚠️ introuvable sur le serveur');
+      } else if (e.type === 'document') {
+        actuel.append(e.nb_images
+          ? ` — affiché en image (${e.nb_images} page${e.nb_images > 1 ? 's' : ''})`
+          : ' — ⚠️ aucune image générée, PDF affiché brut');
+      }
+    } else {
+      actuel.append('Aucun fichier actuellement');
+    }
     const modal = new bootstrap.Modal(document.getElementById('modalEdit'));
     modal.show();
   }
