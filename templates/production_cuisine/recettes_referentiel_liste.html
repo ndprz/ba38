@@ -36,8 +36,8 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
 <script>
   var recettesData = {{ recettes_json | tojson }};
-  var urlModifierBase = "{{ url_for('production_cuisine.modifier_recette_referentiel', recette_id=0) }}".slice(0, -1);
-  var urlSupprimerBase = "{{ url_for('production_cuisine.supprimer_recette_referentiel', recette_id=0) }}".slice(0, -1);
+  var urlModifierBase = "{{ url_for('production_cuisine.modifier_recette_referentiel', recette_id=999999999) }}"; // id repère remplacé en JS : l'id n'est pas en fin d'URL
+  var urlSupprimerBase = "{{ url_for('production_cuisine.supprimer_recette_referentiel', recette_id=999999999) }}"; // id repère remplacé en JS : l'id n'est pas en fin d'URL
   var csrfToken = "{{ csrf_token() }}";
 
   var table = new Tabulator("#recettes-table", {
@@ -59,7 +59,7 @@
           wrap.className = "d-flex gap-1";
 
           var editLink = document.createElement("a");
-          editLink.href = urlModifierBase + data.id;
+          editLink.href = urlModifierBase.replace("999999999", data.id);
           editLink.className = "btn btn-sm btn-outline-secondary";
           editLink.textContent = "✏️";
           wrap.appendChild(editLink);
@@ -72,7 +72,7 @@
             if (!confirm("Supprimer la recette « " + data.nom + " » du référentiel ?")) return;
             var form = document.createElement("form");
             form.method = "POST";
-            form.action = urlSupprimerBase + data.id;
+            form.action = urlSupprimerBase.replace("999999999", data.id);
             var csrf = document.createElement("input");
             csrf.type = "hidden";
             csrf.name = "csrf_token";

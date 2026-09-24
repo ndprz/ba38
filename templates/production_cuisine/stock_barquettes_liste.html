@@ -67,7 +67,7 @@
 <script>
   var mouvementsData = {{ mouvements | tojson }};
   var urlDetailBase = "{{ url_for('production_cuisine.detail_production', production_id=0, depuis_stock=1) }}".replace("0?", "PID?");
-  var urlSupprimerBase = "{{ url_for('production_cuisine.supprimer_stock_barquette', stock_id=0) }}".slice(0, -1);
+  var urlSupprimerBase = "{{ url_for('production_cuisine.supprimer_stock_barquette', stock_id=999999999) }}"; // id repère remplacé en JS : l'id n'est pas en fin d'URL
   var csrfToken = "{{ csrf_token() }}";
 
   var table = new Tabulator("#mouvements-table", {
@@ -106,7 +106,7 @@
             if (!confirm("Retirer « " + data.libelle_recette + " · " + data.article_libelle + " » du stock ?")) return;
             var form = document.createElement("form");
             form.method = "POST";
-            form.action = urlSupprimerBase + data.id;
+            form.action = urlSupprimerBase.replace("999999999", data.id);
             var csrf = document.createElement("input");
             csrf.type = "hidden";
             csrf.name = "csrf_token";
