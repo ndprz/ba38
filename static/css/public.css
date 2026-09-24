@@ -566,6 +566,8 @@ select:disabled {
     transition: all 0.2s ease;
     border: 1px solid #eee;
     border-left-width: 5px;
+    background-color: #e1e6e4;
+    /* fond grisé commun à tous les groupes, y compris ceux sans couleur dédiée */
 }
 
 /* titre */
@@ -624,6 +626,12 @@ select:disabled {
     background-color: #e1e6e4;
     border-left: 5px solid #6f42c1;
     /* violet */
+}
+
+.menu-card[data-group="cuisine"] {
+    background-color: #e1e6e4;
+    border-left: 5px solid #dc3545;
+    /* rouge brique */
 }
 
 
