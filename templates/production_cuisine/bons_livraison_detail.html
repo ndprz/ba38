@@ -44,7 +44,7 @@
 
   <table class="table table-sm table-bordered align-middle">
     <thead class="table-light">
-      <tr><th>Catégorie</th><th>Recette</th><th>Production (fin)</th><th>Barquette</th><th class="text-end">Qté</th><th class="text-end">Portions</th></tr>
+      <tr><th>Catégorie</th><th>Recette</th><th>Production (fin)</th><th>DLC</th><th>Barquette</th><th class="text-end">Qté</th><th class="text-end">Portions</th></tr>
     </thead>
     <tbody>
       {% for l in lignes %}
@@ -52,6 +52,7 @@
         <td>{{ categories.get(l.categorie_produit, '') }}</td>
         <td><a href="{{ url_for('production_cuisine.detail_production', production_id=l.production_id) }}">{{ l.libelle_recette }}</a></td>
         <td class="small">{{ l.date_fin_recette or '' }}</td>
+        <td class="fw-bold">{{ l.dlc | format_date_fr }}</td>
         <td>{{ l.taille }} ({{ l.nb_portions_barquette }}p)</td>
         <td class="text-end">{{ l.quantite }}</td>
         <td class="text-end">{{ l.quantite * l.nb_portions_barquette }}</td>

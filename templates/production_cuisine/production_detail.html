@@ -424,6 +424,8 @@
         <div class="alert alert-success py-2">
           ✅ Ajouté au stock barquettes :
           {% for s in stock_barquettes %}{{ libelles_barquettes.get(s.taille, s.taille) }} × {{ s.quantite }}{% if not loop.last %} · {% endif %}{% endfor %}
+          {% set dlc = (stock_barquettes | map(attribute='dlc') | select | first) %}
+          {% if dlc %}<span class="ms-2 badge bg-dark">DLC {{ dlc | format_date_fr }}</span>{% endif %}
         </div>
       {% endif %}
       {% if cellule_ligne and cellule_ligne.heure_fin %}

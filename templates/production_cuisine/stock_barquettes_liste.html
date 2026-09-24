@@ -14,7 +14,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container-fluid mt-4 px-4">
 
   <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h2 class="mb-0">📊 Stock barquettes</h2>
@@ -33,7 +33,12 @@
     Alimenté automatiquement depuis les quantités conditionnées de chaque production (bouton "Ajouter au stock"
     sur la fiche recette) — pas de saisie manuelle. Les quantités affichées sont le stock <strong>disponible</strong> :
     entrées moins les barquettes parties sur des bons de livraison non annulés.
+    <strong>DLC</strong> = date de production + {{ dlc_jours }} jours (règle actuelle, modifiable dans ⚙️ Paramètres), figée à l'entrée en stock.
   </div>
+
+  {% if nb_perimees %}
+    <div class="alert alert-danger py-2">⛔ {{ nb_perimees }} barquette(s) disponible(s) ont dépassé leur DLC (lignes en rouge) : elles ne sont plus proposées dans la simulation ni sur les bons de livraison.</div>
+  {% endif %}
 
   <div class="row g-3 mb-4">
     {% for a in stock_total %}
@@ -70,15 +75,30 @@
   var urlSupprimerBase = "{{ url_for('production_cuisine.supprimer_stock_barquette', stock_id=999999999) }}"; // id repère remplacé en JS : l'id n'est pas en fin d'URL
   var csrfToken = "{{ csrf_token() }}";
 
+  // Dates AAAA-MM-JJ[ HH:MM:SS] affichées JJ/MM/AAAA[ HH:MM] ; le filtre
+  // d'en-tête accepte les deux saisies (« 2026-09-23 » ou « 23/09 »).
+  function dateFr(v) {
+    if (!v) return "";
+    var d = v.slice(0, 10).split("-");
+    return d[2] + "/" + d[1] + "/" + d[0] + (v.length > 10 ? " " + v.slice(11, 16) : "");
+  }
+  function filtreDate(saisie, valeur) {
+    return (valeur || "").indexOf(saisie) !== -1 || dateFr(valeur).indexOf(saisie) !== -1;
+  }
+  var colDate = { formatter: function (cell) { return dateFr(cell.getValue()); }, headerFilter: "input", headerFilterFunc: filtreDate };
+
   var table = new Tabulator("#mouvements-table", {
     data: mouvementsData,
+    rowFormatter: function (row) {
+      if (row.getData().perime) row.getElement().classList.add("table-danger");
+    },
     layout: "fitColumns",
     height: "70vh",
     initialSort: [{ column: "date_creation", dir: "desc" }],
     columns: [
-      { title: "Date ajout", field: "date_creation", width: 170, minWidth: 160, headerFilter: "input" },
+      Object.assign({ title: "Date ajout", field: "date_creation", width: 180, minWidth: 170 }, colDate),
       {
-        title: "Recette", field: "libelle_recette", widthGrow: 2, minWidth: 160, headerFilter: "input",
+        title: "Recette", field: "libelle_recette", widthGrow: 3, minWidth: 220, headerFilter: "input", tooltip: true,
         formatter: function (cell) {
           var data = cell.getData();
           var a = document.createElement("a");
@@ -87,12 +107,21 @@
           return a;
         },
       },
-      { title: "Taille", field: "article_libelle", width: 110, minWidth: 100, headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
+      { title: "Taille", field: "article_libelle", width: 140, minWidth: 130, headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
       { title: "Catégorie", field: "categorie_label", width: 130, minWidth: 120, headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
-      { title: "Entrée", field: "quantite", width: 80, minWidth: 80, hozAlign: "right" },
-      { title: "Livré", field: "quantite_livree", width: 80, minWidth: 80, hozAlign: "right" },
-      { title: "Dispo", field: "disponible", width: 80, minWidth: 80, hozAlign: "right" },
-      { title: "Fin recette", field: "date_fin_recette", width: 170, minWidth: 160, headerFilter: "input" },
+      { title: "Entrée", field: "quantite", width: 95, minWidth: 95, hozAlign: "right" },
+      { title: "Livré", field: "quantite_livree", width: 95, minWidth: 95, hozAlign: "right" },
+      { title: "Dispo", field: "disponible", width: 95, minWidth: 95, hozAlign: "right" },
+      Object.assign({ title: "Fin recette", field: "date_fin_recette", width: 180, minWidth: 170 }, colDate),
+      {
+        title: "DLC", field: "dlc", width: 115, minWidth: 110, headerFilter: "input", headerFilterFunc: filtreDate,
+        formatter: function (cell) {
+          var v = cell.getValue();
+          if (!v) return "";
+          var p = v.split("-");
+          return p[2] + "/" + p[1] + "/" + p[0] + (cell.getData().perime ? " ⛔" : "");
+        },
+      },
       { title: "Cellule", field: "cellule_numero", width: 100, minWidth: 90, headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
       {
         title: "", field: "id", headerSort: false, width: 60,

@@ -36,7 +36,7 @@ def _charger_bon(conn, bon_id):
     lignes = conn.execute(
         """SELECT * FROM cuisine_bons_livraison_lignes WHERE bon_id = ?
            ORDER BY CASE categorie_produit WHEN 'carne' THEN 0 ELSE 1 END,
-                    libelle_recette COLLATE NOCASE, nb_portions_barquette DESC, date_fin_recette""",
+                    libelle_recette COLLATE NOCASE, nb_portions_barquette DESC, dlc, date_fin_recette""",
         (bon_id,),
     ).fetchall()
     return bon, lignes
@@ -181,26 +181,28 @@ def generer_pdf_bon_livraison(bon, lignes, association):
     elements += [cartouche, Spacer(1, 6 * mm)]
 
     # Lignes
-    donnees = [["Catégorie", "Recette", "Production (fin)", "Barquette", "Qté", "Portions"]]
+    donnees = [["Catégorie", "Recette", "Production", "DLC", "Barquette", "Qté", "Portions"]]
     for l in lignes:
         donnees.append([
             CATEGORIES.get(l["categorie_produit"], "").split(" ", 1)[-1],
             Paragraph(l["libelle_recette"], petit),
             _date_fr(l["date_fin_recette"]),
+            _date_fr(l["dlc"]),
             f"{l['taille']} ({l['nb_portions_barquette']}p)",
             str(l["quantite"]),
             str(l["quantite"] * l["nb_portions_barquette"]),
         ])
     nb_barquettes = sum(l["quantite"] for l in lignes)
-    donnees.append(["", "Total", "", "", str(nb_barquettes), str((bon["portions_carne"] or 0) + (bon["portions_legumes"] or 0))])
-    table = Table(donnees, colWidths=[22 * mm, None, 30 * mm, 26 * mm, 14 * mm, 20 * mm], repeatRows=1)
+    donnees.append(["", "Total", "", "", "", str(nb_barquettes), str((bon["portions_carne"] or 0) + (bon["portions_legumes"] or 0))])
+    table = Table(donnees, colWidths=[20 * mm, None, 23 * mm, 23 * mm, 24 * mm, 13 * mm, 18 * mm], repeatRows=1)
     table.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eeeeee")),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("ALIGN", (4, 0), (-1, -1), "RIGHT"),
+        ("ALIGN", (5, 0), (-1, -1), "RIGHT"),
+        ("FONTNAME", (3, 1), (3, -2), "Helvetica-Bold"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     elements += [table, Spacer(1, 5 * mm)]

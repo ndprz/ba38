@@ -15,7 +15,7 @@ from flask_login import login_required
 
 from ba38_utilitaires.core import require_access, upload_database
 from ba38_cuisine import production_cuisine_bp
-from ba38_cuisine.utils import _connect
+from ba38_cuisine.utils import _connect, dlc_jours, calculer_dlc, today_paris, PARAM_DLC_JOURS
 
 PARAM_NAMES = {
     "cuisine_famille": "Famille",
@@ -39,7 +39,39 @@ def parametres():
             ).fetchall()
             categories[param_name] = {"label": label, "valeurs": valeurs}
 
-    return render_template("production_cuisine/parametres.html", categories=categories)
+        jours_dlc = dlc_jours(conn)
+
+    aujourdhui = today_paris()
+    return render_template(
+        "production_cuisine/parametres.html", categories=categories, dlc_jours=jours_dlc,
+        exemple_production=aujourdhui, exemple_dlc=calculer_dlc(aujourdhui, jours_dlc),
+    )
+
+
+@production_cuisine_bp.route("/parametres/dlc", methods=["POST"])
+@login_required
+@require_access("production_cuisine", "ecriture")
+def modifier_dlc():
+    """Règle de DLC des barquettes (J+N). Ne s'applique qu'aux productions
+    mises en stock APRÈS le changement : la DLC est figée sur chaque ligne
+    de stock à son entrée."""
+    valeur = (request.form.get("dlc_jours") or "").strip()
+    if not valeur.isdigit() or not 1 <= int(valeur) <= 30:
+        flash("⚠️ La DLC doit être un nombre de jours entre 1 et 30.", "warning")
+        return redirect(url_for("production_cuisine.parametres"))
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE parametres SET param_value = ? WHERE param_name = ?", (valeur, PARAM_DLC_JOURS)
+        )
+        if not cur.rowcount:
+            conn.execute(
+                "INSERT INTO parametres (param_name, param_value, categorie) VALUES (?, ?, 'config')",
+                (PARAM_DLC_JOURS, valeur),
+            )
+        conn.commit()
+    upload_database()
+    flash(f"✅ DLC des barquettes : J+{valeur} pour les prochaines mises en stock.", "success")
+    return redirect(url_for("production_cuisine.parametres"))
 
 
 @production_cuisine_bp.route("/parametres/<param_name>/ajouter", methods=["POST"])

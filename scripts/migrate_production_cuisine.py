@@ -249,7 +249,8 @@ CREATE TABLE IF NOT EXISTS cuisine_stock_barquettes (
   quantite INTEGER NOT NULL,
   actif INTEGER DEFAULT 1,
   date_creation TEXT DEFAULT (datetime('now','utc')),
-  user_creation TEXT
+  user_creation TEXT,
+  dlc TEXT  -- date de production + parametres.cuisine_dlc_jours (cf. migrate_cuisine_dlc.py)
 );
 CREATE INDEX IF NOT EXISTS idx_cuisine_stock_barquettes_production ON cuisine_stock_barquettes(production_id);
 CREATE INDEX IF NOT EXISTS idx_cuisine_stock_barquettes_article ON cuisine_stock_barquettes(article_id);
@@ -323,7 +324,8 @@ CREATE TABLE IF NOT EXISTS cuisine_bons_livraison_lignes (
   taille TEXT NOT NULL,
   nb_portions_barquette INTEGER NOT NULL,
   quantite INTEGER NOT NULL,
-  date_fin_recette TEXT
+  date_fin_recette TEXT,
+  dlc TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_cuisine_bl_lignes_bon ON cuisine_bons_livraison_lignes(bon_id);
 CREATE INDEX IF NOT EXISTS idx_cuisine_bl_lignes_stock ON cuisine_bons_livraison_lignes(production_id, article_id);

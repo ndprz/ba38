@@ -16,7 +16,10 @@ from flask_login import login_required
 
 from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_cuisine import production_cuisine_bp
-from ba38_cuisine.utils import _connect, stock_lignes_disponibles, quantites_livrees_production
+from ba38_cuisine.utils import (
+    _connect, stock_lignes_disponibles, quantites_livrees_production, dlc_jours, calculer_dlc,
+    today_paris,
+)
 
 TAILLES = ("1/2", "1/4", "1/8")
 
@@ -233,6 +236,14 @@ def ajouter_stock_barquettes(production_id):
             )
             return redirect(url_for("production_cuisine.detail_production", production_id=production_id))
 
+        # DLC figée à la première mise en stock (une resynchro ne la décale
+        # pas, même si le paramètre a changé entre-temps).
+        dlc_existante = conn.execute(
+            "SELECT dlc FROM cuisine_stock_barquettes WHERE production_id = ? AND dlc IS NOT NULL LIMIT 1",
+            (production_id,),
+        ).fetchone()
+        dlc = dlc_existante["dlc"] if dlc_existante else calculer_dlc(production["date_production"], dlc_jours(conn))
+
         try:
             cur = conn.cursor()
             # Resynchronisation idempotente : on repart des quantités
@@ -250,11 +261,11 @@ def ajouter_stock_barquettes(production_id):
                 cur.execute(
                     """INSERT INTO cuisine_stock_barquettes
                        (article_id, production_id, libelle_recette, date_fin_recette,
-                        cellule_numero, quantite, categorie_produit, user_creation)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        cellule_numero, quantite, categorie_produit, user_creation, dlc)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (article_id, production_id, production["nom_recette"],
                      mise_en_cellule["heure_fin"], mise_en_cellule["cellule_numero"],
-                     quantite, production["categorie_produit"], benevole or None),
+                     quantite, production["categorie_produit"], benevole or None, dlc),
                 )
                 nb_lignes += 1
 
@@ -302,13 +313,19 @@ def liste_stock_barquettes():
 
         mouvements_json = sorted((dict(m) for m in lignes), key=lambda m: m["date_creation"] or "", reverse=True)[:300]
         libelles_categorie = {"carne": "🥩 Carné", "legumes": "🥬 Légumes"}
+        aujourdhui = today_paris()
         for m in mouvements_json:
             m["categorie_label"] = libelles_categorie.get(m["categorie_produit"], "❓ Non classé")
+            m["perime"] = bool(m["dlc"] and m["dlc"] < aujourdhui and m["disponible"] > 0)
+        nb_perimees = sum(m["disponible"] for m in mouvements_json if m["perime"])
+        jours_dlc = dlc_jours(conn)
 
     return render_template(
         "production_cuisine/stock_barquettes_liste.html",
         stock_total=stock_total,
         mouvements=mouvements_json,
+        nb_perimees=nb_perimees,
+        dlc_jours=jours_dlc,
     )
 
 

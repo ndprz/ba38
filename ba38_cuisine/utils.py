@@ -3,7 +3,7 @@
 # ============================================================
 
 import os
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from werkzeug.utils import secure_filename
@@ -315,3 +315,30 @@ def quantites_livrees_production(conn, production_id):
             f"SELECT * FROM ({SQL_QUANTITES_LIVREES}) WHERE production_id = ?", (production_id,)
         ).fetchall()
     }
+
+
+# DLC des barquettes : date de production + N jours, N dans le paramètre
+# `cuisine_dlc_jours` (table parametres, catégorie 'config' ; J+3 au départ,
+# J+5 après l'agrément DDETS). Figée sur la ligne de stock à son entrée :
+# changer le paramètre ne modifie que les productions mises en stock ensuite.
+PARAM_DLC_JOURS = "cuisine_dlc_jours"
+DLC_JOURS_DEFAUT = 3
+
+
+def dlc_jours(conn):
+    row = conn.execute(
+        "SELECT param_value FROM parametres WHERE param_name = ?", (PARAM_DLC_JOURS,)
+    ).fetchone()
+    try:
+        return int(row[0]) if row else DLC_JOURS_DEFAUT
+    except (TypeError, ValueError):
+        return DLC_JOURS_DEFAUT
+
+
+def calculer_dlc(date_production, jours):
+    """'2026-09-24' + 3 → '2026-09-27' (None si date illisible)."""
+    try:
+        return (date.fromisoformat((date_production or "")[:10]) + timedelta(days=jours)).isoformat()
+    except ValueError:
+        return None
+

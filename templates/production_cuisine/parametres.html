@@ -10,6 +10,26 @@
     <a href="{{ url_for('production_cuisine.liste_productions') }}" class="btn btn-outline-secondary">← Retour</a>
   </div>
 
+  <div class="card mb-4 border-primary">
+    <div class="card-header fw-bold">📅 DLC des barquettes</div>
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('production_cuisine.modifier_dlc') }}" class="row g-2 align-items-center">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-auto">DLC = date de production +</div>
+        <div class="col-auto">
+          <input type="number" name="dlc_jours" min="1" max="30" value="{{ dlc_jours }}" class="form-control" style="width: 90px;" required>
+        </div>
+        <div class="col-auto">jours</div>
+        <div class="col-auto"><button type="submit" class="btn btn-primary">💾 Enregistrer</button></div>
+      </form>
+      <div class="form-text mt-2">
+        Exemple avec J+{{ dlc_jours }} : barquette produite aujourd'hui {{ exemple_production | format_date_fr }} → DLC le {{ exemple_dlc | format_date_fr }}.
+        Le changement ne s'applique qu'aux productions mises en stock <strong>après</strong> l'enregistrement :
+        les barquettes déjà en stock gardent leur DLC.
+      </div>
+    </div>
+  </div>
+
   <div class="row g-4">
     {% for param_name, data in categories.items() %}
     <div class="col-md-6">

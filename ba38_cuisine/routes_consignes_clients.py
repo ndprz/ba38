@@ -165,7 +165,7 @@ def panacher(livre, recettes, portions_par_taille, deja=None):
     sur place) pour un mélange le plus équilibré possible : chaque
     barquette, des plus grosses aux plus petites, va à la recette qui a
     encore du stock dans cette taille et qui totalise le MOINS de portions
-    pour ce client (à égalité : la production la plus ancienne).
+    pour ce client (à égalité : la DLC la plus courte).
     Retourne {nom_recette: {taille: nb}}."""
     portions_client = dict(deja or {})
     detail = {}
@@ -174,7 +174,7 @@ def panacher(livre, recettes, portions_par_taille, deja=None):
             candidates = [r for r in recettes if r["stock"].get(t, 0) > 0]
             if not candidates:
                 break
-            r = min(candidates, key=lambda r: (portions_client.get(r["nom"], 0), r["date"] or ""))
+            r = min(candidates, key=lambda r: (portions_client.get(r["nom"], 0), r.get("dlc") or "", r["date"] or ""))
             r["stock"][t] -= 1
             detail.setdefault(r["nom"], {})
             detail[r["nom"]][t] = detail[r["nom"]].get(t, 0) + 1
@@ -403,25 +403,32 @@ def calculer_simulation(conn, args):
     categories = dict(CATEGORIES)
 
     # Stock par recette (même nom = même recette, toutes productions
-    # confondues ; la plus ancienne sert à départager le panachage et sera
-    # servie en premier sur le BL).
+    # confondues ; la DLC la plus courte sert à départager le panachage et
+    # sera servie en premier sur le BL). Les barquettes dont la DLC est
+    # dépassée à la date de livraison sont écartées (et signalées).
     recettes = {}
     non_classe = 0
+    perimees = []
     for l in stock_lignes_disponibles(conn):
         if l["disponible"] <= 0:
             continue
         if l["categorie_produit"] not in categories or l["taille"] not in portions_par_taille:
             non_classe += l["disponible"]
             continue
+        if l["dlc"] and l["dlc"] < date_str:
+            perimees.append({"nom": (l["libelle_recette"] or "").strip(), "taille": l["taille"],
+                             "quantite": l["disponible"], "dlc": l["dlc"]})
+            continue
         nom = (l["libelle_recette"] or "").strip()
         cle = f"{l['categorie_produit']}|{nom.lower()}"
         rec = recettes.setdefault(cle, {
             "cle": cle, "nom": nom, "cat": l["categorie_produit"], "date": l["date_fin_recette"],
-            "initial": {t: 0 for t in portions_par_taille},
+            "dlc": l["dlc"], "initial": {t: 0 for t in portions_par_taille},
         })
         rec["initial"][l["taille"]] += l["disponible"]
         rec["date"] = min(filter(None, [rec["date"], l["date_fin_recette"]]), default=None)
-    recettes = sorted(recettes.values(), key=lambda r: (r["cat"], r["date"] or "", r["nom"].lower()))
+        rec["dlc"] = min(filter(None, [rec["dlc"], l["dlc"]]), default=None)
+    recettes = sorted(recettes.values(), key=lambda r: (r["cat"], r["dlc"] or "", r["date"] or "", r["nom"].lower()))
 
     choisies = set(args.getlist("recettes")) if recalcul else {r["cle"] for r in recettes}
     for r in recettes:
@@ -517,7 +524,8 @@ def calculer_simulation(conn, args):
         lignes=lignes, ligne_reliquat=ligne_reliquat, recettes=recettes, totaux=totaux,
         tailles=list(portions_par_taille), libelle_taille=libelle_taille,
         portions_par_taille=portions_par_taille, categories=CATEGORIES,
-        non_classe=non_classe, article_id_par_taille={a["taille"]: a["id"] for a in articles},
+        non_classe=non_classe, perimees=perimees, dlc_par_recette={r["nom"]: r["dlc"] for r in recettes},
+        article_id_par_taille={a["taille"]: a["id"] for a in articles},
     )
 
 
@@ -576,14 +584,15 @@ def generer_bon_livraison():
             flash("⚠️ Rien à livrer pour ce client dans la simulation (client non coché ou stock épuisé).", "warning")
             return redirect(retour)
 
-        # Détail recette × taille → lots réels, production la plus ancienne d'abord.
+        # Détail recette × taille → lots réels non périmés à la date de
+        # livraison, DLC la plus courte d'abord.
         lots = {}
         for l in stock_lignes_disponibles(conn):
-            if l["disponible"] > 0:
+            if l["disponible"] > 0 and not (l["dlc"] and l["dlc"] < ctx["date_str"]):
                 cle = (l["categorie_produit"], (l["libelle_recette"] or "").strip().lower(), l["taille"])
                 lots.setdefault(cle, []).append(dict(l))
         for liste in lots.values():
-            liste.sort(key=lambda l: (l["date_fin_recette"] or "", l["production_id"]))
+            liste.sort(key=lambda l: (l["dlc"] or "", l["date_fin_recette"] or "", l["production_id"]))
 
         lignes_bl = []
         for cat, _ in CATEGORIES:
@@ -620,10 +629,10 @@ def generer_bon_livraison():
             conn.execute(
                 """INSERT INTO cuisine_bons_livraison_lignes
                    (bon_id, production_id, article_id, libelle_recette, categorie_produit,
-                    taille, nb_portions_barquette, quantite, date_fin_recette)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    taille, nb_portions_barquette, quantite, date_fin_recette, dlc)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (bon_id, lot["production_id"], lot["article_id"], lot["libelle_recette"].strip(), cat,
-                 lot["taille"], lot["nb_portions"], quantite, lot["date_fin_recette"]),
+                 lot["taille"], lot["nb_portions"], quantite, lot["date_fin_recette"], lot["dlc"]),
             )
         conn.commit()
     except Exception as e:

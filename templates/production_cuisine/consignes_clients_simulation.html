@@ -35,7 +35,7 @@
     {%- for nom, livre in detail | dictsort -%}
       {%- set ns = namespace(p=0) -%}
       {%- for t, n in livre.items() -%}{%- set ns.p = ns.p + n * portions_par_taille[t] -%}{%- endfor -%}
-      <li>• {{ nom }} : {{ barquettes(livre) }} <span class="text-muted">({{ ns.p }} p.)</span></li>
+      <li>• {{ nom }} : {{ barquettes(livre) }} <span class="text-muted">({{ ns.p }} p.{% if dlc_par_recette.get(nom) %} · DLC {{ dlc_par_recette[nom] | format_date_fr }}{% endif %})</span></li>
     {%- endfor -%}
   </ul>
   {%- endif -%}
@@ -67,6 +67,8 @@
     Cochez les <strong>recettes à livrer</strong> ce jour-là (toutes par défaut). Les clients prévus ce jour-là
     (d'après leur périodicité) sont pré-cochés ; vous pouvez en ajouter / retirer et modifier les portions,
     puis cliquer sur « Recalculer ».
+    Les barquettes dont la <strong>DLC est dépassée à la date de livraison</strong> sont écartées ; à répartition égale,
+    on sert d'abord les DLC les plus courtes.
     Règle : grosses barquettes d'abord, puis une barquette de la plus petite taille acceptée pour compléter
     (arrondi au-dessus) ; si le client panache plusieurs tailles, le % de chaque taille est respecté
     autant que le stock le permet. Chaque client reçoit un <strong>panachage équilibré</strong> des recettes cochées
@@ -76,6 +78,17 @@
 
   {% if non_classe %}
     <div class="alert alert-warning py-2">❓ {{ non_classe }} barquette(s) en stock sans catégorie carné/légumes : ignorées par la simulation.</div>
+  {% endif %}
+
+  {% if perimees %}
+    <div class="alert alert-danger py-2">
+      ⛔ <strong>{{ perimees | sum(attribute='quantite') }} barquette(s) écartée(s) : DLC dépassée au {{ date_str | format_date_fr }}</strong>
+      <ul class="mb-0 small">
+        {% for p in perimees | sort(attribute='dlc') %}
+          <li>{{ p.nom }} — {{ p.quantite }} × {{ p.taille }} ({{ portions_par_taille.get(p.taille, '?') }}p) — DLC {{ p.dlc | format_date_fr }}</li>
+        {% endfor %}
+      </ul>
+    </div>
   {% endif %}
 
   {% if not recettes %}
@@ -99,6 +112,7 @@
             <th rowspan="2"><input class="form-check-input" type="checkbox" id="toutes-recettes" title="Tout cocher / décocher"></th>
             <th rowspan="2" class="text-start">Recette</th>
             <th rowspan="2">Production</th>
+            <th rowspan="2">DLC</th>
             {% for t in tailles %}<th colspan="2">{{ t }} ({{ portions_par_taille[t] }}p)</th>{% endfor %}
             <th colspan="2">Portions</th>
           </tr>
@@ -112,7 +126,8 @@
           <tr class="{{ '' if r.choisie else 'text-muted' }}">
             <td><input class="form-check-input case-recette" type="checkbox" name="recettes" value="{{ r.cle }}" {% if r.choisie %}checked{% endif %}></td>
             <td class="text-start">{{ '🥩' if r.cat == 'carne' else '🥬' }} {{ r.nom }}</td>
-            <td class="small">{{ (r.date or '')[:10] }}</td>
+            <td class="small">{{ r.date | format_date_fr }}</td>
+            <td class="small fw-bold {{ 'text-danger' if r.dlc and r.dlc <= date_str else '' }}">{{ r.dlc | format_date_fr }}</td>
             {% for t in tailles %}
               <td>{{ r.initial[t] or '' }}</td>
               <td class="{{ 'fw-bold' if r.stock[t] else 'text-muted' }}">{{ r.stock[t] if r.initial[t] else '' }}</td>
@@ -126,7 +141,7 @@
           {% for cat, lib in categories %}
           <tr>
             <td></td>
-            <td class="text-start" colspan="{{ 2 + 2 * tailles|length }}">{{ lib }} : {{ totaux[cat].portions_choisies }} portion(s) cochée(s) sur {{ totaux[cat].portions_initial }} en stock</td>
+            <td class="text-start" colspan="{{ 3 + 2 * tailles|length }}">{{ lib }} : {{ totaux[cat].portions_choisies }} portion(s) cochée(s) sur {{ totaux[cat].portions_initial }} en stock</td>
             <td>{{ totaux[cat].portions_initial }}</td>
             <td class="fw-bold">{{ totaux[cat].portions_reste }}</td>
           </tr>
