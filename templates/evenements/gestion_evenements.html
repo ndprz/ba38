@@ -221,8 +221,8 @@
             </details>
           </td>
 
-          <td><span class="small">{{ e.date_debut }}</span></td>
-          <td><span class="small">{{ e.date_fin }}</span></td>
+          <td class="small text-nowrap">{{ e.debut_fr[0] }}<br><span class="text-muted">{{ e.debut_fr[1] }}</span></td>
+          <td class="small text-nowrap">{{ e.fin_fr[0] }}<br><span class="text-muted">{{ e.fin_fr[1] }}</span></td>
           <td class="text-center">{{ e.duree_affichage or 15 }}</td>
           <td class="small">
             {% if e.fichier_path %}

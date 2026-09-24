@@ -385,6 +385,8 @@ def gestion_evenements():
 
     # Fichier réellement utilisé par l'écran (affiché dans la liste et la modale)
     for e in evenements:
+        e["debut_fr"] = date_heure_fr(e.get("date_debut"))
+        e["fin_fr"] = date_heure_fr(e.get("date_fin"))
         fichier_web = (e.get("fichier_path") or "").strip()
         if fichier_web:
             abs_path = to_abs_path(fichier_web)
@@ -475,6 +477,16 @@ def to_abs_path(web_path: str) -> str:
     if web_path.startswith(upload_dir):
         return web_path
     return os.path.join(upload_dir, os.path.basename(web_path))
+
+def date_heure_fr(val: str) -> tuple[str, str]:
+    """'2026-09-23T07:00' -> ('mer. 23/09/2026', '07h00'). Valeur illisible rendue telle quelle."""
+    try:
+        dt = datetime.strptime((val or "")[:16], "%Y-%m-%dT%H:%M")
+    except ValueError:
+        return (val or "", "")
+    jours = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."]
+    return (f"{jours[dt.weekday()]} {dt:%d/%m/%Y}", f"{dt:%H}h{dt:%M}")
+
 
 def base_noext(path: str) -> str:
     return os.path.splitext(os.path.basename(path))[0]
