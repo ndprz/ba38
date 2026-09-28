@@ -942,3 +942,19 @@ body{
 }
 
 
+
+/* ------------------------------------------------------------
+   Badges lisibles : le thème BA38 donne aux badges un texte gris
+   foncé (et, dans un bouton, la couleur du bouton : orange sur
+   rouge dans « Réceptions du jour ») quel que soit le fond. Texte
+   blanc sur les fonds soutenus, y compris quand un template force
+   text-dark sur le fond bleu-vert bg-info ; texte foncé conservé
+   sur les fonds clairs (bg-warning jaune, bg-light).
+   ------------------------------------------------------------ */
+.badge.bg-primary, .badge.bg-secondary, .badge.bg-success, .badge.bg-danger,
+.badge.bg-info, .badge.bg-dark, .badge.bg-info.text-dark {
+  color: #fff !important;
+}
+.badge.bg-warning, .badge.bg-light {
+  color: #3d383d !important;
+}

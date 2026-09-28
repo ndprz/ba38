@@ -1,3 +1,3 @@
-VERSION=1.7.25
-MESSAGE=Cuisine : bon de préparation (BP modifiable, stock réservé, température de livraison obligatoire, alerte > 3°C, PDF préparation) avant génération du BL
-DATE=2026-09-28 10:43
+VERSION=1.7.26
+MESSAGE=Badges lisibles : texte blanc sur fonds soutenus (thème BA38)
+DATE=2026-09-28 11:19
