@@ -1,3 +1,3 @@
-VERSION=1.7.33
-MESSAGE=Engagements : modèles d'abonnement exclus du reporting, de la GED et du montant utilisé des financements
-DATE=2026-09-28 14:48
+VERSION=1.7.34
+MESSAGE=Engagements : bloc Commentaires sur la fiche (toutes étapes), ex. note pour la trésorerie
+DATE=2026-09-28 15:19

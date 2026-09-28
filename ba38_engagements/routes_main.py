@@ -1630,10 +1630,13 @@ def detail_engagement(engagement_id):
 
         commentaires = conn.execute("""
             SELECT
-                *
-            FROM engagements_commentaires
-            WHERE engagement_id = ?
-            ORDER BY cree_le DESC
+                c.*,
+                COALESCE(u.username, c.user_email, u.email) AS auteur
+            FROM engagements_commentaires c
+            LEFT JOIN users u
+                ON u.id = c.user_id
+            WHERE c.engagement_id = ?
+            ORDER BY c.cree_le DESC, c.id DESC
         """, (engagement_id,)).fetchall()
 
         # =====================================================

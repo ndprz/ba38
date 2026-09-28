@@ -2102,5 +2102,63 @@ def purge_engagement(engagement_id):
     )
 
 
+# ============================================================
+# COMMENTAIRE LIBRE (toutes étapes, ex. note pour la trésorerie)
+# ============================================================
 
+@engagements_bp.route(
+    "/engagements/<int:engagement_id>/commentaire",
+    methods=["POST"]
+)
+@login_required
+@require_access("engagements", "ecriture")
+def ajouter_commentaire_engagement(engagement_id):
 
+    commentaire = request.form.get("commentaire", "").strip()
+
+    if not commentaire:
+
+        flash("⚠️ Le commentaire est vide.", "warning")
+
+        return redirect(url_for(
+            "engagements.detail_engagement",
+            engagement_id=engagement_id
+        ))
+
+    with sqlite3.connect(get_db_path()) as conn:
+
+        if not conn.execute(
+            "SELECT 1 FROM engagements WHERE id = ?",
+            (engagement_id,)
+        ).fetchone():
+            abort(404)
+
+        conn.execute("""
+            INSERT INTO engagements_commentaires (
+                engagement_id,
+                commentaire,
+                user_id,
+                user_email,
+                cree_le
+            )
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (
+            engagement_id,
+            commentaire,
+            current_user.id,
+            current_user.email
+        ))
+
+        conn.commit()
+
+    write_log(
+        f"[ENGAGEMENTS] Commentaire ajouté sur engagement "
+        f"#{engagement_id} par {current_user.email}"
+    )
+
+    flash("✅ Commentaire ajouté.", "success")
+
+    return redirect(url_for(
+        "engagements.detail_engagement",
+        engagement_id=engagement_id
+    ))

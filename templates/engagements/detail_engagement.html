@@ -1316,6 +1316,62 @@ Détail engagement #{{ engagement.id }}
 
         </div>
 
+        <!-- ================================================== -->
+        <!-- COMMENTAIRES (toutes étapes) -->
+        <!-- ================================================== -->
+
+        <div class="card mb-4">
+
+            <div class="card-header bg-secondary text-white">
+                💬 Commentaires
+            </div>
+
+            <div class="card-body">
+
+                {% if commentaires %}
+
+                <ul class="list-unstyled mb-3">
+
+                    {% for c in commentaires %}
+
+                    <li class="border-bottom pb-2 mb-2">
+                        <small class="text-muted">
+                            {{ c.cree_le }} — {{ c.auteur or "?" }}
+                        </small>
+                        <div style="white-space: pre-line;">{{ c.commentaire }}</div>
+                    </li>
+
+                    {% endfor %}
+
+                </ul>
+
+                {% else %}
+
+                <div class="text-muted mb-3">Aucun commentaire.</div>
+
+                {% endif %}
+
+                <form method="POST"
+                      action="{{ url_for('engagements.ajouter_commentaire_engagement', engagement_id=engagement.id) }}">
+
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <textarea name="commentaire"
+                              class="form-control mb-2"
+                              rows="2"
+                              placeholder="Ex : avoir de 100 € pour les répéteurs WiFi, montant réel -74,40 €"
+                              required></textarea>
+
+                    <button type="submit" class="btn btn-sm btn-outline-primary">
+                        💬 Ajouter le commentaire
+                    </button>
+
+                </form>
+
+            </div>
+
+        </div>
+
         <div class="card-header bg-dark text-white">
             Historique workflow
         </div>
