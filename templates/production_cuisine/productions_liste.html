@@ -76,6 +76,7 @@
             </span>
             {% if p.id in etapes_actuelles %}
               <span class="text-muted small">{{ etapes_actuelles[p.id] }}</span>
+              {% if drs.get(p.id) %}<span class="badge bg-warning text-dark ms-1">DR : {{ drs[p.id] }}</span>{% endif %}
             {% endif %}
           </div>
         </div>

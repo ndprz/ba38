@@ -315,6 +315,7 @@
                   En cours depuis {{ ligne.heure_debut }}
                   {% if ligne.temperature_debut is not none %} · {{ ligne.temperature_debut }}°C{% endif %}
                   {% if ligne.cellule_numero is not none %} · Cellule n°{{ ligne.cellule_numero }}{% endif %}
+                  {% if ref.code == 'refroidissement_cellule' and dr %}<span class="badge bg-warning text-dark ms-1">DR : {{ dr }}</span>{% endif %}
                 </div>
               {% else %}
                 <div class="text-success small">
@@ -323,6 +324,7 @@
                     {{ ligne.heure_debut }}{% if ligne.temperature_debut is not none %} ({{ ligne.temperature_debut }}°C){% endif %} →
                   {% endif %}
                   {{ ligne.heure_fin }}{% if ligne.temperature is not none %} ({{ ligne.temperature }}°C){% endif %}
+                  {% if ref.code == 'refroidissement_cellule' and dr %} · DR : {{ dr }}{% endif %}
                   {% if ligne.conforme %} ·
                     {% if ligne.conforme == 'conforme' %}<span class="badge bg-success text-white" style="font-size: .9rem;">✅ Conforme</span>
                     {% else %}<span class="badge bg-danger text-white" style="font-size: .9rem;">⚠️ Non conforme</span>{% endif %}

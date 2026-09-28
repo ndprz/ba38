@@ -213,6 +213,29 @@ def point_reference_refroidissement(lignes):
     return min(candidats, key=lambda x: x[0])
 
 
+def heure_dr(conn, production_id, seulement_cellule_en_cours=False):
+    """Heure 'HH:MM' du DR (point_reference_refroidissement) d'une
+    production, ou None si aucun relevé n'atteint 63°C. Avec
+    seulement_cellule_en_cours=True, None aussi tant que la mise en cellule
+    n'est pas démarrée ou une fois terminée (liste des productions)."""
+    lignes = {
+        row["etape_code"]: row
+        for row in conn.execute(
+            """SELECT etape_code, heure_debut, heure_fin, temperature, temperature_debut
+               FROM cuisine_production_etapes
+               WHERE production_id = ?
+               ORDER BY id""",
+            (production_id,),
+        ).fetchall()
+    }
+    if seulement_cellule_en_cours:
+        cellule = lignes.get("refroidissement_cellule")
+        if not cellule or cellule["heure_fin"] is not None:
+            return None
+    reference = point_reference_refroidissement(lignes)
+    return reference[1][11:16] if reference else None
+
+
 def calculer_conformite_production(conn, production_id):
     """Calcule la conformité HACCP de la production à partir des relevés de
     température des points "chauds" (fin de cuisson, tranchage à chaud

@@ -11,7 +11,7 @@ from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_cuisine import production_cuisine_bp
 from ba38_cuisine.utils import (
     _connect, today_paris, now_paris_str, decongelation_en_cours, etape_actuelle_libelle,
-    categorie_depuis_famille, motifs_non_conformite,
+    categorie_depuis_famille, motifs_non_conformite, heure_dr,
 )
 
 STATUTS = ("en_cours", "terminee", "annulee")
@@ -73,6 +73,11 @@ def liste_productions():
             p["id"]: etape_actuelle_libelle(conn, p["id"])
             for p in productions if p["statut"] == "en_cours"
         }
+        # DR affiché à côté de « Mise en cellule en cours »
+        drs = {
+            p["id"]: heure_dr(conn, p["id"], seulement_cellule_en_cours=True)
+            for p in productions if p["statut"] == "en_cours"
+        }
 
         nb_receptions_attente = conn.execute(
             """SELECT COUNT(*) FROM cuisine_receptions
@@ -88,6 +93,7 @@ def liste_productions():
         statuts=STATUTS,
         nb_receptions_attente=nb_receptions_attente,
         etapes_actuelles=etapes_actuelles,
+        drs=drs,
     )
 
 
@@ -274,6 +280,7 @@ def detail_production(production_id):
         if mise_en_cellule and mise_en_cellule["heure_fin"] is not None:
             conformite_globale = mise_en_cellule["conforme"]
         motifs_nc = motifs_non_conformite(conn, production_id)
+        dr = heure_dr(conn, production_id)
 
         recettes_referentiel = _recettes_referentiel_json(conn)
 
@@ -391,6 +398,7 @@ def detail_production(production_id):
         today=today_paris(),
         conformite_globale=conformite_globale,
         motifs_nc=motifs_nc,
+        dr=dr,
         recettes_referentiel=recettes_referentiel,
         stock_barquettes=stock_barquettes,
         retour_url=retour_url,
