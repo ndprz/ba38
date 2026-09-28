@@ -381,6 +381,8 @@ def creer_reception():
         erreur = None
         if not benevole:
             erreur = "⚠️ Merci d'indiquer le nom du réceptionnaire."
+        elif not fournisseur_id:
+            erreur = "⚠️ Merci de choisir le fournisseur."
         elif not lignes_remplies:
             erreur = "⚠️ Merci de renseigner au moins un produit réceptionné."
         else:
@@ -596,6 +598,8 @@ def modifier_reception(reception_id):
 
     if not benevole:
         erreur = "⚠️ Merci d'indiquer votre nom (personne qui corrige la réception)."
+    elif not fournisseur_id:
+        erreur = "⚠️ Merci de choisir le fournisseur."
     elif not ligne["groupe"]:
         erreur = "⚠️ Merci de renseigner le produit réceptionné."
     else:

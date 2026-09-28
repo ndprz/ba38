@@ -37,8 +37,8 @@
     </div>
 
     <div class="mb-3">
-      <label class="form-label">Fournisseur</label>
-      <select name="fournisseur_id" class="form-select">
+      <label class="form-label fw-bold">Fournisseur *</label>
+      <select name="fournisseur_id" class="form-select" required>
         <option value="">-- Choisir --</option>
         {% for f in fournisseurs %}
           <option value="{{ f.id }}" {% if form.fournisseur_id == f.id|string %}selected{% endif %}>{{ f.nom }}</option>
