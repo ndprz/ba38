@@ -76,7 +76,9 @@ def _build_query(filters, voir_tout):
     en fonction des filtres reçus.
     """
 
-    where = ["1=1"]
+    # Les modèles d'abonnement ne sont que des gabarits de génération
+    # (jamais payés) : seules leurs occurrences mensuelles comptent.
+    where = ["1=1", "COALESCE(e.est_modele_abonnement, 0) = 0"]
     params = []
 
     if filters.get("archive") == "actifs":

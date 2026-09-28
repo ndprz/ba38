@@ -14,7 +14,7 @@ from decimal import Decimal
 def calculer_montants_utilises(conn, subvention_ids):
     """
     Retourne {subvention_id: Decimal} = somme des engagements
-    (non supprimés, non refusés) rattachés à chaque subvention.
+    (non supprimés, non refusés, hors modèles d'abonnement) rattachés à chaque subvention.
     """
 
     subvention_ids = [sid for sid in subvention_ids if sid]
@@ -34,6 +34,7 @@ def calculer_montants_utilises(conn, subvention_ids):
         WHERE d.subvention_id IN ({placeholders})
           AND COALESCE(e.deleted, 0) = 0
           AND e.statut != 'refuse'
+          AND COALESCE(e.est_modele_abonnement, 0) = 0
         GROUP BY d.subvention_id
     """, subvention_ids).fetchall()
 
