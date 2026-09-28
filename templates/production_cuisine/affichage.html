@@ -246,7 +246,7 @@
   <script>
     const REFRESH_SECONDES = 20;
     const PAGE_SECONDES = 15;
-    const HAUTEUR_LIGNE_MIN = 52;   // px : en dessous, on passe en pages
+    const HAUTEUR_LIGNE_MIN = 44;   // px : en dessous, on passe en pages
     const HAUTEUR_LIGNE_MAX = 110;  // px : au-dessus, lignes trop grosses
     const ALERTE_APRES_MS = 90 * 1000;
     const RECHARGEMENT_PAGE_MS = 3 * 3600 * 1000; // recharge complète (nouvelle version de la page)
@@ -282,11 +282,12 @@
     // Découpe les productions en pages et calcule la hauteur des lignes
     function mise_en_page(nb) {
       const zone = document.getElementById("zone");
-      const dispo = zone.clientHeight - 60; // en-tête du tableau
+      const thead = zone.querySelector("thead");
+      const dispo = zone.clientHeight - (thead ? thead.offsetHeight : 60) - 8; // en-tête du tableau
       const parPage = Math.max(1, Math.floor(dispo / HAUTEUR_LIGNE_MIN));
       const nbPages = Math.max(1, Math.ceil(nb / parPage));
       const lignesParPage = Math.ceil(nb / nbPages); // pages équilibrées
-      const hauteur = Math.min(HAUTEUR_LIGNE_MAX, Math.floor(dispo / Math.max(1, lignesParPage)) - 6);
+      const hauteur = Math.min(HAUTEUR_LIGNE_MAX, Math.floor(dispo / Math.max(1, lignesParPage)) - 5);
       return { nbPages, lignesParPage, hauteur };
     }
 
@@ -324,6 +325,15 @@
       html += "</tbody></table>";
 
       zone.innerHTML = html;
+
+      // Ajustement fin : si le tableau déborde de quelques pixels (arrondis,
+      // espacements), on réduit la hauteur des lignes d'autant.
+      const table = zone.querySelector("table");
+      const deborde = table.offsetHeight - zone.clientHeight;
+      if (deborde > 0) {
+        const h = mp.hauteur - Math.ceil(deborde / tranche.length);
+        zone.querySelectorAll("tbody tr").forEach(function (tr) { tr.style.height = h + "px"; });
+      }
       pages.textContent = mp.nbPages > 1
         ? "Page " + (pageCourante + 1) + " / " + mp.nbPages + " · " + prods.length + " productions"
         : prods.length + " production" + (prods.length > 1 ? "s" : "");
