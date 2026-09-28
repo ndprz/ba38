@@ -8,6 +8,10 @@
 #       donc le stock sans autre écriture. Annulation impossible une fois
 #       le BL facturé (statut 'facture', facturation à venir).
 #     - PDF régénéré à la demande depuis les lignes enregistrées (figées).
+#     - Étape préparation : la simulation crée un bon au statut
+#       'preparation' (BP-AAAA-NNNN) qui réserve déjà le stock ; il reste
+#       modifiable (quantités, autres barquettes, température de livraison)
+#       jusqu'à la validation, qui lui donne son numéro BL-AAAA-NNNN.
 # ============================================================
 
 import io
@@ -23,9 +27,12 @@ from flask_login import current_user, login_required
 from ba38_utilitaires.core import require_access, upload_database, write_log
 from ba38_utilitaires.organisation import get_organisation
 from ba38_cuisine import production_cuisine_bp
-from ba38_cuisine.utils import _connect, now_paris_str
+from ba38_cuisine.utils import _connect, now_paris_str, parse_temperature, stock_lignes_disponibles
 
-STATUTS = {"valide": "✅ Validé", "annule": "❌ Annulé", "facture": "💶 Facturé"}
+STATUTS = {"preparation": "📋 En préparation", "valide": "✅ Validé", "annule": "❌ Annulé", "facture": "💶 Facturé"}
+# Température de livraison : au-delà, alerte (validation possible, signalée
+# sur le BL). Plats cuisinés réfrigérés : ≤ 3°C.
+TEMPERATURE_LIVRAISON_MAX = 3.0
 CATEGORIES = {"carne": "🥩 Carné", "legumes": "🥬 Légumes"}
 
 
@@ -69,13 +76,209 @@ def liste_bons_livraison():
 def detail_bon_livraison(bon_id):
     with _connect() as conn:
         bon, lignes = _charger_bon(conn, bon_id)
+        lots_ajout, max_par_ligne = [], {}
+        if bon and bon["statut"] == "preparation":
+            lots_ajout, max_par_ligne = _lots_pour_preparation(conn, bon, lignes)
     if not bon:
         flash("⛔ Bon de livraison introuvable.", "danger")
         return redirect(url_for("production_cuisine.liste_bons_livraison"))
     return render_template(
         "production_cuisine/bons_livraison_detail.html",
         bon=bon, lignes=lignes, statuts=STATUTS, categories=CATEGORIES,
+        lots_ajout=lots_ajout, max_par_ligne=max_par_ligne,
+        temperature_max=TEMPERATURE_LIVRAISON_MAX,
     )
+
+
+def _lots_pour_preparation(conn, bon, lignes):
+    """Pour un bon en préparation : lots de stock qu'on peut encore ajouter
+    (disponibles, DLC non dépassée à la date de livraison) et quantité
+    maximale de chaque ligne existante (sa quantité + le disponible du lot,
+    puisque le disponible calculé déduit déjà ce bon)."""
+    dispo = {(l["production_id"], l["article_id"]): dict(l) for l in stock_lignes_disponibles(conn)}
+    max_par_ligne = {
+        l["id"]: l["quantite"] + max(0, dispo.get((l["production_id"], l["article_id"]), {}).get("disponible", 0))
+        for l in lignes
+    }
+    lots = [
+        l for l in dispo.values()
+        if l["disponible"] > 0 and not (l["dlc"] and l["dlc"] < bon["date_livraison"])
+    ]
+    lots.sort(key=lambda l: (0 if l["categorie_produit"] == "carne" else 1,
+                             (l["libelle_recette"] or "").strip().lower(), -l["nb_portions"], l["dlc"] or ""))
+    return lots, max_par_ligne
+
+
+def _entier(valeur):
+    try:
+        return max(0, int(valeur or 0))
+    except (TypeError, ValueError):
+        return None
+
+
+@production_cuisine_bp.route("/bons-livraison/<int:bon_id>/preparation", methods=["POST"])
+@login_required
+@require_access("production_cuisine", "ecriture")
+def enregistrer_preparation(bon_id):
+    """Enregistre le bon de préparation (quantités, barquettes ajoutées,
+    température) et, si action=valider, le valide : il devient un bon de
+    livraison (numéro BL). Tout est contrôlé contre le stock réel sous
+    verrou d'écriture."""
+    retour = redirect(url_for("production_cuisine.detail_bon_livraison", bon_id=bon_id))
+    valider = request.form.get("action") == "valider"
+    utilisateur = getattr(current_user, "username", None) or getattr(current_user, "email", None)
+
+    temperature = None
+    saisie_temperature = parse_temperature(request.form.get("temperature_livraison"))
+    if saisie_temperature is not None:
+        try:
+            temperature = float(saisie_temperature)
+        except ValueError:
+            flash(f"⚠️ Température « {request.form.get('temperature_livraison')} » invalide.", "warning")
+            return retour
+
+    conn = _connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        bon, lignes = _charger_bon(conn, bon_id)
+        if not bon:
+            conn.rollback()
+            flash("⛔ Bon introuvable.", "danger")
+            return redirect(url_for("production_cuisine.liste_bons_livraison"))
+        if bon["statut"] != "preparation":
+            conn.rollback()
+            flash(f"⛔ Le bon {bon['numero']} n'est plus en préparation : il ne peut plus être modifié.", "danger")
+            return retour
+
+        dispo = {(l["production_id"], l["article_id"]): dict(l) for l in stock_lignes_disponibles(conn)}
+        actuel = {}
+        for l in lignes:
+            cle = (l["production_id"], l["article_id"])
+            actuel[cle] = actuel.get(cle, 0) + l["quantite"]
+
+        # Quantités voulues par lot (production × article).
+        voulu = dict(actuel)
+        for l in lignes:
+            q = _entier(request.form.get(f"qte_{l['id']}", l["quantite"]))
+            if q is None:
+                conn.rollback()
+                flash(f"⚠️ Quantité invalide pour {l['libelle_recette']} {l['taille']}.", "warning")
+                return retour
+            cle = (l["production_id"], l["article_id"])
+            voulu[cle] += q - l["quantite"]
+        for nom, valeur in request.form.items():
+            if not nom.startswith("ajout_") or not valeur.strip():
+                continue
+            try:
+                _, production_id, article_id = nom.split("_")
+                cle = (int(production_id), int(article_id))
+            except ValueError:
+                continue
+            q = _entier(valeur)
+            if q is None:
+                conn.rollback()
+                flash("⚠️ Quantité ajoutée invalide.", "warning")
+                return retour
+            if q:
+                lot = dispo.get(cle)
+                if not lot or (lot["dlc"] and lot["dlc"] < bon["date_livraison"]):
+                    conn.rollback()
+                    flash("⛔ Barquettes ajoutées introuvables en stock ou DLC dépassée à la date de livraison.", "danger")
+                    return retour
+                voulu[cle] = voulu.get(cle, 0) + q
+
+        # Contrôle stock : un lot ne peut pas dépasser ce qu'il contient
+        # moins ce que les AUTRES bons ont déjà pris.
+        for cle, q in voulu.items():
+            maximum = actuel.get(cle, 0) + max(0, dispo.get(cle, {}).get("disponible", 0))
+            if q > maximum:
+                lot = dispo.get(cle) or next(dict(l) for l in lignes if (l["production_id"], l["article_id"]) == cle)
+                flash(f"⛔ Stock insuffisant : {lot['libelle_recette'].strip()} {lot['taille']} — "
+                      f"{q} demandée(s), {maximum} possible(s). Rien n'a été enregistré.", "danger")
+                conn.rollback()
+                return retour
+
+        # Écriture : une ligne par lot (fusion si une barquette ajoutée
+        # correspond à un lot déjà présent).
+        ligne_par_cle = {}
+        for l in lignes:
+            cle = (l["production_id"], l["article_id"])
+            if cle in ligne_par_cle:
+                conn.execute("DELETE FROM cuisine_bons_livraison_lignes WHERE id = ?", (l["id"],))
+            else:
+                ligne_par_cle[cle] = l["id"]
+        for cle, q in voulu.items():
+            if cle in ligne_par_cle:
+                if q:
+                    conn.execute("UPDATE cuisine_bons_livraison_lignes SET quantite = ? WHERE id = ?", (q, ligne_par_cle[cle]))
+                else:
+                    conn.execute("DELETE FROM cuisine_bons_livraison_lignes WHERE id = ?", (ligne_par_cle[cle],))
+            elif q:
+                lot = dispo[cle]
+                conn.execute(
+                    """INSERT INTO cuisine_bons_livraison_lignes
+                       (bon_id, production_id, article_id, libelle_recette, categorie_produit,
+                        taille, nb_portions_barquette, quantite, date_fin_recette, dlc)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (bon_id, lot["production_id"], lot["article_id"], (lot["libelle_recette"] or "").strip(),
+                     lot["categorie_produit"], lot["taille"], lot["nb_portions"], q, lot["date_fin_recette"], lot["dlc"]),
+                )
+
+        totaux = conn.execute(
+            """SELECT COALESCE(SUM(CASE WHEN categorie_produit = 'carne' THEN quantite * nb_portions_barquette END), 0),
+                      COALESCE(SUM(CASE WHEN categorie_produit = 'legumes' THEN quantite * nb_portions_barquette END), 0),
+                      COALESCE(SUM(quantite), 0)
+               FROM cuisine_bons_livraison_lignes WHERE bon_id = ?""",
+            (bon_id,),
+        ).fetchone()
+        portions_carne, portions_legumes, nb_barquettes = totaux
+        conn.execute(
+            """UPDATE cuisine_bons_livraison
+               SET portions_carne = ?, portions_legumes = ?, montant = ?, temperature_livraison = ?
+               WHERE id = ?""",
+            (portions_carne, portions_legumes, portions_carne * (bon["prix_portion_carne"] or 0), temperature, bon_id),
+        )
+
+        numero_bl = None
+        if valider:
+            if temperature is None:
+                conn.commit()
+                flash("💾 Préparation enregistrée — ⚠️ saisissez la température de livraison pour valider.", "warning")
+                upload_database()
+                return retour
+            if not nb_barquettes:
+                conn.commit()
+                flash("💾 Préparation enregistrée — ⚠️ aucune barquette : rien à livrer.", "warning")
+                upload_database()
+                return retour
+            from ba38_cuisine.routes_consignes_clients import prochain_numero_bon
+            numero_bl = prochain_numero_bon(conn, bon["date_livraison"][:4], "BL")
+            conn.execute(
+                """UPDATE cuisine_bons_livraison
+                   SET statut = 'valide', numero = ?, numero_preparation = ?,
+                       date_validation = ?, user_validation = ?
+                   WHERE id = ? AND statut = 'preparation'""",
+                (numero_bl, bon["numero"], now_paris_str(), utilisateur, bon_id),
+            )
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        write_log(f"❌ Erreur enregistrement bon de préparation {bon_id} : {e}")
+        flash("❌ Erreur lors de l'enregistrement — rien n'a été modifié.", "danger")
+        return retour
+    finally:
+        conn.close()
+
+    upload_database()
+    alerte = ""
+    if temperature is not None and temperature > TEMPERATURE_LIVRAISON_MAX:
+        alerte = f" ⚠️ Température {temperature:g}°C supérieure à {TEMPERATURE_LIVRAISON_MAX:g}°C."
+    if numero_bl:
+        flash(f"✅ Préparation validée : bon de livraison {numero_bl} généré.{alerte}",
+              "warning" if alerte else "success")
+    else:
+        flash(f"💾 Bon de préparation {bon['numero']} enregistré.{alerte}", "warning" if alerte else "success")
+    return retour
 
 
 @production_cuisine_bp.route("/bons-livraison/<int:bon_id>/annuler", methods=["POST"])
@@ -89,7 +292,7 @@ def annuler_bon_livraison(bon_id):
         if not bon:
             flash("⛔ Bon de livraison introuvable.", "danger")
             return redirect(url_for("production_cuisine.liste_bons_livraison"))
-        if bon["statut"] != "valide":
+        if bon["statut"] not in ("valide", "preparation"):
             flash(f"⛔ Le bon {bon['numero']} est {STATUTS.get(bon['statut'], bon['statut']).lower()} : annulation impossible.", "danger")
             return redirect(url_for("production_cuisine.detail_bon_livraison", bon_id=bon_id))
         # Condition sur le statut dans l'UPDATE : pas d'annulation d'un BL
@@ -97,7 +300,7 @@ def annuler_bon_livraison(bon_id):
         cur = conn.execute(
             """UPDATE cuisine_bons_livraison
                SET statut = 'annule', date_annulation = ?, user_annulation = ?, motif_annulation = ?
-               WHERE id = ? AND statut = 'valide'""",
+               WHERE id = ? AND statut IN ('valide', 'preparation')""",
             (now_paris_str(), utilisateur, motif, bon_id),
         )
         conn.commit()
@@ -127,12 +330,14 @@ def generer_pdf_bon_livraison(bon, lignes, association):
     from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     org = get_organisation()
+    preparation = bon["statut"] == "preparation"
+    type_doc = "BON DE PRÉPARATION" if preparation else "BON DE LIVRAISON"
     styles = getSampleStyleSheet()
     petit = styles["Normal"].clone("petit", fontSize=9, leading=11)
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4, leftMargin=15 * mm, rightMargin=15 * mm, topMargin=12 * mm, bottomMargin=15 * mm,
-        title=f"Bon de livraison {bon['numero']}",
+        title=f"{type_doc.capitalize()} {bon['numero']}",
     )
     elements = []
 
@@ -141,7 +346,10 @@ def generer_pdf_bon_livraison(bon, lignes, association):
     logo_path = Path(current_app.root_path) / (org.get("logo_path") or "")
     if org.get("logo_path") and logo_path.exists():
         logo = Image(str(logo_path), width=22 * mm, height=22 * mm, kind="proportional")
-    titre = Paragraph(f"<font size=18><b>BON DE LIVRAISON</b></font><br/><font size=11>{bon['numero']}</font>", styles["Normal"])
+    sous_titre = bon["numero"]
+    if bon["numero_preparation"]:
+        sous_titre += f" (préparation {bon['numero_preparation']})"
+    titre = Paragraph(f"<font size=18><b>{type_doc}</b></font><br/><font size=11>{sous_titre}</font>", styles["Normal"])
     entete = Table([[logo or "", titre]], colWidths=[28 * mm, None])
     entete.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
     elements += [entete, Spacer(1, 6 * mm)]
@@ -166,10 +374,18 @@ def generer_pdf_bon_livraison(bon, lignes, association):
     ]))
     elements += [infos, Spacer(1, 5 * mm)]
 
+    temperature = bon["temperature_livraison"]
+    if temperature is None:
+        texte_temperature = "________ °C" if preparation else "—"
+    else:
+        texte_temperature = f"{temperature:g} °C"
+        if temperature > TEMPERATURE_LIVRAISON_MAX:
+            texte_temperature += f" (> {TEMPERATURE_LIVRAISON_MAX:g} °C)"
     cartouche = Table(
-        [["Date de livraison", "Date d'édition", "Statut"],
-         [_date_fr(bon["date_livraison"]), _date_fr(bon["date_creation"]), STATUTS.get(bon["statut"], bon["statut"]).split(" ", 1)[-1]]],
-        colWidths=[40 * mm, 40 * mm, 40 * mm],
+        [["Date de livraison", "Date d'édition", "Température livraison", "Statut"],
+         [_date_fr(bon["date_livraison"]), _date_fr(bon["date_validation"] or bon["date_creation"]),
+          texte_temperature, STATUTS.get(bon["statut"], bon["statut"]).split(" ", 1)[-1]]],
+        colWidths=[38 * mm, 38 * mm, 42 * mm, 38 * mm],
     )
     cartouche.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
@@ -177,11 +393,12 @@ def generer_pdf_bon_livraison(bon, lignes, association):
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-    ]))
+    ] + ([("TEXTCOLOR", (2, 1), (2, 1), colors.red), ("FONTNAME", (2, 1), (2, 1), "Helvetica-Bold")]
+         if temperature is not None and temperature > TEMPERATURE_LIVRAISON_MAX else [])))
     elements += [cartouche, Spacer(1, 6 * mm)]
 
     # Lignes
-    donnees = [["Catégorie", "Recette", "Production", "DLC", "Barquette", "Qté", "Portions"]]
+    donnees = [["Catégorie", "Recette", "Production", "DLC", "Barquette", "Qté", "Portions"] + (["Préparé"] if preparation else [])]
     for l in lignes:
         donnees.append([
             CATEGORIES.get(l["categorie_produit"], "").split(" ", 1)[-1],
@@ -191,10 +408,12 @@ def generer_pdf_bon_livraison(bon, lignes, association):
             f"{l['taille']} ({l['nb_portions_barquette']}p)",
             str(l["quantite"]),
             str(l["quantite"] * l["nb_portions_barquette"]),
-        ])
+        ] + ([""] if preparation else []))
     nb_barquettes = sum(l["quantite"] for l in lignes)
-    donnees.append(["", "Total", "", "", "", str(nb_barquettes), str((bon["portions_carne"] or 0) + (bon["portions_legumes"] or 0))])
-    table = Table(donnees, colWidths=[20 * mm, None, 23 * mm, 23 * mm, 24 * mm, 13 * mm, 18 * mm], repeatRows=1)
+    donnees.append(["", "Total", "", "", "", str(nb_barquettes), str((bon["portions_carne"] or 0) + (bon["portions_legumes"] or 0))]
+                   + ([""] if preparation else []))
+    largeurs = [20 * mm, None, 23 * mm, 23 * mm, 24 * mm, 13 * mm, 18 * mm] + ([16 * mm] if preparation else [])
+    table = Table(donnees, colWidths=largeurs, repeatRows=1)
     table.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eeeeee")),
@@ -212,7 +431,7 @@ def generer_pdf_bon_livraison(bon, lignes, association):
         ["Portions carnées", str(bon["portions_carne"] or 0)],
         ["Portions légumes (incluses)", str(bon["portions_legumes"] or 0)],
     ]
-    if bon["prix_portion_carne"] is not None:
+    if bon["prix_portion_carne"] is not None and not preparation:
         recap += [
             ["Prix par portion carnée", f"{bon['prix_portion_carne']:.2f} €"],
             ["Montant", f"{(bon['montant'] or 0):.2f} €"],
@@ -227,7 +446,8 @@ def generer_pdf_bon_livraison(bon, lignes, association):
     elements += [t_recap, Spacer(1, 12 * mm)]
 
     signatures = Table(
-        [["Remis par (BAI)", "Reçu par (client) — nom, date, signature"], ["\n\n\n", ""]],
+        [["Préparé par — nom, date", "Contrôlé par — nom, date"] if preparation
+         else ["Remis par (BAI)", "Reçu par (client) — nom, date, signature"], ["\n\n\n", ""]],
         colWidths=[85 * mm, None],
     )
     signatures.setStyle(TableStyle([

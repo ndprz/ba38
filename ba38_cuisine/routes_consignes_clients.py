@@ -541,10 +541,18 @@ def simulation_repartition():
 # ------------------------------------------------------------
 # 🧾 Génération d'un bon de livraison depuis la simulation
 # ------------------------------------------------------------
-def _prochain_numero_bl(conn, annee):
-    prefixe = f"BL-{annee}-"
+def prochain_numero_bon(conn, annee, type_bon="BL"):
+    """Numéro suivant BL-AAAA-NNNN (bon de livraison) ou BP-AAAA-NNNN (bon
+    de préparation) : deux séquences indépendantes dans la même table. Un
+    bon de préparation validé prend un numéro BL et garde son BP dans
+    numero_preparation : les deux colonnes comptent pour ne pas réattribuer
+    un BP."""
+    prefixe = f"{type_bon}-{annee}-"
     dernier = conn.execute(
-        "SELECT MAX(CAST(SUBSTR(numero, ?) AS INTEGER)) FROM cuisine_bons_livraison WHERE numero LIKE ?",
+        """SELECT MAX(CAST(SUBSTR(n, ?) AS INTEGER)) FROM (
+               SELECT numero AS n FROM cuisine_bons_livraison
+               UNION ALL SELECT numero_preparation FROM cuisine_bons_livraison
+           ) WHERE n LIKE ?""",
         (len(prefixe) + 1, prefixe + "%"),
     ).fetchone()[0]
     return f"{prefixe}{(dernier or 0) + 1:04d}"
@@ -554,6 +562,10 @@ def _prochain_numero_bl(conn, annee):
 @login_required
 @require_access("production_cuisine", "ecriture")
 def generer_bon_livraison():
+    """Crée le BON DE PRÉPARATION du client (statut 'preparation', stock
+    réservé) avec la répartition affichée ; il reste modifiable
+    (routes_bons_livraison.enregistrer_preparation) et devient un BL à la
+    validation de la préparation."""
     # Paramètres de la simulation à réafficher ensuite (sans le jeton CSRF).
     params = [(k, v) for k, v in request.form.items(multi=True) if k not in ("csrf_token", "generer_pour")]
     retour = url_for("production_cuisine.simulation_repartition") + "?" + urlencode(params)
@@ -577,7 +589,7 @@ def generer_bon_livraison():
             return redirect(retour)
         if ligne["bon"]:
             conn.rollback()
-            flash(f"⚠️ Un bon de livraison existe déjà pour ce client à cette date ({ligne['bon']['numero']}).", "warning")
+            flash(f"⚠️ Un bon existe déjà pour ce client à cette date ({ligne['bon']['numero']}).", "warning")
             return redirect(retour)
         if not ligne["inclus"] or not any(ligne["livre"].get(cat) for cat, _ in CATEGORIES):
             conn.rollback()
@@ -612,14 +624,14 @@ def generer_bon_livraison():
                         raise RuntimeError(f"stock insuffisant pour {nom} {taille} (manque {reste})")
 
         client = ligne["client"]
-        numero = _prochain_numero_bl(conn, ctx["date_str"][:4])
+        numero = prochain_numero_bon(conn, ctx["date_str"][:4], "BP")
         prix = client["prix_portion_carne"]
         utilisateur = getattr(current_user, "username", None) or getattr(current_user, "email", None)
         cur = conn.execute(
             """INSERT INTO cuisine_bons_livraison
                (numero, association_id, nom_association, date_livraison, statut,
                 portions_carne, portions_legumes, prix_portion_carne, montant, user_creation, date_creation)
-               VALUES (?, ?, ?, ?, 'valide', ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, 'preparation', ?, ?, ?, ?, ?, ?)""",
             (numero, association_id, client["nom_association"], ctx["date_str"],
              ligne["portions"].get("carne", 0), ligne["portions"].get("legumes", 0),
              prix, ligne["portions"].get("carne", 0) * (prix or 0), utilisateur, now_paris_str()),
@@ -638,11 +650,12 @@ def generer_bon_livraison():
     except Exception as e:
         conn.rollback()
         write_log(f"❌ Erreur génération bon de livraison cuisine (association {association_id}) : {e}")
-        flash("❌ Erreur lors de la génération du bon de livraison — rien n'a été enregistré.", "danger")
+        flash("❌ Erreur lors de la création du bon de préparation — rien n'a été enregistré.", "danger")
         return redirect(retour)
     finally:
         conn.close()
 
     upload_database()
-    flash(f"✅ Bon de livraison {numero} créé pour {client['nom_association']} — stock mis à jour.", "success")
-    return redirect(retour)
+    flash(f"📋 Bon de préparation {numero} créé pour {client['nom_association']} — barquettes réservées. "
+          "Ajustez si besoin, saisissez la température puis validez la préparation pour générer le BL.", "success")
+    return redirect(url_for("production_cuisine.detail_bon_livraison", bon_id=bon_id))

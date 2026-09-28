@@ -13,10 +13,14 @@
 {% macro cellule_bl(l) -%}
   <td class="text-nowrap">
     {%- if l.bon -%}
+      {%- if l.bon.statut == 'preparation' -%}
+      <a href="{{ url_for('production_cuisine.detail_bon_livraison', bon_id=l.bon.id) }}" class="btn btn-sm btn-outline-info">📋 {{ l.bon.numero }} (en préparation)</a>
+      {%- else -%}
       <a href="{{ url_for('production_cuisine.detail_bon_livraison', bon_id=l.bon.id) }}" class="btn btn-sm btn-outline-success">🧾 {{ l.bon.numero }}</a>
+      {%- endif -%}
     {%- elif l.inclus and (l.portions.get('carne') or l.portions.get('legumes')) -%}
       <button type="button" class="btn btn-sm btn-success btn-generer-bl" data-aid="{{ l.client.association_id }}"
-              data-nom="{{ l.client.nom_association }}">🧾 Générer le BL</button>
+              data-nom="{{ l.client.nom_association }}">📋 Créer le bon de préparation</button>
     {%- endif -%}
   </td>
 {%- endmacro %}
@@ -63,7 +67,9 @@
 
   <div class="form-text mb-3">
     Simulation sur le <strong>stock barquettes disponible</strong> : rien n'est retiré du stock tant qu'on ne clique pas
-    sur « 🧾 Générer le BL » d'un client (un bon par client, avec exactement la répartition affichée).
+    sur « 📋 Créer le bon de préparation » d'un client (un bon par client, avec exactement la répartition affichée) :
+    les barquettes sont alors réservées, le bon reste modifiable (quantités, autres barquettes, température de livraison)
+    et le bon de livraison est généré quand on valide la préparation.
     Cochez les <strong>recettes à livrer</strong> ce jour-là (toutes par défaut). Les clients prévus ce jour-là
     (d'après leur périodicité) sont pré-cochés ; vous pouvez en ajouter / retirer et modifier les portions,
     puis cliquer sur « Recalculer ».
@@ -198,7 +204,7 @@
                 {% if c.prix_portion_carne is not none %}{{ "%.2f"|format(l.montant) }} €{% else %}<span class="text-muted">prix ?</span>{% endif %}
               </td>
             {% else %}
-              <td colspan="3" class="fst-italic">{{ "Bon émis : déjà sorti du stock" if l.bon else "Non livré ce jour" }}</td>
+              <td colspan="3" class="fst-italic">{{ ("Bon en préparation : barquettes réservées" if l.bon.statut == 'preparation' else "Bon émis : déjà sorti du stock") if l.bon else "Non livré ce jour" }}</td>
             {% endif %}
             {{ cellule_bl(l) }}
           </tr>
@@ -228,7 +234,7 @@
                 {% if c.prix_portion_carne is not none %}{{ "%.2f"|format(l.montant) }} €{% else %}<span class="text-muted">—</span>{% endif %}
               </td>
             {% else %}
-              <td colspan="3" class="fst-italic">{{ "Bon émis : déjà sorti du stock" if l.bon else "Non livré ce jour — le reste demeure en stock" }}</td>
+              <td colspan="3" class="fst-italic">{{ ("Bon en préparation : barquettes réservées" if l.bon.statut == 'preparation' else "Bon émis : déjà sorti du stock") if l.bon else "Non livré ce jour — le reste demeure en stock" }}</td>
             {% endif %}
             {{ cellule_bl(l) }}
           </tr>
@@ -245,7 +251,7 @@
 
 </div>
 <script>
-  // Générer un BL = renvoyer en POST les paramètres de la simulation
+  // Créer le bon de préparation = renvoyer en POST les paramètres de la simulation
   // affichée : le serveur refait exactement le même calcul. Si le
   // formulaire a été modifié sans recalculer, l'affichage ne correspond
   // plus : on impose "Recalculer" d'abord.
@@ -261,7 +267,7 @@
           alert("Vous avez modifié la simulation : cliquez d'abord sur « Recalculer » pour vérifier la répartition.");
           return;
         }
-        if (!confirm("Générer le bon de livraison de « " + btn.dataset.nom + " » et sortir ces barquettes du stock ?")) return;
+        if (!confirm("Créer le bon de préparation de « " + btn.dataset.nom + " » et réserver ces barquettes ?")) return;
         var post = document.createElement("form");
         post.method = "POST";
         post.action = "{{ url_for('production_cuisine.generer_bon_livraison') }}";

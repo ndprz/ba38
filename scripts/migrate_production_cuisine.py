@@ -298,7 +298,7 @@ CREATE TABLE IF NOT EXISTS cuisine_bons_livraison (
   association_id INTEGER NOT NULL REFERENCES associations(id),
   nom_association TEXT NOT NULL,
   date_livraison TEXT NOT NULL,
-  statut TEXT NOT NULL DEFAULT 'valide' CHECK (statut IN ('valide','annule','facture')),
+  statut TEXT NOT NULL DEFAULT 'valide' CHECK (statut IN ('preparation','valide','annule','facture')),
   portions_carne INTEGER DEFAULT 0,
   portions_legumes INTEGER DEFAULT 0,
   prix_portion_carne REAL,
@@ -309,7 +309,11 @@ CREATE TABLE IF NOT EXISTS cuisine_bons_livraison (
   date_annulation TEXT,
   user_annulation TEXT,
   motif_annulation TEXT,
-  date_facturation TEXT
+  date_facturation TEXT,
+  temperature_livraison REAL,
+  numero_preparation TEXT,
+  date_validation TEXT,
+  user_validation TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_cuisine_bl_date ON cuisine_bons_livraison(date_livraison);
 CREATE INDEX IF NOT EXISTS idx_cuisine_bl_association ON cuisine_bons_livraison(association_id);

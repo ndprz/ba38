@@ -1,18 +1,21 @@
 {% extends "base.html" %}
 
-{% block title %}Bon de livraison {{ bon.numero }}{% endblock %}
+{% block title %}{{ "Bon de préparation" if bon.statut == 'preparation' else "Bon de livraison" }} {{ bon.numero }}{% endblock %}
 
 {% block content %}
+{% set preparation = bon.statut == 'preparation' %}
 <div class="container mt-4" style="max-width: 980px;">
 
   <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h2 class="mb-0">🧾 {{ bon.numero }}
-      <span class="badge {{ 'bg-success' if bon.statut == 'valide' else ('bg-secondary' if bon.statut == 'annule' else 'bg-info text-dark') }} fs-6 align-middle">
+    <h2 class="mb-0">{{ "📋" if preparation else "🧾" }} {{ bon.numero }}
+      <span class="badge text-white {{ 'bg-success' if bon.statut == 'valide' else ('bg-secondary' if bon.statut == 'annule' else 'bg-info') }} fs-6 align-middle">
         {{ statuts.get(bon.statut, bon.statut) }}
       </span>
     </h2>
-    <div class="d-flex gap-2">
-      <a href="{{ url_for('production_cuisine.pdf_bon_livraison', bon_id=bon.id) }}" target="_blank" class="btn btn-primary">📄 PDF</a>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('production_cuisine.pdf_bon_livraison', bon_id=bon.id) }}" target="_blank" class="btn btn-primary">
+        📄 {{ "PDF préparation" if preparation else "PDF" }}
+      </a>
       <a href="{{ url_for('production_cuisine.simulation_repartition', date=bon.date_livraison) }}" class="btn btn-outline-secondary">🧮 Simulation du {{ bon.date_livraison }}</a>
       <a href="{{ url_for('production_cuisine.liste_bons_livraison') }}" class="btn btn-outline-secondary">← Bons de livraison</a>
     </div>
@@ -25,6 +28,9 @@
         <div class="fs-5 fw-bold">{{ bon.nom_association }}</div>
         <div>Livraison du <strong>{{ bon.date_livraison }}</strong></div>
         <div class="small text-muted">Créé le {{ bon.date_creation }}{% if bon.user_creation %} par {{ bon.user_creation }}{% endif %}</div>
+        {% if bon.numero_preparation %}
+          <div class="small text-muted">Préparation {{ bon.numero_preparation }} validée le {{ bon.date_validation }}{% if bon.user_validation %} par {{ bon.user_validation }}{% endif %}</div>
+        {% endif %}
         {% if bon.statut == 'annule' %}
           <div class="small text-danger mt-1">Annulé le {{ bon.date_annulation }}{% if bon.user_annulation %} par {{ bon.user_annulation }}{% endif %}{% if bon.motif_annulation %} — {{ bon.motif_annulation }}{% endif %}</div>
         {% endif %}
@@ -38,10 +44,135 @@
           <div>Prix / portion carnée : {{ "%.2f"|format(bon.prix_portion_carne) }} €</div>
           <div class="fs-5">Montant : <strong>{{ "%.2f"|format(bon.montant or 0) }} €</strong></div>
         {% endif %}
+        {% if not preparation %}
+          <div class="mt-1">🌡️ Température de livraison :
+            {% if bon.temperature_livraison is not none %}
+              <strong class="{{ 'text-danger' if bon.temperature_livraison > temperature_max else '' }}">{{ "%g"|format(bon.temperature_livraison) }} °C</strong>
+              {% if bon.temperature_livraison > temperature_max %}<span class="badge bg-danger text-white">⚠️ &gt; {{ "%g"|format(temperature_max) }} °C</span>{% endif %}
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </div>
+        {% endif %}
       </div></div>
     </div>
   </div>
 
+{% if preparation %}
+  <!-- ============================================================ -->
+  <!-- 📋 Bon de préparation : modifiable jusqu'à la validation      -->
+  <!-- ============================================================ -->
+  <div class="alert alert-info py-2">
+    📋 Bon de préparation : les barquettes sont <strong>réservées</strong> dans le stock. Ajustez les quantités
+    (0 = retirer la ligne), ajoutez d'autres barquettes si besoin, saisissez la température puis
+    <strong>validez la préparation</strong> pour générer le bon de livraison.
+  </div>
+
+  <form method="POST" action="{{ url_for('production_cuisine.enregistrer_preparation', bon_id=bon.id) }}" id="form-preparation">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <table class="table table-sm table-bordered align-middle">
+      <thead class="table-light">
+        <tr><th>Catégorie</th><th>Recette</th><th>Production (fin)</th><th>DLC</th><th>Barquette</th><th class="text-end" style="width: 120px;">Qté</th><th class="text-end">Portions</th></tr>
+      </thead>
+      <tbody>
+        {% for l in lignes %}
+        <tr>
+          <td>{{ categories.get(l.categorie_produit, '') }}</td>
+          <td><a href="{{ url_for('production_cuisine.detail_production', production_id=l.production_id) }}">{{ l.libelle_recette }}</a></td>
+          <td class="small">{{ l.date_fin_recette or '' }}</td>
+          <td class="fw-bold">{{ l.dlc | format_date_fr }}</td>
+          <td>{{ l.taille }} ({{ l.nb_portions_barquette }}p)</td>
+          <td>
+            <input type="number" inputmode="numeric" min="0" max="{{ max_par_ligne.get(l.id, l.quantite) }}" name="qte_{{ l.id }}"
+                   value="{{ l.quantite }}" class="form-control form-control-sm text-end">
+            <div class="form-text text-end mt-0">max {{ max_par_ligne.get(l.id, l.quantite) }}</div>
+          </td>
+          <td class="text-end">{{ l.quantite * l.nb_portions_barquette }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-muted fst-italic">Aucune barquette — ajoutez-en ci-dessous.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <details class="mb-3" {% if not lignes %}open{% endif %}>
+      <summary class="fw-bold">➕ Ajouter d'autres barquettes du stock ({{ lots_ajout | length }} lot{{ "s" if lots_ajout | length > 1 }} disponible{{ "s" if lots_ajout | length > 1 }})</summary>
+      {% if lots_ajout %}
+      <input type="text" class="form-control form-control-sm my-2" id="filtre-lots" placeholder="🔍 Filtrer par recette...">
+      <table class="table table-sm table-bordered align-middle" id="table-lots">
+        <thead class="table-light">
+          <tr><th>Catégorie</th><th>Recette</th><th>Production (fin)</th><th>DLC</th><th>Barquette</th><th class="text-end">Disponible</th><th style="width: 120px;">À ajouter</th></tr>
+        </thead>
+        <tbody>
+          {% for lot in lots_ajout %}
+          <tr data-nom="{{ (lot.libelle_recette or '') | lower }}">
+            <td>{{ categories.get(lot.categorie_produit, '') }}</td>
+            <td>{{ lot.libelle_recette }}</td>
+            <td class="small">{{ lot.date_fin_recette or '' }}</td>
+            <td class="fw-bold">{{ lot.dlc | format_date_fr }}</td>
+            <td>{{ lot.taille }} ({{ lot.nb_portions }}p)</td>
+            <td class="text-end">{{ lot.disponible }}</td>
+            <td><input type="number" inputmode="numeric" min="0" max="{{ lot.disponible }}"
+                       name="ajout_{{ lot.production_id }}_{{ lot.article_id }}" class="form-control form-control-sm text-end"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <p class="text-muted small mt-2">Aucune autre barquette disponible en stock (DLC valide au {{ bon.date_livraison | format_date_fr }}).</p>
+      {% endif %}
+    </details>
+
+    <div class="card border-primary mb-3">
+      <div class="card-body">
+        <label class="form-label fw-bold" for="temperature_livraison">🌡️ Température de livraison (°C) *</label>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+          <input type="text" inputmode="decimal" id="temperature_livraison" name="temperature_livraison"
+                 value="{{ '%g'|format(bon.temperature_livraison) if bon.temperature_livraison is not none else '' }}"
+                 class="form-control" style="max-width: 160px;" placeholder="ex : 2,5">
+          <span class="text-muted small">Obligatoire pour valider — alerte au-delà de {{ "%g"|format(temperature_max) }} °C.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 flex-wrap mb-4">
+      <button type="submit" name="action" value="enregistrer" class="btn btn-outline-primary btn-lg">💾 Enregistrer</button>
+      <button type="submit" name="action" value="valider" class="btn btn-success btn-lg" id="btn-valider">✅ Valider la préparation → générer le BL</button>
+    </div>
+  </form>
+  <script>
+    (function () {
+      var filtre = document.getElementById("filtre-lots");
+      if (filtre) {
+        filtre.addEventListener("input", function () {
+          var terme = filtre.value.trim().toLowerCase();
+          document.querySelectorAll("#table-lots tbody tr").forEach(function (tr) {
+            tr.style.display = (!terme || tr.dataset.nom.indexOf(terme) !== -1) ? "" : "none";
+          });
+        });
+        // Entrée dans le filtre : ne pas soumettre le formulaire.
+        filtre.addEventListener("keydown", function (e) { if (e.key === "Enter") e.preventDefault(); });
+      }
+      var max = {{ temperature_max }};
+      document.getElementById("btn-valider").addEventListener("click", function (e) {
+        var champ = document.getElementById("temperature_livraison");
+        var valeur = parseFloat((champ.value || "").replace(",", "."));
+        if (isNaN(valeur)) {
+          e.preventDefault();
+          alert("Saisissez la température de livraison avant de valider la préparation.");
+          champ.focus();
+          return;
+        }
+        var message = "Valider la préparation et générer le bon de livraison ?";
+        if (valeur > max) {
+          message = "⚠️ Température " + valeur + " °C supérieure à " + max + " °C.\n\n" +
+                    "Valider quand même ? (ce sera signalé sur le bon de livraison)";
+        }
+        if (!confirm(message)) e.preventDefault();
+      });
+    })();
+  </script>
+
+{% else %}
   <table class="table table-sm table-bordered align-middle">
     <thead class="table-light">
       <tr><th>Catégorie</th><th>Recette</th><th>Production (fin)</th><th>DLC</th><th>Barquette</th><th class="text-end">Qté</th><th class="text-end">Portions</th></tr>
@@ -60,12 +191,13 @@
       {% endfor %}
     </tbody>
   </table>
+{% endif %}
 
-  {% if bon.statut == 'valide' %}
+  {% if bon.statut in ('valide', 'preparation') %}
   <div class="card border-danger mt-4">
     <div class="card-body">
-      <h6 class="card-title text-danger">↩️ Annuler ce bon de livraison</h6>
-      <p class="small mb-2">Les barquettes du bon reviennent en stock. Le numéro n'est pas réutilisé. Impossible une fois le bon facturé.</p>
+      <h6 class="card-title text-danger">↩️ Annuler ce {{ "bon de préparation" if preparation else "bon de livraison" }}</h6>
+      <p class="small mb-2">Les barquettes du bon reviennent en stock. Le numéro n'est pas réutilisé.{% if not preparation %} Impossible une fois le bon facturé.{% endif %}</p>
       <form method="POST" action="{{ url_for('production_cuisine.annuler_bon_livraison', bon_id=bon.id) }}"
             class="d-flex gap-2 flex-wrap" onsubmit="return confirm('Annuler le bon {{ bon.numero }} et remettre les barquettes en stock ?');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
