@@ -1668,7 +1668,7 @@ document.getElementById("modalValidationPresidence")
 
                         <input type="text"
                                inputmode="decimal"
-                               pattern="[0-9]+([.,][0-9]{1,2})?"
+                               pattern="-?[0-9]+([.,][0-9]{1,2})?"
                                name="montant_total"
                                id="montant_total_input"
                                class="form-control"
@@ -1682,7 +1682,8 @@ document.getElementById("modalValidationPresidence")
                     <small class="text-muted d-block mb-3">
                         Montant prévu : {{ '%.2f'|format(engagement.montant_total) }} € —
                         corrigez si le montant réellement débité en
-                        banque est différent.
+                        banque est différent (montant négatif
+                        accepté pour un avoir / remboursement, ex : -74,40).
                     </small>
 
                     {% if engagement.abonnement_parent_id %}

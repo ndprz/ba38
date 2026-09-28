@@ -395,7 +395,10 @@ def marquer_comptabilise(engagement_id):
     except (InvalidOperation, ValueError):
         nouveau_montant = None
 
-    if nouveau_montant is None or nouveau_montant <= 0:
+    # Montant négatif autorisé ici (et seulement ici) : facture
+    # d'avoir / remboursement promotionnel constaté au rapprochement
+    # bancaire. Le zéro reste refusé.
+    if nouveau_montant is None or nouveau_montant == 0:
 
         flash(
             "⚠️ Le montant saisi est invalide.",
@@ -575,6 +578,18 @@ def marquer_comptabilise(engagement_id):
         # L'ABONNEMENT (si l'engagement est une occurrence
         # générée depuis un modèle d'abonnement récurrent)
         # =====================================================
+
+        # Un avoir est ponctuel : jamais répercuté sur le modèle
+        # d'abonnement (les prochains mois seraient générés en négatif).
+        if appliquer_futurs and nouveau_montant < 0:
+
+            appliquer_futurs = False
+
+            flash(
+                "ℹ️ Montant négatif (avoir) : non répercuté sur les "
+                "prochains prélèvements de l'abonnement.",
+                "info"
+            )
 
         if (
             montant_modifie

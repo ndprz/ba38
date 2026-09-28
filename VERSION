@@ -1,3 +1,3 @@
-VERSION=1.7.31
-MESSAGE=Écran cuisine : affiche aussi les productions terminées du jour (en bas, grisées) + fix apostrophe JS qui cassait l'écran (arrivé en PROD via v1.7.30)
-DATE=2026-09-28 13:47
+VERSION=1.7.32
+MESSAGE=Engagements : montant négatif (avoir/remboursement) accepté à la comptabilisation, jamais répercuté sur le modèle d'abonnement
+DATE=2026-09-28 14:10
