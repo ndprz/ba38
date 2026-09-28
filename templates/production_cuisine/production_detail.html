@@ -20,14 +20,14 @@
         {% if production.categorie_produit == 'carne' %} · 🥩 Carné
         {% elif production.categorie_produit == 'legumes' %} · 🥬 Légumes{% endif %}
         · <span class="badge
-            {% if production.statut == 'terminee' %}bg-success
-            {% elif production.statut == 'annulee' %}bg-secondary
-            {% else %}bg-warning text-dark{% endif %}">{{ production.statut }}</span>
+            {% if production.statut == 'terminee' %}bg-success text-white
+            {% elif production.statut == 'annulee' %}bg-secondary text-white
+            {% else %}bg-warning text-dark{% endif %}" style="font-size: .9rem;">{{ production.statut }}</span>
         {% if conformite_globale %}
           {% if conformite_globale == 'conforme' %}
-            <span class="badge bg-success">✅ Conforme</span>
+            <span class="badge bg-success text-white" style="font-size: .9rem;">✅ Conforme</span>
           {% else %}
-            <span class="badge bg-danger">⚠️ NON CONFORME</span>
+            <span class="badge bg-danger text-white" style="font-size: .9rem;">⚠️ NON CONFORME</span>
           {% endif %}
         {% endif %}
       </div>
@@ -41,6 +41,15 @@
       </form>
     </div>
   </div>
+
+  {% if motifs_nc %}
+  <div class="alert alert-danger py-2">
+    <strong>⚠️ Non-conformité — motif{{ "s" if motifs_nc|length > 1 }} :</strong>
+    <ul class="mb-0">
+      {% for m in motifs_nc %}<li>{{ m }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
 
   <!-- ============================================================ -->
   <!-- 🔄 Changer de recette -->
@@ -71,6 +80,209 @@
   </div>
   {% endif %}
 
+  {# 🔎 Traçabilité — lots : rendue dans la liste des étapes, juste avant
+     la cuisson (demande cuisinier), ou après les étapes à défaut. #}
+  {% set bloc_tracabilite %}
+  <!-- ============================================================ -->
+  <!-- 🔎 Traçabilité : lots (réceptions liées + lots manuels) -->
+  <!-- ============================================================ -->
+  <div class="card mb-3 border-primary">
+    <div class="card-header">🔎 Traçabilité — lots</div>
+    <div class="card-body">
+
+      {% if receptions %}
+        <h6 class="text-muted">📥 Lots issus des réceptions</h6>
+        <div class="mb-3">
+          {% for r in receptions %}
+          <div class="border rounded p-2 mb-2">
+            <div class="d-flex justify-content-between">
+              <span>
+                <strong>{{ r.libelle_produit or "—" }}</strong> · {{ r.fournisseur_nom or "—" }}
+                {% if r.heure_arrivee %} · {{ r.heure_arrivee }}{% endif %}
+                {% if r.poids_kg is not none %} · {{ r.poids_kg }} kg{% endif %}
+                {% if r.temperature_mesuree is not none %} · {{ r.temperature_mesuree }}°C{% endif %}
+              </span>
+              <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id, depuis_production=production.id) }}" class="small">Détail</a>
+            </div>
+            {% if photos_par_reception.get(r.id) %}
+            <div class="d-flex flex-wrap gap-2 mt-2">
+              {% for photo_id in photos_par_reception.get(r.id) %}
+              <a href="{{ url_for('production_cuisine.photo_reception', photo_id=photo_id) }}" target="_blank">
+                <img src="{{ url_for('production_cuisine.photo_reception', photo_id=photo_id) }}" style="height:90px;width:90px;object-fit:cover;border-radius:4px;" alt="photo">
+              </a>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-muted">Aucune réception attachée pour l'instant — les lots ci-dessous sont ajoutés manuellement.</p>
+      {% endif %}
+
+      {% if receptions_disponibles %}
+      <div class="dropdown mb-3">
+        <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+          ➕ Attacher une réception en attente (nouvel arrivage)
+        </button>
+        <ul class="dropdown-menu">
+          {% for r in receptions_disponibles %}
+          <li>
+            <form method="POST" action="{{ url_for('production_cuisine.affecter_reception', reception_id=r.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="production_id" value="{{ production.id }}">
+              <button type="submit" class="dropdown-item">
+                {{ r.libelle_produit or "—" }} · {{ r.heure_arrivee or "—" }} · {{ r.fournisseur_nom or "—" }}
+                {% if r.poids_kg is not none %} · {{ r.poids_kg }} kg{% endif %}
+              </button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if lots %}
+        <h6 class="text-muted mt-3">✏️ Lots ajoutés manuellement</h6>
+        <div class="mb-3">
+          {% for l in lots %}
+            <div class="border rounded p-2 mb-2">
+              <div class="d-flex justify-content-between">
+                <span class="fw-bold">{{ l.fournisseur_nom or "—" }}</span>
+                <span class="text-muted small">{{ l.horodatage }} · {{ l.user_creation or "" }}</span>
+              </div>
+              {% if l.commentaire %}<div class="small text-muted">{{ l.commentaire }}</div>{% endif %}
+              {% if photos_par_lot.get(l.id) %}
+              <div class="d-flex flex-wrap gap-2 mt-2">
+                {% for photo_id in photos_par_lot.get(l.id) %}
+                <a href="{{ url_for('production_cuisine.photo_traca', photo_id=photo_id) }}" target="_blank">
+                  <img src="{{ url_for('production_cuisine.photo_traca', photo_id=photo_id) }}" style="height:90px;width:90px;object-fit:cover;border-radius:4px;" alt="photo">
+                </a>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <h6 class="text-muted mt-3">➕ Ajouter un lot manuel (marchandise non couverte par une réception)</h6>
+      <form method="POST" action="{{ url_for('production_cuisine.ajouter_lot', production_id=production.id) }}"
+            enctype="multipart/form-data" class="mt-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <label class="form-label fw-bold">Fournisseur</label>
+        <div id="lot-fournisseur-choisi" class="alert alert-success py-1 px-2 mb-2" style="display:none;"></div>
+        <input type="text" class="form-control mb-2" id="lot-fournisseur-recherche" placeholder="🔍 Rechercher un fournisseur...">
+        <div class="d-none flex-wrap gap-2 mb-3" id="lot-fournisseur-liste" style="max-height: 220px; overflow-y: auto;">
+          {% for f in fournisseurs %}
+            <input type="radio" class="btn-check d-none" name="fournisseur_id" id="frs_{{ f.id }}" value="{{ f.id }}" autocomplete="off">
+            <label class="btn btn-outline-primary fournisseur-option" for="frs_{{ f.id }}" data-nom="{{ f.nom|lower }}">{{ f.nom }}</label>
+          {% endfor %}
+        </div>
+
+        {{ camera_capture("photos", "📷 Photos (étiquette / produit)") }}
+
+        <div class="mb-3">
+          <label class="form-label">Commentaire</label>
+          <input type="text" name="commentaire" class="form-control">
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg">➕ Ajouter le lot</button>
+      </form>
+      <script>
+        (function () {
+          var recherche = document.getElementById("lot-fournisseur-recherche");
+          var liste = document.getElementById("lot-fournisseur-liste");
+          var choisi = document.getElementById("lot-fournisseur-choisi");
+
+          // Liste masquée : seuls les fournisseurs correspondant à la
+          // recherche sont proposés, et la liste se referme après le choix.
+          recherche.addEventListener("input", function (e) {
+            var terme = e.target.value.trim().toLowerCase();
+            var nb = 0;
+            liste.querySelectorAll(".fournisseur-option").forEach(function (label) {
+              var visible = terme && label.dataset.nom.indexOf(terme) !== -1;
+              label.style.display = visible ? "" : "none";
+              if (visible) nb++;
+            });
+            liste.classList.toggle("d-flex", nb > 0);
+            liste.classList.toggle("d-none", nb === 0);
+          });
+
+          liste.querySelectorAll(".fournisseur-option").forEach(function (label) {
+            label.addEventListener("click", function () {
+              document.getElementById(label.htmlFor).checked = true;
+              choisi.style.display = "block";
+              choisi.textContent = "✅ Fournisseur choisi : " + label.textContent.trim();
+              recherche.value = "";
+              liste.classList.remove("d-flex");
+              liste.classList.add("d-none");
+            });
+          });
+        })();
+      </script>
+    </div>
+  </div>
+
+  {% endset %}
+  {% set traca_ns = namespace(affichee=false) %}
+
+  {# 🔢 Quantités conditionnées : rendue juste après l'étape 5 Conditionnement
+     (demande cuisinier), ou après les étapes à défaut. #}
+  {% set bloc_quantites %}
+  <!-- ============================================================ -->
+  <!-- 🔢 Quantités conditionnées -->
+  <!-- ============================================================ -->
+  <div class="card mb-3 border-primary">
+    <div class="card-header">🔢 Quantités conditionnées</div>
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('production_cuisine.quantites_production', production_id=production.id) }}"
+            class="row g-3 align-items-end">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-auto">
+          <label class="form-label">{{ libelles_barquettes.get('1/2', '1/2') }}</label>
+          <input type="number" inputmode="numeric" name="qte_1_2" class="form-control" value="{{ quantites['1/2'] }}">
+        </div>
+        <div class="col-auto">
+          <label class="form-label">{{ libelles_barquettes.get('1/4', '1/4') }}</label>
+          <input type="number" inputmode="numeric" name="qte_1_4" class="form-control" value="{{ quantites['1/4'] }}">
+        </div>
+        <div class="col-auto">
+          <label class="form-label">{{ libelles_barquettes.get('1/8', '1/8') }}</label>
+          <input type="number" inputmode="numeric" name="qte_1_8" class="form-control" value="{{ quantites['1/8'] }}">
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary btn-lg">💾 Enregistrer</button>
+        </div>
+      </form>
+
+      <hr>
+      {% set cellule_ligne = etapes_par_code.get('refroidissement_cellule') %}
+      {% if stock_barquettes %}
+        <div class="alert alert-success py-2">
+          ✅ Ajouté au stock barquettes :
+          {% for s in stock_barquettes %}{{ libelles_barquettes.get(s.taille, s.taille) }} × {{ s.quantite }}{% if not loop.last %} · {% endif %}{% endfor %}
+          {% set dlc = (stock_barquettes | map(attribute='dlc') | select | first) %}
+          {% if dlc %}<span class="ms-2 badge bg-dark">DLC {{ dlc | format_date_fr }}</span>{% endif %}
+        </div>
+      {% endif %}
+      {% if cellule_ligne and cellule_ligne.heure_fin %}
+        <form method="POST" action="{{ url_for('production_cuisine.ajouter_stock_barquettes', production_id=production.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-outline-success">
+            📦 {{ "Mettre à jour le stock" if stock_barquettes else "Ajouter au stock barquettes" }}
+          </button>
+        </form>
+      {% else %}
+        <div class="text-muted small">📦 Le stock pourra être alimenté une fois la mise en cellule terminée.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% endset %}
+  {% set quantites_ns = namespace(affichee=false) %}
+
   <!-- ============================================================ -->
   <!-- ⏱️ Étapes de fabrication -->
   <!-- ============================================================ -->
@@ -78,6 +290,10 @@
     <div class="card-header">⏱️ Étapes de fabrication</div>
     <div class="card-body">
       {% for ref in etapes_ref %}
+        {% if ref.code == 'cuisson' and not traca_ns.affichee %}
+          {{ bloc_tracabilite }}
+          {% set traca_ns.affichee = true %}
+        {% endif %}
         {% set ligne = etapes_par_code.get(ref.code) %}
         {% set resolue = ligne and ligne.heure_fin is not none %}
         {% set bloquante = bloque_par.get(ref.code) %}
@@ -108,8 +324,8 @@
                   {% endif %}
                   {{ ligne.heure_fin }}{% if ligne.temperature is not none %} ({{ ligne.temperature }}°C){% endif %}
                   {% if ligne.conforme %} ·
-                    {% if ligne.conforme == 'conforme' %}<span class="badge bg-success">Conforme</span>
-                    {% else %}<span class="badge bg-danger">Non conforme</span>{% endif %}
+                    {% if ligne.conforme == 'conforme' %}<span class="badge bg-success text-white" style="font-size: .9rem;">✅ Conforme</span>
+                    {% else %}<span class="badge bg-danger text-white" style="font-size: .9rem;">⚠️ Non conforme</span>{% endif %}
                   {% endif %}
                 </div>
               {% endif %}
@@ -257,187 +473,13 @@
           </details>
           {% endif %}
         </div>
+        {% if ref.code == 'conditionnement' %}
+          {{ bloc_quantites }}
+          {% set quantites_ns.affichee = true %}
+        {% endif %}
       {% endfor %}
-    </div>
-  </div>
-
-  <!-- ============================================================ -->
-  <!-- 🔎 Traçabilité : lots (réceptions liées + lots manuels) -->
-  <!-- ============================================================ -->
-  <div class="card mb-4">
-    <div class="card-header">🔎 Traçabilité — lots</div>
-    <div class="card-body">
-
-      {% if receptions %}
-        <h6 class="text-muted">📥 Lots issus des réceptions</h6>
-        <div class="mb-3">
-          {% for r in receptions %}
-          <div class="border rounded p-2 mb-2">
-            <div class="d-flex justify-content-between">
-              <span>
-                <strong>{{ r.libelle_produit or "—" }}</strong> · {{ r.fournisseur_nom or "—" }}
-                {% if r.heure_arrivee %} · {{ r.heure_arrivee }}{% endif %}
-                {% if r.poids_kg is not none %} · {{ r.poids_kg }} kg{% endif %}
-                {% if r.temperature_mesuree is not none %} · {{ r.temperature_mesuree }}°C{% endif %}
-              </span>
-              <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id, depuis_production=production.id) }}" class="small">Détail</a>
-            </div>
-            {% if photos_par_reception.get(r.id) %}
-            <div class="d-flex flex-wrap gap-2 mt-2">
-              {% for photo_id in photos_par_reception.get(r.id) %}
-              <a href="{{ url_for('production_cuisine.photo_reception', photo_id=photo_id) }}" target="_blank">
-                <img src="{{ url_for('production_cuisine.photo_reception', photo_id=photo_id) }}" style="height:90px;width:90px;object-fit:cover;border-radius:4px;" alt="photo">
-              </a>
-              {% endfor %}
-            </div>
-            {% endif %}
-          </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p class="text-muted">Aucune réception attachée pour l'instant — les lots ci-dessous sont ajoutés manuellement.</p>
-      {% endif %}
-
-      {% if receptions_disponibles %}
-      <div class="dropdown mb-3">
-        <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">
-          ➕ Attacher une réception en attente (nouvel arrivage)
-        </button>
-        <ul class="dropdown-menu">
-          {% for r in receptions_disponibles %}
-          <li>
-            <form method="POST" action="{{ url_for('production_cuisine.affecter_reception', reception_id=r.id) }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="hidden" name="production_id" value="{{ production.id }}">
-              <button type="submit" class="dropdown-item">
-                {{ r.libelle_produit or "—" }} · {{ r.heure_arrivee or "—" }} · {{ r.fournisseur_nom or "—" }}
-                {% if r.poids_kg is not none %} · {{ r.poids_kg }} kg{% endif %}
-              </button>
-            </form>
-          </li>
-          {% endfor %}
-        </ul>
-      </div>
-      {% endif %}
-
-      {% if lots %}
-        <h6 class="text-muted mt-3">✏️ Lots ajoutés manuellement</h6>
-        <div class="mb-3">
-          {% for l in lots %}
-            <div class="border rounded p-2 mb-2">
-              <div class="d-flex justify-content-between">
-                <span class="fw-bold">{{ l.fournisseur_nom or "—" }}</span>
-                <span class="text-muted small">{{ l.horodatage }} · {{ l.user_creation or "" }}</span>
-              </div>
-              {% if l.commentaire %}<div class="small text-muted">{{ l.commentaire }}</div>{% endif %}
-              {% if photos_par_lot.get(l.id) %}
-              <div class="d-flex flex-wrap gap-2 mt-2">
-                {% for photo_id in photos_par_lot.get(l.id) %}
-                <a href="{{ url_for('production_cuisine.photo_traca', photo_id=photo_id) }}" target="_blank">
-                  <img src="{{ url_for('production_cuisine.photo_traca', photo_id=photo_id) }}" style="height:90px;width:90px;object-fit:cover;border-radius:4px;" alt="photo">
-                </a>
-                {% endfor %}
-              </div>
-              {% endif %}
-            </div>
-          {% endfor %}
-        </div>
-      {% endif %}
-
-      <h6 class="text-muted mt-3">➕ Ajouter un lot manuel (marchandise non couverte par une réception)</h6>
-      <form method="POST" action="{{ url_for('production_cuisine.ajouter_lot', production_id=production.id) }}"
-            enctype="multipart/form-data" class="mt-2">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-        <label class="form-label fw-bold">Fournisseur</label>
-        <div id="lot-fournisseur-choisi" class="alert alert-success py-1 px-2 mb-2" style="display:none;"></div>
-        <input type="text" class="form-control mb-2" id="lot-fournisseur-recherche" placeholder="🔍 Rechercher un fournisseur...">
-        <div class="d-flex flex-wrap gap-2 mb-3" id="lot-fournisseur-liste" style="max-height: 220px; overflow-y: auto;">
-          {% for f in fournisseurs %}
-            <input type="radio" class="btn-check" name="fournisseur_id" id="frs_{{ f.id }}" value="{{ f.id }}" autocomplete="off">
-            <label class="btn btn-outline-primary fournisseur-option" for="frs_{{ f.id }}" data-nom="{{ f.nom|lower }}">{{ f.nom }}</label>
-          {% endfor %}
-        </div>
-
-        {{ camera_capture("photos", "📷 Photos (étiquette / produit)") }}
-
-        <div class="mb-3">
-          <label class="form-label">Commentaire</label>
-          <input type="text" name="commentaire" class="form-control">
-        </div>
-
-        <button type="submit" class="btn btn-primary btn-lg">➕ Ajouter le lot</button>
-      </form>
-      <script>
-        (function () {
-          var recherche = document.getElementById("lot-fournisseur-recherche");
-          var liste = document.getElementById("lot-fournisseur-liste");
-          var choisi = document.getElementById("lot-fournisseur-choisi");
-
-          recherche.addEventListener("input", function (e) {
-            var terme = e.target.value.trim().toLowerCase();
-            liste.querySelectorAll(".fournisseur-option").forEach(function (label) {
-              label.style.display = (!terme || label.dataset.nom.indexOf(terme) !== -1) ? "" : "none";
-            });
-          });
-
-          liste.querySelectorAll(".fournisseur-option").forEach(function (label) {
-            label.addEventListener("click", function () {
-              choisi.style.display = "block";
-              choisi.textContent = "✅ Fournisseur choisi : " + label.textContent.trim();
-            });
-          });
-        })();
-      </script>
-    </div>
-  </div>
-
-  <!-- ============================================================ -->
-  <!-- 🔢 Quantités conditionnées -->
-  <!-- ============================================================ -->
-  <div class="card mb-4">
-    <div class="card-header">🔢 Quantités conditionnées</div>
-    <div class="card-body">
-      <form method="POST" action="{{ url_for('production_cuisine.quantites_production', production_id=production.id) }}"
-            class="row g-3 align-items-end">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="col-auto">
-          <label class="form-label">{{ libelles_barquettes.get('1/2', '1/2') }}</label>
-          <input type="number" inputmode="numeric" name="qte_1_2" class="form-control" value="{{ quantites['1/2'] }}">
-        </div>
-        <div class="col-auto">
-          <label class="form-label">{{ libelles_barquettes.get('1/4', '1/4') }}</label>
-          <input type="number" inputmode="numeric" name="qte_1_4" class="form-control" value="{{ quantites['1/4'] }}">
-        </div>
-        <div class="col-auto">
-          <label class="form-label">{{ libelles_barquettes.get('1/8', '1/8') }}</label>
-          <input type="number" inputmode="numeric" name="qte_1_8" class="form-control" value="{{ quantites['1/8'] }}">
-        </div>
-        <div class="col-auto">
-          <button type="submit" class="btn btn-primary btn-lg">💾 Enregistrer</button>
-        </div>
-      </form>
-
-      <hr>
-      {% set cellule_ligne = etapes_par_code.get('refroidissement_cellule') %}
-      {% if stock_barquettes %}
-        <div class="alert alert-success py-2">
-          ✅ Ajouté au stock barquettes :
-          {% for s in stock_barquettes %}{{ libelles_barquettes.get(s.taille, s.taille) }} × {{ s.quantite }}{% if not loop.last %} · {% endif %}{% endfor %}
-          {% set dlc = (stock_barquettes | map(attribute='dlc') | select | first) %}
-          {% if dlc %}<span class="ms-2 badge bg-dark">DLC {{ dlc | format_date_fr }}</span>{% endif %}
-        </div>
-      {% endif %}
-      {% if cellule_ligne and cellule_ligne.heure_fin %}
-        <form method="POST" action="{{ url_for('production_cuisine.ajouter_stock_barquettes', production_id=production.id) }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn btn-outline-success">
-            📦 {{ "Mettre à jour le stock" if stock_barquettes else "Ajouter au stock barquettes" }}
-          </button>
-        </form>
-      {% else %}
-        <div class="text-muted small">📦 Le stock pourra être alimenté une fois la mise en cellule terminée.</div>
-      {% endif %}
+      {% if not traca_ns.affichee %}{{ bloc_tracabilite }}{% endif %}
+      {% if not quantites_ns.affichee %}{{ bloc_quantites }}{% endif %}
     </div>
   </div>
 

@@ -14,6 +14,7 @@ from ba38_cuisine import production_cuisine_bp
 from ba38_cuisine.utils import (
     _connect, now_paris_str, upload_dir_traca_lot, save_uploaded_files,
     etape_bloquante, heure_fin_max_precedentes, calculer_conformite_production, parse_temperature,
+    motifs_non_conformite,
 )
 
 CONFORMITE_CHOICES = ("conforme", "non_conforme")
@@ -419,10 +420,24 @@ def validation_production(production_id):
                 (valide_par, production_id),
             )
             conn.commit()
+
+            # Problème de conformité : étape non conforme (ex. mise en
+            # cellule hors délai) ou réception rattachée non conforme.
+            non_conformites = motifs_non_conformite(conn, production_id)
+            date_production = conn.execute(
+                "SELECT date_production FROM cuisine_productions WHERE id = ?", (production_id,)
+            ).fetchone()[0]
         upload_database()
-        flash("✅ Production validée.", "success")
     except Exception as e:
         write_log(f"❌ Erreur validation production cuisine : {e}")
         flash("❌ Erreur lors de la validation.", "danger")
+        return _redirect_run(production_id)
 
-    return _redirect_run(production_id)
+    if non_conformites:
+        # On reste sur la fiche pour que le cuisinier voie le problème.
+        flash("✅ Production validée — ⚠️ attention, non-conformité : " + " / ".join(non_conformites), "warning")
+        return _redirect_run(production_id)
+
+    # Pas de problème : retour à la liste des productions du jour.
+    flash("✅ Production validée.", "success")
+    return redirect(url_for("production_cuisine.liste_productions", date=date_production))

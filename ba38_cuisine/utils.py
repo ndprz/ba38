@@ -254,7 +254,63 @@ def calculer_conformite_production(conn, production_id):
         f"Écart {delta_minutes:.0f} min depuis {temp_reference}°C relevée à {heure_reference} "
         f"(seuil 120 min) · température fin mise en cellule {temperature_fin_cellule}°C (seuil < 10°C)."
     )
+    if not conforme:
+        # Préciser le(s) critère(s) en échec en tête du motif.
+        echecs = []
+        if delta_minutes >= 120:
+            echecs.append(f"refroidissement trop long ({delta_minutes:.0f} min, max 120 min)")
+        if temperature_fin_cellule >= 10:
+            echecs.append(f"température en fin de mise en cellule trop élevée ({temperature_fin_cellule}°C, doit être < 10°C)")
+        texte = " et ".join(echecs)
+        motif = texte[0].upper() + texte[1:] + ". Détail : " + motif
     return statut, motif
+
+
+def motifs_non_conformite(conn, production_id):
+    """Motifs lisibles des non-conformités d'une production (liste vide si
+    aucune) : étapes marquées non conformes et réceptions rattachées dont
+    un contrôle est non conforme. Le motif de la mise en cellule n'est pas
+    stocké : il est recalculé à partir des relevés, comme au moment où la
+    conformité a été établie."""
+    motifs = []
+    etapes = conn.execute(
+        """SELECT e.etape_code, e.commentaire, r.libelle
+           FROM cuisine_production_etapes e
+           JOIN cuisine_etapes_ref r ON r.code = e.etape_code
+           WHERE e.production_id = ? AND e.conforme = 'non_conforme'
+             AND COALESCE(e.non_applicable, 0) = 0
+           ORDER BY r.ordre""",
+        (production_id,),
+    ).fetchall()
+    for etape_code, commentaire, libelle in etapes:
+        if etape_code == "refroidissement_cellule":
+            statut, motif = calculer_conformite_production(conn, production_id)
+            if statut != "non_conforme":
+                motif = "marquée non conforme (relevés corrigés depuis : à vérifier)."
+        else:
+            motif = "marquée non conforme."
+        if commentaire:
+            motif += f" Commentaire : {commentaire}"
+        motifs.append(f"{libelle} — {motif}")
+
+    controles = (("aspect_conforme", "aspect"), ("emballage_conforme", "emballage"),
+                 ("etiquetage_conforme", "étiquetage"))
+    receptions = conn.execute(
+        """SELECT r.libelle_produit, r.aspect_conforme, r.emballage_conforme,
+                  r.etiquetage_conforme, f.nom
+           FROM cuisine_receptions r
+           LEFT JOIN fournisseurs f ON f.id = r.fournisseur_id
+           WHERE r.production_id = ? AND r.actif = 1""",
+        (production_id,),
+    ).fetchall()
+    for rec in receptions:
+        valeurs = dict(zip(("aspect_conforme", "emballage_conforme", "etiquetage_conforme"), rec[1:4]))
+        ko = [nom for champ, nom in controles if valeurs[champ] == "non_conforme"]
+        if ko:
+            motifs.append(
+                f"Réception {rec[0] or '—'} ({rec[4] or '—'}) — contrôle non conforme : {', '.join(ko)}."
+            )
+    return motifs
 
 
 def save_uploaded_files(files, dossier, prefix=""):
