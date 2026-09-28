@@ -1,3 +1,3 @@
-VERSION=1.7.27
-MESSAGE=Facturation mensuelle cuisine (FC-AAAA-NNNN depuis les BL) : envoi Mailjet, statut, règlements partiels, relances ; accès cuisine + trésorerie
-DATE=2026-09-28 12:28
+VERSION=1.7.28
+MESSAGE=Écran cuisine (TV) : affichage en tableau recette × étape, lignes adaptées à l'écran, pages défilantes, alerte connexion perdue
+DATE=2026-09-28 13:07

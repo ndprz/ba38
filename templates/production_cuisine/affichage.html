@@ -6,6 +6,14 @@
   <title>Suivi Production Cuisine</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
+  <!--
+    Écran kiosk cuisine (TV / navigateur plein écran, sans login).
+    Affichage en tableau recette × étape : la hauteur des lignes s'adapte au
+    nombre de productions ; s'il y en a trop pour l'écran, les lignes sont
+    réparties en pages qui défilent automatiquement (PAGE_SECONDES).
+    Données : polling JSON toutes les REFRESH_SECONDES.
+  -->
+
   <style>
     html, body {
       margin: 0;
@@ -15,130 +23,198 @@
       background: #111;
       color: #fff;
       font-family: system-ui, sans-serif;
-      overflow-x: hidden;
+      overflow: hidden;
     }
 
     body {
       cursor: none;
+      display: flex;
+      flex-direction: column;
     }
 
     header {
-      padding: 1rem 1.5rem 0.5rem;
-      text-align: center;
+      flex: 0 0 auto;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 0.6vh 1.5vw 0.4vh;
     }
 
     header h1 {
       margin: 0;
-      font-size: 2rem;
+      font-size: clamp(1.4rem, 2.2vw, 3rem);
       color: #ff7f00;
     }
 
-    header .date {
+    header .infos {
       color: #aaa;
-      font-size: 1rem;
+      font-size: clamp(0.9rem, 1.1vw, 1.6rem);
+      text-align: right;
     }
 
-    #grille {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-      gap: 1rem;
-      padding: 1rem 1.5rem 2rem;
-    }
-
-    .production {
-      background: #1c1c1c;
-      border-radius: 12px;
-      padding: 1rem 1.2rem;
-      border: 2px solid #333;
-    }
-
-    .production h2 {
-      margin: 0 0 0.6rem;
-      font-size: 1.4rem;
-      color: #fff;
-    }
-
-    .production .sous-titre {
-      color: #999;
-      font-size: 0.9rem;
-      margin-bottom: 0.8rem;
-    }
-
-    .etape-ligne {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      padding: 0.35rem 0;
-      border-bottom: 1px solid #2a2a2a;
-      font-size: 1rem;
-    }
-
-    .etape-ligne:last-child {
-      border-bottom: none;
-    }
-
-    .pastille {
-      width: 1.1rem;
-      height: 1.1rem;
-      border-radius: 50%;
-      flex: 0 0 auto;
-      background: #555; /* non démarrée = gris */
-    }
-
-    .pastille.en_cours {
-      background: #f5c518; /* jaune = en cours */
-    }
-
-    .pastille.terminee.conforme {
-      background: #2ecc71; /* vert = conforme */
-    }
-
-    .pastille.terminee.non_conforme {
-      background: #e74c3c; /* rouge = non conforme */
-    }
-
-    .pastille.terminee.inconnu {
-      background: #2ecc71;
-    }
-
-    .pastille.non_applicable {
-      background: transparent;
-      border: 2px solid #777;
-    }
-
-    .conformite-globale {
-      display: inline-block;
-      margin-left: 0.5rem;
-      padding: 0.1rem 0.5rem;
+    #alerte {
+      display: none;
+      margin-left: 1rem;
+      padding: 0.1rem 0.6rem;
       border-radius: 6px;
-      font-size: 0.85rem;
+      background: #e74c3c;
+      color: #fff;
       font-weight: bold;
-      vertical-align: middle;
     }
 
-    .conformite-globale.conforme {
+    #zone {
+      flex: 1 1 auto;
+      padding: 0 1.5vw 1vh;
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0 0.4vh;
+      table-layout: fixed;
+    }
+
+    thead th {
+      font-size: clamp(0.8rem, 1.05vw, 1.6rem);
+      color: #bbb;
+      font-weight: 600;
+      text-align: center;
+      padding: 0.3vh 0.2vw;
+      line-height: 1.15;
+      overflow-wrap: anywhere;
+      hyphens: auto;
+    }
+
+    thead th.col-recette {
+      text-align: left;
+      width: 27%;
+    }
+
+    tbody tr {
+      background: #1c1c1c;
+    }
+
+    tbody td {
+      text-align: center;
+      padding: 0 0.3vw;
+      border-top: 1px solid #2a2a2a;
+      border-bottom: 1px solid #2a2a2a;
+    }
+
+    tbody td:first-child {
+      border-left: 1px solid #2a2a2a;
+      border-radius: 10px 0 0 10px;
+      text-align: left;
+      padding-left: 0.8vw;
+    }
+
+    tbody td:last-child {
+      border-right: 1px solid #2a2a2a;
+      border-radius: 0 10px 10px 0;
+    }
+
+    tbody tr.non-conforme td {
+      border-color: #e74c3c;
+      background: #2a1414;
+    }
+
+    .nom {
+      font-weight: 700;
+      line-height: 1.1;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .sous-titre {
+      color: #999;
+      font-size: 0.6em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Case d'étape : forme + texte, pas seulement la couleur */
+    .etat {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 70%;
+      height: 70%;
+      min-height: 1.4em;
+      padding: 0 0.4em;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.8em;
+      white-space: nowrap;
+      box-sizing: border-box;
+    }
+
+    .etat.non_demarree {
+      background: #333;
+      color: #777;
+    }
+
+    .etat.en_cours {
+      background: #f5c518;
+      color: #111;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .etat.terminee {
       background: #2ecc71;
       color: #111;
     }
 
-    .conformite-globale.non_conforme {
+    .etat.terminee.non_conforme {
       background: #e74c3c;
       color: #fff;
+    }
+
+    .etat.non_applicable {
+      background: transparent;
+      color: #555;
+      font-weight: 400;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.55; }
     }
 
     .vide {
       text-align: center;
       color: #777;
-      padding: 4rem 1rem;
-      font-size: 1.4rem;
+      padding: 20vh 1rem;
+      font-size: clamp(1.4rem, 3vw, 4rem);
     }
 
-    .badge-refresh {
-      position: fixed;
-      bottom: 8px;
-      right: 8px;
-      opacity: 0.3;
-      font-size: 0.8rem;
+    footer {
+      flex: 0 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 1.5vw 0.6vh;
+      color: #888;
+      font-size: clamp(0.8rem, 1vw, 1.4rem);
+    }
+
+    .legende span {
+      margin-right: 1.2vw;
+    }
+
+    .legende .etat {
+      min-width: 0;
+      height: auto;
+      font-size: 0.9em;
+      animation: none;
+    }
+
+    #pages {
+      font-weight: 700;
+      color: #ff7f00;
     }
   </style>
 </head>
@@ -146,73 +222,146 @@
 <body>
 
   <header>
-    <h1>🍳 Suivi Production Cuisine</h1>
-    <div class="date" id="date-jour"></div>
+    <h1>Suivi Production Cuisine</h1>
+    <div class="infos">
+      <span id="date-jour"></span>
+      · mis à jour <span id="heure-maj">–</span>
+      <span id="alerte">⚠️ Connexion perdue</span>
+    </div>
   </header>
 
-  <div id="grille"></div>
+  <div id="zone"></div>
 
-  <div class="badge-refresh">BA380 • Écran cuisine</div>
+  <footer>
+    <div class="legende">
+      <span><span class="etat terminee">✓</span> Terminée</span>
+      <span><span class="etat en_cours">en cours</span> En cours</span>
+      <span><span class="etat non_demarree">·</span> À faire</span>
+      <span><span class="etat terminee non_conforme">✗</span> Non conforme</span>
+      <span><span class="etat non_applicable">—</span> Non applicable</span>
+    </div>
+    <div id="pages"></div>
+  </footer>
 
   <script>
+    const REFRESH_SECONDES = 20;
+    const PAGE_SECONDES = 15;
+    const HAUTEUR_LIGNE_MIN = 52;   // px : en dessous, on passe en pages
+    const HAUTEUR_LIGNE_MAX = 110;  // px : au-dessus, lignes trop grosses
+    const ALERTE_APRES_MS = 90 * 1000;
+    const RECHARGEMENT_PAGE_MS = 3 * 3600 * 1000; // recharge complète (nouvelle version de la page)
+
+    let donnees = null;
+    let pageCourante = 0;
+    let derniereMajOk = Date.now();
+    const debut = Date.now();
+
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function dateFr(iso) {
+      if (!iso) return "";
+      const d = new Date(iso + "T12:00:00");
+      return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+    }
+
+    function caseEtape(e) {
+      if (e.statut === "terminee") {
+        return e.conforme === "non_conforme"
+          ? '<span class="etat terminee non_conforme">✗</span>'
+          : '<span class="etat terminee">✓</span>';
+      }
+      if (e.statut === "en_cours") return '<span class="etat en_cours">en cours</span>';
+      if (e.statut === "non_applicable") return '<span class="etat non_applicable">—</span>';
+      return '<span class="etat non_demarree">·</span>';
+    }
+
+    // Découpe les productions en pages et calcule la hauteur des lignes
+    function mise_en_page(nb) {
+      const zone = document.getElementById("zone");
+      const dispo = zone.clientHeight - 60; // en-tête du tableau
+      const parPage = Math.max(1, Math.floor(dispo / HAUTEUR_LIGNE_MIN));
+      const nbPages = Math.max(1, Math.ceil(nb / parPage));
+      const lignesParPage = Math.ceil(nb / nbPages); // pages équilibrées
+      const hauteur = Math.min(HAUTEUR_LIGNE_MAX, Math.floor(dispo / Math.max(1, lignesParPage)) - 6);
+      return { nbPages, lignesParPage, hauteur };
+    }
+
+    function afficher() {
+      const zone = document.getElementById("zone");
+      const pages = document.getElementById("pages");
+
+      if (!donnees || !donnees.productions || !donnees.productions.length) {
+        zone.innerHTML = '<div class="vide">Aucune production en cours</div>';
+        pages.textContent = "";
+        return;
+      }
+
+      const prods = donnees.productions;
+      const etapesRef = prods[0].etapes;
+      const mp = mise_en_page(prods.length);
+      if (pageCourante >= mp.nbPages) pageCourante = 0;
+
+      const tranche = prods.slice(pageCourante * mp.lignesParPage, (pageCourante + 1) * mp.lignesParPage);
+      const taille = Math.max(14, Math.min(30, Math.round(mp.hauteur * 0.34)));
+
+      let html = '<table><thead><tr><th class="col-recette">Recette</th>';
+      etapesRef.forEach(function (e) { html += "<th>" + esc(e.libelle) + "</th>"; });
+      html += "</tr></thead><tbody>";
+
+      tranche.forEach(function (p) {
+        const nonConf = p.etapes.some(function (e) { return e.statut === "terminee" && e.conforme === "non_conforme"; });
+        const sousTitre = [p.espece, p.mode_cuisson].filter(Boolean).join(" · ");
+        html += '<tr class="' + (nonConf ? "non-conforme" : "") + '" style="height:' + mp.hauteur + "px;font-size:" + taille + 'px">';
+        html += '<td><div class="nom">' + esc(p.nom_recette) + "</div>"
+             + (sousTitre ? '<div class="sous-titre">' + esc(sousTitre) + "</div>" : "") + "</td>";
+        p.etapes.forEach(function (e) { html += "<td>" + caseEtape(e) + "</td>"; });
+        html += "</tr>";
+      });
+      html += "</tbody></table>";
+
+      zone.innerHTML = html;
+      pages.textContent = mp.nbPages > 1
+        ? "Page " + (pageCourante + 1) + " / " + mp.nbPages + " · " + prods.length + " productions"
+        : prods.length + " production" + (prods.length > 1 ? "s" : "");
+    }
+
     async function refresh() {
       try {
         const r = await fetch("/production-cuisine/api/production_active", { cache: "no-store" });
-        const data = await r.json();
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        donnees = await r.json();
+        derniereMajOk = Date.now();
+        document.getElementById("date-jour").textContent = dateFr(donnees.date);
+        document.getElementById("heure-maj").textContent =
+          new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+        afficher();
 
-        document.getElementById("date-jour").textContent = data.date || "";
-
-        const grille = document.getElementById("grille");
-        grille.innerHTML = "";
-
-        if (!data.productions || !data.productions.length) {
-          grille.innerHTML = '<div class="vide">Aucune production en cours</div>';
-          return;
-        }
-
-        data.productions.forEach(function (p) {
-          const div = document.createElement("div");
-          div.className = "production";
-
-          let sousTitre = [p.espece, p.mode_cuisson].filter(Boolean).join(" · ");
-
-          let lignes = p.etapes.map(function (e) {
-            let classeConf = "inconnu";
-            if (e.statut === "terminee") {
-              classeConf = e.conforme === "non_conforme" ? "non_conforme" : "conforme";
-            }
-            let libelle = e.statut === "non_applicable" ? e.libelle + " (non applicable)" : e.libelle;
-            return `
-              <div class="etape-ligne">
-                <div class="pastille ${e.statut} ${classeConf}"></div>
-                <div>${libelle}</div>
-              </div>
-            `;
-          }).join("");
-
-          let badgeConformite = "";
-          if (p.conformite_globale === "conforme") {
-            badgeConformite = '<span class="conformite-globale conforme">✅ Conforme</span>';
-          } else if (p.conformite_globale === "non_conforme") {
-            badgeConformite = '<span class="conformite-globale non_conforme">⚠️ NON CONFORME</span>';
-          }
-
-          div.innerHTML = `
-            <h2>${p.nom_recette}${badgeConformite}</h2>
-            <div class="sous-titre">${sousTitre}</div>
-            ${lignes}
-          `;
-
-          grille.appendChild(div);
-        });
-
+        // Recharge complète de temps en temps, uniquement si le serveur répond
+        if (Date.now() - debut > RECHARGEMENT_PAGE_MS) location.reload();
       } catch (e) {
         console.error("refresh error", e);
       }
+      document.getElementById("alerte").style.display =
+        (Date.now() - derniereMajOk > ALERTE_APRES_MS) ? "inline-block" : "none";
     }
 
+    setInterval(function () {
+      if (!donnees || !donnees.productions) return;
+      const mp = mise_en_page(donnees.productions.length);
+      if (mp.nbPages > 1) {
+        pageCourante = (pageCourante + 1) % mp.nbPages;
+        afficher();
+      }
+    }, PAGE_SECONDES * 1000);
+
+    window.addEventListener("resize", afficher);
+
     refresh();
-    setInterval(refresh, 20000);
+    setInterval(refresh, REFRESH_SECONDES * 1000);
   </script>
 
 </body>
