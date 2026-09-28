@@ -457,10 +457,11 @@ def envoyer_participation_background(app, db_path, campagne_id, items, mail_mode
                     UPDATE participation_factures
                     SET mail_envoye_le = ?, mail_mode_test = ?, mail_erreur = NULL,
                         mail_mailjet_status = ?, mail_mailjet_message_ids = ?,
-                        mail_modele_id = ?, pdf_genere_le = ?, sujet = ?, corps = ?
+                        mail_modele_id = ?, pdf_genere_le = ?, sujet = ?, corps = ?, email = ?
                     WHERE id = ?
                 """, (now_iso, 1 if mail_mode == "TEST" else 0, mj_status, mj_ids,
-                      item["modele_id"], now_iso, sujet_envoi, item["corps"], item["facture_id"]))
+                      item["modele_id"], now_iso, sujet_envoi, item["corps"], item["email"],
+                      item["facture_id"]))
                 conn.commit()
 
                 envoyes += 1
@@ -782,11 +783,15 @@ def resultats(campagne_id):
         )
 
     factures = conn.execute("""
-        SELECT * FROM participation_factures
-        WHERE campagne_id = ? AND association_id IS NOT NULL
-        ORDER BY numero_facture
+        SELECT pf.*,
+               a.courriel_resp_tresorerie AS _assoc_tresorerie,
+               a.courriel_association AS _assoc_association
+        FROM participation_factures pf
+        LEFT JOIN associations a ON a.Id = pf.association_id
+        WHERE pf.campagne_id = ? AND pf.association_id IS NOT NULL
+        ORDER BY pf.numero_facture
     """, (campagne_id,)).fetchall()
-    factures = [dict(f, beneficiaires=_compter_beneficiaires(f["detail_json"])) for f in factures]
+    factures = _resoudre_lignes_email(factures)
 
     orphelines = conn.execute("""
         SELECT * FROM participation_factures
@@ -849,9 +854,14 @@ def envoyer(campagne_id):
         return redirect(url_for("participation.resultats", campagne_id=campagne_id))
 
     a_envoyer = conn.execute("""
-        SELECT * FROM participation_factures
-        WHERE campagne_id = ? AND email IS NOT NULL AND mail_envoye_le IS NULL
+        SELECT pf.*,
+               a.courriel_resp_tresorerie AS _assoc_tresorerie,
+               a.courriel_association AS _assoc_association
+        FROM participation_factures pf
+        LEFT JOIN associations a ON a.Id = pf.association_id
+        WHERE pf.campagne_id = ? AND pf.mail_envoye_le IS NULL
     """, (campagne_id,)).fetchall()
+    a_envoyer = [f for f in _resoudre_lignes_email(a_envoyer) if f["email"]]
 
     conn.close()
 
@@ -909,7 +919,7 @@ def voir_pdf(facture_id):
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
 
-    f = conn.execute("SELECT * FROM participation_factures WHERE id = ?", (facture_id,)).fetchone()
+    f = _charger_facture(conn, facture_id)
 
     if not f:
         conn.close()
@@ -1004,7 +1014,7 @@ def renvoyer_gmail(facture_id):
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
 
-    f = conn.execute("SELECT * FROM participation_factures WHERE id = ?", (facture_id,)).fetchone()
+    f = _charger_facture(conn, facture_id)
 
     if not f:
         conn.close()
@@ -1095,20 +1105,50 @@ def _compter_beneficiaires(detail_json):
         return 0
 
 
+def _email_actuel(courriel_tresorerie, courriel_association, email_facture):
+    """
+    Adresse de destination d'une facture participation : toujours l'adresse
+    ACTUELLE de la fiche association (trésorier, sinon courriel général).
+    participation_factures.email n'est qu'un instantané pris au traitement
+    PARSOL (les campagnes de juillet 2026 y ont même figé le courriel
+    général alors qu'un trésorier existait) — il ne sert plus qu'en dernier
+    recours, si l'association n'a aucune adresse (ou n'existe plus).
+    """
+    return (
+        (courriel_tresorerie or "").strip()
+        or (courriel_association or "").strip()
+        or email_facture
+    )
+
+
+def _charger_facture(conn, facture_id):
+    """Une facture participation, email résolu comme _resoudre_lignes_email (None si introuvable)."""
+    row = conn.execute("""
+        SELECT pf.*,
+               a.courriel_resp_tresorerie AS _assoc_tresorerie,
+               a.courriel_association AS _assoc_association
+        FROM participation_factures pf
+        LEFT JOIN associations a ON a.Id = pf.association_id
+        WHERE pf.id = ?
+    """, (facture_id,)).fetchone()
+    return _resoudre_lignes_email([row])[0] if row else None
+
+
 def _resoudre_lignes_email(rows):
     """
-    Convertit les lignes SQL (jointes à associations) en dicts, complète
-    l'email de la facture — capturé une fois au traitement PARSOL, donc
-    potentiellement obsolète si l'association n'avait pas encore d'email à
-    ce moment — par l'adresse actuelle de l'association si absent, et
-    ajoute le total de bénéficiaires (calculé depuis detail_json).
+    Convertit les lignes SQL (jointes à associations, colonnes
+    _assoc_tresorerie/_assoc_association) en dicts : "email" devient
+    l'adresse actuelle de l'association (voir _email_actuel), "email_facture"
+    garde l'adresse figée sur la facture (celle du 1er envoi), et ajoute le
+    total de bénéficiaires (calculé depuis detail_json).
     """
     lignes = []
     for row in rows:
         d = dict(row)
-        assoc_email = d.pop("_assoc_tresorerie", None) or d.pop("_assoc_association", None)
-        if not d.get("email"):
-            d["email"] = assoc_email
+        d["email_facture"] = d.get("email")
+        d["email"] = _email_actuel(
+            d.pop("_assoc_tresorerie", None), d.pop("_assoc_association", None), d.get("email")
+        )
         d["beneficiaires"] = _compter_beneficiaires(d.get("detail_json"))
         lignes.append(d)
     return lignes
@@ -1514,7 +1554,7 @@ def relance_renvoyer_gmail(facture_id):
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
 
-    f = conn.execute("SELECT * FROM participation_factures WHERE id = ?", (facture_id,)).fetchone()
+    f = _charger_facture(conn, facture_id)
 
     if not f:
         conn.close()

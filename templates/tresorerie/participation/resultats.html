@@ -145,7 +145,14 @@
                     <td>{{ f.numero_facture }}</td>
                     <td>{{ f.nom_association }}</td>
                     <td class="small">{{ f.code_vif }}</td>
-                    <td class="small">{{ f.email or '—' }}</td>
+                    <td class="small">
+                        {{ f.email or '—' }}
+                        {% if f.mail_envoye_le and f.email_facture and f.email_facture != f.email %}
+                        <div class="text-muted fst-italic" title="Adresse utilisée lors de l'envoi initial, différente de la fiche association actuelle">
+                            envoyé à : {{ f.email_facture }}
+                        </div>
+                        {% endif %}
+                    </td>
                     <td class="small text-end">{{ f.beneficiaires }}</td>
                     <td class="small text-end">{{ "%.2f"|format(f.montant_total or 0) }} €</td>
                     <td class="small text-center align-middle">

@@ -114,6 +114,26 @@
       border-radius: 0 10px 10px 0;
     }
 
+    /* Production terminée : ligne atténuée, en bas du tableau */
+    tbody tr.terminee td {
+      background: #161616;
+    }
+
+    tbody tr.terminee td > * {
+      opacity: 0.45;
+    }
+
+    .badge-terminee {
+      display: inline-block;
+      margin-left: 0.5em;
+      padding: 0 0.4em;
+      border-radius: 6px;
+      background: #2ecc71;
+      color: #111;
+      font-size: 0.6em;
+      vertical-align: middle;
+    }
+
     tbody tr.non-conforme td {
       border-color: #e74c3c;
       background: #2a1414;
@@ -296,7 +316,7 @@
       const pages = document.getElementById("pages");
 
       if (!donnees || !donnees.productions || !donnees.productions.length) {
-        zone.innerHTML = '<div class="vide">Aucune production en cours</div>';
+        zone.innerHTML = '<div class="vide">Aucune production aujourd'hui</div>';
         pages.textContent = "";
         return;
       }
@@ -316,8 +336,10 @@
       tranche.forEach(function (p) {
         const nonConf = p.etapes.some(function (e) { return e.statut === "terminee" && e.conforme === "non_conforme"; });
         const sousTitre = [p.espece, p.mode_cuisson].filter(Boolean).join(" · ");
-        html += '<tr class="' + (nonConf ? "non-conforme" : "") + '" style="height:' + mp.hauteur + "px;font-size:" + taille + 'px">';
-        html += '<td><div class="nom">' + esc(p.nom_recette) + "</div>"
+        const classes = [nonConf ? "non-conforme" : "", p.statut === "terminee" ? "terminee" : ""].join(" ");
+        html += '<tr class="' + classes + '" style="height:' + mp.hauteur + "px;font-size:" + taille + 'px">';
+        html += '<td><div class="nom">' + esc(p.nom_recette)
+             + (p.statut === "terminee" ? '<span class="badge-terminee">✓ Terminée</span>' : "") + "</div>"
              + (sousTitre ? '<div class="sous-titre">' + esc(sousTitre) + "</div>" : "") + "</td>";
         p.etapes.forEach(function (e) { html += "<td>" + caseEtape(e) + "</td>"; });
         html += "</tr>";
@@ -334,9 +356,12 @@
         const h = mp.hauteur - Math.ceil(deborde / tranche.length);
         zone.querySelectorAll("tbody tr").forEach(function (tr) { tr.style.height = h + "px"; });
       }
+      const nbTerminees = prods.filter(function (p) { return p.statut === "terminee"; }).length;
+      const nbEnCours = prods.length - nbTerminees;
+      const compte = nbEnCours + " en cours" + (nbTerminees ? " · " + nbTerminees + " terminée" + (nbTerminees > 1 ? "s" : "") : "");
       pages.textContent = mp.nbPages > 1
-        ? "Page " + (pageCourante + 1) + " / " + mp.nbPages + " · " + prods.length + " productions"
-        : prods.length + " production" + (prods.length > 1 ? "s" : "");
+        ? "Page " + (pageCourante + 1) + " / " + mp.nbPages + " · " + compte
+        : compte;
     }
 
     async function refresh() {

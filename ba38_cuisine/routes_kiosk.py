@@ -1,6 +1,6 @@
 # ============================================================
 # 🖥️ Écran kiosk (affichage cuisine, sans login) : suivi live des
-#     productions du jour, grille recette × étape.
+#     productions du jour (en cours puis terminées), grille recette × étape.
 #
 # Modèle : ba38_evenements/routes.py::api_evenements_actifs +
 # affichage_evenement (routes PUBLIQUES, polling JSON côté front).
@@ -31,8 +31,9 @@ def api_production_active():
         productions = conn.execute(
             """
             SELECT * FROM cuisine_productions
-            WHERE date_production = ? AND actif = 1 AND statut = 'en_cours'
-            ORDER BY id
+            WHERE date_production = ? AND actif = 1
+              AND statut IN ('en_cours', 'terminee')
+            ORDER BY statut = 'terminee', id
             """,
             (date_jour,),
         ).fetchall()
@@ -83,6 +84,7 @@ def api_production_active():
                 "nom_recette": prod["nom_recette"],
                 "espece": prod["espece"],
                 "mode_cuisson": prod["mode_cuisson"],
+                "statut": prod["statut"],
                 "etapes": etapes,
                 "conformite_globale": conformite_globale,
             })
