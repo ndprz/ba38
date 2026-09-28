@@ -88,7 +88,19 @@
 
     thead th.col-recette {
       text-align: left;
-      width: 27%;
+      width: 25%;
+    }
+
+    /* Mise en cellule : colonne élargie pour « en cours » + DR */
+    thead th.col-cellule {
+      width: 15%;
+    }
+
+    .dr {
+      margin-left: 0.4em;
+      font-weight: 800;
+      color: #f5c518;
+      white-space: nowrap;
     }
 
     tbody tr {
@@ -288,7 +300,10 @@
       return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
     }
 
-    function caseEtape(e) {
+    function caseEtape(e, p) {
+      if (e.code === "refroidissement_cellule" && e.statut === "en_cours" && p.dr) {
+        return '<span class="etat en_cours" style="min-width:0">en cours</span><span class="dr">DR ' + esc(p.dr) + "</span>";
+      }
       if (e.statut === "terminee") {
         return e.conforme === "non_conforme"
           ? '<span class="etat terminee non_conforme">✗</span>'
@@ -330,7 +345,10 @@
       const taille = Math.max(14, Math.min(30, Math.round(mp.hauteur * 0.34)));
 
       let html = '<table><thead><tr><th class="col-recette">Recette</th>';
-      etapesRef.forEach(function (e) { html += "<th>" + esc(e.libelle) + "</th>"; });
+      etapesRef.forEach(function (e) {
+        const cls = e.code === "refroidissement_cellule" ? ' class="col-cellule"' : "";
+        html += "<th" + cls + ">" + esc(e.libelle) + "</th>";
+      });
       html += "</tr></thead><tbody>";
 
       tranche.forEach(function (p) {
@@ -341,7 +359,7 @@
         html += '<td><div class="nom">' + esc(p.nom_recette)
              + (p.statut === "terminee" ? '<span class="badge-terminee">✓ Terminée</span>' : "") + "</div>"
              + (sousTitre ? '<div class="sous-titre">' + esc(sousTitre) + "</div>" : "") + "</td>";
-        p.etapes.forEach(function (e) { html += "<td>" + caseEtape(e) + "</td>"; });
+        p.etapes.forEach(function (e) { html += "<td>" + caseEtape(e, p) + "</td>"; });
         html += "</tr>";
       });
       html += "</tbody></table>";

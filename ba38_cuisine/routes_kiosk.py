@@ -14,7 +14,7 @@ import sqlite3
 from flask import render_template, jsonify
 
 from ba38_cuisine import production_cuisine_bp
-from ba38_cuisine.utils import _connect, today_paris
+from ba38_cuisine.utils import _connect, today_paris, point_reference_refroidissement
 
 
 @production_cuisine_bp.route("/api/production_active")
@@ -79,6 +79,15 @@ def api_production_active():
                     "conforme": conforme,
                 })
 
+            # DR (début de refroidissement) affiché pendant la mise en cellule :
+            # même point de référence que la conformité HACCP.
+            dr = None
+            cellule = next((e for e in etapes if e["code"] == "refroidissement_cellule"), None)
+            if cellule and cellule["statut"] == "en_cours":
+                reference = point_reference_refroidissement(derniere_par_code)
+                if reference:
+                    dr = reference[1][11:16]  # 'YYYY-MM-DD HH:MM:SS' → 'HH:MM'
+
             data.append({
                 "id": prod["id"],
                 "nom_recette": prod["nom_recette"],
@@ -87,6 +96,7 @@ def api_production_active():
                 "statut": prod["statut"],
                 "etapes": etapes,
                 "conformite_globale": conformite_globale,
+                "dr": dr,
             })
 
     return jsonify({"date": date_jour, "productions": data})

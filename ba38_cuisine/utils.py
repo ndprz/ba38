@@ -177,6 +177,42 @@ def heure_fin_max_precedentes(conn, production_id, etape_code):
     return row["m"] if row else None
 
 
+def point_reference_refroidissement(lignes):
+    """Point de départ du refroidissement (« DR ») : parmi les relevés des
+    points chauds (fin de cuisson, tranchage à chaud début/fin,
+    refroidissement à l'eau, conditionnement début/fin), la plus petite
+    température supérieure ou égale à 63°C et l'heure de ce relevé.
+
+    `lignes` : {etape_code: ligne cuisine_production_etapes} (dernière ligne
+    par étape). Retourne (temperature, heure 'YYYY-MM-DD HH:MM:SS') ou None
+    si aucun relevé n'atteint 63°C. Sert à la conformité HACCP
+    (calculer_conformite_production) et à l'écran kiosk cuisine."""
+    points_chauds = []
+    cuisson = lignes.get("cuisson")
+    if cuisson and cuisson["temperature"] is not None and cuisson["heure_fin"]:
+        points_chauds.append((cuisson["temperature"], cuisson["heure_fin"]))
+    tranchage_chaud = lignes.get("tranchage_chaud")
+    if tranchage_chaud:
+        if tranchage_chaud["temperature_debut"] is not None and tranchage_chaud["heure_debut"]:
+            points_chauds.append((tranchage_chaud["temperature_debut"], tranchage_chaud["heure_debut"]))
+        if tranchage_chaud["temperature"] is not None and tranchage_chaud["heure_fin"]:
+            points_chauds.append((tranchage_chaud["temperature"], tranchage_chaud["heure_fin"]))
+    refroidissement_eau = lignes.get("refroidissement_eau")
+    if refroidissement_eau and refroidissement_eau["temperature"] is not None and refroidissement_eau["heure_fin"]:
+        points_chauds.append((refroidissement_eau["temperature"], refroidissement_eau["heure_fin"]))
+    conditionnement = lignes.get("conditionnement")
+    if conditionnement:
+        if conditionnement["temperature_debut"] is not None and conditionnement["heure_debut"]:
+            points_chauds.append((conditionnement["temperature_debut"], conditionnement["heure_debut"]))
+        if conditionnement["temperature"] is not None and conditionnement["heure_fin"]:
+            points_chauds.append((conditionnement["temperature"], conditionnement["heure_fin"]))
+
+    candidats = [(temp, heure) for temp, heure in points_chauds if temp >= 63]
+    if not candidats:
+        return None
+    return min(candidats, key=lambda x: x[0])
+
+
 def calculer_conformite_production(conn, production_id):
     """Calcule la conformité HACCP de la production à partir des relevés de
     température des points "chauds" (fin de cuisson, tranchage à chaud
@@ -184,12 +220,12 @@ def calculer_conformite_production(conn, production_id):
     fin de mise en cellule. Règle confirmée avec le responsable cuisine :
 
       1. Parmi les températures des points chauds, on retient la plus
-         petite qui reste strictement supérieure à 63°C (= le point le
+         petite qui reste supérieure ou égale à 63°C (= le point le
          plus faible de la chaîne chaude) et l'heure à laquelle elle a été
          relevée.
       2. Conforme si (heure fin mise en cellule − heure retenue) < 120 min
          ET température fin mise en cellule < 10°C.
-      3. Si aucune température ne dépasse 63°, conformité impossible à
+      3. Si aucune température n'atteint 63°, conformité impossible à
          établir → non conforme par défaut (principe de précaution).
 
     N'écrit rien : retourne (statut, motif) où statut vaut 'conforme',
@@ -212,31 +248,10 @@ def calculer_conformite_production(conn, production_id):
     if not mise_en_cellule or mise_en_cellule["heure_fin"] is None or mise_en_cellule["temperature"] is None:
         return None, "Mise en cellule non terminée."
 
-    points_chauds = []
-    cuisson = lignes.get("cuisson")
-    if cuisson and cuisson["temperature"] is not None and cuisson["heure_fin"]:
-        points_chauds.append((cuisson["temperature"], cuisson["heure_fin"]))
-    tranchage_chaud = lignes.get("tranchage_chaud")
-    if tranchage_chaud:
-        if tranchage_chaud["temperature_debut"] is not None and tranchage_chaud["heure_debut"]:
-            points_chauds.append((tranchage_chaud["temperature_debut"], tranchage_chaud["heure_debut"]))
-        if tranchage_chaud["temperature"] is not None and tranchage_chaud["heure_fin"]:
-            points_chauds.append((tranchage_chaud["temperature"], tranchage_chaud["heure_fin"]))
-    refroidissement_eau = lignes.get("refroidissement_eau")
-    if refroidissement_eau and refroidissement_eau["temperature"] is not None and refroidissement_eau["heure_fin"]:
-        points_chauds.append((refroidissement_eau["temperature"], refroidissement_eau["heure_fin"]))
-    conditionnement = lignes.get("conditionnement")
-    if conditionnement:
-        if conditionnement["temperature_debut"] is not None and conditionnement["heure_debut"]:
-            points_chauds.append((conditionnement["temperature_debut"], conditionnement["heure_debut"]))
-        if conditionnement["temperature"] is not None and conditionnement["heure_fin"]:
-            points_chauds.append((conditionnement["temperature"], conditionnement["heure_fin"]))
-
-    candidats = [(temp, heure) for temp, heure in points_chauds if temp > 63]
-    if not candidats:
-        return "non_conforme", "Aucune température relevée supérieure à 63°C : conformité impossible à établir."
-
-    temp_reference, heure_reference = min(candidats, key=lambda x: x[0])
+    reference = point_reference_refroidissement(lignes)
+    if reference is None:
+        return "non_conforme", "Aucune température relevée supérieure ou égale à 63°C : conformité impossible à établir."
+    temp_reference, heure_reference = reference
 
     fmt = "%Y-%m-%d %H:%M:%S"
     try:

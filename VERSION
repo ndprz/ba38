@@ -1,3 +1,3 @@
-VERSION=1.7.34
-MESSAGE=Engagements : bloc Commentaires sur la fiche (toutes étapes), ex. note pour la trésorerie
-DATE=2026-09-28 15:19
+VERSION=1.7.35
+MESSAGE=Écran cuisine : heure DR (début refroidissement) affichée pendant la mise en cellule ; point de référence refroidissement ≥ 63°C (au lieu de > 63°C) pour DR et conformité
+DATE=2026-09-28 15:28
