@@ -1,3 +1,3 @@
-VERSION=1.7.30
-MESSAGE=Participation : adresse destinataire = fiche association actuelle (trésorier, sinon général) pour affichage, envois, relances et renvois Gmail
-DATE=2026-09-28 13:42
+VERSION=1.7.31
+MESSAGE=Écran cuisine : affiche aussi les productions terminées du jour (en bas, grisées) + fix apostrophe JS qui cassait l'écran (arrivé en PROD via v1.7.30)
+DATE=2026-09-28 13:47
