@@ -14,14 +14,16 @@ emails_bp = Blueprint("emails", __name__)
 def require_access_modeles(niveau):
     """
     Les modèles de mail (modeles_emails) sont partagés par plusieurs modules
-    (indicateurs, factures participation) — autorise l'accès si l'utilisateur
-    a le droit soit sur "indicateurs" soit sur "tresorerie", pour ne pas
-    bloquer les utilisateurs trésorerie qui n'ont pas accès aux indicateurs.
+    (indicateurs, factures participation, facturation cuisine) — autorise
+    l'accès si l'utilisateur a le droit sur "indicateurs", "tresorerie" ou
+    "production_cuisine", pour ne pas bloquer un module qui n'a pas accès
+    aux autres.
     """
     def decorator(f):
         @wraps(f)
         def wrapped(*args, **kwargs):
-            if not (has_access("indicateurs", niveau) or has_access("tresorerie", niveau)):
+            if not (has_access("indicateurs", niveau) or has_access("tresorerie", niveau)
+                    or has_access("production_cuisine", niveau)):
                 write_log(f"⛔ Accès refusé (modeles_emails) : user={session.get('user_email')}")
                 flash("⛔ Accès refusé", "danger")
                 return redirect(url_for("index"))

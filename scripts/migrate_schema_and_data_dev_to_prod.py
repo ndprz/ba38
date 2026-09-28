@@ -45,6 +45,10 @@ EXCLUDE_TABLES = {
     "cuisine_consignes_clients",  # référence associations.id (diverge DEV/PROD)
     "cuisine_bons_livraison",  # idem
     "cuisine_bons_livraison_lignes",  # référence cuisine_productions.id (diverge)
+    "cuisine_factures_campagnes",  # facturation cuisine : gérée séparément en PROD
+    "cuisine_factures",  # référence associations.id (diverge)
+    "cuisine_factures_bl",  # référence cuisine_bons_livraison.id (diverge)
+    "cuisine_factures_reglements",  # référence cuisine_factures.id
 }
 
 # -------------------------------------------------------------------

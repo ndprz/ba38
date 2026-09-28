@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Relances factures cuisine {{ periode }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 1300px;">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">🔔 Relances — factures cuisine {{ periode }}</h2>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('emails.liste_modeles') }}"
+         onclick="window.open(this.href, 'emails_window', 'width=1200,height=800'); return false;"
+         class="btn btn-outline-primary btn-sm">✉️ Textes mails</a>
+      <form method="POST" action="{{ url_for('production_cuisine.facturation_relance_verifier_statut_mailjet', campagne_id=campagne.id) }}" class="d-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="numero_relance" value="{{ numero_relance }}">
+        <button type="submit" class="btn btn-outline-primary btn-sm">🔄 Vérifier statut Mailjet des relances</button>
+      </form>
+      <a href="{{ url_for('production_cuisine.facturation_resultats', campagne_id=campagne.id) }}" class="btn btn-outline-dark btn-sm">↩️ Factures du mois</a>
+    </div>
+  </div>
+
+  <form method="post" action="{{ url_for('production_cuisine.facturation_toggle_mode') }}" class="mb-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if mail_mode == "TEST" %}
+      <button class="btn btn-warning w-100">🧪 Mode TEST actif – Passer en PROD</button>
+    {% else %}
+      <button class="btn btn-danger w-100">🚀 Mode PROD actif – Repasser en TEST</button>
+    {% endif %}
+  </form>
+
+  <ul class="nav nav-pills mb-3">
+    {% for n in range(niveaux) %}
+      <li class="nav-item">
+        <a class="nav-link {{ 'active' if n == numero_relance }}"
+           href="{{ url_for('production_cuisine.facturation_relance', campagne_id=campagne.id, numero_relance=n) }}">
+          Relance {{ n + 1 }} <span class="badge bg-secondary">{{ nb_par_niveau[n] }}</span>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+
+  <div class="form-text mb-3">
+    Relance {{ numero_relance + 1 }} : factures envoyées, <strong>non payées</strong>, déjà relancées {{ numero_relance }} fois.
+    Modèle de mail « {{ code_modele }} »{% if not modele %} <span class="text-danger fw-bold">— introuvable !</span>{% endif %}.
+    La facture est jointe au mail. Saisissez les règlements (💳) sur l'écran des factures dès qu'ils arrivent : une facture soldée sort des relances.
+  </div>
+
+  {% if a_relancer %}
+  <table class="table table-sm table-striped table-bordered align-middle">
+    <thead class="table-light">
+      <tr><th>N° facture</th><th>Client</th><th>Email</th><th class="text-end">Montant</th><th class="text-end">Reste dû</th><th>Échéance</th>
+          <th>Dernière relance</th><th>Statut Mailjet</th><th title="Renvoyer la dernière relance via Gmail">🔁 Gmail</th></tr>
+    </thead>
+    <tbody>
+      {% for l in a_relancer %}
+      <tr>
+        <td class="fw-bold text-nowrap">{{ l.numero }}</td>
+        <td>{{ l.nom_association }}</td>
+        <td class="small">{{ l.email or '⚠️ aucun — non relançable' }}</td>
+        <td class="text-end text-nowrap">{{ euros(l.montant) }} €</td>
+        <td class="text-end text-nowrap fw-bold">{{ euros(l.reste_du) }} €</td>
+        <td class="small">{{ date_fr(l.date_echeance) }}</td>
+        <td class="small">
+          {% if l.relance_mail_erreur %}<span class="badge bg-danger" title="{{ l.relance_mail_erreur }}">⚠️ échec</span>{% endif %}
+          {% if l.date_derniere_relance %}{{ '🧪 ' if l.mode_test_relance }}{{ l.date_derniere_relance }}{% else %}—{% endif %}
+        </td>
+        <td class="small">{% if l.relance_statut_final %}<span class="badge bg-secondary">{{ l.relance_statut_final }}</span>{% else %}—{% endif %}</td>
+        <td class="text-center">
+          {% if l.relance_sujet and not l.mode_test_relance %}
+          <form method="POST" action="{{ url_for('production_cuisine.facturation_relance_renvoyer_gmail', facture_id=l.id) }}"
+                onsubmit="return confirm('Renvoyer la dernière relance de {{ l.numero }} via Gmail ?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="numero_relance" value="{{ numero_relance }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">🔁</button>
+          </form>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><th colspan="4">Total restant dû à relancer</th><th class="text-end">{{ euros(total) }} €</th><th colspan="4"></th></tr></tfoot>
+  </table>
+
+  <form method="POST" class="card card-body border-warning"
+        onsubmit="return confirm('Envoyer la relance {{ numero_relance + 1 }} à {{ a_relancer | length }} client(s) ?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="numero_relance" value="{{ numero_relance }}">
+    {% if mail_mode == "PROD" %}
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" name="confirm_production" value="1" id="confirm_production" required>
+        <label class="form-check-label fw-bold text-danger" for="confirm_production">
+          🚨 Je confirme l'envoi réel des relances aux clients (mode PROD).
+        </label>
+      </div>
+    {% else %}
+      <div class="alert alert-warning py-2">🧪 MODE TEST : 2 relances maximum, envoyées uniquement à {{ mail_test_to }} (le niveau de relance n'augmente pas).</div>
+    {% endif %}
+    <div>
+      <button type="submit" class="btn btn-warning" {% if not modele %}disabled{% endif %}>🔔 Envoyer la relance {{ numero_relance + 1 }}</button>
+    </div>
+  </form>
+  {% else %}
+    <p class="text-muted">Aucune facture à relancer à ce niveau.</p>
+  {% endif %}
+
+</div>
+{% endblock %}

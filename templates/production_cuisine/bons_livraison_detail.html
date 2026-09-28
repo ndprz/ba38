@@ -31,6 +31,10 @@
         {% if bon.numero_preparation %}
           <div class="small text-muted">Préparation {{ bon.numero_preparation }} validée le {{ bon.date_validation }}{% if bon.user_validation %} par {{ bon.user_validation }}{% endif %}</div>
         {% endif %}
+        {% if facture %}
+          <div class="small mt-1">💶 Facturé sur <a href="{{ url_for('production_cuisine.facturation_resultats', campagne_id=facture.campagne_id) }}">{{ facture.numero }}</a>
+            (<a href="{{ url_for('production_cuisine.facturation_pdf', facture_id=facture.id) }}" target="_blank">PDF</a>)</div>
+        {% endif %}
         {% if bon.statut == 'annule' %}
           <div class="small text-danger mt-1">Annulé le {{ bon.date_annulation }}{% if bon.user_annulation %} par {{ bon.user_annulation }}{% endif %}{% if bon.motif_annulation %} — {{ bon.motif_annulation }}{% endif %}</div>
         {% endif %}

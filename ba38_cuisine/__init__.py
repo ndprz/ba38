@@ -27,6 +27,8 @@ from ba38_cuisine import routes_ingredients_carnes
 from ba38_cuisine import routes_stock_barquettes
 from ba38_cuisine import routes_consignes_clients
 from ba38_cuisine import routes_bons_livraison
+from ba38_cuisine import routes_facturation
+from ba38_cuisine import routes_facturation_relance
 from ba38_cuisine import routes_parametres
 from ba38_cuisine import routes_tracabilite
 from ba38_cuisine import routes_kiosk

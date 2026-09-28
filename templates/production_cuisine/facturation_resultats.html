@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block title %}Factures cuisine {{ periode }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 1500px;">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">💶 Factures cuisine — {{ periode | capitalize }}</h2>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('emails.liste_modeles') }}"
+         onclick="window.open(this.href, 'emails_window', 'width=1200,height=800'); return false;"
+         class="btn btn-outline-primary btn-sm">✉️ Textes mails</a>
+      <form method="POST" action="{{ url_for('production_cuisine.facturation_verifier_statut_mailjet', campagne_id=campagne.id) }}" class="d-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-outline-primary btn-sm">🔄 Vérifier statut Mailjet</button>
+      </form>
+      <a href="{{ url_for('production_cuisine.facturation_relance', campagne_id=campagne.id) }}" class="btn btn-outline-warning btn-sm">🔔 Relancer les impayés</a>
+      <a href="{{ url_for('production_cuisine.facturation_export_excel', campagne_id=campagne.id) }}" class="btn btn-outline-success btn-sm">📊 Export Excel</a>
+      <a href="{{ url_for('production_cuisine.facturation_selection') }}" class="btn btn-outline-dark btn-sm">↩️ Mois facturés</a>
+    </div>
+  </div>
+
+  <!-- MODE ENVOI (même bascule de session que la trésorerie) -->
+  <form method="post" action="{{ url_for('production_cuisine.facturation_toggle_mode') }}" class="mb-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if mail_mode == "TEST" %}
+      <button class="btn btn-warning w-100">🧪 Mode TEST actif – Passer en PROD</button>
+    {% else %}
+      <button class="btn btn-danger w-100">🚀 Mode PROD actif – Repasser en TEST</button>
+    {% endif %}
+  </form>
+  {% if mail_mode == "TEST" %}
+    <div class="alert alert-warning py-2">🧪 MODE TEST : « Envoyer » n'enverra que 2 mails, uniquement à {{ mail_test_to }}.</div>
+  {% else %}
+    <div class="alert alert-danger py-2">🚨 MODE PROD : « Envoyer » enverra réellement les factures aux clients.</div>
+  {% endif %}
+
+  {% if campagne.dernier_envoi_le %}
+    {% if campagne.dernier_envoi_mode_test %}
+      <div class="alert alert-warning py-2">🧪 Dernier envoi : <strong>Mode TEST</strong> le {{ campagne.dernier_envoi_le }} par {{ campagne.dernier_envoi_par or '—' }}
+        ({{ campagne.dernier_envoi_nb_ok }} envoyé(s), {{ campagne.dernier_envoi_nb_erreur }} erreur(s)) — aucune facture réelle envoyée.</div>
+    {% else %}
+      <div class="alert alert-success py-2">📤 Dernier envoi réel le {{ campagne.dernier_envoi_le }} par {{ campagne.dernier_envoi_par or '—' }}
+        — {{ campagne.dernier_envoi_nb_ok }} envoyé(s){% if campagne.dernier_envoi_nb_erreur %}, ⚠️ {{ campagne.dernier_envoi_nb_erreur }} erreur(s){% endif %}</div>
+    {% endif %}
+  {% endif %}
+
+  <div class="alert alert-secondary py-2">
+    💰 Total du mois : <strong>{{ euros(montant_total) }} €</strong> — encaissé : <strong>{{ euros(montant_paye) }} €</strong>
+    — reste dû : <strong>{{ euros(montant_total - montant_paye) }} €</strong>
+  </div>
+
+  {% if restants %}
+  <div class="alert alert-info py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span>🧾 {{ restants | length }} bon(s) de livraison validé(s) de {{ periode }} pas encore facturé(s)
+      ({{ restants | map(attribute='numero') | join(', ') }}).</span>
+    <form method="POST" action="{{ url_for('production_cuisine.facturation_generer') }}"
+          onsubmit="return confirm('Créer les factures de ces bons de livraison ?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="mois" value="{{ '%04d-%02d'|format(campagne.annee, campagne.mois) }}">
+      <button type="submit" class="btn btn-sm btn-primary">💶 Facturer ces BL</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <form method="POST" action="{{ url_for('production_cuisine.facturation_envoyer', campagne_id=campagne.id) }}" id="form-envoi"
+        {% if mail_mode != "TEST" %}onsubmit="return confirm('⚠️ Mode PROD : envoyer réellement les factures cochées aux clients ?');"{% endif %}>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    {% if reste_a_envoyer %}
+    <div class="d-flex align-items-end gap-2 my-3 flex-wrap">
+      <div>
+        <label class="form-label small mb-0">Modèle de mail</label>
+        <select name="modele_id" class="form-select form-select-sm" required>
+          {% for m in modeles %}<option value="{{ m.id }}">{{ m.code_modele }}</option>{% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-success btn-sm">📧 Envoyer les factures cochées {% if mail_mode == "TEST" %}(mode TEST){% endif %}</button>
+      <span class="small text-muted">Seules les factures pas encore envoyées réellement peuvent être cochées.</span>
+    </div>
+    {% endif %}
+
+    <div class="table-responsive">
+    <table class="table table-sm table-striped table-bordered align-middle">
+      <thead class="table-light">
+        <tr>
+          <th><input type="checkbox" class="form-check-input" id="tout-cocher" title="Tout cocher"></th>
+          <th>N° facture</th><th>Client</th><th>Email</th><th>BL</th>
+          <th class="text-end">Portions carnées</th><th class="text-end">Montant</th><th>Échéance</th>
+          <th class="text-end">Réglé</th><th class="text-end">Reste dû</th><th>Règlements</th><th>PDF</th><th>Mail envoyé</th><th>Statut Mailjet</th><th>Relance</th><th title="Renvoyer via Gmail en cas de rebond Mailjet">🔁 Gmail</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in factures %}
+        {% set envoyable = f.statut == 'emise' and f.email and (not f.mail_envoye_le or f.mail_mode_test or f.mail_erreur) %}
+        {% set reste = ((f.montant or 0) - (f.total_regle or 0)) | round(2) %}
+        <tr class="{{ 'table-secondary text-muted' if f.statut == 'annulee' else ('table-success' if f.date_paiement else ('table-warning' if f.total_regle else '')) }}">
+          <td>{% if envoyable %}<input type="checkbox" class="form-check-input case-facture" name="facture_ids" value="{{ f.id }}" checked>{% endif %}</td>
+          <td class="text-nowrap fw-bold">{{ f.numero }}{% if f.statut == 'annulee' %} <span class="badge bg-secondary" title="{{ f.motif_annulation or '' }}">annulée</span>{% endif %}</td>
+          <td>{{ f.nom_association }}</td>
+          <td class="small">{{ f.email or '⚠️ aucun' }}</td>
+          <td class="small">{{ f.numeros_bl }}</td>
+          <td class="text-end">{{ f.portions_carne }}</td>
+          <td class="text-end text-nowrap">{{ euros(f.montant) }} €</td>
+          <td class="small">{{ date_fr(f.date_echeance) }}</td>
+          <td class="text-end text-nowrap">{{ euros(f.total_regle) }} €</td>
+          <td class="text-end text-nowrap fw-bold">{% if f.statut == 'emise' %}{{ euros(reste) }} €{% endif %}</td>
+          <td class="text-center text-nowrap">
+            {% if f.statut == 'emise' %}
+              <button type="button" class="btn btn-sm {{ 'btn-success' if f.date_paiement else ('btn-warning' if f.total_regle else 'btn-outline-secondary') }}"
+                      data-bs-toggle="modal" data-bs-target="#reglements-{{ f.id }}"
+                      title="{{ 'Soldée le ' ~ date_fr(f.date_paiement) if f.date_paiement else 'Saisir un règlement' }}">
+                💳 {{ '✅' if f.date_paiement else (reglements.get(f.id, []) | length or '') }}</button>
+            {% endif %}
+          </td>
+          <td><a href="{{ url_for('production_cuisine.facturation_pdf', facture_id=f.id) }}" target="_blank">👁️ Voir</a></td>
+          <td class="small text-nowrap">
+            {% if f.mail_erreur %}<span class="badge bg-danger" title="{{ f.mail_erreur }}">⚠️ échec</span>
+            {% elif f.mail_envoye_le and f.mail_mode_test %}<span class="badge bg-warning" title="Mode TEST">🧪 {{ f.mail_envoye_le }}</span>
+            {% elif f.mail_envoye_le %}<span class="badge bg-success">✔ {{ f.mail_envoye_le }}</span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td class="small">
+            {% if f.mail_statut_final %}
+              <span class="badge {{ 'bg-success' if f.mail_statut_final in ['sent', 'opened', 'clicked', 'delivered'] else ('bg-danger' if f.mail_statut_final in ['bounce', 'blocked', 'spam', 'hardbounced', 'softbounced'] else 'bg-secondary') }}">{{ f.mail_statut_final }}</span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td class="small text-center">{{ f.relance_niveau or '' }}{% if f.date_derniere_relance %}<div class="text-muted" style="font-size: .75em;">{{ f.date_derniere_relance }}</div>{% endif %}</td>
+          <td class="text-center">
+            {% if f.email and f.mail_envoye_le and not f.mail_mode_test and not f.mail_erreur %}
+              <button type="submit" form="gmail-{{ f.id }}" class="btn btn-sm btn-outline-danger" title="Renvoyer via Gmail">🔁</button>
+              {% if f.mail_renvoi_gmail_le %}<div class="text-muted" style="font-size: .75em;">{{ f.mail_renvoi_gmail_le }}</div>{% endif %}
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>
+            {% if f.statut == 'emise' and not f.total_regle and (not f.mail_envoye_le or f.mail_mode_test or f.mail_erreur) %}
+              <button type="button" class="btn btn-sm btn-outline-danger btn-annuler" data-numero="{{ f.numero }}"
+                      data-url="{{ url_for('production_cuisine.facturation_annuler', facture_id=f.id) }}" title="Annuler la facture">↩️</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="17" class="text-muted fst-italic">Aucune facture pour ce mois.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </form>
+
+  {# Formulaires hors du formulaire d'envoi (pas de formulaires imbriqués) #}
+  {% for f in factures if f.email and f.mail_envoye_le and not f.mail_mode_test and not f.mail_erreur %}
+    <form method="POST" id="gmail-{{ f.id }}" action="{{ url_for('production_cuisine.facturation_renvoyer_gmail', facture_id=f.id) }}"
+          onsubmit="return confirm('Renvoyer la facture {{ f.numero }} à {{ f.nom_association }} via Gmail ?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    </form>
+  {% endfor %}
+  {# 💳 Fenêtres de règlement (une par facture émise) #}
+  {% for f in factures if f.statut == 'emise' %}
+  {% set reste = ((f.montant or 0) - (f.total_regle or 0)) | round(2) %}
+  <div class="modal fade" id="reglements-{{ f.id }}" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">💳 Règlements — {{ f.numero }} · {{ f.nom_association }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2">Montant : <strong>{{ euros(f.montant) }} €</strong> — réglé : <strong>{{ euros(f.total_regle) }} €</strong>
+            — reste dû : <strong class="{{ 'text-success' if reste <= 0 else 'text-danger' }}">{{ euros(reste) }} €</strong>
+            {% if f.date_paiement %}<span class="badge bg-success ms-1">Soldée le {{ date_fr(f.date_paiement) }}</span>{% endif %}</p>
+          {% if reglements.get(f.id) %}
+          <table class="table table-sm table-bordered align-middle">
+            <thead class="table-light"><tr><th>Date</th><th class="text-end">Montant</th><th>Mode</th><th>Référence</th><th>Commentaire</th><th>Saisi par</th><th></th></tr></thead>
+            <tbody>
+              {% for r in reglements[f.id] %}
+              <tr>
+                <td>{{ date_fr(r.date_reglement) }}</td>
+                <td class="text-end text-nowrap">{{ euros(r.montant) }} €</td>
+                <td>{{ r.mode or '' }}</td>
+                <td class="small">{{ r.reference or '' }}</td>
+                <td class="small">{{ r.commentaire or '' }}</td>
+                <td class="small text-muted">{{ r.user_saisie or '' }}<br>{{ r.date_saisie or '' }}</td>
+                <td>
+                  <form method="POST" action="{{ url_for('production_cuisine.facturation_supprimer_reglement', reglement_id=r.id) }}"
+                        onsubmit="return confirm('Supprimer ce règlement de {{ euros(r.montant) }} € ?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer (erreur de saisie)">🗑️</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+          {% if reste > 0 %}
+          <form method="POST" action="{{ url_for('production_cuisine.facturation_ajouter_reglement', facture_id=f.id) }}" class="row g-2 align-items-end border rounded p-2 mx-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-md-3">
+              <label class="form-label small mb-0">Date *</label>
+              <input type="date" name="date_reglement" value="{{ today }}" max="{{ today }}" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small mb-0">Montant (€) *</label>
+              <input type="text" inputmode="decimal" name="montant" value="{{ '%.2f'|format(reste) | replace('.', ',') }}" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small mb-0">Mode</label>
+              <select name="mode" class="form-select form-select-sm">
+                {% for m in modes_reglement %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small mb-0">Référence</label>
+              <input type="text" name="reference" class="form-control form-control-sm" placeholder="n° chèque, libellé virement">
+            </div>
+            <div class="col-md-9">
+              <input type="text" name="commentaire" class="form-control form-control-sm" placeholder="Commentaire (facultatif)">
+            </div>
+            <div class="col-md-3">
+              <button type="submit" class="btn btn-sm btn-success w-100">💳 Enregistrer le règlement</button>
+            </div>
+          </form>
+          {% else %}
+            <div class="alert alert-success py-2 mb-0">✅ Facture soldée{% if (f.montant or 0) <= 0 %} (montant 0 €){% endif %}.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  <form method="POST" id="form-annuler">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="motif" id="motif-annulation">
+  </form>
+
+  <p class="small text-muted mt-2">
+    💳 Règlements : paiements partiels possibles ; la facture est soldée (et sort des relances) quand le total réglé atteint son montant.<br>
+    ↩️ Annuler : possible tant que la facture n'a pas été réellement envoyée et n'a aucun règlement. Elle garde son numéro
+    (pas de trou dans la numérotation) et ses bons de livraison redeviennent facturables.
+  </p>
+</div>
+
+<script>
+  (function () {
+    var csrf = "{{ csrf_token() }}";
+    document.querySelectorAll(".btn-annuler").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var motif = prompt("Annuler la facture " + btn.dataset.numero + " ? Ses bons de livraison redeviendront facturables.\n\nMotif (facultatif) :", "");
+        if (motif === null) return;
+        var form = document.getElementById("form-annuler");
+        form.action = btn.dataset.url;
+        document.getElementById("motif-annulation").value = motif;
+        form.submit();
+      });
+    });
+    var tout = document.getElementById("tout-cocher");
+    if (tout) {
+      var cases = document.querySelectorAll(".case-facture");
+      tout.checked = cases.length > 0;
+      tout.addEventListener("change", function () { cases.forEach(function (c) { c.checked = tout.checked; }); });
+    }
+    var formEnvoi = document.getElementById("form-envoi");
+    formEnvoi.addEventListener("submit", function (e) {
+      if (!document.querySelector(".case-facture:checked")) {
+        e.preventDefault();
+        alert("Cochez au moins une facture à envoyer.");
+      }
+    });
+  })();
+</script>
+{% endblock %}

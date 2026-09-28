@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Facturation cuisine{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 1100px;">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">💶 Facturation cuisine (repas livrés)</h2>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('production_cuisine.liste_bons_livraison') }}" class="btn btn-outline-secondary">🧾 Bons de livraison</a>
+      <a href="{{ url_for('production_cuisine.liste_productions') }}" class="btn btn-outline-secondary">🍲 Cuisine</a>
+      <a href="{{ url_for('tresorerie.tresorerie') }}" class="btn btn-outline-secondary">💰 Trésorerie</a>
+    </div>
+  </div>
+
+  <div class="form-text mb-3">
+    Une facture par client et par mois, qui regroupe ses <strong>bons de livraison validés</strong> du mois
+    non encore facturés (les BL passent alors au statut « 💶 Facturé » et ne peuvent plus être annulés).
+    Générer un mois déjà facturé ajoute seulement les BL validés depuis. Numérotation automatique FC-AAAA-NNNN.
+  </div>
+
+  <div class="card border-primary mb-4">
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('production_cuisine.facturation_generer') }}" class="row g-2 align-items-end"
+            onsubmit="return confirm('Générer les factures du mois choisi ? Les bons de livraison concernés passeront au statut Facturé.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-auto">
+          <label class="form-label fw-bold">Mois à facturer</label>
+          <input type="month" name="mois" value="{{ mois_defaut }}" class="form-control" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary btn-lg">💶 Générer les factures du mois</button>
+        </div>
+      </form>
+
+      <h6 class="mt-4 mb-2">🧾 Bons de livraison validés, pas encore facturés</h6>
+      {% if en_attente %}
+        <ul class="mb-0">
+          {% for m in en_attente %}
+            {% set a, mo = m.mois.split('-') %}
+            <li>{{ periode_label(a|int, mo|int) }} : <strong>{{ m.nb }}</strong> BL — {{ euros(m.montant) }} €</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-muted mb-0">Aucun — tous les BL validés sont facturés.</p>
+      {% endif %}
+      {% if nb_preparation %}
+        <div class="alert alert-warning py-2 mt-3 mb-0">
+          📋 {{ nb_preparation }} bon(s) encore <strong>en préparation</strong> : ils ne seront facturés qu'une fois la
+          préparation validée (BL).
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <h5>📅 Mois facturés</h5>
+  {% if campagnes %}
+  <table class="table table-sm table-bordered align-middle">
+    <thead class="table-light">
+      <tr><th>Mois</th><th class="text-end">Factures</th><th class="text-end">Montant</th><th class="text-end">Envoyées</th><th class="text-end">Payées</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for c in campagnes %}
+      <tr>
+        <td class="fw-bold">{{ periode_label(c.annee, c.mois) | capitalize }}</td>
+        <td class="text-end">{{ c.nb_factures }}</td>
+        <td class="text-end">{{ euros(c.montant_total) }} €</td>
+        <td class="text-end">{{ c.nb_envoyees }} / {{ c.nb_factures }}</td>
+        <td class="text-end">{{ c.nb_payees }} / {{ c.nb_factures }}</td>
+        <td><a href="{{ url_for('production_cuisine.facturation_resultats', campagne_id=c.id) }}" class="btn btn-sm btn-outline-primary">Ouvrir</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="text-muted">Aucun mois facturé pour l'instant.</p>
+  {% endif %}
+
+</div>
+{% endblock %}

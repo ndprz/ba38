@@ -25,6 +25,7 @@
             <option value="trimestriel" {% if modele and modele.type_periode == 'trimestriel' %}selected{% endif %}>Indicateurs trimestriels</option>
             <option value="annuel" {% if modele and modele.type_periode == 'annuel' %}selected{% endif %}>Indicateurs annuels</option>
             <option value="facture" {% if modele and modele.type_periode == 'facture' %}selected{% endif %}>Facturation (participation, cotisations)</option>
+            <option value="facture_cuisine" {% if modele and modele.type_periode == 'facture_cuisine' %}selected{% endif %}>Facturation cuisine (repas livrés)</option>
         </select>
         <small class="form-text text-muted">
             Détermine sur quel écran d'envoi (« Envoyer mails » d'une campagne indicateurs) ce modèle apparaît dans la liste déroulante.

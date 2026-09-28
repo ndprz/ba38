@@ -77,6 +77,12 @@ def detail_bon_livraison(bon_id):
     with _connect() as conn:
         bon, lignes = _charger_bon(conn, bon_id)
         lots_ajout, max_par_ligne = [], {}
+        facture = conn.execute(
+            """SELECT f.id, f.numero, f.campagne_id FROM cuisine_factures f
+               JOIN cuisine_factures_bl fb ON fb.facture_id = f.id
+               WHERE fb.bon_id = ? AND f.statut = 'emise'""",
+            (bon_id,),
+        ).fetchone() if bon else None
         if bon and bon["statut"] == "preparation":
             lots_ajout, max_par_ligne = _lots_pour_preparation(conn, bon, lignes)
     if not bon:
@@ -85,7 +91,7 @@ def detail_bon_livraison(bon_id):
     return render_template(
         "production_cuisine/bons_livraison_detail.html",
         bon=bon, lignes=lignes, statuts=STATUTS, categories=CATEGORIES,
-        lots_ajout=lots_ajout, max_par_ligne=max_par_ligne,
+        lots_ajout=lots_ajout, max_par_ligne=max_par_ligne, facture=facture,
         temperature_max=TEMPERATURE_LIVRAISON_MAX,
     )
 
