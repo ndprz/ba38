@@ -3850,6 +3850,18 @@ def _inserer_logo(ws, largeur_px):
     ws.add_image(image, "A1")
 
 
+
+# Le modèle Excel partagé (Modele association.xlsx) utilise des jetons texte
+# ("àassociation", "àcode", "àdatecollecte", "àannéecollecte") pour toutes
+# les valeurs à substituer, SAUF l'année de collecte qui apparaît par endroits
+# comme un nombre/texte "2025" brut — reliquat d'avant la convention par
+# jetons. ANNEE_PLACEHOLDER_MODELE_ASSOCIATION nomme explicitement cette
+# valeur plutôt que de la laisser en dur dans le code ci-dessous : si le
+# modèle est un jour retouché pour utiliser "àannéecollecte" partout, cette
+# constante (et les deux lignes qui la référencent) pourra être retirée.
+ANNEE_PLACEHOLDER_MODELE_ASSOCIATION = 2025
+
+
 def _creer_fichier_association(asso, annee, dossier):
     source = _modele_gardee("Modele association.xlsx")
     if not os.path.exists(source):
@@ -3862,14 +3874,14 @@ def _creer_fichier_association(asso, annee, dossier):
     for ws in wb.worksheets:
         for row in ws.iter_rows():
             for cell in row:
-                if cell.value == 2025:
+                if cell.value == ANNEE_PLACEHOLDER_MODELE_ASSOCIATION:
                     cell.value = annee
                 if isinstance(cell.value, str):
                     cell.value = cell.value.replace("àassociation", asso["nom"])
                     cell.value = re.sub(r"àcode(?!\d)", code, cell.value)
                     cell.value = cell.value.replace("àdatecollecte", date_collecte)
                     cell.value = cell.value.replace("àannéecollecte", str(annee))
-                    cell.value = cell.value.replace("2025", str(annee))
+                    cell.value = cell.value.replace(str(ANNEE_PLACEHOLDER_MODELE_ASSOCIATION), str(annee))
 
     ws = wb["magasins"]
     for index, magasin in enumerate(asso["magasins"], start=1):
