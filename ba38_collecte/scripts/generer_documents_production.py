@@ -1239,19 +1239,22 @@ def ecrire_onglet_tournees_secteur(wb, lignes, nb_max_mag, titre='Tournees'):
     return ws
 
 
-def construire_classeur_tournees(df_t, mag_cols, vif_cols, df_ref):
+def construire_classeur_tournees(df_t, mag_cols, vif_cols, df_ref, colis_par_vif=None):
     """
     Construit (sans le sauvegarder — voir main()) LE classeur unique
     regroupant tous les onglets : 'Tournees VIF' (avec les Code VIF),
     'Tournees' (avec Tonnage / Km estimés / Secteur — mêmes secteurs
     géographiques que le classeur de l'optimisation des tournées) et
-    'Magasins' (référentiel + camion affecté par demi-journée). Pas de
-    calcul de tournées ici : uniquement la mise en forme de ce qui est
-    déjà décidé dans liste-vehicule.xlsx.
+    'Magasins' (référentiel + camion affecté par demi-journée + colis,
+    visible directement même quand tout est en ordre — voir aussi
+    'Colis manquants' pour la liste des seules anomalies). Pas de calcul
+    de tournées ici : uniquement la mise en forme de ce qui est déjà
+    décidé dans liste-vehicule.xlsx.
 
     Les onglets de contrôle (Quai manquant, Cagettes manquantes...) sont
     ajoutés séparément par main(), dans ce même classeur.
     """
+    colis_par_vif = colis_par_vif or {}
     import openpyxl as _oxl
     from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
@@ -1287,9 +1290,9 @@ def construire_classeur_tournees(df_t, mag_cols, vif_cols, df_ref):
     lignes_secteur = construire_lignes_tournees_secteur(df_t, mag_cols, df_ref)
     ecrire_onglet_tournees_secteur(wb, lignes_secteur, nb_max_mag=len(mag_cols))
 
-    # ── Magasins (référentiel + camion affecté par demi-journée) ─────────
+    # ── Magasins (référentiel + camion affecté par demi-journée + colis) ──
     ws3 = wb.create_sheet('Magasins')
-    cols_fix = ['Code VIF', 'Nom', 'Ville', 'Adresse', 'État']
+    cols_fix = ['Code VIF', 'Nom', 'Ville', 'Adresse', 'État', 'Colis']
     cols_m = cols_fix + DJ_ORDER
     for c, col in enumerate(cols_m, 1):
         cell = ws3.cell(row=1, column=c, value=col)
@@ -1314,14 +1317,18 @@ def construire_classeur_tournees(df_t, mag_cols, vif_cols, df_ref):
         for c, col in enumerate(cols_m, 1):
             if col in DJ_ORDER:
                 val = vif_plan.get(vif_mag, {}).get(col, '')
+            elif col == 'Colis':
+                val = colis_par_vif.get(vif_mag, '')
             else:
                 val = mag.get(col, '')
                 val = '' if str(val) == 'nan' else val
             cell = ws3.cell(row=r, column=c, value=val)
             cell.font = F_NRM; cell.border = BRD; cell.alignment = A_C
+            if col == 'Colis' and val == '':
+                cell.font = Font(name='Calibri', bold=True, color='C00000')
     ws3.freeze_panes = 'A2'
     ws3.auto_filter.ref = ws3.dimensions
-    for i, w in enumerate([12, 30, 20, 35, 20] + [16]*len(DJ_ORDER), 1):
+    for i, w in enumerate([12, 30, 20, 35, 20, 12] + [16]*len(DJ_ORDER), 1):
         ws3.column_dimensions[get_column_letter(i)].width = w
 
     # ── Secteurs / Secteurs - Magasins (répartition géographique du
@@ -1796,8 +1803,10 @@ def ajouter_onglet_explications(wb):
          "sont à vérifier en priorité, une tournée qui zigzague entre plusieurs secteurs est "
          "souvent optimisable."),
         ('Magasins',
-         "Référentiel des magasins actifs (Code VIF, nom, ville, adresse, horaires, état) "
-         "avec, pour chaque demi-journée de collecte, le camion qui lui est affecté. Permet "
+         "Référentiel des magasins actifs (Code VIF, nom, ville, adresse, état, colis) avec, "
+         "pour chaque demi-journée de collecte, le camion qui lui est affecté. La colonne "
+         "'Colis' reprend le numéro de colis (liste-colis.xlsx) — en rouge et vide si aucun "
+         "colis n'est défini pour ce magasin (voir aussi l'onglet 'Colis manquants'). Permet "
          "de vérifier d'un coup d'œil que tous les magasins du référentiel sont bien couverts."),
         ('Secteurs',
          "Liste des secteurs géographiques (mêmes secteurs que l'onglet 'Tournees' et que "
@@ -1843,6 +1852,11 @@ def ajouter_onglet_explications(wb):
          "en priorité — magasin oublié lors de la planification ? (Les magasins présents dans "
          "liste-vehicule.xlsx mais sans camion attribué sont signalés séparément, voir 'Camion "
          "non défini'.)"),
+        ('Colis manquants',
+         "Magasins réellement collectés (même définition que 'Magasins non planifiés' — État "
+         "'Collecté par la BAI', ou 'Collecte gardée' avec stockage partagé BAI) absents de "
+         "liste-colis.xlsx, ou présents mais avec un colis non renseigné. À compléter dans "
+         "liste-colis.xlsx avant régénération."),
         ('Créneaux incomplets',
          "Magasins collectés sur une SEULE des deux demi-journées d'un même jour (Vendredi ou "
          "Samedi) alors qu'un camion est prévu sur l'autre — ex. un camion le vendredi après-midi "
@@ -2131,6 +2145,10 @@ def main():
     parser.add_argument('--cagettes', default='Cagettes_magasins.xlsx',
                         help="Historique du nb de cagettes par magasin/demi-journée "
                              "(colonnes 'Code VIF','jour','cag1'..'cag4')")
+    parser.add_argument('--colis', default='liste-colis.xlsx',
+                        help="Référentiel des colis affectés à chaque magasin collecté "
+                             "(colonne 'Code VIF') — sert uniquement au contrôle 'Colis "
+                             "manquants', n'affecte aucun autre document")
     parser.add_argument('--annee', default=datetime.datetime.now().year, type=int)
     parser.add_argument('--camion', default=None,
                         help="Limite le document 1 (fiches de collecte) à ce seul camion "
@@ -2254,6 +2272,30 @@ def main():
     except Exception as e:
         print(f"AVERTISSEMENT : Cagettes non chargées ({args.cagettes} : {e})")
 
+    # ── Colis — référentiel des colis affectés à chaque magasin collecté
+    # (liste-colis.xlsx, une ligne par magasin) : la valeur elle-même est
+    # affichée dans une colonne 'Colis' de l'onglet 'Magasins' (visible même
+    # quand tout est en ordre, pas seulement en cas d'anomalie), et son
+    # absence/vide sert au contrôle 'Colis manquants' plus bas.
+    colis_par_vif = {}
+    try:
+        df_colis = pd.read_excel(args.colis)
+        colonne_colis = next((c for c in df_colis.columns if str(c).strip().lower() == 'colis'), None)
+        for _, r in df_colis.iterrows():
+            vif = vif_fmt(r.get('Code VIF', ''))
+            if not vif:
+                continue
+            if colonne_colis is not None:
+                valeur = r.get(colonne_colis, '')
+                valeur = '' if str(valeur).strip() in ('', 'nan') else valeur
+            else:
+                valeur = 'Oui'
+            if valeur != '':
+                colis_par_vif[vif] = valeur
+        print(f"Colis     : {args.colis} ({len(colis_par_vif)} magasin(s) avec colis défini)")
+    except Exception as e:
+        print(f"AVERTISSEMENT : Colis non chargés ({args.colis} : {e})")
+
     # ── vehicule_consignes.xlsx : une ligne par camion, condensée depuis les
     # colonnes de consignes déjà présentes dans liste-vehicule.xlsx (réutilise
     # df_veh, déjà chargé ci-dessus — pas de second passage sur le fichier).
@@ -2282,12 +2324,28 @@ def main():
     # Magasins — sauvegardé une seule fois, à la fin, une fois les onglets de
     # contrôle (Quai manquant, Cagettes manquantes...) ajoutés eux aussi.
     print()
-    wb = construire_classeur_tournees(df, mag_cols, vif_cols, df_ref)
+    wb = construire_classeur_tournees(df, mag_cols, vif_cols, df_ref, colis_par_vif)
 
     # ── Magasins actifs du référentiel jamais intégrés dans liste-vehicule.xlsx
     non_planifies = []
+    manquants_colis = []
     if 'État' in df_ref.columns:
         actifs_ref = magasins_actifs(df_ref)
+
+        # ── Colis manquants : magasin réellement collecté (même définition
+        # que 'Magasins non planifiés' ci-dessous) mais absent de
+        # liste-colis.xlsx, ou présent avec un colis vide.
+        for _, r in actifs_ref.iterrows():
+            vif_r = vif_fmt(r.get('Code VIF', ''))
+            nom_r = str(r.get('Nom', '')).strip()
+            if not vif_r or not nom_r or nom_r == 'nan':
+                continue
+            if vif_r not in colis_par_vif:
+                manquants_colis.append((vif_r, nom_r))
+
+        if manquants_colis:
+            print(f"ATTENTION : {len(manquants_colis)} magasin(s) actif(s) sans colis défini "
+                  f"dans {args.colis} !")
         # NB : on part de df (tournées réellement reconstruites, une ligne par
         # camion x demi-journée) et non de df_veh brut — une ligne de
         # liste-vehicule.xlsx peut avoir un Code VIF renseigné mais un Code
@@ -2621,6 +2679,12 @@ def main():
         for vif_r, nom_r in sorted(non_planifies, key=lambda t: t[1]):
             ws_n.append([vif_r, nom_r])
 
+    if manquants_colis:
+        ws_col = wb.create_sheet('Colis manquants')
+        ws_col.append(['Code VIF', 'Nom'])
+        for vif_r, nom_r in sorted(manquants_colis, key=lambda t: t[1]):
+            ws_col.append([vif_r, nom_r])
+
     if creneaux_incomplets:
         from openpyxl.styles import PatternFill as _PF, Font as _Ft
         ws_ci = wb.create_sheet('Créneaux incomplets')
@@ -2663,7 +2727,7 @@ def main():
     args.output_excel = sauver_xlsx_avec_repli(wb, args.output_excel)
     if (manquants_quai or camions_non_definis or camions_absents or magasins_sans_camion
             or manquants_cag or non_planifies or creneaux_incomplets or magasins_dj_non_couverts
-            or doublons_camion_magasin):
+            or doublons_camion_magasin or manquants_colis):
         print(f"\nManquants : {len(manquants_quai)} camion(s) sans Quai, "
               f"{len(camions_non_definis)} camion(s) totalement absent(s) de {args.vehicules}, "
               f"{len(camions_absents)} camion(s) présent(s) dans {args.vehicules} mais sans "
@@ -2677,13 +2741,14 @@ def main():
               f"{len(creneaux_incomplets)} créneau(x) incomplet(s) (jour couvert sur une seule "
               f"demi-journée sur les deux), "
               f"{len(magasins_dj_non_couverts)} couple(s) magasin/demi-journée attendu(s) "
-              f"d'après les créneaux mais sans camion")
+              f"d'après les créneaux mais sans camion, "
+              f"{len(manquants_colis)} magasin(s) actif(s) sans colis défini")
         print(f"  (Quai/Camions non définis/Camions absents/Doublons camion-magasin/Camion non "
               f"défini/Cagettes/Magasins non planifiés/Créneaux incomplets/Magasins-DJ non "
-              f"couverts → à compléter puis réinjecter dans {args.vehicules} / {args.cagettes}, "
-              f"avant régénération)")
+              f"couverts/Colis manquants → à compléter puis réinjecter dans {args.vehicules} / "
+              f"{args.cagettes} / {args.colis}, avant régénération)")
     else:
-        print("\nAucun manquant : Quai, cagettes et planification sont complets.")
+        print("\nAucun manquant : Quai, cagettes, colis et planification sont complets.")
     print(f"→ Classeur Excel (tous onglets) : {args.output_excel}")
 
     # ═══════════════════════════════════════════════════════════════════════

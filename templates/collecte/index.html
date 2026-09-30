@@ -117,6 +117,11 @@
                            value="{{ campagne.drive_cagettes if campagne else '' }}">
                 </div>
                 <div class="col-12 mb-4">
+                    <label class="form-label">Liste des colis</label>
+                    <input type="text" name="colis" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
+                           value="{{ campagne.drive_colis or '' if campagne and campagne.drive_colis is defined else '' }}">
+                </div>
+                <div class="col-12 mb-4">
                     <label class="form-label">Liste des groupes (go-on-web)</label>
                     <input type="text" name="groupes" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/..."
                            value="{{ campagne.drive_groupes or '' if campagne and campagne.drive_groupes is defined else '' }}">
