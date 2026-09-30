@@ -75,6 +75,10 @@
             3ème relance
           </option>
 
+          <option value="3" {% if numero_relance == 3 %}selected{% endif %}>
+            🔁 Renvoyer la 3ème relance (déjà envoyée)
+          </option>
+
         </select>
       </div>
 
@@ -138,6 +142,13 @@
   <div class="alert alert-danger">
     ⚠ {{ lignes|length }} relance(s) vont être envoyée(s).
   </div>
+
+  {% if preview and numero_relance == 3 %}
+  <div class="alert alert-warning">
+    🔁 <strong>Renvoi de la 3ème relance</strong> : ces associations ont déjà reçu
+    3 relances. Le texte de la 3ème relance leur sera renvoyé, sans augmenter leur compteur de relances.
+  </div>
+  {% endif %}
 
   {% if preview is defined and preview %}
   <div class="alert alert-secondary">
@@ -222,6 +233,19 @@
     <input type="hidden" name="mail_sender" value="{{ mail_sender }}">
     <input type="hidden" name="confirm_envoi" value="1">
 
+    {% if numero_relance == 3 %}
+    <div class="form-check mb-3">
+      <input class="form-check-input"
+             type="checkbox"
+             name="confirm_renvoi"
+             id="confirm_renvoi"
+             required>
+      <label class="form-check-label" for="confirm_renvoi">
+        Je confirme renvoyer la 3ème relance à ces {{ lignes|length }} association(s), déjà relancées 3 fois
+      </label>
+    </div>
+    {% endif %}
+
     {% if mail_mode == "PROD" %}
     <div class="form-check mb-3">
       <input class="form-check-input"
@@ -234,7 +258,8 @@
     </div>
     {% endif %}
 
-    <button class="btn btn-danger">
+    <button class="btn btn-danger"
+            {% if numero_relance == 3 %}onclick="return confirm('Renvoyer la 3ème relance à {{ lignes|length }} association(s) déjà relancée(s) 3 fois ?');"{% endif %}>
       🚨 CONFIRMER L'ENVOI
     </button>
   </form>

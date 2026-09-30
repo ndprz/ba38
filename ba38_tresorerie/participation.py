@@ -1158,7 +1158,8 @@ def _resoudre_lignes_email(rows):
 
 def envoyer_relances_participation_background(app, db_path, items, sujet_modele, corps_modele,
                                                numero_relance, annee, trimestre, mail_sender,
-                                               mail_mode, mail_test_to, current_user_email=None):
+                                               mail_mode, mail_test_to, current_user_email=None,
+                                               incrementer=True):
     """
     Envoi des relances de participation en arrière-plan (Thread).
 
@@ -1264,7 +1265,7 @@ def envoyer_relances_participation_background(app, db_path, items, sujet_modele,
                         email = COALESCE(NULLIF(email, ''), ?)
                     WHERE id = ?
                 """, (
-                    0 if mail_mode == "TEST" else 1,
+                    0 if mail_mode == "TEST" or not incrementer else 1,
                     datetime.now().isoformat(timespec="seconds"),
                     1 if mail_mode == "TEST" else 0,
                     sujet_envoi,
@@ -1366,6 +1367,10 @@ def relance(campagne_id):
     try:
         numero_relance = int(request.form.get("numero_relance"))
         confirm_envoi = request.form.get("confirm_envoi")
+        # numero_relance = 3 : renvoi de la 3ème relance aux factures déjà
+        # relancées 3 fois (même modèle, compteur non incrémenté)
+        renvoi_derniere = numero_relance == 3
+        numero_modele = 2 if renvoi_derniere else numero_relance
         confirm_production = request.form.get("confirm_production")
 
         mail_sender = request.form.get("mail_sender", "ba380.comptable@banquealimentaire.org")
@@ -1384,7 +1389,7 @@ def relance(campagne_id):
             flash("❌ Campagne introuvable", "danger")
             return redirect(url_for("participation.selection"))
 
-        code_modele = f"PARTICIPATION Relance {numero_relance + 1}"
+        code_modele = f"PARTICIPATION Relance {numero_modele + 1}"
 
         modele = conn.execute("""
             SELECT sujet, corps FROM modeles_emails WHERE code_modele = ? LIMIT 1
@@ -1412,7 +1417,10 @@ def relance(campagne_id):
 
         lignes = _resoudre_lignes_email(lignes)
 
-        a_relancer = [l for l in lignes if (l["relance_niveau"] or 0) == numero_relance]
+        if renvoi_derniere:
+            a_relancer = [l for l in lignes if (l["relance_niveau"] or 0) >= 3]
+        else:
+            a_relancer = [l for l in lignes if (l["relance_niveau"] or 0) == numero_relance]
 
         total_relances = sum(float(l["montant_total"] or 0) for l in a_relancer)
 
@@ -1457,6 +1465,11 @@ def relance(campagne_id):
             flash("⚠ Confirmation obligatoire en PRODUCTION.", "danger")
             return redirect(url_for("participation.relance_start", campagne_id=campagne_id))
 
+        if renvoi_derniere and not request.form.get("confirm_renvoi"):
+            conn.close()
+            flash("⚠ Confirmation obligatoire pour renvoyer la 3ème relance.", "danger")
+            return redirect(url_for("participation.relance_start", campagne_id=campagne_id, numero_relance=3))
+
         conn.close()
 
         items = [
@@ -1484,8 +1497,9 @@ def relance(campagne_id):
         lancer_tache_fond(
             target=envoyer_relances_participation_background,
             args=(app_reel, db_path, items, sujet_modele, corps_modele,
-                  numero_relance, campagne["annee"], campagne["trimestre"],
-                  mail_sender, mail_mode, mail_test_to, current_user_email_relance),
+                  numero_modele, campagne["annee"], campagne["trimestre"],
+                  mail_sender, mail_mode, mail_test_to, current_user_email_relance,
+                  not renvoi_derniere),
             nom="Relances participation",
             utilisateur=current_user_email_relance,
         )

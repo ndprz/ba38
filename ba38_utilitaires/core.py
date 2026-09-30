@@ -648,7 +648,7 @@ def split_emails(raw: str) -> list:
     return [e.strip() for e in str(raw).split(";") if is_valid_email(e.strip())]
 
 
-def prefixer_sujet_association(sujet: str, nom_association: str, longueur: int = 15) -> str:
+def prefixer_sujet_association(sujet: str, nom_association: str, longueur: int = 30) -> str:
     """Préfixe l'objet d'un mail par les `longueur` premiers caractères du
     nom de l'association (repérage rapide dans la messagerie, ex. relances)."""
     nom = " ".join(str(nom_association or "").split())[:longueur].strip()

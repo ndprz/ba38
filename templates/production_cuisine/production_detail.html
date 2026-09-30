@@ -5,12 +5,32 @@
 
 {% block extra_css %}
 <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_bootstrap5.min.css" rel="stylesheet">
+<style>
+  /* En-tête figé : recette + date/statut + Retour/Supprimer restent visibles au défilement */
+  .entete-production-fige {
+    position: sticky;
+    top: 0;
+    z-index: 1020;
+    background: var(--bs-body-bg, #fff);
+    /* déborde sur les gouttières du container pour masquer le contenu qui défile dessous */
+    margin-left: calc(-.5 * var(--bs-gutter-x, 1.5rem));
+    margin-right: calc(-.5 * var(--bs-gutter-x, 1.5rem));
+    padding: .5rem calc(.5 * var(--bs-gutter-x, 1.5rem));
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+  }
+  /* Fond pastel par famille d'étape */
+  .etape-jaune { background-color: #fff8d6; }   /* décongélation, tranchage à froid */
+  .etape-rouge { background-color: #fde2e2; }   /* cuisson */
+  .etape-bleu  { background-color: #e0efff; }   /* tranchage à chaud, refroidissement */
+  .etape-vert  { background-color: #e2f5e4; }   /* conditionnement, mise en cellule */
+  .etape-bloquee { opacity: .7; }
+</style>
 {% endblock %}
 
 {% block content %}
 <div class="container mt-4" style="max-width: 900px;">
 
-  <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+  <div class="entete-production-fige d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
     <div>
       <h2 class="mb-1" id="titre-recette">{{ production.nom_recette }}</h2>
       <div class="text-muted">
@@ -242,15 +262,15 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="col-auto">
           <label class="form-label">{{ libelles_barquettes.get('1/2', '1/2') }}</label>
-          <input type="number" inputmode="numeric" name="qte_1_2" class="form-control" value="{{ quantites['1/2'] }}">
+          <input type="number" inputmode="numeric" name="qte_1_2" class="form-control" value="{{ quantites['1/2'] or '' }}">
         </div>
         <div class="col-auto">
           <label class="form-label">{{ libelles_barquettes.get('1/4', '1/4') }}</label>
-          <input type="number" inputmode="numeric" name="qte_1_4" class="form-control" value="{{ quantites['1/4'] }}">
+          <input type="number" inputmode="numeric" name="qte_1_4" class="form-control" value="{{ quantites['1/4'] or '' }}">
         </div>
         <div class="col-auto">
           <label class="form-label">{{ libelles_barquettes.get('1/8', '1/8') }}</label>
-          <input type="number" inputmode="numeric" name="qte_1_8" class="form-control" value="{{ quantites['1/8'] }}">
+          <input type="number" inputmode="numeric" name="qte_1_8" class="form-control" value="{{ quantites['1/8'] or '' }}">
         </div>
         <div class="col-auto">
           <button type="submit" class="btn btn-primary btn-lg">💾 Enregistrer</button>
@@ -297,7 +317,13 @@
         {% set ligne = etapes_par_code.get(ref.code) %}
         {% set resolue = ligne and ligne.heure_fin is not none %}
         {% set bloquante = bloque_par.get(ref.code) %}
-        <div class="border rounded p-3 mb-3 {% if bloquante %}bg-light{% endif %}">
+        {% set couleur_etape = {
+             'decongelation': 'etape-jaune', 'tranchage_froid': 'etape-jaune',
+             'cuisson': 'etape-rouge',
+             'tranchage_chaud': 'etape-bleu', 'refroidissement_eau': 'etape-bleu',
+             'conditionnement': 'etape-vert', 'refroidissement_cellule': 'etape-vert',
+           }.get(ref.code, '') %}
+        <div class="border rounded p-3 mb-3 {{ couleur_etape }} {% if bloquante %}etape-bloquee{% if not couleur_etape %} bg-light{% endif %}{% endif %}">
           <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div>
               <strong>{% if ref.code == 'decongelation' %}🧊{% else %}{{ ref.ordre }}.{% endif %} {{ ref.libelle }}</strong>
