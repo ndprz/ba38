@@ -85,26 +85,10 @@
             <a href="{{ url_for('production_cuisine.creer_production', date_production=date_filtre, reception_id=r.id) }}"
                class="btn btn-sm btn-success">🍲 Nouvelle recette</a>
             {% if productions_du_jour %}
-            <div class="dropdown d-inline-block">
-              <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
-                      data-bs-toggle="dropdown" data-bs-auto-close="outside">Affecter à…</button>
-              <div class="dropdown-menu p-3" style="min-width: 280px;">
-                <form method="POST" action="{{ url_for('production_cuisine.affecter_reception', reception_id=r.id) }}">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <input type="hidden" name="next" value="{{ request.full_path }}">
-                  <label class="form-label small mb-1 d-block">Poids utilisé (kg, reste {{ r.solde_kg|kg }})</label>
-                  <input type="number" inputmode="decimal" step="any" min="0.001" max="{{ r.solde_kg }}"
-                         name="poids_kg" value="{{ r.solde_kg|kg|replace(',', '.') }}" class="form-control mb-2" required>
-                  <label class="form-label small mb-1 d-block">Recette</label>
-                  <select name="production_id" class="form-select w-100 mb-2" required>
-                    {% for p in productions_du_jour %}
-                    <option value="{{ p.id }}">{{ p.nom_recette }}</option>
-                    {% endfor %}
-                  </select>
-                  <button type="submit" class="btn btn-primary btn-sm w-100">Affecter</button>
-                </form>
-              </div>
-            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary btn-affecter"
+                    data-action="{{ url_for('production_cuisine.affecter_reception', reception_id=r.id) }}"
+                    data-solde="{{ r.solde_kg|kg|replace(',', '.') }}"
+                    data-libelle="{{ r.libelle_produit or 'Réception' }} — reste {{ r.solde_kg|kg }} kg">Affecter à…</button>
             {% endif %}
             {% endif %}
             <button type="button" class="btn btn-sm btn-outline-danger btn-purger" title="Purger le reste"
@@ -192,6 +176,54 @@
   {% endif %}
 
 </div>
+{% if productions_du_jour %}
+<div class="modal fade" id="modal-affecter" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="POST" class="modal-content" id="form-affecter">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ request.full_path }}">
+      <div class="modal-header">
+        <h5 class="modal-title">🍲 Affecter à une recette du jour</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p id="affecter-libelle" class="fw-bold"></p>
+        <div class="mb-3">
+          <label class="form-label fw-bold d-block">Recette</label>
+          <select name="production_id" class="form-select form-select-lg w-100" required>
+            {% for p in productions_du_jour %}
+            <option value="{{ p.id }}">{{ p.nom_recette }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold d-block">Poids utilisé (kg)</label>
+          <input type="number" inputmode="decimal" step="any" min="0.001" name="poids_kg"
+                 id="affecter-poids" class="form-control form-control-lg" required>
+          <div class="form-text">Tout le reste par défaut ; le solde éventuel reste en stock.</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button type="submit" class="btn btn-primary">Affecter</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+document.addEventListener('click', function (e) {
+  var btn = e.target.closest('.btn-affecter');
+  if (!btn) return;
+  var form = document.getElementById('form-affecter');
+  form.action = btn.dataset.action;
+  document.getElementById('affecter-libelle').textContent = btn.dataset.libelle || '';
+  var poids = document.getElementById('affecter-poids');
+  poids.value = btn.dataset.solde;
+  poids.max = btn.dataset.solde;
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-affecter')).show();
+});
+</script>
+{% endif %}
 {% include "production_cuisine/_purge_modal.html" %}
 {% include "production_cuisine/_scroll_restore.html" %}
 {% endblock %}

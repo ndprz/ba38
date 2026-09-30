@@ -189,11 +189,22 @@ DRIVE_CHAMPS = {
     "magasins":  {"champ": "drive_magasins",  "label": "Liste des magasins"},
     "vehicules": {"champ": "drive_vehicules", "label": "Liste des véhicules / planning"},
     "cagettes":  {"champ": "drive_cagettes",  "label": "Historique cagettes"},
+    "colis":     {"champ": "drive_colis",     "label": "Liste des colis"},
     "groupes":   {"champ": "drive_groupes",   "label": "Liste des groupes"},
     "participants": {"champ": "drive_participants", "label": "Liste des participants"},
     "participants_mailing": {"champ": "drive_participants_mailing", "label": "Liste des participants pour mailing"},
 }
-DRIVE_CHAMPS_PRODUCTION = {cle: DRIVE_CHAMPS[cle] for cle in ("magasins", "vehicules", "cagettes")}
+DRIVE_CHAMPS_PRODUCTION = {cle: DRIVE_CHAMPS[cle] for cle in ("magasins", "vehicules", "cagettes", "colis")}
+
+
+def _ensure_colonne_drive_colis(conn):
+    """La colonne drive_colis a été ajoutée après la création de la table
+    collecte_campagnes — migration paresseuse pour les bases déjà existantes
+    (dev/prod), comme pour les autres tables du module ajoutées en cours de
+    route."""
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_campagnes)").fetchall()}
+    if "drive_colis" not in colonnes:
+        conn.execute("ALTER TABLE collecte_campagnes ADD COLUMN drive_colis TEXT")
 
 
 def _id_drive(url):
@@ -217,6 +228,8 @@ def _fichier_drive(annee, cle):
     """Télécharge un export Google Sheets et retourne son chemin local."""
     conf = DRIVE_CHAMPS[cle]
     with get_db_connection() as conn:
+        _ensure_colonne_drive_colis(conn)
+        conn.commit()
         campagne = conn.execute(
             "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
         ).fetchone()
@@ -2073,6 +2086,7 @@ def enregistrer_liens_drive():
         return redirect(url_for("collecte.collecte_main", annee=annee))
 
     with get_db_connection() as conn:
+        _ensure_colonne_drive_colis(conn)
         existante = conn.execute(
             "SELECT id FROM collecte_campagnes WHERE annee = ?", (annee,)
         ).fetchone()
@@ -2080,21 +2094,21 @@ def enregistrer_liens_drive():
         if existante:
             conn.execute(
                 "UPDATE collecte_campagnes SET drive_magasins = ?, drive_vehicules = ?, "
-                 "drive_cagettes = ?, drive_groupes = ?, drive_participants = ?, "
+                 "drive_cagettes = ?, drive_colis = ?, drive_groupes = ?, drive_participants = ?, "
                  "drive_participants_mailing = ? WHERE annee = ?",
                 (valeurs["drive_magasins"], valeurs["drive_vehicules"], valeurs["drive_cagettes"],
-                  valeurs["drive_groupes"], valeurs["drive_participants"],
+                  valeurs["drive_colis"], valeurs["drive_groupes"], valeurs["drive_participants"],
                   valeurs["drive_participants_mailing"], annee)
             )
         else:
             maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             conn.execute("""
                 INSERT INTO collecte_campagnes
-                    (annee, drive_magasins, drive_vehicules, drive_cagettes, drive_groupes,
+                    (annee, drive_magasins, drive_vehicules, drive_cagettes, drive_colis, drive_groupes,
                                          drive_participants, drive_participants_mailing, date_creation, cree_par)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (annee, valeurs["drive_magasins"], valeurs["drive_vehicules"], valeurs["drive_cagettes"],
-                                    valeurs["drive_groupes"], valeurs["drive_participants"],
+                                    valeurs["drive_colis"], valeurs["drive_groupes"], valeurs["drive_participants"],
                                     valeurs["drive_participants_mailing"], maintenant, current_user.email))
 
         conn.commit()
@@ -3157,6 +3171,8 @@ def production_generer():
     # page principale du module (un nouveau dossier/jeu de 3 liens est créé
     # par le club chaque année), plus besoin de les ressaisir ici.
     with get_db_connection() as conn:
+        _ensure_colonne_drive_colis(conn)
+        conn.commit()
         campagne = conn.execute(
             "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
         ).fetchone()
