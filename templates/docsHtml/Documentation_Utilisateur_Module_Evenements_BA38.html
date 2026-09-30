@@ -160,12 +160,23 @@ diffusés à l’écran.</p>
 <h1 id="planning-automatique-des-passages-associations">6. Planning
 automatique des passages associations</h1>
 <p>Depuis juillet 2026, l’écran affiche également, chaque jour, un
-planning « Passages [Jour] » généré <strong>automatiquement</strong> à
-partir de la fiche de chaque association partenaire (jour de passage à
-la BAI, heure de passage, emplacement). Ce planning n’apparaît
+planning des passages généré <strong>automatiquement</strong> à partir
+de la fiche de chaque association partenaire (jour de passage à la BAI,
+heure de passage, emplacement). Ce planning n’apparaît
 <strong>pas</strong> dans le tableau ci-dessus : il n’existe aucune
 ligne à créer ou modifier, il est recalculé à chaque actualisation de
 l’écran directement depuis les fiches associations.</p>
+<p>Depuis septembre 2026, ce planning est affiché sur <strong>une page
+par emplacement</strong> : « Passages [Jour] — P1 », puis « Passages
+[Jour] — P6 ». L’emplacement est lu dans le champ « Emplacement » de la
+fiche association (une saisie comme « P 6 » ou « p6 » est bien rangée en
+P6). Les associations passant ce jour-là sans emplacement renseigné sont
+regroupées sur une dernière page « emplacement non renseigné » : pour
+les faire apparaître sur la bonne page, compléter leur fiche.</p>
+<p>Les pages du planning utilisent un fond clair dédié (les autres
+événements gardent le fond noir) ; chaque heure de passage est affichée
+dans une pastille, suivie de la liste des associations attendues à cette
+heure.</p>
 <p>Pour que le passage d’une association apparaisse correctement, sa
 fiche doit contenir un jour reconnu (« lundi », « mardi », etc.) dans le
 champ « Jour de passage à la BAI ». Les associations dont la fiche est
@@ -173,15 +184,19 @@ marquée invalide n’apparaissent pas.</p>
 <p>Le tri à l’écran place d’abord les créneaux du matin, puis les heures
 précises par ordre chronologique ; les libellés d’heure non standard
 (texte libre, fautes de saisie) sont affichés tels quels et triés en
-dernier. Plus la fiche associations est renseignée proprement (heure au
-format « 14h » ou « 14h30 »), meilleur est le tri.</p>
+dernier. Les associations sont regroupées sous une même pastille
+uniquement si leur heure est saisie à l’identique : « 15h » et « 15H00 »
+donnent deux pastilles séparées. Plus la fiche associations est
+renseignée proprement (heure au format « 14h » ou « 14h30 »), meilleur
+est le tri.</p>
 <p>En haut de la page « Gestion des événements écran », le bloc « 🗓️
 Planning automatique des passages associations » permet de :</p>
 <ul>
 <li><strong>activer/désactiver</strong> l’affichage de ce planning sur
 l’écran,</li>
-<li>régler sa <strong>durée d’affichage</strong> (en secondes) avant de
-passer à l’événement suivant.</li>
+<li>régler sa <strong>durée d’affichage</strong> (en secondes) : elle
+s’applique à chaque page (P1, P6…), le planning complet reste donc
+affiché plusieurs fois cette durée.</li>
 </ul>
 <h1 id="règles-métier-importantes">7. Règles métier importantes</h1>
 <ul>
@@ -207,9 +222,9 @@ importante pour vérifier le rendu réel à l’écran.</li>
 images peut prendre quelques secondes après l’envoi : rafraîchir la page
 si les pages n’apparaissent pas immédiatement.</li>
 <li>Si le planning des passages d’un jour semble incomplet ou mal trié,
-corriger en priorité les champs « Jour de passage à la BAI » et « Heure
-de passage » sur la fiche de l’association concernée (module
-Associations/Partenaires), plutôt que dans ce module.</li>
+corriger en priorité les champs « Jour de passage à la BAI », « Heure de
+passage » et « Emplacement » sur la fiche de l’association concernée
+(module Associations/Partenaires), plutôt que dans ce module.</li>
 <li>Désactiver (OFF) plutôt que supprimer un événement que l’on pourrait
 vouloir réutiliser plus tard.</li>
 </ul>
@@ -217,7 +232,7 @@ vouloir réutiliser plus tard.</li>
 <p>Le module repose principalement sur les éléments suivants :</p>
 <ul>
 <li>Blueprint Flask : <code>evenements_bp</code></li>
-<li>Module Python : <code>ba38_evenements.py</code></li>
+<li>Module Python : <code>ba38_evenements/routes.py</code></li>
 <li>Templates :
 <code>templates/evenements/gestion_evenements.html</code>,
 <code>templates/evenements/affichage_evenement.html</code></li>
@@ -232,7 +247,8 @@ table <code>planning_passages_config</code></li>
 <li>vérifier que l’événement est bien ON et dans sa plage de dates,</li>
 <li>vérifier les droits d’accès (lecture/écriture) sur « Événements
 »,</li>
-<li>pour un problème de planning des passages, vérifier d’abord la fiche
-de l’association concernée,</li>
+<li>pour un problème de planning des passages (association absente, sur
+la mauvaise page ou sur la page « emplacement non renseigné »), vérifier
+d’abord la fiche de l’association concernée,</li>
 <li>contacter le service informatique BA38.</li>
 </ul>
