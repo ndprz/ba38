@@ -16,7 +16,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 
-from ba38_utilitaires.core import get_db_path, require_access, write_log, envoyer_mail, render_modele_email, split_emails, mailjet_get_message_status
+from ba38_utilitaires.core import get_db_path, require_access, write_log, envoyer_mail, render_modele_email, split_emails, mailjet_get_message_status, prefixer_sujet_association, nom_piece_jointe_facture
 from ba38_utilitaires.organisation import get_organisation
 
 from ba38_tresorerie import tresorerie_bp
@@ -267,6 +267,7 @@ def envoyer_cotisations_v2_background(app, db_path, campagne_id, items, mail_mod
                     texte=item["corps"],
                     sender_override="ba380.comptable@banquealimentaire.org",
                     attachment_path=pdf_path,
+                    attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"]),
                     bcc=["ba380.comptable@banquealimentaire.org"],
                     current_user_email=current_user_email
                 )
@@ -675,7 +676,7 @@ def cotisations_v2_envoyer(campagne_id):
             "facture_id": f["id"],
             "association_id": f["association_id"],
             "email": f["email"],
-            "sujet": render_modele_email(modele["sujet"], contexte).strip(),
+            "sujet": prefixer_sujet_association(render_modele_email(modele["sujet"], contexte).strip(), f["nom_association"]),
             "corps": render_modele_email(modele["corps"], contexte),
             "nom_association": f["nom_association"],
             "numero_facture": f["numero_facture"],
@@ -877,7 +878,8 @@ def cotisations_v2_renvoyer_gmail(facture_id):
             sujet=f["sujet"],
             destinataires=destinataires,
             texte=f["corps"],
-            attachment_path=pdf_path
+            attachment_path=pdf_path,
+            attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"])
         )
 
         conn.execute("""

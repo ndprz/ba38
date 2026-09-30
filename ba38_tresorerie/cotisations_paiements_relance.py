@@ -6,7 +6,7 @@ from ba38_utilitaires.taches_fond import lancer_tache_fond
 from flask import request, render_template, flash, redirect, url_for, session, current_app
 from flask_login import login_required, current_user
 
-from ba38_utilitaires.core import get_db_path, write_log, envoyer_mail, split_emails, require_access, get_google_services
+from ba38_utilitaires.core import get_db_path, write_log, envoyer_mail, split_emails, prefixer_sujet_association, require_access, get_google_services
 
 from ba38_tresorerie import tresorerie_bp
 from ba38_tresorerie.drive_utils import get_pdf_by_code_vif
@@ -408,6 +408,7 @@ def envoyer_relances_background(app, db_path, items, sujet_modele, corps_modele,
                     numero_relance=numero_relance + 1,
                     annee=annee
                 )
+                sujet = prefixer_sujet_association(sujet, item["nom_association"])
 
                 texte_mail = corps_modele.format(
                     numero_relance=numero_relance + 1,

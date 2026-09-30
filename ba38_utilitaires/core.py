@@ -648,6 +648,21 @@ def split_emails(raw: str) -> list:
     return [e.strip() for e in str(raw).split(";") if is_valid_email(e.strip())]
 
 
+def prefixer_sujet_association(sujet: str, nom_association: str, longueur: int = 15) -> str:
+    """Préfixe l'objet d'un mail par les `longueur` premiers caractères du
+    nom de l'association (repérage rapide dans la messagerie, ex. relances)."""
+    nom = " ".join(str(nom_association or "").split())[:longueur].strip()
+    return f"{nom} - {sujet}" if nom else sujet
+
+
+def nom_piece_jointe_facture(numero_facture, nom_association) -> str:
+    """Nom lisible de la PDF jointe à un mail de facture/relance :
+    nom complet de l'association + numéro (caractères interdits retirés)."""
+    nom = re.sub(r'[\\/:*?"<>|\r\n\t]+', " ", str(nom_association or ""))
+    nom = " ".join(nom.split())
+    return " - ".join(filter(None, [nom, f"Facture {numero_facture}" if numero_facture else ""])) + ".pdf"
+
+
 def is_valid_multi_email(value: str) -> bool:
     """Comme is_valid_email, mais accepte aussi plusieurs adresses séparées
     par ';' (ex: courriel_association = "a@x.fr;b@y.fr"). Chaque partie doit
@@ -901,7 +916,8 @@ def get_drive_folder_id_from_path(drive_path, shared_drive_id):
 # 📧 MAILJET
 # ============================================================================
 
-def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None, is_html=False, bcc=None, cc=None, attachment_paths=None, sender_name=None, reply_to=None, current_user_email=None):
+def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None, is_html=False, bcc=None, cc=None, attachment_paths=None, sender_name=None, reply_to=None, current_user_email=None,
+                 attachment_filename=None):
 
     api_key = os.getenv("MAILJET_API_KEY")
     api_secret = os.getenv("MAILJET_API_SECRET")
@@ -987,7 +1003,8 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
 
         attachments.append({
             "ContentType": mimetypes.guess_type(chemin_piece_jointe)[0] or "application/octet-stream",
-            "Filename": os.path.basename(chemin_piece_jointe),
+            "Filename": (attachment_filename if attachment_filename and chemin_piece_jointe == attachment_path
+                         else os.path.basename(chemin_piece_jointe)),
             "Base64Content": encoded
         })
 

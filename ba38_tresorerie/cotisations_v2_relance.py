@@ -7,7 +7,7 @@ from ba38_utilitaires.taches_fond import lancer_tache_fond
 from flask import request, render_template, flash, redirect, url_for, session, current_app
 from flask_login import login_required, current_user
 
-from ba38_utilitaires.core import get_db_path, write_log, envoyer_mail, split_emails, require_access, mailjet_get_message_status
+from ba38_utilitaires.core import get_db_path, write_log, envoyer_mail, split_emails, prefixer_sujet_association, nom_piece_jointe_facture, require_access, mailjet_get_message_status
 from ba38_utilitaires.gmail_send import envoyer_mail_gmail, GmailSendError
 
 from ba38_tresorerie import tresorerie_bp
@@ -57,6 +57,7 @@ def envoyer_relances_cotisations_v2_background(app, db_path, items, sujet_modele
 
             try:
                 sujet = sujet_modele.format(numero_relance=numero_relance + 1, annee=annee)
+                sujet = prefixer_sujet_association(sujet, item["nom_association"])
 
                 texte_mail = corps_modele.format(
                     numero_relance=numero_relance + 1,
@@ -106,6 +107,7 @@ def envoyer_relances_cotisations_v2_background(app, db_path, items, sujet_modele
                     texte=texte_mail,
                     sender_override=mail_sender,
                     attachment_path=pdf_path,
+                    attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"]),
                     bcc=[mail_sender],
                     current_user_email=current_user_email
                 )
@@ -485,7 +487,8 @@ def cotisations_v2_relance_renvoyer_gmail(facture_id):
             sujet=f["relance_sujet"],
             destinataires=destinataires,
             texte=f["relance_corps"],
-            attachment_path=pdf_path
+            attachment_path=pdf_path,
+            attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"])
         )
 
         conn.execute("""

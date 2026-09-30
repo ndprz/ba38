@@ -29,7 +29,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from pathlib import Path
 
-from ba38_utilitaires.core import get_db_path, require_access, write_log, envoyer_mail, render_modele_email, mailjet_get_message_status, split_emails
+from ba38_utilitaires.core import get_db_path, require_access, write_log, envoyer_mail, render_modele_email, mailjet_get_message_status, split_emails, prefixer_sujet_association, nom_piece_jointe_facture
 from ba38_utilitaires.gmail_send import envoyer_mail_gmail, GmailSendError
 from ba38_utilitaires.organisation import get_organisation
 
@@ -441,6 +441,7 @@ def envoyer_participation_background(app, db_path, campagne_id, items, mail_mode
                     texte=item["corps"],
                     sender_override="ba380.comptable@banquealimentaire.org",
                     attachment_path=pdf_path,
+                    attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"]),
                     bcc=["ba380.comptable@banquealimentaire.org"],
                     current_user_email=current_user_email
                 )
@@ -878,7 +879,7 @@ def envoyer(campagne_id):
             "facture_id": f["id"],
             "association_id": f["association_id"],
             "email": f["email"],
-            "sujet": render_modele_email(modele["sujet"], contexte).strip(),
+            "sujet": prefixer_sujet_association(render_modele_email(modele["sujet"], contexte).strip(), f["nom_association"]),
             "corps": render_modele_email(modele["corps"], contexte),
             "detail_json": f["detail_json"],
             "nom_association": f["nom_association"],
@@ -1069,7 +1070,8 @@ def renvoyer_gmail(facture_id):
             sujet=f["sujet"],
             destinataires=destinataires,
             texte=f["corps"],
-            attachment_path=pdf_path
+            attachment_path=pdf_path,
+            attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"])
         )
 
         conn.execute("""
@@ -1187,6 +1189,7 @@ def envoyer_relances_participation_background(app, db_path, items, sujet_modele,
                     annee=annee,
                     trimestre=trimestre,
                 )
+                sujet = prefixer_sujet_association(sujet, item["nom_association"])
 
                 texte_mail = corps_modele.format(
                     numero_relance=numero_relance + 1,
@@ -1235,6 +1238,7 @@ def envoyer_relances_participation_background(app, db_path, items, sujet_modele,
                     texte=texte_mail,
                     sender_override=mail_sender,
                     attachment_path=pdf_path,
+                    attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"]),
                     bcc=[mail_sender],
                     current_user_email=current_user_email
                 )
@@ -1609,7 +1613,8 @@ def relance_renvoyer_gmail(facture_id):
             sujet=f["relance_sujet"],
             destinataires=destinataires,
             texte=f["relance_corps"],
-            attachment_path=pdf_path
+            attachment_path=pdf_path,
+            attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"])
         )
 
         conn.execute("""
