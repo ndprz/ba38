@@ -137,7 +137,7 @@
     </div>
 
     <!-- Aperçu photo existante -->
-    <img src="{{ url_for('static', filename='photos_benevoles/' ~ benevole.id ~ '.jpg') }}"
+    <img src="{{ url_for('benevoles.serve_photo_benevole', filename=benevole.id ~ '.jpg', v=range(1000000)|random) }}"
       onerror="this.style.display='none'" alt="Photo actuelle">
 
     <!-- Formulaire d'import de photo -->
