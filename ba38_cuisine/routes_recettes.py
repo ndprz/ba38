@@ -12,6 +12,7 @@ from ba38_cuisine import production_cuisine_bp
 from ba38_cuisine.utils import (
     _connect, today_paris, now_paris_str, decongelation_en_cours, etape_actuelle_libelle,
     categorie_depuis_famille, motifs_non_conformite, heure_dr,
+    receptions_en_stock, ajouter_utilisation, parse_poids,
 )
 
 STATUTS = ("en_cours", "terminee", "annulee")
@@ -79,11 +80,9 @@ def liste_productions():
             for p in productions if p["statut"] == "en_cours"
         }
 
-        nb_receptions_attente = conn.execute(
-            """SELECT COUNT(*) FROM cuisine_receptions
-               WHERE date_reception = ? AND actif = 1 AND production_id IS NULL""",
-            (date_filtre,),
-        ).fetchone()[0]
+        nb_receptions_attente = sum(
+            1 for r in receptions_en_stock(conn, date_filtre) if not r["blocage"]
+        )
 
     return render_template(
         "production_cuisine/productions_liste.html",
@@ -106,19 +105,6 @@ def api_heure_actuelle():
     return jsonify({"heure": now_paris_str()})
 
 
-def _receptions_en_attente(conn, date_filtre):
-    return conn.execute(
-        """
-        SELECT r.*, f.nom AS fournisseur_nom
-        FROM cuisine_receptions r
-        LEFT JOIN fournisseurs f ON f.id = r.fournisseur_id
-        WHERE r.date_reception = ? AND r.actif = 1 AND r.production_id IS NULL
-        ORDER BY r.heure_arrivee, r.id
-        """,
-        (date_filtre,),
-    ).fetchall()
-
-
 @production_cuisine_bp.route("/creer", methods=["GET", "POST"])
 @login_required
 @require_access("production_cuisine", "ecriture")
@@ -134,7 +120,7 @@ def creer_production():
                 "SELECT param_value FROM parametres WHERE param_name = 'cuisine_type_cuisson' ORDER BY param_value"
             ).fetchall()
         ]
-        receptions_disponibles = _receptions_en_attente(conn, date_defaut)
+        receptions_disponibles = receptions_en_stock(conn, date_defaut)
 
     if request.method == "POST":
         benevole = (request.form.get("benevole") or "").strip()
@@ -154,14 +140,17 @@ def creer_production():
         elif categorie_produit not in CATEGORIES_PRODUIT:
             erreur = "⚠️ Merci d'indiquer la catégorie du produit (Carné ou Légumes)."
 
-        if erreur:
-            flash(erreur, "warning")
+        def _rendu_erreur(message):
+            flash(message, "warning")
             return render_template(
                 "production_cuisine/productions_creer.html",
                 recettes_referentiel=recettes_referentiel, types_cuisson=types_cuisson,
                 date_defaut=date_production, form=request.form,
                 receptions_disponibles=receptions_disponibles, preselection=set(reception_ids),
             )
+
+        if erreur:
+            return _rendu_erreur(erreur)
 
         try:
             with _connect() as conn:
@@ -180,13 +169,17 @@ def creer_production():
                 )
                 production_id = cur.lastrowid
 
-                if reception_ids:
-                    placeholders = ",".join("?" * len(reception_ids))
-                    cur.execute(
-                        f"""UPDATE cuisine_receptions SET production_id = ?
-                            WHERE id IN ({placeholders}) AND production_id IS NULL""",
-                        (production_id, *reception_ids),
-                    )
+                # Poids choisi par réception (solde proposé par défaut) : le
+                # reste demeure en stock pour une autre recette. Contrôles
+                # DLC / solde dans ajouter_utilisation ; au moindre refus,
+                # rien n'est créé.
+                production = {"id": production_id, "date_production": date_production}
+                for reception_id in reception_ids:
+                    poids = parse_poids(request.form.get(f"poids_{reception_id}"))
+                    erreur = ajouter_utilisation(conn, reception_id, production, poids, benevole)
+                    if erreur:
+                        conn.rollback()
+                        return _rendu_erreur(f"⚠️ {erreur}")
 
                 if decongelation_non_applicable:
                     # Produit à température ambiante : pas de décongélation
@@ -311,11 +304,13 @@ def detail_production(production_id):
 
         receptions = conn.execute(
             """
-            SELECT r.*, f.nom AS fournisseur_nom
-            FROM cuisine_receptions r
+            SELECT r.*, f.nom AS fournisseur_nom, ru.id AS utilisation_id,
+                   ru.poids_kg AS poids_utilise
+            FROM cuisine_reception_utilisations ru
+            JOIN cuisine_receptions r ON r.id = ru.reception_id
             LEFT JOIN fournisseurs f ON f.id = r.fournisseur_id
-            WHERE r.production_id = ?
-            ORDER BY r.heure_arrivee, r.id
+            WHERE ru.production_id = ?
+            ORDER BY r.date_reception, r.heure_arrivee, ru.id
             """,
             (production_id,),
         ).fetchall()
@@ -324,8 +319,9 @@ def detail_production(production_id):
             """
             SELECT p.id, p.reception_id
             FROM cuisine_reception_photos p
-            JOIN cuisine_receptions r ON r.id = p.reception_id
-            WHERE r.production_id = ?
+            WHERE p.reception_id IN (
+                SELECT reception_id FROM cuisine_reception_utilisations WHERE production_id = ?
+            )
             ORDER BY p.reception_id, p.type_photo, p.ordre
             """,
             (production_id,),
@@ -334,7 +330,7 @@ def detail_production(production_id):
         for p in reception_photos_rows:
             photos_par_reception.setdefault(p["reception_id"], []).append(p["id"])
 
-        receptions_disponibles = _receptions_en_attente(conn, production["date_production"])
+        receptions_disponibles = receptions_en_stock(conn, production["date_production"])
 
         fournisseurs = conn.execute(
             "SELECT id, nom FROM fournisseurs WHERE actif = 'oui' ORDER BY nom COLLATE NOCASE"
@@ -473,10 +469,10 @@ def supprimer_production(production_id):
         # Suppression douce (comme les autres tables du module : actif=0) —
         # on ne perd pas l'historique (étapes, lots, photos).
         cur.execute("UPDATE cuisine_productions SET actif = 0 WHERE id = ?", (production_id,))
-        # Les réceptions qui alimentaient cette production redeviennent
-        # disponibles pour être affectées à une autre recette.
+        # Les poids pris sur les réceptions qui alimentaient cette
+        # production reviennent dans leur solde (autre recette possible).
         cur.execute(
-            "UPDATE cuisine_receptions SET production_id = NULL WHERE production_id = ?",
+            "DELETE FROM cuisine_reception_utilisations WHERE production_id = ?",
             (production_id,),
         )
         conn.commit()

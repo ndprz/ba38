@@ -118,8 +118,9 @@
             <div class="d-flex justify-content-between">
               <span>
                 <strong>{{ r.libelle_produit or "—" }}</strong> · {{ r.fournisseur_nom or "—" }}
-                {% if r.heure_arrivee %} · {{ r.heure_arrivee }}{% endif %}
-                {% if r.poids_kg is not none %} · {{ r.poids_kg }} kg{% endif %}
+                · reçu le {{ r.date_reception[8:10] }}/{{ r.date_reception[5:7] }}{% if r.heure_arrivee %} {{ r.heure_arrivee }}{% endif %}
+                · <strong>{{ r.poids_utilise|kg }} kg utilisés</strong>{% if r.poids_kg and r.poids_utilise < r.poids_kg %} (sur {{ r.poids_kg|kg }} kg reçus){% endif %}
+                {% if r.dlc_ddm %} · DLC {{ r.dlc_ddm[8:10] }}/{{ r.dlc_ddm[5:7] }}{% endif %}
                 {% if r.temperature_mesuree is not none %} · {{ r.temperature_mesuree }}°C{% endif %}
               </span>
               <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id, depuis_production=production.id) }}" class="small">Détail</a>
@@ -140,26 +141,50 @@
         <p class="text-muted">Aucune réception attachée pour l'instant — les lots ci-dessous sont ajoutés manuellement.</p>
       {% endif %}
 
-      {% if receptions_disponibles %}
+      {% set utilisables = receptions_disponibles|rejectattr('blocage')|list %}
+      {% if utilisables and production.statut != 'terminee' %}
       <div class="dropdown mb-3">
-        <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">
-          ➕ Attacher une réception en attente (nouvel arrivage)
+        <button class="btn btn-outline-primary dropdown-toggle" type="button"
+                data-bs-toggle="dropdown" data-bs-auto-close="outside">
+          ➕ Attacher une réception en stock (nouvel arrivage)
         </button>
-        <ul class="dropdown-menu">
-          {% for r in receptions_disponibles %}
-          <li>
-            <form method="POST" action="{{ url_for('production_cuisine.affecter_reception', reception_id=r.id) }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="hidden" name="production_id" value="{{ production.id }}">
-              <button type="submit" class="dropdown-item">
-                {{ r.libelle_produit or "—" }} · {{ r.heure_arrivee or "—" }} · {{ r.fournisseur_nom or "—" }}
-                {% if r.poids_kg is not none %} · {{ r.poids_kg }} kg{% endif %}
-              </button>
-            </form>
-          </li>
-          {% endfor %}
-        </ul>
+        <div class="dropdown-menu p-3" style="min-width: 320px; max-width: 95vw;">
+          <form method="POST" id="form-attacher-reception"
+                action="{{ url_for('production_cuisine.affecter_reception', reception_id=999999999) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="production_id" value="{{ production.id }}">
+            <input type="hidden" name="next" value="{{ request.full_path }}">
+            <label class="form-label small mb-1 d-block">Réception</label>
+            <select class="form-select w-100 mb-2" id="attacher-reception-select" required>
+              {% for r in utilisables %}
+              <option value="{{ r.id }}" data-solde="{{ r.solde_kg|kg|replace(',', '.') }}">
+                {{ r.libelle_produit or "—" }} · {{ r.fournisseur_nom or "—" }} · reste {{ r.solde_kg|kg }} kg{% if r.dlc_ddm %} · DLC {{ r.dlc_ddm[8:10] }}/{{ r.dlc_ddm[5:7] }}{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+            <label class="form-label small mb-1 d-block">Poids utilisé (kg)</label>
+            <input type="number" inputmode="decimal" step="any" min="0.001" name="poids_kg"
+                   id="attacher-reception-poids" class="form-control mb-2" required>
+            <button type="submit" class="btn btn-primary btn-sm w-100">Attacher</button>
+          </form>
+        </div>
       </div>
+      <script>
+      (function () {
+        var form = document.getElementById('form-attacher-reception');
+        var select = document.getElementById('attacher-reception-select');
+        var poids = document.getElementById('attacher-reception-poids');
+        var actionModele = form.getAttribute('action');
+        function maj() {
+          var opt = select.options[select.selectedIndex];
+          form.setAttribute('action', actionModele.replace('999999999', select.value));
+          poids.value = opt.dataset.solde;
+          poids.max = opt.dataset.solde;
+        }
+        select.addEventListener('change', maj);
+        maj();
+      })();
+      </script>
       {% endif %}
 
       {% if lots %}

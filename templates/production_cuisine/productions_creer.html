@@ -23,27 +23,53 @@
 
     <div class="mb-3">
       <label class="form-label fw-bold">📥 Marchandises réceptionnées à utiliser</label>
-      {% if not receptions_disponibles %}
+      {% set utilisables = receptions_disponibles|rejectattr('blocage')|list %}
+      {% set bloquees = receptions_disponibles|selectattr('blocage')|list %}
+      {% if not utilisables %}
         <div class="form-text">
-          Aucune réception en attente pour cette date —
+          Aucune marchandise utilisable en stock pour cette date —
           <a href="{{ url_for('production_cuisine.creer_reception') }}">enregistrer une réception</a> d'abord si besoin,
           ou continuer sans (on pourra en attacher une plus tard).
         </div>
       {% else %}
         <div class="d-flex flex-column gap-2">
-          {% for r in receptions_disponibles %}
-          <label class="border rounded p-2 d-flex align-items-center gap-2">
-            <input type="checkbox" name="reception_ids" value="{{ r.id }}" class="form-check-input mt-0"
-                   {% if r.id in preselection %}checked{% endif %}>
-            <span>
-              <strong>{{ r.libelle_produit or "Produit non renseigné" }}</strong>
-              · {{ r.heure_arrivee or "—" }} · {{ r.fournisseur_nom or "Fournisseur inconnu" }}
-              {% if r.poids_kg is not none %} · {{ r.poids_kg }} kg{% endif %}
-              {% if r.camion_libelle %} · {{ r.camion_libelle }}{% endif %}
-            </span>
-          </label>
+          {% for r in utilisables %}
+          {% set poids_saisi = form.get('poids_' ~ r.id) %}
+          <div class="border rounded p-2 d-flex align-items-center gap-2 flex-wrap">
+            <label class="d-flex align-items-center gap-2 flex-grow-1 mb-0">
+              <input type="checkbox" name="reception_ids" value="{{ r.id }}" class="form-check-input mt-0 reception-check"
+                     {% if r.id in preselection %}checked{% endif %}>
+              <span>
+                <strong>{{ r.libelle_produit or "Produit non renseigné" }}</strong>
+                · reçu le {{ r.date_reception[8:10] }}/{{ r.date_reception[5:7] }}
+                · {{ r.fournisseur_nom or "Fournisseur inconnu" }}
+                {% if r.dlc_ddm %} · DLC {{ r.dlc_ddm[8:10] }}/{{ r.dlc_ddm[5:7] }}{% endif %}
+                <br><span class="small text-muted">Reste {{ r.solde_kg|kg }} kg{% if r.poids_utilise %} sur {{ r.poids_kg|kg }} kg reçus{% endif %}</span>
+              </span>
+            </label>
+            <div class="input-group" style="max-width: 200px;">
+              <input type="number" inputmode="decimal" step="any" min="0.001" max="{{ r.solde_kg }}"
+                     name="poids_{{ r.id }}" class="form-control reception-poids"
+                     value="{{ poids_saisi if poids_saisi else r.solde_kg|kg|replace(',', '.') }}" aria-label="Poids utilisé">
+              <span class="input-group-text">kg</span>
+            </div>
+          </div>
           {% endfor %}
         </div>
+        <div class="form-text">Indiquer le poids utilisé pour cette recette (tout le reste par défaut) : le solde reste en stock pour une autre recette, jusqu'à sa DLC.</div>
+      {% endif %}
+      {% if bloquees %}
+        <div class="mt-2">
+          {% for r in bloquees %}
+          <div class="border border-danger rounded p-2 mb-1 text-muted small">
+            ⛔ <strong>{{ r.libelle_produit or "—" }}</strong> · {{ r.fournisseur_nom or "—" }} · reste {{ r.solde_kg|kg }} kg
+            — {{ r.blocage }} : ne peut pas être cuisiné.
+            <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id) }}">Purger</a>
+          </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if utilisables %}
         <div class="form-text">On peut aussi ne rien cocher et attendre un autre arrivage pour décider — les réceptions restent disponibles.</div>
       {% endif %}
     </div>

@@ -29,66 +29,96 @@
   </form>
 
   {% macro badge(val) -%}
-    {% if val == 'conforme' %}<span class="badge bg-success">OK</span>
-    {% elif val == 'non_conforme' %}<span class="badge bg-danger">NC</span>
+    {% if val == 'conforme' %}<span class="badge bg-success text-white">OK</span>
+    {% elif val == 'non_conforme' %}<span class="badge bg-danger text-white">NC</span>
     {% else %}—{% endif %}
   {%- endmacro %}
 
-  <h4 class="mt-4">⏳ En attente d'affectation à une recette ({{ en_attente|length }})</h4>
-  {% if not en_attente %}
-    <p class="text-muted">Aucune réception en attente pour cette date.</p>
+  {% macro dlc(r, date_ref) -%}
+    {% if r.dlc_ddm %}
+      <span class="{% if r.dlc_ddm < date_ref %}badge bg-danger text-white{% elif r.dlc_ddm == date_ref %}badge bg-warning text-dark{% endif %}">
+        {{ r.dlc_ddm[8:10] }}/{{ r.dlc_ddm[5:7] }}/{{ r.dlc_ddm[0:4] }}
+      </span>
+    {% else %}<span class="text-muted">—</span>{% endif %}
+  {%- endmacro %}
+
+  <h4 class="mt-4">📦 En stock ({{ stock|length }})</h4>
+  <p class="text-muted small mb-2">
+    Réceptions avec un reste disponible, tous jours confondus (DLC la plus proche en premier).
+    Une recette peut n'utiliser qu'une partie du poids : le solde reste ici pour les jours suivants.
+  </p>
+  {% if not stock %}
+    <p class="text-muted">Aucune marchandise en stock.</p>
   {% else %}
   <div class="table-responsive mb-4">
     <table class="table table-striped align-middle">
       <thead>
         <tr>
-          <th>Heure</th><th>Produit</th><th>Fournisseur</th><th>Camion</th><th>Temp.</th><th>Poids (kg)</th>
-          <th>Aspect</th><th>Emballage</th><th>Étiquetage</th><th>Réceptionnaire</th><th></th>
+          <th>Reçu le</th><th>Produit</th><th>Fournisseur</th><th>DLC</th>
+          <th class="text-end">Reçu (kg)</th><th class="text-end">Utilisé (kg)</th><th class="text-end">Reste (kg)</th>
+          <th>Contrôles</th><th></th>
         </tr>
       </thead>
       <tbody>
-        {% for r in en_attente %}
-        <tr>
-          <td>{{ r.heure_arrivee or "—" }}</td>
-          <td class="fw-bold">{{ r.libelle_produit or "—" }}</td>
+        {% for r in stock %}
+        <tr class="{% if r.blocage %}table-danger{% endif %}">
+          <td>{{ r.date_reception[8:10] }}/{{ r.date_reception[5:7] }}{% if r.heure_arrivee %} · {{ r.heure_arrivee }}{% endif %}</td>
+          <td class="fw-bold">
+            {{ r.libelle_produit or "—" }}
+            {% if r.blocage %}<div class="small text-danger">⛔ {{ r.blocage }}</div>{% endif %}
+          </td>
           <td>{{ r.fournisseur_nom or "—" }}</td>
-          <td>{{ r.camion_libelle or "—" }}</td>
-          <td>{{ r.temperature_mesuree if r.temperature_mesuree is not none else "—" }}</td>
-          <td>{{ r.poids_kg if r.poids_kg is not none else "—" }}</td>
-          <td>{{ badge(r.aspect_conforme) }}</td>
-          <td>{{ badge(r.emballage_conforme) }}</td>
-          <td>{{ badge(r.etiquetage_conforme) }}</td>
-          <td>{{ r.user_creation or "—" }}</td>
-          <td class="d-flex flex-wrap gap-1">
+          <td>{{ dlc(r, date_filtre) }}</td>
+          <td class="text-end">{{ r.poids_kg|kg }}</td>
+          <td class="text-end">{{ r.poids_utilise|kg if r.poids_utilise else "—" }}</td>
+          <td class="text-end fw-bold">{{ r.solde_kg|kg }}</td>
+          <td class="text-nowrap">{{ badge(r.aspect_conforme) }} {{ badge(r.emballage_conforme) }} {{ badge(r.etiquetage_conforme) }}</td>
+          <td>
+            <div class="d-flex flex-wrap gap-1">
             <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id) }}"
                class="btn btn-sm btn-outline-secondary">Voir</a>
+            {% if not r.nb_utilisations %}
             <a href="{{ url_for('production_cuisine.modifier_reception', reception_id=r.id) }}"
                class="btn btn-sm btn-outline-primary" title="Modifier">✏️</a>
-            <a href="{{ url_for('production_cuisine.creer_production', date_production=r.date_reception, reception_id=r.id) }}"
-               class="btn btn-sm btn-success">🍲 Nouvelle recette avec {{ r.libelle_produit or "ce produit" }}</a>
+            {% endif %}
+            {% if not r.blocage %}
+            <a href="{{ url_for('production_cuisine.creer_production', date_production=date_filtre, reception_id=r.id) }}"
+               class="btn btn-sm btn-success">🍲 Nouvelle recette</a>
             {% if productions_du_jour %}
             <div class="dropdown d-inline-block">
-              <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                Affecter à…
-              </button>
-              <ul class="dropdown-menu">
-                {% for p in productions_du_jour %}
-                <li>
-                  <form method="POST" action="{{ url_for('production_cuisine.affecter_reception', reception_id=r.id) }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="production_id" value="{{ p.id }}">
-                    <button type="submit" class="dropdown-item">{{ p.nom_recette }}</button>
-                  </form>
-                </li>
-                {% endfor %}
-              </ul>
+              <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
+                      data-bs-toggle="dropdown" data-bs-auto-close="outside">Affecter à…</button>
+              <div class="dropdown-menu p-3" style="min-width: 280px;">
+                <form method="POST" action="{{ url_for('production_cuisine.affecter_reception', reception_id=r.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="next" value="{{ request.full_path }}">
+                  <label class="form-label small mb-1 d-block">Poids utilisé (kg, reste {{ r.solde_kg|kg }})</label>
+                  <input type="number" inputmode="decimal" step="any" min="0.001" max="{{ r.solde_kg }}"
+                         name="poids_kg" value="{{ r.solde_kg|kg|replace(',', '.') }}" class="form-control mb-2" required>
+                  <label class="form-label small mb-1 d-block">Recette</label>
+                  <select name="production_id" class="form-select w-100 mb-2" required>
+                    {% for p in productions_du_jour %}
+                    <option value="{{ p.id }}">{{ p.nom_recette }}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="submit" class="btn btn-primary btn-sm w-100">Affecter</button>
+                </form>
+              </div>
             </div>
             {% endif %}
+            {% endif %}
+            <button type="button" class="btn btn-sm btn-outline-danger btn-purger" title="Purger le reste"
+                    data-action="{{ url_for('production_cuisine.purger_reception', reception_id=r.id) }}"
+                    data-libelle="{{ r.libelle_produit or 'Réception' }} — {{ r.solde_kg|kg }} kg restants">🧹 Purger</button>
+            {% if not r.nb_utilisations %}
             <form method="POST" action="{{ url_for('production_cuisine.supprimer_reception', reception_id=r.id) }}"
-                  onsubmit="return confirm('Supprimer cette réception ?');">
+                  onsubmit="return confirm('Supprimer cette réception (erreur de saisie) ?');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
+              <input type="hidden" name="next" value="{{ request.full_path }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer (erreur de saisie)">🗑️</button>
             </form>
+            {% endif %}
+            </div>
           </td>
         </tr>
         {% endfor %}
@@ -97,43 +127,71 @@
   </div>
   {% endif %}
 
-  <h4 class="mt-4">✅ Affectées ({{ affectees|length }})</h4>
-  {% if not affectees %}
-    <p class="text-muted">Aucune réception affectée pour cette date.</p>
+  <h4 class="mt-4">📋 Réceptions du {{ date_filtre[8:10] }}/{{ date_filtre[5:7] }}/{{ date_filtre[0:4] }} ({{ livraisons|length }})</h4>
+  {% if not livraisons %}
+    <p class="text-muted">Aucune réception pour cette date.</p>
   {% else %}
-  <div class="table-responsive">
-    <table class="table table-striped align-middle">
-      <thead>
-        <tr>
-          <th>Heure</th><th>Produit</th><th>Fournisseur</th><th>Camion</th><th>Poids (kg)</th>
-          <th>Recette</th><th>Réceptionnaire</th><th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for r in affectees %}
-        <tr>
-          <td>{{ r.heure_arrivee or "—" }}</td>
-          <td class="fw-bold">{{ r.libelle_produit or "—" }}</td>
-          <td>{{ r.fournisseur_nom or "—" }}</td>
-          <td>{{ r.camion_libelle or "—" }}</td>
-          <td>{{ r.poids_kg if r.poids_kg is not none else "—" }}</td>
-          <td>
-            <a href="{{ url_for('production_cuisine.detail_production', production_id=r.production_id) }}">
-              {{ r.production_nom }}
-            </a>
-          </td>
-          <td>{{ r.user_creation or "—" }}</td>
-          <td>
-            <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id) }}"
-               class="btn btn-sm btn-outline-secondary">Voir</a>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  {% for liv in livraisons %}
+  {% set e = liv.entete %}
+  <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span>
+        <strong>{{ e.fournisseur_nom or "Fournisseur non renseigné" }}</strong>
+        {% if e.heure_arrivee %} · {{ e.heure_arrivee }}{% endif %}
+        {% if e.camion_libelle %} · {{ e.camion_libelle }}{% endif %}
+        {% if e.temperature_mesuree is not none %} · {{ e.temperature_mesuree }}°C{% endif %}
+        · {{ e.user_creation or "—" }}
+      </span>
+      {% if liv.purgeable %}
+      <button type="button" class="btn btn-sm btn-outline-danger btn-purger"
+              data-action="{{ url_for('production_cuisine.purger_livraison', livraison_id=liv.id) }}"
+              data-libelle="Toute la réception {{ e.fournisseur_nom or '' }} {{ e.heure_arrivee or '' }} ({{ liv.lignes|length }} ligne(s)) : le reste de chaque produit sera retiré du stock.">
+        🧹 Purger toute la réception
+      </button>
+      {% endif %}
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Produit</th><th>DLC</th><th class="text-end">Reçu (kg)</th><th class="text-end">Reste (kg)</th>
+            <th>Utilisé dans</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in liv.lignes %}
+          <tr>
+            <td class="fw-bold">{{ r.libelle_produit or "—" }}</td>
+            <td>{{ dlc(r, date_filtre) }}</td>
+            <td class="text-end">{{ r.poids_kg|kg }}</td>
+            <td class="text-end">
+              {% if r.date_purge %}<span class="badge bg-secondary text-white" title="{{ r.motif_purge or '' }}">🧹 purgé ({{ r.poids_purge|kg }} kg)</span>
+              {% elif r.solde_kg <= 0.0005 %}<span class="badge bg-success text-white">épuisé</span>
+              {% else %}<strong>{{ r.solde_kg|kg }}</strong>{% endif %}
+            </td>
+            <td>
+              {% for u in utilisations_par_reception.get(r.id, []) %}
+                <div class="small">
+                  <a href="{{ url_for('production_cuisine.detail_production', production_id=u.production_id) }}">{{ u.nom_recette }}</a>
+                  · {{ u.poids_kg|kg }} kg
+                  {% if u.date_production != r.date_reception %}<span class="text-muted">({{ u.date_production[8:10] }}/{{ u.date_production[5:7] }})</span>{% endif %}
+                </div>
+              {% else %}<span class="text-muted small">—</span>{% endfor %}
+            </td>
+            <td>
+              <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id) }}"
+                 class="btn btn-sm btn-outline-secondary">Voir</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
+  {% endfor %}
   {% endif %}
 
 </div>
+{% include "production_cuisine/_purge_modal.html" %}
 {% include "production_cuisine/_scroll_restore.html" %}
 {% endblock %}

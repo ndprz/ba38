@@ -88,6 +88,7 @@
           <th>Fournisseur</th>
           {% endif %}
           <th>Heure</th>
+          <th>DLC</th>
           <th class="text-end">Poids (kg)</th>
         </tr>
       </thead>
@@ -103,6 +104,7 @@
           <td>{{ r.fournisseur_nom or "—" }}</td>
           {% endif %}
           <td>{{ r.heure_arrivee or "—" }}</td>
+          <td>{% if r.dlc_ddm %}{{ r.dlc_ddm[8:10] }}/{{ r.dlc_ddm[5:7] }}/{{ r.dlc_ddm[0:4] }}{% else %}—{% endif %}</td>
           <td class="text-end">{{ r.poids_kg if r.poids_kg is not none else "—" }}</td>
         </tr>
         {% endfor %}

@@ -36,6 +36,16 @@ def now_paris_str() -> str:
     return datetime.now(PARIS_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def parse_poids(valeur):
+    """Poids saisi (virgule tolérée) → float > 0, sinon None."""
+    valeur = (valeur or "").strip().replace(",", ".")
+    try:
+        poids = float(valeur)
+    except ValueError:
+        return None
+    return poids if poids > 0 else None
+
+
 def parse_temperature(valeur):
     """Normalise une température saisie au clavier tablette : le champ est
     en `type="text"` (pas `type="number"`) pour que le signe "-" reste
@@ -336,9 +346,10 @@ def motifs_non_conformite(conn, production_id):
     receptions = conn.execute(
         """SELECT r.libelle_produit, r.aspect_conforme, r.emballage_conforme,
                   r.etiquetage_conforme, f.nom
-           FROM cuisine_receptions r
+           FROM cuisine_reception_utilisations ru
+           JOIN cuisine_receptions r ON r.id = ru.reception_id
            LEFT JOIN fournisseurs f ON f.id = r.fournisseur_id
-           WHERE r.production_id = ? AND r.actif = 1""",
+           WHERE ru.production_id = ? AND r.actif = 1""",
         (production_id,),
     ).fetchall()
     for rec in receptions:
@@ -483,3 +494,104 @@ def calculer_dlc(date_production, jours):
     except ValueError:
         return None
 
+
+
+# ------------------------------------------------------------
+# 📦 Stock des réceptions : solde disponible et DLC
+# ------------------------------------------------------------
+# Une réception (ligne produit) peut alimenter plusieurs productions, chacune
+# pour une partie du poids (cuisine_reception_utilisations). Solde = poids
+# reçu − poids utilisés − poids purgé. La réception reste proposée tant qu'il
+# reste un solde, qu'elle n'est pas purgée et que sa DLC le permet.
+SOLDE_EPSILON = 0.0005
+
+SQL_RECEPTIONS_SOLDE = """
+    SELECT r.*, f.nom AS fournisseur_nom,
+           COALESCE(u.poids_utilise, 0) AS poids_utilise,
+           COALESCE(u.nb_utilisations, 0) AS nb_utilisations,
+           ROUND(COALESCE(r.poids_kg, 0) - COALESCE(u.poids_utilise, 0)
+                 - COALESCE(r.poids_purge, 0), 3) AS solde_kg
+    FROM cuisine_receptions r
+    LEFT JOIN fournisseurs f ON f.id = r.fournisseur_id
+    LEFT JOIN (
+        SELECT ru.reception_id, SUM(ru.poids_kg) AS poids_utilise, COUNT(*) AS nb_utilisations
+        FROM cuisine_reception_utilisations ru
+        JOIN cuisine_productions p ON p.id = ru.production_id AND p.actif = 1
+        GROUP BY ru.reception_id
+    ) u ON u.reception_id = r.id
+"""
+
+
+def blocage_dlc(reception, date_production):
+    """Motif empêchant de cuisiner cette réception pour une production du
+    `date_production` (AAAA-MM-JJ), sinon None. Sans DLC (réceptions
+    saisies avant qu'elle soit demandée), seule une production du jour même
+    de la réception est permise — comme avant l'utilisation partielle."""
+    if reception["date_reception"] > date_production:
+        return "réceptionnée après la date de production"
+    dlc = reception["dlc_ddm"]
+    if dlc:
+        if dlc < date_production:
+            return f"DLC dépassée ({dlc[8:10]}/{dlc[5:7]}/{dlc[0:4]})"
+        return None
+    if reception["date_reception"] != date_production:
+        return "DLC non renseignée (réception d'un autre jour)"
+    return None
+
+
+def receptions_en_stock(conn, date_ref):
+    """Réceptions actives, non purgées, avec un solde > 0, reçues au plus
+    tard le `date_ref` — tous jours confondus (un arrivage peut servir
+    plusieurs jours). Chaque ligne (dict) porte `blocage` (blocage_dlc pour
+    `date_ref`, None si utilisable). Tri : DLC la plus proche d'abord."""
+    rows = conn.execute(
+        f"""SELECT * FROM ({SQL_RECEPTIONS_SOLDE})
+            WHERE actif = 1 AND date_purge IS NULL AND solde_kg > ? AND date_reception <= ?
+            ORDER BY dlc_ddm IS NULL, dlc_ddm, date_reception, heure_arrivee, id""",
+        (SOLDE_EPSILON, date_ref),
+    ).fetchall()
+    stock = []
+    for r in rows:
+        d = dict(r)
+        d["blocage"] = blocage_dlc(d, date_ref)
+        stock.append(d)
+    return stock
+
+
+def reception_avec_solde(conn, reception_id):
+    return conn.execute(
+        f"SELECT * FROM ({SQL_RECEPTIONS_SOLDE}) WHERE id = ?", (reception_id,)
+    ).fetchone()
+
+
+def ajouter_utilisation(conn, reception_id, production, poids, user):
+    """Enregistre l'utilisation de `poids` kg de la réception dans la
+    production (ligne cuisine_productions). Retourne un message d'erreur, ou
+    None si enregistrée (commit à la charge de l'appelant)."""
+    reception = reception_avec_solde(conn, reception_id)
+    if not reception or not reception["actif"]:
+        return "réception introuvable."
+    libelle = reception["libelle_produit"] or f"réception #{reception_id}"
+    if reception["date_purge"]:
+        return f"{libelle} : réception purgée, plus utilisable."
+    blocage = blocage_dlc(reception, production["date_production"])
+    if blocage:
+        return f"{libelle} : impossible de cuisiner — {blocage}."
+    if poids is None or poids <= 0:
+        return f"{libelle} : merci d'indiquer le poids utilisé (en kg, supérieur à 0)."
+    if poids > reception["solde_kg"] + SOLDE_EPSILON:
+        return f"{libelle} : {format_kg(poids)} kg demandés, il n'en reste que {format_kg(reception['solde_kg'])} kg."
+    conn.execute(
+        """INSERT INTO cuisine_reception_utilisations (reception_id, production_id, poids_kg, user_creation)
+           VALUES (?, ?, ?, ?)""",
+        (reception_id, production["id"], round(poids, 3), user or None),
+    )
+    return None
+
+
+def format_kg(valeur):
+    """12.5 → '12,5' ; 12.0 → '12' (affichage des poids en kg)."""
+    if valeur is None:
+        return "—"
+    texte = f"{valeur:.3f}".rstrip("0").rstrip(".")
+    return texte.replace(".", ",")

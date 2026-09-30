@@ -8,7 +8,7 @@
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h2 class="mb-0">📥 Réception #{{ reception.id }} — {{ reception.libelle_produit or "produit non renseigné" }}</h2>
     <div class="d-flex gap-2">
-      {% if not reception.production_id and reception.actif %}
+      {% if not reception.nb_utilisations and not reception.date_purge and reception.actif %}
       <a href="{{ url_for('production_cuisine.modifier_reception', reception_id=reception.id) }}" class="btn btn-outline-primary">✏️ Modifier</a>
       {% endif %}
       <a href="{{ retour_url }}" class="btn btn-outline-secondary">← Retour</a>
@@ -23,7 +23,14 @@
       <tr><th>Fournisseur</th><td>{{ reception.fournisseur_nom or "—" }}</td></tr>
       <tr><th>Camion</th><td>{{ reception.camion_libelle or "—" }}</td></tr>
       <tr><th>Température</th><td>{{ reception.temperature_mesuree if reception.temperature_mesuree is not none else "—" }}</td></tr>
-      <tr><th>Poids</th><td>{{ reception.poids_kg if reception.poids_kg is not none else "—" }} kg</td></tr>
+      <tr><th>Poids reçu</th><td>{{ reception.poids_kg|kg }} kg</td></tr>
+      <tr><th>DLC</th><td>
+        {% if reception.dlc_ddm %}{{ reception.dlc_ddm[8:10] }}/{{ reception.dlc_ddm[5:7] }}/{{ reception.dlc_ddm[0:4] }}{% else %}—{% endif %}
+      </td></tr>
+      <tr><th>Reste en stock</th><td class="fw-bold">
+        {% if reception.date_purge %}0 kg — 🧹 purgé ({{ reception.poids_purge|kg }} kg)
+        {% else %}{{ reception.solde_kg|kg }} kg{% endif %}
+      </td></tr>
       <tr><th>Aspect</th><td>{{ reception.aspect_conforme or "—" }}</td></tr>
       <tr><th>Emballage</th><td>{{ reception.emballage_conforme or "—" }}</td></tr>
       <tr><th>Étiquetage</th><td>{{ reception.etiquetage_conforme or "—" }}</td></tr>
@@ -35,44 +42,110 @@
     </tbody>
   </table>
 
-  <h5 class="mt-4">🍲 Affectation à une recette</h5>
-  {% if reception.production_id %}
-    <p>
-      Affectée à
-      <a href="{{ url_for('production_cuisine.detail_production', production_id=reception.production_id) }}">
-        {{ reception.production_nom }}
-      </a>.
-    </p>
-    <form method="POST" action="{{ url_for('production_cuisine.affecter_reception', reception_id=reception.id) }}" class="d-inline">
+  {% if reception.date_purge %}
+  <div class="alert alert-secondary">
+    🧹 <strong>Purgée</strong> le {{ reception.date_purge }} par {{ reception.user_purge or "—" }}
+    — {{ reception.poids_purge|kg }} kg retirés du stock.
+    {% if reception.motif_purge %}<br>Motif : {{ reception.motif_purge }}{% endif %}
+    <form method="POST" action="{{ url_for('production_cuisine.annuler_purge_reception', reception_id=reception.id) }}"
+          class="mt-2" onsubmit="return confirm('Annuler la purge et remettre le solde en stock ?');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="production_id" value="">
-      <button type="submit" class="btn btn-sm btn-outline-secondary">Remettre en attente</button>
+      <button type="submit" class="btn btn-sm btn-outline-secondary">↩️ Annuler la purge</button>
     </form>
-    <div class="form-text">Pour corriger cette réception, remettez-la d'abord en attente.</div>
+  </div>
+  {% endif %}
+
+  <h5 class="mt-4">🍲 Utilisation dans les recettes</h5>
+  {% if utilisations %}
+  <table class="table table-sm align-middle">
+    <thead><tr><th>Recette</th><th>Date</th><th class="text-end">Poids (kg)</th><th>Par</th><th></th></tr></thead>
+    <tbody>
+      {% for u in utilisations %}
+      <tr>
+        <td><a href="{{ url_for('production_cuisine.detail_production', production_id=u.production_id) }}">{{ u.nom_recette }}</a></td>
+        <td>{{ u.date_production[8:10] }}/{{ u.date_production[5:7] }}</td>
+        <td class="text-end">{{ u.poids_kg|kg }}</td>
+        <td>{{ u.user_creation or "—" }}</td>
+        <td>
+          {% if u.statut != 'terminee' %}
+          <form method="POST" action="{{ url_for('production_cuisine.retirer_utilisation', utilisation_id=u.id) }}"
+                onsubmit="return confirm('Retirer ce poids de la recette ? Il reviendra dans le stock de la réception.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ request.full_path }}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Retirer</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
   {% else %}
-    <p class="text-muted">Pas encore affectée — on peut attendre un autre arrivage avant de décider.</p>
-    <div class="d-flex flex-wrap gap-2">
-      <a href="{{ url_for('production_cuisine.creer_production', date_production=reception.date_reception, reception_id=reception.id) }}"
+    <p class="text-muted">Pas encore utilisée — on peut attendre un autre arrivage avant de décider.</p>
+  {% endif %}
+
+  {% if reception.actif and not reception.date_purge and reception.solde_kg > 0.0005 %}
+    {% if blocage %}
+      <div class="alert alert-danger">⛔ Ne peut plus être cuisinée aujourd'hui : {{ blocage }}. Purger le reste.</div>
+    {% else %}
+    <div class="d-flex flex-wrap gap-2 mb-2">
+      <a href="{{ url_for('production_cuisine.creer_production', reception_id=reception.id) }}"
          class="btn btn-success">🍲 Nouvelle recette avec cette réception</a>
       {% if productions_du_jour %}
       <div class="dropdown">
-        <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">
-          Affecter à une recette existante…
+        <button class="btn btn-outline-primary dropdown-toggle" type="button"
+                data-bs-toggle="dropdown" data-bs-auto-close="outside">
+          Affecter à une recette du jour…
         </button>
-        <ul class="dropdown-menu">
-          {% for p in productions_du_jour %}
-          <li>
-            <form method="POST" action="{{ url_for('production_cuisine.affecter_reception', reception_id=reception.id) }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="hidden" name="production_id" value="{{ p.id }}">
-              <button type="submit" class="dropdown-item">{{ p.nom_recette }}</button>
-            </form>
-          </li>
-          {% endfor %}
-        </ul>
+        <div class="dropdown-menu p-3" style="min-width: 300px;">
+          <form method="POST" action="{{ url_for('production_cuisine.affecter_reception', reception_id=reception.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ request.full_path }}">
+            <label class="form-label small mb-1 d-block">Poids utilisé (kg, reste {{ reception.solde_kg|kg }})</label>
+            <input type="number" inputmode="decimal" step="any" min="0.001" max="{{ reception.solde_kg }}"
+                   name="poids_kg" value="{{ reception.solde_kg|kg|replace(',', '.') }}" class="form-control mb-2" required>
+            <label class="form-label small mb-1 d-block">Recette</label>
+            <select name="production_id" class="form-select w-100 mb-2" required>
+              {% for p in productions_du_jour %}
+              <option value="{{ p.id }}">{{ p.nom_recette }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-primary btn-sm w-100">Affecter</button>
+          </form>
+        </div>
       </div>
       {% endif %}
     </div>
+    {% endif %}
+    <button type="button" class="btn btn-outline-danger btn-purger"
+            data-action="{{ url_for('production_cuisine.purger_reception', reception_id=reception.id) }}"
+            data-libelle="{{ reception.libelle_produit or 'Réception' }} — {{ reception.solde_kg|kg }} kg restants">
+      🧹 Purger le reste ({{ reception.solde_kg|kg }} kg)
+    </button>
+  {% endif %}
+
+  {% if autres_lignes %}
+  <h5 class="mt-4">📦 Autres produits de la même réception</h5>
+  <table class="table table-sm align-middle">
+    <tbody>
+      {% for l in autres_lignes %}
+      <tr>
+        <td><a href="{{ url_for('production_cuisine.detail_reception', reception_id=l.id) }}">{{ l.libelle_produit or "—" }}</a></td>
+        <td class="text-end">
+          {% if l.date_purge %}🧹 purgé{% elif l.solde_kg <= 0.0005 %}épuisé{% else %}reste {{ l.solde_kg|kg }} kg{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if reception.actif and ((not reception.date_purge and reception.solde_kg > 0.0005)
+        or autres_lignes|selectattr('date_purge', 'none')|selectattr('solde_kg', 'gt', 0.0005)|list) and autres_lignes %}
+  <button type="button" class="btn btn-sm btn-outline-danger btn-purger"
+          data-action="{{ url_for('production_cuisine.purger_livraison', livraison_id=reception.livraison_id or reception.id) }}"
+          data-libelle="Toute la réception ({{ autres_lignes|length + 1 }} produits) : le reste de chaque produit sera retiré du stock.">
+    🧹 Purger toute la réception
+  </button>
   {% endif %}
 
   {% if photos %}
@@ -92,5 +165,6 @@
   {% endif %}
 
 </div>
+{% include "production_cuisine/_purge_modal.html" %}
 {% include "production_cuisine/_scroll_restore.html" %}
 {% endblock %}

@@ -49,6 +49,8 @@ EXCLUDE_TABLES = {
     "cuisine_factures",  # référence associations.id (diverge)
     "cuisine_factures_bl",  # référence cuisine_bons_livraison.id (diverge)
     "cuisine_factures_reglements",  # référence cuisine_factures.id
+    "cuisine_receptions",  # saisies terrain propres à chaque base, ids divergents
+    "cuisine_reception_utilisations",  # référence cuisine_productions.id (diverge)
 }
 
 # -------------------------------------------------------------------

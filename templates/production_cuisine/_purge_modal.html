@@ -1,0 +1,53 @@
+{# ============================================================
+   🧹 Purge d'une ligne ou de toute une réception (retrait du solde
+   restant du stock, avec trace : qui, quand, motif). Boutons déclencheurs :
+   <button type="button" class="btn-purger" data-action="URL POST"
+           data-libelle="texte affiché">
+   ============================================================ #}
+<div class="modal fade" id="modal-purge" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="POST" class="modal-content" id="form-purge">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ request.full_path }}">
+      <div class="modal-header">
+        <h5 class="modal-title">🧹 Purger</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p id="purge-libelle" class="fw-bold"></p>
+        <p class="small text-muted">Le poids restant est retiré du stock : il ne pourra plus être utilisé dans une recette. Le poids déjà cuisiné n'est pas concerné.</p>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Votre nom *</label>
+          <input type="text" name="benevole" class="form-control" required placeholder="Prénom du bénévole ou du salarié">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold d-block">Motif</label>
+          <select name="motif" class="form-select w-100">
+            <option value="DLC dépassée">DLC dépassée</option>
+            <option value="Produit non conforme / jeté">Produit non conforme / jeté</option>
+            <option value="Reste inutilisable">Reste inutilisable</option>
+            <option value="Autre">Autre</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Précision</label>
+          <input type="text" name="precision" class="form-control">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button type="submit" class="btn btn-danger">🧹 Purger</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+document.addEventListener('click', function (e) {
+  var btn = e.target.closest('.btn-purger');
+  if (!btn) return;
+  var form = document.getElementById('form-purge');
+  form.action = btn.dataset.action;
+  document.getElementById('purge-libelle').textContent = btn.dataset.libelle || '';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-purge')).show();
+});
+</script>

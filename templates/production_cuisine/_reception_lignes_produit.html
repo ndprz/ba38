@@ -35,6 +35,11 @@
         <label class="form-label fw-bold">Poids (kg) *</label>
         <input type="number" inputmode="decimal" step="any" min="0.01" name="poids_kg_IDXTOKEN" class="form-control form-control-lg" required>
       </div>
+      <div class="mb-3">
+        <label class="form-label fw-bold">DLC *</label>
+        <input type="date" name="dlc_ddm_IDXTOKEN" class="form-control form-control-lg" required>
+        <div class="form-text">Date limite de consommation lue sur l'étiquette : un produit à DLC dépassée ne peut pas être cuisiné.</div>
+      </div>
       {% for champ, label in (('aspect_conforme', 'Aspect'), ('emballage_conforme', 'Emballage'), ('etiquetage_conforme', 'Étiquetage')) %}
       <div class="mb-3">
         <label class="form-label fw-bold">{{ label }}</label>
@@ -57,7 +62,7 @@
         </div>
         <div class="col-6">
           {{ camera_capture("photos_etiquette_IDXTOKEN", "📷 Photo(s) étiquette") }}
-          <div class="form-text">La photo de l'étiquette fait foi pour la DLC/DDM et le n° de lot — inutile de les ressaisir.</div>
+          <div class="form-text">La photo de l'étiquette fait foi pour le n° de lot — inutile de le ressaisir.</div>
         </div>
       </div>
     </div>
@@ -140,6 +145,9 @@
       }
       if (valeurs.poids_kg) {
         ligne.querySelector('[name="poids_kg_' + idx + '"]').value = valeurs.poids_kg;
+      }
+      if (valeurs.dlc_ddm) {
+        ligne.querySelector('[name="dlc_ddm_' + idx + '"]').value = valeurs.dlc_ddm;
       }
       if (valeurs.commentaire) {
         ligne.querySelector('[name="commentaire_' + idx + '"]').value = valeurs.commentaire;

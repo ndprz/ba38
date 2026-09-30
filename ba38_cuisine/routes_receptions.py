@@ -15,6 +15,8 @@ from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_cuisine import production_cuisine_bp
 from ba38_cuisine.utils import (
     _connect, today_paris, now_paris_str, upload_dir_reception, save_uploaded_files, parse_temperature,
+    parse_poids, format_kg, receptions_en_stock, blocage_dlc, reception_avec_solde, ajouter_utilisation,
+    SQL_RECEPTIONS_SOLDE, SOLDE_EPSILON,
 )
 
 CONFORMITE_CHOICES = ("conforme", "non_conforme")
@@ -25,14 +27,18 @@ def _clean_conformite(val):
     return val if val in CONFORMITE_CHOICES else None
 
 
-def _parse_poids(valeur):
-    """Poids saisi (virgule tolérée) → float > 0, sinon None."""
-    valeur = (valeur or "").strip().replace(",", ".")
+@production_cuisine_bp.app_template_filter("kg")
+def _filtre_kg(valeur):
+    return format_kg(valeur)
+
+
+def _parse_dlc(valeur):
+    """DLC saisie (AAAA-MM-JJ, champ date) → texte ISO, sinon None."""
+    valeur = (valeur or "").strip()
     try:
-        poids = float(valeur)
+        return date.fromisoformat(valeur).isoformat()
     except ValueError:
         return None
-    return poids if poids > 0 else None
 
 
 def _lire_ligne_produit(form, i):
@@ -64,7 +70,9 @@ def _lire_ligne_produit(form, i):
         # poids_kg = valeur saisie (réaffichée telle quelle en cas d'erreur),
         # poids_valide = float > 0 réellement enregistré.
         "poids_kg": poids_saisi or None,
-        "poids_valide": _parse_poids(poids_saisi),
+        "poids_valide": parse_poids(poids_saisi),
+        "dlc_ddm": (form.get(f"dlc_ddm_{i}") or "").strip() or None,
+        "dlc_valide": _parse_dlc(form.get(f"dlc_ddm_{i}")),
         "aspect_conforme": _clean_conformite(form.get(f"aspect_conforme_{i}")),
         "emballage_conforme": _clean_conformite(form.get(f"emballage_conforme_{i}")),
         "etiquetage_conforme": _clean_conformite(form.get(f"etiquetage_conforme_{i}")),
@@ -78,6 +86,8 @@ def _erreur_ligne_produit(num, ligne):
         return f"⚠️ Produit {num} : merci de choisir (ou préciser) le produit réceptionné."
     if ligne["poids_valide"] is None:
         return f"⚠️ Produit {num} ({ligne['libelle_produit']}) : merci d'indiquer le poids (en kg, supérieur à 0)."
+    if ligne["dlc_valide"] is None:
+        return f"⚠️ Produit {num} ({ligne['libelle_produit']}) : merci d'indiquer la DLC."
     if not (ligne["aspect_conforme"] and ligne["emballage_conforme"] and ligne["etiquetage_conforme"]):
         return (
             f"⚠️ Produit {num} ({ligne['libelle_produit']}) : merci d'indiquer "
@@ -121,6 +131,30 @@ def _ingredients_par_groupe(conn):
     return par_groupe
 
 
+def _productions_du_jour(conn, date_jour):
+    return conn.execute(
+        """SELECT id, nom_recette FROM cuisine_productions
+           WHERE date_production = ? AND statut != 'annulee' AND actif = 1
+           ORDER BY id DESC""",
+        (date_jour,),
+    ).fetchall()
+
+
+def _livraisons(receptions):
+    """Regroupe des lignes réception par livraison (lignes saisies ensemble
+    sur le même écran), dans l'ordre d'arrivée : [{"id", "lignes", ...}]."""
+    livraisons = {}
+    for r in receptions:
+        cle = r["livraison_id"] or r["id"]
+        liv = livraisons.setdefault(cle, {"id": cle, "entete": r, "lignes": []})
+        liv["lignes"].append(r)
+    for liv in livraisons.values():
+        liv["purgeable"] = any(
+            l["actif"] and not l["date_purge"] and l["solde_kg"] > SOLDE_EPSILON for l in liv["lignes"]
+        )
+    return list(livraisons.values())
+
+
 @production_cuisine_bp.route("/receptions")
 @login_required
 @require_access("production_cuisine", "lecture")
@@ -129,36 +163,35 @@ def liste_receptions():
 
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
-        fournisseurs = conn.execute(
-            "SELECT id, nom FROM fournisseurs WHERE actif = 'oui' ORDER BY nom COLLATE NOCASE"
-        ).fetchall()
-        receptions = conn.execute(
-            """
-            SELECT r.*, f.nom AS fournisseur_nom,
-                   p.nom_recette AS production_nom
-            FROM cuisine_receptions r
-            LEFT JOIN fournisseurs f ON f.id = r.fournisseur_id
-            LEFT JOIN cuisine_productions p ON p.id = r.production_id
-            WHERE r.date_reception = ? AND r.actif = 1
-            ORDER BY r.heure_arrivee, r.id
-            """,
+        # Stock : tout ce qui reste utilisable ou à purger, quel que soit le
+        # jour de réception (un gros arrivage sert plusieurs jours).
+        stock = receptions_en_stock(conn, date_filtre)
+        receptions_jour = conn.execute(
+            f"""SELECT * FROM ({SQL_RECEPTIONS_SOLDE})
+                WHERE date_reception = ? AND actif = 1
+                ORDER BY heure_arrivee, id""",
             (date_filtre,),
         ).fetchall()
-        productions_du_jour = conn.execute(
-            """SELECT id, nom_recette FROM cuisine_productions
-               WHERE date_production = ? AND statut != 'annulee'
-               ORDER BY id DESC""",
+        utilisations = conn.execute(
+            """SELECT ru.reception_id, ru.poids_kg, p.id AS production_id, p.nom_recette, p.date_production
+               FROM cuisine_reception_utilisations ru
+               JOIN cuisine_receptions r ON r.id = ru.reception_id
+               JOIN cuisine_productions p ON p.id = ru.production_id AND p.actif = 1
+               WHERE r.date_reception = ? AND r.actif = 1
+               ORDER BY ru.id""",
             (date_filtre,),
         ).fetchall()
+        productions_du_jour = _productions_du_jour(conn, date_filtre)
 
-    en_attente = [r for r in receptions if r["production_id"] is None]
-    affectees = [r for r in receptions if r["production_id"] is not None]
+    utilisations_par_reception = {}
+    for u in utilisations:
+        utilisations_par_reception.setdefault(u["reception_id"], []).append(u)
 
     return render_template(
         "production_cuisine/receptions_liste.html",
-        en_attente=en_attente,
-        affectees=affectees,
-        fournisseurs=fournisseurs,
+        stock=stock,
+        livraisons=_livraisons(receptions_jour),
+        utilisations_par_reception=utilisations_par_reception,
         productions_du_jour=productions_du_jour,
         date_filtre=date_filtre,
     )
@@ -276,67 +309,201 @@ def etat_journalier_receptions():
     )
 
 
+def _retour(defaut):
+    """Page d'origine (champ `next`, chemin relatif uniquement), sinon `defaut`."""
+    suivant = request.form.get("next") or ""
+    if suivant.startswith("/") and not suivant.startswith("//"):
+        return redirect(suivant)
+    return redirect(defaut)
+
+
 @production_cuisine_bp.route("/receptions/<int:reception_id>/affecter", methods=["POST"])
 @login_required
 @require_access("production_cuisine", "ecriture")
 def affecter_reception(reception_id):
-    production_id = request.form.get("production_id") or None
+    """Utilise une partie (ou la totalité) du solde de la réception dans une
+    production. Le reste demeure disponible pour une autre recette."""
+    production_id = request.form.get("production_id", type=int)
+    poids = parse_poids(request.form.get("poids_kg"))
+    benevole = (request.form.get("benevole") or "").strip()
+    liste_url = url_for("production_cuisine.liste_receptions")
 
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
-        reception = conn.execute(
-            "SELECT id FROM cuisine_receptions WHERE id = ?", (reception_id,)
+        production = conn.execute(
+            "SELECT id, date_production FROM cuisine_productions WHERE id = ? AND actif = 1",
+            (production_id,),
         ).fetchone()
-        if not reception:
-            flash("⛔ Réception introuvable.", "danger")
-            return redirect(url_for("production_cuisine.liste_receptions"))
-
-        if production_id:
-            production = conn.execute(
-                "SELECT id FROM cuisine_productions WHERE id = ?", (production_id,)
-            ).fetchone()
-            if not production:
-                flash("⛔ Production introuvable.", "danger")
-                return redirect(url_for("production_cuisine.liste_receptions"))
-
-        conn.execute(
-            "UPDATE cuisine_receptions SET production_id = ? WHERE id = ?",
-            (production_id, reception_id),
-        )
+        if not production:
+            flash("⛔ Production introuvable.", "danger")
+            return _retour(liste_url)
+        erreur = ajouter_utilisation(conn, reception_id, production, poids, benevole)
+        if erreur:
+            flash(f"⛔ {erreur}", "danger")
+            return _retour(liste_url)
         conn.commit()
 
     upload_database()
-    if production_id:
-        flash("✅ Réception affectée à la production.", "success")
-        return redirect(url_for("production_cuisine.detail_production", production_id=production_id))
+    flash(f"✅ {format_kg(poids)} kg affectés à la production.", "success")
+    return redirect(url_for("production_cuisine.detail_production", production_id=production_id))
 
-    flash("✅ Réception remise en attente d'affectation.", "success")
-    return redirect(url_for("production_cuisine.liste_receptions"))
+
+@production_cuisine_bp.route("/receptions/utilisations/<int:utilisation_id>/retirer", methods=["POST"])
+@login_required
+@require_access("production_cuisine", "ecriture")
+def retirer_utilisation(utilisation_id):
+    """Annule l'utilisation d'une réception par une production : le poids
+    correspondant revient dans le solde de la réception."""
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        utilisation = conn.execute(
+            "SELECT reception_id, production_id, poids_kg FROM cuisine_reception_utilisations WHERE id = ?",
+            (utilisation_id,),
+        ).fetchone()
+        if not utilisation:
+            flash("⛔ Utilisation introuvable.", "danger")
+            return _retour(url_for("production_cuisine.liste_receptions"))
+        conn.execute("DELETE FROM cuisine_reception_utilisations WHERE id = ?", (utilisation_id,))
+        conn.commit()
+
+    write_log(
+        f"↩️ Réception cuisine #{utilisation['reception_id']} : {utilisation['poids_kg']} kg retirés "
+        f"de la production #{utilisation['production_id']}"
+    )
+    upload_database()
+    flash(f"✅ {format_kg(utilisation['poids_kg'])} kg remis dans le stock de la réception.", "success")
+    return _retour(url_for("production_cuisine.detail_reception", reception_id=utilisation["reception_id"]))
 
 
 @production_cuisine_bp.route("/receptions/<int:reception_id>/supprimer", methods=["POST"])
 @login_required
 @require_access("production_cuisine", "ecriture")
 def supprimer_reception(reception_id):
+    """Suppression d'une saisie erronée (jamais utilisée). Pour sortir du
+    stock une marchandise réellement reçue (DLC dépassée, jetée…), c'est la
+    purge qui s'applique : elle garde la trace."""
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
-        reception = conn.execute(
-            "SELECT id, production_id FROM cuisine_receptions WHERE id = ?", (reception_id,)
-        ).fetchone()
+        reception = reception_avec_solde(conn, reception_id)
         if not reception:
             flash("⛔ Réception introuvable.", "danger")
             return redirect(url_for("production_cuisine.liste_receptions"))
 
-        if reception["production_id"] is not None:
-            flash("⛔ Impossible de supprimer : cette réception est affectée à une recette en cours.", "danger")
-            return redirect(url_for("production_cuisine.liste_receptions"))
+        if reception["nb_utilisations"]:
+            flash("⛔ Impossible de supprimer : cette réception est utilisée dans une production (la purger si besoin).", "danger")
+            return _retour(url_for("production_cuisine.liste_receptions"))
 
         conn.execute("UPDATE cuisine_receptions SET actif = 0 WHERE id = ?", (reception_id,))
         conn.commit()
 
     upload_database()
     flash("🗑️ Réception supprimée.", "success")
-    return redirect(url_for("production_cuisine.liste_receptions"))
+    return _retour(url_for("production_cuisine.liste_receptions"))
+
+
+def _purger(conn, reception_ids, benevole, motif):
+    """Retire du stock le solde restant des réceptions données (non encore
+    purgées) ; poids_purge = solde au moment de la purge. Retourne
+    [(reception, poids_purge)] des lignes effectivement purgées."""
+    purgees = []
+    for reception_id in reception_ids:
+        r = reception_avec_solde(conn, reception_id)
+        if not r or not r["actif"] or r["date_purge"] or r["solde_kg"] <= SOLDE_EPSILON:
+            continue
+        conn.execute(
+            """UPDATE cuisine_receptions
+               SET date_purge = ?, user_purge = ?, motif_purge = ?, poids_purge = ?
+               WHERE id = ? AND date_purge IS NULL""",
+            (now_paris_str(), benevole, motif, r["solde_kg"], reception_id),
+        )
+        purgees.append((r, r["solde_kg"]))
+    return purgees
+
+
+def _lire_purge():
+    benevole = (request.form.get("benevole") or "").strip()
+    motif = (request.form.get("motif") or "").strip()
+    precision = (request.form.get("precision") or "").strip()
+    if precision:
+        motif = f"{motif} — {precision}" if motif else precision
+    return benevole, motif or None
+
+
+@production_cuisine_bp.route("/receptions/<int:reception_id>/purger", methods=["POST"])
+@login_required
+@require_access("production_cuisine", "ecriture")
+def purger_reception(reception_id):
+    benevole, motif = _lire_purge()
+    detail_url = url_for("production_cuisine.detail_reception", reception_id=reception_id)
+    if not benevole:
+        flash("⚠️ Merci d'indiquer votre nom pour purger.", "warning")
+        return _retour(detail_url)
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        purgees = _purger(conn, [reception_id], benevole, motif)
+        conn.commit()
+    if not purgees:
+        flash("ℹ️ Rien à purger : réception déjà purgée ou entièrement utilisée.", "info")
+        return _retour(detail_url)
+    r, poids = purgees[0]
+    write_log(f"🧹 Réception cuisine #{reception_id} purgée ({poids} kg) par {benevole} : {motif or '—'}")
+    upload_database()
+    flash(f"🧹 {r['libelle_produit'] or 'Réception'} : {format_kg(poids)} kg retirés du stock.", "success")
+    return _retour(detail_url)
+
+
+@production_cuisine_bp.route("/receptions/livraison/<int:livraison_id>/purger", methods=["POST"])
+@login_required
+@require_access("production_cuisine", "ecriture")
+def purger_livraison(livraison_id):
+    """Purge de toute une réception (toutes les lignes produit saisies
+    ensemble) : chaque ligne encore en stock perd son solde restant."""
+    benevole, motif = _lire_purge()
+    liste_url = url_for("production_cuisine.liste_receptions")
+    if not benevole:
+        flash("⚠️ Merci d'indiquer votre nom pour purger.", "warning")
+        return _retour(liste_url)
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        ids = [
+            row["id"] for row in conn.execute(
+                "SELECT id FROM cuisine_receptions WHERE (livraison_id = ? OR id = ?) AND actif = 1",
+                (livraison_id, livraison_id),
+            ).fetchall()
+        ]
+        purgees = _purger(conn, ids, benevole, motif)
+        conn.commit()
+    if not purgees:
+        flash("ℹ️ Rien à purger : toutes les lignes sont déjà purgées ou entièrement utilisées.", "info")
+        return _retour(liste_url)
+    total = sum(p for _, p in purgees)
+    write_log(
+        f"🧹 Livraison cuisine #{livraison_id} purgée ({len(purgees)} ligne(s), {total} kg) "
+        f"par {benevole} : {motif or '—'}"
+    )
+    upload_database()
+    flash(f"🧹 {len(purgees)} ligne(s) purgée(s), {format_kg(total)} kg retirés du stock.", "success")
+    return _retour(liste_url)
+
+
+@production_cuisine_bp.route("/receptions/<int:reception_id>/annuler-purge", methods=["POST"])
+@login_required
+@require_access("production_cuisine", "ecriture")
+def annuler_purge_reception(reception_id):
+    """Purge faite par erreur : le solde purgé revient en stock."""
+    with _connect() as conn:
+        cur = conn.execute(
+            """UPDATE cuisine_receptions
+               SET date_purge = NULL, user_purge = NULL, motif_purge = NULL, poids_purge = NULL
+               WHERE id = ? AND actif = 1 AND date_purge IS NOT NULL""",
+            (reception_id,),
+        )
+        conn.commit()
+    if cur.rowcount:
+        write_log(f"↩️ Purge annulée sur la réception cuisine #{reception_id}")
+        upload_database()
+        flash("✅ Purge annulée : le solde est de nouveau disponible.", "success")
+    return redirect(url_for("production_cuisine.detail_reception", reception_id=reception_id))
 
 
 @production_cuisine_bp.route("/receptions/creer", methods=["GET", "POST"])
@@ -413,19 +580,27 @@ def creer_reception():
                         INSERT INTO cuisine_receptions
                         (date_reception, heure_arrivee, fournisseur_id, camion_libelle,
                          libelle_produit, ingredient_groupe, ingredient_produit,
-                         temperature_mesuree, poids_kg, aspect_conforme,
-                         emballage_conforme, etiquetage_conforme, commentaire, user_creation)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         temperature_mesuree, poids_kg, dlc_ddm, aspect_conforme,
+                         emballage_conforme, etiquetage_conforme, commentaire, user_creation,
+                         livraison_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             date_reception, heure_arrivee, fournisseur_id, camion_libelle,
                             ligne["libelle_produit"], ligne["ingredient_groupe"], ligne["ingredient_produit"],
-                            temperature_mesuree, ligne["poids_valide"],
+                            temperature_mesuree, ligne["poids_valide"], ligne["dlc_valide"],
                             ligne["aspect_conforme"], ligne["emballage_conforme"], ligne["etiquetage_conforme"],
                             ligne["commentaire"], benevole,
+                            reception_ids[0] if reception_ids else None,
                         ),
                     )
                     reception_id = cur.lastrowid
+                    if not reception_ids:
+                        # 1re ligne : elle donne son id à toute la livraison.
+                        cur.execute(
+                            "UPDATE cuisine_receptions SET livraison_id = ? WHERE id = ?",
+                            (reception_id, reception_id),
+                        )
                     reception_ids.append(reception_id)
 
                     _enregistrer_photos(cur, reception_id, ligne["idx"])
@@ -466,16 +641,7 @@ def creer_reception():
 def detail_reception(reception_id):
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
-        reception = conn.execute(
-            """
-            SELECT r.*, f.nom AS fournisseur_nom, p.nom_recette AS production_nom
-            FROM cuisine_receptions r
-            LEFT JOIN fournisseurs f ON f.id = r.fournisseur_id
-            LEFT JOIN cuisine_productions p ON p.id = r.production_id
-            WHERE r.id = ?
-            """,
-            (reception_id,),
-        ).fetchone()
+        reception = reception_avec_solde(conn, reception_id)
 
         if not reception:
             flash("⛔ Réception introuvable.", "danger")
@@ -486,20 +652,36 @@ def detail_reception(reception_id):
             (reception_id,),
         ).fetchall()
 
-        productions_du_jour = conn.execute(
-            """SELECT id, nom_recette FROM cuisine_productions
-               WHERE date_production = ? AND statut != 'annulee'
-               ORDER BY id DESC""",
-            (reception["date_reception"],),
+        utilisations = conn.execute(
+            """SELECT ru.*, p.nom_recette, p.date_production, p.statut
+               FROM cuisine_reception_utilisations ru
+               JOIN cuisine_productions p ON p.id = ru.production_id AND p.actif = 1
+               WHERE ru.reception_id = ?
+               ORDER BY ru.id""",
+            (reception_id,),
         ).fetchall()
+
+        # Autres lignes produit de la même livraison (purge groupée).
+        autres_lignes = conn.execute(
+            f"""SELECT * FROM ({SQL_RECEPTIONS_SOLDE})
+                WHERE livraison_id = ? AND id != ? AND actif = 1 ORDER BY id""",
+            (reception["livraison_id"] or reception_id, reception_id),
+        ).fetchall()
+
+        # Une réception en stock sert aussi les jours suivants : on propose
+        # les productions du jour (pas celles du jour de réception).
+        date_jour = today_paris()
+        productions_du_jour = _productions_du_jour(conn, date_jour)
+
+    blocage = blocage_dlc(reception, date_jour)
 
     # Bouton "← Retour" contextuel : si on arrive depuis la fiche recette
     # (lien "Détail" d'un lot en traçabilité), on y revient plutôt que sur
     # la liste générale des réceptions. Le paramètre n'est suivi que s'il
-    # correspond bien à la production réelle de cette réception (sinon on
+    # correspond bien à une production utilisant cette réception (sinon on
     # retombe sur la liste).
     depuis_production = request.args.get("depuis_production", type=int)
-    if depuis_production and depuis_production == reception["production_id"]:
+    if depuis_production and any(u["production_id"] == depuis_production for u in utilisations):
         retour_url = url_for("production_cuisine.detail_production", production_id=depuis_production)
     else:
         retour_url = url_for("production_cuisine.liste_receptions")
@@ -508,7 +690,10 @@ def detail_reception(reception_id):
         "production_cuisine/receptions_detail.html",
         reception=reception,
         photos=photos,
+        utilisations=utilisations,
+        autres_lignes=autres_lignes,
         productions_du_jour=productions_du_jour,
+        blocage=blocage,
         retour_url=retour_url,
     )
 
@@ -525,6 +710,7 @@ def _ligne_depuis_reception(reception):
         "groupe": groupe,
         "produit": produit,
         "poids_kg": reception["poids_kg"],
+        "dlc_ddm": reception["dlc_ddm"],
         "aspect_conforme": reception["aspect_conforme"],
         "emballage_conforme": reception["emballage_conforme"],
         "etiquetage_conforme": reception["etiquetage_conforme"],
@@ -536,19 +722,17 @@ def _ligne_depuis_reception(reception):
 @login_required
 @require_access("production_cuisine", "ecriture")
 def modifier_reception(reception_id):
-    """Correction d'une réception tant qu'elle n'est pas encore utilisée dans
-    une production (production_id NULL). Une fois affectée, elle fait partie
-    de la traçabilité de la recette : il faut d'abord la remettre en attente."""
+    """Correction d'une réception tant qu'elle n'est utilisée dans aucune
+    production ni purgée. Une fois utilisée, elle fait partie de la
+    traçabilité de la recette : il faut d'abord retirer ses utilisations."""
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
-        reception = conn.execute(
-            "SELECT * FROM cuisine_receptions WHERE id = ? AND actif = 1", (reception_id,)
-        ).fetchone()
-        if not reception:
+        reception = reception_avec_solde(conn, reception_id)
+        if not reception or not reception["actif"]:
             flash("⛔ Réception introuvable.", "danger")
             return redirect(url_for("production_cuisine.liste_receptions"))
-        if reception["production_id"] is not None:
-            flash("⛔ Modification impossible : cette réception est déjà utilisée dans une production.", "danger")
+        if reception["nb_utilisations"] or reception["date_purge"]:
+            flash("⛔ Modification impossible : cette réception est déjà utilisée dans une production ou purgée.", "danger")
             return redirect(url_for("production_cuisine.detail_reception", reception_id=reception_id))
 
         fournisseurs = conn.execute(
@@ -611,22 +795,24 @@ def modifier_reception(reception_id):
     try:
         with _connect() as conn:
             cur = conn.cursor()
-            # Garde en base : la réception a pu être affectée à une recette
-            # entre l'ouverture du formulaire et son enregistrement.
+            # Garde en base : la réception a pu être utilisée dans une recette
+            # (ou purgée) entre l'ouverture du formulaire et son enregistrement.
             cur.execute(
                 """
                 UPDATE cuisine_receptions
                 SET date_reception = ?, heure_arrivee = ?, fournisseur_id = ?, camion_libelle = ?,
                     libelle_produit = ?, ingredient_groupe = ?, ingredient_produit = ?,
-                    temperature_mesuree = ?, poids_kg = ?, aspect_conforme = ?,
+                    temperature_mesuree = ?, poids_kg = ?, dlc_ddm = ?, aspect_conforme = ?,
                     emballage_conforme = ?, etiquetage_conforme = ?, commentaire = ?,
                     date_modif = ?, user_modif = ?
-                WHERE id = ? AND actif = 1 AND production_id IS NULL
+                WHERE id = ? AND actif = 1 AND date_purge IS NULL
+                  AND NOT EXISTS (SELECT 1 FROM cuisine_reception_utilisations u
+                                  WHERE u.reception_id = cuisine_receptions.id)
                 """,
                 (
                     date_reception, heure_arrivee, fournisseur_id, camion_libelle,
                     ligne["libelle_produit"], ligne["ingredient_groupe"], ligne["ingredient_produit"],
-                    temperature_mesuree, ligne["poids_valide"],
+                    temperature_mesuree, ligne["poids_valide"], ligne["dlc_valide"],
                     ligne["aspect_conforme"], ligne["emballage_conforme"], ligne["etiquetage_conforme"],
                     ligne["commentaire"], now_paris_str(), benevole, reception_id,
                 ),
