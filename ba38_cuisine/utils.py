@@ -368,7 +368,54 @@ def save_uploaded_files(files, dossier, prefix=""):
             chemins.append(abs_path)
         except Exception as e:
             write_log(f"❌ Erreur sauvegarde fichier production_cuisine ({filename}) : {e}")
+            continue
+        reduire_photo(abs_path)
     return chemins
+
+
+# Taille max (plus grand côté, en pixels) et qualité JPEG des photos
+# Cuisine. Les tablettes photographient en 8 Mpx (~2 Mo) : 1600 px en
+# qualité 80 reste largement lisible pour une étiquette / un n° de lot
+# pour ~180 Ko. La page tablette réduit déjà avant envoi
+# (_camera_capture_js.html), ceci est le filet de sécurité serveur.
+PHOTO_MAX_PX = 1600
+PHOTO_QUALITE_JPEG = 80
+
+
+def reduire_photo(abs_path):
+    """Réduit sur place une photo trop grande (même chemin, même format →
+    aucun changement en base). Retourne True si le fichier a été réécrit.
+    Toute erreur (fichier non image, Pillow absent...) laisse l'original
+    intact : une photo trop lourde vaut mieux qu'une photo perdue."""
+    try:
+        from PIL import Image, ImageOps
+
+        with Image.open(abs_path) as im:
+            fmt = im.format
+            if fmt not in ("JPEG", "PNG", "WEBP") or max(im.size) <= PHOTO_MAX_PX:
+                return False
+            exif = im.getexif()
+            im = ImageOps.exif_transpose(im)
+            im.thumbnail((PHOTO_MAX_PX, PHOTO_MAX_PX), Image.LANCZOS)
+            # Orientation déjà appliquée aux pixels : on la neutralise pour
+            # qu'un visualiseur ne la réapplique pas une seconde fois.
+            exif[0x0112] = 1
+            tmp_path = abs_path + ".tmp"
+            if fmt == "JPEG":
+                im.convert("RGB").save(tmp_path, "JPEG", quality=PHOTO_QUALITE_JPEG,
+                                       optimize=True, exif=exif.tobytes())
+            else:
+                im.save(tmp_path, fmt, optimize=True)
+        os.replace(tmp_path, abs_path)
+        return True
+    except Exception as e:
+        write_log(f"⚠️ Réduction photo production_cuisine impossible ({abs_path}) : {e}")
+        try:
+            if os.path.exists(abs_path + ".tmp"):
+                os.remove(abs_path + ".tmp")
+        except OSError:
+            pass
+        return False
 
 
 # Barquettes sorties du stock par des bons de livraison non annulés, par

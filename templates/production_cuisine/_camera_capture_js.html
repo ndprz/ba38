@@ -1,5 +1,37 @@
 <script>
 (function () {
+  // Réduit la photo avant envoi (8 Mpx ~2 Mo → 1600 px ~180 Ko) : envoi
+  // plus rapide en Wi-Fi et moins de disque. Même réglage que
+  // PHOTO_MAX_PX / PHOTO_QUALITE_JPEG côté serveur (ba38_cuisine/utils.py),
+  // qui réduit de toute façon si ce traitement échoue (on envoie alors
+  // l'original, jamais de photo perdue).
+  var PHOTO_MAX_PX = 1600, PHOTO_QUALITE = 0.8;
+
+  function reduirePhoto(file) {
+    return new Promise(function (resolve) {
+      if (!file.type || file.type.indexOf("image/") !== 0) return resolve(file);
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var w = img.naturalWidth, h = img.naturalHeight;
+        var ratio = Math.min(1, PHOTO_MAX_PX / Math.max(w, h));
+        if (ratio >= 1) return resolve(file);
+        var canvas = document.createElement("canvas");
+        canvas.width = Math.round(w * ratio);
+        canvas.height = Math.round(h * ratio);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(function (blob) {
+          if (!blob) return resolve(file);
+          var nom = (file.name || "photo").replace(/\.[^.]*$/, "") + ".jpg";
+          resolve(new File([blob], nom, { type: "image/jpeg", lastModified: Date.now() }));
+        }, "image/jpeg", PHOTO_QUALITE);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  }
+
   function initCameraCapture(root) {
     (root || document).querySelectorAll(".camera-multi-capture").forEach(function (container) {
     if (container.dataset.cameraInit) return;
@@ -43,9 +75,11 @@
 
     hiddenInput.addEventListener("change", function () {
       if (hiddenInput.files && hiddenInput.files.length) {
-        fichiers.push(hiddenInput.files[0]);
-        renderPreview();
-        syncSubmitInput();
+        reduirePhoto(hiddenInput.files[0]).then(function (f) {
+          fichiers.push(f);
+          renderPreview();
+          syncSubmitInput();
+        });
       }
     });
     });
