@@ -173,7 +173,7 @@
               {% for u in utilisations_par_reception.get(r.id, []) %}
                 <div class="small">
                   <a href="{{ url_for('production_cuisine.detail_production', production_id=u.production_id) }}">{{ u.nom_recette }}</a>
-                  · {{ u.poids_kg|kg }} kg
+                  · {% if u.poids_kg is not none %}{{ u.poids_kg|kg }} kg{% else %}poids non renseigné{% endif %}
                   {% if u.date_production != r.date_reception %}<span class="text-muted">({{ u.date_production[8:10] }}/{{ u.date_production[5:7] }})</span>{% endif %}
                 </div>
               {% else %}<span class="text-muted small">—</span>{% endfor %}

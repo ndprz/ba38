@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS cuisine_reception_utilisations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   reception_id INTEGER NOT NULL REFERENCES cuisine_receptions(id),
   production_id INTEGER NOT NULL REFERENCES cuisine_productions(id),
-  poids_kg REAL NOT NULL CHECK (poids_kg > 0),
+  poids_kg REAL CHECK (poids_kg IS NULL OR poids_kg > 0),
   date_creation TEXT DEFAULT (datetime('now','utc')),
   user_creation TEXT
 )
@@ -78,10 +78,6 @@ def main():
         colonnes = {r[1] for r in conn.execute("PRAGMA table_info(cuisine_receptions)")}
         if not colonnes:
             raise RuntimeError(f"❌ Table cuisine_receptions absente de {db_path}")
-        table_existait = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cuisine_reception_utilisations'"
-        ).fetchone() is not None
-
         conn.execute("BEGIN IMMEDIATE")
         try:
             for nom, type_sql in NOUVELLES_COLONNES:
@@ -89,22 +85,48 @@ def main():
                     conn.execute(f"ALTER TABLE cuisine_receptions ADD COLUMN {nom} {type_sql}")
                     print(f"✅ Colonne cuisine_receptions.{nom} ajoutée")
 
+            # Poids NULL admis pour la seule reprise des réceptions
+            # affectées sans poids (saisies avant qu'il soit obligatoire) :
+            # l'appli exige toujours un poids > 0 pour une nouvelle
+            # utilisation. Une table créée avec l'ancien schéma (NOT NULL,
+            # ex. par migrate_schema_and_data_dev_to_prod.py) est reconstruite.
+            ancien = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'cuisine_reception_utilisations'"
+            ).fetchone()
+            if ancien and "IS NULL OR" not in ancien[0]:
+                conn.execute("ALTER TABLE cuisine_reception_utilisations RENAME TO cuisine_reception_utilisations_ancien")
+                for nom_index in ("idx_cuisine_recep_util_reception", "idx_cuisine_recep_util_production"):
+                    conn.execute(f"DROP INDEX IF EXISTS {nom_index}")
+                conn.execute(SCHEMA_UTILISATIONS)
+                conn.execute(
+                    """INSERT INTO cuisine_reception_utilisations
+                       (id, reception_id, production_id, poids_kg, date_creation, user_creation)
+                       SELECT id, reception_id, production_id, poids_kg, date_creation, user_creation
+                       FROM cuisine_reception_utilisations_ancien"""
+                )
+                conn.execute("DROP TABLE cuisine_reception_utilisations_ancien")
+                print("✅ cuisine_reception_utilisations reconstruite (poids non renseigné admis pour la reprise)")
             conn.execute(SCHEMA_UTILISATIONS)
             for sql in INDEX:
                 conn.execute(sql)
 
-            if not table_existait:
-                n = conn.execute(
-                    """INSERT INTO cuisine_reception_utilisations
-                       (reception_id, production_id, poids_kg, date_creation, user_creation)
-                       SELECT r.id, r.production_id, r.poids_kg, COALESCE(r.date_modif, r.date_creation),
-                              'reprise migration'
-                       FROM cuisine_receptions r
-                       WHERE r.production_id IS NOT NULL AND r.poids_kg > 0"""
-                ).rowcount
-                print(f"✅ Table cuisine_reception_utilisations créée, {n} affectation(s) reprise(s)")
-            else:
-                print("ℹ️  Table cuisine_reception_utilisations déjà présente : pas de reprise")
+            # Reprise des affectations existantes : toute réception affectée
+            # (production_id) sans aucune utilisation enregistrée. Couvre
+            # aussi le cas où la table a été créée vide par
+            # migrate_schema_and_data_dev_to_prod.py (déploiement lancé
+            # avant ce script). À ne lancer qu'une fois : une relance après
+            # un « Retirer » ferait revenir l'ancienne affectation.
+            n = conn.execute(
+                """INSERT INTO cuisine_reception_utilisations
+                   (reception_id, production_id, poids_kg, date_creation, user_creation)
+                   SELECT r.id, r.production_id, r.poids_kg, COALESCE(r.date_modif, r.date_creation),
+                          'reprise migration'
+                   FROM cuisine_receptions r
+                   WHERE r.production_id IS NOT NULL
+                     AND NOT EXISTS (SELECT 1 FROM cuisine_reception_utilisations u
+                                     WHERE u.reception_id = r.id)"""
+            ).rowcount
+            print(f"✅ {n} affectation(s) reprise(s) dans cuisine_reception_utilisations")
 
             # Le trigger trg_cuisine_receptions_datemodif écraserait date_modif
             # (date de dernière correction affichée) sur toutes les lignes :

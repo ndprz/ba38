@@ -119,7 +119,7 @@
               <span>
                 <strong>{{ r.libelle_produit or "—" }}</strong> · {{ r.fournisseur_nom or "—" }}
                 · reçu le {{ r.date_reception[8:10] }}/{{ r.date_reception[5:7] }}{% if r.heure_arrivee %} {{ r.heure_arrivee }}{% endif %}
-                · <strong>{{ r.poids_utilise|kg }} kg utilisés</strong>{% if r.poids_kg and r.poids_utilise < r.poids_kg %} (sur {{ r.poids_kg|kg }} kg reçus){% endif %}
+                · {% if r.poids_utilise is not none %}<strong>{{ r.poids_utilise|kg }} kg utilisés</strong>{% if r.poids_kg and r.poids_utilise < r.poids_kg %} (sur {{ r.poids_kg|kg }} kg reçus){% endif %}{% else %}poids non renseigné{% endif %}
                 {% if r.dlc_ddm %} · DLC {{ r.dlc_ddm[8:10] }}/{{ r.dlc_ddm[5:7] }}{% endif %}
                 {% if r.temperature_mesuree is not none %} · {{ r.temperature_mesuree }}°C{% endif %}
               </span>
