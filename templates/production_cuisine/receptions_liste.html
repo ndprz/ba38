@@ -3,7 +3,7 @@
 {% block title %}Réceptions marchandises{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container-fluid mt-4 px-3 px-xl-5">
 
   <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h2 class="mb-0">📥 Réceptions marchandises</h2>
@@ -51,12 +51,12 @@
     <p class="text-muted">Aucune marchandise en stock.</p>
   {% else %}
   <div class="table-responsive mb-4">
-    <table class="table table-striped align-middle">
+    <table class="table table-sm table-striped align-middle">
       <thead>
         <tr>
-          <th>Reçu le</th><th>Produit</th><th>Fournisseur</th><th>DLC</th>
+          <th>Reçu le</th><th>Produit</th><th>DLC</th>
           <th class="text-end">Reçu (kg)</th><th class="text-end">Utilisé (kg)</th><th class="text-end">Reste (kg)</th>
-          <th>Contrôles</th><th></th>
+          <th class="d-none d-xl-table-cell">Contrôles</th><th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -65,16 +65,16 @@
           <td>{{ r.date_reception[8:10] }}/{{ r.date_reception[5:7] }}{% if r.heure_arrivee %} · {{ r.heure_arrivee }}{% endif %}</td>
           <td class="fw-bold">
             {{ r.libelle_produit or "—" }}
+            <div class="small text-muted fw-normal">{{ r.fournisseur_nom or "—" }}</div>
             {% if r.blocage %}<div class="small text-danger">⛔ {{ r.blocage }}</div>{% endif %}
           </td>
-          <td>{{ r.fournisseur_nom or "—" }}</td>
           <td>{{ dlc(r, date_filtre) }}</td>
           <td class="text-end">{{ r.poids_kg|kg }}</td>
           <td class="text-end">{{ r.poids_utilise|kg if r.poids_utilise else "—" }}</td>
           <td class="text-end fw-bold">{{ r.solde_kg|kg }}</td>
-          <td class="text-nowrap">{{ badge(r.aspect_conforme) }} {{ badge(r.emballage_conforme) }} {{ badge(r.etiquetage_conforme) }}</td>
-          <td>
-            <div class="d-flex flex-wrap gap-1">
+          <td class="text-nowrap d-none d-xl-table-cell">{{ badge(r.aspect_conforme) }} {{ badge(r.emballage_conforme) }} {{ badge(r.etiquetage_conforme) }}</td>
+          <td style="min-width: 340px;">
+            <div class="d-flex flex-wrap gap-1 align-items-start">
             <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id) }}"
                class="btn btn-sm btn-outline-secondary">Voir</a>
             {% if not r.nb_utilisations %}

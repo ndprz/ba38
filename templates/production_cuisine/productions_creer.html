@@ -4,12 +4,27 @@
 
 {% block extra_css %}
 <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_bootstrap5.min.css" rel="stylesheet">
+<style>
+  /* Titre figé au défilement, comme l'en-tête de production_detail.html */
+  .entete-production-fige {
+    position: sticky;
+    top: 0;
+    z-index: 1020;
+    background: var(--bs-body-bg, #fff);
+    margin-left: calc(-.5 * var(--bs-gutter-x, 1.5rem));
+    margin-right: calc(-.5 * var(--bs-gutter-x, 1.5rem));
+    padding: .5rem calc(.5 * var(--bs-gutter-x, 1.5rem));
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+  }
+</style>
 {% endblock %}
 
 {% block content %}
 <div class="container mt-4" style="max-width: 720px;">
 
-  <h2 class="mb-3">🍲 Nouvelle production</h2>
+  <div class="entete-production-fige mb-3">
+    <h2 class="mb-0">🍲 Nouvelle production</h2>
+  </div>
 
   <form method="POST" id="form-production">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -111,8 +126,9 @@
       <div class="form-text">Suggérée depuis la recette choisie ci-dessus si possible — à vérifier, obligatoire pour créer la production.</div>
     </div>
 
-    <div class="card mb-3">
-      <div class="card-header">🧊 Décongélation (si nécessaire)</div>
+    {# Même jaune pastel que l'étape Décongélation de production_detail.html (.etape-jaune) #}
+    <div class="card mb-3" style="background-color: #fff8d6;">
+      <div class="card-header" style="background-color: transparent;">🧊 Décongélation (si nécessaire)</div>
       <div class="card-body">
         <div class="form-check mb-2">
           <input class="form-check-input" type="checkbox" id="decongelation-non-applicable-check">
