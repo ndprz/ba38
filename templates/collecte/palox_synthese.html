@@ -17,7 +17,7 @@
 <div class="container-fluid mt-2" id="conteneur-palox-synthese">
 
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
-        <h2 class="mb-0 fs-4">📊 Pesée palox {{ annee }}
+        <h2 class="mb-0 fs-4">📊 Pesée palox {{ annee }} — synthèse valorisée
             <span class="fs-6 text-muted ms-2">
                 {{ poids_total }} kg{% if mercuriale_importee %} — {{ "%.2f"|format(valeur_totale) }} €{% endif %}
             </span>
@@ -34,24 +34,16 @@
         <input type="text" id="filtre-recherche" class="form-control form-control-sm" style="max-width:280px;"
                placeholder="🔎 Rechercher un produit (nom, code VIF)…">
         <div class="form-check form-switch mb-0">
-            <input class="form-check-input" type="checkbox" id="toggle-colonnes-mercuriale">
+            <input class="form-check-input" type="checkbox" id="toggle-colonnes-mercuriale" checked>
             <label class="form-check-label small" for="toggle-colonnes-mercuriale">
                 Afficher mercuriale / comparaison année précédente
             </label>
         </div>
-        <form method="post" action="{{ url_for('collecte.palox_mercuriale_importer', annee=annee) }}"
-              enctype="multipart/form-data" class="d-flex align-items-center gap-2">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="file" name="fichier_mercuriale" class="form-control form-control-sm" accept=".txt" required>
-            <button type="submit" class="btn btn-outline-success btn-sm text-nowrap">
-                📥 {{ "Réimporter" if mercuriale_importee else "Importer" }} la mercuriale
-            </button>
-        </form>
     </div>
     {% if not mercuriale_importee %}
     <div class="alert alert-warning small py-1 mb-2">
         ⚠️ Mercuriale {{ annee }} non importée — la colonne valeur restera vide tant qu'elle n'est
-        pas déposée ci-dessus (à faire une fois la pesée terminée).
+        pas déposée (⚙️ Paramètres → 💶 Mercuriale, une fois la pesée terminée).
     </div>
     {% endif %}
 
@@ -78,12 +70,12 @@ const table = new Tabulator("#tabulator-table", {
         { title: "% du total", field: "pct_poids", width: 110, hozAlign: "right",
           formatter: function (cell) { return cell.getValue().toFixed(1) + " %"; },
           topCalcFormatter: function () { return "100 %"; } },
-        { title: "Prix mercuriale (€/kg)", field: "prix_kg", width: 150, hozAlign: "right", visible: false,
+        { title: "Prix mercuriale (€/kg)", field: "prix_kg", width: 150, hozAlign: "right",
           formatter: function (cell) { const v = cell.getValue(); return v == null ? "—" : v.toFixed(2); } },
-        { title: "Valeur (€)", field: "valeur", width: 130, hozAlign: "right", visible: false,
+        { title: "Valeur (€)", field: "valeur", width: 130, hozAlign: "right",
           formatter: function (cell) { const v = cell.getValue(); return v == null ? "—" : v.toFixed(2); },
           topCalc: "sum", topCalcParams: { precision: 2 } },
-        { title: "Poids année précédente (kg)", field: "poids_annee_precedente", width: 170, hozAlign: "right", visible: false,
+        { title: "Poids année précédente (kg)", field: "poids_annee_precedente", width: 170, hozAlign: "right",
           formatter: function (cell) { const v = cell.getValue(); return v == null ? "—" : v.toFixed(1); },
           topCalc: "sum", topCalcParams: { precision: 1 } },
     ],

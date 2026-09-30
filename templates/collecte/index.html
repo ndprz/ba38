@@ -143,6 +143,59 @@
         </div>
     </div>
 
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">💶 Mercuriale (pesée palox)</h5>
+            <p class="card-text text-muted small">
+                Rapport de prix (export VIF, fichier texte) utilisé pour valoriser la pesée palox
+                de {{ annee }} et la comparer à {{ annee - 1 }}. À déposer une fois la pesée
+                terminée.
+            </p>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Mercuriale {{ annee }}</label>
+                    <form method="post" action="{{ url_for('collecte.palox_mercuriale_importer', annee=annee) }}"
+                          enctype="multipart/form-data" class="d-flex align-items-center gap-2 flex-wrap">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="retour_annee" value="{{ annee }}">
+                        <label class="btn btn-outline-secondary btn-sm mb-0 text-nowrap" for="fichier_mercuriale_{{ annee }}">
+                            📎 <span id="nom_fichier_mercuriale_{{ annee }}">{{ mercuriale_import_annee.nom_fichier if mercuriale_import_annee else "Choisir un fichier" }}</span>
+                        </label>
+                        <input type="file" id="fichier_mercuriale_{{ annee }}" name="fichier_mercuriale" accept=".txt" required
+                               class="d-none"
+                               onchange="document.getElementById('nom_fichier_mercuriale_{{ annee }}').textContent = this.files[0] ? this.files[0].name : 'Choisir un fichier'">
+                        <button type="submit" class="btn btn-outline-success btn-sm text-nowrap">
+                            📥 {{ "Réimporter" if mercuriale_importee_annee else "Importer" }}
+                        </button>
+                        {% if mercuriale_import_annee %}
+                        <div class="w-100 small text-muted">Importé le {{ mercuriale_import_annee.importe_le|date_fr }}</div>
+                        {% endif %}
+                    </form>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Mercuriale {{ annee - 1 }}</label>
+                    <form method="post" action="{{ url_for('collecte.palox_mercuriale_importer', annee=annee - 1) }}"
+                          enctype="multipart/form-data" class="d-flex align-items-center gap-2 flex-wrap">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="retour_annee" value="{{ annee }}">
+                        <label class="btn btn-outline-secondary btn-sm mb-0 text-nowrap" for="fichier_mercuriale_{{ annee - 1 }}">
+                            📎 <span id="nom_fichier_mercuriale_{{ annee - 1 }}">{{ mercuriale_import_annee_precedente.nom_fichier if mercuriale_import_annee_precedente else "Choisir un fichier" }}</span>
+                        </label>
+                        <input type="file" id="fichier_mercuriale_{{ annee - 1 }}" name="fichier_mercuriale" accept=".txt" required
+                               class="d-none"
+                               onchange="document.getElementById('nom_fichier_mercuriale_{{ annee - 1 }}').textContent = this.files[0] ? this.files[0].name : 'Choisir un fichier'">
+                        <button type="submit" class="btn btn-outline-success btn-sm text-nowrap">
+                            📥 {{ "Réimporter" if mercuriale_importee_annee_precedente else "Importer" }}
+                        </button>
+                        {% if mercuriale_import_annee_precedente %}
+                        <div class="w-100 small text-muted">Importé le {{ mercuriale_import_annee_precedente.importe_le|date_fr }}</div>
+                        {% endif %}
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row g-3">
         {% for type_fichier, conf in fichiers.items() %}
         {% set le_champ = campagne[conf.champ_le] if campagne else None %}

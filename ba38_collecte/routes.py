@@ -1751,6 +1751,21 @@ def collecte_main():
     if annee not in annees_existantes:
         annees_existantes = sorted(set(annees_existantes) | {annee}, reverse=True)
 
+    with get_db_connection() as conn:
+        _ensure_tables_palox(conn)
+        mercuriale_annees_importees = {
+            r[0] for r in conn.execute(
+                "SELECT DISTINCT annee FROM collecte_palox_mercuriale WHERE annee IN (?, ?)",
+                (annee, annee - 1),
+            ).fetchall()
+        }
+        mercuriale_imports = {
+            r["annee"]: dict(r) for r in conn.execute(
+                "SELECT * FROM collecte_palox_mercuriale_import WHERE annee IN (?, ?)",
+                (annee, annee - 1),
+            ).fetchall()
+        }
+
     return render_template(
         "collecte/index.html",
         annee=annee,
@@ -1762,6 +1777,10 @@ def collecte_main():
         derniere_analyse=derniere_analyse,
         aide=_sections_aide_collecte(),
         manuel=_sections_manuel_collecte(),
+        mercuriale_importee_annee=annee in mercuriale_annees_importees,
+        mercuriale_importee_annee_precedente=(annee - 1) in mercuriale_annees_importees,
+        mercuriale_import_annee=mercuriale_imports.get(annee),
+        mercuriale_import_annee_precedente=mercuriale_imports.get(annee - 1),
     )
 
 
@@ -5199,6 +5218,14 @@ def _ensure_tables_palox(conn):
         )
     """)
     conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_palox_mercuriale_import (
+            annee INTEGER PRIMARY KEY,
+            nom_fichier TEXT,
+            importe_le TEXT,
+            importe_par TEXT
+        )
+    """)
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS collecte_palox_parametres (
             cle TEXT PRIMARY KEY,
             valeur TEXT
@@ -5716,11 +5743,16 @@ def palox_synthese_export(annee):
 def palox_mercuriale_importer(annee):
     """Import du rapport de prix mercuriale — n'a de sens qu'une fois la
     pesée terminée, pour valoriser les résultats (la saisie au poste de
-    pesée ne dépend pas de la mercuriale)."""
+    pesée ne dépend pas de la mercuriale). Déposé depuis Paramètres (année
+    en cours ET année précédente) — retour sur la page Paramètres de
+    l'année affichée (retour_annee), pas forcément celle du fichier importé
+    puisque les deux formulaires y cohabitent."""
+    annee_retour = request.form.get("retour_annee", type=int) or annee
+
     fichier = request.files.get("fichier_mercuriale")
     if not fichier or not fichier.filename:
         flash("⛔ Aucun fichier sélectionné.", "warning")
-        return redirect(url_for("collecte.palox_synthese", annee=annee))
+        return redirect(url_for("collecte.collecte_main", annee=annee_retour))
 
     contenu_brut = fichier.read()
     try:
@@ -5731,7 +5763,7 @@ def palox_mercuriale_importer(annee):
     prix = _parser_mercuriale(contenu)
     if not prix:
         flash("⛔ Aucune ligne de prix reconnue dans ce fichier.", "danger")
-        return redirect(url_for("collecte.palox_synthese", annee=annee))
+        return redirect(url_for("collecte.collecte_main", annee=annee_retour))
 
     maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
@@ -5744,11 +5776,17 @@ def palox_mercuriale_importer(annee):
                     libelle = excluded.libelle, prix_kg = excluded.prix_kg,
                     importe_le = excluded.importe_le, importe_par = excluded.importe_par
             """, (annee, code, libelle, valeur, maintenant, current_user.email))
+        conn.execute("""
+            INSERT INTO collecte_palox_mercuriale_import (annee, nom_fichier, importe_le, importe_par)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(annee) DO UPDATE SET
+                nom_fichier = excluded.nom_fichier, importe_le = excluded.importe_le, importe_par = excluded.importe_par
+        """, (annee, fichier.filename, maintenant, current_user.email))
         conn.commit()
 
     flash(f"✅ Mercuriale {annee} importée ({len(prix)} article(s)).", "success")
     write_log(f"⚖️ Collecte {annee} : mercuriale importée ({len(prix)} article(s)) par {current_user.email}")
-    return redirect(url_for("collecte.palox_synthese", annee=annee))
+    return redirect(url_for("collecte.collecte_main", annee=annee_retour))
 
 
 @collecte_bp.route("/collecte/<int:annee>/saisie-association/<token>", methods=["GET", "POST"])
