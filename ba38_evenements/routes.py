@@ -764,10 +764,17 @@ def _rang_heure(heure: str):
     return (2, 0, heure)
 
 
-def generer_planning_du_jour(jour: str, duree_affichage: int = 30) -> dict | None:
-    """Construit un événement 'planning' virtuel (non stocké en base) listant les
-    associations dont jour_de_passage_a_la_BAI correspond au jour donné, regroupées
-    par heure_de_passage et triées au mieux chronologiquement."""
+def _normaliser_emplacement(emplacement: str) -> str:
+    """'P 6', 'p6 ' → 'P6' (la saisie est libre dans la fiche association)."""
+    return re.sub(r"\s+", "", emplacement or "").upper()
+
+
+def generer_planning_du_jour(jour: str, duree_affichage: int = 30) -> list[dict]:
+    """Construit les événements 'planning' virtuels (non stockés en base) listant les
+    associations dont jour_de_passage_a_la_BAI correspond au jour donné : une page
+    par emplacement (P1, P6…), chacune regroupée par heure_de_passage et triée au
+    mieux chronologiquement. Les associations sans emplacement renseigné forment
+    une page à part, affichée en dernier."""
 
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
@@ -780,36 +787,41 @@ def generer_planning_du_jour(jour: str, duree_affichage: int = 30) -> dict | Non
     """, (f"%{jour}%",)).fetchall()
     conn.close()
 
-    groupes = {}
+    # {emplacement: {cle_heure: {"heure", "lignes"}}}
+    par_emplacement = {}
 
     for r in rows:
         nom = (r["nom_association"] or "").strip()
         if not nom:
             continue
 
-        emplacement = (r["Emplacement"] or "").strip()
-        libelle = f"{nom} ({emplacement})" if emplacement else nom
+        emplacement = _normaliser_emplacement(r["Emplacement"])
 
         heure = (r["heure_de_passage"] or "").strip()
-        cle = heure.lower() or "￿"
+        cle = heure.lower() or "\uffff"
 
+        groupes = par_emplacement.setdefault(emplacement, {})
         if cle not in groupes:
             groupes[cle] = {"heure": heure or "—", "lignes": []}
 
-        groupes[cle]["lignes"].append(libelle)
+        groupes[cle]["lignes"].append(nom)
 
-    if not groupes:
-        return None
+    # emplacements connus triés (P1 avant P6), sans emplacement à la fin
+    ordre = sorted(par_emplacement, key=lambda e: (e == "", e))
 
-    passages = sorted(groupes.values(), key=lambda g: _rang_heure(g["heure"]))
+    plannings = []
+    for emplacement in ordre:
+        passages = sorted(par_emplacement[emplacement].values(), key=lambda g: _rang_heure(g["heure"]))
+        suffixe = emplacement or "autres"
+        plannings.append({
+            "id": f"planning_{jour}_{suffixe}",
+            "type": "planning",
+            "titre": f"Passages {jour.capitalize()} — {emplacement or 'emplacement non renseigné'}",
+            "duree_affichage": duree_affichage,
+            "passages": passages,
+        })
 
-    return {
-        "id": f"planning_{jour}",
-        "type": "planning",
-        "titre": f"Passages {jour.capitalize()}",
-        "duree_affichage": duree_affichage,
-        "passages": passages,
-    }
+    return plannings
 
 
 # ============================================================
@@ -853,9 +865,7 @@ def api_evenements_actifs():
     planning_config = get_planning_config()
     if planning_config["actif"]:
         jour_courant = JOURS_SEMAINE_FR[now_dt.weekday()]
-        planning = generer_planning_du_jour(jour_courant, planning_config["duree_affichage"])
-        if planning:
-            data.append(planning)
+        data.extend(generer_planning_du_jour(jour_courant, planning_config["duree_affichage"]))
 
     return jsonify(data)
 
