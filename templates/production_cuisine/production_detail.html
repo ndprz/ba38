@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "production_cuisine/_macros.html" import camera_capture, champ_temperature %}
+{% from "production_cuisine/_macros.html" import camera_capture, champ_temperature, dates_limite %}
 
 {% block title %}{{ production.nom_recette }}{% endblock %}
 
@@ -120,11 +120,12 @@
                 <strong>{{ r.libelle_produit or "—" }}</strong> · {{ r.fournisseur_nom or "—" }}
                 · reçu le {{ r.date_reception[8:10] }}/{{ r.date_reception[5:7] }}{% if r.heure_arrivee %} {{ r.heure_arrivee }}{% endif %}
                 · {% if r.poids_utilise is not none %}<strong>{{ r.poids_utilise|kg }} kg utilisés</strong>{% if r.poids_kg and r.poids_utilise < r.poids_kg %} (sur {{ r.poids_kg|kg }} kg reçus){% endif %}{% else %}poids non renseigné{% endif %}
-                {% if r.dlc_ddm %} · DLC {{ r.dlc_ddm[8:10] }}/{{ r.dlc_ddm[5:7] }}{% endif %}
+                {{ dates_limite(r) }}
                 {% if r.temperature_mesuree is not none %} · {{ r.temperature_mesuree }}°C{% endif %}
               </span>
               <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id, depuis_production=production.id) }}" class="small">Détail</a>
             </div>
+            {% if r.forcage %}<div class="small text-danger fw-bold">⚠️ Utilisation forcée : {{ r.forcage }}</div>{% endif %}
             {% if photos_par_reception.get(r.id) %}
             <div class="d-flex flex-wrap gap-2 mt-2">
               {% for photo_id in photos_par_reception.get(r.id) %}
@@ -157,14 +158,21 @@
             <label class="form-label small mb-1 d-block">Réception</label>
             <select class="form-select w-100 mb-2" id="attacher-reception-select" required>
               {% for r in utilisables %}
-              <option value="{{ r.id }}" data-solde="{{ r.solde_kg|kg|replace(',', '.') }}">
-                {{ r.libelle_produit or "—" }} · {{ r.fournisseur_nom or "—" }} · reste {{ r.solde_kg|kg }} kg{% if r.dlc_ddm %} · DLC {{ r.dlc_ddm[8:10] }}/{{ r.dlc_ddm[5:7] }}{% endif %}
+              <option value="{{ r.id }}" data-solde="{{ r.solde_kg|kg|replace(',', '.') }}" data-avertissement="{{ r.avertissement or '' }}">
+                {% if r.avertissement %}⚠️ {% endif %}{{ r.libelle_produit or "—" }} · {{ r.fournisseur_nom or "—" }} · reste {{ r.solde_kg|kg }} kg{{ dates_limite(r) }}
               </option>
               {% endfor %}
             </select>
             <label class="form-label small mb-1 d-block">Poids utilisé (kg)</label>
             <input type="number" inputmode="decimal" step="any" min="0.001" name="poids_kg"
                    id="attacher-reception-poids" class="form-control mb-2" required>
+            <div class="alert alert-warning py-1 px-2 small d-none" id="attacher-reception-avert">
+              ⚠️ <span></span>
+              <label class="d-flex align-items-center gap-2 mt-1 mb-0 fw-bold">
+                <input type="checkbox" name="forcer" value="1" class="form-check-input mt-0" id="attacher-reception-forcer">
+                Forcer l'utilisation
+              </label>
+            </div>
             <button type="submit" class="btn btn-primary btn-sm w-100">Attacher</button>
           </form>
         </div>
@@ -175,8 +183,15 @@
         var select = document.getElementById('attacher-reception-select');
         var poids = document.getElementById('attacher-reception-poids');
         var actionModele = form.getAttribute('action');
+        var avert = document.getElementById('attacher-reception-avert');
+        var forcer = document.getElementById('attacher-reception-forcer');
         function maj() {
           var opt = select.options[select.selectedIndex];
+          var texte = opt.dataset.avertissement;
+          avert.querySelector('span').textContent = texte;
+          avert.classList.toggle('d-none', !texte);
+          forcer.required = !!texte;
+          forcer.checked = false;
           form.setAttribute('action', actionModele.replace('999999999', select.value));
           poids.value = opt.dataset.solde;
           poids.max = opt.dataset.solde;

@@ -176,7 +176,8 @@ def creer_production():
                 production = {"id": production_id, "date_production": date_production}
                 for reception_id in reception_ids:
                     poids = parse_poids(request.form.get(f"poids_{reception_id}"))
-                    erreur = ajouter_utilisation(conn, reception_id, production, poids, benevole)
+                    forcer = request.form.get(f"forcer_{reception_id}") == "1"
+                    erreur = ajouter_utilisation(conn, reception_id, production, poids, benevole, forcer)
                     if erreur:
                         conn.rollback()
                         return _rendu_erreur(f"⚠️ {erreur}")
@@ -305,7 +306,7 @@ def detail_production(production_id):
         receptions = conn.execute(
             """
             SELECT r.*, f.nom AS fournisseur_nom, ru.id AS utilisation_id,
-                   ru.poids_kg AS poids_utilise
+                   ru.poids_kg AS poids_utilise, ru.forcage
             FROM cuisine_reception_utilisations ru
             JOIN cuisine_receptions r ON r.id = ru.reception_id
             LEFT JOIN fournisseurs f ON f.id = r.fournisseur_id

@@ -34,3 +34,14 @@ from ba38_cuisine import routes_tracabilite
 from ba38_cuisine import routes_kiosk
 from ba38_cuisine import routes_hygiene
 from ba38_cuisine import routes_referentiels
+
+
+# 👤 Liste des utilisateurs cuisine pour _champ_utilisateur.html, appelée
+# seulement par les gabarits qui affichent ce champ.
+def _contexte_utilisateurs():
+    from ba38_cuisine.utils import utilisateurs_cuisine
+    return {"liste_utilisateurs_cuisine": utilisateurs_cuisine}
+
+
+production_cuisine_bp.context_processor(_contexte_utilisateurs)
+cuisine_hygiene_bp.context_processor(_contexte_utilisateurs)

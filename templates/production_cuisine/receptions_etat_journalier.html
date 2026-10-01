@@ -62,7 +62,7 @@
   <p class="fw-bold fs-5">
     {% if multi_jours %}Du {{ date_debut[8:10] }}/{{ date_debut[5:7] }}/{{ date_debut[0:4] }} au {{ date_fin[8:10] }}/{{ date_fin[5:7] }}/{{ date_fin[0:4] }}
     {% else %}{{ date_debut[8:10] }}/{{ date_debut[5:7] }}/{{ date_debut[0:4] }}{% endif %}
-    — {{ nb_receptions }} réception(s) — Total : {{ "%.1f"|format(total_kg) }} kg
+    — {{ nb_receptions }} réception(s) — Réceptionné : {{ "%.1f"|format(total_kg) }} kg — Consommé : {{ "%.1f"|format(total_consomme) }} kg
     <span class="text-muted fs-6 fw-normal">(regroupé par {{ vue }})</span>
   </p>
 
@@ -74,7 +74,10 @@
   <div class="card mb-3">
     <div class="card-header d-flex justify-content-between align-items-center">
       <strong>{{ groupe }}</strong>
-      <span class="badge bg-secondary">{{ "%.1f"|format(data.sous_total) }} kg</span>
+      <span>
+        <span class="badge bg-secondary text-white">Reçu {{ "%.1f"|format(data.sous_total) }} kg</span>
+        <span class="badge bg-dark text-white">Consommé {{ "%.1f"|format(data.sous_total_consomme) }} kg</span>
+      </span>
     </div>
     <table class="table table-sm mb-0">
       <thead>
@@ -89,7 +92,9 @@
           {% endif %}
           <th>Heure</th>
           <th>DLC</th>
-          <th class="text-end">Poids (kg)</th>
+          <th>DDM</th>
+          <th class="text-end">Réceptionné (kg)</th>
+          <th class="text-end">Consommé (kg)</th>
         </tr>
       </thead>
       <tbody>
@@ -105,7 +110,9 @@
           {% endif %}
           <td>{{ r.heure_arrivee or "—" }}</td>
           <td>{% if r.dlc_ddm %}{{ r.dlc_ddm[8:10] }}/{{ r.dlc_ddm[5:7] }}/{{ r.dlc_ddm[0:4] }}{% else %}—{% endif %}</td>
-          <td class="text-end">{{ r.poids_kg if r.poids_kg is not none else "—" }}</td>
+          <td>{% if r.ddm %}{{ r.ddm[8:10] }}/{{ r.ddm[5:7] }}/{{ r.ddm[0:4] }}{% else %}—{% endif %}</td>
+          <td class="text-end">{{ r.poids_kg|kg }}</td>
+          <td class="text-end">{{ r.poids_utilise|kg if r.poids_utilise else "—" }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -115,7 +122,7 @@
 
   {% if groupes %}
   <div class="d-flex justify-content-end fw-bold fs-4 mt-3 pe-2">
-    TOTAL RÉCEPTION : {{ "%.1f"|format(total_kg) }} kg
+    TOTAL RÉCEPTION : {{ "%.1f"|format(total_kg) }} kg — CONSOMMÉ : {{ "%.1f"|format(total_consomme) }} kg
   </div>
   {% endif %}
 

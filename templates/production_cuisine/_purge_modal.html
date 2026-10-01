@@ -16,10 +16,8 @@
       <div class="modal-body">
         <p id="purge-libelle" class="fw-bold"></p>
         <p class="small text-muted">Le poids restant est retiré du stock : il ne pourra plus être utilisé dans une recette. Le poids déjà cuisiné n'est pas concerné.</p>
-        <div class="mb-3">
-          <label class="form-label fw-bold">Votre nom *</label>
-          <input type="text" name="benevole" class="form-control" required placeholder="Prénom du bénévole ou du salarié">
-        </div>
+        {% set champ_label = "Votre nom *" %}
+        {% include "production_cuisine/_champ_utilisateur.html" %}
         <div class="mb-3">
           <label class="form-label fw-bold d-block">Motif</label>
           <select name="motif" class="form-select w-100">

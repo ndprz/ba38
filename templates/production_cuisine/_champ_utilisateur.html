@@ -1,0 +1,58 @@
+{# 👤 Nom de la personne : liste déroulante des utilisateurs cuisine
+   (Paramètres cuisine) + option « ➕ Nouveau… » qui ouvre une saisie libre ;
+   le nouveau prénom est ajouté à la liste à l'enregistrement
+   (utilisateur_saisi / enregistrer_utilisateur_cuisine, utils.py).
+   Variables (à poser par {% set %} avant l'include) :
+   - champ_label ; champ_nom (défaut "benevole") ; champ_requis (défaut oui) ;
+   - champ_global : pages hygiène — rien n'est envoyé directement, le nom
+     final est tenu à jour dans l'input caché #benevole-global que le
+     script de la page recopie dans ses formulaires ;
+   - form (valeurs à ré-afficher après erreur), facultatif ;
+   - utilisateurs, facultatif (sinon liste_utilisateurs_cuisine(), fournie
+     par le context processor des blueprints cuisine). #}
+{% set _nom = champ_nom or "benevole" %}
+{% set _requis = champ_requis is not defined or champ_requis %}
+{% set _global = champ_global is defined and champ_global %}
+{% set _liste = utilisateurs if utilisateurs is defined else liste_utilisateurs_cuisine() %}
+{% set _form = form if form is defined and form else {} %}
+{% set _valeur = _form.get(_nom) or "" %}
+<div class="mb-3 champ-utilisateur">
+  <label class="form-label fw-bold">{{ champ_label }}</label>
+  <select {% if not _global %}name="{{ _nom }}"{% endif %} class="form-select form-select-lg champ-utilisateur-select" {% if _requis %}required{% endif %}>
+    <option value="">-- Choisir --</option>
+    {% for u in _liste %}
+      <option value="{{ u }}" {% if _valeur == u %}selected{% endif %}>{{ u }}</option>
+    {% endfor %}
+    {% if _valeur and _valeur != "__nouveau__" and _valeur not in _liste %}
+      <option value="{{ _valeur }}" selected>{{ _valeur }}</option>
+    {% endif %}
+    <option value="__nouveau__" {% if _valeur == "__nouveau__" or (not _liste and _requis) %}selected{% endif %}>➕ Nouveau…</option>
+  </select>
+  <input type="text" {% if not _global %}name="{{ _nom }}_nouveau"{% endif %} class="form-control form-control-lg mt-2 champ-utilisateur-nouveau"
+         value="{{ _form.get(_nom ~ '_nouveau') or '' }}" placeholder="Prénom du nouvel utilisateur" autocomplete="off">
+  <div class="form-text champ-utilisateur-aide">Il sera ajouté à la liste (gérée dans ⚙️ Paramètres cuisine).</div>
+  {% if _global %}<input type="hidden" id="benevole-global">{% endif %}
+</div>
+<script>
+  (function () {
+    var blocs = document.querySelectorAll('.champ-utilisateur');
+    var bloc = blocs[blocs.length - 1];
+    var select = bloc.querySelector('.champ-utilisateur-select');
+    var saisie = bloc.querySelector('.champ-utilisateur-nouveau');
+    var aide = bloc.querySelector('.champ-utilisateur-aide');
+    var global = bloc.querySelector('#benevole-global');
+    function maj() {
+      var nouveau = select.value === '__nouveau__';
+      saisie.classList.toggle('d-none', !nouveau);
+      aide.classList.toggle('d-none', !nouveau);
+      saisie.required = nouveau && select.required;
+      if (global) global.value = nouveau ? saisie.value.trim() : select.value;
+    }
+    select.addEventListener('change', function () {
+      maj();
+      if (select.value === '__nouveau__') saisie.focus();
+    });
+    saisie.addEventListener('input', maj);
+    maj();
+  })();
+</script>

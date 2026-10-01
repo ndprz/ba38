@@ -15,10 +15,10 @@
     </a>
   </div>
 
-  <div class="mb-3">
-    <label class="form-label fw-bold">👤 Bénévole</label>
-    <input type="text" id="benevole-global" class="form-control form-control-lg" placeholder="Prénom du bénévole">
-  </div>
+  {% set champ_label = "👤 Bénévole" %}
+  {% set champ_requis = false %}
+  {% set champ_global = true %}
+  {% include "production_cuisine/_champ_utilisateur.html" %}
 
   <form method="POST" id="form-temperature">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -1,0 +1,101 @@
+{# Choix du fournisseur par recherche : on tape quelques lettres, les
+   fournisseurs correspondants s'affichent, un clic sélectionne. Partagé par
+   la création et la modification d'une réception. Attend `fournisseurs` et
+   `form.fournisseur_id` (valeur déjà choisie, ré-affichée après erreur). #}
+{% set frs_ns = namespace(nom="") %}
+{% for f in fournisseurs %}
+  {% if form.fournisseur_id is not none and form.fournisseur_id|string == f.id|string %}{% set frs_ns.nom = f.nom %}{% endif %}
+{% endfor %}
+<div class="mb-3">
+  <label class="form-label fw-bold" for="fournisseur-recherche">Fournisseur *</label>
+  <input type="hidden" name="fournisseur_id" id="fournisseur-id" value="{{ form.fournisseur_id if frs_ns.nom else '' }}">
+  <div id="fournisseur-choisi" class="alert alert-success py-1 px-2 mb-2 justify-content-between align-items-center {{ 'd-flex' if frs_ns.nom else 'd-none' }}">
+    <span>✅ <strong id="fournisseur-choisi-nom">{{ frs_ns.nom }}</strong></span>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="fournisseur-changer">Changer</button>
+  </div>
+  <input type="text" class="form-control form-control-lg {{ 'd-none' if frs_ns.nom else '' }}" id="fournisseur-recherche"
+         placeholder="🔍 Tapez quelques lettres du fournisseur..." autocomplete="off">
+  <div class="d-none flex-wrap gap-2 mt-2" id="fournisseur-liste" style="max-height: 220px; overflow-y: auto; gap: .5rem;">
+    {% for f in fournisseurs %}
+      <button type="button" class="btn btn-outline-primary fournisseur-option" style="display:none;"
+              data-id="{{ f.id }}" data-nom="{{ f.nom }}">{{ f.nom }}</button>
+    {% endfor %}
+  </div>
+  <div class="form-text d-none" id="fournisseur-aucun">Aucun fournisseur ne correspond.</div>
+  <div class="text-danger fw-bold mt-1 d-none" id="fournisseur-erreur">Choisissez un fournisseur dans la liste.</div>
+</div>
+<script>
+  (function () {
+    var champId = document.getElementById("fournisseur-id");
+    var recherche = document.getElementById("fournisseur-recherche");
+    var liste = document.getElementById("fournisseur-liste");
+    var aucun = document.getElementById("fournisseur-aucun");
+    var erreur = document.getElementById("fournisseur-erreur");
+    var choisi = document.getElementById("fournisseur-choisi");
+    var choisiNom = document.getElementById("fournisseur-choisi-nom");
+    var options = Array.prototype.slice.call(liste.querySelectorAll(".fournisseur-option"));
+
+    // Recherche insensible à la casse et aux accents ("cote" trouve "Côte").
+    function normaliser(texte) {
+      return texte.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    }
+    options.forEach(function (o) { o.dataset.cle = normaliser(o.dataset.nom); });
+
+    function montrer(el, visible, classe) {
+      el.classList.toggle(classe || "d-block", visible);
+      el.classList.toggle("d-none", !visible);
+    }
+
+    function filtrer() {
+      var terme = normaliser(recherche.value.trim());
+      var visibles = [];
+      options.forEach(function (o) {
+        var ok = terme !== "" && o.dataset.cle.indexOf(terme) !== -1;
+        o.style.display = ok ? "" : "none";
+        if (ok) visibles.push(o);
+      });
+      montrer(liste, visibles.length > 0, "d-flex");
+      montrer(aucun, terme !== "" && visibles.length === 0);
+      return visibles;
+    }
+
+    function choisir(option) {
+      champId.value = option.dataset.id;
+      choisiNom.textContent = option.dataset.nom;
+      recherche.value = "";
+      filtrer();
+      montrer(recherche, false);
+      montrer(choisi, true, "d-flex");
+      montrer(erreur, false);
+    }
+
+    recherche.addEventListener("input", filtrer);
+    // Entrée ne doit pas envoyer le formulaire ; s'il ne reste qu'un
+    // fournisseur, Entrée le sélectionne.
+    recherche.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      var visibles = filtrer();
+      if (visibles.length === 1) choisir(visibles[0]);
+    });
+    options.forEach(function (o) {
+      o.addEventListener("click", function () { choisir(o); });
+    });
+
+    document.getElementById("fournisseur-changer").addEventListener("click", function () {
+      champId.value = "";
+      montrer(choisi, false, "d-flex");
+      montrer(recherche, true);
+      recherche.focus();
+    });
+
+    champId.form.addEventListener("submit", function (e) {
+      if (champId.value) return;
+      e.preventDefault();
+      montrer(erreur, true);
+      montrer(recherche, true);
+      recherche.scrollIntoView({ block: "center" });
+      recherche.focus();
+    });
+  })();
+</script>

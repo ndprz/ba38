@@ -11,11 +11,8 @@
   <form method="POST" enctype="multipart/form-data" id="form-reception">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    <div class="mb-3">
-      <label class="form-label fw-bold">Nom du réceptionnaire *</label>
-      <input type="text" name="benevole" class="form-control form-control-lg" required
-             value="{{ form.benevole or '' }}" placeholder="Prénom du bénévole ou du salarié">
-    </div>
+    {% set champ_label = "Nom du réceptionnaire *" %}
+    {% include "production_cuisine/_champ_utilisateur.html" %}
 
     <div class="row g-3 mb-3">
       <div class="col-6">
@@ -28,15 +25,7 @@
       </div>
     </div>
 
-    <div class="mb-3">
-      <label class="form-label fw-bold">Fournisseur *</label>
-      <select name="fournisseur_id" class="form-select" required>
-        <option value="">-- Choisir --</option>
-        {% for f in fournisseurs %}
-          <option value="{{ f.id }}" {% if form.fournisseur_id == f.id|string %}selected{% endif %}>{{ f.nom }}</option>
-        {% endfor %}
-      </select>
-    </div>
+    {% include "production_cuisine/_fournisseur_recherche.html" %}
 
     <div class="row g-3 mb-2">
       <div class="col-6">

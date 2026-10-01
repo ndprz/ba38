@@ -10,7 +10,9 @@ from flask_login import login_required
 
 from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_cuisine import cuisine_hygiene_bp
-from ba38_cuisine.utils import _connect, parse_temperature, now_paris_str
+from ba38_cuisine.utils import (
+    _connect, parse_temperature, now_paris_str, utilisateur_saisi, enregistrer_utilisateur_cuisine,
+)
 
 CONFORMITE_CHOICES = ("conforme", "non_conforme")
 
@@ -29,7 +31,7 @@ def temperatures():
     if request.method == "POST":
         zone_id = request.form.get("zone_id")
         temperature = parse_temperature(request.form.get("temperature"))
-        benevole = (request.form.get("benevole") or "").strip()
+        benevole = utilisateur_saisi(request.form)
         commentaire = (request.form.get("commentaire") or "").strip() or None
 
         if not zone_id or temperature in (None, ""):
@@ -53,6 +55,7 @@ def temperatures():
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (zone_id, temperature_f, conforme, benevole or None, commentaire, now_paris_str()),
             )
+            enregistrer_utilisateur_cuisine(conn, benevole)
             conn.commit()
         upload_database()
         flash("✅ Relevé de température enregistré.", "success")
@@ -126,7 +129,7 @@ def zone_nettoyage(zone_id):
         if request.method == "POST":
             surface_id = request.form.get("surface_id")
             conforme = _clean_conformite(request.form.get("conforme"), default="conforme")
-            benevole = (request.form.get("benevole") or "").strip()
+            benevole = utilisateur_saisi(request.form)
             commentaire = (request.form.get("commentaire") or "").strip() or None
 
             if not surface_id:
@@ -139,6 +142,7 @@ def zone_nettoyage(zone_id):
                    VALUES (?, ?, ?, ?, ?)""",
                 (surface_id, conforme, benevole or None, commentaire, now_paris_str()),
             )
+            enregistrer_utilisateur_cuisine(conn, benevole)
             conn.commit()
             upload_database()
             flash("✅ Nettoyage enregistré.", "success")
@@ -188,7 +192,7 @@ def nettoyage_historique():
 def etalonnage():
     if request.method == "POST":
         thermometre_id = request.form.get("thermometre_id")
-        benevole = (request.form.get("benevole") or "").strip()
+        benevole = utilisateur_saisi(request.form)
         test_glace_valeur = request.form.get("test_glace_valeur") or None
         test_ebullition_valeur = request.form.get("test_ebullition_valeur") or None
         commentaire = (request.form.get("commentaire") or "").strip() or None
@@ -218,6 +222,7 @@ def etalonnage():
                 (thermometre_id, test_glace_valeur, test_glace_resultat,
                  test_ebullition_valeur, test_ebullition_resultat, benevole or None, commentaire, now_paris_str()),
             )
+            enregistrer_utilisateur_cuisine(conn, benevole)
             conn.commit()
         upload_database()
         flash("✅ Étalonnage enregistré.", "success")

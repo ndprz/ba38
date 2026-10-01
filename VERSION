@@ -1,3 +1,3 @@
-VERSION=1.7.53
-MESSAGE=Collecte : sujet Participants (mail aux trieurs annee precedente), pesee palox en fenetre sur la synthese (garde le plein ecran), fix impression 2 pages
-DATE=2026-10-01 13:46
+VERSION=1.7.54
+MESSAGE=Cuisine : DLC ou DDM + forcage date depassee (sauf surgele), liste utilisateurs cuisine, recherche fournisseur en reception, colonne Consomme etat receptions
+DATE=2026-10-01 18:36

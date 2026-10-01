@@ -3,7 +3,7 @@
 #     Réutilise la table générique `parametres` (param_name/param_value/
 #     categorie) déjà utilisée ailleurs dans l'appli (ex.
 #     ba38_fournisseurs/routes.py::create_fournisseur) — jamais de table
-#     dédiée. Toutes les routes filtrent explicitement sur les 4
+#     dédiée. Toutes les routes filtrent explicitement sur les
 #     `param_name` cuisine ci-dessous : ne touchent jamais aux autres
 #     paramètres existants (type_frs, enseigne, etc.).
 # ============================================================
@@ -15,9 +15,13 @@ from flask_login import login_required
 
 from ba38_utilitaires.core import require_access, upload_database
 from ba38_cuisine import production_cuisine_bp
-from ba38_cuisine.utils import _connect, dlc_jours, calculer_dlc, today_paris, PARAM_DLC_JOURS
+from ba38_cuisine.utils import (
+    _connect, dlc_jours, calculer_dlc, today_paris, PARAM_DLC_JOURS,
+    PARAM_UTILISATEURS, normaliser_prenom, utilisateurs_cuisine,
+)
 
 PARAM_NAMES = {
+    PARAM_UTILISATEURS: "👤 Utilisateurs (Nom du réceptionnaire)",
     "cuisine_famille": "Famille",
     "cuisine_sous_famille_1": "Sous-famille 1",
     "cuisine_sous_famille_2": "Sous-famille 2",
@@ -83,6 +87,8 @@ def ajouter_parametre(param_name):
         return redirect(url_for("production_cuisine.parametres"))
 
     valeur = (request.form.get("valeur") or "").strip()
+    if param_name == PARAM_UTILISATEURS:
+        valeur = normaliser_prenom(valeur)
     if not valeur:
         flash("⚠️ Merci de saisir une valeur.", "warning")
         return redirect(url_for("production_cuisine.parametres"))
@@ -92,6 +98,9 @@ def ajouter_parametre(param_name):
             "SELECT 1 FROM parametres WHERE param_name = ? AND param_value = ?",
             (param_name, valeur),
         ).fetchone()
+        if param_name == PARAM_UTILISATEURS:
+            # "thomas" ne doit pas doublonner "Thomas"
+            existe = existe or any(u.casefold() == valeur.casefold() for u in utilisateurs_cuisine(conn))
         if existe:
             flash("⚠️ Cette valeur existe déjà.", "warning")
             return redirect(url_for("production_cuisine.parametres"))

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "production_cuisine/_macros.html" import dates_limite %}
 
 {% block title %}Nouvelle production{% endblock %}
 
@@ -58,7 +59,7 @@
                 <strong>{{ r.libelle_produit or "Produit non renseigné" }}</strong>
                 · reçu le {{ r.date_reception[8:10] }}/{{ r.date_reception[5:7] }}
                 · {{ r.fournisseur_nom or "Fournisseur inconnu" }}
-                {% if r.dlc_ddm %} · DLC {{ r.dlc_ddm[8:10] }}/{{ r.dlc_ddm[5:7] }}{% endif %}
+                {{ dates_limite(r) }}
                 <br><span class="small text-muted">Reste {{ r.solde_kg|kg }} kg{% if r.poids_utilise %} sur {{ r.poids_kg|kg }} kg reçus{% endif %}</span>
               </span>
             </label>
@@ -68,10 +69,20 @@
                      value="{{ poids_saisi if poids_saisi else r.solde_kg|kg|replace(',', '.') }}" aria-label="Poids utilisé">
               <span class="input-group-text">kg</span>
             </div>
+            {% if r.avertissement %}
+            <div class="w-100 alert alert-warning py-1 px-2 mb-0">
+              ⚠️ {{ r.avertissement }}
+              <label class="d-flex align-items-center gap-2 mt-1 mb-0 fw-bold">
+                <input type="checkbox" name="forcer_{{ r.id }}" value="1" class="form-check-input mt-0 reception-forcer"
+                       {% if form.get('forcer_' ~ r.id) %}checked{% endif %}>
+                Forcer l'utilisation malgré la date dépassée
+              </label>
+            </div>
+            {% endif %}
           </div>
           {% endfor %}
         </div>
-        <div class="form-text">Indiquer le poids utilisé pour cette recette (tout le reste par défaut) : le solde reste en stock pour une autre recette, jusqu'à sa DLC.</div>
+        <div class="form-text">Indiquer le poids utilisé pour cette recette (tout le reste par défaut) : le solde reste en stock pour une autre recette. Une DLC ou DDM dépassée doit être forcée (sauf groupe Surgelé, non contrôlé).</div>
       {% endif %}
       {% if bloquees %}
         <div class="mt-2">
@@ -235,6 +246,17 @@
         btn.disabled = false;
         alert('Erreur réseau, réessayez.');
       });
+  });
+</script>
+<script>
+  // Réception à date dépassée cochée → la case « Forcer » devient
+  // obligatoire (contrôle repris côté serveur).
+  document.querySelectorAll('.reception-check').forEach(function (check) {
+    var forcer = check.closest('.border').querySelector('.reception-forcer');
+    if (!forcer) return;
+    function maj() { forcer.required = check.checked; }
+    check.addEventListener('change', maj);
+    maj();
   });
 </script>
 {% endblock %}

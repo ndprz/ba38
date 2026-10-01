@@ -14,7 +14,7 @@ from flask_login import login_required
 
 from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_cuisine import production_cuisine_bp
-from ba38_cuisine.utils import _connect
+from ba38_cuisine.utils import _connect, utilisateur_saisi, enregistrer_utilisateur_cuisine
 
 
 def _get_int(nom_champ):
@@ -69,7 +69,7 @@ def creer_recette_referentiel():
         sous_famille_1 = (request.form.get("sous_famille_1") or "").strip() or None
         sous_famille_2 = (request.form.get("sous_famille_2") or "").strip() or None
         type_cuisson = (request.form.get("type_cuisson") or "").strip() or None
-        benevole = (request.form.get("benevole") or "").strip()
+        benevole = utilisateur_saisi(request.form)
 
         if not nom:
             flash("⚠️ Le nom de la recette est obligatoire.", "warning")
@@ -96,6 +96,7 @@ def creer_recette_referentiel():
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (code, nom, famille, sous_famille_1, sous_famille_2, type_cuisson, benevole or None),
                 )
+                enregistrer_utilisateur_cuisine(conn, benevole)
                 conn.commit()
             upload_database()
             flash("✅ Recette créée.", "success")
@@ -132,7 +133,7 @@ def modifier_recette_referentiel(recette_id):
         sous_famille_1 = (request.form.get("sous_famille_1") or "").strip() or None
         sous_famille_2 = (request.form.get("sous_famille_2") or "").strip() or None
         type_cuisson = (request.form.get("type_cuisson") or "").strip() or None
-        benevole = (request.form.get("benevole") or "").strip()
+        benevole = utilisateur_saisi(request.form)
 
         if not nom:
             flash("⚠️ Le nom de la recette est obligatoire.", "warning")
@@ -163,6 +164,7 @@ def modifier_recette_referentiel(recette_id):
                     (code, nom, famille, sous_famille_1, sous_famille_2, type_cuisson,
                      benevole or None, recette_id),
                 )
+                enregistrer_utilisateur_cuisine(conn, benevole)
                 conn.commit()
             upload_database()
             flash("✅ Recette modifiée.", "success")

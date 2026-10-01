@@ -37,3 +37,9 @@
           tabindex="-1">±</button>
 </div>
 {% endmacro %}
+
+{# DLC / DDM d'une réception, ex. " · DLC 28/09 · DDM 15/12" (préfixe
+   " · " inclus, rien si aucune date). annee=True → JJ/MM/AAAA. #}
+{% macro dates_limite(r, annee=False) -%}
+  {%- for code, val in (('DLC', r.dlc_ddm), ('DDM', r.ddm)) if val %} · {{ code }} {{ val[8:10] }}/{{ val[5:7] }}{% if annee %}/{{ val[0:4] }}{% endif %}{% endfor -%}
+{%- endmacro %}

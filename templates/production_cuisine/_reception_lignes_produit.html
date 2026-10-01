@@ -35,10 +35,20 @@
         <label class="form-label fw-bold">Poids (kg) *</label>
         <input type="number" inputmode="decimal" step="any" min="0.01" name="poids_kg_IDXTOKEN" class="form-control form-control-lg" required>
       </div>
-      <div class="mb-3">
-        <label class="form-label fw-bold">DLC *</label>
-        <input type="date" name="dlc_ddm_IDXTOKEN" class="form-control form-control-lg" required>
-        <div class="form-text">Date limite de consommation lue sur l'étiquette : un produit à DLC dépassée ne peut pas être cuisiné.</div>
+      <div class="row g-3 mb-1">
+        <div class="col-6">
+          <label class="form-label fw-bold">DLC</label>
+          <input type="date" name="dlc_ddm_IDXTOKEN" class="form-control form-control-lg champ-dlc" required>
+        </div>
+        <div class="col-6">
+          <label class="form-label fw-bold">DDM</label>
+          <input type="date" name="ddm_IDXTOKEN" class="form-control form-control-lg champ-ddm" required>
+        </div>
+      </div>
+      <div class="form-text mb-3">
+        * Au moins une des deux dates lue sur l'étiquette : DLC (date limite de consommation) ou
+        DDM (date de durabilité minimale, « à consommer de préférence avant »).
+        Date dépassée : avertissement à la recette, utilisation possible en forçant (groupe Surgelé : non contrôlé).
       </div>
       {% for champ, label in (('aspect_conforme', 'Aspect'), ('emballage_conforme', 'Emballage'), ('etiquetage_conforme', 'Étiquetage')) %}
       <div class="mb-3">
@@ -149,6 +159,9 @@
       if (valeurs.dlc_ddm) {
         ligne.querySelector('[name="dlc_ddm_' + idx + '"]').value = valeurs.dlc_ddm;
       }
+      if (valeurs.ddm) {
+        ligne.querySelector('[name="ddm_' + idx + '"]').value = valeurs.ddm;
+      }
       if (valeurs.commentaire) {
         ligne.querySelector('[name="commentaire_' + idx + '"]').value = valeurs.commentaire;
       }
@@ -164,6 +177,19 @@
       ligne.remove();
       renumeroter();
     });
+    // DLC ou DDM : une des deux suffit, l'autre n'est alors plus obligatoire.
+    var champDlc = ligne.querySelector('.champ-dlc');
+    var champDdm = ligne.querySelector('.champ-ddm');
+    function majDates() {
+      champDlc.required = !champDdm.value;
+      champDdm.required = !champDlc.value;
+    }
+    champDlc.addEventListener('input', majDates);
+    champDdm.addEventListener('input', majDates);
+    champDlc.addEventListener('change', majDates);
+    champDdm.addEventListener('change', majDates);
+    majDates();
+
     container.appendChild(ligne);
     if (window.initCameraCapture) window.initCameraCapture(ligne);
     renumeroter();

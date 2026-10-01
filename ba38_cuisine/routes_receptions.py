@@ -15,8 +15,9 @@ from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_cuisine import production_cuisine_bp
 from ba38_cuisine.utils import (
     _connect, today_paris, now_paris_str, upload_dir_reception, save_uploaded_files, parse_temperature,
-    parse_poids, format_kg, receptions_en_stock, blocage_dlc, reception_avec_solde, ajouter_utilisation,
+    parse_poids, format_kg, receptions_en_stock, controle_dates, reception_avec_solde, ajouter_utilisation,
     SQL_RECEPTIONS_SOLDE, SOLDE_EPSILON,
+    utilisateurs_cuisine, utilisateur_saisi, enregistrer_utilisateur_cuisine,
 )
 
 CONFORMITE_CHOICES = ("conforme", "non_conforme")
@@ -73,6 +74,8 @@ def _lire_ligne_produit(form, i):
         "poids_valide": parse_poids(poids_saisi),
         "dlc_ddm": (form.get(f"dlc_ddm_{i}") or "").strip() or None,
         "dlc_valide": _parse_dlc(form.get(f"dlc_ddm_{i}")),
+        "ddm": (form.get(f"ddm_{i}") or "").strip() or None,
+        "ddm_valide": _parse_dlc(form.get(f"ddm_{i}")),
         "aspect_conforme": _clean_conformite(form.get(f"aspect_conforme_{i}")),
         "emballage_conforme": _clean_conformite(form.get(f"emballage_conforme_{i}")),
         "etiquetage_conforme": _clean_conformite(form.get(f"etiquetage_conforme_{i}")),
@@ -86,8 +89,8 @@ def _erreur_ligne_produit(num, ligne):
         return f"⚠️ Produit {num} : merci de choisir (ou préciser) le produit réceptionné."
     if ligne["poids_valide"] is None:
         return f"⚠️ Produit {num} ({ligne['libelle_produit']}) : merci d'indiquer le poids (en kg, supérieur à 0)."
-    if ligne["dlc_valide"] is None:
-        return f"⚠️ Produit {num} ({ligne['libelle_produit']}) : merci d'indiquer la DLC."
+    if ligne["dlc_valide"] is None and ligne["ddm_valide"] is None:
+        return f"⚠️ Produit {num} ({ligne['libelle_produit']}) : merci d'indiquer la DLC ou la DDM."
     if not (ligne["aspect_conforme"] and ligne["emballage_conforme"] and ligne["etiquetage_conforme"]):
         return (
             f"⚠️ Produit {num} ({ligne['libelle_produit']}) : merci d'indiquer "
@@ -269,28 +272,30 @@ def etat_journalier_receptions():
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
         receptions = conn.execute(
-            """
-            SELECT r.*, f.nom AS fournisseur_nom
-            FROM cuisine_receptions r
-            LEFT JOIN fournisseurs f ON f.id = r.fournisseur_id
-            WHERE r.date_reception BETWEEN ? AND ? AND r.actif = 1
-            ORDER BY r.date_reception, r.heure_arrivee, r.id
+            f"""
+            SELECT * FROM ({SQL_RECEPTIONS_SOLDE})
+            WHERE date_reception BETWEEN ? AND ? AND actif = 1
+            ORDER BY date_reception, heure_arrivee, id
             """,
             (date_debut, date_fin),
         ).fetchall()
 
     groupes = {}
     total_kg = 0.0
+    total_consomme = 0.0
     for r in receptions:
         if vue == "fournisseur":
             groupe = r["fournisseur_nom"] or "Fournisseur non renseigné"
         else:
             groupe = r["ingredient_groupe"] or "Autres / non référencé"
-        entree = groupes.setdefault(groupe, {"lignes": [], "sous_total": 0.0})
+        entree = groupes.setdefault(groupe, {"lignes": [], "sous_total": 0.0, "sous_total_consomme": 0.0})
         poids = r["poids_kg"] or 0
+        consomme = r["poids_utilise"] or 0
         entree["lignes"].append(r)
         entree["sous_total"] += poids
+        entree["sous_total_consomme"] += consomme
         total_kg += poids
+        total_consomme += consomme
 
     groupes_tries = sorted(groupes.items(), key=lambda kv: kv[0].lower())
 
@@ -305,6 +310,7 @@ def etat_journalier_receptions():
         multi_jours=multi_jours,
         groupes=groupes_tries,
         total_kg=total_kg,
+        total_consomme=total_consomme,
         nb_receptions=len(receptions),
     )
 
@@ -326,6 +332,7 @@ def affecter_reception(reception_id):
     production_id = request.form.get("production_id", type=int)
     poids = parse_poids(request.form.get("poids_kg"))
     benevole = (request.form.get("benevole") or "").strip()
+    forcer = request.form.get("forcer") == "1"
     liste_url = url_for("production_cuisine.liste_receptions")
 
     with _connect() as conn:
@@ -337,7 +344,7 @@ def affecter_reception(reception_id):
         if not production:
             flash("⛔ Production introuvable.", "danger")
             return _retour(liste_url)
-        erreur = ajouter_utilisation(conn, reception_id, production, poids, benevole)
+        erreur = ajouter_utilisation(conn, reception_id, production, poids, benevole, forcer)
         if erreur:
             flash(f"⛔ {erreur}", "danger")
             return _retour(liste_url)
@@ -406,6 +413,7 @@ def _purger(conn, reception_ids, benevole, motif):
     purgées) ; poids_purge = solde au moment de la purge. Retourne
     [(reception, poids_purge)] des lignes effectivement purgées."""
     purgees = []
+    enregistrer_utilisateur_cuisine(conn, benevole)
     for reception_id in reception_ids:
         r = reception_avec_solde(conn, reception_id)
         if not r or not r["actif"] or r["date_purge"] or r["solde_kg"] <= SOLDE_EPSILON:
@@ -421,7 +429,7 @@ def _purger(conn, reception_ids, benevole, motif):
 
 
 def _lire_purge():
-    benevole = (request.form.get("benevole") or "").strip()
+    benevole = utilisateur_saisi(request.form)
     motif = (request.form.get("motif") or "").strip()
     precision = (request.form.get("precision") or "").strip()
     if precision:
@@ -516,12 +524,13 @@ def creer_reception():
             "SELECT id, nom FROM fournisseurs WHERE actif = 'oui' ORDER BY nom COLLATE NOCASE"
         ).fetchall()
         ingredients_par_groupe = _ingredients_par_groupe(conn)
+        utilisateurs = utilisateurs_cuisine(conn)
 
     if request.method == "POST":
         # Champs communs à toute la livraison — saisis une seule fois même
         # si plusieurs produits différents sont réceptionnés en même temps
         # (ex. un même camion apportant viande + légumes).
-        benevole = (request.form.get("benevole") or "").strip()
+        benevole = utilisateur_saisi(request.form)
         date_reception = request.form.get("date_reception") or today_paris()
         heure_arrivee = request.form.get("heure_arrivee") or None
         fournisseur_id = request.form.get("fournisseur_id") or None
@@ -563,6 +572,7 @@ def creer_reception():
             return render_template(
                 "production_cuisine/receptions_creer.html",
                 fournisseurs=fournisseurs,
+                utilisateurs=utilisateurs,
                 ingredients_par_groupe=ingredients_par_groupe,
                 date_defaut=date_reception,
                 form=request.form,
@@ -574,21 +584,22 @@ def creer_reception():
             with _connect() as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
+                benevole = enregistrer_utilisateur_cuisine(conn, benevole)
                 for ligne in lignes_remplies:
                     cur.execute(
                         """
                         INSERT INTO cuisine_receptions
                         (date_reception, heure_arrivee, fournisseur_id, camion_libelle,
                          libelle_produit, ingredient_groupe, ingredient_produit,
-                         temperature_mesuree, poids_kg, dlc_ddm, aspect_conforme,
+                         temperature_mesuree, poids_kg, dlc_ddm, ddm, aspect_conforme,
                          emballage_conforme, etiquetage_conforme, commentaire, user_creation,
                          livraison_id)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             date_reception, heure_arrivee, fournisseur_id, camion_libelle,
                             ligne["libelle_produit"], ligne["ingredient_groupe"], ligne["ingredient_produit"],
-                            temperature_mesuree, ligne["poids_valide"], ligne["dlc_valide"],
+                            temperature_mesuree, ligne["poids_valide"], ligne["dlc_valide"], ligne["ddm_valide"],
                             ligne["aspect_conforme"], ligne["emballage_conforme"], ligne["etiquetage_conforme"],
                             ligne["commentaire"], benevole,
                             reception_ids[0] if reception_ids else None,
@@ -619,6 +630,7 @@ def creer_reception():
             return render_template(
                 "production_cuisine/receptions_creer.html",
                 fournisseurs=fournisseurs,
+                utilisateurs=utilisateurs,
                 ingredients_par_groupe=ingredients_par_groupe,
                 date_defaut=date_reception,
                 form=request.form,
@@ -628,6 +640,7 @@ def creer_reception():
     return render_template(
         "production_cuisine/receptions_creer.html",
         fournisseurs=fournisseurs,
+        utilisateurs=utilisateurs,
         ingredients_par_groupe=ingredients_par_groupe,
         date_defaut=today_paris(),
         form={},
@@ -673,7 +686,7 @@ def detail_reception(reception_id):
         date_jour = today_paris()
         productions_du_jour = _productions_du_jour(conn, date_jour)
 
-    blocage = blocage_dlc(reception, date_jour)
+    blocage, avertissement = controle_dates(reception, date_jour)
 
     # Bouton "← Retour" contextuel : si on arrive depuis la fiche recette
     # (lien "Détail" d'un lot en traçabilité), on y revient plutôt que sur
@@ -694,6 +707,7 @@ def detail_reception(reception_id):
         autres_lignes=autres_lignes,
         productions_du_jour=productions_du_jour,
         blocage=blocage,
+        avertissement=avertissement,
         retour_url=retour_url,
     )
 
@@ -711,6 +725,7 @@ def _ligne_depuis_reception(reception):
         "produit": produit,
         "poids_kg": reception["poids_kg"],
         "dlc_ddm": reception["dlc_ddm"],
+        "ddm": reception["ddm"],
         "aspect_conforme": reception["aspect_conforme"],
         "emballage_conforme": reception["emballage_conforme"],
         "etiquetage_conforme": reception["etiquetage_conforme"],
@@ -739,6 +754,7 @@ def modifier_reception(reception_id):
             "SELECT id, nom FROM fournisseurs WHERE actif = 'oui' ORDER BY nom COLLATE NOCASE"
         ).fetchall()
         ingredients_par_groupe = _ingredients_par_groupe(conn)
+        utilisateurs = utilisateurs_cuisine(conn)
         photos = conn.execute(
             "SELECT * FROM cuisine_reception_photos WHERE reception_id = ? ORDER BY type_photo, ordre",
             (reception_id,),
@@ -756,6 +772,7 @@ def modifier_reception(reception_id):
             "production_cuisine/receptions_modifier.html",
             reception=reception,
             fournisseurs=fournisseurs,
+            utilisateurs=utilisateurs,
             ingredients_par_groupe=ingredients_par_groupe,
             photos=photos,
             form=form,
@@ -772,7 +789,7 @@ def modifier_reception(reception_id):
         }
         return _rendu(form, _ligne_depuis_reception(reception))
 
-    benevole = (request.form.get("benevole") or "").strip()
+    benevole = utilisateur_saisi(request.form)
     date_reception = request.form.get("date_reception") or reception["date_reception"]
     heure_arrivee = request.form.get("heure_arrivee") or None
     fournisseur_id = request.form.get("fournisseur_id") or None
@@ -795,6 +812,7 @@ def modifier_reception(reception_id):
     try:
         with _connect() as conn:
             cur = conn.cursor()
+            benevole = enregistrer_utilisateur_cuisine(conn, benevole)
             # Garde en base : la réception a pu être utilisée dans une recette
             # (ou purgée) entre l'ouverture du formulaire et son enregistrement.
             cur.execute(
@@ -802,7 +820,7 @@ def modifier_reception(reception_id):
                 UPDATE cuisine_receptions
                 SET date_reception = ?, heure_arrivee = ?, fournisseur_id = ?, camion_libelle = ?,
                     libelle_produit = ?, ingredient_groupe = ?, ingredient_produit = ?,
-                    temperature_mesuree = ?, poids_kg = ?, dlc_ddm = ?, aspect_conforme = ?,
+                    temperature_mesuree = ?, poids_kg = ?, dlc_ddm = ?, ddm = ?, aspect_conforme = ?,
                     emballage_conforme = ?, etiquetage_conforme = ?, commentaire = ?,
                     date_modif = ?, user_modif = ?
                 WHERE id = ? AND actif = 1 AND date_purge IS NULL
@@ -812,7 +830,7 @@ def modifier_reception(reception_id):
                 (
                     date_reception, heure_arrivee, fournisseur_id, camion_libelle,
                     ligne["libelle_produit"], ligne["ingredient_groupe"], ligne["ingredient_produit"],
-                    temperature_mesuree, ligne["poids_valide"], ligne["dlc_valide"],
+                    temperature_mesuree, ligne["poids_valide"], ligne["dlc_valide"], ligne["ddm_valide"],
                     ligne["aspect_conforme"], ligne["emballage_conforme"], ligne["etiquetage_conforme"],
                     ligne["commentaire"], now_paris_str(), benevole, reception_id,
                 ),

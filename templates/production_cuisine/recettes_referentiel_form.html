@@ -10,10 +10,9 @@
   <form method="POST">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    <div class="mb-3">
-      <label class="form-label">Bénévole</label>
-      <input type="text" name="benevole" class="form-control" placeholder="Prénom du bénévole">
-    </div>
+    {% set champ_label = "Bénévole" %}
+    {% set champ_requis = false %}
+    {% include "production_cuisine/_champ_utilisateur.html" %}
 
     <div class="mb-3">
       <label class="form-label fw-bold">Code</label>

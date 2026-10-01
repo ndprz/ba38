@@ -522,38 +522,58 @@ SQL_RECEPTIONS_SOLDE = """
 """
 
 
-def blocage_dlc(reception, date_production):
-    """Motif empêchant de cuisiner cette réception pour une production du
-    `date_production` (AAAA-MM-JJ), sinon None. Sans DLC (réceptions
-    saisies avant qu'elle soit demandée), seule une production du jour même
-    de la réception est permise — comme avant l'utilisation partielle."""
+GROUPE_SURGELE = "surgelé"
+
+
+def _date_fr(iso):
+    return f"{iso[8:10]}/{iso[5:7]}/{iso[0:4]}"
+
+
+def est_surgele(reception):
+    """Groupe d'ingrédient « Surgelé » : DLC / DDM non contrôlées."""
+    return (reception["ingredient_groupe"] or "").strip().lower() == GROUPE_SURGELE
+
+
+def controle_dates(reception, date_production):
+    """(blocage, avertissement) pour cuisiner cette réception dans une
+    production du `date_production` (AAAA-MM-JJ).
+    - blocage : impossible, même en forçant (réceptionnée après la date).
+    - avertissement : DLC ou DDM dépassée (ou aucune des deux renseignée,
+      réceptions historiques d'un autre jour) — utilisation possible en
+      forçant, le forçage est tracé sur l'utilisation.
+    Groupe Surgelé : aucune date contrôlée."""
     if reception["date_reception"] > date_production:
-        return "réceptionnée après la date de production"
-    dlc = reception["dlc_ddm"]
-    if dlc:
-        if dlc < date_production:
-            return f"DLC dépassée ({dlc[8:10]}/{dlc[5:7]}/{dlc[0:4]})"
-        return None
-    if reception["date_reception"] != date_production:
-        return "DLC non renseignée (réception d'un autre jour)"
-    return None
+        return "réceptionnée après la date de production", None
+    if est_surgele(reception):
+        return None, None
+    dlc, ddm = reception["dlc_ddm"], reception["ddm"]
+    motifs = []
+    if dlc and dlc < date_production:
+        motifs.append(f"DLC dépassée ({_date_fr(dlc)})")
+    if ddm and ddm < date_production:
+        motifs.append(f"DDM dépassée ({_date_fr(ddm)})")
+    if not dlc and not ddm and reception["date_reception"] != date_production:
+        motifs.append("DLC / DDM non renseignée (réception d'un autre jour)")
+    return None, (" · ".join(motifs) or None)
 
 
 def receptions_en_stock(conn, date_ref):
     """Réceptions actives, non purgées, avec un solde > 0, reçues au plus
     tard le `date_ref` — tous jours confondus (un arrivage peut servir
-    plusieurs jours). Chaque ligne (dict) porte `blocage` (blocage_dlc pour
-    `date_ref`, None si utilisable). Tri : DLC la plus proche d'abord."""
+    plusieurs jours). Chaque ligne (dict) porte `blocage` et `avertissement`
+    (controle_dates pour `date_ref`). Tri : DLC / DDM la plus proche d'abord."""
     rows = conn.execute(
         f"""SELECT * FROM ({SQL_RECEPTIONS_SOLDE})
             WHERE actif = 1 AND date_purge IS NULL AND solde_kg > ? AND date_reception <= ?
-            ORDER BY dlc_ddm IS NULL, dlc_ddm, date_reception, heure_arrivee, id""",
+            ORDER BY COALESCE(dlc_ddm, ddm) IS NULL,
+                     MIN(COALESCE(dlc_ddm, ddm), COALESCE(ddm, dlc_ddm)),
+                     date_reception, heure_arrivee, id""",
         (SOLDE_EPSILON, date_ref),
     ).fetchall()
     stock = []
     for r in rows:
         d = dict(r)
-        d["blocage"] = blocage_dlc(d, date_ref)
+        d["blocage"], d["avertissement"] = controle_dates(d, date_ref)
         stock.append(d)
     return stock
 
@@ -564,27 +584,31 @@ def reception_avec_solde(conn, reception_id):
     ).fetchone()
 
 
-def ajouter_utilisation(conn, reception_id, production, poids, user):
+def ajouter_utilisation(conn, reception_id, production, poids, user, forcer=False):
     """Enregistre l'utilisation de `poids` kg de la réception dans la
-    production (ligne cuisine_productions). Retourne un message d'erreur, ou
-    None si enregistrée (commit à la charge de l'appelant)."""
+    production (ligne cuisine_productions). Une DLC / DDM dépassée n'est
+    acceptée qu'avec `forcer` (avertissement gardé dans `forcage`).
+    Retourne un message d'erreur, ou None si enregistrée (commit à la charge
+    de l'appelant)."""
     reception = reception_avec_solde(conn, reception_id)
     if not reception or not reception["actif"]:
         return "réception introuvable."
     libelle = reception["libelle_produit"] or f"réception #{reception_id}"
     if reception["date_purge"]:
         return f"{libelle} : réception purgée, plus utilisable."
-    blocage = blocage_dlc(reception, production["date_production"])
+    blocage, avertissement = controle_dates(reception, production["date_production"])
     if blocage:
         return f"{libelle} : impossible de cuisiner — {blocage}."
+    if avertissement and not forcer:
+        return f"{libelle} : {avertissement} — cocher « Forcer l'utilisation » pour la cuisiner quand même."
     if poids is None or poids <= 0:
         return f"{libelle} : merci d'indiquer le poids utilisé (en kg, supérieur à 0)."
     if poids > reception["solde_kg"] + SOLDE_EPSILON:
         return f"{libelle} : {format_kg(poids)} kg demandés, il n'en reste que {format_kg(reception['solde_kg'])} kg."
     conn.execute(
-        """INSERT INTO cuisine_reception_utilisations (reception_id, production_id, poids_kg, user_creation)
-           VALUES (?, ?, ?, ?)""",
-        (reception_id, production["id"], round(poids, 3), user or None),
+        """INSERT INTO cuisine_reception_utilisations (reception_id, production_id, poids_kg, user_creation, forcage)
+           VALUES (?, ?, ?, ?, ?)""",
+        (reception_id, production["id"], round(poids, 3), user or None, avertissement),
     )
     return None
 
@@ -595,3 +619,59 @@ def format_kg(valeur):
         return "—"
     texte = f"{valeur:.3f}".rstrip("0").rstrip(".")
     return texte.replace(".", ",")
+
+
+# ------------------------------------------------------------
+# 👤 Utilisateurs cuisine (prénoms proposés dans « Nom du réceptionnaire »)
+#     Liste dans la table `parametres` (param_name cuisine_utilisateur),
+#     gérée depuis Paramètres cuisine ou complétée à la saisie (option
+#     « ➕ Nouveau… » du champ, cf. _champ_utilisateur.html).
+# ------------------------------------------------------------
+PARAM_UTILISATEURS = "cuisine_utilisateur"
+NOUVEL_UTILISATEUR = "__nouveau__"
+
+
+def utilisateurs_cuisine(conn=None):
+    """Prénoms de la liste, triés."""
+    def _lire(c):
+        return [r[0] for r in c.execute(
+            "SELECT param_value FROM parametres WHERE param_name = ? ORDER BY param_value COLLATE NOCASE",
+            (PARAM_UTILISATEURS,),
+        ).fetchall()]
+    if conn is not None:
+        return _lire(conn)
+    with _connect() as c:
+        return _lire(c)
+
+
+def normaliser_prenom(valeur):
+    """Espaces superflus retirés, 1re lettre en majuscule ("thomas" → "Thomas")."""
+    valeur = " ".join((valeur or "").split())
+    return valeur[:1].upper() + valeur[1:]
+
+
+def utilisateur_saisi(form, champ="benevole"):
+    """Nom choisi dans la liste, ou saisi via « ➕ Nouveau… » (champ
+    `<champ>_nouveau`). Ne l'ajoute pas à la liste : voir
+    enregistrer_utilisateur_cuisine, appelé une fois l'action enregistrée."""
+    valeur = (form.get(champ) or "").strip()
+    if valeur == NOUVEL_UTILISATEUR:
+        valeur = form.get(f"{champ}_nouveau")
+    return normaliser_prenom(valeur)
+
+
+def enregistrer_utilisateur_cuisine(conn, nom):
+    """Ajoute `nom` à la liste s'il n'y est pas (casse ignorée : "thomas"
+    ne crée pas de doublon de "Thomas"). Retourne le nom tel qu'il figure
+    dans la liste. Commit à la charge de l'appelant."""
+    nom = normaliser_prenom(nom)
+    if not nom:
+        return nom
+    for existant in utilisateurs_cuisine(conn):
+        if existant.casefold() == nom.casefold():
+            return existant
+    conn.execute(
+        "INSERT INTO parametres (param_name, param_value, categorie) VALUES (?, ?, 'liste')",
+        (PARAM_UTILISATEURS, nom),
+    )
+    return nom

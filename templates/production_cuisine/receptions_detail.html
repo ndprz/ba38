@@ -27,6 +27,9 @@
       <tr><th>DLC</th><td>
         {% if reception.dlc_ddm %}{{ reception.dlc_ddm[8:10] }}/{{ reception.dlc_ddm[5:7] }}/{{ reception.dlc_ddm[0:4] }}{% else %}—{% endif %}
       </td></tr>
+      <tr><th>DDM</th><td>
+        {% if reception.ddm %}{{ reception.ddm[8:10] }}/{{ reception.ddm[5:7] }}/{{ reception.ddm[0:4] }}{% else %}—{% endif %}
+      </td></tr>
       <tr><th>Reste en stock</th><td class="fw-bold">
         {% if reception.date_purge %}0 kg — 🧹 purgé ({{ reception.poids_purge|kg }} kg)
         {% else %}{{ reception.solde_kg|kg }} kg{% endif %}
@@ -62,7 +65,8 @@
     <tbody>
       {% for u in utilisations %}
       <tr>
-        <td><a href="{{ url_for('production_cuisine.detail_production', production_id=u.production_id) }}">{{ u.nom_recette }}</a></td>
+        <td><a href="{{ url_for('production_cuisine.detail_production', production_id=u.production_id) }}">{{ u.nom_recette }}</a>
+          {% if u.forcage %}<div class="small text-danger fw-bold">⚠️ Forcé : {{ u.forcage }}</div>{% endif %}</td>
         <td>{{ u.date_production[8:10] }}/{{ u.date_production[5:7] }}</td>
         <td class="text-end">{{ u.poids_kg|kg }}</td>
         <td>{{ u.user_creation or "—" }}</td>
@@ -88,6 +92,9 @@
     {% if blocage %}
       <div class="alert alert-danger">⛔ Ne peut plus être cuisinée aujourd'hui : {{ blocage }}. Purger le reste.</div>
     {% else %}
+    {% if avertissement %}
+      <div class="alert alert-warning">⚠️ {{ avertissement }} — utilisable seulement en forçant.</div>
+    {% endif %}
     <div class="d-flex flex-wrap gap-2 mb-2">
       <a href="{{ url_for('production_cuisine.creer_production', reception_id=reception.id) }}"
          class="btn btn-success">🍲 Nouvelle recette avec cette réception</a>
@@ -110,6 +117,12 @@
               <option value="{{ p.id }}">{{ p.nom_recette }}</option>
               {% endfor %}
             </select>
+            {% if avertissement %}
+            <label class="d-flex align-items-center gap-2 mb-2 small fw-bold text-danger">
+              <input type="checkbox" name="forcer" value="1" class="form-check-input mt-0" required>
+              Forcer l'utilisation ({{ avertissement }})
+            </label>
+            {% endif %}
             <button type="submit" class="btn btn-primary btn-sm w-100">Affecter</button>
           </form>
         </div>
