@@ -4760,10 +4760,23 @@ def quantites_produits(annee):
                 "SELECT association, code_produit, poids_kg FROM collecte_quantites_produits WHERE annee = ?", (annee,)
             ).fetchall()
         }
+        # Valorisation en mercuriale — même référentiel de prix (par Code VIF)
+        # que la pesée palox (collecte_palox_mercuriale), les codes produit du
+        # modèle association étant les mêmes codes article VIF.
+        _ensure_tables_palox(conn)
+        prix_mercuriale = {
+            r["code_vif"]: r["prix_kg"] for r in conn.execute(
+                "SELECT code_vif, prix_kg FROM collecte_palox_mercuriale WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
 
     lignes = []
     for produit in produits:
-        ligne = {"code_produit": produit["code"], "libelle": produit["libelle"]}
+        ligne = {
+            "code_produit": produit["code"],
+            "libelle": produit["libelle"],
+            "prix_kg": prix_mercuriale.get(produit["code"]),
+        }
         for nom in noms_associations:
             ligne[nom] = saisies.get((nom, produit["code"]))
         lignes.append(ligne)
@@ -4774,6 +4787,7 @@ def quantites_produits(annee):
         lignes=lignes,
         associations=noms_associations,
         code_vif_associations=code_vif_associations,
+        mercuriale_importee=bool(prix_mercuriale),
     )
 
 

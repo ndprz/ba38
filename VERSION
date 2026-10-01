@@ -1,3 +1,3 @@
-VERSION=1.7.51
-MESSAGE=Collecte : mercuriale deplacee en Parametres (2 fichiers, nom+date persistants) + synthese pesee palox valorisee visible par defaut
-DATE=2026-09-30 16:16
+VERSION=1.7.52
+MESSAGE=Collecte : valorisation mercuriale sur Quantites par produit (collecte gardee, total poids + valeur) + nettoyage colonne prix mercuriale
+DATE=2026-10-01 11:52

@@ -70,8 +70,6 @@ const table = new Tabulator("#tabulator-table", {
         { title: "% du total", field: "pct_poids", width: 110, hozAlign: "right",
           formatter: function (cell) { return cell.getValue().toFixed(1) + " %"; },
           topCalcFormatter: function () { return "100 %"; } },
-        { title: "Prix mercuriale (€/kg)", field: "prix_kg", width: 150, hozAlign: "right",
-          formatter: function (cell) { const v = cell.getValue(); return v == null ? "—" : v.toFixed(2); } },
         { title: "Valeur (€)", field: "valeur", width: 130, hozAlign: "right",
           formatter: function (cell) { const v = cell.getValue(); return v == null ? "—" : v.toFixed(2); },
           topCalc: "sum", topCalcParams: { precision: 2 } },
@@ -87,7 +85,7 @@ table.on("rowClick", function (e, row) {
 
 document.getElementById("toggle-colonnes-mercuriale").addEventListener("change", function () {
     const visible = this.checked;
-    ["prix_kg", "valeur", "poids_annee_precedente"].forEach(function (champ) {
+    ["valeur", "poids_annee_precedente"].forEach(function (champ) {
         visible ? table.showColumn(champ) : table.hideColumn(champ);
     });
     table.redraw(true);

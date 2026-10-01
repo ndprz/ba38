@@ -29,6 +29,13 @@
         {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
     {% endcall %}
 
+    {% if not mercuriale_importee %}
+    <div class="alert alert-warning small py-1 mb-2">
+        ⚠️ Mercuriale {{ annee }} non importée (⚙️ Paramètres → 💶 Mercuriale) — la colonne valeur
+        restera vide tant qu'elle n'est pas déposée.
+    </div>
+    {% endif %}
+
     <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
         <input type="text" id="filtre-recherche" class="form-control form-control-sm" style="max-width:320px;"
                placeholder="🔎 Rechercher (produit…)">
@@ -85,6 +92,7 @@ function sauvegarderCellule(cell) {
     .then(function (result) {
         if (result.ok && result.data.success) {
             afficherMessage("✅ Enregistré — " + data.libelle + " / " + association, "success");
+            row.reformat();
         } else {
             row.getElement().classList.add("ligne-erreur");
             afficherMessage("⛔ Échec de l'enregistrement pour " + data.libelle + " — ressaisissez la valeur", "danger");
@@ -116,6 +124,35 @@ const colonnesAssociations = associations.map(function (nom) {
     };
 });
 
+function poidsTotalLigne(data) {
+    let total = 0;
+    associations.forEach(function (nom) { total += parseFloat(data[nom]) || 0; });
+    return total;
+}
+
+const colonnesValorisation = [
+    { title: "Total poids (kg)", width: 130, hozAlign: "right",
+      formatter: function (cell) { return poidsTotalLigne(cell.getData()).toFixed(1); },
+      topCalc: function (values, data) {
+          let total = 0;
+          data.forEach(function (row) { total += poidsTotalLigne(row); });
+          return total.toFixed(1);
+      } },
+    { title: "Valeur (€)", width: 130, hozAlign: "right",
+      formatter: function (cell) {
+          const data = cell.getData();
+          if (data.prix_kg == null) return "—";
+          return (poidsTotalLigne(data) * data.prix_kg).toFixed(2);
+      },
+      topCalc: function (values, data) {
+          let total = 0;
+          data.forEach(function (row) {
+              if (row.prix_kg != null) { total += poidsTotalLigne(row) * row.prix_kg; }
+          });
+          return total.toFixed(2);
+      } },
+];
+
 const table = new Tabulator("#tabulator-table", {
     data: lignes,
     layout: "fitColumns",
@@ -125,7 +162,7 @@ const table = new Tabulator("#tabulator-table", {
         { title: "Code", field: "code_produit", width: 90, headerFilter: "input", frozen: true },
         { title: "Produit", field: "libelle", widthGrow: 2, minWidth: 260, headerFilter: "input", frozen: true,
           topCalcFormatter: function () { return "Total"; } },
-    ].concat(colonnesAssociations),
+    ].concat(colonnesAssociations).concat(colonnesValorisation),
 });
 
 const filtreInput = document.getElementById("filtre-recherche");
