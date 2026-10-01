@@ -2,21 +2,25 @@
 
 {% from "macros/buttons.html" import action_button, action_buttons %}
 
-{% macro entete_section(cible, titre, modale_aide, modale_manuel) %}
+{% macro entete_section(cible, titre, modale_aide=None, modale_manuel=None) %}
 <div class="d-flex align-items-stretch gap-2 mt-4">
     <button class="list-group-item list-group-item-action active text-start d-block flex-grow-1" type="button"
             data-bs-toggle="collapse" data-bs-target="#{{ cible }}"
             aria-expanded="false" aria-controls="{{ cible }}">
         📁 {{ titre }}
     </button>
+    {% if modale_aide %}
     <button class="btn btn-outline-info" type="button" data-bs-toggle="modal" data-bs-target="#{{ modale_aide }}"
             title="Aide sur ce sujet">
         ℹ️
     </button>
+    {% endif %}
+    {% if modale_manuel %}
     <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#{{ modale_manuel }}"
             title="Documentation détaillée sur ce sujet">
         📖
     </button>
+    {% endif %}
 </div>
 {% endmacro %}
 
@@ -41,11 +45,11 @@
     <p class="text-muted">Paramètres et fichiers de la campagne de collecte.</p>
 
     <div class="alert alert-info small">
-        <strong>Ordre à suivre :</strong> les 5 sections ci-dessous sont dans l'ordre où elles sont
+        <strong>Ordre à suivre :</strong> les 6 sections ci-dessous sont dans l'ordre où elles sont
         normalement utilisées — 1. Paramètres de la collecte annuelle (dates, fichiers Drive/import),
         2. Gestion magasins (autorisations, localisation), 3. Gestion tournées (simulation puis
-        production), 4. Associations gardant, 5. Résultat collecte. Chaque section précise elle-même
-        l'ordre de ses propres actions.
+        production), 4. Associations gardant, 5. Résultat collecte, 6. Participants. Chaque section
+        précise elle-même l'ordre de ses propres actions.
     </div>
 
     <div class="mb-4">
@@ -87,54 +91,56 @@
         </div>
     </div>
 
+{% macro bloc_fichiers_drive(annee_cible, campagne_cible, indice_dossier=None) %}
     <div class="card mb-4">
         <div class="card-header">
-            🔗 Paramètres des fichiers Google Drive {{ annee }}
+            🔗 Paramètres des fichiers Google Drive {{ annee_cible }}
         </div>
         <div class="card-body">
-            <h5 class="card-title">🔗 Fichiers Google Drive {{ annee }} issus de GOW</h5>
+            <h5 class="card-title">🔗 Fichiers Google Drive {{ annee_cible }} issus de GOW</h5>
             <p class="card-text text-muted small">
                 Coller les liens des fichiers Google Sheets issus de go-on-web et de la production.
-                Ils sont conservés avec la campagne {{ annee }}. Les fichiers doivent être partagés
-                en « Toute personne disposant du lien ».
+                Ils sont conservés avec la campagne {{ annee_cible }}. Les fichiers doivent être
+                partagés en « Toute personne disposant du lien ».
+                {% if indice_dossier %}<br>📁 Dossier Drive : <em>{{ indice_dossier }}</em>{% endif %}
             </p>
             <form method="POST" action="{{ url_for('collecte.enregistrer_liens_drive') }}" class="row align-items-end">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="annee" value="{{ annee }}">
+                <input type="hidden" name="annee" value="{{ annee_cible }}">
                 <div class="col-12 mb-4">
                     <label class="form-label">Liste des magasins</label>
                     <input type="text" name="magasins" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
-                           value="{{ campagne.drive_magasins if campagne else '' }}">
+                           value="{{ campagne_cible.drive_magasins if campagne_cible else '' }}">
                 </div>
                 <div class="col-12 mb-4">
                     <label class="form-label">Liste des véhicules / planning</label>
                     <input type="text" name="vehicules" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
-                           value="{{ campagne.drive_vehicules if campagne else '' }}">
+                           value="{{ campagne_cible.drive_vehicules if campagne_cible else '' }}">
                 </div>
                 <div class="col-12 mb-4">
                     <label class="form-label">Historique cagettes</label>
                     <input type="text" name="cagettes" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
-                           value="{{ campagne.drive_cagettes if campagne else '' }}">
+                           value="{{ campagne_cible.drive_cagettes if campagne_cible else '' }}">
                 </div>
                 <div class="col-12 mb-4">
                     <label class="form-label">Liste des colis</label>
                     <input type="text" name="colis" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
-                           value="{{ campagne.drive_colis or '' if campagne and campagne.drive_colis is defined else '' }}">
+                           value="{{ campagne_cible.drive_colis or '' if campagne_cible and campagne_cible.drive_colis is defined else '' }}">
                 </div>
                 <div class="col-12 mb-4">
                     <label class="form-label">Liste des groupes (go-on-web)</label>
                     <input type="text" name="groupes" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/..."
-                           value="{{ campagne.drive_groupes or '' if campagne and campagne.drive_groupes is defined else '' }}">
+                           value="{{ campagne_cible.drive_groupes or '' if campagne_cible and campagne_cible.drive_groupes is defined else '' }}">
                 </div>
                 <div class="col-12 mb-4">
                     <label class="form-label">Liste des participants (go-on-web)</label>
                     <input type="text" name="participants" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/..."
-                           value="{{ campagne.drive_participants or '' if campagne and campagne.drive_participants is defined else '' }}">
+                           value="{{ campagne_cible.drive_participants or '' if campagne_cible and campagne_cible.drive_participants is defined else '' }}">
                 </div>
                 <div class="col-12">
                     <label class="form-label">Liste des participants pour mailing</label>
                     <input type="text" name="participants_mailing" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/..."
-                           value="{{ campagne.drive_participants_mailing or '' if campagne and campagne.drive_participants_mailing is defined else '' }}">
+                           value="{{ campagne_cible.drive_participants_mailing or '' if campagne_cible and campagne_cible.drive_participants_mailing is defined else '' }}">
                 </div>
                 <div class="col-12">
                     <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
@@ -142,6 +148,10 @@
             </form>
         </div>
     </div>
+{% endmacro %}
+
+{{ bloc_fichiers_drive(annee, campagne) }}
+{{ bloc_fichiers_drive(annee - 1, campagne_precedente, "Go on the web " ~ (annee - 1) ~ " après collecte") }}
 
     <div class="card mb-4">
         <div class="card-body">
@@ -410,6 +420,22 @@
                     </p>
                 </div>
                 {{ action_button("📈 Ouvrir", href=url_for('collecte.evolution_magasins', annee=annee), color="primary") }}
+            </div>
+        </div>
+    </div>
+
+    {{ entete_section("sectionParticipants", "Participants") }}
+    <div id="sectionParticipants" class="collapse mt-3">
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h5 class="card-title mb-1">📧 Mail aux trieurs (année précédente)</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Recontacter les personnes ayant trié à l'entrepôt lors de la collecte
+                        {{ annee - 1 }}, avant que le planning {{ annee }} n'existe.
+                    </p>
+                </div>
+                {{ action_button("📧 Ouvrir", href=url_for('collecte.mail_trieurs', annee=annee), color="primary") }}
             </div>
         </div>
     </div>

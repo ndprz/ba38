@@ -484,6 +484,165 @@ def _corps_mail_affectations_html(personne, texte, image_url):
     html = html.replace(marqueur, remplacement)
     return f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">{html}</div>'
 
+
+# ============================================================================
+# 👥 Participants — mail aux trieurs (année précédente)
+# ============================================================================
+# Les "trieurs" sont les personnes affectées au camion V090 ("BAI Entrepôt")
+# dans le planning véhicules — un code non réel qui sert à go-on-web pour le
+# staffing de l'entrepôt (cf. _est_camion_reel), pas une tournée de collecte.
+# Lus sur l'année PRÉCÉDENTE : utile en tout début de campagne, avant que le
+# planning de l'année en cours n'existe, pour recontacter les trieurs de l'an
+# dernier.
+MAIL_TEXTE_TRIEURS_DEFAUT = (
+    "Bonjour <<nom>>,\n\n"
+    "Vous aviez participé au tri des denrées à l'entrepôt lors de la collecte de l'an dernier, "
+    "un grand merci pour votre aide !\n\n"
+    "Nous préparons la collecte de cette année et serions ravis de vous compter à nouveau parmi "
+    "les trieurs. Si vous êtes disponible, répondez à ce mail ou contactez-nous directement.\n\n"
+    "Merci."
+)
+
+
+def _ensure_colonne_mail_trieurs(conn):
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_campagnes)").fetchall()}
+    if "mail_texte_trieurs" not in colonnes:
+        conn.execute("ALTER TABLE collecte_campagnes ADD COLUMN mail_texte_trieurs TEXT")
+
+
+def _charger_trieurs_annee_precedente(annee):
+    """Personnes affectées au camion V090 dans le planning véhicules de
+    l'année précédente — nom + email, dédoublonnés."""
+    annee_precedente = annee - 1
+    chemin = _fichier_drive(annee_precedente, "vehicules")
+    if not chemin:
+        chemin = os.path.join(_dossier_annee(annee_precedente), "liste_vehicules.xlsx")
+    if not os.path.exists(chemin):
+        raise FileNotFoundError(f"Le fichier véhicules {annee_precedente} est introuvable")
+
+    df = pd.read_excel(chemin)
+    df.columns = [str(col).strip() for col in df.columns]
+    personnes = {}
+    sans_email = set()
+    for _, ligne in df.iterrows():
+        code = str(ligne.get("Code", "")).strip().upper()
+        if code != "V090":
+            continue
+        personne = str(ligne.get("Équipier", ligne.get("equipier", ""))).strip()
+        if not personne or personne == "nan":
+            continue
+        email = str(ligne.get("Email", "")).strip().lower()
+        if email == "nan":
+            email = ""
+        cle = email or f"nom:{personne.lower()}"
+        personnes.setdefault(cle, {"nom": personne, "email": email})
+        if not email:
+            sans_email.add(personne)
+
+    destinataires = sorted(
+        (p for p in personnes.values() if p["email"]), key=lambda p: p["nom"].lower()
+    )
+    return destinataires, sorted(sans_email, key=str.lower)
+
+
+def _contenu_mail_trieurs(annee):
+    with get_db_connection() as conn:
+        _ensure_colonne_mail_trieurs(conn)
+        ligne = conn.execute(
+            "SELECT mail_texte_trieurs FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    return ligne["mail_texte_trieurs"] if ligne and ligne["mail_texte_trieurs"] else MAIL_TEXTE_TRIEURS_DEFAUT
+
+
+def _corps_mail_trieurs(personne, texte):
+    return texte.replace("<<nom>>", personne["nom"])
+
+
+def _corps_mail_trieurs_html(personne, texte):
+    html = str(escape(_corps_mail_trieurs(personne, texte))).replace("\n", "<br>\n")
+    return f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">{html}</div>'
+
+
+@collecte_bp.route("/collecte/mail_trieurs", methods=["GET", "POST"])
+@login_required
+@require_access("collecte", "lecture")
+def mail_trieurs():
+    annee = request.args.get("annee", type=int) or request.form.get("annee", type=int) or datetime.now().year
+    try:
+        destinataires, personnes_sans_email = _charger_trieurs_annee_precedente(annee)
+        mail_texte = _contenu_mail_trieurs(annee)
+    except Exception as erreur:
+        flash(f"❌ Impossible de charger les trieurs de {annee - 1} : {erreur}", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        if not destinataires:
+            flash("❌ Aucun trieur avec une adresse email.", "danger")
+        elif action == "test":
+            email_test = request.form.get("test_destinataire", "")
+            exemple = next((p for p in destinataires if p["email"] == email_test), destinataires[0])
+            adresse_test = getattr(current_user, "email", "") or ""
+            if not adresse_test:
+                flash("❌ Votre compte n'a pas d'adresse email pour le test.", "danger")
+            else:
+                envoyer_mail(
+                    f"[TEST] Mail aux trieurs {annee - 1}",
+                    [adresse_test],
+                    _corps_mail_trieurs_html(exemple, mail_texte),
+                    sender_override="ba380.directeur@banquealimentaire.org",
+                    is_html=True,
+                )
+                flash(f"✅ Mail de test envoyé à {adresse_test}.", "success")
+        elif action == "envoyer":
+            for personne in destinataires:
+                envoyer_mail(
+                    f"Collecte {annee} — recherche de trieurs",
+                    [personne["email"]],
+                    _corps_mail_trieurs_html(personne, mail_texte),
+                    sender_override="ba380.directeur@banquealimentaire.org",
+                    is_html=True,
+                )
+            flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+
+    return render_template(
+        "collecte/mail_trieurs.html",
+        annee=annee,
+        destinataires=destinataires,
+        personnes_sans_email=personnes_sans_email,
+        mail_texte=mail_texte,
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/mail_trieurs/apercu")
+@login_required
+@require_access("collecte", "lecture")
+def mail_trieurs_apercu(annee):
+    """Rendu HTML exact du mail pour la personne sélectionnée, sans rien
+    envoyer (même en test) — même principe que l'aperçu chauffeurs/équipiers."""
+    destinataires, _ = _charger_trieurs_annee_precedente(annee)
+    if not destinataires:
+        abort(404)
+    mail_texte = _contenu_mail_trieurs(annee)
+    email = request.args.get("email", "")
+    personne = next((p for p in destinataires if p["email"] == email), destinataires[0])
+    html = _corps_mail_trieurs_html(personne, mail_texte)
+    return Response(html, mimetype="text/html")
+
+
+@collecte_bp.route("/collecte/mail_trieurs/contenu-mail", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_contenu_mail_trieurs():
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    texte = request.form.get("mail_texte", "").strip()
+    with get_db_connection() as conn:
+        _ensure_colonne_mail_trieurs(conn)
+        conn.execute("UPDATE collecte_campagnes SET mail_texte_trieurs = ? WHERE annee = ?", (texte, annee))
+        conn.commit()
+    flash("✅ Texte du mail enregistré.", "success")
+    return redirect(url_for("collecte.mail_trieurs", annee=annee))
+
 PRODUCTION_FICHIERS_SORTIE = {
     "excel":     {"nom": "Tournees_BAI38_{annee}_GOTW.xlsx", "label": "Classeur Excel (tournées + contrôles)"},
     "fiches":    {"nom": "fiches_jour_vehicule_magasin_{annee}_GOTW.pdf", "label": "Fiches de collecte"},
@@ -1730,6 +1889,9 @@ def collecte_main():
         campagne = conn.execute(
             "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
         ).fetchone()
+        campagne_precedente = conn.execute(
+            "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee - 1,)
+        ).fetchone()
 
         annees_existantes = [
             row["annee"] for row in conn.execute(
@@ -1770,6 +1932,7 @@ def collecte_main():
         "collecte/index.html",
         annee=annee,
         campagne=campagne,
+        campagne_precedente=campagne_precedente,
         annees_existantes=annees_existantes,
         fichiers=FICHIERS,
         derniere_generation=generations[0] if generations else None,
@@ -5478,6 +5641,39 @@ def palox_saisie(annee, categorie_id):
     )
 
 
+@collecte_bp.route("/collecte/<int:annee>/palox/<int:categorie_id>/donnees")
+@login_required
+@require_access("collecte", "lecture")
+def palox_donnees_saisie(annee, categorie_id):
+    """Version JSON de palox_saisie — alimente la fenêtre de pesée affichée
+    par-dessus la Synthèse (sans changement de page, pour ne pas couper le
+    plein écran à chaque pesée)."""
+    with get_db_connection() as conn:
+        _ensure_tables_palox(conn)
+        categorie = conn.execute(
+            "SELECT * FROM collecte_palox_categories WHERE id = ?", (categorie_id,)
+        ).fetchone()
+        if not categorie:
+            return jsonify({"success": False, "erreur": "Catégorie inconnue"}), 404
+        historique = [dict(r) for r in conn.execute("""
+            SELECT * FROM collecte_palox_pesees
+            WHERE annee = ? AND categorie_id = ?
+            ORDER BY numero_palox DESC LIMIT 15
+        """, (annee, categorie_id)).fetchall()]
+        dernier_numero = conn.execute("""
+            SELECT COALESCE(MAX(numero_palox), 0) FROM collecte_palox_pesees
+            WHERE annee = ? AND categorie_id = ?
+        """, (annee, categorie_id)).fetchone()[0]
+        gabarit_lignes = _gabarit_etiquette_palox(conn)
+    return jsonify({
+        "success": True,
+        "categorie": dict(categorie),
+        "prochain_numero": dernier_numero + 1,
+        "historique": historique,
+        "gabarit_lignes": gabarit_lignes,
+    })
+
+
 def _valider_poids_categorie(poids_kg, categorie):
     """Reprend la validation de données Excel de l'onglet catégorie
     (nombre entier compris entre poids_min et poids_max) — bornes propres
@@ -5707,6 +5903,16 @@ def _synthese_palox(annee):
 @require_access("collecte", "lecture")
 def palox_synthese(annee):
     return render_template("collecte/palox_synthese.html", **_synthese_palox(annee))
+
+
+@collecte_bp.route("/collecte/<int:annee>/palox/synthese/donnees")
+@login_required
+@require_access("collecte", "lecture")
+def palox_synthese_donnees(annee):
+    """Version JSON de _synthese_palox — pour rafraîchir le tableau sans
+    recharger la page après une pesée (fenêtre de pesée par-dessus la
+    Synthèse, voir palox_donnees_saisie)."""
+    return jsonify(_synthese_palox(annee))
 
 
 @collecte_bp.route("/collecte/<int:annee>/palox/synthese/export")

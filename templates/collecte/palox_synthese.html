@@ -10,6 +10,34 @@
     #tabulator-table .tabulator-row { cursor: pointer; }
     #tabulator-table .tabulator-cell { padding-top: 3px; padding-bottom: 3px; font-size: 0.9rem; }
     #conteneur-palox-synthese:fullscreen { background: #fff; padding: 10px 20px; overflow: auto; }
+
+    #etiquette-impression { display: none; }
+    @media print {
+        body * { visibility: hidden; }
+        /* #conteneur-palox-synthese contient le tableau (souvent très haut)
+           et la fenêtre de pesée — visibility:hidden ne suffit pas, l'élément
+           garde sa hauteur et peut créer une 2e page où l'étiquette (en
+           position fixed) se réaffiche en double. display:none supprime
+           complètement sa place dans la mise en page. */
+        #conteneur-palox-synthese { display: none !important; }
+        #etiquette-impression, #etiquette-impression * { visibility: visible; }
+        #etiquette-impression {
+            display: block !important;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        }
+        @page { size: A4 landscape; margin: 10mm; }
+    }
+    .etiquette-page {
+        display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+        height: 100%; text-align: center; padding-top: 15mm;
+        position: relative;
+    }
+    .etiquette-date-heure {
+        position: absolute; bottom: 0; right: 0; font-size: 12pt; color: #333;
+    }
+    .ligne-corrigee { background-color: #fff3cd; }
+    #modalChampPoids { font-size: 2.5rem; height: 4rem; text-align: center; }
+    #modalChampNumero { font-size: 1.3rem; width: 100px; text-align: center; }
 </style>
 {% endblock %}
 
@@ -18,7 +46,7 @@
 
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
         <h2 class="mb-0 fs-4">📊 Pesée palox {{ annee }} — synthèse valorisée
-            <span class="fs-6 text-muted ms-2">
+            <span class="fs-6 text-muted ms-2" id="totalGeneral">
                 {{ poids_total }} kg{% if mercuriale_importee %} — {{ "%.2f"|format(valeur_totale) }} €{% endif %}
             </span>
         </h2>
@@ -46,19 +74,80 @@
         pas déposée (⚙️ Paramètres → 💶 Mercuriale, une fois la pesée terminée).
     </div>
     {% endif %}
+    <p class="text-muted small mb-2">Cliquez sur une catégorie pour peser un palox (s'ouvre ici, sans changer de page — garde le plein écran actif).</p>
 
     <div id="tabulator-table"></div>
+
+    <!-- ── Fenêtre de pesée (par-dessus la synthèse, jamais de changement de
+         page : c'est ce qui permet au plein écran de rester actif pendant
+         toute la saisie) ───────────────────────────────────────────────── -->
+    <div class="modal fade" id="modalPesee" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalPeseeTitre">⚖️ Pesée</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small" id="modalPeseeCodeVif"></p>
+                    <div class="alert alert-info small">
+                        Saisissez le poids et validez (Entrée ou bouton) — la feuille du palox
+                        s'imprime immédiatement, aucune autre manipulation n'est nécessaire.
+                    </div>
+                    <div id="modalPeseeMessage" class="alert d-none mb-3" role="alert"></div>
+                    <form id="formPeseeModal">
+                        <div class="d-flex align-items-end gap-3 mb-3">
+                            <div>
+                                <label class="form-label mb-0">N° palox</label>
+                                <input type="number" id="modalChampNumero" class="form-control" required>
+                            </div>
+                        </div>
+                        <label class="form-label fs-5" id="modalLabelPoids">Poids (kg)</label>
+                        <input type="number" step="1" id="modalChampPoids" class="form-control mb-3" required>
+                        <button type="submit" class="btn btn-warning btn-lg">🖨️ Enregistrer et imprimer</button>
+                    </form>
+                    <hr>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Derniers palox saisis</h6>
+                        <button type="button" id="modalBtnReinitialiser" class="btn btn-outline-danger btn-sm">
+                            🔄 Réinitialiser la numérotation
+                        </button>
+                    </div>
+                    <table class="table table-sm" id="modalTableHistorique">
+                        <thead>
+                            <tr><th>N°</th><th>Poids saisi</th><th>Poids corrigé</th><th>Heure</th><th colspan="2"></th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="etiquette-impression">
+    <div class="etiquette-page">
+        <div id="etiquette-contenu"></div>
+        <div class="etiquette-date-heure" id="et-date-heure-footer"></div>
+    </div>
 </div>
 
 <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
 <script>
+const csrfToken = "{{ csrf_token() }}";
 const lignes = {{ lignes|tojson }};
-const urlSaisieBase = "{{ url_for('collecte.palox_saisie', annee=annee, categorie_id=0) }}".replace('/0', '/__ID__');
+const urlDonneesBase = "{{ url_for('collecte.palox_donnees_saisie', annee=annee, categorie_id=0) }}".replace('/0/', '/__ID__/');
+const urlEnregistrerBase = "{{ url_for('collecte.palox_enregistrer', annee=annee, categorie_id=0) }}".replace('/0/', '/__ID__/');
+const urlCorrigerBase = "{{ url_for('collecte.palox_corriger', annee=annee, categorie_id=0) }}".replace('/0/', '/__ID__/');
+const urlSupprimerBase = "{{ url_for('collecte.palox_supprimer', annee=annee, categorie_id=0) }}".replace('/0/', '/__ID__/');
+const urlReinitialiserBase = "{{ url_for('collecte.palox_reinitialiser', annee=annee, categorie_id=0) }}".replace('/0/', '/__ID__/');
+const urlSyntheseDonnees = "{{ url_for('collecte.palox_synthese_donnees', annee=annee) }}";
+const annee = {{ annee|tojson }};
 
 const table = new Tabulator("#tabulator-table", {
     data: lignes,
     layout: "fitColumns",
-    height: "calc(100vh - 190px)",
+    height: "calc(100vh - 230px)",
     placeholder: "Aucune pesée enregistrée",
     columns: [
         { title: "Catégorie", field: "libelle", widthGrow: 2, minWidth: 220,
@@ -80,7 +169,7 @@ const table = new Tabulator("#tabulator-table", {
 });
 
 table.on("rowClick", function (e, row) {
-    window.location.href = urlSaisieBase.replace('__ID__', row.getData().id);
+    ouvrirModalPesee(row.getData().id);
 });
 
 document.getElementById("toggle-colonnes-mercuriale").addEventListener("change", function () {
@@ -100,14 +189,208 @@ document.getElementById("filtre-recherche").addEventListener("input", function (
     ]], "or");
 });
 
+function rafraichirSynthese() {
+    fetch(urlSyntheseDonnees)
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            table.setData(data.lignes);
+            document.getElementById("totalGeneral").textContent =
+                data.poids_total + " kg" + (data.mercuriale_importee ? " — " + data.valeur_totale.toFixed(2) + " €" : "");
+        });
+}
+
+// ── Fenêtre de pesée ─────────────────────────────────────────────────
+let categorieActuelleId = null;
+let categorieActuelle = {};
+let gabaritLignes = [];
+const modalPeseeEl = document.getElementById("modalPesee");
+// Instance créée à la demande (jamais au chargement de la page) : le script
+// de ce gabarit s'exécute AVANT bootstrap.bundle.min.js (chargé plus bas
+// dans le gabarit général base.html) — "new bootstrap.Modal(...)" ici,
+// tout de suite, échouerait silencieusement ("bootstrap is not defined").
+function modalPeseeInstance() {
+    return bootstrap.Modal.getOrCreateInstance(modalPeseeEl);
+}
+const champPoids = document.getElementById("modalChampPoids");
+const champNumero = document.getElementById("modalChampNumero");
+
+function afficherMessageModal(texte, classe) {
+    const div = document.getElementById("modalPeseeMessage");
+    div.textContent = texte;
+    div.className = "alert alert-" + classe + " mb-3";
+}
+
+function attacherActionsHistorique(tr) {
+    tr.querySelector(".btn-corriger").addEventListener("click", function () {
+        const numero = tr.dataset.numero;
+        const actuel = tr.querySelector(".cellule-poids-corrige").textContent.trim()
+            || tr.querySelector(".cellule-poids").textContent.trim();
+        const nouveau = prompt("Poids corrigé (kg) pour le palox n° " + numero, actuel);
+        if (nouveau === null) return;
+        const valeur = parseFloat(nouveau.replace(",", "."));
+        if (!valeur || valeur <= 0) { afficherMessageModal("⚠️ Poids invalide.", "warning"); return; }
+        fetch(urlCorrigerBase.replace("__ID__", categorieActuelleId), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+            body: JSON.stringify({ numero_palox: parseInt(numero, 10), poids_corrige_kg: valeur }),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.success) { afficherMessageModal("⛔ " + (data.erreur || "Échec de la correction"), "danger"); return; }
+            tr.querySelector(".cellule-poids-corrige").textContent = valeur;
+            tr.classList.add("ligne-corrigee");
+            afficherMessageModal("✅ Palox n° " + numero + " corrigé.", "success");
+            rafraichirSynthese();
+        })
+        .catch(function () { afficherMessageModal("⛔ Erreur réseau.", "danger"); });
+    });
+
+    tr.querySelector(".btn-supprimer").addEventListener("click", function () {
+        const numero = tr.dataset.numero;
+        if (!confirm("Supprimer entièrement le palox n° " + numero + " ?")) return;
+        fetch(urlSupprimerBase.replace("__ID__", categorieActuelleId), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+            body: JSON.stringify({ numero_palox: parseInt(numero, 10) }),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.success) { afficherMessageModal("⛔ " + (data.erreur || "Échec de la suppression"), "danger"); return; }
+            tr.remove();
+            afficherMessageModal("✅ Palox n° " + numero + " supprimé.", "success");
+            rafraichirSynthese();
+        })
+        .catch(function () { afficherMessageModal("⛔ Erreur réseau.", "danger"); });
+    });
+}
+
+function construireLigneHistorique(h) {
+    const tr = document.createElement("tr");
+    tr.dataset.numero = h.numero_palox;
+    if (h.poids_corrige_kg !== null && h.poids_corrige_kg !== undefined) { tr.classList.add("ligne-corrigee"); }
+    tr.innerHTML = "<td>" + h.numero_palox + "</td>"
+        + "<td class='cellule-poids'>" + h.poids_kg + "</td>"
+        + "<td class='cellule-poids-corrige'>" + (h.poids_corrige_kg != null ? h.poids_corrige_kg : "") + "</td>"
+        + "<td>" + (h.saisi_le ? h.saisi_le.slice(-8) : "") + "</td>"
+        + "<td><button type='button' class='btn btn-sm btn-outline-secondary btn-corriger'>✏️ Corriger</button></td>"
+        + "<td><button type='button' class='btn btn-sm btn-outline-danger btn-supprimer'>🗑️</button></td>";
+    attacherActionsHistorique(tr);
+    return tr;
+}
+
+function ouvrirModalPesee(categorieId) {
+    fetch(urlDonneesBase.replace("__ID__", categorieId))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.success) { alert(data.erreur || "Erreur de chargement"); return; }
+            categorieActuelleId = categorieId;
+            categorieActuelle = data.categorie;
+            gabaritLignes = data.gabarit_lignes;
+
+            document.getElementById("modalPeseeTitre").textContent =
+                "⚖️ " + data.categorie.libelle + " — Collecte " + annee;
+            document.getElementById("modalPeseeCodeVif").textContent = data.categorie.code_vif
+                ? ("Code VIF " + data.categorie.code_vif + " — " + (data.categorie.libelle_vif || "")) : "";
+            document.getElementById("modalLabelPoids").textContent =
+                "Poids (kg) — nombre entier entre " + Math.trunc(data.categorie.poids_min) +
+                " et " + Math.trunc(data.categorie.poids_max);
+            champPoids.min = data.categorie.poids_min;
+            champPoids.max = data.categorie.poids_max;
+            champPoids.value = "";
+            champNumero.value = data.prochain_numero;
+
+            const tbody = document.querySelector("#modalTableHistorique tbody");
+            tbody.innerHTML = "";
+            data.historique.forEach(function (h) { tbody.appendChild(construireLigneHistorique(h)); });
+
+            document.getElementById("modalPeseeMessage").classList.add("d-none");
+            modalPeseeInstance().show();
+        })
+        .catch(function (err) { alert("Erreur : " + err.message); });
+}
+
+modalPeseeEl.addEventListener("shown.bs.modal", function () { champPoids.focus(); });
+
+function remplirEtiquette(numero, poids, dateHeure) {
+    const valeurs = {
+        annee: annee,
+        code_vif: categorieActuelle.code_vif || "",
+        categorie: categorieActuelle.libelle_vif || categorieActuelle.libelle,
+        numero: numero, poids: poids, date_heure: dateHeure, date: dateHeure.split(" ")[0],
+    };
+    const html = gabaritLignes.map(function (ligne) {
+        let texte = ligne.texte;
+        for (const cle in valeurs) { texte = texte.split(">>" + cle + "<<").join(valeurs[cle]); }
+        const style = "font-size:" + ligne.taille + "pt;" + (ligne.gras ? " font-weight:bold;" : "");
+        return "<div style=\"" + style + "\">" + texte + "</div>";
+    }).join("\n");
+    document.getElementById("etiquette-contenu").innerHTML = html;
+    document.getElementById("et-date-heure-footer").textContent = dateHeure;
+}
+
+document.getElementById("formPeseeModal").addEventListener("submit", function (evt) {
+    evt.preventDefault();
+    const poids = parseFloat(champPoids.value);
+    if (!poids || poids <= 0 || poids !== Math.round(poids)) {
+        afficherMessageModal("⚠️ Le poids doit être un nombre entier.", "warning"); return;
+    }
+    if (poids < categorieActuelle.poids_min || poids > categorieActuelle.poids_max) {
+        afficherMessageModal(
+            "⚠️ Le poids doit être compris entre " + categorieActuelle.poids_min +
+            " et " + categorieActuelle.poids_max + " kg.", "warning"); return;
+    }
+    const numero = parseInt(champNumero.value, 10);
+    if (!numero || numero <= 0) { afficherMessageModal("⚠️ N° palox invalide.", "warning"); return; }
+
+    fetch(urlEnregistrerBase.replace("__ID__", categorieActuelleId), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ poids_kg: poids, numero_palox: numero }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        if (!data.success) {
+            afficherMessageModal("⛔ " + (data.erreur || "Échec de l'enregistrement"), "danger");
+            return;
+        }
+        remplirEtiquette(data.numero_palox, data.poids_kg, data.date_heure);
+
+        // Fermeture de la fenêtre + rafraîchissement une fois l'impression
+        // déclenchée — tout se passe dans la MÊME page (jamais de
+        // changement de page), ce qui ne coupe pas le plein écran,
+        // contrairement à l'ancien retour automatique vers une autre page.
+        window.onafterprint = function () {
+            modalPeseeInstance().hide();
+            rafraichirSynthese();
+        };
+        window.print();
+        setTimeout(function () {
+            modalPeseeInstance().hide();
+            rafraichirSynthese();
+        }, 3000);
+    })
+    .catch(function () { afficherMessageModal("⛔ Erreur réseau.", "danger"); });
+});
+
+document.getElementById("modalBtnReinitialiser").addEventListener("click", function () {
+    if (!confirm("Effacer toutes les pesées de cette catégorie pour " + annee + " et repartir du n° 1 ?")) return;
+    fetch(urlReinitialiserBase.replace("__ID__", categorieActuelleId), { method: "POST", headers: { "X-CSRFToken": csrfToken } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.success) {
+                ouvrirModalPesee(categorieActuelleId);
+                rafraichirSynthese();
+            } else {
+                afficherMessageModal("⛔ " + (data.erreur || "Échec de la réinitialisation"), "danger");
+            }
+        })
+        .catch(function () { afficherMessageModal("⛔ Erreur réseau.", "danger"); });
+});
+
 // ── Plein écran ─────────────────────────────────────────────────────
-// Le plein écran se coupe à chaque changement de page (limitation du
-// navigateur) — on mémorise l'état dans sessionStorage pour tenter de le
-// rétablir automatiquement sur la page suivante (poste de pesée, puis
-// retour ici). Ce ré-essai automatique ne fonctionne pas dans tous les
-// navigateurs (l'API plein écran exige normalement un clic direct) ; en
-// mode kiosque (--kiosk-printing) certains navigateurs l'autorisent quand
-// même après une navigation.
+// Reste actif pendant toute la pesée désormais (la fenêtre de pesée
+// s'ouvre par-dessus cette même page, jamais de changement de page) —
+// seuls "↩️ Retour", "⚙️ Catégories" et "📤 Télécharger" quittent la page.
 const conteneurEl = document.getElementById("conteneur-palox-synthese");
 const btnPleinEcran = document.getElementById("btnPleinEcran");
 btnPleinEcran.addEventListener("click", function () {
@@ -120,12 +403,7 @@ btnPleinEcran.addEventListener("click", function () {
 document.addEventListener("fullscreenchange", function () {
     const enPlein = document.fullscreenElement === conteneurEl;
     btnPleinEcran.textContent = enPlein ? "⛶ Quitter le plein écran" : "⛶ Plein écran";
-    if (enPlein) { sessionStorage.setItem("palox_plein_ecran", "1"); }
-    else { sessionStorage.removeItem("palox_plein_ecran"); }
     table.redraw(true);
 });
-if (sessionStorage.getItem("palox_plein_ecran") === "1" && conteneurEl.requestFullscreen) {
-    conteneurEl.requestFullscreen().catch(function () {});
-}
 </script>
 {% endblock %}
