@@ -403,7 +403,7 @@ def reduire_photo(abs_path):
 
         with Image.open(abs_path) as im:
             fmt = im.format
-            if fmt not in ("JPEG", "PNG", "WEBP") or max(im.size) <= PHOTO_MAX_PX:
+            if fmt not in ("JPEG", "MPO", "PNG", "WEBP") or max(im.size) <= PHOTO_MAX_PX:
                 return False
             exif = im.getexif()
             im = ImageOps.exif_transpose(im)
@@ -412,7 +412,7 @@ def reduire_photo(abs_path):
             # qu'un visualiseur ne la réapplique pas une seconde fois.
             exif[0x0112] = 1
             tmp_path = abs_path + ".tmp"
-            if fmt == "JPEG":
+            if fmt in ("JPEG", "MPO"):
                 im.convert("RGB").save(tmp_path, "JPEG", quality=PHOTO_QUALITE_JPEG,
                                        optimize=True, exif=exif.tobytes())
             else:

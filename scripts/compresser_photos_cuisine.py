@@ -36,14 +36,14 @@ BACKUP_DIR = "/srv/ba38/backups"
 def reduire(abs_path):
     with Image.open(abs_path) as im:
         fmt = im.format
-        if fmt not in ("JPEG", "PNG", "WEBP") or max(im.size) <= PHOTO_MAX_PX:
+        if fmt not in ("JPEG", "MPO", "PNG", "WEBP") or max(im.size) <= PHOTO_MAX_PX:
             return False
         exif = im.getexif()
         im = ImageOps.exif_transpose(im)
         im.thumbnail((PHOTO_MAX_PX, PHOTO_MAX_PX), Image.LANCZOS)
         exif[0x0112] = 1
         tmp_path = abs_path + ".tmp"
-        if fmt == "JPEG":
+        if fmt in ("JPEG", "MPO"):
             im.convert("RGB").save(tmp_path, "JPEG", quality=PHOTO_QUALITE_JPEG,
                                    optimize=True, exif=exif.tobytes())
         else:
@@ -70,7 +70,7 @@ def main():
             p = os.path.join(root, f)
             try:
                 with Image.open(p) as im:
-                    if im.format in ("JPEG", "PNG", "WEBP") and max(im.size) > PHOTO_MAX_PX:
+                    if im.format in ("JPEG", "MPO", "PNG", "WEBP") and max(im.size) > PHOTO_MAX_PX:
                         fichiers.append(p)
             except Exception:
                 pass  # pas une image lisible → ignorée
