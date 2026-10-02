@@ -1,0 +1,208 @@
+{# ============================================================
+   🧮 Calculette tactile pour additionner des pesées (tablette).
+   Un seul panneau pour toute la page : chaque bouton
+   .btn-calc-poids ouvre la calculette pour l'input qui le
+   précède dans son .input-group, et « Reporter » y écrit le
+   total (format 12.345, attendu par un input type="number").
+   ============================================================ #}
+<style>
+  #calc-poids-overlay {
+    position: fixed; inset: 0; z-index: 1080;
+    background: rgba(0, 0, 0, .45);
+    display: none; align-items: center; justify-content: center;
+    padding: 12px;
+  }
+  #calc-poids-overlay.ouvert { display: flex; }
+  #calc-poids-panneau {
+    background: var(--bs-body-bg, #fff);
+    border-radius: 12px; width: 100%; max-width: 420px;
+    max-height: 100%; overflow-y: auto;
+    padding: 14px; box-shadow: 0 8px 30px rgba(0, 0, 0, .3);
+  }
+  #calc-poids-pesees { min-height: 2.2rem; }
+  #calc-poids-pesees .badge { font-size: 1rem; font-weight: normal; }
+  #calc-poids-saisie {
+    font-size: 2rem; text-align: right; font-variant-numeric: tabular-nums;
+    border: 1px solid var(--bs-border-color, #ccc); border-radius: 8px;
+    padding: 4px 12px; min-height: 3.2rem;
+  }
+  #calc-poids-clavier {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  }
+  #calc-poids-clavier button { font-size: 1.6rem; min-height: 64px; touch-action: manipulation; }
+  #calc-poids-clavier .calc-double { grid-row: span 2; }
+</style>
+
+<div id="calc-poids-overlay" role="dialog" aria-modal="true" aria-label="Calculette poids">
+  <div id="calc-poids-panneau">
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <strong>🧮 Additionner des pesées (kg)</strong>
+      <button type="button" class="btn-close" data-calc="annuler" aria-label="Fermer"></button>
+    </div>
+
+    <div id="calc-poids-pesees" class="d-flex flex-wrap gap-1 mb-2"></div>
+
+    <div id="calc-poids-saisie" class="mb-2">0</div>
+
+    <div class="d-flex justify-content-between align-items-center mb-2 fs-5">
+      <span>Total :</span>
+      <strong><span id="calc-poids-total">0</span> kg</strong>
+    </div>
+
+    <div id="calc-poids-clavier" class="mb-3">
+      <button type="button" class="btn btn-light border" data-touche="7">7</button>
+      <button type="button" class="btn btn-light border" data-touche="8">8</button>
+      <button type="button" class="btn btn-light border" data-touche="9">9</button>
+      <button type="button" class="btn btn-outline-secondary" data-calc="effacer" title="Effacer le dernier chiffre">⌫</button>
+
+      <button type="button" class="btn btn-light border" data-touche="4">4</button>
+      <button type="button" class="btn btn-light border" data-touche="5">5</button>
+      <button type="button" class="btn btn-light border" data-touche="6">6</button>
+      <button type="button" class="btn btn-outline-danger" data-calc="moins" title="Retirer (tare)">−</button>
+
+      <button type="button" class="btn btn-light border" data-touche="1">1</button>
+      <button type="button" class="btn btn-light border" data-touche="2">2</button>
+      <button type="button" class="btn btn-light border" data-touche="3">3</button>
+      <button type="button" class="btn btn-success calc-double" data-calc="plus" title="Ajouter la pesée">+</button>
+
+      <button type="button" class="btn btn-outline-secondary" data-calc="vider" title="Tout effacer">C</button>
+      <button type="button" class="btn btn-light border" data-touche="0">0</button>
+      <button type="button" class="btn btn-light border" data-touche=",">,</button>
+    </div>
+
+    <div id="calc-poids-erreur" class="text-danger small mb-2"></div>
+
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-outline-secondary btn-lg flex-fill" data-calc="annuler">Annuler</button>
+      <button type="button" class="btn btn-primary btn-lg flex-fill" data-calc="reporter">Reporter le total</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  var overlay = document.getElementById('calc-poids-overlay');
+  var peseesEl = document.getElementById('calc-poids-pesees');
+  var saisieEl = document.getElementById('calc-poids-saisie');
+  var totalEl = document.getElementById('calc-poids-total');
+  var erreurEl = document.getElementById('calc-poids-erreur');
+  var cible = null;     // input Poids visé
+  var pesees = [];      // nombres (négatif = tare retirée)
+  var saisie = '';      // chiffres en cours, virgule comme séparateur
+
+  function arrondi(v) { return Math.round(v * 1000) / 1000; }
+  function affiche(v) { return String(arrondi(v)).replace('.', ','); }
+  function valeurSaisie() { return saisie ? parseFloat(saisie.replace(',', '.')) : null; }
+
+  function total() {
+    var t = pesees.reduce(function (a, b) { return a + b; }, 0);
+    var v = valeurSaisie();
+    if (v) t += v;
+    return arrondi(t);
+  }
+
+  function rafraichir() {
+    saisieEl.textContent = saisie || '0';
+    totalEl.textContent = affiche(total());
+    peseesEl.innerHTML = '';
+    pesees.forEach(function (p, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'badge rounded-pill border-0 ' + (p < 0 ? 'text-bg-danger' : 'text-bg-secondary');
+      b.title = 'Supprimer cette pesée';
+      b.textContent = (p < 0 ? '− ' + affiche(-p) : (i ? '+ ' : '') + affiche(p)) + '  ✕';
+      b.addEventListener('click', function () { pesees.splice(i, 1); rafraichir(); });
+      peseesEl.appendChild(b);
+    });
+  }
+
+  function valider(signe) {
+    var v = valeurSaisie();
+    if (!v) return;
+    pesees.push(signe * v);
+    saisie = '';
+    erreurEl.textContent = '';
+    rafraichir();
+  }
+
+  function touche(t) {
+    erreurEl.textContent = '';
+    if (t === ',') {
+      if (saisie.indexOf(',') !== -1) return;
+      saisie = (saisie || '0') + ',';
+    } else {
+      if (saisie === '0') saisie = '';
+      var dec = saisie.split(',')[1];
+      if ((dec && dec.length >= 3) || saisie.length >= 9) return;
+      saisie += t;
+    }
+    rafraichir();
+  }
+
+  function ouvrir(input) {
+    cible = input;
+    pesees = [];
+    saisie = '';
+    var actuel = parseFloat(String(input.value).replace(',', '.'));
+    if (actuel > 0) pesees.push(actuel);
+    erreurEl.textContent = '';
+    rafraichir();
+    overlay.classList.add('ouvert');
+  }
+
+  function fermer() {
+    overlay.classList.remove('ouvert');
+    cible = null;
+  }
+
+  function reporter() {
+    var t = total();
+    if (!(t > 0)) {
+      erreurEl.textContent = 'Le total doit être supérieur à 0.';
+      return;
+    }
+    cible.value = String(t);   // input type="number" : point décimal
+    cible.dispatchEvent(new Event('input', { bubbles: true }));
+    cible.dispatchEvent(new Event('change', { bubbles: true }));
+    fermer();
+  }
+
+  // Boutons 🧮 : délégation, car les lignes produit sont ajoutées dynamiquement
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.btn-calc-poids');
+    if (!btn) return;
+    var input = btn.closest('.input-group').querySelector('input');
+    if (input) ouvrir(input);
+  });
+
+  overlay.addEventListener('click', function (e) {
+    if (e.target === overlay) { fermer(); return; }
+    var b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.touche) touche(b.dataset.touche);
+    else if (b.dataset.calc === 'plus') valider(1);
+    else if (b.dataset.calc === 'moins') valider(-1);
+    else if (b.dataset.calc === 'effacer') { saisie = saisie.slice(0, -1); rafraichir(); }
+    else if (b.dataset.calc === 'vider') { saisie = ''; pesees = []; rafraichir(); }
+    else if (b.dataset.calc === 'annuler') fermer();
+    else if (b.dataset.calc === 'reporter') reporter();
+  });
+
+  // Clavier physique (poste fixe)
+  document.addEventListener('keydown', function (e) {
+    if (!overlay.classList.contains('ouvert')) return;
+    var k = e.key;
+    if (/^[0-9]$/.test(k)) touche(k);
+    else if (k === ',' || k === '.') touche(',');
+    else if (k === '+') valider(1);
+    else if (k === '-') valider(-1);
+    else if (k === 'Backspace') { saisie = saisie.slice(0, -1); rafraichir(); }
+    else if (k === 'Enter') reporter();
+    else if (k === 'Escape') fermer();
+    else return;
+    e.preventDefault();
+  });
+})();
+</script>

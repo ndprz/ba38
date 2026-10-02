@@ -33,7 +33,10 @@
       </div>
       <div class="mb-3">
         <label class="form-label fw-bold">Poids (kg) *</label>
-        <input type="number" inputmode="decimal" step="any" min="0.01" name="poids_kg_IDXTOKEN" class="form-control form-control-lg" required>
+        <div class="input-group input-group-lg" style="max-width: 280px;">
+          <input type="number" inputmode="decimal" step="any" min="0.01" name="poids_kg_IDXTOKEN" class="form-control" required>
+          <button type="button" class="btn btn-outline-secondary btn-calc-poids" title="Additionner plusieurs pesées">🧮</button>
+        </div>
       </div>
       <div class="row g-3 mb-1">
         <div class="col-6">
@@ -81,6 +84,7 @@
 
 {% include "production_cuisine/_camera_capture_js.html" %}
 {% include "production_cuisine/_temp_toggle_js.html" %}
+{% include "production_cuisine/_calculette_poids.html" %}
 <script>
 (function () {
   var lignesSoumises = {{ lignes_soumises | tojson }};
