@@ -1,0 +1,180 @@
+{# =====================================================
+   Calculette d'aide à la saisie du montant total.
+   À inclure juste après un input-group contenant :
+     - l'input id="montant_total"
+     - un bouton id="btn_calculette_montant"
+   Le résultat est reporté dans #montant_total (format "12,34")
+   et un évènement "input" est déclenché pour que les
+   écouteurs existants (ex. updateDevis) se mettent à jour.
+   ===================================================== #}
+
+<div id="calculette_montant"
+     class="card mt-2 d-none"
+     style="max-width: 36rem;">
+
+    <div class="card-header bg-light d-flex justify-content-between align-items-center py-1">
+        <span>🧮 Calculette — additionner plusieurs montants</span>
+        <button type="button"
+                class="btn-close"
+                aria-label="Fermer"
+                id="calculette_fermer"></button>
+    </div>
+
+    <div class="card-body py-2">
+
+        <div class="small text-muted mb-2">
+            Saisissez un montant par ligne (virgule ou point acceptés).
+            Une ligne peut aussi contenir un calcul simple, ex. <code>3 x 4,20</code> ou <code>-5</code> pour une remise.
+        </div>
+
+        <div id="calculette_lignes"></div>
+
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary mt-1"
+                id="calculette_ajouter">
+            ➕ Ajouter une ligne
+        </button>
+
+        <div class="d-flex justify-content-between align-items-center mt-2 pt-2 border-top">
+            <strong>Total : <span id="calculette_total">0,00</span> €</strong>
+            <button type="button"
+                    class="btn btn-sm btn-primary"
+                    id="calculette_reporter">
+                Reporter dans le montant total
+            </button>
+        </div>
+
+        <div id="calculette_erreur"
+             class="small text-danger mt-1"></div>
+
+    </div>
+
+</div>
+
+<script>
+(function(){
+
+    // Évalue une ligne : nombre, ou calcul avec + - x * / et parenthèses.
+    // Renvoie null si vide, NaN si invalide.
+    function evaluerLigne(texte){
+        let s = (texte || "").trim();
+        if (s === "") return null;
+        s = s.replace(/\s+/g, "")
+             .replace(/€/g, "")
+             .replace(/,/g, ".")
+             .replace(/[x×]/gi, "*")
+             .replace(/÷/g, "/");
+        if (!/^[0-9.+\-*/()]+$/.test(s)) return NaN;
+        try {
+            const v = Function('"use strict"; return (' + s + ');')();
+            return (typeof v === "number" && isFinite(v)) ? v : NaN;
+        } catch (e) {
+            return NaN;
+        }
+    }
+
+    function formater(v){
+        return v.toFixed(2).replace(".", ",");
+    }
+
+    document.addEventListener("DOMContentLoaded", function(){
+
+        const panneau  = document.getElementById("calculette_montant");
+        const lignes   = document.getElementById("calculette_lignes");
+        const totalEl  = document.getElementById("calculette_total");
+        const erreurEl = document.getElementById("calculette_erreur");
+        const champ    = document.getElementById("montant_total");
+        const bouton   = document.getElementById("btn_calculette_montant");
+
+        if (!panneau || !champ || !bouton) return;
+
+        function calculer(){
+            let total = 0;
+            let invalide = false;
+            lignes.querySelectorAll(".calc-montant").forEach(function(inp){
+                const v = evaluerLigne(inp.value);
+                inp.classList.toggle("is-invalid", Number.isNaN(v));
+                if (Number.isNaN(v)) invalide = true;
+                else if (v !== null) total += v;
+            });
+            total = Math.round(total * 100) / 100;
+            totalEl.textContent = formater(total);
+            erreurEl.textContent = invalide
+                ? "Une ou plusieurs lignes ne sont pas valides (en rouge)."
+                : "";
+            return invalide ? null : total;
+        }
+
+        function ajouterLigne(valeur){
+            const div = document.createElement("div");
+            div.className = "input-group input-group-sm mb-1";
+            div.innerHTML =
+                '<input type="text" class="form-control calc-libelle" placeholder="Libellé (facultatif)">' +
+                '<input type="text" inputmode="decimal" class="form-control calc-montant text-end" placeholder="0,00" style="max-width:9rem">' +
+                '<span class="input-group-text">€</span>' +
+                '<button type="button" class="btn btn-outline-danger calc-suppr" title="Supprimer la ligne">✕</button>';
+            const inp = div.querySelector(".calc-montant");
+            if (valeur) inp.value = valeur;
+            inp.addEventListener("input", calculer);
+            inp.addEventListener("keydown", function(e){
+                // Entrée : nouvelle ligne au lieu de soumettre le formulaire
+                if (e.key === "Enter"){
+                    e.preventDefault();
+                    ajouterLigne().querySelector(".calc-montant").focus();
+                }
+            });
+            div.querySelector(".calc-libelle").addEventListener("keydown", function(e){
+                if (e.key === "Enter") e.preventDefault();
+            });
+            div.querySelector(".calc-suppr").addEventListener("click", function(){
+                div.remove();
+                if (!lignes.children.length) ajouterLigne();
+                calculer();
+            });
+            lignes.appendChild(div);
+            return div;
+        }
+
+        bouton.addEventListener("click", function(){
+            const ouvrir = panneau.classList.contains("d-none");
+            panneau.classList.toggle("d-none", !ouvrir);
+            if (ouvrir && !lignes.children.length){
+                // Reprend le montant déjà saisi comme première ligne
+                const actuel = evaluerLigne(champ.value);
+                ajouterLigne(actuel ? formater(actuel) : "");
+                ajouterLigne();
+                calculer();
+            }
+            if (ouvrir){
+                const vides = Array.from(lignes.querySelectorAll(".calc-montant"))
+                                   .filter(function(i){ return !i.value; });
+                (vides[0] || lignes.querySelector(".calc-montant")).focus();
+            }
+        });
+
+        document.getElementById("calculette_fermer").addEventListener("click", function(){
+            panneau.classList.add("d-none");
+        });
+
+        document.getElementById("calculette_ajouter").addEventListener("click", function(){
+            ajouterLigne().querySelector(".calc-montant").focus();
+        });
+
+        document.getElementById("calculette_reporter").addEventListener("click", function(){
+            const total = calculer();
+            if (total === null) return;
+            if (total < 0){
+                erreurEl.textContent = "Le total ne peut pas être négatif.";
+                return;
+            }
+            champ.value = formater(total);
+            champ.dispatchEvent(new Event("input", { bubbles: true }));
+            champ.dispatchEvent(new Event("change", { bubbles: true }));
+            panneau.classList.add("d-none");
+            champ.focus();
+        });
+
+    });
+
+})();
+</script>

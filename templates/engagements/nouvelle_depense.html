@@ -287,6 +287,7 @@ Nouvelle demande d'engagement
 
         </label>
 
+        <div class="input-group" style="max-width: 16rem;">
         <input type="text"
                inputmode="decimal"
                pattern="[0-9]+([.,][0-9]{1,2})?"
@@ -299,6 +300,16 @@ Nouvelle demande d'engagement
                     ''
                ) }}"
                required>
+
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    id="btn_calculette_montant"
+                    title="Calculette : additionner plusieurs montants">
+                🧮
+            </button>
+        </div>
+
+        {% include "engagements/_calculette_montant.html" %}
 
     </div>
 

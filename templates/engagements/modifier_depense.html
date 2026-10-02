@@ -159,6 +159,7 @@ Modifier engagement #{{ engagement.id }}
 
         </label>
 
+        <div class="input-group" style="max-width: 16rem;">
         <input type="text"
                inputmode="decimal"
                pattern="[0-9]+([.,][0-9]{1,2})?"
@@ -168,6 +169,16 @@ Modifier engagement #{{ engagement.id }}
                placeholder="ex : 45,60"
                value="{{ '%.2f'|format(engagement.montant_total or 0)|replace('.', ',') }}"
                required>
+
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    id="btn_calculette_montant"
+                    title="Calculette : additionner plusieurs montants">
+                🧮
+            </button>
+        </div>
+
+        {% include "engagements/_calculette_montant.html" %}
 
     </div>
 
