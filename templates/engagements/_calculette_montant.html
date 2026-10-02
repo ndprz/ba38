@@ -136,6 +136,11 @@
         }
 
         bouton.addEventListener("click", function(){
+            if (champ.readOnly){
+                // Déplacement : montant calculé par la note de frais
+                alert("Pour un déplacement, le montant total est calculé automatiquement à partir des kilomètres, péages et repas.");
+                return;
+            }
             const ouvrir = panneau.classList.contains("d-none");
             panneau.classList.toggle("d-none", !ouvrir);
             if (ouvrir && !lignes.children.length){
@@ -162,7 +167,7 @@
 
         document.getElementById("calculette_reporter").addEventListener("click", function(){
             const total = calculer();
-            if (total === null) return;
+            if (total === null || champ.readOnly) return;
             if (total < 0){
                 erreurEl.textContent = "Le total ne peut pas être négatif.";
                 return;

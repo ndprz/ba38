@@ -530,7 +530,7 @@ function updateDevis() {
         parseFloat(
             document.getElementById(
                 "montant_total"
-            ).value
+            ).value.replace(",", ".")
         ) || 0;
 
     const typeDepense =
