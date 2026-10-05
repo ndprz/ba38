@@ -916,6 +916,19 @@ def get_drive_folder_id_from_path(drive_path, shared_drive_id):
 # 📧 MAILJET
 # ============================================================================
 
+def adresse_test_utilisateur():
+    """
+    Adresse de destination des envois en mode TEST : l'email de
+    l'utilisateur connecté (pour qu'il retrouve ses propres tests dans sa
+    boîte), avec repli sur MAIL_TEST_TO hors contexte de requête ou si
+    personne n'est authentifié. À appeler dans la route (contexte de
+    requête), AVANT de lancer un Thread d'envoi en arrière-plan.
+    """
+    if has_request_context() and current_user and current_user.is_authenticated and current_user.email:
+        return current_user.email
+    return os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org")
+
+
 def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None, is_html=False, bcc=None, cc=None, attachment_paths=None, sender_name=None, reply_to=None, current_user_email=None,
                  attachment_filename=None):
 

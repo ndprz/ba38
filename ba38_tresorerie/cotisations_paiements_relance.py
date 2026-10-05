@@ -6,7 +6,7 @@ from ba38_utilitaires.taches_fond import lancer_tache_fond
 from flask import request, render_template, flash, redirect, url_for, session, current_app
 from flask_login import login_required, current_user
 
-from ba38_utilitaires.core import get_db_path, write_log, envoyer_mail, split_emails, prefixer_sujet_association, require_access, get_google_services
+from ba38_utilitaires.core import adresse_test_utilisateur, get_db_path, write_log, envoyer_mail, split_emails, prefixer_sujet_association, require_access, get_google_services
 
 from ba38_tresorerie import tresorerie_bp
 from ba38_tresorerie.drive_utils import get_pdf_by_code_vif
@@ -283,10 +283,7 @@ def cotisations_relance_start():
         os.getenv("MAIL_MODE", "PROD").upper()
     )
 
-    mail_test_to = os.getenv(
-        "MAIL_TEST_TO",
-        "ba380.informatique2@banquealimentaire.org"
-    )
+    mail_test_to = adresse_test_utilisateur()
 
     mail_sender = request.args.get(
         "mail_sender",
@@ -525,10 +522,7 @@ def cotisations_relance():
             os.getenv("MAIL_MODE", "PROD").upper()
         )
 
-        mail_test_to = os.getenv(
-            "MAIL_TEST_TO",
-            "ba380.informatique2@banquealimentaire.org"
-        )
+        mail_test_to = adresse_test_utilisateur()
 
         FOLDER_ID_FACTURES = os.getenv("GDRIVE_FACTURES_PDF_FOLDER_ID")
 

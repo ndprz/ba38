@@ -16,7 +16,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 
-from ba38_utilitaires.core import get_db_path, require_access, write_log, envoyer_mail, render_modele_email, split_emails, mailjet_get_message_status, prefixer_sujet_association, nom_piece_jointe_facture
+from ba38_utilitaires.core import adresse_test_utilisateur, get_db_path, require_access, write_log, envoyer_mail, render_modele_email, split_emails, mailjet_get_message_status, prefixer_sujet_association, nom_piece_jointe_facture
 from ba38_utilitaires.organisation import get_organisation
 
 from ba38_tresorerie import tresorerie_bp
@@ -531,7 +531,7 @@ def cotisations_v2_resultats(campagne_id):
 
     reste_a_envoyer = any(f["email"] and not f["mail_envoye_le"] for f in factures)
     mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
-    mail_test_to = os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org")
+    mail_test_to = adresse_test_utilisateur()
     montant_total_campagne = sum(f["montant"] or 0 for f in factures)
 
     return render_template(
@@ -688,7 +688,7 @@ def cotisations_v2_envoyer(campagne_id):
         })
 
     mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
-    mail_test_to = os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org")
+    mail_test_to = adresse_test_utilisateur()
 
     app_reel = current_app._get_current_object()
     current_user_email = current_user.email

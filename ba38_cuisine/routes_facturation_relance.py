@@ -15,6 +15,7 @@ from flask import current_app, flash, redirect, render_template, request, url_fo
 from flask_login import current_user, login_required
 
 from ba38_utilitaires.core import (
+    adresse_test_utilisateur,
     envoyer_mail, get_db_path, mailjet_get_message_status, split_emails, upload_database, write_log,
 )
 from ba38_utilitaires.taches_fond import lancer_tache_fond
@@ -122,7 +123,7 @@ def facturation_relance(campagne_id):
         numero_relance = 0
     numero_relance = max(0, min(numero_relance, NIVEAUX_RELANCE - 1))
     mail_mode = mail_mode_courant()
-    mail_test_to = os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org")
+    mail_test_to = adresse_test_utilisateur()
 
     with _connect() as conn:
         campagne = conn.execute("SELECT * FROM cuisine_factures_campagnes WHERE id = ?", (campagne_id,)).fetchone()

@@ -29,6 +29,7 @@ from flask import (
 from flask_login import current_user, login_required
 
 from ba38_utilitaires.core import (
+    adresse_test_utilisateur,
     get_db_path, has_access, mailjet_get_message_status, render_modele_email, split_emails,
     upload_database, write_log, envoyer_mail,
 )
@@ -475,7 +476,7 @@ def facturation_resultats(campagne_id):
         reste_a_envoyer=any(f["email"] and (not f["mail_envoye_le"] or f["mail_mode_test"] or f["mail_erreur"])
                             for f in emises),
         mail_mode=mail_mode_courant(),
-        mail_test_to=os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org"),
+        mail_test_to=adresse_test_utilisateur(),
         euros=euros, date_fr=date_fr,
     )
 
@@ -789,7 +790,7 @@ def facturation_envoyer(campagne_id):
             "modele_id": modele["id"],
         })
     mail_mode = mail_mode_courant()
-    mail_test_to = os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org")
+    mail_test_to = adresse_test_utilisateur()
     current_user_email = current_user.email
     lancer_tache_fond(
         target=envoyer_factures_cuisine_background,

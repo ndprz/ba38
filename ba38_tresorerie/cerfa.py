@@ -10,7 +10,7 @@ from reportlab.pdfgen import canvas
 from flask import request, render_template, flash, redirect, url_for, session
 from flask_login import login_required
 
-from ba38_utilitaires.core import write_log, envoyer_mail, require_access
+from ba38_utilitaires.core import adresse_test_utilisateur, write_log, envoyer_mail, require_access
 from ba38_utilitaires.organisation import get_organisation
 
 from ba38_tresorerie import tresorerie_bp
@@ -30,10 +30,7 @@ def cerfa():
         os.getenv("MAIL_MODE", "TEST").upper()
     )
 
-    mail_test_to = os.getenv(
-        "MAIL_TEST_TO",
-        "ba380.informatique2@banquealimentaire.org"
-    )
+    mail_test_to = adresse_test_utilisateur()
 
     preview = []
 

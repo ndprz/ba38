@@ -14,7 +14,7 @@ from flask import (
 )
 from flask_login import login_required, current_user
 
-from ba38_utilitaires.core import get_db_path, write_log, envoyer_mail, require_access, render_modele_email
+from ba38_utilitaires.core import adresse_test_utilisateur, get_db_path, write_log, envoyer_mail, require_access, render_modele_email
 
 from ba38_tresorerie import tresorerie_bp
 
@@ -287,10 +287,7 @@ def factures_pdf():
         os.getenv("MAIL_MODE", "TEST").upper()
     )
 
-    mail_test_to = os.getenv(
-        "MAIL_TEST_TO",
-        "ba380.informatique2@banquealimentaire.org"
-    )
+    mail_test_to = adresse_test_utilisateur()
 
     mail_sender = session.get(
         "factures_sender",
@@ -564,7 +561,7 @@ def factures_envoyer(lot_id):
         return redirect(url_for("tresorerie.factures_resultats", lot_id=lot_id))
 
     mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
-    mail_test_to = os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org")
+    mail_test_to = adresse_test_utilisateur()
 
     items = [{
         "envoi_id": r["id"],

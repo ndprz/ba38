@@ -29,7 +29,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from pathlib import Path
 
-from ba38_utilitaires.core import get_db_path, require_access, write_log, envoyer_mail, render_modele_email, mailjet_get_message_status, split_emails, prefixer_sujet_association, nom_piece_jointe_facture
+from ba38_utilitaires.core import adresse_test_utilisateur, get_db_path, require_access, write_log, envoyer_mail, render_modele_email, mailjet_get_message_status, split_emails, prefixer_sujet_association, nom_piece_jointe_facture
 from ba38_utilitaires.gmail_send import envoyer_mail_gmail, GmailSendError
 from ba38_utilitaires.organisation import get_organisation
 
@@ -809,7 +809,7 @@ def resultats(campagne_id):
 
     reste_a_envoyer = any(f["email"] and not f["mail_envoye_le"] for f in factures)
     mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
-    mail_test_to = os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org")
+    mail_test_to = adresse_test_utilisateur()
     montant_total_campagne = sum(f["montant_total"] or 0 for f in factures)
 
     return render_template(
@@ -889,7 +889,7 @@ def envoyer(campagne_id):
         })
 
     mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
-    mail_test_to = os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org")
+    mail_test_to = adresse_test_utilisateur()
 
     app_reel = current_app._get_current_object()
     current_user_email = current_user.email
@@ -1307,7 +1307,7 @@ def envoyer_relances_participation_background(app, db_path, items, sujet_modele,
 def relance_start(campagne_id):
 
     mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
-    mail_test_to = os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org")
+    mail_test_to = adresse_test_utilisateur()
     mail_sender = request.args.get("mail_sender", "ba380.comptable@banquealimentaire.org")
     numero_relance = int(request.args.get("numero_relance", 0))
 
@@ -1375,7 +1375,7 @@ def relance(campagne_id):
 
         mail_sender = request.form.get("mail_sender", "ba380.comptable@banquealimentaire.org")
         mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
-        mail_test_to = os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org")
+        mail_test_to = adresse_test_utilisateur()
 
         conn = sqlite3.connect(get_db_path())
         conn.row_factory = sqlite3.Row

@@ -7,7 +7,7 @@ from ba38_utilitaires.taches_fond import lancer_tache_fond
 from flask import request, render_template, flash, redirect, url_for, session, current_app
 from flask_login import login_required, current_user
 
-from ba38_utilitaires.core import get_db_path, write_log, envoyer_mail, split_emails, prefixer_sujet_association, nom_piece_jointe_facture, require_access, mailjet_get_message_status
+from ba38_utilitaires.core import adresse_test_utilisateur, get_db_path, write_log, envoyer_mail, split_emails, prefixer_sujet_association, nom_piece_jointe_facture, require_access, mailjet_get_message_status
 from ba38_utilitaires.gmail_send import envoyer_mail_gmail, GmailSendError
 
 from ba38_tresorerie import tresorerie_bp
@@ -176,7 +176,7 @@ def envoyer_relances_cotisations_v2_background(app, db_path, items, sujet_modele
 def cotisations_v2_relance_start(campagne_id):
 
     mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
-    mail_test_to = os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org")
+    mail_test_to = adresse_test_utilisateur()
     mail_sender = request.args.get("mail_sender", "ba380.comptable@banquealimentaire.org")
     numero_relance = int(request.args.get("numero_relance", 0))
 
@@ -244,7 +244,7 @@ def cotisations_v2_relance(campagne_id):
 
         mail_sender = request.form.get("mail_sender", "ba380.comptable@banquealimentaire.org")
         mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
-        mail_test_to = os.getenv("MAIL_TEST_TO", "ba380.informatique2@banquealimentaire.org")
+        mail_test_to = adresse_test_utilisateur()
 
         conn = sqlite3.connect(get_db_path())
         conn.row_factory = sqlite3.Row
