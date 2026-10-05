@@ -81,7 +81,7 @@
 
 <!-- Affichage recap des STATUTS -->
 
-{% set ns = namespace(valid=0, avalider=0, non=0, revoir=0, absent=0, total=0) %}
+{% set ns = namespace(valid=0, avalider=0, non=0, exclu=0, revoir=0, absent=0, total=0) %}
 
 {% for l in lignes %}
 {% set statut = (l.statut_csv or '')|lower %}
@@ -96,6 +96,9 @@
 {% elif statut == "a valider" %}
 {% set ns.avalider = ns.avalider + 1 %}
 
+{% elif statut == "non reçu" and l.exclure_envoi_mail %}
+{% set ns.exclu = ns.exclu + 1 %}
+
 {% elif statut == "non reçu" %}
 {% set ns.non = ns.non + 1 %}
 
@@ -107,32 +110,37 @@
 <div class="kpi-container">
 
     <div class="kpi-box kpi-valid" onclick="filterStatut('valide')">
-        <div class="kpi-value">{{ ns.valid }}</div>
+        <div class="kpi-value" id="kpi-valide">{{ ns.valid }}</div>
         <div class="kpi-label">✔ Validés</div>
     </div>
 
     <div class="kpi-box kpi-avalider" onclick="filterStatut('avalider')">
-        <div class="kpi-value">{{ ns.avalider }}</div>
+        <div class="kpi-value" id="kpi-avalider">{{ ns.avalider }}</div>
         <div class="kpi-label">🕓 À valider</div>
     </div>
 
     <div class="kpi-box kpi-non" onclick="filterStatut('non')">
-        <div class="kpi-value">{{ ns.non }}</div>
+        <div class="kpi-value" id="kpi-non">{{ ns.non }}</div>
         <div class="kpi-label">✖ Non reçus</div>
     </div>
 
+    <div class="kpi-box kpi-exclu" onclick="filterStatut('exclu')" title="Non reçus exclus de l'envoi mail (🚫)">
+        <div class="kpi-value" id="kpi-exclu">{{ ns.exclu }}</div>
+        <div class="kpi-label">🚫 Non reçus exclus</div>
+    </div>
+
     <div class="kpi-box kpi-revoir" onclick="filterStatut('revoir')">
-        <div class="kpi-value">{{ ns.revoir }}</div>
+        <div class="kpi-value" id="kpi-revoir">{{ ns.revoir }}</div>
         <div class="kpi-label">⚠ À revoir</div>
     </div>
 
     <div class="kpi-box kpi-absent" onclick="filterStatut('absent')">
-        <div class="kpi-value">{{ ns.absent }}</div>
+        <div class="kpi-value" id="kpi-absent">{{ ns.absent }}</div>
         <div class="kpi-label">📭 Absents AMS</div>
     </div>
 
     <div class="kpi-box kpi-total" onclick="filterStatut('all')">
-        <div class="kpi-value">{{ ns.total }}</div>
+        <div class="kpi-value" id="kpi-all">{{ ns.total }}</div>
         <div class="kpi-label">Total</div>
     </div>
 
@@ -168,7 +176,7 @@
 
         <tbody>
             {% for l in lignes %}
-            <tr data-statut="{{ (l.statut_csv or '')|lower }}" data-present="{{ l.present_csv }}">
+            <tr data-statut="{{ (l.statut_csv or '')|lower }}" data-present="{{ l.present_csv }}" data-exclu="{{ 1 if l.exclure_envoi_mail else 0 }}">
 
                 <td>{{ l.nom_association }}</td>
                 <td>{{ l.code_vif }}</td>
@@ -305,6 +313,8 @@
             })
             .then(r => r.json())
             .then(data => {
+                this.closest("tr").dataset.exclu = data.exclure ? "1" : "0";
+                majKpis();
                 if (data.exclure) {
                     this.classList.remove("btn-outline-secondary");
                     this.classList.add("btn-danger");
@@ -319,6 +329,29 @@
             });
         });
     });
+
+    // Même logique que le calcul Jinja : catégorie unique par ligne
+    function categorieLigne(row) {
+        const statut = (row.dataset.statut || "").toLowerCase();
+        if (row.dataset.present == "0") return "absent";
+        if (statut === "validé") return "valide";
+        if (statut === "a valider") return "avalider";
+        if (statut === "non reçu") return row.dataset.exclu === "1" ? "exclu" : "non";
+        if (statut === "a revoir") return "revoir";
+        return null;
+    }
+
+    function majKpis() {
+        const nb = { valide: 0, avalider: 0, non: 0, exclu: 0, revoir: 0, absent: 0 };
+        document.querySelectorAll("tbody tr").forEach(row => {
+            const c = categorieLigne(row);
+            if (c) nb[c]++;
+        });
+        Object.keys(nb).forEach(k => {
+            const el = document.getElementById("kpi-" + k);
+            if (el) el.textContent = nb[k];
+        });
+    }
 
     function filterStatut(type) {
 
@@ -347,8 +380,8 @@
                 show = (statut === "a valider");
             }
 
-            else if (type === "non") {
-                show = (statut === "non reçu");
+            else if (type === "non" || type === "exclu") {
+                show = (categorieLigne(row) === type);
             }
 
             else if (type === "revoir") {

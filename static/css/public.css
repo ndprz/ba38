@@ -858,6 +858,10 @@ select:disabled {
     color: #6c757d;
 }
 
+.kpi-exclu .kpi-value {
+    color: #8b2c35;
+}
+
 .kpi-total .kpi-value {
     color: #000;
 }
