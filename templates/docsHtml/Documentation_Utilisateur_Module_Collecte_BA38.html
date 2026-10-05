@@ -57,6 +57,12 @@ chaque fichier Google Sheets, celui-ci devant être partagé en « Toute
 personne disposant du lien »). Tant qu’un lien n’est pas renseigné pour
 l’année en cours, la génération des documents réels reste
 désactivée.</p>
+<p>Depuis peu, deux blocs identiques sont proposés : un pour l’année en
+cours, un pour l’année précédente (utile par exemple pour recontacter
+les anciens trieurs avant que le planning de l’année en cours existe).
+Un nouveau fichier « Liste des colis » est aussi demandé — colis
+affectés à chaque magasin collecté, utilisé par le contrôle « Colis
+manquants » lors de la génération des documents réels.</p>
 <h2 id="fichiers-nécessaires-à-la-simulation">1.2 Fichiers nécessaires à
 la simulation</h2>
 <p>Deux fichiers sont à importer pour pouvoir lancer une simulation,
@@ -73,6 +79,13 @@ magasins ajoutés ou arrêtés cette année — les camions (codes et noms) en
 sont aussi extraits directement, aucun fichier véhicules séparé n’est
 nécessaire ici.</p></li>
 </ul>
+<h2 id="mercuriale">1.3 Mercuriale</h2>
+<p>Une fois la pesée palox terminée, déposer le rapport de prix
+mercuriale (export VIF, fichier texte) pour l’année en cours et, si
+besoin, l’année précédente — deux zones de dépôt séparées dans cette
+même page. Cette mercuriale sert à valoriser en euros la pesée palox et
+les quantités par produit des associations gardant leur collecte. Le nom
+du fichier déjà importé et sa date restent affichés en permanence.</p>
 <h1 id="gestion-magasins">2. Gestion magasins</h1>
 <h2 id="gestion-des-autorisations">2.1 Gestion des autorisations</h2>
 <p>Le bouton « ✍️ Gérer les envois » ouvre la liste des magasins ayant
@@ -164,6 +177,13 @@ invalides » en haut de la carte — corriger alors l’adresse (ou, pour une
 association, ajouter une adresse de distribution) directement dans le
 référentiel source, puis revenir sur la carte pour vérifier la
 correction.</p>
+<h2 id="référentiel-magasins-collecte">2.4 Référentiel magasins
+collecte</h2>
+<p>Sous Gestion magasins, cette page liste tous les magasins du
+référentiel pluriannuel : ceux réellement collectés cette année (avec
+leur adresse mail si disponible) et ceux qui ne le sont plus (« Non
+collecté »), pour garder une trace complète d’une année sur l’autre. Un
+bouton permet de télécharger la liste en Excel.</p>
 <h1 id="gestion-tournées">3. Gestion tournées</h1>
 <h2 id="lancer-une-simulation">3.1 Lancer une simulation</h2>
 <p>Une fois les deux fichiers importés, le bouton « 🚀 Générer les
@@ -555,8 +575,50 @@ une ligne par produit et une colonne par association — la liste des
 produits est lue directement dans le classeur modèle Excel envoyé aux
 associations, pour rester à jour automatiquement s’il évolue. Comme pour
 les poids par magasin, chaque case est enregistrée automatiquement, avec
-un bouton « 💾 Enregistrer » en secours.</p>
-<h1 id="bonnes-pratiques">6. Bonnes pratiques</h1>
+un bouton « 💾 Enregistrer » en secours. Deux colonnes supplémentaires
+affichent le poids total (toutes associations confondues) et la valeur
+en euros de chaque produit, dès que la mercuriale de l’année a été
+importée.</p>
+<h2 id="pesée-palox-synthèse">5.7 Pesée palox — synthèse</h2>
+<p>Accessible depuis Résultat collecte, cet écran liste les catégories
+de produit avec, pour chacune, le nombre de palox déjà pesés, le poids
+total, le % du total et la valeur en euros (si la mercuriale a été
+importée) — total général affiché en haut. Un clic sur une catégorie
+ouvre directement la pesée, sans changer de page (le mode plein écran,
+s’il est activé, n’est donc jamais interrompu).</p>
+<h2 id="poste-de-pesée">5.8 Poste de pesée</h2>
+<p>Dans la fenêtre qui s’ouvre : le numéro de palox proposé peut être
+modifié si besoin, le poids doit respecter les bornes définies pour
+cette catégorie (nombre entier, minimum et maximum). Valider déclenche
+l’enregistrement puis l’impression immédiate de la feuille — aucune
+autre manipulation n’est nécessaire une fois le poste configuré en mode
+kiosque d’impression (voir Bonnes pratiques). Les derniers palox saisis
+restent visibles en dessous, avec la possibilité de corriger un poids ou
+de supprimer une pesée erronée, et un bouton pour réinitialiser la
+numérotation en début de collecte.</p>
+<h2 id="catégories-et-mise-en-page-de-létiquette">5.9 Catégories et mise
+en page de l’étiquette</h2>
+<p>Le bouton ⚙️ Catégories permet d’ajuster, pour chaque catégorie de
+produit : son code VIF, les bornes de poids acceptées, et surtout la
+mise en page de l’étiquette imprimée — une liste de lignes de texte
+modifiables (taille de police, gras), avec des espaces réservés comme
+&lt;&lt;numero&gt;&gt; ou &lt;&lt;poids&gt;&gt; remplacés
+automatiquement à l’impression. Un aperçu permet de tester sans attendre
+une vraie pesée.</p>
+<h2 id="mercuriale-1">5.10 Mercuriale</h2>
+<p>Le rapport de prix mercuriale (export VIF, fichier texte) se dépose
+dans Paramètres, pas ici — voir §1.3. Il valorise en euros aussi bien la
+pesée palox que les quantités par produit des associations gardant leur
+collecte.</p>
+<h1 id="participants">6. Participants</h1>
+<h2 id="mail-aux-trieurs-année-précédente">6.1 Mail aux trieurs (année
+précédente)</h2>
+<p>Cette page retrouve les personnes affectées au tri à l’entrepôt
+(camion « V090 ») dans le planning véhicules de l’année précédente, pour
+les recontacter avant que le planning de l’année en cours existe. Le
+texte du mail est modifiable (repère &lt;&lt;nom&gt;&gt;), avec aperçu
+et envoi de test avant l’envoi réel à tous les destinataires.</p>
+<h1 id="bonnes-pratiques">7. Bonnes pratiques</h1>
 <ul>
 <li><p>Toujours vérifier les onglets de contrôle du classeur Excel avant
 impression des documents de production.</p></li>

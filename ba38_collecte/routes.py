@@ -1786,11 +1786,11 @@ def _decouper_html_par_h1(chemin):
 def _decouper_html_par_h2(fragment_html):
     """Comme _decouper_html_par_h1, mais découpe un fragment déjà extrait
     (donc sans <h1> à l'intérieur) sur ses titres de niveau 2, sous la clé
-    "N" pour un titre "9.N ..." (dernier chiffre après le point), ou sous
-    son texte exact sinon. Utilisé pour répartir la section « 9. Règles
-    fonctionnelles détaillées » (numérotée 9.1 à 9.5) vers les 5 mêmes
+    "N" pour un titre "10.N ..." (dernier chiffre après le point), ou sous
+    son texte exact sinon. Utilisé pour répartir la section « 10. Règles
+    fonctionnelles détaillées » (numérotée 10.1 à 10.5) vers les 5 mêmes
     clés que le reste du manuel, plutôt que de rester isolée sous la clé
-    "9" où aucune modale ne l'afficherait."""
+    "10" où aucune modale ne l'afficherait."""
     if not fragment_html:
         return {}
     racine = _lxml_html.fromstring(f"<div>{fragment_html}</div>")
@@ -1804,7 +1804,7 @@ def _decouper_html_par_h2(fragment_html):
     for element in racine.iterchildren():
         if element.tag == "h2":
             sections[cle_courante] = serialiser(elements_courants)
-            correspondance = re.match(r"9\.(\d+)", element.text_content().strip())
+            correspondance = re.match(r"10\.(\d+)", element.text_content().strip())
             cle_courante = correspondance.group(1) if correspondance else element.text_content().strip()
             elements_courants = [element]
         else:
@@ -1815,46 +1815,48 @@ def _decouper_html_par_h2(fragment_html):
 
 def _sections_aide_collecte():
     """Aide utilisateur du module Collecte, découpée par sujet (clés "1" à
-    "5", une par section de la page d'accueil) — la clé "intro" regroupe la
+    "6", une par section de la page d'accueil) — la clé "intro" regroupe la
     présentation générale, l'accès, la légende des couleurs et les bonnes
-    pratiques (§6), pour n'afficher qu'une présentation générale sur la
+    pratiques (§7), pour n'afficher qu'une présentation générale sur la
     page d'accueil et l'aide propre à chaque sujet dans ce sujet."""
     chemin = os.path.join(
         current_app.root_path, "templates", "docsHtml", DOCUMENTS_AIDE_COLLECTE["aide"]["html"]
     )
     brut = _decouper_html_par_h1(chemin)
     return {
-        "intro": brut.get("intro", "") + brut.get("6", ""),
+        "intro": brut.get("intro", "") + brut.get("7", ""),
         "1": brut.get("1", ""),
         "2": brut.get("2", ""),
         "3": brut.get("3", ""),
         "4": brut.get("4", ""),
         "5": brut.get("5", ""),
+        "6": brut.get("6", ""),
     }
 
 
 def _sections_manuel_collecte():
     """Manuel d'utilisation détaillé, découpé de la même façon que l'aide
     (cf. _sections_aide_collecte) — la clé "intro" regroupe ici
-    l'introduction générale, le déroulé type d'une campagne (§6) et le
-    glossaire (§8) ; les bonnes pratiques (§7) ne sont pas reprises ici
+    l'introduction générale, le déroulé type d'une campagne (§7) et le
+    glossaire (§9) ; les bonnes pratiques (§8) ne sont pas reprises ici
     (déjà dans l'aide générale, pour éviter la redite). La section
-    « 9. Règles fonctionnelles détaillées » (numérotée 9.1 à 9.5) est
+    « 10. Règles fonctionnelles détaillées » (numérotée 10.1 à 10.5) est
     répartie dans les mêmes clés "1" à "5" que le reste du manuel — sans
-    quoi elle resterait isolée sous la clé "9", jamais affichée nulle
+    quoi elle resterait isolée sous la clé "10", jamais affichée nulle
     part (cf. _decouper_html_par_h2)."""
     chemin = os.path.join(
         current_app.root_path, "templates", "docsHtml", DOCUMENTS_AIDE_COLLECTE["manuel"]["html"]
     )
     brut = _decouper_html_par_h1(chemin)
-    regles = _decouper_html_par_h2(brut.get("9", ""))
+    regles = _decouper_html_par_h2(brut.get("10", ""))
     return {
-        "intro": brut.get("Introduction", "") + brut.get("6", "") + brut.get("8", ""),
+        "intro": brut.get("Introduction", "") + brut.get("7", "") + brut.get("9", ""),
         "1": brut.get("1", "") + regles.get("1", ""),
         "2": brut.get("2", "") + regles.get("2", ""),
         "3": brut.get("3", "") + regles.get("3", ""),
         "4": brut.get("4", "") + regles.get("4", ""),
         "5": brut.get("5", "") + regles.get("5", ""),
+        "6": brut.get("6", ""),
     }
 
 

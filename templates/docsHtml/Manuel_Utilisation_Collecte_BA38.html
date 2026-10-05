@@ -85,6 +85,15 @@ chaque fichier Google Sheets, celui-ci devant être partagé en « Toute
 personne disposant du lien »). Tant qu’un lien n’est pas renseigné pour
 l’année en cours, la génération des documents réels reste
 désactivée.</p>
+<p>Deux blocs identiques sont proposés : un pour l’année en cours, un
+pour l’année précédente (utile notamment pour recontacter les anciens
+trieurs avant que le planning de l’année en cours existe). Un fichier «
+Liste des colis » est également demandé — il sert au contrôle « Colis
+manquants » de la génération des documents réels (§10.3). Une carte «
+Mercuriale » permet par ailleurs de déposer, pour l’année en cours et
+l’année précédente séparément, le rapport de prix VIF qui valorise en
+euros la pesée palox et les quantités par produit (voir §10.1, §10.4,
+§10.5).</p>
 <h2 id="fichiers-nécessaires-à-la-simulation">1.3 Fichiers nécessaires à
 la simulation</h2>
 <p>Deux fichiers sont à importer pour pouvoir lancer une simulation,
@@ -111,6 +120,11 @@ seule demi-journée dans toute l’application (« Dimanche Matin ») : un
 créneau du dimanche, quelle que soit son heure, y est toujours
 rattaché.</p>
 <h1 id="gestion-magasins">2. Gestion magasins</h1>
+<p>Une page dédiée liste l’ensemble du référentiel pluriannuel de
+magasins : ceux réellement collectés cette année, avec leur adresse mail
+si disponible, et ceux qui ne le sont plus, marqués « Non collecté »
+plutôt que supprimés, pour conserver l’historique d’une année sur
+l’autre. Export Excel disponible.</p>
 <h2 id="gestion-des-autorisations">2.1 Gestion des autorisations</h2>
 <p>Le bouton « ✍️ Gérer les envois » ouvre la liste des magasins ayant
 une adresse e-mail renseignée et n’ayant pas encore donné leur accord
@@ -682,7 +696,37 @@ l’autre.</p>
 <p>Comme pour les poids par magasin, chaque case est enregistrée
 automatiquement dès la saisie, avec un bouton « 💾 Enregistrer » en
 secours.</p>
-<h1 id="déroulé-type-dune-campagne">6. Déroulé type d’une campagne</h1>
+<p>Deux colonnes supplémentaires calculent le poids total (toutes
+associations confondues) et la valeur en euros de chaque produit, dès
+que la mercuriale de l’année a été importée (voir Paramètres).</p>
+<h2 id="pesée-palox">5.7 Pesée palox</h2>
+<p>Une fois les cagettes saisies, la pesée des palox à l’entrepôt se
+fait depuis un écran de synthèse qui liste chaque catégorie de produit
+avec son nombre de palox, son poids total, son pourcentage du total et,
+si la mercuriale a été importée, sa valeur en euros. Cliquer sur une
+catégorie ouvre directement la pesée dans une fenêtre superposée (le
+mode plein écran, une fois activé, n’est donc jamais interrompu par un
+changement de page) : on y saisit le numéro de palox (proposé
+automatiquement) et son poids, dans les bornes définies pour la
+catégorie, puis on valide — ce qui enregistre la pesée et imprime
+aussitôt une étiquette. Les dernières pesées restent visibles pour
+correction ou suppression, et un bouton permet de réinitialiser la
+numérotation en début de collecte. Le bouton ⚙️ Catégories permet de
+configurer les bornes de poids de chaque catégorie ainsi que la mise en
+page de l’étiquette imprimée (voir §10.5 pour le détail complet).</p>
+<h1 id="participants">6. Participants</h1>
+<h2 id="mail-aux-trieurs-année-précédente">6.1 Mail aux trieurs (année
+précédente)</h2>
+<p>Les « trieurs » sont les personnes affectées au tri à l’entrepôt,
+identifiées dans le planning véhicules par le code camion « V090 » («
+BAI Entrepôt ») — un code non réel qui sert au staffing de l’entrepôt,
+pas à une tournée de collecte. Cette page retrouve ces personnes dans le
+planning de l’ANNÉE PRÉCÉDENTE (et non l’année en cours), pour pouvoir
+les recontacter avant que le nouveau planning n’existe. Le texte du mail
+est modifiable (repère &lt;&lt;nom&gt;&gt;), avec un aperçu et un envoi
+de test possibles avant l’envoi réel à tous les destinataires disposant
+d’une adresse email.</p>
+<h1 id="déroulé-type-dune-campagne">7. Déroulé type d’une campagne</h1>
 <p>Pour aider à s’y retrouver, voici l’enchaînement habituel des actions
 décrites dans ce manuel, dans l’ordre où elles interviennent au fil
 d’une campagne :</p>
@@ -716,7 +760,7 @@ nombre de cagettes ramené par magasin (§5.1–5.3).</p></li>
 vérifier qu’aucun magasin n’est resté à zéro, puis exporter le fichier
 VIF (§5.4).</p></li>
 </ol>
-<h1 id="bonnes-pratiques">7. Bonnes pratiques</h1>
+<h1 id="bonnes-pratiques">8. Bonnes pratiques</h1>
 <ul>
 <li><p>Toujours vérifier les onglets de contrôle du classeur Excel avant
 impression des documents de production.</p></li>
@@ -745,7 +789,7 @@ n'est requise sur le poste.</p>
 <p>Tenir à jour les cases « Répondu » / « Résultat envoyé »
 (Associations gardant) au fil de l'eau plutôt qu'en fin de campagne,
 pour que les boutons de relance groupée restent utiles.</p>
-<h1 id="glossaire">8. Glossaire</h1>
+<h1 id="glossaire">9. Glossaire</h1>
 <dl>
 <dt>BAI</dt>
 <dd>
@@ -793,7 +837,7 @@ le référentiel de la BAI, utilisé pour le rapprochement entre les
 différents fichiers et pour l’export final des cagettes.</p>
 </dd>
 </dl>
-<h1 id="règles-fonctionnelles-détaillées">9. Règles fonctionnelles
+<h1 id="règles-fonctionnelles-détaillées">10. Règles fonctionnelles
 détaillées</h1>
 <p>Cette section rassemble, sujet par sujet, l'ensemble des règles
 métier précises telles qu'elles sont réellement appliquées par
@@ -802,7 +846,7 @@ comportements par défaut) — en complément des explications pas-à-pas des
 sections 1 à 5. Certaines règles concernent des cas rares ou des détails
 de mise en forme ; elles sont incluses ici pour référence complète, sans
 qu'il soit nécessaire de les mémoriser pour un usage courant.</p>
-<h2 id="paramètres-de-la-collecte-annuelle-1">9.1 Paramètres de la
+<h2 id="paramètres-de-la-collecte-annuelle-1">10.1 Paramètres de la
 collecte annuelle</h2>
 <h3 id="dates-de-la-collecte-1">Dates de la collecte</h3>
 <p>Les dates de début et de fin sont saisies une seule fois par campagne
@@ -899,7 +943,20 @@ activée que si un fichier magasins a été importé OU qu'un lien Drive
 magasins est renseigné (sans vérifier que le lien fonctionne réellement)
 ; la section « Gestion tournées » exige en plus la présence du PDF des
 tournées précédentes.</p>
-<h2 id="gestion-magasins-1">9.2 Gestion magasins</h2>
+<h3 id="mercuriale">Mercuriale</h3>
+<p>Rapport de prix VIF (fichier texte, encodage cp1252, tabulé) déposé
+séparément pour l'année en cours et l'année précédente. Sert uniquement
+à la valorisation en euros (pesée palox §10.5, quantités par produit
+§10.4) — n'affecte aucun autre document ou calcul. Le nom du fichier
+importé et sa date restent affichés tant qu'un nouvel import ne les
+remplace pas.</p>
+<h3 id="fichier-colis">Fichier colis</h3>
+<p>Référentiel des colis affectés à chaque magasin réellement collecté
+(une ligne par magasin : Code VIF + numéro de colis). Sert uniquement au
+contrôle « Colis manquants » de la génération des documents réels
+(§10.3), qui signale tout magasin actif sans colis défini ou avec un
+colis vide dans ce fichier.</p>
+<h2 id="gestion-magasins-1">10.2 Gestion magasins</h2>
 <h3 id="demande-dautorisation-de-collecter">Demande d'autorisation de
 collecter</h3>
 <p>Un magasin est éligible au publipostage si toutes les conditions
@@ -990,7 +1047,14 @@ leur bulle, pas les associations.</p>
 <p>La recherche porte sur le nom et la ville, sans tenir compte des
 accents ni de la casse, et recentre automatiquement la carte sur les
 résultats trouvés.</p>
-<h2 id="gestion-tournées-1">9.3 Gestion tournées</h2>
+<h3 id="référentiel-magasins-collecte">Référentiel magasins
+collecte</h3>
+<p>Référentiel pluriannuel : un magasin présent dans le fichier magasins
+de l'année est automatiquement rapproché de ce référentiel par son Code
+VIF. Un magasin du référentiel absent du fichier de l'année en cours est
+classé « Non collecté » sans intervention manuelle (jamais supprimé,
+pour conserver l'historique). Export Excel disponible.</p>
+<h2 id="gestion-tournées-1">10.3 Gestion tournées</h2>
 <h3 id="simulation-contraintes-générales">Simulation — contraintes
 générales</h3>
 <p>Le nombre maximum de magasins par tournée est réglable (par défaut
@@ -1195,7 +1259,7 @@ personnalisé à chaque destinataire.</p>
 <p>Tous les mails (test et réel) sont envoyés avec un expéditeur fixe
 (ba380.directeur@banquealimentaire.org), jamais l'adresse de
 l'utilisateur connecté.</p>
-<h2 id="associations-gardant-1">9.4 Associations gardant</h2>
+<h2 id="associations-gardant-1">10.4 Associations gardant</h2>
 <h3
 id="détermination-des-associations-et-rattachement-des-magasins">Détermination
 des associations et rattachement des magasins</h3>
@@ -1336,7 +1400,7 @@ disponibles : &lt;&lt;association&gt;&gt;, &lt;&lt;code&gt;&gt;,
 personnalisé plus ancien, le lien est quand même ajouté automatiquement
 en dernier paragraphe, pour rester compatible avec les textes
 personnalisés avant l'introduction de la saisie en ligne.</p>
-<h2 id="résultat-collecte-1">9.5 Résultat collecte</h2>
+<h2 id="résultat-collecte-1">10.5 Résultat collecte</h2>
 <h3 id="saisie-des-cagettes-collecte-directe-bai">Saisie des cagettes
 (collecte directe BAI)</h3>
 <p>La page est inaccessible tant que la campagne n'a pas de fichier
@@ -1401,3 +1465,57 @@ est modifié.</p>
 associations ; chaque cellule = poids en kg saisi pour ce couple. Mêmes
 règles de validation que pour les poids par magasin gardé (vide →
 effacé, non numérique → refusé).</p>
+<p>Depuis peu, deux colonnes supplémentaires calculent le poids total
+(somme de toutes les associations pour ce produit) et sa valeur en
+euros, selon le même référentiel de prix mercuriale que la pesée palox
+(correspondance par Code VIF) — disponibles uniquement si la mercuriale
+de l'année a été importée.</p>
+<h3 id="pesée-palox-catégories-et-validation-du-poids">Pesée palox —
+catégories et validation du poids</h3>
+<p>Les catégories de produit pesées à l'entrepôt reprennent les codes
+article VIF du classeur historique (31 catégories dont « Autres »).
+Chaque catégorie a ses propres bornes de poids acceptées (nombre entier
+compris entre un minimum et un maximum, par défaut 10 et 700 kg, 750 kg
+pour le Sucre) — reprises de la validation de données qui existait dans
+le fichier Excel d'origine, modifiables individuellement depuis l'écran
+⚙️ Catégories. Toute saisie hors de ces bornes, ou non entière, est
+refusée avant enregistrement.</p>
+<h3 id="pesée-palox-numérotation-et-corrections">Pesée palox —
+numérotation et corrections</h3>
+<p>Le numéro de palox proposé par défaut est le dernier numéro utilisé
+pour cette catégorie et cette année, plus un — modifiable manuellement
+avant validation si besoin (par exemple pour reprendre une numérotation
+interrompue). Un numéro déjà utilisé pour la même catégorie et la même
+année est refusé. Un palox déjà enregistré peut être corrigé (nouveau
+poids, toujours selon les mêmes bornes) ou supprimé entièrement ; un
+bouton « Réinitialiser la numérotation » efface toutes les pesées de la
+catégorie pour l'année et repart de 1.</p>
+<h3 id="pesée-palox-impression-de-létiquette">Pesée palox — impression
+de l'étiquette</h3>
+<p>À chaque enregistrement, une feuille A4 paysage s'imprime
+immédiatement (sans confirmation manuelle si le navigateur du poste est
+lancé en mode kiosque d'impression). Son contenu est entièrement
+configurable depuis ⚙️ Catégories sous forme d'une liste de lignes de
+texte, chacune avec sa propre taille de police et son style gras ou non.
+Les espaces réservés disponibles (&lt;&lt;annee&gt;&gt;,
+&lt;&lt;code_vif&gt;&gt;, &lt;&lt;categorie&gt;&gt;,
+&lt;&lt;numero&gt;&gt;, &lt;&lt;poids&gt;&gt;, &lt;&lt;date&gt;&gt;,
+&lt;&lt;date_heure&gt;&gt;) sont remplacés automatiquement ; un espace
+réservé peut forcer une taille différente du reste de sa ligne via la
+syntaxe &lt;&lt;poids:150&gt;&gt; (utile pour un nombre affiché en très
+grand au milieu d'un texte plus petit, comme le modèle par défaut «
+Poids &lt;&lt;poids:150&gt;&gt; kg »). La date et l'heure de la pesée
+sont en plus toujours affichées en bas à droite de la feuille,
+indépendamment des lignes configurées.</p>
+<h3 id="pesée-palox-synthèse-et-valorisation-en-mercuriale">Pesée palox
+— synthèse et valorisation en mercuriale</h3>
+<p>L'écran de synthèse additionne, pour chaque catégorie, le nombre de
+palox et le poids total (poids corrigé si une correction a été saisie,
+sinon poids initial), avec le pourcentage que représente chaque
+catégorie dans le total général. Si la mercuriale de l'année a été
+importée, une colonne Valeur (€) est calculée (poids total × prix au kg
+du code VIF de la catégorie) — ainsi qu'une comparaison avec le poids de
+l'année précédente si des pesées existent pour cette année-là. Ces
+colonnes de valorisation/comparaison peuvent être masquées ou
+réaffichées sans recharger la page. Un export Excel reprend les mêmes
+colonnes.</p>
