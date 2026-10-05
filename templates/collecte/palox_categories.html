@@ -54,7 +54,9 @@
         <code>&gt;&gt;categorie&lt;&lt;</code>, <code>&gt;&gt;numero&lt;&lt;</code>,
         <code>&gt;&gt;poids&lt;&lt;</code>, <code>&gt;&gt;date&lt;&lt;</code> (aaaa-mm-jj),
         <code>&gt;&gt;date_heure&lt;&lt;</code> (avec l'heure) — remplacés automatiquement à chaque
-        impression.
+        impression. Pour afficher une valeur plus grande ou plus petite que le reste de la ligne
+        (ex. un nombre énorme au milieu d'un texte plus petit), ajouter <code>:taille</code> dans
+        l'espace réservé : <code>Poids &gt;&gt;poids:150&lt;&lt; kg</code>.
     </p>
     <table class="table table-sm align-middle mb-2" id="table-gabarit">
         <thead>
@@ -181,6 +183,16 @@ function lireLignesGabarit() {
     });
 }
 
+// Remplace >>variable<< par sa valeur, ou >>variable:taille<< pour donner à
+// CETTE valeur une taille de police différente du reste de la ligne (ex.
+// "Poids >>poids:150<< kg").
+function remplacerTokensGabarit(texte, valeurs) {
+    return texte.replace(/>>(\w+)(?::(\d+))?<</g, function (correspondance, nom, taille) {
+        const valeur = valeurs[nom] !== undefined ? valeurs[nom] : correspondance;
+        return taille ? "<span style=\"font-size:" + taille + "pt;\">" + valeur + "</span>" : valeur;
+    });
+}
+
 document.getElementById("btn-apercu-gabarit").addEventListener("click", function () {
     const valeurs = {
         annee: new Date().getFullYear(), code_vif: "0110041", categorie: "Exemple de catégorie",
@@ -188,8 +200,7 @@ document.getElementById("btn-apercu-gabarit").addEventListener("click", function
         date: new Date().toISOString().slice(0, 10),
     };
     const html = lireLignesGabarit().map(function (ligne) {
-        let texte = ligne.texte;
-        for (const cle in valeurs) { texte = texte.split(">>" + cle + "<<").join(valeurs[cle]); }
+        const texte = remplacerTokensGabarit(ligne.texte, valeurs);
         const style = "font-size:" + ligne.taille + "pt;" + (ligne.gras ? " font-weight:bold;" : "");
         return "<div style=\"" + style + "\">" + texte + "</div>";
     }).join("\n");

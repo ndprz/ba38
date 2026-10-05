@@ -5419,9 +5419,10 @@ def _ensure_tables_palox(conn):
 
 LIGNES_ETIQUETTE_PALOX_DEFAUT = [
     {"texte": "COLLECTE >>annee<<", "taille": 22, "gras": True},
-    {"texte": ">>categorie<<", "taille": 52, "gras": True},
-    {"texte": "Palette >>numero<<", "taille": 38, "gras": True},
-    {"texte": "Poids >>poids<< kg", "taille": 70, "gras": True},
+    {"texte": ">>code_vif<<", "taille": 48, "gras": True},
+    {"texte": ">>categorie<<", "taille": 54, "gras": True},
+    {"texte": "Palette >>numero<<", "taille": 42, "gras": True},
+    {"texte": "Poids >>poids:150<< kg", "taille": 42, "gras": True},
 ]
 
 
