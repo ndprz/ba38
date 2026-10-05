@@ -369,14 +369,25 @@ document.getElementById("formPeseeModal").addEventListener("submit", function (e
         // déclenchée — tout se passe dans la MÊME page (jamais de
         // changement de page), ce qui ne coupe pas le plein écran,
         // contrairement à l'ancien retour automatique vers une autre page.
+        // L'impression elle-même fait sortir le navigateur du plein écran
+        // (comportement standard des navigateurs) : on le réactive juste
+        // après si c'était le cas avant d'imprimer.
+        const etaitPleinEcran = document.fullscreenElement === conteneurEl;
+        function reprendrePleinEcran() {
+            if (etaitPleinEcran && !document.fullscreenElement && conteneurEl.requestFullscreen) {
+                conteneurEl.requestFullscreen().catch(function () {});
+            }
+        }
         window.onafterprint = function () {
             modalPeseeInstance().hide();
             rafraichirSynthese();
+            reprendrePleinEcran();
         };
         window.print();
         setTimeout(function () {
             modalPeseeInstance().hide();
             rafraichirSynthese();
+            reprendrePleinEcran();
         }, 3000);
     })
     .catch(function () { afficherMessageModal("⛔ Erreur réseau.", "danger"); });

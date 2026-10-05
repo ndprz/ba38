@@ -1,3 +1,3 @@
-VERSION=1.7.64
-MESSAGE=Participation V2 : fichiers EBP déposés sur Drive + encadré Import comptable EBP / mail trésorier ; ancien menu EBP retiré ; aide à jour
-DATE=2026-10-05 14:24
+VERSION=1.7.65
+MESSAGE=Collecte : pesee palox, retour automatique en plein ecran apres impression (le navigateur en sort pendant l'impression)
+DATE=2026-10-05 15:05
