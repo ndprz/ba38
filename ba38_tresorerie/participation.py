@@ -697,6 +697,28 @@ def traiter():
               b["montant_total"], json.dumps(b["lignes_gardees"]), json.dumps(b["lignes_supprimees"])))
 
     conn.commit()
+
+    # ==================================================
+    # 📒 Fichiers pour l'import comptable EBP (Drive)
+    # ==================================================
+    # Même traitement que le menu « Traitement fichier participation EBP » :
+    # les 3 fichiers (corrigé = celui importé dans EBP, lignes supprimées,
+    # analyse) + l'original, déposés dans Participations › AAAA_TN. Un échec
+    # Drive ne doit pas bloquer la campagne : on prévient seulement.
+    nom_source = secure_filename(fichier.filename) if fichier.filename else "parsol2l.txt"
+    try:
+        infos_ebp = _deposer_ebp_campagne(contenu_bytes, nom_source, annee_finale, trimestre_finale)
+        _enregistrer_ebp(conn, campagne_id, infos_ebp)
+        conn.commit()
+        flash(
+            f"📒 Fichiers EBP déposés dans « {infos_ebp['dossier_chemin']} » "
+            f"(import comptable : {infos_ebp['fichier_corrige_nom']}).",
+            "success"
+        )
+    except Exception as e:
+        write_log(f"❌ Participation : dépôt des fichiers EBP impossible (campagne {campagne_id}) : {e}")
+        flash(f"⚠️ Factures créées, mais dépôt des fichiers EBP sur Drive impossible : {e}", "warning")
+
     conn.close()
 
     verbe = "recréée(s)" if existante else "créée(s)"
@@ -805,6 +827,8 @@ def resultats(campagne_id):
         SELECT * FROM modeles_emails WHERE type_periode = 'facture' ORDER BY TRIM(code_modele) COLLATE NOCASE
     """).fetchall()
 
+    ebp = _charger_ebp(conn, campagne_id)
+
     conn.close()
 
     reste_a_envoyer = any(f["email"] and (not f["mail_envoye_le"] or f["mail_mode_test"] or f["mail_erreur"]) for f in factures)
@@ -821,7 +845,10 @@ def resultats(campagne_id):
         reste_a_envoyer=reste_a_envoyer,
         mail_mode=mail_mode,
         mail_test_to=mail_test_to,
-        montant_total_campagne=montant_total_campagne
+        montant_total_campagne=montant_total_campagne,
+        ebp=ebp,
+        destinataire_ebp_defaut=DESTINATAIRE_EBP_DEFAUT,
+        montant_total_avec_orphelines=montant_total_campagne + sum(o["montant_total"] or 0 for o in orphelines),
     )
 
 
@@ -1649,3 +1676,229 @@ def relance_renvoyer_gmail(facture_id):
             os.remove(pdf_path)
 
     return redirect(url_for("participation.relance_start", campagne_id=f["campagne_id"]))
+
+
+# ============================================================================
+# 📒 IMPORT COMPTABLE EBP
+# ============================================================================
+# Le traitement PARSOL (traiter) dépose sur Drive, dans Participations ›
+# AAAA_TN, les 3 fichiers de l'ancien menu « Traitement fichier participation
+# EBP ». Le fichier *_corrigé_AAAA_TN.txt est celui que le trésorier importe
+# dans EBP : l'écran Résultats affiche son chemin et permet de prévenir le
+# trésorier (mail avec le fichier joint).
+#
+# Table propre à chaque base (exclue de la sync DEV→PROD : campagne_id
+# diverge), créée à la volée pour couvrir aussi les bases de test.
+
+DESTINATAIRE_EBP_DEFAUT = "ba380.tresorier@banquealimentaire.org"
+
+
+def _assurer_table_ebp(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS participation_ebp (
+            campagne_id INTEGER PRIMARY KEY,
+            dossier_id TEXT,
+            dossier_chemin TEXT,
+            fichier_corrige_nom TEXT,
+            fichier_corrige_id TEXT,
+            total_corrige REAL,
+            total_supprime REAL,
+            genere_le TEXT,
+            genere_par TEXT,
+            tresorier_prevenu_le TEXT,
+            tresorier_prevenu_par TEXT,
+            tresorier_prevenu_a TEXT,
+            tresorier_prevenu_mode_test INTEGER DEFAULT 0
+        )
+    """)
+
+
+def _charger_ebp(conn, campagne_id):
+    _assurer_table_ebp(conn)
+    row = conn.execute("SELECT * FROM participation_ebp WHERE campagne_id = ?", (campagne_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def _enregistrer_ebp(conn, campagne_id, infos):
+    """Enregistre l'emplacement du fichier corrigé (remet à zéro la notification)."""
+    _assurer_table_ebp(conn)
+    conn.execute("""
+        INSERT OR REPLACE INTO participation_ebp
+        (campagne_id, dossier_id, dossier_chemin, fichier_corrige_nom, fichier_corrige_id,
+         total_corrige, total_supprime, genere_le, genere_par)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (campagne_id, infos["dossier_id"], infos["dossier_chemin"], infos["fichier_corrige_nom"],
+          infos["fichier_corrige_id"], infos["total_corrige"], infos["total_supprime"],
+          datetime.now().isoformat(timespec="seconds"), current_user.email))
+
+
+def _service_drive():
+    from ba38_utilitaires.core import get_google_services
+    _, service, _ = get_google_services()
+    if service is None:
+        raise RuntimeError("Connexion Google Drive impossible")
+    return service
+
+
+def _deposer_ebp_campagne(contenu_bytes, nom_source, annee, trimestre):
+    from ba38_tresorerie.participation_ebp import deposer_fichiers_ebp
+    return deposer_fichiers_ebp(_service_drive(), contenu_bytes, nom_source, annee, trimestre)
+
+
+@participation_bp.route("/participation/ebp/<int:campagne_id>/rechercher", methods=["POST"])
+@login_required
+@require_access("tresorerie", "ecriture")
+def ebp_rechercher(campagne_id):
+    """Campagne traitée avant l'intégration : retrouve le fichier corrigé déjà sur Drive."""
+    from ba38_tresorerie.participation_ebp import rechercher_fichier_corrige
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    campagne = conn.execute("SELECT * FROM participation_campagnes WHERE id = ?", (campagne_id,)).fetchone()
+    if not campagne:
+        conn.close()
+        flash("❌ Campagne introuvable", "danger")
+        return redirect(url_for("participation.selection"))
+
+    try:
+        infos = rechercher_fichier_corrige(_service_drive(), campagne["annee"], campagne["trimestre"])
+    except Exception as e:
+        conn.close()
+        write_log(f"❌ Participation : recherche du fichier EBP impossible (campagne {campagne_id}) : {e}")
+        flash(f"❌ Recherche sur Drive impossible : {e}", "danger")
+        return redirect(url_for("participation.resultats", campagne_id=campagne_id))
+
+    if not infos:
+        conn.close()
+        flash(
+            f"⚠️ Aucun fichier *_corrigé_{campagne['annee']}_T{campagne['trimestre']}.txt trouvé sur Drive "
+            f"— utilisez « Retraiter un nouveau fichier » (si aucun envoi réel) ou le menu "
+            f"« Traitement fichier participation EBP ».",
+            "warning"
+        )
+        return redirect(url_for("participation.resultats", campagne_id=campagne_id))
+
+    _enregistrer_ebp(conn, campagne_id, infos)
+    conn.commit()
+    conn.close()
+    flash(f"✅ Fichier EBP trouvé : {infos['fichier_corrige_nom']}", "success")
+    return redirect(url_for("participation.resultats", campagne_id=campagne_id))
+
+
+def _telecharger_corrige(ebp):
+    """Contenu (bytes) du fichier corrigé depuis Drive."""
+    return _service_drive().files().get_media(
+        fileId=ebp["fichier_corrige_id"], supportsAllDrives=True
+    ).execute()
+
+
+@participation_bp.route("/participation/ebp/<int:campagne_id>/telecharger")
+@login_required
+@require_access("tresorerie", "lecture")
+def ebp_telecharger(campagne_id):
+    import io
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    ebp = _charger_ebp(conn, campagne_id)
+    conn.close()
+
+    if not ebp:
+        flash("❌ Aucun fichier EBP connu pour cette campagne", "danger")
+        return redirect(url_for("participation.resultats", campagne_id=campagne_id))
+
+    try:
+        data = _telecharger_corrige(ebp)
+    except Exception as e:
+        write_log(f"❌ Participation : téléchargement du fichier EBP impossible (campagne {campagne_id}) : {e}")
+        flash(f"❌ Fichier introuvable sur Drive (déplacé ou supprimé ?) : {e}", "danger")
+        return redirect(url_for("participation.resultats", campagne_id=campagne_id))
+
+    return send_file(io.BytesIO(data), mimetype="text/plain", as_attachment=True,
+                     download_name=ebp["fichier_corrige_nom"])
+
+
+@participation_bp.route("/participation/ebp/<int:campagne_id>/prevenir", methods=["POST"])
+@login_required
+@require_access("tresorerie", "ecriture")
+def ebp_prevenir_tresorier(campagne_id):
+    """Mail au trésorier : fichier corrigé à importer dans EBP (chemin + lien + fichier joint)."""
+
+    destinataire = (request.form.get("destinataire") or "").strip()
+    if not split_emails(destinataire):
+        flash("❌ Adresse du destinataire invalide", "danger")
+        return redirect(url_for("participation.resultats", campagne_id=campagne_id))
+
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    campagne = conn.execute("SELECT * FROM participation_campagnes WHERE id = ?", (campagne_id,)).fetchone()
+    ebp = _charger_ebp(conn, campagne_id)
+
+    if not campagne or not ebp:
+        conn.close()
+        flash("❌ Aucun fichier EBP connu pour cette campagne", "danger")
+        return redirect(url_for("participation.resultats", campagne_id=campagne_id))
+
+    periode = f"T{campagne['trimestre']} {campagne['annee']}"
+    lien = f"https://drive.google.com/drive/folders/{ebp['dossier_id']}"
+    total = f"{ebp['total_corrige']:.2f} €" if ebp["total_corrige"] is not None else "—"
+
+    texte = (
+        f"Bonjour,\n\n"
+        f"Le fichier de participation {periode} est prêt pour l'import dans EBP.\n\n"
+        f"Fichier à importer : {ebp['fichier_corrige_nom']}\n"
+        f"Emplacement : {ebp['dossier_chemin']}\n"
+        f"Lien vers le dossier : {lien}\n\n"
+        f"Total général (corrigé, sans vendredis/samedis/dimanches) : {total}\n\n"
+        f"Le fichier est également joint à ce mail.\n\n"
+        f"Cordialement,\n{current_user.email}"
+    )
+
+    mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
+    mode_test = mail_mode == "TEST"
+    destinataires = [adresse_test_utilisateur()] if mode_test else split_emails(destinataire)
+    sujet = f"Participation {periode} : fichier à importer dans EBP"
+    if mode_test:
+        sujet = f"🧪 [TEST] {sujet}"
+
+    chemin_tmp = f"/tmp/participation_ebp_{campagne_id}.txt"
+    try:
+        with open(chemin_tmp, "wb") as f:
+            f.write(_telecharger_corrige(ebp))
+
+        envoyer_mail(
+            sujet=sujet,
+            destinataires=destinataires,
+            texte=texte,
+            attachment_path=chemin_tmp,
+            attachment_filename=ebp["fichier_corrige_nom"],
+            sender_override="ba380.comptable@banquealimentaire.org",
+            sender_name=current_user.username or current_user.email,
+            reply_to=current_user.email,
+            current_user_email=current_user.email,
+        )
+    except Exception as e:
+        conn.close()
+        write_log(f"❌ Participation : notification EBP non envoyée (campagne {campagne_id}) : {e}")
+        flash(f"❌ Mail non envoyé : {e}", "danger")
+        return redirect(url_for("participation.resultats", campagne_id=campagne_id))
+    finally:
+        if os.path.exists(chemin_tmp):
+            os.remove(chemin_tmp)
+
+    conn.execute("""
+        UPDATE participation_ebp
+        SET tresorier_prevenu_le = ?, tresorier_prevenu_par = ?, tresorier_prevenu_a = ?,
+            tresorier_prevenu_mode_test = ?
+        WHERE campagne_id = ?
+    """, (datetime.now().isoformat(timespec="seconds"), current_user.email,
+          ", ".join(destinataires), 1 if mode_test else 0, campagne_id))
+    conn.commit()
+    conn.close()
+
+    write_log(f"📒 Participation {periode} : trésorier prévenu ({', '.join(destinataires)}) par {current_user.email}")
+    if mode_test:
+        flash(f"🧪 Mode TEST : mail envoyé à {', '.join(destinataires)} (pas au trésorier).", "warning")
+    else:
+        flash(f"✅ Mail envoyé à {', '.join(destinataires)} avec le fichier {ebp['fichier_corrige_nom']}.", "success")
+    return redirect(url_for("participation.resultats", campagne_id=campagne_id))

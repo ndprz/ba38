@@ -421,7 +421,7 @@
             <div class="text-muted small">▶️ Démarre automatiquement à la fin du conditionnement.</div>
             {% endif %}
 
-            {% if not bloquante and not resolue and not ligne %}
+            {% if not bloquante and not resolue and not ligne and ref.code != 'conditionnement' %}
             <form method="POST" action="{{ url_for('production_cuisine.etape_production', production_id=production.id) }}"
                   onsubmit="return confirm('Marquer « {{ ref.libelle }} » comme non applicable à cette recette ?');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

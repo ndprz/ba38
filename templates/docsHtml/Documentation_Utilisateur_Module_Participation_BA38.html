@@ -3,18 +3,18 @@
 <p>Traiter le fichier PARSOL de participation de solidarité
 (trimestriel), générer automatiquement les factures PDF, les envoyer par
 email aux associations, suivre les paiements et relancer les impayés —
-le tout depuis un seul module, sans passer par un logiciel externe
-(EBP).</p>
-<p>Ce module ne remplace pas l’écran “📂 Traitement fichier de
-participation pour EBP” : celui-ci reste utile et continue d’être
-utilisé pour préparer le fichier PARSOL destiné au comptable, qui
-l’intègre ensuite dans la comptabilité EBP. Les deux écrans coexistent,
-chacun pour son propre usage.</p>
+le tout depuis un seul module. Le traitement prépare aussi le fichier à
+importer dans la comptabilité EBP.</p>
+<p>Ce module remplace l’ancien écran “📂 Traitement fichier de
+participation pour EBP”, retiré du menu : le traitement du fichier
+PARSOL dépose désormais lui-même sur Drive les fichiers destinés à la
+comptabilité EBP (voir la section “Import comptable EBP”).</p>
 <ol type="1">
 <li>Accéder au module</li>
 </ol>
 <p>Menu → Trésorerie → section “Participation” → “📊 Facturation
-participation (V2 — traitement + envoi)”.</p>
+participation (V2 — traitement fichier PARSOL2 elimination
+vendredi/samedi/dimanche + envoi + relances)”.</p>
 <ol start="2" type="1">
 <li>Traiter un fichier PARSOL</li>
 </ol>
@@ -29,9 +29,13 @@ facture a été réellement envoyée).</p></li>
 facture de départ.</p></li>
 <li><p>Cliquer sur “🔍 Analyser et générer” : les factures sont créées,
 numérotées dans l’ordre du fichier. Les passages du vendredi, samedi et
-dimanche (non facturés) sont automatiquement retirés — la même règle que
-celle appliquée par l’ancien écran “📂 Traitement fichier de
-participation pour EBP”.</p></li>
+dimanche (non facturés) sont automatiquement retirés.</p></li>
+<li><p>Le traitement dépose aussi sur Drive, dans “BA380 - TRESORERIE ›
+Participations › AAAA_TN” (exemple : 2026_T3), une copie du fichier
+PARSOL et les 3 fichiers pour EBP : …_corrigé_AAAA_TN.txt (le fichier à
+importer dans EBP), …_lignes_supprimees_AAAA_TN.txt (les passages
+retirés) et …_analyse_AAAA_TN.txt (les totaux). Attention : le contenu
+précédent de ce dossier est remplacé.</p></li>
 </ul>
 <ol start="3" type="1">
 <li>Écran Résultats</li>
@@ -44,9 +48,12 @@ statut Mailjet, renvoi Gmail.</p>
 demande).</p></li>
 <li><p>Bandeau “Mode TEST / Mode PROD” en haut de l’écran : commun à
 tout le module (participation et anciennes factures) ; en mode TEST, les
-envois ne partent que vers l’adresse de test (2 mails maximum).</p></li>
+envois ne partent que vers l’adresse de l’utilisateur connecté (2 mails
+maximum).</p></li>
 <li><p>“📧 Envoyer les mails” : choisir un modèle d’email puis envoyer —
-seules les factures pas encore envoyées sont concernées.</p></li>
+seules les factures pas encore envoyées réellement sont concernées (y
+compris celles envoyées uniquement en mode TEST, ou dont l’envoi a
+échoué).</p></li>
 <li><p>“🔄 Vérifier statut Mailjet” : met à jour le statut de
 délivrabilité (remis, ouvert, rejeté…) des mails déjà envoyés.</p></li>
 <li><p>“🔁” (colonne Gmail) : renvoie la facture via Gmail en cas de
@@ -63,12 +70,35 @@ trouvées en base (code VIF inconnu)” — elles sont automatiquement
 rattachées dès qu’une association avec ce code VIF existe ou est
 corrigée par la suite (voir Points d’attention).</p>
 <ol start="4" type="1">
+<li>Import comptable EBP</li>
+</ol>
+<p>L’encadré “📒 Import comptable EBP” de l’écran Résultats indique le
+fichier à importer dans EBP et son emplacement sur Drive, ainsi que le
+total du fichier corrigé : un badge vert confirme qu’il est identique au
+total des factures de la campagne, un badge rouge signale un écart à
+vérifier.</p>
+<ul>
+<li><p>“📂 Ouvrir le dossier Drive” : ouvre le dossier du trimestre dans
+Google Drive.</p></li>
+<li><p>“⬇️ Télécharger le fichier corrigé” : télécharge le fichier à
+importer dans EBP.</p></li>
+<li><p>“📧 Prévenir le trésorier” : envoie au destinataire indiqué (par
+défaut ba380.tresorier@banquealimentaire.org) un mail contenant le nom
+du fichier, son emplacement, le lien vers le dossier Drive, le total, et
+le fichier en pièce jointe. La date d’envoi et le destinataire
+s’affichent ensuite dans l’encadré. En mode TEST, le mail part vers
+l’utilisateur connecté.</p></li>
+<li><p>“🔎 Rechercher le fichier corrigé sur Drive” : pour une campagne
+traitée avant l’arrivée de cette fonction, retrouve le fichier déjà
+déposé dans le dossier du trimestre.</p></li>
+</ul>
+<ol start="5" type="1">
 <li>Marquer une facture payée</li>
 </ol>
 <p>Le bouton “⬜ Marquer payé” / “✅ Payé” (colonne Payé) bascule l’état
 payé/impayé d’une facture en un clic, sans recharger la page. Une
 facture marquée payée n’est plus proposée dans les relances.</p>
-<ol start="5" type="1">
+<ol start="6" type="1">
 <li>Relancer les impayés</li>
 </ol>
 <p>Depuis l’écran Résultats, “🔔 Relancer les impayés” affiche la liste
@@ -91,17 +121,17 @@ envoyées.</p></li>
 écran : dès qu’une facture est marquée payée, elle sort du lot à
 relancer.</p></li>
 </ul>
-<ol start="6" type="1">
+<ol start="7" type="1">
 <li>Points d’attention</li>
 </ol>
 <ul>
 <li><p>Le mode TEST / PROD est un réglage partagé avec l’ancien module
 de factures — le vérifier avant tout envoi réel.</p></li>
-<li><p>L’email utilisé pour une facture est celui de l’association au
-moment du traitement du fichier PARSOL. S’il a été ajouté ou corrigé
-depuis, l’application utilise automatiquement l’adresse actuelle de
-l’association pour les relances, et l’enregistre sur la facture dès
-qu’une relance réussit avec cette adresse.</p></li>
+<li><p>L’email utilisé pour une facture est toujours l’adresse actuelle
+de la fiche association : le courriel du responsable trésorerie s’il est
+renseigné, sinon le courriel général. Une adresse ajoutée ou corrigée
+sur la fiche est donc prise en compte dès l’envoi suivant (envoi,
+relance ou renvoi Gmail).</p></li>
 <li><p>Une association absente de la base au moment du traitement
 (facture “orpheline”) est automatiquement rattachée dès qu’elle est
 créée ou corrigée par la suite — un message de confirmation s’affiche à

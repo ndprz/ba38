@@ -98,6 +98,76 @@
         — {{ factures|length }} facture(s){% if orphelines %}, ⚠️ {{ orphelines|length }} orpheline(s){% endif %}
     </div>
 
+    <!-- 📒 Import comptable EBP -->
+    <div class="card my-2">
+        <div class="card-body py-2">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <strong>📒 Import comptable EBP</strong>
+                {% if ebp %}
+                <span class="small">
+                    Fichier à importer : <code>{{ ebp.fichier_corrige_nom }}</code>
+                    — {{ ebp.dossier_chemin }}
+                </span>
+                {% else %}
+                <span class="small text-muted">Aucun fichier EBP enregistré pour cette campagne.</span>
+                {% endif %}
+            </div>
+
+            {% if ebp %}
+            <div class="small mt-1">
+                {% if ebp.total_corrige is not none %}
+                Total du fichier corrigé : <strong>{{ "%.2f"|format(ebp.total_corrige) }} €</strong>
+                {% if (ebp.total_corrige - montant_total_avec_orphelines)|abs > 0.01 %}
+                <span class="badge bg-danger" title="Total des factures de la campagne, orphelines comprises">
+                    ⚠️ différent du total des factures Basilic ({{ "%.2f"|format(montant_total_avec_orphelines) }} €)
+                </span>
+                {% else %}
+                <span class="badge bg-success">✔ identique au total des factures</span>
+                {% endif %}
+                {% endif %}
+                {% if ebp.genere_le %}<span class="text-muted">— enregistré le {{ ebp.genere_le }} par {{ ebp.genere_par }}</span>{% endif %}
+            </div>
+
+            <div class="d-flex flex-wrap align-items-end gap-2 mt-2">
+                <a href="https://drive.google.com/drive/folders/{{ ebp.dossier_id }}" target="_blank" class="btn btn-outline-primary btn-sm">
+                    📂 Ouvrir le dossier Drive
+                </a>
+                <a href="{{ url_for('participation.ebp_telecharger', campagne_id=campagne.id) }}" class="btn btn-outline-primary btn-sm">
+                    ⬇️ Télécharger le fichier corrigé
+                </a>
+
+                <form method="POST" action="{{ url_for('participation.ebp_prevenir_tresorier', campagne_id=campagne.id) }}"
+                      class="d-flex align-items-end gap-2"
+                      onsubmit="return confirm('Envoyer le fichier {{ ebp.fichier_corrige_nom }} au trésorier pour import dans EBP ?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div>
+                        <label class="form-label small mb-0">Destinataire</label>
+                        <input type="email" name="destinataire" class="form-control form-control-sm" style="min-width: 300px;"
+                               value="{{ ebp.tresorier_prevenu_a if ebp.tresorier_prevenu_a and not ebp.tresorier_prevenu_mode_test else destinataire_ebp_defaut }}" required>
+                    </div>
+                    <button type="submit" class="btn btn-success btn-sm">
+                        📧 Prévenir le trésorier {% if mail_mode == "TEST" %}(mode TEST){% endif %}
+                    </button>
+                </form>
+
+                {% if ebp.tresorier_prevenu_le %}
+                <span class="badge {{ 'bg-warning text-dark' if ebp.tresorier_prevenu_mode_test else 'bg-success' }}">
+                    {{ '🧪' if ebp.tresorier_prevenu_mode_test else '✔' }} Prévenu le {{ ebp.tresorier_prevenu_le }}
+                    ({{ ebp.tresorier_prevenu_a }}) par {{ ebp.tresorier_prevenu_par }}
+                </span>
+                {% endif %}
+            </div>
+            {% else %}
+            <form method="POST" action="{{ url_for('participation.ebp_rechercher', campagne_id=campagne.id) }}" class="mt-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-primary btn-sm">
+                    🔎 Rechercher le fichier corrigé sur Drive ({{ campagne.annee }}_T{{ campagne.trimestre }})
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
     {% if reste_a_envoyer %}
     <form method="POST" action="{{ url_for('participation.envoyer', campagne_id=campagne.id) }}" class="d-flex align-items-end gap-2 my-3"
           {% if mail_mode != "TEST" %}

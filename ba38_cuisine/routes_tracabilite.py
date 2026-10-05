@@ -126,6 +126,9 @@ def etape_production(production_id):
         cur = conn.cursor()
 
         if action == "non_applicable":
+            if etape_code == "conditionnement":
+                flash("⛔ Le conditionnement ne peut pas être marqué non applicable.", "warning")
+                return _redirect_run(production_id)
             existe_deja = conn.execute(
                 """SELECT 1 FROM cuisine_production_etapes
                    WHERE production_id = ? AND etape_code = ?""",

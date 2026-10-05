@@ -28,9 +28,10 @@
   </div>
 
     <div class="list-group">
-      <a href="{{ url_for('tresorerie.traitement_participation') }}" class="list-group-item list-group-item-action">
-        📂 Traitement fichier de participation pour EBP
-      </a>
+      <!-- « 📂 Traitement fichier de participation pour EBP » retiré du menu
+           (v1.7.64) : Participation V2 dépose elle-même les fichiers EBP
+           sur Drive. La route tresorerie.traitement_participation reste
+           accessible par URL directe. -->
 
       <!-- <a href="{{ url_for('tresorerie.factures_selection') }}" class="list-group-item list-group-item-action">
         📄 Envoi factures participation (PDF) V1
