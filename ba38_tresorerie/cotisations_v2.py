@@ -529,7 +529,7 @@ def cotisations_v2_resultats(campagne_id):
 
     conn.close()
 
-    reste_a_envoyer = any(f["email"] and not f["mail_envoye_le"] for f in factures)
+    reste_a_envoyer = any(f["email"] and (not f["mail_envoye_le"] or f["mail_mode_test"] or f["mail_erreur"]) for f in factures)
     mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
     mail_test_to = adresse_test_utilisateur()
     montant_total_campagne = sum(f["montant"] or 0 for f in factures)
@@ -660,7 +660,8 @@ def cotisations_v2_envoyer(campagne_id):
 
     a_envoyer = conn.execute("""
         SELECT * FROM cotisations_v2_factures
-        WHERE campagne_id = ? AND email IS NOT NULL AND mail_envoye_le IS NULL
+        WHERE campagne_id = ? AND email IS NOT NULL
+          AND (mail_envoye_le IS NULL OR mail_mode_test = 1 OR mail_erreur IS NOT NULL)
     """, (campagne_id,)).fetchall()
 
     conn.close()

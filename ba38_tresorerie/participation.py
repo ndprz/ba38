@@ -807,7 +807,7 @@ def resultats(campagne_id):
 
     conn.close()
 
-    reste_a_envoyer = any(f["email"] and not f["mail_envoye_le"] for f in factures)
+    reste_a_envoyer = any(f["email"] and (not f["mail_envoye_le"] or f["mail_mode_test"] or f["mail_erreur"]) for f in factures)
     mail_mode = session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper())
     mail_test_to = adresse_test_utilisateur()
     montant_total_campagne = sum(f["montant_total"] or 0 for f in factures)
@@ -860,7 +860,8 @@ def envoyer(campagne_id):
                a.courriel_association AS _assoc_association
         FROM participation_factures pf
         LEFT JOIN associations a ON a.Id = pf.association_id
-        WHERE pf.campagne_id = ? AND pf.mail_envoye_le IS NULL
+        WHERE pf.campagne_id = ?
+          AND (pf.mail_envoye_le IS NULL OR pf.mail_mode_test = 1 OR pf.mail_erreur IS NOT NULL)
     """, (campagne_id,)).fetchall()
     a_envoyer = [f for f in _resoudre_lignes_email(a_envoyer) if f["email"]]
 
