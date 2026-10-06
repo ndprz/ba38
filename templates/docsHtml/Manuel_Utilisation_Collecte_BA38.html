@@ -79,12 +79,11 @@ Vendredi Matin »), sans date précise.</p>
 <h2 id="liens-google-drive">1.2 Liens Google Drive</h2>
 <p>Un nouveau dossier Drive étant créé chaque année, coller les liens
 Google Sheets demandés dans « Paramètres des fichiers Google Drive » :
-magasins, véhicules/planning, historique des cagettes, groupes,
-participants et participants pour mailing (le lien de partage complet de
-chaque fichier Google Sheets, celui-ci devant être partagé en « Toute
-personne disposant du lien »). Tant qu’un lien n’est pas renseigné pour
-l’année en cours, la génération des documents réels reste
-désactivée.</p>
+magasins, véhicules/planning, groupes, participants et participants pour
+mailing (le lien de partage complet de chaque fichier Google Sheets,
+celui-ci devant être partagé en « Toute personne disposant du lien »).
+Tant qu’un lien n’est pas renseigné pour l’année en cours, la génération
+des documents réels reste désactivée.</p>
 <p>Deux blocs identiques sont proposés : un pour l’année en cours, un
 pour l’année précédente (utile notamment pour recontacter les anciens
 trieurs avant que le planning de l’année en cours existe). Un fichier «
@@ -363,10 +362,10 @@ déjà décidé</strong> dans go-on-web (colonnes Quai, Tournée, Début, Code
 VIF, Magasin, Équipier, consignes de l’outil de collecte).</p>
 <p>À chaque lancement, les 3 fichiers sources sont <strong>retéléchargés
 automatiquement depuis le drive</strong> (liste des véhicules/planning,
-liste des magasins, historique des cagettes) : la page reflète donc
-toujours le dernier état saisi dans go-on-web, sans étape d’import
-manuel. Il n’y a pas d’historique de versions ici — chaque génération
-écrase les documents précédents.</p>
+liste des magasins, liste des colis) : la page reflète donc toujours le
+dernier état saisi dans go-on-web, sans étape d’import manuel. Il n’y a
+pas d’historique de versions ici — chaque génération écrase les
+documents précédents.</p>
 <p>Le bouton « 🚀 Lancer la génération » accepte un champ optionnel
 :</p>
 <ul>
@@ -442,6 +441,15 @@ sans camion : c’est normal, ils sont collectés par l’association. Ces
 informations figurent aussi dans les onglets de contrôle du classeur
 Excel (dont un onglet « Explications » qui les détaille tous) : à
 corriger dans go-on-web puis relancer une génération.</p>
+<p>Un bouton « Gérer les cagettes », à côté du bouton de génération,
+ouvre une grille éditable du nombre de cagettes par magasin et par
+demi-journée. Cette grille remplace complètement l’ancien fichier Excel
+déposé sur le drive et alimente directement la génération. Un nouveau
+magasin (jamais documenté) reçoit automatiquement une valeur par défaut
+affichée en vert, à vérifier ; un magasin déjà connu avec un simple trou
+sur une demi-journée reste affiché vide en jaune, comme un vrai manque à
+saisir. Import/export Excel disponibles (voir §10.3 pour le détail des
+règles).</p>
 <h2 id="envoi-des-mails-aux-chauffeurs-et-équipiers">3.5 Envoi des mails
 aux chauffeurs et équipiers</h2>
 <p>Ouvrir « Envoi mail tournées aux chauffeurs/équipiers ». La page
@@ -714,6 +722,11 @@ correction ou suppression, et un bouton permet de réinitialiser la
 numérotation en début de collecte. Le bouton ⚙️ Catégories permet de
 configurer les bornes de poids de chaque catégorie ainsi que la mise en
 page de l’étiquette imprimée (voir §10.5 pour le détail complet).</p>
+<p>Un référentiel des tares (poids à vide par type de conditionnement :
+palox Europe, palox noir, palox rouge, 1/2 palox rouge, caisses CV6413…)
+est accessible depuis l’écran des catégories — modifiable et imprimable
+sur une feuille de référence à garder près de la balance. Aucun calcul
+automatique : la soustraction du poids net reste manuelle.</p>
 <h1 id="participants">6. Participants</h1>
 <h2 id="mail-aux-trieurs-année-précédente">6.1 Mail aux trieurs (année
 précédente)</h2>
@@ -878,11 +891,10 @@ renseignées, seulement la date de début si la fin est absente, ou
 simplement l'année brute (ex. « 2026 ») si aucune date de début n'est
 enregistrée.</p>
 <h3 id="liens-google-drive-1">Liens Google Drive</h3>
-<p>Six liens Drive distincts peuvent être enregistrés par campagne :
-magasins, véhicules/planning, historique cagettes, groupes,
-participants, participants pour mailing — chacun doit correspondre à un
-fichier Google Sheets partagé en « Toute personne disposant du lien
-».</p>
+<p>Cinq liens Drive distincts peuvent être enregistrés par campagne :
+magasins, véhicules/planning, groupes, participants, participants pour
+mailing — chacun doit correspondre à un fichier Google Sheets partagé en
+« Toute personne disposant du lien ».</p>
 <p>Un lien est validé uniquement par la présence d'un identifiant Drive
 reconnaissable dans l'URL. Si un ou plusieurs liens saisis n'en
 contiennent pas, TOUS les liens de la campagne sont rejetés en bloc (y
@@ -908,7 +920,7 @@ existe ; pour la génération des tournées (simulation) et l'analyse 8
 scénarios, l'échec remonte comme une erreur bloquante affichée à
 l'utilisateur.</p>
 <p>Sur la page Production, seuls trois des six liens (magasins,
-véhicules, cagettes) sont requis ; si l'un manque, la génération est
+véhicules, colis) sont requis ; si l'un manque, la génération est
 bloquée avec un message précisant le(s) lien(s) manquant(s).</p>
 <p>La liste figée de saisie des cagettes n'utilise le référentiel
 magasins (Drive ou import) que pour (ré)initialiser la liste une fois ;
@@ -1203,8 +1215,8 @@ automatique pendant le calcul lui-même.</p>
 <h3 id="génération-des-documents-réels-production">Génération des
 documents réels (Production)</h3>
 <p>La génération nécessite les 3 liens Drive préconfigurés (magasins,
-véhicules, cagettes) ; les fichiers sont retéléchargés à chaque
-génération, jamais un import ponctuel figé.</p>
+véhicules, colis) ; les fichiers sont retéléchargés à chaque génération,
+jamais un import ponctuel figé.</p>
 <p>Un code camion saisi pour une génération ciblée est nettoyé de tout
 caractère non alphanumérique, pour empêcher toute injection dans le nom
 de fichier généré.</p>
@@ -1259,6 +1271,28 @@ personnalisé à chaque destinataire.</p>
 <p>Tous les mails (test et réel) sont envoyés avec un expéditeur fixe
 (ba380.directeur@banquealimentaire.org), jamais l'adresse de
 l'utilisateur connecté.</p>
+<h3 id="gestion-des-cagettes-production">Gestion des cagettes
+(Production)</h3>
+<p>Les lignes de la grille correspondent aux couples (magasin,
+demi-journée) réellement planifiés dans le planning véhicules réel (même
+source que les autres contrôles de Production, ex. Quai manquant, Colis
+manquants) — un magasin absent de ce planning (État « Non collecté »)
+n'y figure jamais. Un magasin est considéré « déjà documenté » dès qu'au
+moins une de ses demi-journées porte une valeur réelle (saisie à la main
+ou importée) en Cagette 1 ou 2 ; ses autres demi-journées encore vides
+restent vides et s'affichent en jaune, comme un vrai manque à compléter,
+sans jamais recevoir de valeur automatique. Un magasin sans AUCUNE
+donnée sur AUCUNE de ses demi-journées (typiquement un nouveau magasin)
+reçoit automatiquement la valeur 10 en Cagette 1 et Cagette 2 sur toutes
+ses lignes, affichées en vert — dès qu'une cellule de ce magasin est
+modifiée à la main, sa ligne repasse en confirmé (la couleur verte
+disparaît), même si la valeur saisie reste 10. L'import reprend le
+format de l'ancien fichier Cagettes_magasins.xlsx (colonnes Code VIF,
+jour, cag1 à cag4) ; l'export reproduit ce même format. La génération
+des documents réels régénère ce fichier Excel à la volée depuis cette
+grille avant chaque lancement du script, sans jamais relire le drive
+pour les cagettes — le champ Drive correspondant (« Historique cagettes
+») a d'ailleurs été retiré des Paramètres, devenu inutile.</p>
 <h2 id="associations-gardant-1">10.4 Associations gardant</h2>
 <h3
 id="détermination-des-associations-et-rattachement-des-magasins">Détermination
@@ -1519,3 +1553,10 @@ l'année précédente si des pesées existent pour cette année-là. Ces
 colonnes de valorisation/comparaison peuvent être masquées ou
 réaffichées sans recharger la page. Un export Excel reprend les mêmes
 colonnes.</p>
+<h3 id="tares-pesée-palox">Tares (pesée palox)</h3>
+<p>Référentiel simple et indépendant du calcul de la pesée (aucune
+soustraction automatique de poids) : une ligne par type de
+conditionnement avec son poids à vide en kg, modifiable (ajout, édition,
+suppression) et imprimable en une page depuis un bouton dédié — pour
+garder une feuille de référence près de la balance, l'opérateur
+effectuant lui-même la soustraction du poids net.</p>

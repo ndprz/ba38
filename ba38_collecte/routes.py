@@ -225,9 +225,18 @@ def _id_drive(url):
 def _url_export_drive(url):
     """Construit l'URL d'export xlsx à partir d'un lien Drive collé par
     l'utilisateur. None si le lien est vide ou ne contient pas d'identifiant
-    Drive reconnaissable."""
+    Drive reconnaissable.
+
+    Paramètre anti-cache (horodatage, toujours différent d'un appel à
+    l'autre) : Google sert parfois une version mise en cache de l'export
+    d'une feuille pourtant modifiée depuis — un incident réel a montré
+    "État" figé sur d'anciennes valeurs malgré plusieurs rechargements.
+    Un paramètre d'URL unique empêche ce cache de resservir une ancienne
+    réponse."""
     fid = _id_drive(url)
-    return f"https://docs.google.com/spreadsheets/d/{fid}/export?format=xlsx" if fid else None
+    if not fid:
+        return None
+    return f"https://docs.google.com/spreadsheets/d/{fid}/export?format=xlsx&_cachebust={int(datetime.now().timestamp())}"
 
 
 def _fichier_drive(annee, cle):

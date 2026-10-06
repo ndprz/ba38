@@ -51,12 +51,11 @@ etc.). Tant qu’aucune date n’est renseignée, seul le libellé du jour
 apparaît (« Vendredi Matin »), sans date précise.</p>
 <p>Un nouveau dossier Drive étant créé chaque année, coller les liens
 Google Sheets demandés dans « Paramètres des fichiers Google Drive » :
-magasins, véhicules/planning, historique des cagettes, groupes,
-participants et participants pour mailing (le lien de partage complet de
-chaque fichier Google Sheets, celui-ci devant être partagé en « Toute
-personne disposant du lien »). Tant qu’un lien n’est pas renseigné pour
-l’année en cours, la génération des documents réels reste
-désactivée.</p>
+magasins, véhicules/planning, groupes, participants et participants pour
+mailing (le lien de partage complet de chaque fichier Google Sheets,
+celui-ci devant être partagé en « Toute personne disposant du lien »).
+Tant qu’un lien n’est pas renseigné pour l’année en cours, la génération
+des documents réels reste désactivée.</p>
 <p>Depuis peu, deux blocs identiques sont proposés : un pour l’année en
 cours, un pour l’année précédente (utile par exemple pour recontacter
 les anciens trieurs avant que le planning de l’année en cours existe).
@@ -287,10 +286,10 @@ déjà décidé</strong> dans go-on-web (colonnes Quai, Tournée, Début, Code
 VIF, Magasin, Équipier, consignes de l’outil de collecte).</p>
 <p>À chaque lancement, les 3 fichiers sources sont <strong>retéléchargés
 automatiquement depuis le drive</strong> (liste des véhicules/planning,
-liste des magasins, historique des cagettes) : la page reflète donc
-toujours le dernier état saisi dans go-on-web, sans étape d’import
-manuel. Il n’y a pas d’historique de versions ici — chaque génération
-écrase les documents précédents.</p>
+liste des magasins, liste des colis) : la page reflète donc toujours le
+dernier état saisi dans go-on-web, sans étape d’import manuel. Il n’y a
+pas d’historique de versions ici — chaque génération écrase les
+documents précédents.</p>
 <p>Le bouton « 🚀 Lancer la génération » accepte un champ optionnel
 :</p>
 <ul>
@@ -366,6 +365,17 @@ l’association. Ces informations figurent aussi dans les onglets de
 contrôle du classeur Excel (dont un onglet « Explications » qui les
 détaille tous) : à corriger dans go-on-web puis relancer une
 génération.</p>
+<p>Un bouton « 🧺 Gérer les cagettes » (à côté de « Générer documents »)
+ouvre une grille éditable du nombre de cagettes par magasin et par
+demi-journée (jusqu’à 4 passages), qui remplace l’ancien fichier Excel
+déposé sur le drive — utilisée directement par la génération. Un magasin
+tout nouveau (jamais documenté) reçoit automatiquement 10/10 par défaut,
+affiché en vert pour rappel de vérification ; un magasin déjà connu mais
+avec un trou sur une demi-journée reste affiché vide, en jaune, comme un
+vrai manque à saisir. Un menu déroulant permet d’isoler l’une ou l’autre
+catégorie, combinable avec la recherche. Deux boutons permettent
+d’importer un historique existant (même format que l’ancien fichier) et
+d’exporter la grille actuelle en Excel.</p>
 <h2 id="envoi-des-mails-aux-chauffeurs-et-équipiers">3.5 Envoi des mails
 aux chauffeurs et équipiers</h2>
 <p>Ouvrir « Envoi mail tournées aux chauffeurs/équipiers ». La page
@@ -610,6 +620,13 @@ une vraie pesée.</p>
 dans Paramètres, pas ici — voir §1.3. Il valorise en euros aussi bien la
 pesée palox que les quantités par produit des associations gardant leur
 collecte.</p>
+<h2 id="tares">5.11 Tares</h2>
+<p>Accessible depuis l’écran ⚙️ Catégories, cette page liste le poids à
+vide de chaque type de conditionnement (palox Europe, palox noir, palox
+rouge, 1/2 palox rouge, caisses CV6413…) — modifiable (ajout,
+modification, suppression) et imprimable (bouton 🖨️), pour garder une
+feuille de référence près de la balance. La soustraction du poids net
+reste à faire à la main : aucun calcul automatique n’est fait ici.</p>
 <h1 id="participants">6. Participants</h1>
 <h2 id="mail-aux-trieurs-année-précédente">6.1 Mail aux trieurs (année
 précédente)</h2>
