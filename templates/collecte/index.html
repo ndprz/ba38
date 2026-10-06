@@ -118,11 +118,6 @@
                            value="{{ campagne_cible.drive_vehicules if campagne_cible else '' }}">
                 </div>
                 <div class="col-12 mb-4">
-                    <label class="form-label">Historique cagettes</label>
-                    <input type="text" name="cagettes" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
-                           value="{{ campagne_cible.drive_cagettes if campagne_cible else '' }}">
-                </div>
-                <div class="col-12 mb-4">
                     <label class="form-label">Liste des colis</label>
                     <input type="text" name="colis" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
                            value="{{ campagne_cible.drive_colis or '' if campagne_cible and campagne_cible.drive_colis is defined else '' }}">

@@ -188,7 +188,9 @@ def _dossier_production(annee):
 DRIVE_CHAMPS = {
     "magasins":  {"champ": "drive_magasins",  "label": "Liste des magasins"},
     "vehicules": {"champ": "drive_vehicules", "label": "Liste des véhicules / planning"},
-    "cagettes":  {"champ": "drive_cagettes",  "label": "Historique cagettes"},
+    # "cagettes" (drive_cagettes) volontairement absent depuis que l'historique
+    # des cagettes est géré dans l'appli (cagettes_production()) — la colonne
+    # drive_cagettes reste en base (relique, jamais relue ni réécrite).
     "colis":     {"champ": "drive_colis",     "label": "Liste des colis"},
     "groupes":   {"champ": "drive_groupes",   "label": "Liste des groupes"},
     "participants": {"champ": "drive_participants", "label": "Liste des participants"},
@@ -2361,9 +2363,9 @@ def enregistrer_liens_drive():
         if existante:
             conn.execute(
                 "UPDATE collecte_campagnes SET drive_magasins = ?, drive_vehicules = ?, "
-                 "drive_cagettes = ?, drive_colis = ?, drive_groupes = ?, drive_participants = ?, "
+                 "drive_colis = ?, drive_groupes = ?, drive_participants = ?, "
                  "drive_participants_mailing = ? WHERE annee = ?",
-                (valeurs["drive_magasins"], valeurs["drive_vehicules"], valeurs["drive_cagettes"],
+                (valeurs["drive_magasins"], valeurs["drive_vehicules"],
                   valeurs["drive_colis"], valeurs["drive_groupes"], valeurs["drive_participants"],
                   valeurs["drive_participants_mailing"], annee)
             )
@@ -2371,10 +2373,10 @@ def enregistrer_liens_drive():
             maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             conn.execute("""
                 INSERT INTO collecte_campagnes
-                    (annee, drive_magasins, drive_vehicules, drive_cagettes, drive_colis, drive_groupes,
+                    (annee, drive_magasins, drive_vehicules, drive_colis, drive_groupes,
                                          drive_participants, drive_participants_mailing, date_creation, cree_par)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (annee, valeurs["drive_magasins"], valeurs["drive_vehicules"], valeurs["drive_cagettes"],
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (annee, valeurs["drive_magasins"], valeurs["drive_vehicules"],
                                     valeurs["drive_colis"], valeurs["drive_groupes"], valeurs["drive_participants"],
                                     valeurs["drive_participants_mailing"], maintenant, current_user.email))
 
