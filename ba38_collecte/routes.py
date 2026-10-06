@@ -3528,6 +3528,41 @@ def cagettes_production_importer(annee):
     return redirect(url_for("collecte.cagettes_production", annee=annee))
 
 
+@collecte_bp.route("/collecte/<int:annee>/cagettes_production/exporter")
+@login_required
+@require_access("collecte", "lecture")
+def cagettes_production_exporter(annee):
+    """Export Excel de la grille de gestion des cagettes — même format que
+    l'ancien fichier Cagettes_magasins.xlsx (colonnes Code VIF, jour,
+    cag1..cag4, feuille 'Feuil1'), pour archivage/consultation hors ligne,
+    ou pour réimporter ailleurs (cf. cagettes_production_importer)."""
+    with get_db_connection() as conn:
+        _ensure_table_cagettes_production(conn)
+        lignes = conn.execute(
+            "SELECT code_vif, jour, cag1, cag2, cag3, cag4 FROM collecte_cagettes_production WHERE annee = ? ORDER BY jour, code_vif",
+            (annee,),
+        ).fetchall()
+
+    df = pd.DataFrame(
+        [{"Code VIF": l["code_vif"], "jour": l["jour"], "cag1": l["cag1"], "cag2": l["cag2"],
+          "cag3": l["cag3"], "cag4": l["cag4"]} for l in lignes],
+        columns=["Code VIF", "jour", "cag1", "cag2", "cag3", "cag4"],
+    )
+    tampon = io.BytesIO()
+    with pd.ExcelWriter(tampon, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Feuil1", index=False)
+    tampon.seek(0)
+
+    write_log(f"📤 Export cagettes production {annee} par {current_user.email}")
+
+    return send_file(
+        tampon,
+        as_attachment=True,
+        download_name=f"cagettes_production_{annee}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 @collecte_bp.route("/collecte/production")
 @login_required
 @require_access("collecte", "lecture")

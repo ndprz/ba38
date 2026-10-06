@@ -26,6 +26,7 @@
 
     {% call action_buttons() %}
         {{ action_button("↩️ Retour", href=url_for('collecte.production', annee=annee), color="outline-dark") }}
+        {{ action_button("📤 Exporter", href=url_for('collecte.cagettes_production_exporter', annee=annee), color="outline-primary") }}
     {% endcall %}
 
     <div class="card mb-3">
