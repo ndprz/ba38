@@ -253,7 +253,7 @@ def _fichier_drive(annee, cle):
         return None
     dossier = _dossier_annee(annee)
     os.makedirs(dossier, exist_ok=True)
-    noms_stockage = {"vehicules": "liste_vehicules.xlsx"}
+    noms_stockage = {"vehicules": "liste_vehicules.xlsx", "colis": "liste-colis.xlsx"}
     nom_stockage = FICHIERS.get(cle, {}).get("nom_stockage") or noms_stockage[cle]
     chemin = os.path.join(dossier, nom_stockage)
     reponse = requests.get(url, timeout=30)
@@ -736,6 +736,165 @@ def enregistrer_contenu_mail_trieurs():
         conn.commit()
     flash("✅ Texte du mail enregistré.", "success")
     return redirect(url_for("collecte.mail_trieurs", annee=annee))
+
+
+MAIL_TEXTE_PRISE_COLIS_DEFAUT = (
+    "Bonjour <<nom>>,\n\n"
+    "Vous êtes référent(e) pour la collecte de <<magasin>>, merci pour votre implication !\n\n"
+    "Le colis de collecte de cette année est prêt — merci de convenir avec nous d'un "
+    "rendez-vous pour venir le récupérer dès que possible.\n\n"
+    "Merci."
+)
+
+
+def _ensure_colonne_mail_prise_colis(conn):
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_campagnes)").fetchall()}
+    if "mail_texte_prise_colis" not in colonnes:
+        conn.execute("ALTER TABLE collecte_campagnes ADD COLUMN mail_texte_prise_colis TEXT")
+
+
+def _charger_primo_responsables_colis(annee):
+    """Primo responsables (référents magasin) du référentiel colis de
+    l'année, pour les seuls magasins dont le colis est prêt mais pas encore
+    pris (colonnes 'Préparé'='OUI' et 'Pris'='NON') — nom + email,
+    dédoublonnés (un même référent peut couvrir plusieurs magasins, les
+    noms de magasins concernés sont alors regroupés)."""
+    chemin = _fichier_drive(annee, "colis")
+    if not chemin:
+        chemin = os.path.join(_dossier_annee(annee), "liste-colis.xlsx")
+    if not os.path.exists(chemin):
+        raise FileNotFoundError(f"Le fichier colis {annee} est introuvable")
+
+    df = pd.read_excel(chemin)
+    df.columns = [str(col).strip() for col in df.columns]
+    personnes = {}
+    sans_email = set()
+    for _, ligne in df.iterrows():
+        prepare = str(ligne.get("Préparé", "")).strip().upper()
+        pris = str(ligne.get("Pris", "")).strip().upper()
+        if prepare != "OUI" or pris == "OUI":
+            continue
+        nom_magasin = str(ligne.get("Nom magasin", "")).strip()
+        personne = str(ligne.get("Primo responsable", "")).strip()
+        if not personne or personne == "nan":
+            continue
+        email = str(ligne.get("email", "")).strip().lower()
+        if email == "nan":
+            email = ""
+        cle = email or f"nom:{personne.lower()}"
+        entree = personnes.setdefault(cle, {"nom": personne, "email": email, "magasins": []})
+        if nom_magasin and nom_magasin != "nan" and nom_magasin not in entree["magasins"]:
+            entree["magasins"].append(nom_magasin)
+        if not email:
+            sans_email.add(personne)
+
+    for entree in personnes.values():
+        entree["magasin"] = ", ".join(entree["magasins"])
+
+    destinataires = sorted(
+        (p for p in personnes.values() if p["email"]), key=lambda p: p["nom"].lower()
+    )
+    return destinataires, sorted(sans_email, key=str.lower)
+
+
+def _contenu_mail_prise_colis(annee):
+    with get_db_connection() as conn:
+        _ensure_colonne_mail_prise_colis(conn)
+        ligne = conn.execute(
+            "SELECT mail_texte_prise_colis FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    return ligne["mail_texte_prise_colis"] if ligne and ligne["mail_texte_prise_colis"] else MAIL_TEXTE_PRISE_COLIS_DEFAUT
+
+
+def _corps_mail_prise_colis(personne, texte):
+    return texte.replace("<<nom>>", personne["nom"]).replace("<<magasin>>", personne["magasin"])
+
+
+def _corps_mail_prise_colis_html(personne, texte):
+    html = str(escape(_corps_mail_prise_colis(personne, texte))).replace("\n", "<br>\n")
+    return f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">{html}</div>'
+
+
+@collecte_bp.route("/collecte/mail_prise_colis", methods=["GET", "POST"])
+@login_required
+@require_access("collecte", "lecture")
+def mail_prise_colis():
+    annee = request.args.get("annee", type=int) or request.form.get("annee", type=int) or datetime.now().year
+    try:
+        destinataires, personnes_sans_email = _charger_primo_responsables_colis(annee)
+        mail_texte = _contenu_mail_prise_colis(annee)
+    except Exception as erreur:
+        flash(f"❌ Impossible de charger les primo responsables de {annee} : {erreur}", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        if not destinataires:
+            flash("❌ Aucun primo responsable avec une adresse email.", "danger")
+        elif action == "test":
+            email_test = request.form.get("test_destinataire", "")
+            exemple = next((p for p in destinataires if p["email"] == email_test), destinataires[0])
+            adresse_test = getattr(current_user, "email", "") or ""
+            if not adresse_test:
+                flash("❌ Votre compte n'a pas d'adresse email pour le test.", "danger")
+            else:
+                envoyer_mail(
+                    f"[TEST] Mail prise colis {annee}",
+                    [adresse_test],
+                    _corps_mail_prise_colis_html(exemple, mail_texte),
+                    sender_override="ba380.directeur@banquealimentaire.org",
+                    is_html=True,
+                )
+                flash(f"✅ Mail de test envoyé à {adresse_test}.", "success")
+        elif action == "envoyer":
+            for personne in destinataires:
+                envoyer_mail(
+                    f"Collecte {annee} — prise du colis",
+                    [personne["email"]],
+                    _corps_mail_prise_colis_html(personne, mail_texte),
+                    sender_override="ba380.directeur@banquealimentaire.org",
+                    is_html=True,
+                )
+            flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+
+    return render_template(
+        "collecte/mail_prise_colis.html",
+        annee=annee,
+        destinataires=destinataires,
+        personnes_sans_email=personnes_sans_email,
+        mail_texte=mail_texte,
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/mail_prise_colis/apercu")
+@login_required
+@require_access("collecte", "lecture")
+def mail_prise_colis_apercu(annee):
+    """Rendu HTML exact du mail pour la personne sélectionnée, sans rien
+    envoyer (même en test) — même principe que l'aperçu trieurs."""
+    destinataires, _ = _charger_primo_responsables_colis(annee)
+    if not destinataires:
+        abort(404)
+    mail_texte = _contenu_mail_prise_colis(annee)
+    email = request.args.get("email", "")
+    personne = next((p for p in destinataires if p["email"] == email), destinataires[0])
+    html = _corps_mail_prise_colis_html(personne, mail_texte)
+    return Response(html, mimetype="text/html")
+
+
+@collecte_bp.route("/collecte/mail_prise_colis/contenu-mail", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_contenu_mail_prise_colis():
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    texte = request.form.get("mail_texte", "").strip()
+    with get_db_connection() as conn:
+        _ensure_colonne_mail_prise_colis(conn)
+        conn.execute("UPDATE collecte_campagnes SET mail_texte_prise_colis = ? WHERE annee = ?", (texte, annee))
+        conn.commit()
+    flash("✅ Texte du mail enregistré.", "success")
+    return redirect(url_for("collecte.mail_prise_colis", annee=annee))
+
 
 PRODUCTION_FICHIERS_SORTIE = {
     "excel":     {"nom": "Tournees_BAI38_{annee}_GOTW.xlsx", "label": "Classeur Excel (tournées + contrôles)"},

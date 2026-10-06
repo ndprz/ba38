@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Mail prise colis {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 900px;">
+    <h2>📧 Mail prise colis {{ annee }}</h2>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+    {% endcall %}
+
+    <p class="text-muted">
+        Primo responsables (référents magasin) du référentiel colis {{ annee }}, pour les seuls
+        magasins dont le colis est prêt mais pas encore pris (colonnes « Préparé »/« Pris ») — pour
+        les prévenir qu'il est à récupérer. Le texte du mail est personnalisable ci-dessous, avec les
+        repères <code>&lt;&lt;nom&gt;&gt;</code> et <code>&lt;&lt;magasin&gt;&gt;</code>.
+    </p>
+
+    {% if personnes_sans_email %}
+    <div class="alert alert-warning">
+        <strong>Personnes sans adresse email :</strong>
+        {{ personnes_sans_email|join(', ') }}
+    </div>
+    {% endif %}
+
+    {% if destinataires %}
+    <div class="alert alert-info small">
+        <strong>Ordre à suivre :</strong>
+        <ol class="mb-0">
+            <li>Vérifier/adapter le texte du mail (📁 Paramètres).</li>
+            <li>Utiliser « ✉️ Aperçu du mail » pour contrôler le rendu, sans rien envoyer.</li>
+            <li>Tester sur votre propre adresse, puis envoyer aux destinataires.</li>
+        </ol>
+    </div>
+
+    <button class="btn btn-outline-secondary mb-3" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionParametresMailPriseColis"
+            aria-expanded="false" aria-controls="sectionParametresMailPriseColis">
+        📁 Paramètres (texte du mail)
+    </button>
+    <div id="sectionParametresMailPriseColis" class="collapse mb-3">
+        <form method="post" action="{{ url_for('collecte.enregistrer_contenu_mail_prise_colis') }}" class="border rounded p-3 mb-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="annee" value="{{ annee }}">
+            <div class="mb-3">
+                <label for="mail_texte" class="form-label"><strong>Texte du mail</strong></label>
+                <textarea name="mail_texte" id="mail_texte" class="form-control" rows="10">{{ mail_texte }}</textarea>
+                <small class="text-muted">
+                    Vous pouvez utiliser <code>&lt;&lt;nom&gt;&gt;</code> et
+                    <code>&lt;&lt;magasin&gt;&gt;</code>, remplacés automatiquement pour chaque
+                    destinataire.
+                </small>
+            </div>
+            <button type="submit" class="btn btn-outline-primary">💾 Enregistrer le texte</button>
+        </form>
+    </div>
+
+    <form method="post" class="mb-4 d-flex flex-wrap align-items-center gap-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+        <label for="test_destinataire" class="visually-hidden">Personne à tester</label>
+        <select name="test_destinataire" id="test_destinataire" class="form-select" style="max-width: 320px;">
+            {% for personne in destinataires %}
+            <option value="{{ personne.email }}">{{ personne.nom }} ({{ personne.magasin }})</option>
+            {% endfor %}
+        </select>
+        <button type="button" id="btn-apercu-mail" class="btn btn-outline-info">
+            ✉️ Aperçu du mail
+        </button>
+        <button type="submit" name="action" value="test" class="btn btn-outline-info">
+            🧪 Tester sur mon adresse
+        </button>
+        <button type="submit" name="action" value="envoyer" class="btn btn-primary"
+                onclick="return confirm('Préparer un mail pour chaque destinataire ?');">
+            📤 Envoyer les mails
+        </button>
+    </form>
+    <p class="text-muted small">
+        L'aperçu ouvre le rendu exact du mail pour la personne sélectionnée ci-dessus, sans rien
+        envoyer (même en test).
+    </p>
+
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Personne</th>
+                    <th>Magasin(s)</th>
+                    <th>Email</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for personne in destinataires %}
+                <tr>
+                    <td>{{ personne.nom }}</td>
+                    <td>{{ personne.magasin }}</td>
+                    <td>{{ personne.email }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <script>
+    document.getElementById("btn-apercu-mail").addEventListener("click", function () {
+        const email = document.getElementById("test_destinataire").value;
+        const url = "{{ url_for('collecte.mail_prise_colis_apercu', annee=annee) }}?email=" + encodeURIComponent(email);
+        window.open(url, "_blank");
+    });
+    </script>
+    {% else %}
+    <div class="alert alert-info">Aucun primo responsable avec adresse email n'a été trouvé pour {{ annee }}.</div>
+    {% endif %}
+</div>
+{% endblock %}
