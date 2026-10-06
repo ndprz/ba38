@@ -26,6 +26,13 @@
     </div>
     {% endif %}
 
+    {% if personnes_sans_portable %}
+    <div class="alert alert-warning">
+        <strong>Personnes sans numéro de portable :</strong>
+        {{ personnes_sans_portable|join(', ') }}
+    </div>
+    {% endif %}
+
     {% if destinataires %}
     <div class="alert alert-info small">
         <strong>Ordre à suivre :</strong>
@@ -90,6 +97,7 @@
                     <th>Personne</th>
                     <th>Magasin(s)</th>
                     <th>Email</th>
+                    <th>Portable</th>
                 </tr>
             </thead>
             <tbody>
@@ -98,6 +106,7 @@
                     <td>{{ personne.nom }}</td>
                     <td>{{ personne.magasin }}</td>
                     <td>{{ personne.email }}</td>
+                    <td{% if not personne.portable %} class="text-danger fw-bold"{% endif %}>{{ personne.portable or "—" }}</td>
                 </tr>
             {% endfor %}
             </tbody>

@@ -769,6 +769,7 @@ def _charger_primo_responsables_colis(annee):
     df.columns = [str(col).strip() for col in df.columns]
     personnes = {}
     sans_email = set()
+    sans_portable = set()
     for _, ligne in df.iterrows():
         prepare = str(ligne.get("Préparé", "")).strip().upper()
         pris = str(ligne.get("Pris", "")).strip().upper()
@@ -781,12 +782,21 @@ def _charger_primo_responsables_colis(annee):
         email = str(ligne.get("email", "")).strip().lower()
         if email == "nan":
             email = ""
+        portable = str(ligne.get("Portable", "")).strip()
+        if portable == "nan":
+            portable = ""
         cle = email or f"nom:{personne.lower()}"
-        entree = personnes.setdefault(cle, {"nom": personne, "email": email, "magasins": []})
+        entree = personnes.setdefault(cle, {"nom": personne, "email": email, "portable": portable, "magasins": []})
         if nom_magasin and nom_magasin != "nan" and nom_magasin not in entree["magasins"]:
             entree["magasins"].append(nom_magasin)
+        if portable and not entree["portable"]:
+            entree["portable"] = portable
         if not email:
             sans_email.add(personne)
+        if not entree["portable"]:
+            sans_portable.add(personne)
+        else:
+            sans_portable.discard(personne)
 
     for entree in personnes.values():
         entree["magasin"] = ", ".join(entree["magasins"])
@@ -794,7 +804,7 @@ def _charger_primo_responsables_colis(annee):
     destinataires = sorted(
         (p for p in personnes.values() if p["email"]), key=lambda p: p["nom"].lower()
     )
-    return destinataires, sorted(sans_email, key=str.lower)
+    return destinataires, sorted(sans_email, key=str.lower), sorted(sans_portable, key=str.lower)
 
 
 def _contenu_mail_prise_colis(annee):
@@ -821,7 +831,7 @@ def _corps_mail_prise_colis_html(personne, texte):
 def mail_prise_colis():
     annee = request.args.get("annee", type=int) or request.form.get("annee", type=int) or datetime.now().year
     try:
-        destinataires, personnes_sans_email = _charger_primo_responsables_colis(annee)
+        destinataires, personnes_sans_email, personnes_sans_portable = _charger_primo_responsables_colis(annee)
         mail_texte = _contenu_mail_prise_colis(annee)
     except Exception as erreur:
         flash(f"❌ Impossible de charger les primo responsables de {annee} : {erreur}", "danger")
@@ -862,6 +872,7 @@ def mail_prise_colis():
         annee=annee,
         destinataires=destinataires,
         personnes_sans_email=personnes_sans_email,
+        personnes_sans_portable=personnes_sans_portable,
         mail_texte=mail_texte,
     )
 
@@ -872,7 +883,7 @@ def mail_prise_colis():
 def mail_prise_colis_apercu(annee):
     """Rendu HTML exact du mail pour la personne sélectionnée, sans rien
     envoyer (même en test) — même principe que l'aperçu trieurs."""
-    destinataires, _ = _charger_primo_responsables_colis(annee)
+    destinataires, _, _ = _charger_primo_responsables_colis(annee)
     if not destinataires:
         abort(404)
     mail_texte = _contenu_mail_prise_colis(annee)
