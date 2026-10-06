@@ -3700,6 +3700,21 @@ def production_generer():
     )
     df_cag_export.to_excel(os.path.join(dossier, "cagettes.xlsx"), sheet_name="Feuil1", index=False)
 
+    # Associations gardant leur collecte : régénéré depuis la base (même
+    # source que la page Localisation) — sert uniquement au contrôle
+    # "Adresses invalides", en complément des magasins.
+    with get_db_connection() as conn:
+        lignes_assoc = conn.execute("""
+            SELECT nom_association, COMMUNE, latitude, longitude FROM associations
+            WHERE LOWER(TRIM(COALESCE(validite,''))) = 'oui'
+        """).fetchall()
+    df_assoc_export = pd.DataFrame(
+        [{"Nom": l["nom_association"], "Ville": l["COMMUNE"], "Latitude": l["latitude"], "Longitude": l["longitude"]}
+         for l in lignes_assoc],
+        columns=["Nom", "Ville", "Latitude", "Longitude"],
+    )
+    df_assoc_export.to_excel(os.path.join(dossier, "associations.xlsx"), index=False)
+
     script_path = os.path.join(
         current_app.root_path, "ba38_collecte", "scripts", "generer_documents_production.py"
     )
@@ -3717,6 +3732,7 @@ def production_generer():
             "--vehicules", os.path.join(dossier, "vehicules.xlsx"),
             "--cagettes", os.path.join(dossier, "cagettes.xlsx"),
             "--colis", os.path.join(dossier, "colis.xlsx"),
+            "--associations", os.path.join(dossier, "associations.xlsx"),
             "--annee", str(annee),
             "--camion", camion,
             "--fiche-seule",
@@ -3755,6 +3771,7 @@ def production_generer():
         "--vehicules", os.path.join(dossier, "vehicules.xlsx"),
         "--cagettes", os.path.join(dossier, "cagettes.xlsx"),
         "--colis", os.path.join(dossier, "colis.xlsx"),
+        "--associations", os.path.join(dossier, "associations.xlsx"),
         "--annee", str(annee),
         "--output-excel", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["excel"]["nom"].format(annee=annee)),
         "--output-fiches", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["fiches"]["nom"].format(annee=annee)),

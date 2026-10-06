@@ -116,6 +116,13 @@ DJ_LABELS = {
 }
 DJ_ORDER = list(DJ_LABELS.keys())
 
+# Zone plausible pour une adresse de magasin (Isère et alentours) — mêmes
+# bornes que _coords_plausibles dans ba38_collecte/routes.py (page
+# Localisation magasins et associations), reprises ici pour le même
+# contrôle dans le classeur Production (onglet 'Adresses invalides').
+ZONE_LAT_MIN, ZONE_LAT_MAX = 44.0, 46.3
+ZONE_LON_MIN, ZONE_LON_MAX = 4.2, 6.3
+
 C_BLACK = colors.black
 
 # Noms de camions de secours (utilisés seulement si liste-vehicule.xlsx ne
@@ -1873,6 +1880,19 @@ def ajouter_onglet_explications(wb):
          "'Collecté par la BAI', ou 'Collecte gardée' avec stockage partagé BAI) absents de "
          "liste-colis.xlsx, ou présents mais avec un colis non renseigné. À compléter dans "
          "liste-colis.xlsx avant régénération."),
+        ('Magasins sans stockage',
+         "Magasins collectés par la BAI OU en collecte gardée (même population que la page "
+         "'Localisation magasins et associations' — plus large que 'Colis manquants', qui ne "
+         "concerne que les magasins où la BAI envoie réellement un camion) dont la colonne "
+         "'Stockage' du référentiel magasins est vide. À compléter dans liste-magasins.xlsx "
+         "(go-on-web)."),
+        ('Adresses invalides',
+         "Magasins (même population que 'Magasins sans stockage') ET associations gardant leur "
+         "collecte (colonne Type) dont la latitude/longitude est absente, non numérique, ou en "
+         "dehors d'une zone plausible (Isère et alentours) — n'apparaissent pas sur la carte des "
+         "tournées ni sur la page 'Localisation magasins et associations'. Intéresse à la fois la "
+         "production à l'entrepôt (magasins) et les collectes gardées (associations). À corriger "
+         "l'adresse dans go-on-web (magasins) ou la fiche association (associations)."),
         ('Créneaux incomplets',
          "Magasins collectés sur une SEULE des deux demi-journées d'un même jour (Vendredi ou "
          "Samedi) alors qu'un camion est prévu sur l'autre — ex. un camion le vendredi après-midi "
@@ -2165,6 +2185,11 @@ def main():
                         help="Référentiel des colis affectés à chaque magasin collecté "
                              "(colonne 'Code VIF') — sert uniquement au contrôle 'Colis "
                              "manquants', n'affecte aucun autre document")
+    parser.add_argument('--associations', default=None,
+                        help="Associations gardant leur collecte, avec Nom/Ville/Latitude/"
+                             "Longitude (colonnes 'Nom','Ville','Latitude','Longitude') — "
+                             "optionnel, sert uniquement au contrôle 'Adresses invalides' "
+                             "(complète le même contrôle déjà fait pour les magasins)")
     parser.add_argument('--annee', default=datetime.datetime.now().year, type=int)
     parser.add_argument('--camion', default=None,
                         help="Limite le document 1 (fiches de collecte) à ce seul camion "
@@ -2345,6 +2370,8 @@ def main():
     # ── Magasins actifs du référentiel jamais intégrés dans liste-vehicule.xlsx
     non_planifies = []
     manquants_colis = []
+    manquants_stockage = []
+    adresses_invalides_prod = []
     if 'État' in df_ref.columns:
         actifs_ref = magasins_actifs(df_ref)
 
@@ -2362,6 +2389,60 @@ def main():
         if manquants_colis:
             print(f"ATTENTION : {len(manquants_colis)} magasin(s) actif(s) sans colis défini "
                   f"dans {args.colis} !")
+
+        # ── Magasins sans stockage renseigné / adresses manquantes ou
+        # invraisemblables : mêmes deux contrôles que la page « Localisation
+        # magasins et associations » (ba38_collecte/routes.py,
+        # _charger_magasins_localisation) — population volontairement plus
+        # large qu'actifs_ref/magasins_actifs() : TOUTE collecte gardée
+        # compte ici (même sans stockage BAI+ partagé), comme sur la carte,
+        # alors que Colis/Cagettes manquants ne concernent que les magasins
+        # où la BAI envoie réellement un camion.
+        etats_localisation = df_ref['État'].astype(str).str.strip().isin(
+            ['Collecté par la BAI', 'Collecte gardée']
+        )
+        for _, r in df_ref[etats_localisation].iterrows():
+            vif_r = vif_fmt(r.get('Code VIF', ''))
+            nom_r = str(r.get('Nom', '')).strip()
+            if not vif_r or not nom_r or nom_r == 'nan':
+                continue
+            stockage_r = str(r.get('Stockage', '')).strip()
+            if not stockage_r or stockage_r.lower() == 'nan':
+                manquants_stockage.append((vif_r, nom_r))
+            ville_r = str(r.get('Ville', '')).strip()
+            try:
+                lat_r, lon_r = float(r.get('Latitude')), float(r.get('Longitude'))
+                if not (ZONE_LAT_MIN <= lat_r <= ZONE_LAT_MAX and ZONE_LON_MIN <= lon_r <= ZONE_LON_MAX):
+                    raise ValueError("hors zone")
+            except (ValueError, TypeError):
+                adresses_invalides_prod.append(('Magasin', vif_r, nom_r, ville_r))
+
+        # Associations gardant leur collecte : intéresse ce contrôle au même
+        # titre que les magasins (import optionnel --associations, chargé
+        # depuis la base par la route Flask — voir production_generer()).
+        if args.associations:
+            try:
+                df_assoc = pd.read_excel(args.associations)
+                df_assoc.columns = [str(c).strip() for c in df_assoc.columns]
+                for _, r in df_assoc.iterrows():
+                    nom_a = str(r.get('Nom', '')).strip()
+                    if not nom_a or nom_a == 'nan':
+                        continue
+                    ville_a = str(r.get('Ville', '')).strip()
+                    try:
+                        lat_a, lon_a = float(r.get('Latitude')), float(r.get('Longitude'))
+                        if not (ZONE_LAT_MIN <= lat_a <= ZONE_LAT_MAX and ZONE_LON_MIN <= lon_a <= ZONE_LON_MAX):
+                            raise ValueError("hors zone")
+                    except (ValueError, TypeError):
+                        adresses_invalides_prod.append(('Association', '', nom_a, ville_a))
+            except Exception as e:
+                print(f"AVERTISSEMENT : Associations non chargées ({args.associations} : {e})")
+
+        if manquants_stockage:
+            print(f"ATTENTION : {len(manquants_stockage)} magasin(s) actif(s) sans stockage renseigné !")
+        if adresses_invalides_prod:
+            print(f"ATTENTION : {len(adresses_invalides_prod)} magasin(s) actif(s) avec une adresse "
+                  f"manquante ou invraisemblable (latitude/longitude) !")
         # NB : on part de df (tournées réellement reconstruites, une ligne par
         # camion x demi-journée) et non de df_veh brut — une ligne de
         # liste-vehicule.xlsx peut avoir un Code VIF renseigné mais un Code
@@ -2701,6 +2782,18 @@ def main():
         for vif_r, nom_r in sorted(manquants_colis, key=lambda t: t[1]):
             ws_col.append([vif_r, nom_r])
 
+    if manquants_stockage:
+        ws_sto = wb.create_sheet('Magasins sans stockage')
+        ws_sto.append(['Code VIF', 'Nom'])
+        for vif_r, nom_r in sorted(manquants_stockage, key=lambda t: t[1]):
+            ws_sto.append([vif_r, nom_r])
+
+    if adresses_invalides_prod:
+        ws_adr = wb.create_sheet('Adresses invalides')
+        ws_adr.append(['Type', 'Code VIF', 'Nom', 'Ville'])
+        for type_r, vif_r, nom_r, ville_r in sorted(adresses_invalides_prod, key=lambda t: (t[0], t[2])):
+            ws_adr.append([type_r, vif_r, nom_r, ville_r])
+
     if creneaux_incomplets:
         from openpyxl.styles import PatternFill as _PF, Font as _Ft
         ws_ci = wb.create_sheet('Créneaux incomplets')
@@ -2743,7 +2836,7 @@ def main():
     args.output_excel = sauver_xlsx_avec_repli(wb, args.output_excel)
     if (manquants_quai or camions_non_definis or camions_absents or magasins_sans_camion
             or manquants_cag or non_planifies or creneaux_incomplets or magasins_dj_non_couverts
-            or doublons_camion_magasin or manquants_colis):
+            or doublons_camion_magasin or manquants_colis or manquants_stockage or adresses_invalides_prod):
         print(f"\nManquants : {len(manquants_quai)} camion(s) sans Quai, "
               f"{len(camions_non_definis)} camion(s) totalement absent(s) de {args.vehicules}, "
               f"{len(camions_absents)} camion(s) présent(s) dans {args.vehicules} mais sans "
@@ -2758,13 +2851,16 @@ def main():
               f"demi-journée sur les deux), "
               f"{len(magasins_dj_non_couverts)} couple(s) magasin/demi-journée attendu(s) "
               f"d'après les créneaux mais sans camion, "
-              f"{len(manquants_colis)} magasin(s) actif(s) sans colis défini")
+              f"{len(manquants_colis)} magasin(s) actif(s) sans colis défini, "
+              f"{len(manquants_stockage)} magasin(s) actif(s) sans stockage renseigné, "
+              f"{len(adresses_invalides_prod)} magasin(s) actif(s) avec adresse manquante/invraisemblable")
         print(f"  (Quai/Camions non définis/Camions absents/Doublons camion-magasin/Camion non "
               f"défini/Cagettes/Magasins non planifiés/Créneaux incomplets/Magasins-DJ non "
-              f"couverts/Colis manquants → à compléter puis réinjecter dans {args.vehicules} / "
-              f"{args.cagettes} / {args.colis}, avant régénération)")
+              f"couverts/Colis manquants/Magasins sans stockage/Adresses invalides → à compléter "
+              f"puis réinjecter dans {args.vehicules} / {args.cagettes} / {args.colis} ou "
+              f"corriger le référentiel magasins, avant régénération)")
     else:
-        print("\nAucun manquant : Quai, cagettes, colis et planification sont complets.")
+        print("\nAucun manquant : Quai, cagettes, colis, stockage, adresses et planification sont complets.")
     print(f"→ Classeur Excel (tous onglets) : {args.output_excel}")
 
     # ═══════════════════════════════════════════════════════════════════════
