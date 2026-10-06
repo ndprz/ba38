@@ -5640,6 +5640,18 @@ CATEGORIES_PALOX_INITIALES = [
 ]
 
 
+TARES_PALOX_INITIALES = [
+    # (ordre, libellé, poids de tare à vide (kg)) — repris du tableau TARES
+    # du classeur historique, pour impression de référence près de la balance.
+    (1, "palox Europe", 57),
+    (2, "palox noir", 50),
+    (3, "palox rouge", 40),
+    (4, "1/2 palox rouge", 25),
+    (5, "CV6413:10 en hauteur avec palette", 73),
+    (6, "CV6413:7 en hauteur avec palette", 61),
+]
+
+
 def _ensure_tables_palox(conn):
     """Tables du module pesée palox — le référentiel des catégories est
     indépendant de l'année de campagne (repris une fois du classeur), les
@@ -5701,6 +5713,14 @@ def _ensure_tables_palox(conn):
             valeur TEXT
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_palox_tares (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ordre INTEGER NOT NULL,
+            libelle TEXT NOT NULL,
+            poids_kg REAL NOT NULL
+        )
+    """)
     nb = conn.execute("SELECT COUNT(*) FROM collecte_palox_categories").fetchone()[0]
     if nb == 0:
         for ordre, libelle, code_vif, libelle_vif, poids_min, poids_max in CATEGORIES_PALOX_INITIALES:
@@ -5708,6 +5728,13 @@ def _ensure_tables_palox(conn):
                 INSERT INTO collecte_palox_categories (ordre, libelle, code_vif, libelle_vif, poids_min, poids_max)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (ordre, libelle, code_vif, libelle_vif, poids_min, poids_max))
+    nb_tares = conn.execute("SELECT COUNT(*) FROM collecte_palox_tares").fetchone()[0]
+    if nb_tares == 0:
+        for ordre, libelle, poids_kg in TARES_PALOX_INITIALES:
+            conn.execute(
+                "INSERT INTO collecte_palox_tares (ordre, libelle, poids_kg) VALUES (?, ?, ?)",
+                (ordre, libelle, poids_kg),
+            )
 
 
 LIGNES_ETIQUETTE_PALOX_DEFAUT = [
@@ -5886,6 +5913,71 @@ def palox_categories_supprimer(categorie_id):
         conn.commit()
 
     write_log(f"⚖️ Catégorie palox {categorie_id} supprimée par {current_user.email}")
+    return jsonify({"success": True})
+
+
+@collecte_bp.route("/collecte/palox/tares")
+@login_required
+@require_access("collecte", "lecture")
+def palox_tares():
+    """Référentiel imprimable des tares (poids à vide) par type de
+    conditionnement — simple feuille de référence pour l'opérateur au poste
+    de pesée (soustraction faite à la main, pas de calcul automatique)."""
+    with get_db_connection() as conn:
+        _ensure_tables_palox(conn)
+        tares = [dict(r) for r in conn.execute(
+            "SELECT * FROM collecte_palox_tares ORDER BY ordre"
+        ).fetchall()]
+    return render_template("collecte/palox_tares.html", tares=tares)
+
+
+@collecte_bp.route("/collecte/palox/tares/enregistrer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def palox_tares_enregistrer():
+    donnees = request.get_json(force=True) or {}
+    lignes = donnees.get("tares") or []
+
+    with get_db_connection() as conn:
+        _ensure_tables_palox(conn)
+        for ligne in lignes:
+            libelle = str(ligne.get("libelle", "")).strip()
+            if not libelle:
+                continue
+            try:
+                ordre = int(ligne.get("ordre"))
+            except (TypeError, ValueError):
+                ordre = 999
+            try:
+                poids_kg = float(str(ligne.get("poids_kg", "")).replace(",", "."))
+            except (TypeError, ValueError):
+                continue
+            tare_id = ligne.get("id")
+            if tare_id:
+                conn.execute(
+                    "UPDATE collecte_palox_tares SET ordre = ?, libelle = ?, poids_kg = ? WHERE id = ?",
+                    (ordre, libelle, poids_kg, tare_id),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO collecte_palox_tares (ordre, libelle, poids_kg) VALUES (?, ?, ?)",
+                    (ordre, libelle, poids_kg),
+                )
+        conn.commit()
+
+    write_log(f"⚖️ Référentiel tares palox mis à jour par {current_user.email} ({len(lignes)} ligne(s))")
+    return jsonify({"success": True})
+
+
+@collecte_bp.route("/collecte/palox/tares/<int:tare_id>/supprimer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def palox_tares_supprimer(tare_id):
+    with get_db_connection() as conn:
+        conn.execute("DELETE FROM collecte_palox_tares WHERE id = ?", (tare_id,))
+        conn.commit()
+
+    write_log(f"⚖️ Tare palox {tare_id} supprimée par {current_user.email}")
     return jsonify({"success": True})
 
 

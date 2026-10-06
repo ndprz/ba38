@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Tares — Pesée palox{% endblock %}
+
+{% block extra_css %}
+<style>
+    #tares-impression { display: none; }
+    @media print {
+        body * { visibility: hidden; }
+        #tares-impression, #tares-impression * { visibility: visible; }
+        #tares-impression {
+            display: block !important;
+            position: fixed; top: 0; left: 0; width: 100%;
+        }
+        @page { size: A4 portrait; margin: 15mm; }
+    }
+    #tares-impression table { width: 100%; border-collapse: collapse; }
+    #tares-impression th, #tares-impression td {
+        border: 1px solid #000; padding: 8px 12px; font-size: 16pt; text-align: center;
+    }
+    #tares-impression th { font-size: 20pt; }
+    #tares-impression td:first-child { text-align: left; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width:800px;">
+
+    <h2>⚖️ Tares — Pesée palox</h2>
+    <p class="text-muted small">
+        Poids à vide par type de conditionnement de stockage — référentiel imprimable à garder près
+        de la balance (la soustraction du poids net se fait à la main, aucun calcul automatique ici).
+    </p>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.palox_categories'), color="outline-dark") }}
+        <button type="button" id="btn-ajouter-ligne" class="btn btn-outline-primary btn-sm">➕ Ajouter une tare</button>
+        <button type="button" id="btn-enregistrer" class="btn btn-warning btn-sm">💾 Enregistrer</button>
+        <button type="button" id="btn-imprimer" class="btn btn-outline-primary btn-sm">🖨️ Imprimer</button>
+    {% endcall %}
+
+    <div id="message-tares" class="alert d-none mb-3" role="alert"></div>
+
+    <table class="table table-sm align-middle" id="table-tares">
+        <thead>
+            <tr>
+                <th style="width:70px;">Ordre</th>
+                <th>Conditionnement</th>
+                <th style="width:120px;">Tare (kg)</th>
+                <th style="width:60px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in tares %}
+            <tr data-id="{{ t.id }}">
+                <td><input type="number" class="form-control form-control-sm champ-ordre" value="{{ t.ordre }}"></td>
+                <td><input type="text" class="form-control form-control-sm champ-libelle" value="{{ t.libelle }}"></td>
+                <td><input type="number" step="0.1" class="form-control form-control-sm champ-poids" value="{{ t.poids_kg }}"></td>
+                <td><button type="button" class="btn btn-sm btn-outline-danger btn-supprimer-ligne">🗑️</button></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div id="tares-impression">
+    <table>
+        <thead><tr><th colspan="2">TARES</th></tr></thead>
+        <tbody id="tares-impression-corps"></tbody>
+    </table>
+</div>
+
+<script>
+const csrfToken = "{{ csrf_token() }}";
+const urlEnregistrer = "{{ url_for('collecte.palox_tares_enregistrer') }}";
+const urlSupprimerBase = "{{ url_for('collecte.palox_tares_supprimer', tare_id=0) }}".replace('/0/', '/__ID__/');
+
+const messageDiv = document.getElementById("message-tares");
+function afficherMessage(texte, classe) {
+    messageDiv.textContent = texte;
+    messageDiv.className = "alert alert-" + classe + " mb-3";
+}
+
+function attacherSuppression(tr) {
+    tr.querySelector(".btn-supprimer-ligne").addEventListener("click", function () {
+        const id = tr.dataset.id;
+        if (!id) { tr.remove(); return; }
+        if (!confirm("Supprimer cette tare ?")) return;
+        fetch(urlSupprimerBase.replace('__ID__', id), {
+            method: "POST",
+            headers: { "X-CSRFToken": csrfToken },
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.success) { tr.remove(); }
+            else { afficherMessage("⛔ " + (data.erreur || "Échec de la suppression"), "danger"); }
+        })
+        .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
+    });
+}
+document.querySelectorAll("#table-tares tbody tr").forEach(attacherSuppression);
+
+document.getElementById("btn-ajouter-ligne").addEventListener("click", function () {
+    const tbody = document.querySelector("#table-tares tbody");
+    const tr = document.createElement("tr");
+    tr.dataset.id = "";
+    tr.innerHTML = `
+        <td><input type="number" class="form-control form-control-sm champ-ordre" value="${tbody.children.length + 1}"></td>
+        <td><input type="text" class="form-control form-control-sm champ-libelle" value=""></td>
+        <td><input type="number" step="0.1" class="form-control form-control-sm champ-poids" value=""></td>
+        <td><button type="button" class="btn btn-sm btn-outline-danger btn-supprimer-ligne">🗑️</button></td>`;
+    tbody.appendChild(tr);
+    attacherSuppression(tr);
+});
+
+document.getElementById("btn-enregistrer").addEventListener("click", function () {
+    const lignes = Array.from(document.querySelectorAll("#table-tares tbody tr")).map(function (tr) {
+        return {
+            id: tr.dataset.id || null,
+            ordre: tr.querySelector(".champ-ordre").value,
+            libelle: tr.querySelector(".champ-libelle").value,
+            poids_kg: tr.querySelector(".champ-poids").value,
+        };
+    });
+    fetch(urlEnregistrer, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ tares: lignes }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        if (data.success) { afficherMessage("✅ Référentiel enregistré — rechargement…", "success"); setTimeout(function () { window.location.reload(); }, 800); }
+        else { afficherMessage("⛔ " + (data.erreur || "Échec de l'enregistrement"), "danger"); }
+    })
+    .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
+});
+
+document.getElementById("btn-imprimer").addEventListener("click", function () {
+    const corps = document.getElementById("tares-impression-corps");
+    corps.innerHTML = Array.from(document.querySelectorAll("#table-tares tbody tr")).map(function (tr) {
+        const libelle = tr.querySelector(".champ-libelle").value;
+        const poids = tr.querySelector(".champ-poids").value;
+        return `<tr><td>${libelle}</td><td>${poids} kg</td></tr>`;
+    }).join("\n");
+    window.print();
+});
+</script>
+{% endblock %}

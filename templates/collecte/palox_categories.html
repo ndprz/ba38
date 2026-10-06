@@ -40,6 +40,7 @@
 
     {% call action_buttons() %}
         {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main'), color="outline-dark") }}
+        {{ action_button("⚖️ Tares", href=url_for('collecte.palox_tares'), color="outline-secondary") }}
         <button type="button" id="btn-ajouter-ligne" class="btn btn-outline-primary btn-sm">➕ Ajouter une catégorie</button>
         <button type="button" id="btn-enregistrer" class="btn btn-warning btn-sm">💾 Enregistrer</button>
     {% endcall %}
