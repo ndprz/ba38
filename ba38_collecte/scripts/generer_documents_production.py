@@ -1239,22 +1239,24 @@ def ecrire_onglet_tournees_secteur(wb, lignes, nb_max_mag, titre='Tournees'):
     return ws
 
 
-def construire_classeur_tournees(df_t, mag_cols, vif_cols, df_ref, colis_par_vif=None):
+def construire_classeur_tournees(df_t, mag_cols, vif_cols, df_ref, colis_par_vif=None, cag_par_vif_dj=None):
     """
     Construit (sans le sauvegarder — voir main()) LE classeur unique
     regroupant tous les onglets : 'Tournees VIF' (avec les Code VIF),
     'Tournees' (avec Tonnage / Km estimés / Secteur — mêmes secteurs
     géographiques que le classeur de l'optimisation des tournées) et
-    'Magasins' (référentiel + camion affecté par demi-journée + colis,
-    visible directement même quand tout est en ordre — voir aussi
-    'Colis manquants' pour la liste des seules anomalies). Pas de calcul
-    de tournées ici : uniquement la mise en forme de ce qui est déjà
-    décidé dans liste-vehicule.xlsx.
+    'Magasins' (référentiel + camion affecté par demi-journée + colis +
+    cagettes (4 passages), visible directement même quand tout est en
+    ordre — voir aussi 'Colis manquants'/'Cagettes manquantes' pour la
+    liste des seules anomalies). Pas de calcul de tournées ici :
+    uniquement la mise en forme de ce qui est déjà décidé dans
+    liste-vehicule.xlsx.
 
     Les onglets de contrôle (Quai manquant, Cagettes manquantes...) sont
     ajoutés séparément par main(), dans ce même classeur.
     """
     colis_par_vif = colis_par_vif or {}
+    cag_par_vif_dj = cag_par_vif_dj or {}
     import openpyxl as _oxl
     from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
@@ -1292,7 +1294,8 @@ def construire_classeur_tournees(df_t, mag_cols, vif_cols, df_ref, colis_par_vif
 
     # ── Magasins (référentiel + camion affecté par demi-journée + colis) ──
     ws3 = wb.create_sheet('Magasins')
-    cols_fix = ['Code VIF', 'Nom', 'Ville', 'Adresse', 'État', 'Colis']
+    cols_cag = ['Cagette 1', 'Cagette 2', 'Cagette 3', 'Cagette 4']
+    cols_fix = ['Code VIF', 'Nom', 'Ville', 'Adresse', 'État', 'Colis'] + cols_cag
     cols_m = cols_fix + DJ_ORDER
     for c, col in enumerate(cols_m, 1):
         cell = ws3.cell(row=1, column=c, value=col)
@@ -1314,11 +1317,18 @@ def construire_classeur_tournees(df_t, mag_cols, vif_cols, df_ref, colis_par_vif
     df_ref_actifs_m = magasins_actifs(df_ref).reset_index(drop=True)
     for r, (_, mag) in enumerate(df_ref_actifs_m.iterrows(), 2):
         vif_mag = vif_fmt(mag.get('Code VIF', ''))
+        # Demi-journée où ce magasin est réellement planifié (au plus une,
+        # cf. vif_plan) — sert à retrouver sa ligne dans cag_par_vif_dj,
+        # qui est indexé par (Code VIF, demi-journée).
+        dj_mag = next((dj for dj in DJ_ORDER if vif_plan.get(vif_mag, {}).get(dj)), None)
+        cag_vals = cag_par_vif_dj.get((vif_mag, dj_mag), ['', '', '', '']) if dj_mag else ['', '', '', '']
         for c, col in enumerate(cols_m, 1):
             if col in DJ_ORDER:
                 val = vif_plan.get(vif_mag, {}).get(col, '')
             elif col == 'Colis':
                 val = colis_par_vif.get(vif_mag, '')
+            elif col in cols_cag:
+                val = cag_vals[cols_cag.index(col)]
             else:
                 val = mag.get(col, '')
                 val = '' if str(val) == 'nan' else val
@@ -1326,9 +1336,11 @@ def construire_classeur_tournees(df_t, mag_cols, vif_cols, df_ref, colis_par_vif
             cell.font = F_NRM; cell.border = BRD; cell.alignment = A_C
             if col == 'Colis' and val == '':
                 cell.font = Font(name='Calibri', bold=True, color='C00000')
+            if col in cols_cag and val == '' and dj_mag:
+                cell.font = Font(name='Calibri', bold=True, color='C00000')
     ws3.freeze_panes = 'A2'
     ws3.auto_filter.ref = ws3.dimensions
-    for i, w in enumerate([12, 30, 20, 35, 20, 12] + [16]*len(DJ_ORDER), 1):
+    for i, w in enumerate([12, 30, 20, 35, 20, 12] + [10]*len(cols_cag) + [16]*len(DJ_ORDER), 1):
         ws3.column_dimensions[get_column_letter(i)].width = w
 
     # ── Secteurs / Secteurs - Magasins (répartition géographique du
@@ -1803,11 +1815,15 @@ def ajouter_onglet_explications(wb):
          "sont à vérifier en priorité, une tournée qui zigzague entre plusieurs secteurs est "
          "souvent optimisable."),
         ('Magasins',
-         "Référentiel des magasins actifs (Code VIF, nom, ville, adresse, état, colis) avec, "
-         "pour chaque demi-journée de collecte, le camion qui lui est affecté. La colonne "
-         "'Colis' reprend le numéro de colis (liste-colis.xlsx) — en rouge et vide si aucun "
-         "colis n'est défini pour ce magasin (voir aussi l'onglet 'Colis manquants'). Permet "
-         "de vérifier d'un coup d'œil que tous les magasins du référentiel sont bien couverts."),
+         "Référentiel des magasins actifs (Code VIF, nom, ville, adresse, état, colis, "
+         "cagettes) avec, pour chaque demi-journée de collecte, le camion qui lui est affecté. "
+         "La colonne 'Colis' reprend le numéro de colis (liste-colis.xlsx) — en rouge et vide "
+         "si aucun colis n'est défini pour ce magasin (voir aussi l'onglet 'Colis manquants'). "
+         "Les colonnes 'Cagette 1' à 'Cagette 4' reprennent le nombre de cagettes par passage "
+         "(Cagettes_magasins.xlsx) pour la demi-journée où ce magasin est planifié — en rouge "
+         "et vide si le magasin est planifié mais sans aucune valeur de cagette (voir aussi "
+         "l'onglet 'Cagettes manquantes'). Permet de vérifier d'un coup d'œil que tous les "
+         "magasins du référentiel sont bien couverts."),
         ('Secteurs',
          "Liste des secteurs géographiques (mêmes secteurs que l'onglet 'Tournees' et que "
          "l'optimisation des tournées), avec le nombre de magasins actifs et le tonnage total "
@@ -2324,7 +2340,7 @@ def main():
     # Magasins — sauvegardé une seule fois, à la fin, une fois les onglets de
     # contrôle (Quai manquant, Cagettes manquantes...) ajoutés eux aussi.
     print()
-    wb = construire_classeur_tournees(df, mag_cols, vif_cols, df_ref, colis_par_vif)
+    wb = construire_classeur_tournees(df, mag_cols, vif_cols, df_ref, colis_par_vif, cag_par_vif_dj)
 
     # ── Magasins actifs du référentiel jamais intégrés dans liste-vehicule.xlsx
     non_planifies = []

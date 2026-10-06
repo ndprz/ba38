@@ -16,14 +16,30 @@
     <p class="text-muted">
         Génère les documents réels de la collecte (fiches de collecte, pointage, équipier, index,
         carte des tournées) directement depuis le planning déjà décidé dans go-on-web
-        (liste des véhicules, liste des magasins, historique des cagettes), téléchargés à la volée
-        depuis le drive. Contrairement à la simulation, il n'y a pas ici de calcul d'optimisation :
-        les tournées sont mises en forme telles qu'elles ont été saisies.
+        (liste des véhicules, liste des magasins), téléchargés à la volée depuis le drive, et depuis
+        l'historique des cagettes géré dans l'appli (ci-dessous). Contrairement à la simulation, il
+        n'y a pas ici de calcul d'optimisation : les tournées sont mises en forme telles qu'elles ont
+        été saisies.
     </p>
 
     <div class="alert alert-info small">
-        Chaque lancement retélécharge les 3 fichiers depuis le drive et écrase les documents
+        Chaque lancement retélécharge les fichiers depuis le drive et écrase les documents
         précédemment générés — pas d'historique de versions ici.
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title mb-3">🧺 Gestion des cagettes</h5>
+            <p class="card-text text-muted small">
+                Nombre de cagettes par magasin et par demi-journée (jusqu'à 4 passages) — grille
+                éditable, utilisée par la génération ci-dessous (fiches de collecte, onglet
+                « Cagettes manquantes »). Import possible depuis un fichier au format historique,
+                puis modification cellule par cellule.
+            </p>
+            <a href="{{ url_for('collecte.cagettes_production', annee=annee) }}" class="btn btn-outline-secondary btn-sm">
+                🧺 Gérer les cagettes
+            </a>
+        </div>
     </div>
 
     <div class="card mb-4">

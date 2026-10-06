@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Cagettes Production {{ annee }}{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
+<style>
+    .tabulator-row.ligne-erreur { background-color: #f8d7da !important; }
+    .tabulator-row.ligne-cag1-manquant { background-color: #fff3cd !important; }
+    .tabulator-row.ligne-auto-defaut { background-color: #d4edda !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width:1200px;">
+
+    <h2>🧺 Cagettes — Production {{ annee }}</h2>
+    <p class="text-muted small">
+        Nombre de cagettes par magasin et par demi-journée (jusqu'à 4 passages) — une ligne par
+        couple magasin/demi-journée réellement planifié dans le planning véhicules. Remplace
+        complètement l'ancien fichier Cagettes_magasins.xlsx : utilisé directement par la
+        génération des documents réels (fiches de collecte, onglet « Cagettes manquantes »).
+    </p>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.production', annee=annee), color="outline-dark") }}
+    {% endcall %}
+
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <form method="post" action="{{ url_for('collecte.cagettes_production_importer', annee=annee) }}"
+                  enctype="multipart/form-data" class="d-flex align-items-center gap-2 flex-wrap">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <label class="btn btn-outline-secondary btn-sm mb-0 text-nowrap" for="fichier_cagettes">
+                    📎 <span id="nom_fichier_cagettes">Choisir un fichier</span>
+                </label>
+                <input type="file" id="fichier_cagettes" name="fichier_cagettes" accept=".xlsx" required
+                       class="d-none"
+                       onchange="document.getElementById('nom_fichier_cagettes').textContent = this.files[0] ? this.files[0].name : 'Choisir un fichier'">
+                <button type="submit" class="btn btn-outline-success btn-sm text-nowrap">📥 Importer</button>
+                <span class="text-muted small ms-2">
+                    Même format que l'ancien fichier (colonnes Code VIF, jour, cag1..cag4) — reprend
+                    un historique existant, modifiable ensuite cellule par cellule ci-dessous.
+                </span>
+            </form>
+        </div>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+        <input type="text" id="filtre-recherche" class="form-control form-control-sm" style="max-width:320px;"
+               placeholder="🔎 Rechercher (magasin, code VIF…)">
+        <select id="filtre-categorie" class="form-select form-select-sm" style="max-width:260px;">
+            <option value="tous">Tout afficher</option>
+            <option value="manquant">🟡 Manquants (à saisir)</option>
+            <option value="defaut">🟢 Valeurs par défaut (10/10 à vérifier)</option>
+        </select>
+        <span class="text-muted small ms-auto">💾 Chaque case est enregistrée automatiquement dès la saisie</span>
+    </div>
+
+    <div id="message-enregistrement" class="alert d-none mb-2" role="alert"></div>
+
+    <div id="tabulator-table"></div>
+
+</div>
+
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+const lignes = {{ lignes|tojson }};
+const urlEnregistrer = "{{ url_for('collecte.cagettes_production_enregistrer', annee=annee) }}";
+const csrfToken = "{{ csrf_token() }}";
+
+function normalizeSearch(text) {
+    return String(text ?? "")
+        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .toLowerCase();
+}
+
+const messageDiv = document.getElementById("message-enregistrement");
+function afficherMessage(texte, classe) {
+    messageDiv.textContent = texte;
+    messageDiv.className = "alert alert-" + classe + " mb-2";
+}
+
+function sauvegarderCellule(cell) {
+    const row = cell.getRow();
+    const data = row.getData();
+    const champ = cell.getColumn().getField();
+    row.getElement().classList.remove("ligne-erreur");
+
+    fetch(urlEnregistrer, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+        },
+        body: JSON.stringify({
+            code_vif: data.code_vif,
+            jour: data.jour,
+            champ: champ,
+            valeur: cell.getValue(),
+        }),
+    })
+    .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+    .then(function (result) {
+        if (result.ok && result.data.success) {
+            afficherMessage("✅ Enregistré — " + data.nom_magasin + " / " + data.jour, "success");
+            // Toute saisie manuelle confirme la ligne côté serveur
+            // (auto_defaut remis à 0) — on reflète ça côté client sans
+            // recharger la page, sinon le surlignage jaune resterait
+            // affiché avec l'ancienne donnée en mémoire.
+            row.update({ auto_defaut: false }).then(function () { row.reformat(); });
+        } else {
+            row.getElement().classList.add("ligne-erreur");
+            afficherMessage("⛔ Échec de l'enregistrement — ressaisissez la valeur", "danger");
+        }
+    })
+    .catch(function () {
+        row.getElement().classList.add("ligne-erreur");
+        afficherMessage("⛔ Erreur réseau — non enregistré, ressaisissez la valeur", "danger");
+    });
+}
+
+const ORDRE_JOUR = [
+    "Jeudi Matin", "Jeudi Apres Midi", "Jeudi Après Midi",
+    "Vendredi Matin", "Vendredi Apres Midi", "Vendredi Après Midi",
+    "Samedi Matin", "Samedi Apres Midi", "Samedi Après Midi",
+    "Dimanche Matin",
+];
+function trierJour(a, b) {
+    const ia = ORDRE_JOUR.indexOf(a), ib = ORDRE_JOUR.indexOf(b);
+    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+}
+
+// Tri fait à la main avant de donner les données à Tabulator : son tri
+// multi-colonnes natif (initialSort/setSort) ignore la priorité dès qu'un
+// trieur personnalisé est utilisé sur une colonne autre que la première
+// (bug observé en test, Tabulator 6.3.0) — on ne lui demande donc jamais
+// de trier sur plus d'une colonne à la fois.
+lignes.sort(function (a, b) {
+    const cmpMagasin = a.nom_magasin.localeCompare(b.nom_magasin);
+    return cmpMagasin !== 0 ? cmpMagasin : trierJour(a.jour, b.jour);
+});
+
+const table = new Tabulator("#tabulator-table", {
+    data: lignes,
+    layout: "fitColumns",
+    height: "calc(100vh - 320px)",
+    placeholder: "Aucun magasin planifié pour cette année",
+    rowFormatter: function (row) {
+        const data = row.getData();
+        const el = row.getElement();
+        el.classList.toggle("ligne-auto-defaut", !!data.auto_defaut);
+        el.classList.toggle("ligne-cag1-manquant", !data.cag1 && !data.auto_defaut);
+    },
+    columns: [
+        { title: "Code VIF", field: "code_vif", width: 110, headerFilter: "input", frozen: true },
+        { title: "Magasin", field: "nom_magasin", widthGrow: 2, minWidth: 220, headerFilter: "input", frozen: true },
+        { title: "Demi-journée", field: "jour", width: 150, headerFilter: "input", sorter: trierJour },
+        { title: "Cagette 1", field: "cag1", width: 100, hozAlign: "right", cellEdited: sauvegarderCellule,
+          editor: function (cell, onRendered, success, cancel) {
+              const input = document.createElement("input");
+              input.type = "text";
+              input.style.width = "100%";
+              input.value = cell.getValue() || "15";
+              onRendered(function () { input.focus(); input.select(); });
+              function terminer() { success(input.value); }
+              input.addEventListener("blur", terminer);
+              input.addEventListener("keydown", function (e) {
+                  if (e.key === "Enter") terminer();
+                  if (e.key === "Escape") cancel();
+              });
+              return input;
+          } },
+        { title: "Cagette 2", field: "cag2", width: 100, hozAlign: "right", editor: "input", cellEdited: sauvegarderCellule },
+        { title: "Cagette 3", field: "cag3", width: 100, hozAlign: "right", editor: "input", cellEdited: sauvegarderCellule },
+        { title: "Cagette 4", field: "cag4", width: 100, hozAlign: "right", editor: "input", cellEdited: sauvegarderCellule },
+    ],
+});
+
+const filtreInput = document.getElementById("filtre-recherche");
+const filtreCategorie = document.getElementById("filtre-categorie");
+
+function appliquerFiltres() {
+    const search = normalizeSearch(filtreInput.value);
+    const categorie = filtreCategorie.value;
+    if (!search && categorie === "tous") { table.clearFilter(); return; }
+    table.setFilter(function (data) {
+        if (search && !(normalizeSearch(data.nom_magasin).includes(search) || normalizeSearch(data.code_vif).includes(search))) {
+            return false;
+        }
+        if (categorie === "manquant") return !data.cag1 && !data.auto_defaut;
+        if (categorie === "defaut") return !!data.auto_defaut;
+        return true;
+    });
+}
+
+filtreInput.addEventListener("input", appliquerFiltres);
+filtreCategorie.addEventListener("change", appliquerFiltres);
+</script>
+{% endblock %}

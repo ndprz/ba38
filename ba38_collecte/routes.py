@@ -194,7 +194,11 @@ DRIVE_CHAMPS = {
     "participants": {"champ": "drive_participants", "label": "Liste des participants"},
     "participants_mailing": {"champ": "drive_participants_mailing", "label": "Liste des participants pour mailing"},
 }
-DRIVE_CHAMPS_PRODUCTION = {cle: DRIVE_CHAMPS[cle] for cle in ("magasins", "vehicules", "cagettes", "colis")}
+# "cagettes" volontairement absent ici : l'historique des cagettes n'est
+# plus un fichier Drive téléchargé à la volée, mais une grille gérée dans
+# l'appli (cagettes_production()) — voir production_generer() qui
+# régénère cagettes.xlsx depuis cette table juste avant de lancer le script.
+DRIVE_CHAMPS_PRODUCTION = {cle: DRIVE_CHAMPS[cle] for cle in ("magasins", "vehicules", "colis")}
 
 
 def _ensure_colonne_drive_colis(conn):
@@ -396,6 +400,85 @@ def _charger_magasins_par_camion(annee):
         )
         for dj, camions in par_dj.items()
     }
+
+
+def _ensure_table_cagettes_production(conn):
+    """Historique du nb de cagettes par magasin/demi-journée (Production,
+    document 1 + onglet 'Cagettes manquantes') — gérée depuis l'appli
+    (grille éditable, cagettes_production()) depuis que le fichier Excel
+    Cagettes_magasins.xlsx n'est plus déposé sur le drive. Une ligne par
+    couple (Code VIF, demi-journée) réellement planifié."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_cagettes_production (
+            annee INTEGER NOT NULL,
+            code_vif TEXT NOT NULL,
+            jour TEXT NOT NULL,
+            cag1 TEXT, cag2 TEXT, cag3 TEXT, cag4 TEXT,
+            maj_le TEXT,
+            auto_defaut INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (annee, code_vif, jour)
+        )
+    """)
+    try:
+        conn.execute("ALTER TABLE collecte_cagettes_production ADD COLUMN auto_defaut INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass
+
+
+def _normaliser_jour_cagettes(s):
+    """Copie de normaliser_dj (ba38_collecte/scripts/generer_documents_production.py)
+    pour lire le même format de fichier côté import web, sans dépendre du
+    script CLI (qui n'est pas pensé pour être importé comme module)."""
+    s = str(s).strip()
+    if not s or s == "nan":
+        return ""
+    s_low = s.lower().replace("è", "e").replace("é", "e").replace("à", "a")
+    jours = ["jeudi", "vendredi", "samedi", "dimanche"]
+    jour = next((j for j in jours if s_low.startswith(j)), "")
+    if not jour:
+        return ""
+    periode = "Apres Midi" if "apres" in s_low or "am" in s_low.split() else "Matin"
+    return f"{jour.capitalize()} {periode}"
+
+
+def _combos_cagettes_production(annee):
+    """Couples (Code VIF, demi-journée, nom magasin) réellement planifiés
+    cette année dans le planning véhicules réel (même source que
+    _charger_magasins_par_camion) — lignes de référence de la grille de
+    gestion des cagettes de Production (un magasin peut apparaître
+    plusieurs fois s'il est collecté à plusieurs demi-journées)."""
+    chemin = _fichier_drive(annee, "vehicules")
+    if not chemin:
+        chemin = os.path.join(_dossier_annee(annee), "liste_vehicules.xlsx")
+    if not os.path.exists(chemin):
+        return []
+
+    df = pd.read_excel(chemin)
+    df.columns = [str(col).strip() for col in df.columns]
+    jours = {"jeudi": "Jeudi", "vendredi": "Vendredi", "samedi": "Samedi", "dimanche": "Dimanche"}
+
+    combos = {}
+    for _, ligne in df.iterrows():
+        code = str(ligne.get("Code", "")).strip()
+        jour = jours.get(str(ligne.get("Tournée", "")).strip().lower())
+        debut = str(ligne.get("Début", "")).strip()
+        if not code or code == "nan" or not jour or not _est_camion_reel(code):
+            continue
+        code_vif = _vif_fmt(ligne.get("Code VIF"))
+        if not code_vif:
+            continue
+        match = re.match(r"(\d+)", debut)
+        periode = "Matin" if not match or int(match.group(1)) < 13 else "Apres Midi"
+        demi_journee = f"{jour} {periode}"
+        if demi_journee not in moteur.DEMI_JOURNEES:
+            continue
+        nom = str(ligne.get("Magasin", "")).strip()
+        combos[(code_vif, demi_journee)] = "" if nom == "nan" else nom
+
+    return sorted(
+        [{"code_vif": vif, "jour": dj, "nom_magasin": nom} for (vif, dj), nom in combos.items()],
+        key=lambda c: (c["jour"], c["nom_magasin"].lower()),
+    )
 
 
 def _contenu_mail_affectations(annee):
@@ -3289,6 +3372,162 @@ def _date_fr_courte(iso):
         return None
 
 
+@collecte_bp.route("/collecte/<int:annee>/cagettes_production")
+@login_required
+@require_access("collecte", "lecture")
+def cagettes_production(annee):
+    """Grille éditable du nb de cagettes par magasin/demi-journée (Production),
+    une ligne par couple réellement planifié dans le planning véhicules —
+    remplace complètement l'ancien fichier Excel Cagettes_magasins.xlsx
+    déposé sur le drive : la génération des documents réels (production_generer)
+    régénère ce fichier à la volée depuis cette table avant de lancer le
+    script, sans jamais relire le drive pour les cagettes.
+
+    Un magasin ENTIÈREMENT sans donnée (aucune valeur en Cagette 1 ou 2 sur
+    AUCUNE de ses demi-journées — typiquement un nouveau magasin) reçoit
+    automatiquement 10/10 par défaut sur toutes ses lignes (auto_defaut=1),
+    pour simplifier la gestion des nouveaux magasins. Un magasin déjà
+    documenté sur au moins une demi-journée n'est jamais concerné, même si
+    une autre de ses demi-journées est encore vide — un trou isolé sur un
+    magasin déjà connu reste un vrai manque à saisir, pas un nouveau magasin
+    (cf. la discussion : 87 lignes vides au total, mais seulement ~20
+    magasins réellement nouveaux). La ligne reste en évidence (jaune) tant
+    que ces valeurs n'ont pas été modifiées à la main (cf.
+    cagettes_production_enregistrer)."""
+    combos = _combos_cagettes_production(annee)
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        _ensure_table_cagettes_production(conn)
+        lignes_db = conn.execute(
+            "SELECT * FROM collecte_cagettes_production WHERE annee = ?", (annee,)
+        ).fetchall()
+        valeurs = {(l["code_vif"], l["jour"]): l for l in lignes_db}
+
+        # Un magasin est considéré "déjà documenté" dès qu'une de ses lignes
+        # a une vraie valeur (saisie à la main ou importée, donc auto_defaut=0)
+        # — les lignes auto-défautées d'un passage précédent de cette route
+        # ne comptent volontairement pas comme une "vraie" donnée.
+        vifs_documentes = {
+            l["code_vif"] for l in lignes_db
+            if (l["cag1"] or l["cag2"]) and not l["auto_defaut"]
+        }
+        vifs_combos = {c["code_vif"] for c in combos}
+        vifs_nouveaux = vifs_combos - vifs_documentes
+
+        for combo in combos:
+            vif = combo["code_vif"]
+            if vif in vifs_documentes:
+                # Magasin déjà connu : ne jamais forcer 10/10, même sur une
+                # demi-journée encore vide (vrai manque à saisir à la main) —
+                # et on annule un éventuel 10/10 posé à tort par une version
+                # précédente de cette logique, avant qu'elle ne distingue par
+                # magasin plutôt que par ligne.
+                v = valeurs.get((vif, combo["jour"]))
+                if v and v["auto_defaut"]:
+                    conn.execute("""
+                        UPDATE collecte_cagettes_production
+                        SET cag1 = '', cag2 = '', auto_defaut = 0, maj_le = ?
+                        WHERE annee = ? AND code_vif = ? AND jour = ?
+                    """, (maintenant, annee, vif, combo["jour"]))
+                continue
+            conn.execute("""
+                INSERT INTO collecte_cagettes_production (annee, code_vif, jour, cag1, cag2, maj_le, auto_defaut)
+                VALUES (?, ?, ?, '10', '10', ?, 1)
+                ON CONFLICT(annee, code_vif, jour) DO UPDATE SET
+                    cag1 = '10', cag2 = '10', maj_le = excluded.maj_le, auto_defaut = 1
+            """, (annee, vif, combo["jour"], maintenant))
+        conn.commit()
+        lignes_db = conn.execute(
+            "SELECT * FROM collecte_cagettes_production WHERE annee = ?", (annee,)
+        ).fetchall()
+    valeurs = {(l["code_vif"], l["jour"]): l for l in lignes_db}
+    lignes = []
+    for combo in combos:
+        v = valeurs.get((combo["code_vif"], combo["jour"]))
+        lignes.append({
+            **combo,
+            "cag1": v["cag1"] if v else "",
+            "cag2": v["cag2"] if v else "",
+            "cag3": v["cag3"] if v else "",
+            "cag4": v["cag4"] if v else "",
+            "auto_defaut": bool(v["auto_defaut"]) if v else False,
+        })
+    return render_template("collecte/cagettes_production.html", annee=annee, lignes=lignes)
+
+
+@collecte_bp.route("/collecte/<int:annee>/cagettes_production/enregistrer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def cagettes_production_enregistrer(annee):
+    data = request.get_json(force=True) or {}
+    code_vif = _vif_fmt(data.get("code_vif", ""))
+    jour = data.get("jour", "")
+    champ = data.get("champ", "")
+    valeur = str(data.get("valeur", "")).strip()
+    if champ not in ("cag1", "cag2", "cag3", "cag4") or not code_vif or jour not in moteur.DEMI_JOURNEES:
+        return jsonify(success=False, erreur="Paramètres invalides"), 400
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        _ensure_table_cagettes_production(conn)
+        # Toute saisie manuelle vaut confirmation — sort la ligne du mode
+        # "10/10 par défaut" (auto_defaut), même si la valeur revient à 10.
+        conn.execute(f"""
+            INSERT INTO collecte_cagettes_production (annee, code_vif, jour, {champ}, maj_le, auto_defaut)
+            VALUES (?, ?, ?, ?, ?, 0)
+            ON CONFLICT(annee, code_vif, jour) DO UPDATE SET
+                {champ} = excluded.{champ}, maj_le = excluded.maj_le, auto_defaut = 0
+        """, (annee, code_vif, jour, valeur, maintenant))
+        conn.commit()
+    return jsonify(success=True)
+
+
+@collecte_bp.route("/collecte/<int:annee>/cagettes_production/importer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def cagettes_production_importer(annee):
+    """Import en masse depuis un fichier au même format que l'ancien
+    Cagettes_magasins.xlsx (colonnes Code VIF, jour, cag1..cag4) — pratique
+    pour reprendre un historique existant plutôt que ressaisir magasin par
+    magasin ; les valeurs restent ensuite modifiables cellule par cellule."""
+    fichier = request.files.get("fichier_cagettes")
+    if not fichier or not fichier.filename:
+        flash("⛔ Aucun fichier sélectionné.", "warning")
+        return redirect(url_for("collecte.cagettes_production", annee=annee))
+    try:
+        df = pd.read_excel(fichier, sheet_name="Feuil1")
+    except Exception as e:
+        flash(f"⛔ Fichier illisible : {e}", "danger")
+        return redirect(url_for("collecte.cagettes_production", annee=annee))
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    n = 0
+    with get_db_connection() as conn:
+        _ensure_table_cagettes_production(conn)
+        for _, r in df.iterrows():
+            code_vif = _vif_fmt(r.get("Code VIF", ""))
+            jour = _normaliser_jour_cagettes(r.get("jour", ""))
+            if not code_vif or not jour:
+                continue
+            vals = []
+            for k in ("cag1", "cag2", "cag3", "cag4"):
+                v = r.get(k, "")
+                v = str(v).strip().split(".")[0] if str(v).strip() not in ("", "nan") else ""
+                vals.append(v)
+            conn.execute("""
+                INSERT INTO collecte_cagettes_production (annee, code_vif, jour, cag1, cag2, cag3, cag4, maj_le, auto_defaut)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+                ON CONFLICT(annee, code_vif, jour) DO UPDATE SET
+                    cag1 = excluded.cag1, cag2 = excluded.cag2, cag3 = excluded.cag3, cag4 = excluded.cag4,
+                    maj_le = excluded.maj_le, auto_defaut = 0
+            """, (annee, code_vif, jour, *vals, maintenant))
+            n += 1
+        conn.commit()
+    flash(f"✅ {n} ligne(s) importée(s).", "success")
+    write_log(f"📥 Import cagettes production {annee} ({n} ligne(s)) par {current_user.email}")
+    return redirect(url_for("collecte.cagettes_production", annee=annee))
+
+
 @collecte_bp.route("/collecte/production")
 @login_required
 @require_access("collecte", "lecture")
@@ -3399,6 +3638,21 @@ def production_generer():
         flash(f"❌ Échec du téléchargement des fichiers depuis le drive : {e}", "danger")
         write_log(f"❌ Génération documents production {annee} : échec téléchargement drive ({e})")
         return redirect(url_for("collecte.production", annee=annee))
+
+    # Cagettes : régénéré depuis la grille de gestion (collecte_cagettes_production),
+    # jamais depuis le drive — voir cagettes_production() et DRIVE_CHAMPS_PRODUCTION.
+    with get_db_connection() as conn:
+        _ensure_table_cagettes_production(conn)
+        lignes_cag = conn.execute(
+            "SELECT code_vif, jour, cag1, cag2, cag3, cag4 FROM collecte_cagettes_production WHERE annee = ?",
+            (annee,),
+        ).fetchall()
+    df_cag_export = pd.DataFrame(
+        [{"Code VIF": l["code_vif"], "jour": l["jour"], "cag1": l["cag1"], "cag2": l["cag2"],
+          "cag3": l["cag3"], "cag4": l["cag4"]} for l in lignes_cag],
+        columns=["Code VIF", "jour", "cag1", "cag2", "cag3", "cag4"],
+    )
+    df_cag_export.to_excel(os.path.join(dossier, "cagettes.xlsx"), sheet_name="Feuil1", index=False)
 
     script_path = os.path.join(
         current_app.root_path, "ba38_collecte", "scripts", "generer_documents_production.py"
