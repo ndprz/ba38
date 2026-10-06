@@ -163,7 +163,7 @@ const table = new Tabulator("#tabulator-table", {
               const input = document.createElement("input");
               input.type = "text";
               input.style.width = "100%";
-              input.value = cell.getValue() || "15";
+              input.value = cell.getValue() || "10";
               onRendered(function () { input.focus(); input.select(); });
               function terminer() { success(input.value); }
               input.addEventListener("blur", terminer);
