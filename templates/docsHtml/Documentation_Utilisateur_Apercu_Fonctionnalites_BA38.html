@@ -23,6 +23,8 @@ portable</p></li>
 définitive, avec historique)</p></li>
 <li><p>Envoi de mail groupé aux bénévoles, avec messages
 prédéfinis</p></li>
+<li><p>Envoi de SMS groupés aux bénévoles (sélection par fonction ou
+type de bénévole, textes pré-enregistrés)</p></li>
 <li><p>Export pour publipostage</p></li>
 </ul>
 <h3 id="associations-partenaires">Associations partenaires</h3>
@@ -79,6 +81,11 @@ dans go-on-web, génération des documents utilisés le jour de la collecte
 (fiches de collecte, pointage, équipier, index, consignes véhicules,
 carte, classeur Excel)</p></li>
 </ul>
+<ul>
+<li><p>Saisie des cagettes et des pesées par magasin pendant la collecte
+(enregistrement automatique), export pour VIF ; carte de localisation
+des magasins et des associations, partageable par lien</p></li>
+</ul>
 <h3 id="plannings-pour-les-différents-postes-de-travail-ba38">Plannings
 pour les différents postes de travail (BA38)</h3>
 <ul>
@@ -103,15 +110,26 @@ prévu fin 2026, et nouveau module <strong>Cotisations V2</strong> :
 traitement du fichier PARSOL2L, génération automatique des factures PDF,
 envoi par email, suivi des paiements et relance des impayés, le tout
 dans un seul écran</p></li>
-<li><p><strong>Facture de participation trimestrielle</strong> : ancien
-flux dépendant d’EBP toujours utilisé pour préparer le fichier
-comptable, et nouveau module <strong>Participation V2</strong> :
-traitement interne du fichier PARSOL, génération des factures PDF, envoi
-et suivi, sans dépendance à un logiciel externe</p></li>
+<li><p><strong>Facture de participation trimestrielle (module
+Participation V2) : traitement du fichier PARSOL, génération des
+factures PDF, envoi par email, suivi des paiements (montant payé / reste
+à encaisser, filtres) et relance des impayés ; préparation du fichier
+d’import comptable EBP ; export de tous les PDF du trimestre sur le
+Drive de la trésorerie</strong></p></li>
+</ul>
+<ul>
+<li><p>Dépôt des factures des partenaires publics (CCAS, communes) sur
+la plateforme de l’État Chorus Pro, directement depuis BA38, avec
+contrôle des références exigées (numéro d’engagement, code service) et
+suivi du statut de chaque facture</p></li>
+</ul>
+<ul>
 <li><p>Traçabilité des envois de factures (statut Mailjet, distinction
 mode test / envoi réel, renvoi manuel via Gmail en cas de
 rebond)</p></li>
-<li><p>Émission de CERFA bénévoles annuels</p></li>
+<li><p>CERFA abandon de frais : questionnaire en ligne auprès des
+bénévoles, génération des reçus fiscaux et envoi individuel de chaque
+reçu par email</p></li>
 </ul>
 <h2 id="engagements-dépenses">4. Engagements (dépenses)</h2>
 <ul>
@@ -126,7 +144,28 @@ automatique mensuelle)</p></li>
 <li><p>Reporting et suivi budgétaire par pôle</p></li>
 <li><p>GED utilisable en révision des comptes</p></li>
 </ul>
-<h2 id="signature-électronique">5. Signature électronique</h2>
+<h2 id="cuisine">5. Cuisine</h2>
+<h3 id="production-cuisine">Production cuisine</h3>
+<ul>
+<li><p>Réception des marchandises : contrôles, températures, photos du
+produit et de l’étiquette, DLC</p></li>
+<li><p>Productions du jour : recette, étapes de fabrication horodatées
+avec températures, lots tracés, quantités conditionnées, plat
+témoin</p></li>
+<li><p>Contrôle automatique de la conformité du refroidissement</p></li>
+<li><p>Stock de barquettes avec DLC, consignes par client, bons de
+préparation et de livraison</p></li>
+<li><p>Facturation mensuelle des livraisons, envoi, relances et suivi
+des règlements</p></li>
+<li><p>Écran TV de suivi de la production en temps réel ; saisie sur
+tablettes en mode kiosque</p></li>
+</ul>
+<h3 id="hygiène-cuisine">Hygiène cuisine</h3>
+<ul>
+<li><p>Relevés de température des zones froides, plan de nettoyage et
+désinfection, étalonnage des thermomètres, avec historiques</p></li>
+</ul>
+<h2 id="signature-électronique">6. Signature électronique</h2>
 <ul>
 <li><p>Envoi de n’importe quel document PDF en signature électronique
 (via LibreSign), directement depuis BA38, sans logiciel externe</p></li>
@@ -136,7 +175,7 @@ automatique mensuelle)</p></li>
 document avant envoi</p></li>
 <li><p>Suivi des demandes de signature en cours</p></li>
 </ul>
-<h2 id="média">6. Média</h2>
+<h2 id="média">7. Média</h2>
 <h3 id="droit-à-limage">Droit à l’image</h3>
 <ul>
 <li>Registre centralisé du consentement photo par bénévole</li>
@@ -155,7 +194,7 @@ sans saisie manuelle</p></li>
 <ul>
 <li>Gestion des photos associées aux fiches bénévoles</li>
 </ul>
-<h2 id="administration">7. Administration</h2>
+<h2 id="administration">8. Administration</h2>
 <ul>
 <li><p>Gestion des utilisateurs et des rôles (droits lecture/écriture
 par module)</p></li>

@@ -4300,7 +4300,14 @@ def _referents_association(nom_asso, df_participants):
     magasins à stockage partagé, comme 'Gardée par' dans liste_magasins.xlsx,
     d'où la même normalisation). Dédoublonnés par (Nom, Email) ; ceux dont le
     nom porte la mention '(Ref)' (référent désigné côté go-on-web) sont mis
-    en tête."""
+    en tête.
+
+    Si au moins une personne est taguée 'GR' (Groupe Responsable, colonne
+    R/E) pour ce groupe, SEULES ces personnes sont renvoyées — c'est le
+    vrai responsable de l'association, pas besoin de notifier tout le
+    groupe. Sinon (information pas encore renseignée côté go-on-web pour
+    cette association — environ 165 associations sur 272 à ce jour),
+    repli sur la liste complète des participants du groupe, comme avant."""
     if df_participants.empty or "Groupe" not in df_participants.columns:
         return []
     groupe = df_participants["Groupe"].map(_normaliser_gardee_par)
@@ -4325,7 +4332,12 @@ def _referents_association(nom_asso, df_participants):
             "email": email,
             "telephone": telephone,
             "referent": "ref" in nom.lower().replace("é", "e"),
+            "groupe_responsable": str(r.get("R/E", "")).strip().upper() == "GR",
         })
+
+    responsables = [c for c in contacts if c["groupe_responsable"]]
+    if responsables:
+        contacts = responsables
     contacts.sort(key=lambda c: (not c["referent"], c["nom"]))
     return contacts
 
