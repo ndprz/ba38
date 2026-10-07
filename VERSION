@@ -1,3 +1,3 @@
-VERSION=1.7.76
-MESSAGE=Chorus Pro : depot API factures participation (qualif/prod), export PDF Drive Factures PDF, noms PDF VIF-nom-numero ; Collecte : bouton Repartir a zero poids magasins gardee
-DATE=2026-10-07 09:45
+VERSION=1.7.77
+MESSAGE=Collecte : bouton Repartir a zero pour Quantites par produit (collecte gardee), meme principe que poids magasins gardee
+DATE=2026-10-07 10:05

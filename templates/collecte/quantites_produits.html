@@ -27,6 +27,7 @@
 
     {% call action_buttons() %}
         {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+        <button type="button" id="btn-reinitialiser" class="btn btn-outline-danger btn-sm">🗑️ Repartir à zéro</button>
     {% endcall %}
 
     {% if not mercuriale_importee %}
@@ -163,6 +164,24 @@ const table = new Tabulator("#tabulator-table", {
         { title: "Produit", field: "libelle", widthGrow: 2, minWidth: 260, headerFilter: "input", frozen: true,
           topCalcFormatter: function () { return "Total"; } },
     ].concat(colonnesAssociations).concat(colonnesValorisation),
+});
+
+document.getElementById("btn-reinitialiser").addEventListener("click", function () {
+    if (!confirm("Effacer TOUTES les saisies de quantités par produit de " + annee + " ? Cette action est irréversible.")) return;
+    fetch("{{ url_for('collecte.quantites_produits_reinitialiser', annee=annee) }}", {
+        method: "POST",
+        headers: { "X-CSRFToken": csrfToken },
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        if (data.success) {
+            afficherMessage("✅ " + data.nb_supprimees + " saisie(s) effacée(s) — rechargement…", "success");
+            setTimeout(function () { window.location.reload(); }, 800);
+        } else {
+            afficherMessage("⛔ Échec de la réinitialisation", "danger");
+        }
+    })
+    .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
 });
 
 const filtreInput = document.getElementById("filtre-recherche");

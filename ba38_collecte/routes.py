@@ -5488,6 +5488,20 @@ def enregistrer_quantites_produits():
     return jsonify({"success": True})
 
 
+@collecte_bp.route("/collecte/<int:annee>/quantites-produits/reinitialiser", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def quantites_produits_reinitialiser(annee):
+    """Efface toutes les saisies de quantités par produit de l'année —
+    volontairement utilisable en prod comme en dev (pas réservé aux essais
+    dev), pour pouvoir repartir à zéro après des essais réels."""
+    with get_db_connection() as conn:
+        cur = conn.execute("DELETE FROM collecte_quantites_produits WHERE annee = ?", (annee,))
+        conn.commit()
+    write_log(f"🗑️ Quantités par produit {annee} réinitialisées ({cur.rowcount} ligne(s)) par {current_user.email}")
+    return jsonify({"success": True, "nb_supprimees": cur.rowcount})
+
+
 # ============================================================================
 # 📈 Évolution magasins (suivi pluriannuel, hors campagne annuelle)
 # ============================================================================
