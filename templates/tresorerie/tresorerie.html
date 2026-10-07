@@ -41,9 +41,11 @@
         📊 Facturation participation (V2 — traitement fichier PARSOL2 elimination vendredi/samedi/dimanche + envoi + relances)
       </a>
 
+      {# Masqué du menu (2026-10-07), route factures.decouper_factures conservée
       <a href="{{ url_for('factures.decouper_factures') }}" class="list-group-item list-group-item-action">
         🧾 Découpe de factures PDF
       </a>
+      #}
 
 
   <!-- ================= Cotisations ================= -->
@@ -51,6 +53,7 @@
     📂 Cotisations 2026
   </div>
 
+    {# Cotisations V1 masquées du menu (2026-10-07), routes tresorerie.cotisations_menu conservées
     <a href="{{ url_for('tresorerie.cotisations_menu', action='facturation') }}" class="list-group-item list-group-item-action">
       💰 Facturation des cotisations (assos) Version 1 utilisée pour cotisations 2026
     </a>
@@ -62,9 +65,10 @@
     <a href="{{ url_for('tresorerie.cotisations_menu', action='relance') }}" class="list-group-item list-group-item-action">
       🔔 Relance des cotisations (assos) Version 1 utilisée pour cotisations 2026
     </a>
+    #}
 
     <a href="{{ url_for('tresorerie.cotisations_v2_selection') }}" class="list-group-item list-group-item-action">
-      📊 Cotisations V2 (traitement + envoi + relances)
+      📊 Cotisations (traitement + envoi + relances)
     </a>
 
 
@@ -78,6 +82,7 @@
     </a>
 
 
+  {# Bloc CERFA bénévoles masqué du menu (2026-10-07), route tresorerie.cerfa conservée
   <!-- ================= CERFA bénévoles ================= -->
   <div class="list-group-item active mt-3">
     📂 Cerfas bénévoles
@@ -86,6 +91,7 @@
     <a href="{{ url_for('tresorerie.cerfa') }}" class="list-group-item list-group-item-action">
       📄 Découpe et envoi du fichier CERFA
     </a>
+  #}
 
   </div>
 

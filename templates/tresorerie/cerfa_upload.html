@@ -73,7 +73,8 @@
     {% call action_buttons() %}
       {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAideCerfa')).show()", color="outline-info") }}
       {{ action_button("🔍 Analyser le fichier", type="submit", color="primary") }}
-      {{ action_button("↩️ Retour", href=url_for('tresorerie.tresorerie'), color="outline-dark") }}
+      {{ action_button("↩️ Retour", href=url_for('cerfa.cerfa_menu'), color="outline-dark") }}
+
     {% endcall %}
 
   </form>
