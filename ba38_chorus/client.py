@@ -82,15 +82,20 @@ class ClientChorus:
     # Bas niveau
     # ------------------------------------------------------------------
     def _obtenir_jeton(self):
-        rep = requests.post(URLS[self.env]["oauth"], data={
-            "grant_type": "client_credentials",
-            "client_id": self.client_id,
-            "client_secret": self.client_secret,
-            "scope": "openid",
-        }, timeout=30)
-        if rep.status_code != 200:
-            raise ChorusErreur(f"Jeton PISTE refusé ({rep.status_code}) : {rep.text[:300]}")
-        self._jeton = rep.json()["access_token"]
+        # PISTE refuse aléatoirement (~1 fois sur 10, "invalid_client" HTTP 400)
+        # des identifiants pourtant valides : on réessaie avant d'abandonner.
+        for tentative in range(5):
+            rep = requests.post(URLS[self.env]["oauth"], data={
+                "grant_type": "client_credentials",
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "scope": "openid",
+            }, timeout=30)
+            if rep.status_code == 200:
+                self._jeton = rep.json()["access_token"]
+                return
+            time.sleep(2 * (tentative + 1))
+        raise ChorusErreur(f"Jeton PISTE refusé ({rep.status_code}) après 5 essais : {rep.text[:300]}")
 
     def appel(self, chemin, corps):
         """POST JSON ; lève ChorusErreur si HTTP ≠ 200 ou codeRetour ≠ 0."""
@@ -149,11 +154,25 @@ class ClientChorus:
         })
         p = detail.get("parametres") or {}
         return {
+            "id": structures[0]["idStructureCPP"],
             "designation": structures[0].get("designationStructure", ""),
             "service": bool(p.get("codeServiceDoitEtreRenseigne")),
             "ej": bool(p.get("numeroEJDoitEtreRenseigne")),
             "ej_ou_service": bool(p.get("gestionNumeroEJOuCodeService")),
         }
+
+    def services_destinataire(self, id_structure):
+        """
+        Codes des services actifs d'une structure destinataire, ou None si
+        la liste est incomplète (pagination non paramétrable : l'API refuse
+        "parametres", 10 résultats par défaut).
+        """
+        res = self.appel("/structures/v1/rechercher/services", {"idStructure": int(id_structure)})
+        services = res.get("listeServices") or []
+        total = (res.get("parametresRetour") or {}).get("total", len(services))
+        if total > len(services):
+            return None
+        return [sv["codeService"] for sv in services if sv.get("estActif", True)]
 
     def destinataire_effectif(self, siret, code_service, numero_ej):
         """

@@ -66,6 +66,12 @@ def _deposer_une_facture(conn, client, f, periode, utilisateur):
                 manque.append("numéro d'engagement ou code service")
             if manque:
                 raise ChorusErreur(f"{exig['designation']} exige : {', '.join(manque)} — à saisir sur la fiche association")
+            if code_service:
+                services = client.services_destinataire(exig["id"])
+                if services is not None and code_service not in services:
+                    raise ChorusErreur(
+                        f"code service « {code_service} » inconnu de {exig['designation']} — "
+                        f"codes valides : {', '.join(services) or 'aucun'} (fiche association)")
 
         data_pdf = donnees_pdf_facture(conn, f)
         nom_fichier = nom_piece_jointe_facture(f["numero_facture"], f["nom_association"], code_vif=f["code_vif"])
