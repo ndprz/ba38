@@ -376,6 +376,13 @@ vrai manque à saisir. Un menu déroulant permet d’isoler l’une ou l’autre
 catégorie, combinable avec la recherche. Deux boutons permettent
 d’importer un historique existant (même format que l’ancien fichier) et
 d’exporter la grille actuelle en Excel.</p>
+<p>Deux contrôles supplémentaires reprennent les mêmes vérifications que
+la page « Localisation magasins et associations » : un onglet « Magasins
+sans stockage » (magasin collecté ou gardé sans lieu de stockage
+renseigné) et un onglet « Adresses invalides » (magasin ou association
+dont l’adresse est absente ou en dehors d’une zone plausible), qui
+regroupe magasins et associations gardant leur collecte dans une même
+liste.</p>
 <h2 id="envoi-des-mails-aux-chauffeurs-et-équipiers">3.5 Envoi des mails
 aux chauffeurs et équipiers</h2>
 <p>Ouvrir « Envoi mail tournées aux chauffeurs/équipiers ». La page
@@ -449,6 +456,12 @@ l’association, valable 60 jours, lui permettant de renseigner elle-même
 le poids par magasin et la répartition par produit sans avoir à renvoyer
 les fichiers joints. Chaque case est enregistrée automatiquement dès la
 saisie, avec un bouton « 💾 Enregistrer » en secours.</p>
+<p>L’envoi ne cible désormais que le responsable désigné de
+l’association (tag « GR » — Groupe Responsable — dans go-on-web) quand
+il est connu. Si aucun responsable n’est encore renseigné pour une
+association, l’envoi reste adressé à l’ensemble de ses participants
+connus, en attendant que l’information soit complétée dans
+go-on-web.</p>
 <h2 id="suivi-des-réponses-et-relances">4.3 Suivi des réponses et
 relances</h2>
 <p>Sur la page « Préparer l’envoi », deux cases à cocher par association
@@ -578,6 +591,10 @@ bouton « 💾 Enregistrer » en secours en haut de page.</p>
 un fichier au format d’import VIF, bloqué tant qu’un magasin n’a pas de
 poids saisi (sauf option de forçage, réservée à l’environnement de
 test).</p>
+<p>Un bouton « 🗑️ Repartir à zéro » permet d’effacer en un clic toutes
+les saisies de poids de l’année (utilisable aussi bien en test qu’en
+production, avec confirmation avant suppression), pour repartir d’une
+page vierge après des essais.</p>
 <h2 id="résultat-collecte-gardée-quantités-par-produit">5.6 Résultat
 collecte gardée — Quantités par produit</h2>
 <p>Le bouton « 📦 Saisir » (Quantités par produit) ouvre un tableau avec
@@ -589,6 +606,8 @@ un bouton « 💾 Enregistrer » en secours. Deux colonnes supplémentaires
 affichent le poids total (toutes associations confondues) et la valeur
 en euros de chaque produit, dès que la mercuriale de l’année a été
 importée.</p>
+<p>Un bouton « 🗑️ Repartir à zéro » permet, de la même façon, d’effacer
+en un clic toutes les saisies de quantités de l’année.</p>
 <h2 id="pesée-palox-synthèse">5.7 Pesée palox — synthèse</h2>
 <p>Accessible depuis Résultat collecte, cet écran liste les catégories
 de produit avec, pour chacune, le nombre de palox déjà pesés, le poids
@@ -635,6 +654,13 @@ précédente)</h2>
 les recontacter avant que le planning de l’année en cours existe. Le
 texte du mail est modifiable (repère &lt;&lt;nom&gt;&gt;), avec aperçu
 et envoi de test avant l’envoi réel à tous les destinataires.</p>
+<h2 id="mail-prise-colis">6.2 Mail prise colis</h2>
+<p>Prévient les primo responsables (référents magasin du fichier colis)
+que leur colis est prêt à être récupéré — ne concerne que les magasins
+dont le colis est préparé mais pas encore pris. Mêmes principes que le
+mail aux trieurs (texte personnalisable, aperçu, test, envoi), avec les
+repères &lt;&lt;nom&gt;&gt; et &lt;&lt;magasin&gt;&gt;. Les personnes
+sans adresse email ou sans numéro de portable sont signalées à part.</p>
 <h1 id="bonnes-pratiques">7. Bonnes pratiques</h1>
 <ul>
 <li><p>Toujours vérifier les onglets de contrôle du classeur Excel avant

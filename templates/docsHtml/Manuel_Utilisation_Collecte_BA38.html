@@ -450,6 +450,11 @@ affichée en vert, à vérifier ; un magasin déjà connu avec un simple trou
 sur une demi-journée reste affiché vide en jaune, comme un vrai manque à
 saisir. Import/export Excel disponibles (voir §10.3 pour le détail des
 règles).</p>
+<p>Deux contrôles supplémentaires reprennent les mêmes vérifications que
+la page « Localisation magasins et associations » (§2.2) : un onglet «
+Magasins sans stockage » et un onglet « Adresses invalides », qui
+regroupe magasins ET associations gardant leur collecte dans une même
+liste (voir le détail des règles en §10.3).</p>
 <h2 id="envoi-des-mails-aux-chauffeurs-et-équipiers">3.5 Envoi des mails
 aux chauffeurs et équipiers</h2>
 <p>Ouvrir « Envoi mail tournées aux chauffeurs/équipiers ». La page
@@ -558,6 +563,13 @@ le poids par magasin et la répartition par produit sans avoir à renvoyer
 les fichiers Excel/PDF joints. Ce formulaire ne nécessite pas de compte
 : chaque case est enregistrée automatiquement dès la saisie, avec un
 bouton « 💾 Enregistrer » en secours.</p>
+<p>L'envoi ne cible désormais que le responsable désigné de
+l'association (tag « GR » - Groupe Responsable - dans la colonne R/E du
+fichier participants de go-on-web) quand il est connu pour ce groupe. Si
+aucun responsable n'est encore renseigné, l'envoi reste adressé à
+l'ensemble des participants connus du groupe, en attendant que
+l'information soit complétée dans go-on-web (voir le détail en
+§10.4).</p>
 <h2 id="suivi-des-réponses-et-relances">4.3 Suivi des réponses et
 relances</h2>
 <p>Sur la page « Préparer l’envoi », deux cases à cocher indépendantes
@@ -693,6 +705,10 @@ secours.</p>
 un fichier au format d’import VIF, sur le même principe que l’export des
 cagettes (§5.4) — bloqué tant qu’un magasin n’a pas de poids saisi, sauf
 option de forçage réservée à l’environnement de test.</p>
+<p>Un bouton « 🗑️ Repartir à zéro » permet d'effacer en un clic toutes
+les saisies de poids de l'année (utilisable aussi bien en test qu'en
+production, avec confirmation avant suppression), pour repartir d'une
+page vierge après des essais.</p>
 <h2 id="résultat-collecte-gardée-quantités-par-produit">5.6 Résultat
 collecte gardée — Quantités par produit</h2>
 <p>Le bouton « 📦 Saisir » (Quantités par produit) ouvre un tableau avec
@@ -707,6 +723,8 @@ secours.</p>
 <p>Deux colonnes supplémentaires calculent le poids total (toutes
 associations confondues) et la valeur en euros de chaque produit, dès
 que la mercuriale de l’année a été importée (voir Paramètres).</p>
+<p>Un bouton « 🗑️ Repartir à zéro » permet, de la même façon, d'effacer
+en un clic toutes les saisies de quantités de l'année.</p>
 <h2 id="pesée-palox">5.7 Pesée palox</h2>
 <p>Une fois les cagettes saisies, la pesée des palox à l’entrepôt se
 fait depuis un écran de synthèse qui liste chaque catégorie de produit
@@ -739,6 +757,17 @@ les recontacter avant que le nouveau planning n’existe. Le texte du mail
 est modifiable (repère &lt;&lt;nom&gt;&gt;), avec un aperçu et un envoi
 de test possibles avant l’envoi réel à tous les destinataires disposant
 d’une adresse email.</p>
+<h2 id="mail-prise-colis">6.2 Mail prise colis</h2>
+<p>Prévient les primo responsables (référents magasin du fichier colis)
+que leur colis est prêt à être récupéré — ne concerne que les magasins
+dont le colis est préparé (colonne « Préparé » = OUI) mais pas encore
+pris (colonne « Pris » = NON). Mêmes principes que le mail aux trieurs
+(texte personnalisable, aperçu, test, envoi), avec les repères
+&lt;&lt;nom&gt;&gt; et &lt;&lt;magasin&gt;&gt; (ce dernier regroupe les
+noms de tous les magasins couverts si un même référent en gère
+plusieurs). Les personnes sans adresse email, ainsi que celles sans
+numéro de portable, sont signalées à part dans deux encarts
+distincts.</p>
 <h1 id="déroulé-type-dune-campagne">7. Déroulé type d’une campagne</h1>
 <p>Pour aider à s’y retrouver, voici l’enchaînement habituel des actions
 décrites dans ce manuel, dans l’ordre où elles interviennent au fil
@@ -1293,6 +1322,23 @@ des documents réels régénère ce fichier Excel à la volée depuis cette
 grille avant chaque lancement du script, sans jamais relire le drive
 pour les cagettes — le champ Drive correspondant (« Historique cagettes
 ») a d'ailleurs été retiré des Paramètres, devenu inutile.</p>
+<h3 id="magasins-sans-stockage">Magasins sans stockage</h3>
+<p>Reprend la même population que le contrôle « Colis manquants » mais
+élargie : TOUT magasin collecté par la BAI OU en collecte gardée (même
+sans stockage BAI+ partagé), à la différence des contrôles
+Colis/Cagettes qui ne concernent que les magasins où la BAI envoie
+réellement un camion. Un magasin de cette population dont la colonne «
+Stockage » du référentiel est vide apparaît dans cet onglet — à
+compléter dans liste-magasins.xlsx (go-on-web).</p>
+<h3 id="adresses-invalides">Adresses invalides</h3>
+<p>Même population élargie que « Magasins sans stockage », complétée par
+les associations gardant leur collecte (table associations, uniquement
+celles avec validite='oui') : toute adresse dont la latitude/longitude
+est absente, non numérique, ou en dehors d'une zone plausible (Isère et
+départements limitrophes) est signalée, avec une colonne « Type »
+(Magasin ou Association) pour distinguer les deux origines. Même
+contrôle que la page « Localisation magasins et associations »
+(§2.2).</p>
 <h2 id="associations-gardant-1">10.4 Associations gardant</h2>
 <h3
 id="détermination-des-associations-et-rattachement-des-magasins">Détermination
@@ -1434,6 +1480,17 @@ disponibles : &lt;&lt;association&gt;&gt;, &lt;&lt;code&gt;&gt;,
 personnalisé plus ancien, le lien est quand même ajouté automatiquement
 en dernier paragraphe, pour rester compatible avec les textes
 personnalisés avant l'introduction de la saisie en ligne.</p>
+<h3 id="destinataires-du-mail-responsable-de-groupe">Destinataires du
+mail (responsable de groupe)</h3>
+<p>Les contacts d'une association proviennent de liste_participants.xlsx
+(colonne « Groupe », dédoublonnés par nom+email). Si au moins une
+personne y est taguée « GR » (Groupe Responsable, colonne R/E) pour ce
+groupe, SEULES ces personnes sont retenues comme destinataires — c'est
+le véritable responsable, pas besoin de notifier tout le groupe. Si
+aucune personne n'est taguée GR pour ce groupe (information pas encore
+renseignée côté go-on-web), repli sur la liste complète des participants
+du groupe, comme avant l'introduction de ce tag ; ceux dont le nom porte
+la mention « (Ref) » sont alors mis en tête de liste.</p>
 <h2 id="résultat-collecte-1">10.5 Résultat collecte</h2>
 <h3 id="saisie-des-cagettes-collecte-directe-bai">Saisie des cagettes
 (collecte directe BAI)</h3>
