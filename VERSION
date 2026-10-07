@@ -1,3 +1,3 @@
-VERSION=1.7.79
-MESSAGE=Chorus Pro : reessai jeton PISTE (refus aleatoires invalid_client) + controle du code service destinataire avant depot
-DATE=2026-10-07 10:45
+VERSION=1.7.80
+MESSAGE=Participation resultats : filtres/tri Paye et Chorus Pro + montant paye / reste a encaisser
+DATE=2026-10-07 10:51
