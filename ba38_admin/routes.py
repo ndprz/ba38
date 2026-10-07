@@ -1064,7 +1064,10 @@ def convert_docs():
         result = subprocess.run(
             [os.path.join(base_dir, "venv/bin/python"), script_path],
             capture_output=True,
-            text=True
+            text=True,
+            # Inférieur au timeout gunicorn PROD (120 s) : sinon le worker
+            # est tué et la conversion continue sans contrôle.
+            timeout=100,
         )
 
         output = result.stdout + "\n" + result.stderr

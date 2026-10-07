@@ -1,3 +1,3 @@
-VERSION=1.7.82
-MESSAGE=Aide generale (index) : Chorus Pro, Participation V2, Cuisine, SMS, cagettes/carte collecte, CERFA abandon de frais
-DATE=2026-10-07 11:58
+VERSION=1.7.83
+MESSAGE=Conversion aides utilisateur : pandoc format docx explicite + memoire plafonnee 1 Go, timeout 100 s (suite incident saturation serveur)
+DATE=2026-10-07 12:17

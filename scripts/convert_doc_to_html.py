@@ -42,11 +42,15 @@ def convert_all_docs():
         try:
             print(f"🔄 Conversion : {filename}")
 
+            # Format source explicite + mémoire de pandoc plafonnée à 1 Go :
+            # le 2026-10-07, un pandoc sans "-f docx" a lu un .docx comme du
+            # markdown, pris 2,7 Go et bloqué tout le serveur.
             pypandoc.convert_file(
                 source_file=docx_path,
                 to="html",
+                format="docx",
                 outputfile=html_path,
-                extra_args=[f"--extract-media={dossier_media_doc}"],
+                extra_args=[f"--extract-media={dossier_media_doc}", "+RTS", "-M1024m", "-RTS"],
             )
 
             # Les images intégrées au docx sont extraites par pandoc dans
