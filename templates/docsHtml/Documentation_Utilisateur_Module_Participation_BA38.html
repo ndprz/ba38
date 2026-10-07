@@ -2,9 +2,11 @@
 <p>Objectif</p>
 <p>Traiter le fichier PARSOL de participation de solidarité
 (trimestriel), générer automatiquement les factures PDF, les envoyer par
-email aux associations, suivre les paiements et relancer les impayés —
-le tout depuis un seul module. Le traitement prépare aussi le fichier à
-importer dans la comptabilité EBP.</p>
+email aux associations, les déposer sur Chorus Pro pour les partenaires
+publics, suivre les paiements et relancer les impayés — le tout depuis
+un seul module. Le traitement prépare aussi le fichier à importer dans
+la comptabilité EBP et peut exporter tous les PDF du trimestre sur
+Drive.</p>
 <p>Ce module remplace l’ancien écran “📂 Traitement fichier de
 participation pour EBP”, retiré du menu : le traitement du fichier
 PARSOL dépose désormais lui-même sur Drive les fichiers destinés à la
@@ -41,11 +43,15 @@ précédent de ce dossier est remplacé.</p></li>
 <li>Écran Résultats</li>
 </ol>
 <p>Affiche la liste des factures de la campagne : numéro de facture,
-association, code VIF, email, montant, statut Payé, PDF, statut d’envoi,
-statut Mailjet, renvoi Gmail.</p>
+association, code VIF, email, bénéficiaires, montant, statut Payé, PDF,
+Chorus Pro, statut d’envoi, statut Mailjet, renvoi Gmail. Le bandeau du
+haut donne le montant total de la campagne, le montant déjà payé (et le
+nombre de factures payées) et le reste à encaisser ; il se met à jour
+dès qu’une facture est marquée payée.</p>
 <ul>
-<li><p>“👁️ Voir” : ouvre le PDF de la facture (régénéré à la
-demande).</p></li>
+<li><p>“👁️ Voir” : ouvre le PDF de la facture (régénéré à la demande).
+Le fichier porte un nom explicite « code VIF - association - Facture
+n°.pdf », le même que la pièce jointe des mails.</p></li>
 <li><p>Bandeau “Mode TEST / Mode PROD” en haut de l’écran : commun à
 tout le module (participation et anciennes factures) ; en mode TEST, les
 envois ne partent que vers l’adresse de l’utilisateur connecté (2 mails
@@ -63,6 +69,15 @@ rebond Mailjet — uniquement disponible si le dernier envoi était réel
 section suivante).</p></li>
 <li><p>“📤 Retraiter un nouveau fichier” : recommence le traitement pour
 ce même trimestre.</p></li>
+<li><p>Filtres au-dessus du tableau : “💶 Payé” (toutes, impayées,
+payées) et “🏛️ Chorus Pro” (partenaires Chorus, à déposer, refusées / en
+erreur, déposées, hors Chorus). Les deux filtres se combinent ; le
+nombre de factures affichées est indiqué à côté, et le choix est
+conservé si la page est rechargée.</p></li>
+<li><p>Tri : cliquer sur l’en-tête d’une colonne marquée ↕ (N° facture,
+Association, Code VIF, Montant, Payé, Chorus Pro) ; un second clic
+inverse l’ordre. Sur Payé, les impayées passent en premier ; sur Chorus
+Pro, l’ordre est : en erreur, à déposer, déposées, hors Chorus.</p></li>
 </ul>
 <p>Les codes VIF du fichier qui ne correspondent à aucune association
 connue apparaissent en bas de l’écran dans une liste “Associations non
@@ -91,6 +106,69 @@ l’utilisateur connecté.</p></li>
 <li><p>“🔎 Rechercher le fichier corrigé sur Drive” : pour une campagne
 traitée avant l’arrivée de cette fonction, retrouve le fichier déjà
 déposé dans le dossier du trimestre.</p></li>
+</ul>
+<ol start="4" type="1">
+<li>PDF des factures sur Drive</li>
+</ol>
+<p>L’encadré “📂 PDF des factures sur Drive” de l’écran Résultats permet
+de déposer en une fois tous les PDF de la campagne dans le Drive de la
+trésorerie, dossier “BA380 - TRESORERIE › Participations › AAAA_TN ›
+Factures PDF”.</p>
+<ul>
+<li><p>“📤 Exporter les N PDF” : génère et dépose tous les PDF en
+arrière-plan (quelques minutes). Actualiser ensuite la page : la date du
+dernier export, le nombre de PDF et le bouton “📂 Ouvrir”
+apparaissent.</p></li>
+<li><p>Nom des fichiers : « code VIF - association - Facture n°.pdf
+».</p></li>
+<li><p>Le dossier “Factures PDF” est vidé puis rempli à chaque export :
+après une correction (adresse, retraitement…), il suffit de relancer
+l’export.</p></li>
+<li><p>Le dépôt des fichiers EBP (traitement PARSOL) vide le dossier du
+trimestre mais conserve le sous-dossier “Factures PDF”.</p></li>
+<li><p>Depuis le site de test, l’export est fait dans le dossier
+“_TEST_BASILIC”, jamais dans les dossiers réels du trésorier.</p></li>
+</ul>
+<ol start="5" type="1">
+<li>Dépôt des factures sur Chorus Pro (partenaires publics)</li>
+</ol>
+<p>Les partenaires publics (CCAS, communes…) reçoivent leurs factures
+par la plateforme de l’État Chorus Pro. Basilic les dépose directement,
+sans passer par le portail. Le mail de facture leur est envoyé quand
+même, à titre informatif.</p>
+<ul>
+<li><p>Fiche association : mettre “chorus_pro” à oui, vérifier le SIRET
+(14 chiffres) et, si le destinataire l’exige, renseigner
+“chorus_numero_engagement” (numéro d’engagement juridique ou de bon de
+commande) et/ou “chorus_code_service”. Le numéro d’engagement change
+souvent chaque année : le mettre à jour quand le partenaire en
+communique un nouveau.</p></li>
+<li><p>Écran Résultats : un badge “🏛️ Chorus” apparaît à côté du nom de
+ces associations ; la colonne “Chorus Pro” affiche le statut Chorus de
+la facture (DEPOSEE, MISE_A_DISPOSITION, MISE_EN_PAIEMENT, REJETEE…) ou
+un bouton “🏛️ Déposer”.</p></li>
+<li><p>Encadré “🏛️ Chorus Pro” : rouge “PRODUCTION — dépôts réels” sur
+le site réel ; jaune “Qualification” sur le site de test (dépôts d’essai
+vers des destinataires fictifs, sans aucun effet réel). Il indique le
+nombre de factures restant à déposer.</p></li>
+<li><p>“🏛️ Déposer” (sur une ligne) : dépose immédiatement cette facture
+et affiche le résultat. Conseillé pour un premier essai ou pour
+redéposer une facture refusée après correction.</p></li>
+<li><p>“🏛️ Déposer les N facture(s)” : dépose en arrière-plan toutes les
+factures restantes (environ 5 secondes par facture). Actualiser la page
+au bout de 2 à 3 minutes. Ne pas cliquer sur “Actualiser les statuts”
+pendant ce temps.</p></li>
+<li><p>“🔄 Actualiser les statuts” : interroge Chorus Pro pour suivre
+l’avancement des factures déposées (mise à disposition du destinataire,
+mise en paiement, rejet…).</p></li>
+<li><p>Avant chaque dépôt, Basilic vérifie le SIRET, les exigences du
+destinataire (numéro d’engagement, code service) et que le code service
+existe bien chez lui. En cas de refus, le message apparaît en rouge sous
+le bouton (filtre “Chorus — refusées / en erreur”) : corriger la fiche
+association puis cliquer à nouveau sur “🏛️ Déposer”.</p></li>
+<li><p>Pas de risque de doublon : Chorus Pro refuse un numéro de facture
+déjà déposé. Une facture refusée pour un problème passager (« Jeton
+PISTE refusé », « HTTP 401 ») peut simplement être redéposée.</p></li>
 </ul>
 <ol start="5" type="1">
 <li>Marquer une facture payée</li>
@@ -139,4 +217,9 @@ la prochaine ouverture de l’écran Résultats.</p></li>
 <li><p>Le renvoi via Gmail n’est possible que pour une facture (ou
 relance) dont le dernier envoi était réel — un envoi effectué en mode
 TEST ne peut pas être “renvoyé pour de vrai” par ce bouton.</p></li>
+</ul>
+<ul>
+<li><p>Chorus Pro : seuls les dépôts faits depuis le site réel (encadré
+rouge) sont de vrais dépôts. Le dépôt n’envoie aucun mail : l’envoi des
+mails reste à faire comme pour les autres associations.</p></li>
 </ul>

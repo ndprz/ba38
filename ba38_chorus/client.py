@@ -30,6 +30,10 @@ SANDBOX_CODE_SERVICE = "SERVICE_DEST_SERV_OBL"
 # appels s'enchaînent trop vite.
 PAUSE_ENTRE_APPELS = 1.0
 
+# Nombre d'essais (jeton PISTE et appels API) avant d'abandonner : PISTE et
+# Chorus renvoient des refus passagers (400 invalid_client, 401).
+NB_ESSAIS = 6
+
 
 class ChorusErreur(Exception):
     """Refus de Chorus Pro ou de PISTE, message lisible pour l'utilisateur."""
@@ -84,7 +88,7 @@ class ClientChorus:
     def _obtenir_jeton(self):
         # PISTE refuse aléatoirement (~1 fois sur 10, "invalid_client" HTTP 400)
         # des identifiants pourtant valides : on réessaie avant d'abandonner.
-        for tentative in range(5):
+        for tentative in range(NB_ESSAIS):
             rep = requests.post(URLS[self.env]["oauth"], data={
                 "grant_type": "client_credentials",
                 "client_id": self.client_id,
@@ -95,7 +99,7 @@ class ClientChorus:
                 self._jeton = rep.json()["access_token"]
                 return
             time.sleep(2 * (tentative + 1))
-        raise ChorusErreur(f"Jeton PISTE refusé ({rep.status_code}) après 5 essais : {rep.text[:300]}")
+        raise ChorusErreur(f"Jeton PISTE refusé ({rep.status_code}) après {NB_ESSAIS} essais : {rep.text[:300]}")
 
     def appel(self, chemin, corps):
         """POST JSON ; lève ChorusErreur si HTTP ≠ 200 ou codeRetour ≠ 0."""
@@ -103,7 +107,7 @@ class ClientChorus:
             self._obtenir_jeton()
         cpro_account = base64.b64encode(f"{self.login}:{self.password}".encode()).decode()
 
-        for tentative in range(3):
+        for tentative in range(NB_ESSAIS):
             time.sleep(PAUSE_ENTRE_APPELS)
             rep = requests.post(URLS[self.env]["api"] + chemin, headers={
                 "Authorization": f"Bearer {self._jeton}",
@@ -111,7 +115,7 @@ class ClientChorus:
                 "Content-Type": "application/json;charset=utf-8",
                 "Accept": "application/json;charset=utf-8",
             }, json=corps, timeout=60)
-            if rep.status_code == 401 and tentative < 2:
+            if rep.status_code == 401 and tentative < NB_ESSAIS - 1:
                 time.sleep(2 * (tentative + 1))
                 self._obtenir_jeton()
                 continue

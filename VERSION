@@ -1,3 +1,3 @@
-VERSION=1.7.80
-MESSAGE=Participation resultats : filtres/tri Paye et Chorus Pro + montant paye / reste a encaisser
-DATE=2026-10-07 10:51
+VERSION=1.7.81
+MESSAGE=Chorus Pro : 6 essais (jeton PISTE + appels API) ; aide utilisateur Participation (Chorus Pro, export PDF Drive, filtres)
+DATE=2026-10-07 11:01
