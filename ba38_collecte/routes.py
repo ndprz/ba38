@@ -4592,8 +4592,82 @@ def _creer_fichier_association(asso, annee, dossier):
     return chemin
 
 
+def _lire_tableau_feuille_association(ws):
+    """Reconstruit dynamiquement la structure d'un tableau (en-têtes,
+    largeurs, données) depuis la feuille Excel RÉELLEMENT générée — plutôt
+    que des numéros de ligne/colonne figés dans le code, qui se
+    désynchronisent dès que quelqu'un modifie le modèle (ex. ajout d'une
+    colonne) sans toucher au code Python. Convention du modèle, utilisée
+    pour détecter la structure sans rien supposer d'autre : la première
+    colonne du tableau contient 'code' (ou 'code produit') sur la ligne
+    d'en-tête, et une éventuelle 2e ligne d'en-tête (sous-colonnes, ex.
+    'Bénévoles' réparti en 4 demi-journées) a sa première cellule vide.
+
+    Retourne (entetes, lignes_donnees, largeurs_mm) — lignes_donnees inclut
+    la ligne « Total » déjà présente dans le modèle (avec ses formules
+    Excel, qu'on affiche telles quelles : LibreOffice/Excel les auraient
+    déjà calculées, mais ouvrir le classeur pour les évaluer dépasserait ce
+    qu'il faut ici — la valeur affichée est donc vide tant que l'association
+    n'a pas ouvert/recalculé le fichier elle-même, comme avant)."""
+    from openpyxl.utils import get_column_letter, range_boundaries
+
+    zone = ws.print_area or ws.dimensions
+    zone = str(zone).split(",")[0] if zone else "A1:A1"
+    zone = zone.split("!")[-1].replace("$", "")
+    min_col, min_row, max_col, max_row = range_boundaries(zone)
+
+    ligne_entete = None
+    for r in range(min_row, max_row + 1):
+        v = ws.cell(r, min_col).value
+        if isinstance(v, str) and v.strip().lower().startswith("code"):
+            ligne_entete = r
+            break
+    if ligne_entete is None:
+        ligne_entete = min_row
+
+    sous_entete = ligne_entete + 1
+    a_sous_entete = (
+        sous_entete <= max_row
+        and ws.cell(sous_entete, min_col).value is None
+        and any(isinstance(ws.cell(sous_entete, c).value, str) and ws.cell(sous_entete, c).value.strip()
+                for c in range(min_col, max_col + 1))
+    )
+
+    entetes = []
+    for c in range(min_col, max_col + 1):
+        principal = ws.cell(ligne_entete, c).value
+        secondaire = ws.cell(sous_entete, c).value if a_sous_entete else None
+        entetes.append(secondaire if isinstance(secondaire, str) and secondaire.strip() else principal)
+
+    debut_donnees = (sous_entete if a_sous_entete else ligne_entete) + 1
+    lignes_donnees = []
+    for r in range(debut_donnees, max_row + 1):
+        valeurs = [ws.cell(r, c).value for c in range(min_col, max_col + 1)]
+        if not any(v is not None for v in valeurs):
+            continue
+        lignes_donnees.append(valeurs)
+        if any(isinstance(v, str) and v.strip().lower() == "total" for v in valeurs):
+            break
+
+    largeurs_excel = []
+    for c in range(min_col, max_col + 1):
+        dim = ws.column_dimensions.get(get_column_letter(c))
+        largeurs_excel.append(dim.width if dim and dim.width else 10.0)
+    disponible_mm = 190.0
+    total_excel = sum(largeurs_excel) or 1
+    largeurs_mm = [max(15.0, largeur / total_excel * disponible_mm) for largeur in largeurs_excel]
+
+    return entetes, lignes_donnees, largeurs_mm
+
+
 def _creer_pdf_association(fichier_excel, asso, annee, dossier):
-    """Crée directement les deux fiches PDF avec la présentation du modèle Excel."""
+    """Crée les deux fiches PDF en reprenant la structure RÉELLE du fichier
+    Excel généré (en-têtes, nombre de colonnes, largeurs) — voir
+    _lire_tableau_feuille_association. Ce n'est pas une impression native
+    du classeur (pas de moteur LibreOffice/Excel disponible sur ce serveur),
+    mais la mise en page s'adapte désormais automatiquement si le modèle
+    Excel est modifié (colonne ajoutée/retirée/renommée), sans plus jamais
+    nécessiter de toucher ce code."""
     wb = load_workbook(fichier_excel, data_only=False)
     nom = os.path.splitext(os.path.basename(fichier_excel))[0] + ".pdf"
     chemin = os.path.join(dossier, nom)
@@ -4602,9 +4676,32 @@ def _creer_pdf_association(fichier_excel, asso, annee, dossier):
     logo = os.path.join(current_app.root_path, "static", "images", "logo_ba_complet.png")
 
     def texte(valeur):
-        return str(valeur or "").replace("\n", " ")
+        s = str(valeur or "").replace("\n", " ").strip()
+        if s.startswith("="):
+            # Formule Excel non calculée (openpyxl ne recalcule pas) —
+            # afficher la formule brute serait trompeur, mieux vaut une
+            # case vide (l'association ouvrira le classeur Excel joint
+            # pour voir le vrai total calculé).
+            return ""
+        return s
 
-    def entete(ws, titre):
+    def decouper_texte(s, largeur_dispo, police, taille):
+        if not s:
+            return [""]
+        mots = s.split(" ")
+        lignes_decoupees, courante = [], ""
+        for mot in mots:
+            essai = (courante + " " + mot).strip()
+            if pdf.stringWidth(essai, police, taille) <= largeur_dispo or not courante:
+                courante = essai
+            else:
+                lignes_decoupees.append(courante)
+                courante = mot
+        if courante:
+            lignes_decoupees.append(courante)
+        return lignes_decoupees or [""]
+
+    def entete(titre):
         if os.path.exists(logo):
             pdf.drawImage(ImageReader(logo), 12 * mm, page_height - 25 * mm, width=72 * mm, height=8 * mm, preserveAspectRatio=True, mask="auto")
         pdf.setFont("Helvetica", 8)
@@ -4623,33 +4720,38 @@ def _creer_pdf_association(fichier_excel, asso, annee, dossier):
         pdf.drawString(24 * mm, y - 19 * mm, nom_asso)
         return y - 25 * mm
 
-    def grille(lignes, largeurs, x, y, hauteur, gras_premiere=False):
-        total = sum(largeurs)
+    def grille(lignes, largeurs, x, y, hauteur_min, gras_premiere=False):
+        yy = y
         for index, ligne in enumerate(lignes):
-            yy = y - index * hauteur
-            pdf.setFont("Helvetica-Bold" if gras_premiere and index == 0 else "Helvetica", 6 if index else 6.5)
+            gras = gras_premiere and index == 0
+            police = "Helvetica-Bold" if gras else "Helvetica"
+            taille = 6.5 if gras else 6
+            cellules = []
+            for col, largeur in enumerate(largeurs):
+                dispo = largeur - 2.4 * mm
+                cellules.append(decouper_texte(texte(ligne[col]), dispo, police, taille))
+            nb_lignes_texte = max(len(c) for c in cellules)
+            interligne = taille * 1.25
+            hauteur_ligne = max(hauteur_min, nb_lignes_texte * interligne + 2 * mm)
             xx = x
             for col, largeur in enumerate(largeurs):
-                pdf.rect(xx, yy - hauteur, largeur, hauteur)
-                pdf.drawString(xx + 1.2 * mm, yy - hauteur + 2.2 * mm, texte(ligne[col])[:38])
+                pdf.rect(xx, yy - hauteur_ligne, largeur, hauteur_ligne)
+                pdf.setFont(police, taille)
+                for num_ligne, morceau in enumerate(cellules[col]):
+                    pdf.drawString(xx + 1.2 * mm, yy - 1 * mm - (num_ligne + 1) * interligne, morceau)
                 xx += largeur
-        return y - len(lignes) * hauteur
+            yy -= hauteur_ligne
+        return yy
 
-    ws = wb["produits"]
-    y = entete(ws, "FICHE PRODUITS")
-    derniere_ligne_produits = _derniere_ligne_produits(ws)
-    lignes = [[ws.cell(14, c).value for c in range(1, 6)]]
-    lignes.extend([[ws.cell(r, c).value for c in range(1, 6)] for r in range(16, derniere_ligne_produits + 2) if any(ws.cell(r, c).value is not None for c in range(1, 6))])
-    lignes.append(["", "Total", "", "", ""])
-    grille(lignes, [25 * mm, 46 * mm, 22 * mm, 62 * mm, 22 * mm], 10 * mm, y, 6.2 * mm, True)
-    pdf.showPage()
+    for nom_feuille, titre in (("produits", "FICHE PRODUITS"), ("magasins", "FICHE MAGASINS")):
+        ws = wb[nom_feuille]
+        entetes, lignes_donnees, largeurs_mm = _lire_tableau_feuille_association(ws)
+        y = entete(titre)
+        lignes = [entetes] + lignes_donnees
+        hauteur_ligne = max(5.5, min(8.0, 160 / max(len(lignes), 1))) * mm
+        grille(lignes, [l * mm for l in largeurs_mm], 10 * mm, y, hauteur_ligne, True)
+        pdf.showPage()
 
-    ws = wb["magasins"]
-    y = entete(ws, "FICHE MAGASINS")
-    lignes = [[ws.cell(13, c).value for c in range(1, 9)]]
-    lignes.extend([[ws.cell(r, c).value for c in range(1, 9)] for r in range(15, 24) if ws.cell(r, 1).value or ws.cell(r, 2).value])
-    lignes.append(["", "Total", "", "", "", "", "", ""])
-    grille(lignes, [18 * mm, 39 * mm, 20 * mm, 20 * mm, 20 * mm, 22 * mm, 20 * mm, 22 * mm], 5 * mm, y, 8 * mm, True)
     pdf.save()
     return chemin
 

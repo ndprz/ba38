@@ -1,3 +1,3 @@
-VERSION=1.7.85
-MESSAGE=Tresorerie : menu allege (decoupe factures, cotisations V1, CERFA masques) + Cotisations sans V2
-DATE=2026-10-07 13:34
+VERSION=1.7.86
+MESSAGE=Collecte Associations gardant : PDF fiches produits/magasins reconstruit dynamiquement depuis le vrai fichier Excel (fin des colonnes figees qui se desynchronisaient)
+DATE=2026-10-07 14:10
