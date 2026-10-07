@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+
+{% block title %}Vos frais de bénévole {{ campagne.annee_frais }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .grille-journees th, .grille-journees td { padding: 2px 4px; vertical-align: middle; }
+    .grille-journees input { width: 4.2rem; text-align: center; margin: 0 auto; }
+    .grille-journees .col-mois { position: sticky; left: 0; background: var(--bs-body-bg, #fff); z-index: 1; text-align: left; }
+    .grille-journees tfoot td { font-weight: 600; }
+    .km-auto { font-size: .75rem; color: #6c757d; font-weight: normal; }
+    .bloc-estimation { font-size: 1.1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-3 mb-5" style="max-width: 1000px;">
+
+    <h2>🚗 Vos frais de bénévole {{ campagne.annee_frais }}</h2>
+
+    {% if d.statut in ('valide', 'termine', 'courrier_envoye', 'rembourse') %}
+    <div class="alert alert-success">
+        ✅ Votre déclaration a été <strong>validée</strong> par la Banque Alimentaire de l'Isère
+        {% if d.imposable == 1 %}— votre reçu fiscal n° {{ d.numero_document }} {{ 'vous a été adressé' if d.statut == 'termine' else 'va vous être adressé' }}.
+        {% elif d.statut == 'rembourse' %}— vos trajets vous ont été remboursés.
+        {% else %}— le courrier de remboursement {{ 'vous a été adressé' if d.statut == 'courrier_envoye' else 'va vous être adressé' }}.{% endif %}
+        Elle n'est plus modifiable ; pour toute correction, contactez le secrétariat.
+    </div>
+    {% elif d.statut == 'soumis' %}
+    <div class="alert alert-info">
+        📨 Déclaration <strong>transmise</strong> le {{ d.soumis_le[:10] }}. Vous pouvez encore la corriger tant qu'elle
+        n'a pas été validée par la Banque Alimentaire (pensez à enregistrer).
+    </div>
+    {% elif date_depassee %}
+    <div class="alert alert-warning">⏰ La date limite ({{ campagne.date_limite }}) est dépassée : vous pouvez encore transmettre votre déclaration, mais contactez le secrétariat si elle n'est pas prise en compte.</div>
+    {% elif campagne.date_limite %}
+    <div class="alert alert-light border">📅 À transmettre avant le <strong>{{ campagne.date_limite[8:10] }}/{{ campagne.date_limite[5:7] }}/{{ campagne.date_limite[:4] }}</strong>. Vous pouvez enregistrer et revenir plus tard avec le même lien.</div>
+    {% endif %}
+
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <span class="badge fs-6 {{ 'bg-primary' if d.imposable == 1 else 'bg-success' }}">
+            {{ '💶 Imposable sur mes revenus ' ~ campagne.annee_frais if d.imposable == 1 else '🚌 Non imposable sur mes revenus ' ~ campagne.annee_frais }}
+        </span>
+        {% if modifiable %}<a href="{{ url_for('cerfa.frais_questionnaire', token=token, situation=1) }}" class="small">changer</a>{% endif %}
+    </div>
+
+    <form method="post" action="{{ url_for('cerfa.frais_q_enregistrer', token=token) }}" enctype="multipart/form-data" id="form-declaration">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <fieldset {{ 'disabled' if not modifiable }}>
+
+        <!-- ================= Coordonnées ================= -->
+        <div class="card mb-3">
+            <div class="card-header"><strong>1. Vos coordonnées</strong> <span class="small text-muted">(telles qu'elles figureront sur le document)</span></div>
+            <div class="card-body row g-2">
+                <div class="col-4 col-md-2">
+                    <label class="form-label small mb-0">Civilité</label>
+                    <select name="civilite" class="form-select form-select-sm">
+                        <option value="">—</option>
+                        {% for c in ['Madame', 'Monsieur'] %}
+                        <option {{ 'selected' if (d.civilite or '') in (c, 'M' if c == 'Monsieur' else 'Mme') }}>{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-8 col-md-5">
+                    <label class="form-label small mb-0">Nom</label>
+                    <input name="nom" value="{{ d.nom or '' }}" class="form-control form-control-sm" required>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label small mb-0">Prénom</label>
+                    <input name="prenom" value="{{ d.prenom or '' }}" class="form-control form-control-sm" required>
+                </div>
+                <div class="col-md-7">
+                    <label class="form-label small mb-0">Adresse</label>
+                    <input name="rue" id="rue" value="{{ d.rue or '' }}" class="form-control form-control-sm adresse">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label small mb-0">Complément d'adresse</label>
+                    <input name="complement_adresse" value="{{ d.complement_adresse or '' }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-4 col-md-2">
+                    <label class="form-label small mb-0">Code postal</label>
+                    <input name="code_postal" id="code_postal" value="{{ d.code_postal or '' }}" inputmode="numeric" class="form-control form-control-sm adresse">
+                </div>
+                <div class="col-8 col-md-5">
+                    <label class="form-label small mb-0">Ville</label>
+                    <input name="ville" id="ville" value="{{ d.ville or '' }}" class="form-control form-control-sm adresse">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label small mb-0">Téléphone</label>
+                    <input name="telephone" value="{{ d.telephone or '' }}" inputmode="tel" class="form-control form-control-sm">
+                </div>
+                <div class="col-12 small text-muted">Email : {{ d.email or '—' }}</div>
+            </div>
+        </div>
+
+        <!-- ================= Véhicule ================= -->
+        {% if d.imposable == 1 %}
+        <div class="card mb-3">
+            <div class="card-header"><strong>2. Véhicule personnel utilisé</strong></div>
+            <div class="card-body row g-2">
+                <div class="col-md-4">
+                    <label class="form-label small mb-0">Type</label>
+                    <select name="vehicule_type" id="vehicule_type" class="form-select form-select-sm">
+                        <option value="">— choisir —</option>
+                        {% for k, v in types_vehicule.items() %}
+                        <option value="{{ k }}" {{ 'selected' if d.vehicule_type == k }}>{{ v }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-0">Marque</label>
+                    <input name="vehicule_marque" value="{{ d.vehicule_marque or '' }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-0">N° d'immatriculation</label>
+                    <input name="vehicule_immatriculation" value="{{ d.vehicule_immatriculation or '' }}" class="form-control form-control-sm" style="text-transform: uppercase;">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-0">CV fiscaux</label>
+                    <input name="vehicule_cv" id="vehicule_cv" value="{{ d.vehicule_cv or '' }}" type="number" min="1" max="99" class="form-control form-control-sm">
+                    <div class="form-text">case P.6 de la carte grise</div>
+                </div>
+                <div class="col-12">
+                    <label class="small"><input type="checkbox" name="vehicule_electrique" id="vehicule_electrique" value="1" {{ 'checked' if d.vehicule_electrique }}>
+                        Véhicule 100 % électrique</label>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ================= Journées ================= -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>{{ 3 if d.imposable == 1 else 2 }}. Nombre de journées de bénévolat en {{ campagne.annee_frais }}</strong>
+                <div class="small text-muted">
+                    Nombre de jours où vous vous êtes rendu(e) sur chaque lieu, mois par mois
+                    {% if d.imposable == 1 %}(trajets domicile ↔ lieu en voiture ou moto, non remboursés par la BA38){% endif %}.
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0 text-center grille-journees">
+                    <thead class="table-light">
+                        <tr><th class="col-mois">Mois</th>{% for l in lieux %}<th>{{ l.nom }}</th>{% endfor %}</tr>
+                    </thead>
+                    <tbody>
+                    {% for m in mois %}
+                        {% set num = loop.index %}
+                        <tr>
+                            <td class="col-mois small">{{ m }}</td>
+                            {% for l in lieux %}
+                            <td><input type="number" min="0" max="31" inputmode="numeric"
+                                       name="j-{{ l.id }}-{{ num }}" data-lieu="{{ l.id }}"
+                                       value="{{ (journees.get(l.id|string) or {}).get(num|string, '') }}"
+                                       class="form-control form-control-sm saisie-jour"></td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                    <tfoot class="table-light">
+                        <tr><td class="col-mois">Total journées</td>{% for l in lieux %}<td id="total-{{ l.id }}">0</td>{% endfor %}</tr>
+                        {% if d.imposable == 1 %}
+                        <tr>
+                            <td class="col-mois">Km aller-retour</td>
+                            {% for l in lieux %}
+                            {% set auto = km_auto.get(l.id|string) %}
+                            <td>
+                                <input type="text" inputmode="decimal" name="km-{{ l.id }}" data-lieu="{{ l.id }}"
+                                       value="{{ km.get(l.id|string, '') }}" class="form-control form-control-sm saisie-km">
+                                <div class="km-auto" id="km-auto-{{ l.id }}">
+                                    {% if l.est_autre or l.latitude is none %}à saisir{% elif auto is not none %}calcul : {{ auto }} km{% endif %}
+                                </div>
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        <tr><td class="col-mois">Distance (km)</td>{% for l in lieux %}<td id="distance-{{ l.id }}">0</td>{% endfor %}</tr>
+                        {% endif %}
+                    </tfoot>
+                </table>
+            </div>
+            <div class="card-body">
+                {% if d.imposable == 1 %}
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="btn-km-auto">📍 Calculer mes km depuis mon adresse</button>
+                    <span class="small text-muted" id="km-auto-message">
+                        {% if d.adresse_geocode_label %}Calculés depuis : {{ d.adresse_geocode_label }} (itinéraire routier, aller-retour). Vous pouvez les corriger.{% else %}Les km aller-retour sont calculés par itinéraire routier ; vous pouvez les corriger.{% endif %}
+                    </span>
+                </div>
+                {% endif %}
+                {% set autres = lieux|selectattr('est_autre')|list %}
+                {% if autres %}
+                <label class="form-label small mb-0">Précisez la nature et le lieu des journées « {{ autres[0].nom }} » (obligatoire si vous en déclarez)</label>
+                <textarea name="commentaire_autres" rows="2" class="form-control form-control-sm">{{ d.commentaire_autres or '' }}</textarea>
+                {% endif %}
+                <div class="bloc-estimation mt-3" id="estimation"></div>
+            </div>
+        </div>
+
+        <!-- ================= Pièces ================= -->
+        <div class="card mb-3" id="pieces">
+            <div class="card-header"><strong>{{ 4 if d.imposable == 1 else 3 }}. Document à joindre</strong>
+                <span class="small text-muted">(PDF ou photo, 10 Mo max)</span></div>
+            <div class="card-body">
+                {% set type_requis = 'carte_grise' if d.imposable == 1 else 'avis_non_imposition' %}
+                <ul class="list-unstyled mb-2" id="liste-pieces">
+                {% for p in pieces %}
+                    <li id="piece-{{ p.id }}" class="mb-1">
+                        📎 <a href="{{ url_for('cerfa.frais_q_voir_piece', token=token, piece_id=p.id) }}" target="_blank">{{ types_piece.get(p.type_piece) }} — {{ p.nom_original }}</a>
+                        {% if modifiable %}<button type="button" class="btn btn-link btn-sm text-danger p-0 ms-2 btn-supprimer-piece"
+                                data-url="{{ url_for('cerfa.frais_q_supprimer_piece', token=token, piece_id=p.id) }}" data-id="{{ p.id }}">supprimer</button>{% endif %}
+                    </li>
+                {% endfor %}
+                </ul>
+                {% if modifiable %}
+                <label class="form-label small mb-0"><strong>{{ types_piece[type_requis] }}</strong>
+                    {% if d.imposable == 1 %}(du véhicule déclaré){% else %}(avis d'impôt {{ campagne.annee_frais + 1 }} sur les revenus {{ campagne.annee_frais }}, ou à défaut le dernier reçu){% endif %}</label>
+                <input type="file" name="fichier_{{ type_requis }}" multiple accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.webp,image/*,application/pdf" class="form-control form-control-sm">
+                <div class="form-text">Le fichier est envoyé quand vous cliquez sur « Enregistrer » ou « Transmettre ».</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label small mb-0">Commentaire (facultatif)</label>
+            <textarea name="commentaire_benevole" rows="2" class="form-control form-control-sm">{{ d.commentaire_benevole or '' }}</textarea>
+        </div>
+
+        {% if modifiable %}
+        <button type="submit" name="action" value="enregistrer" class="btn btn-outline-primary mb-4">💾 Enregistrer (je finirai plus tard)</button>
+
+        <!-- ================= Transmission ================= -->
+        <div class="card border-success mb-3" id="transmettre">
+            <div class="card-header bg-success text-white"><strong>Transmettre ma déclaration</strong></div>
+            <div class="card-body">
+                {% if manquants and d.statut != 'soumis' %}
+                <div class="small text-danger mb-2">Il manque encore : {{ manquants|join(' ; ') }}.</div>
+                {% endif %}
+                <label class="d-flex gap-2 mb-3">
+                    <input type="checkbox" name="certification" value="1" class="form-check-input mt-1">
+                    <span>
+                    {% if d.imposable == 1 %}
+                        Je certifie avoir utilisé mon véhicule personnel lors des déplacements déclarés ci-dessus, effectués
+                        dans le cadre de mon activité régulière de bénévole au profit de la Banque Alimentaire de l'Isère.
+                        <strong>Je déclare renoncer au remboursement de ces frais</strong> et j'atteste que ces déplacements
+                        n'ont pas été remboursés par la BA38. La présente déclaration est établie en vertu des dispositions
+                        de l'article 200 du Code général des impôts.
+                    {% else %}
+                        Je certifie sur l'honneur ne pas avoir été imposable sur mes revenus {{ campagne.annee_frais }} et
+                        avoir effectué les journées de bénévolat déclarées ci-dessus au profit de la Banque Alimentaire de l'Isère.
+                    {% endif %}
+                    </span>
+                </label>
+                <button type="submit" name="action" value="transmettre" class="btn btn-success">📨 {{ 'Mettre à jour ma déclaration transmise' if d.statut == 'soumis' else 'Transmettre ma déclaration' }}</button>
+            </div>
+        </div>
+        {% endif %}
+        </fieldset>
+    </form>
+
+    {% if modifiable and d.statut != 'soumis' %}
+    <form method="post" action="{{ url_for('cerfa.frais_q_decliner', token=token) }}"
+          onsubmit="return confirm('Confirmez-vous ne pas vouloir déclarer de frais cette année ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-link text-muted p-0 small">Je ne souhaite pas déclarer de frais cette année</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const imposable = {{ d.imposable|tojson }};
+    const bareme = {{ bareme|tojson }};
+    const majorationElectrique = {{ (campagne.majoration_electrique or 0)|tojson }};
+    const ticketsParJour = {{ (campagne.nb_tickets_par_journee or 0)|tojson }};
+    const prixTicket = {{ (campagne.prix_ticket_tag or 0)|tojson }};
+    const lieux = {{ lieux|map(attribute='id')|list|tojson }};
+    const csrf = document.querySelector('#form-declaration input[name="csrf_token"]').value;
+    const form = document.getElementById("form-declaration");
+    let modifie = false;
+
+    const nombre = (v) => { const n = parseFloat(String(v || "").replace(",", ".")); return isNaN(n) ? 0 : n; };
+    const fr = (n, dec) => n.toLocaleString("fr-FR", {minimumFractionDigits: dec, maximumFractionDigits: dec});
+
+    function montantBareme(type, cv, d, electrique) {
+        const cat = bareme[type || "voiture"];
+        if (!cat || !d) return 0;
+        let ligne = null;
+        for (const l of cat.lignes) {
+            if (l.cv_max === null || (cv && cv <= l.cv_max)) { ligne = l; break; }
+        }
+        if (!ligne || (!cv && type !== "cyclomoteur")) return 0;
+        let m = d <= cat.seuils[0] ? d * ligne.a1 : (d <= cat.seuils[1] ? d * ligne.a2 + ligne.b2 : d * ligne.a3);
+        if (electrique) m *= 1 + majorationElectrique;
+        return m;
+    }
+
+    function recalculer() {
+        let totalJours = 0, distanceTotale = 0;
+        for (const id of lieux) {
+            let n = 0;
+            document.querySelectorAll(`.saisie-jour[data-lieu="${id}"]`).forEach((i) => n += Math.max(0, Math.round(nombre(i.value))));
+            document.getElementById(`total-${id}`).textContent = n;
+            totalJours += n;
+            const km = document.querySelector(`.saisie-km[data-lieu="${id}"]`);
+            if (km) {
+                const dist = n * nombre(km.value);
+                document.getElementById(`distance-${id}`).textContent = fr(dist, 0);
+                distanceTotale += dist;
+            }
+        }
+        const zone = document.getElementById("estimation");
+        if (imposable === 1) {
+            const m = montantBareme(document.getElementById("vehicule_type").value,
+                                    parseInt(document.getElementById("vehicule_cv").value) || 0,
+                                    distanceTotale, document.getElementById("vehicule_electrique").checked);
+            zone.innerHTML = `Total : <strong>${totalJours}</strong> journée(s), <strong>${fr(distanceTotale, 0)} km</strong>`
+                + (m ? ` — montant estimé du reçu fiscal : <strong>${fr(Math.round(m), 0)} €</strong>
+                   <div class="small text-muted">(barème kilométrique fiscal ; ouvre droit à une réduction d'impôt de 66 % de ce montant, soit environ ${fr(Math.round(m * 0.66), 0)} €)</div>`
+                     : ` <span class="small text-muted">— ${distanceTotale ? "renseignez le type et la puissance du véhicule" : "renseignez les km aller-retour"} pour l'estimation</span>`);
+        } else {
+            const m = totalJours * ticketsParJour * prixTicket;
+            zone.innerHTML = `Total : <strong>${totalJours}</strong> journée(s) × ${ticketsParJour} tickets TAG × ${fr(prixTicket, 2)} € = remboursement estimé <strong>${fr(m, 2)} €</strong>`;
+        }
+    }
+
+    form.addEventListener("input", () => { modifie = true; recalculer(); });
+    form.addEventListener("change", () => { modifie = true; recalculer(); });
+    form.addEventListener("submit", () => { modifie = false; });
+    window.addEventListener("beforeunload", (e) => { if (modifie) { e.preventDefault(); e.returnValue = ""; } });
+    recalculer();
+
+    const btnKm = document.getElementById("btn-km-auto");
+    if (btnKm) {
+        btnKm.addEventListener("click", async () => {
+            const msg = document.getElementById("km-auto-message");
+            btnKm.disabled = true;
+            msg.textContent = "Calcul en cours…";
+            try {
+                const r = await fetch("{{ url_for('cerfa.frais_q_km_auto', token=token) }}", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "X-CSRFToken": csrf},
+                    body: JSON.stringify({
+                        rue: document.getElementById("rue").value,
+                        code_postal: document.getElementById("code_postal").value,
+                        ville: document.getElementById("ville").value,
+                    }),
+                });
+                const data = await r.json();
+                if (!data.ok) { msg.textContent = "⚠️ " + data.message; return; }
+                for (const [id, km] of Object.entries(data.km)) {
+                    const input = document.querySelector(`.saisie-km[data-lieu="${id}"]`);
+                    if (input) input.value = km;
+                    const aide = document.getElementById(`km-auto-${id}`);
+                    if (aide) aide.textContent = `calcul : ${km} km`;
+                }
+                msg.textContent = `✔ Calculés depuis : ${data.adresse}` + (data.score < 0.6 ? " — ⚠️ adresse incertaine, vérifiez-la" : "")
+                    + ". Pensez à enregistrer.";
+                modifie = true;
+                recalculer();
+            } catch (e) {
+                msg.textContent = "⚠️ Calcul impossible pour le moment : saisissez vos km vous-même.";
+            } finally {
+                btnKm.disabled = false;
+            }
+        });
+    }
+
+    document.querySelectorAll(".btn-supprimer-piece").forEach((b) => b.addEventListener("click", async () => {
+        if (!confirm("Supprimer ce fichier ?")) return;
+        const r = await fetch(b.dataset.url, {method: "POST", headers: {"X-CSRFToken": csrf}});
+        const data = await r.json().catch(() => ({}));
+        if (data.ok) document.getElementById(`piece-${b.dataset.id}`).remove();
+        else alert("Suppression impossible.");
+    }));
+})();
+</script>
+{% endblock %}

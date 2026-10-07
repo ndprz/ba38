@@ -211,7 +211,8 @@ def ensure_clean_trim_folder(service, parent_id: str, folder_name: str) -> str:
     """
     - Cherche tous les dossiers nommés `folder_name` sous `parent_id`
     - S'il y en a plusieurs: conserve le plus récent, supprime les autres
-    - Vide le contenu du dossier conservé (supprime tous les fichiers)
+    - Vide le contenu du dossier conservé (supprime tous les fichiers, mais
+      garde les sous-dossiers : « Factures PDF » de l'export des PDF)
     - S'il n'existe pas: le crée
     - Retourne l'id du dossier propre prêt à l'emploi
     """
@@ -232,7 +233,8 @@ def ensure_clean_trim_folder(service, parent_id: str, folder_name: str) -> str:
     # Purger le contenu du dossier retenu (pas le dossier lui-même)
     try:
         res_children = service.files().list(
-            q=f"'{folder_id}' in parents and trashed=false",
+            q=(f"'{folder_id}' in parents and trashed=false "
+               f"and mimeType != 'application/vnd.google-apps.folder'"),
             fields="files(id,name)",
             supportsAllDrives=True,
             includeItemsFromAllDrives=True,

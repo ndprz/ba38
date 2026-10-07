@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Paramètres CERFA frais {{ campagne.annee_frais }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 1100px;">
+
+    <div class="page-sticky-header d-flex justify-content-between align-items-center">
+        <h2 class="mb-0">⚙️ Paramètres — frais {{ campagne.annee_frais }}</h2>
+        <div class="btn-group-ba38">
+            <button form="form-parametres" class="btn btn-success btn-sm">💾 Enregistrer</button>
+            <a href="{{ url_for('cerfa.frais_suivi', campagne_id=campagne.id) }}" class="btn btn-primary btn-sm">📊 Suivi</a>
+            <a href="{{ url_for('cerfa.frais_lieux', retour=campagne.id) }}" class="btn btn-outline-primary btn-sm">📍 Lieux</a>
+            <a href="{{ url_for('cerfa.frais_campagnes') }}" class="btn btn-outline-dark btn-sm">↩️ Campagnes</a>
+        </div>
+    </div>
+
+    <form method="post" id="form-parametres">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="card mb-3">
+            <div class="card-header"><strong>📅 Campagne</strong></div>
+            <div class="card-body row g-3">
+                <div class="col-md-3">
+                    <label class="form-label small">Année d'émission (n° CERFA)</label>
+                    <input type="number" name="annee_emission" value="{{ campagne.annee_emission }}" class="form-control form-control-sm">
+                    <div class="form-text">N° = {{ campagne.annee_emission }}-&lt;id bénévole&gt;</div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">Date limite de réponse</label>
+                    <input type="date" name="date_limite" value="{{ campagne.date_limite or '' }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">Signataire (nom)</label>
+                    <input type="text" name="signataire_nom" value="{{ campagne.signataire_nom or '' }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">Qualité du signataire</label>
+                    <input type="text" name="signataire_qualite" value="{{ campagne.signataire_qualite or '' }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small">Adresse d'expédition des mails</label>
+                    <input type="email" name="expediteur_email" value="{{ campagne.expediteur_email or '' }}" class="form-control form-control-sm"
+                           placeholder="vide = expéditeur par défaut de l'application">
+                    <div class="form-text">⚠️ Doit être une adresse validée dans Mailjet, sinon les mails sont rejetés sans message d'erreur.</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small">Adresse de réponse (Reply-To)</label>
+                    <input type="email" name="reply_to_email" value="{{ campagne.reply_to_email or '' }}" class="form-control form-control-sm">
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header"><strong>🚌 Non-imposables : remboursement tickets TAG</strong></div>
+            <div class="card-body row g-3">
+                <div class="col-md-3">
+                    <label class="form-label small">Prix d'un ticket TAG (€)</label>
+                    <input type="text" inputmode="decimal" name="prix_ticket_tag" value="{{ '%.2f'|format(campagne.prix_ticket_tag or 0) }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">Tickets par journée</label>
+                    <input type="number" name="nb_tickets_par_journee" value="{{ campagne.nb_tickets_par_journee }}" min="0" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-6 small text-muted align-self-end">
+                    Remboursement = total des journées × tickets par journée × prix du ticket.
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header"><strong>🚗 Imposables : barème kilométrique fiscal</strong></div>
+            <div class="card-body">
+                <p class="small mb-2">
+                    Mettre à jour avec le barème en vigueur au moment d'établir les CERFA
+                    (<a href="https://www.impots.gouv.fr/simulateur-bareme-kilometrique" target="_blank" rel="noopener">impots.gouv.fr</a>).
+                    Formule par tranche de distance annuelle <em>d</em> : tranche 1 = d × a1 ; tranche 2 = d × a2 + b2 ; tranche 3 = d × a3.
+                    Le montant du CERFA est arrondi à l'euro.
+                </p>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-8">
+                        <label class="form-label small">Source / année du barème</label>
+                        <input type="text" name="bareme_source" value="{{ campagne.bareme_source or '' }}" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">Majoration véhicule électrique (%)</label>
+                        <input type="text" inputmode="decimal" name="majoration_electrique_pct" value="{{ ((campagne.majoration_electrique or 0) * 100)|round(1) }}" class="form-control form-control-sm">
+                    </div>
+                </div>
+
+                {% for type_v, cat in bareme.items() %}
+                <h6 class="mt-3">{{ types_vehicule.get(type_v, type_v) }}</h6>
+                <div class="d-flex flex-wrap gap-2 align-items-center small mb-1">
+                    Tranche 1 jusqu'à
+                    <input type="text" name="bareme-{{ type_v }}-seuil1" value="{{ cat.seuils[0]|int }}" class="form-control form-control-sm" style="width: 90px;">
+                    km, tranche 2 jusqu'à
+                    <input type="text" name="bareme-{{ type_v }}-seuil2" value="{{ cat.seuils[1]|int }}" class="form-control form-control-sm" style="width: 90px;">
+                    km, tranche 3 au-delà.
+                </div>
+                <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle mb-2" style="max-width: 700px;">
+                    <thead class="table-light">
+                        <tr><th>Puissance</th><th>a1</th><th>a2</th><th>b2 (€)</th><th>a3</th></tr>
+                    </thead>
+                    <tbody>
+                    {% for ligne in cat.lignes %}
+                        {% set i = loop.index0 %}
+                        <tr>
+                            <td class="small">{{ ligne.label }}</td>
+                            {% for k in ['a1', 'a2', 'b2', 'a3'] %}
+                            <td><input type="text" inputmode="decimal" name="bareme-{{ type_v }}-{{ i }}-{{ k }}"
+                                       value="{{ ligne[k] }}" class="form-control form-control-sm"></td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header"><strong>✉️ Textes des mails et du courrier</strong></div>
+            <div class="card-body">
+                <p class="small text-muted">
+                    Variables : <code>&lt;&lt;civilite&gt;&gt;</code> <code>&lt;&lt;prenom&gt;&gt;</code> <code>&lt;&lt;nom&gt;&gt;</code>
+                    <code>&lt;&lt;annee_frais&gt;&gt;</code> <code>&lt;&lt;annee_declaration&gt;&gt;</code> <code>&lt;&lt;date_limite&gt;&gt;</code>
+                    <code>&lt;&lt;lien&gt;&gt;</code> (lien personnel du questionnaire) <code>&lt;&lt;numero&gt;&gt;</code> <code>&lt;&lt;montant&gt;&gt;</code>
+                    — courrier : <code>&lt;&lt;total_journees&gt;&gt;</code> <code>&lt;&lt;nb_tickets&gt;&gt;</code> <code>&lt;&lt;prix_ticket&gt;&gt;</code>
+                </p>
+                {% for prefixe, titre in [('mail_invitation', '1. Invitation (envoi du questionnaire)'),
+                                           ('mail_relance', '2. Relance'),
+                                           ('mail_cerfa', '3. Envoi du CERFA (imposables, PDF joint)'),
+                                           ('mail_remboursement', '4. Envoi du courrier de remboursement (non-imposables, PDF joint)')] %}
+                <h6 class="mt-3">{{ titre }}</h6>
+                <input type="text" name="{{ prefixe }}_sujet" value="{{ campagne[prefixe ~ '_sujet'] or '' }}" class="form-control form-control-sm mb-1" placeholder="Objet">
+                <textarea name="{{ prefixe }}_corps" rows="8" class="form-control form-control-sm">{{ campagne[prefixe ~ '_corps'] or '' }}</textarea>
+                {% endfor %}
+
+                <h6 class="mt-3">5. Courrier de remboursement (texte du PDF)</h6>
+                <textarea name="courrier_remboursement_texte" rows="10" class="form-control form-control-sm">{{ campagne.courrier_remboursement_texte or '' }}</textarea>
+            </div>
+        </div>
+
+        <button class="btn btn-success mb-5">💾 Enregistrer les paramètres</button>
+    </form>
+</div>
+{% endblock %}

@@ -168,6 +168,55 @@
         </div>
     </div>
 
+    <!-- 📂 PDF des factures sur Drive -->
+    <div class="card my-2">
+        <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
+            <strong>📂 PDF des factures sur Drive</strong>
+            <form method="POST" action="{{ url_for('participation.export_pdf_drive', campagne_id=campagne.id) }}" class="d-inline"
+                  onsubmit="return confirm('Exporter les {{ factures|length }} PDF dans le dossier Drive {{ campagne.annee }}_T{{ campagne.trimestre }} › Factures PDF ?\nLe contenu actuel de ce dossier sera remplacé.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-primary btn-sm">📤 Exporter les {{ factures|length }} PDF</button>
+            </form>
+            {% if campagne.pdf_export_le %}
+            <span class="small">
+                {% if campagne.pdf_export_mode_test %}<span class="badge bg-warning text-dark">🧪 dossier de test</span>{% endif %}
+                Dernier export le {{ campagne.pdf_export_le }} par {{ campagne.pdf_export_par }} :
+                <strong>{{ campagne.pdf_export_nb }} PDF</strong>{% if campagne.pdf_export_nb_erreur %}, <span class="text-danger">⚠️ {{ campagne.pdf_export_nb_erreur }} erreur(s)</span>{% endif %}
+                — {{ campagne.pdf_export_dossier_chemin }}
+            </span>
+            <a href="https://drive.google.com/drive/folders/{{ campagne.pdf_export_dossier_id }}" target="_blank" class="btn btn-outline-secondary btn-sm">📂 Ouvrir</a>
+            {% else %}
+            <span class="small text-muted">Noms des fichiers : code VIF - association - Facture n°.pdf</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 🏛️ Chorus Pro -->
+    {% if nb_chorus %}
+    <div class="card my-2 {{ 'border-danger' if chorus_env == 'prod' else 'border-warning' }}">
+        <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
+            <strong>🏛️ Chorus Pro</strong>
+            {% if chorus_env == 'prod' %}
+            <span class="badge bg-danger">PRODUCTION — dépôts réels</span>
+            {% else %}
+            <span class="badge bg-warning text-dark">🧪 Qualification — dépôts de test, vers des destinataires fictifs</span>
+            {% endif %}
+            <span class="small">{{ nb_chorus }} facture(s) de partenaires Chorus Pro, {{ chorus_reste }} restant à déposer.</span>
+            {% if chorus_reste %}
+            <form method="POST" action="{{ url_for('participation.chorus_deposer_tout', campagne_id=campagne.id) }}" class="d-inline"
+                  onsubmit="return confirm('{{ '⚠️ PRODUCTION : ' if chorus_env == 'prod' else '🧪 Qualification : ' }}déposer {{ chorus_reste }} facture(s) sur Chorus Pro ?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm {{ 'btn-danger' if chorus_env == 'prod' else 'btn-warning' }}">🏛️ Déposer les {{ chorus_reste }} facture(s)</button>
+            </form>
+            {% endif %}
+            <form method="POST" action="{{ url_for('participation.chorus_actualiser', campagne_id=campagne.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-secondary btn-sm">🔄 Actualiser les statuts</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
     {% if reste_a_envoyer %}
     <form method="POST" action="{{ url_for('participation.envoyer', campagne_id=campagne.id) }}" class="d-flex align-items-end gap-2 my-3"
           {% if mail_mode != "TEST" %}
@@ -203,6 +252,7 @@
                     <th class="sortable" data-type="num" onclick="sortTable(5, this)" style="cursor:pointer;">Montant ↕</th>
                     <th>Payé</th>
                     <th>PDF</th>
+                    <th>Chorus Pro</th>
                     <th>Mail envoyé</th>
                     <th>Statut Mailjet</th>
                     <th title="Renvoyer via Gmail (ba380@) en cas de rebond Mailjet">🔁 Gmail</th>
@@ -213,7 +263,7 @@
                 {% for f in factures %}
                 <tr>
                     <td>{{ f.numero_facture }}</td>
-                    <td>{{ f.nom_association }}</td>
+                    <td>{{ f.nom_association }}{% if f.assoc_chorus_pro %} <span class="badge bg-info text-dark" title="Facture à déposer sur Chorus Pro">🏛️ Chorus</span>{% endif %}</td>
                     <td class="small">{{ f.code_vif }}</td>
                     <td class="small">
                         {{ f.email or '—' }}
@@ -234,6 +284,28 @@
                     </td>
                     <td class="small text-center align-middle">
                         <a href="{{ url_for('participation.voir_pdf', facture_id=f.id) }}" target="_blank">👁️ Voir</a>
+                    </td>
+                    <td class="small text-center align-middle">
+                        {% if f.assoc_chorus_pro %}
+                            {% if f.chorus_id_facture and f.chorus_env == chorus_env %}
+                            <span class="badge {{ 'bg-success' if chorus_env == 'prod' else 'bg-warning text-dark' }}"
+                                  title="Id Chorus {{ f.chorus_id_facture }} — n° {{ f.chorus_numero }} — déposée le {{ f.chorus_depose_le }} par {{ f.chorus_depose_par }}{% if f.chorus_statut_verifie_le %} — statut vérifié le {{ f.chorus_statut_verifie_le }}{% endif %}">
+                                {{ '' if chorus_env == 'prod' else '🧪 ' }}{{ f.chorus_statut or 'déposée' }}
+                            </span>
+                            {% else %}
+                            <form method="POST" action="{{ url_for('participation.chorus_deposer', facture_id=f.id) }}" class="d-inline"
+                                  onsubmit="return confirm('{{ '⚠️ PRODUCTION : ' if chorus_env == 'prod' else '🧪 Qualification : ' }}déposer la facture {{ f.numero_facture }} ({{ f.nom_association|replace("'", " ") }}) sur Chorus Pro ?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm {{ 'btn-outline-danger' if chorus_env == 'prod' else 'btn-outline-warning' }}"
+                                        title="{% if f.assoc_chorus_ej %}N° engagement : {{ f.assoc_chorus_ej }}{% endif %}{% if f.assoc_chorus_service %} — Code service : {{ f.assoc_chorus_service }}{% endif %}">🏛️ Déposer</button>
+                            </form>
+                            {% endif %}
+                            {% if f.chorus_erreur %}
+                            <div class="text-danger" style="font-size: 0.75em; max-width: 220px;" title="{{ f.chorus_erreur }}">⚠️ {{ f.chorus_erreur|truncate(80) }}</div>
+                            {% endif %}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
                     </td>
                     <td class="small text-center align-middle">
                         {% if f.mail_envoye_le %}

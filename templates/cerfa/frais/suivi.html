@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+
+{% block title %}Suivi CERFA frais {{ campagne.annee_frais }}{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_bootstrap5.min.css" rel="stylesheet">
+<style>
+    .recap-tuile { min-width: 130px; }
+    .recap-tuile .valeur { font-size: 1.4rem; font-weight: 700; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3" style="max-width: 1700px;">
+
+    <div class="page-sticky-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h2 class="mb-0">📊 CERFA abandon de frais — frais {{ campagne.annee_frais }}</h2>
+        <div class="btn-group-ba38">
+            <a href="{{ url_for('cerfa.frais_parametres', campagne_id=campagne.id) }}" class="btn btn-outline-secondary btn-sm">⚙️ Paramètres</a>
+            <form method="post" action="{{ url_for('cerfa.frais_verifier_mailjet', campagne_id=campagne.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-outline-primary btn-sm">🔄 Statut Mailjet</button>
+            </form>
+            <a href="{{ url_for('cerfa.frais_export', campagne_id=campagne.id) }}" class="btn btn-outline-success btn-sm">📊 Export Excel</a>
+            <a href="{{ url_for('cerfa.frais_campagnes') }}" class="btn btn-outline-dark btn-sm">↩️ Campagnes</a>
+        </div>
+    </div>
+
+    {% if lieux_sans_adresse %}
+    <div class="alert alert-warning py-2">
+        📍 Lieux sans adresse géocodée (km non calculables automatiquement) : <strong>{{ lieux_sans_adresse|join(', ') }}</strong>
+        — <a href="{{ url_for('cerfa.frais_lieux', retour=campagne.id) }}">compléter les lieux</a>
+    </div>
+    {% endif %}
+
+    <!-- ================= Récapitulatif ================= -->
+    <div class="d-flex flex-wrap gap-2 my-2">
+        {% for libelle, valeur, couleur in [
+            ('Bénévoles', recap.nb, 'secondary'), ('sans email', recap.sans_email, 'warning'),
+            ('Invités', recap.invites, 'info'), ('En cours', recap.en_cours, 'info'),
+            ('À valider', recap.soumis, 'primary'), ('Document à envoyer', recap.a_envoyer, 'success'),
+            ('À rembourser', recap.a_rembourser, 'warning'), ('Terminés', recap.termines, 'success'),
+            ('Ne participent pas', recap.declines, 'secondary'),
+            ('Imposables', recap.imposables, 'dark'), ('Non imposables', recap.non_imposables, 'dark')] %}
+        <div class="card recap-tuile border-{{ couleur }}">
+            <div class="card-body py-1 px-2">
+                <div class="small text-muted">{{ libelle }}</div>
+                <div class="valeur">{{ valeur }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="small mb-2">
+        Journées déclarées :
+        {% for nom, nb in recap.journees_par_lieu %}<strong>{{ nom }}</strong> {{ nb }}{{ ' · ' if not loop.last }}{% endfor %}
+        — total <strong>{{ recap.journees_total }}</strong> · km parcourus (imposables) <strong>{{ recap.km_total }}</strong>
+        · <strong>{{ recap.nb_cerfa }}</strong> CERFA validés = <strong>{{ recap.somme_cerfa }} €</strong>
+        · <strong>{{ recap.nb_remboursements }}</strong> remboursements = <strong>{{ '%.2f'|format(recap.somme_remboursements) }} €</strong>
+          (déjà remboursé {{ '%.2f'|format(recap.somme_remboursee) }} €, reste <strong>{{ '%.2f'|format(recap.reste_a_rembourser) }} €</strong>)
+    </div>
+
+    <!-- ================= Mode d'envoi ================= -->
+    <form method="post" action="{{ url_for('cerfa.frais_toggle_mode') }}" class="mb-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if mail_mode == "TEST" %}
+        <button class="btn btn-warning w-100">🧪 Mode TEST actif (2 mails max vers {{ mail_test_to }}) – Passer en PROD</button>
+        {% else %}
+        <button class="btn btn-danger w-100">🚀 Mode PROD actif : les mails partent réellement aux bénévoles – Repasser en TEST</button>
+        {% endif %}
+    </form>
+
+    {% if campagne.dernier_envoi_le %}
+    <div class="alert {{ 'alert-warning' if campagne.dernier_envoi_mode_test else 'alert-success' }} py-1 small">
+        {{ '🧪 Dernier envoi en mode TEST' if campagne.dernier_envoi_mode_test else '📤 Dernier envoi réel' }}
+        ({{ campagne.dernier_envoi_type }}) le {{ campagne.dernier_envoi_le }} par {{ campagne.dernier_envoi_par }} :
+        {{ campagne.dernier_envoi_nb_ok }} envoyé(s){% if campagne.dernier_envoi_nb_erreur %}, ⚠️ {{ campagne.dernier_envoi_nb_erreur }} erreur(s){% endif %}
+    </div>
+    {% endif %}
+
+    <!-- ================= Étapes ================= -->
+    {% macro etape_envoi(type_envoi, nb, aide, raison_vide) %}
+        <div class="small text-muted">{{ nb }} {{ aide }}</div>
+        <form method="post" action="{{ url_for('cerfa.frais_envoyer', campagne_id=campagne.id, type_envoi=type_envoi) }}" class="mt-1"
+              {% if mail_mode != 'TEST' %}onsubmit="return confirm('Mode PROD : {{ nb }} mail(s) vont partir réellement. Continuer ?');"{% endif %}>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm {{ 'btn-success' if nb else 'btn-outline-secondary' }}" {{ 'disabled' if not nb }}>
+                📧 Envoyer{% if mail_mode == 'TEST' %} (TEST : 2 max, vers vous){% endif %}
+            </button>
+        </form>
+        {% if not nb %}<div class="small text-muted fst-italic mt-1">{{ raison_vide }}</div>{% endif %}
+    {% endmacro %}
+
+    <div class="row g-2 mb-3">
+        <div class="col-lg">
+            <div class="card h-100"><div class="card-body py-2">
+                <div class="fw-bold">1. Bénévoles concernés</div>
+                {% if colonne_ok %}
+                <form method="post" action="{{ url_for('cerfa.frais_population', campagne_id=campagne.id) }}" class="mt-1">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-outline-primary btn-sm">👥 Charger / actualiser (cotisation {{ campagne.annee_frais }} = oui)</button>
+                </form>
+                {% else %}
+                <div class="text-danger small">Pas de colonne cotisation_{{ campagne.annee_frais }} dans les bénévoles.</div>
+                {% endif %}
+                <form method="post" action="{{ url_for('cerfa.frais_ajouter_benevole', campagne_id=campagne.id) }}" class="d-flex gap-1 mt-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input list="liste-benevoles" name="benevole" class="form-control form-control-sm" placeholder="Ajouter un bénévole…">
+                    <datalist id="liste-benevoles">
+                        {% for b in benevoles %}<option value="{{ b.id }} — {{ b.nom }} {{ b.prenom }}">{% endfor %}
+                    </datalist>
+                    <button class="btn btn-outline-secondary btn-sm">➕</button>
+                </form>
+            </div></div>
+        </div>
+        <div class="col-lg">
+            <div class="card h-100"><div class="card-body py-2">
+                <div class="fw-bold">2. Envoyer le questionnaire</div>
+                {{ etape_envoi('invitations', a_inviter, 'bénévole(s) avec email pas encore invités',
+                               'Tous les bénévoles avec email ont déjà reçu une invitation réelle.' if recap.nb else 'Chargez d\'abord les bénévoles (étape 1).') }}
+            </div></div>
+        </div>
+        <div class="col-lg">
+            <div class="card h-100"><div class="card-body py-2">
+                <div class="fw-bold">3. Relancer</div>
+                {{ etape_envoi('relances', a_relancer,
+                               'bénévole(s) à relancer' ~ (' (en TEST, y compris les non encore invités)' if mail_mode == 'TEST' else ''),
+                               'Personne à relancer : la relance vise les bénévoles réellement invités qui n\'ont pas encore transmis.') }}
+            </div></div>
+        </div>
+        <div class="col-lg">
+            <div class="card h-100"><div class="card-body py-2">
+                <div class="fw-bold">4. Contrôler et valider</div>
+                <div class="small text-muted">{{ recap.soumis }} transmise(s) à valider, dont {{ completes }} complète(s)</div>
+                <div class="small">Une par une : bouton 🔍 Fiche. Mettez d'abord le barème à jour (le montant est figé à la validation).</div>
+                <form method="post" action="{{ url_for('cerfa.frais_valider_completes', campagne_id=campagne.id) }}" class="mt-1"
+                      onsubmit="return confirm('Valider les {{ completes }} déclaration(s) transmise(s) complète(s) au barème actuel ({{ campagne.bareme_source|replace("'", " ") }}) ?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-sm {{ 'btn-success' if completes else 'btn-outline-secondary' }}" {{ 'disabled' if not completes }}>✅ Valider les complètes</button>
+                </form>
+                {% if not completes %}<div class="small text-muted fst-italic mt-1">{{ 'Les déclarations transmises ont des éléments manquants : à contrôler une par une.' if recap.soumis else 'Aucune déclaration transmise en attente.' }}</div>{% endif %}
+            </div></div>
+        </div>
+        <div class="col-lg">
+            <div class="card h-100"><div class="card-body py-2">
+                <div class="fw-bold">5. Envoyer CERFA / courriers</div>
+                {{ etape_envoi('documents', documents_a_envoyer, 'validé(s) pas encore remis au bénévole',
+                               'Aucun document à envoyer : il faut d\'abord valider des déclarations (étape 4).' if not recap.nb_cerfa + recap.nb_remboursements else 'Tous les documents validés ont été remis.') }}
+                <div class="mt-2 small">
+                    🖨️ Imprimer :
+                    <a href="{{ url_for('cerfa.frais_documents_lot', campagne_id=campagne.id, type='cerfa') }}" target="_blank">tous les CERFA</a> ·
+                    <a href="{{ url_for('cerfa.frais_documents_lot', campagne_id=campagne.id, type='remboursement') }}" target="_blank">tous les courriers</a>
+                </div>
+            </div></div>
+        </div>
+    </div>
+
+    <div id="table-declarations"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+(function () {
+    const lignes = {{ lignes|tojson }};
+    const statuts = {{ statuts|tojson }};
+    const couleurs = {a_inviter: "secondary", invite: "info", en_cours: "warning", soumis: "primary", valide: "success",
+                      termine: "success", courrier_envoye: "warning", rembourse: "success", decline: "dark"};
+    const valides = ["valide", "termine", "courrier_envoye", "rembourse"];
+    const csrf = "{{ csrf_token() }}";
+    const urlStatut = "{{ url_for('cerfa.frais_changer_statut', declaration_id=999999999) }}";
+
+    document.getElementById("table-declarations").addEventListener("click", async (e) => {
+        const b = e.target.closest(".btn-rembourse");
+        if (!b || !confirm("Marquer ce remboursement comme réglé aujourd'hui ?")) return;
+        const fd = new FormData();
+        fd.append("action", "rembourse");
+        const r = await fetch(urlStatut.replace("999999999", b.dataset.id), {method: "POST", body: fd, headers: {"X-CSRFToken": csrf}});
+        if (r.ok) location.reload(); else alert("Mise à jour impossible.");
+    });
+
+    new Tabulator("#table-declarations", {
+        data: lignes,
+        layout: "fitDataStretch",
+        height: "65vh",
+        initialSort: [{column: "nom", dir: "asc"}],
+        columns: [
+            {title: "Actions", field: "id", headerSort: false, frozen: true, formatter: (c) => {
+                const d = c.getRow().getData();
+                const modif = valides.includes(d.statut)
+                    ? `<a class="btn btn-outline-secondary btn-sm py-0" href="${d.lien}" target="_blank" title="Déclaration validée : consultation seule">👁️ Voir</a>`
+                    : `<a class="btn btn-outline-primary btn-sm py-0" href="${d.lien}" target="_blank" title="Ouvre le questionnaire du bénévole pour le compléter ou le corriger">✏️ Modifier</a>`;
+                return `<a class="btn btn-primary btn-sm py-0" href="${d.url}" title="Fiche : contrôle, pièces, validation">🔍 Fiche</a> ${modif}`;
+            }},
+            {title: "Nom", field: "nom", headerFilter: "input", formatter: (c) => {
+                const d = c.getRow().getData();
+                return `<a href="${d.url}">${c.getValue() || "(sans nom)"}</a>`;
+            }},
+            {title: "Prénom", field: "prenom", headerFilter: "input"},
+            {title: "Id", field: "benevole_id", hozAlign: "right", width: 70},
+            {title: "Email", field: "email", headerFilter: "input", formatter: (c) => c.getValue() || '<span class="text-danger">aucun</span>'},
+            {title: "Statut", field: "statut", headerFilter: "list",
+             headerFilterParams: {values: statuts, clearable: true},
+             formatter: (c) => `<span class="badge bg-${couleurs[c.getValue()] || 'secondary'}">${statuts[c.getValue()] || c.getValue()}</span>`},
+            {title: "Situation", field: "imposable", headerFilter: "list",
+             headerFilterParams: {values: ["Imposable", "Non imposable"], clearable: true}},
+            {title: "Journées", field: "journees", hozAlign: "right"},
+            {title: "Km", field: "distance", hozAlign: "right"},
+            {title: "Montant €", field: "montant", hozAlign: "right", formatter: (c) => c.getValue() ? Number(c.getValue()).toLocaleString("fr-FR") : ""},
+            {title: "Pièces", field: "nb_pieces", hozAlign: "center"},
+            {title: "Manquant", field: "manquants", width: 220, formatter: (c) => c.getValue() ? `<span class="text-danger small">${c.getValue()}</span>` : "",
+             tooltip: true},
+            {title: "N°", field: "numero"},
+            {title: "Remboursé", field: "rembourse_le", hozAlign: "center", formatter: (c) => {
+                const d = c.getRow().getData();
+                if (d.statut === "rembourse") return `✅ ${d.rembourse_le}`;
+                if (d.imposable === "Non imposable" && (d.statut === "valide" || d.statut === "courrier_envoye"))
+                    return `<button class="btn btn-outline-success btn-sm py-0 btn-rembourse" data-id="${d.id}">💶 Remboursé</button>`;
+                return "";
+            }},
+            {title: "Transmis", field: "soumis_le"},
+            {title: "Invitation", field: "invitation"},
+            {title: "Relances", field: "relances", hozAlign: "center"},
+            {title: "Document", field: "document"},
+        ],
+    });
+})();
+</script>
+{% endblock %}

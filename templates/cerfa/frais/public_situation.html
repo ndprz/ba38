@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Vos frais de bénévole {{ campagne.annee_frais }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 760px;">
+
+    <h2>🚗 Vos frais de bénévole {{ campagne.annee_frais }}</h2>
+    <p>Bonjour {{ d.prenom }},</p>
+    <p>
+        Ce questionnaire permet de déclarer les journées pendant lesquelles vous vous êtes déplacé(e) pour votre
+        activité de bénévole à la Banque Alimentaire de l'Isère en {{ campagne.annee_frais }}.
+        Pour commencer, merci d'indiquer votre situation : les documents demandés ne sont pas les mêmes.
+    </p>
+
+    <form method="post" action="{{ url_for('cerfa.frais_q_situation', token=token) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <button name="imposable" value="1" class="btn {{ 'btn-primary' if d.imposable == 1 else 'btn-outline-primary' }} w-100 h-100 text-start p-3">
+                    <div class="fs-5 fw-bold">💶 J'étais imposable sur mes revenus {{ campagne.annee_frais }}</div>
+                    <div class="small mt-2">
+                        Je renonce au remboursement de mes frais de déplacement en voiture ou en moto :
+                        la Banque Alimentaire m'adressera un <strong>reçu fiscal (CERFA)</strong> pour ma réduction d'impôt.<br>
+                        📎 Document à fournir : <strong>copie de la carte grise</strong>.
+                    </div>
+                </button>
+            </div>
+            <div class="col-md-6">
+                <button name="imposable" value="0" class="btn {{ 'btn-success' if d.imposable == 0 else 'btn-outline-success' }} w-100 h-100 text-start p-3">
+                    <div class="fs-5 fw-bold">🚌 Je n'étais pas imposable sur mes revenus {{ campagne.annee_frais }}</div>
+                    <div class="small mt-2">
+                        La Banque Alimentaire me rembourse forfaitairement mes trajets :
+                        <strong>{{ campagne.nb_tickets_par_journee }} tickets TAG par journée</strong>.<br>
+                        📎 Document à fournir : <strong>copie de l'avis de non-imposition</strong>.
+                    </div>
+                </button>
+            </div>
+        </div>
+    </form>
+
+    {% if d.imposable in (0, 1) %}
+    <div class="mt-3"><a href="{{ url_for('cerfa.frais_questionnaire', token=token) }}">↩️ Revenir au questionnaire sans changer</a></div>
+    {% endif %}
+
+    <hr class="my-4">
+    <form method="post" action="{{ url_for('cerfa.frais_q_decliner', token=token) }}"
+          onsubmit="return confirm('Confirmez-vous ne pas vouloir déclarer de frais cette année ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-link text-muted p-0">Je ne souhaite pas déclarer de frais cette année</button>
+    </form>
+</div>
+{% endblock %}

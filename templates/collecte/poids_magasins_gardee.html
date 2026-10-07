@@ -27,6 +27,7 @@
         {% if env_name == 'DEV' %}
         {{ action_button("🧪 Forcer l'export (dev)", href=url_for('collecte.exporter_poids_magasins_gardee', annee=annee, forcer=1), color="outline-danger") }}
         {% endif %}
+        <button type="button" id="btn-reinitialiser" class="btn btn-outline-danger btn-sm">🗑️ Repartir à zéro</button>
     {% endcall %}
 
     <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
@@ -150,6 +151,24 @@ document.getElementById("btn-enregistrer-tout").addEventListener("click", functi
             }
         });
     });
+});
+
+document.getElementById("btn-reinitialiser").addEventListener("click", function () {
+    if (!confirm("Effacer TOUTES les saisies de poids par magasin gardé de " + annee + " ? Cette action est irréversible.")) return;
+    fetch("{{ url_for('collecte.poids_magasins_gardee_reinitialiser', annee=annee) }}", {
+        method: "POST",
+        headers: { "X-CSRFToken": csrfToken },
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        if (data.success) {
+            afficherMessage("✅ " + data.nb_supprimees + " saisie(s) effacée(s) — rechargement…", "success");
+            setTimeout(function () { window.location.reload(); }, 800);
+        } else {
+            afficherMessage("⛔ Échec de la réinitialisation", "danger");
+        }
+    })
+    .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
 });
 
 const filtreInput = document.getElementById("filtre-recherche");

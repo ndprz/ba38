@@ -5306,6 +5306,20 @@ def enregistrer_poids_magasins_gardee():
     return jsonify({"success": True})
 
 
+@collecte_bp.route("/collecte/<int:annee>/poids-magasins-gardee/reinitialiser", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def poids_magasins_gardee_reinitialiser(annee):
+    """Efface toutes les saisies de poids par magasin gardé de l'année —
+    volontairement utilisable en prod comme en dev (pas réservé aux essais
+    dev), pour pouvoir repartir à zéro après des essais réels."""
+    with get_db_connection() as conn:
+        cur = conn.execute("DELETE FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,))
+        conn.commit()
+    write_log(f"🗑️ Poids magasins gardée {annee} réinitialisés ({cur.rowcount} ligne(s)) par {current_user.email}")
+    return jsonify({"success": True, "nb_supprimees": cur.rowcount})
+
+
 @collecte_bp.route("/collecte/<int:annee>/poids-magasins-gardee/export")
 @login_required
 @require_access("collecte", "lecture")

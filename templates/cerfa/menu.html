@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_buttons %}
+
+{% block title %}CERFA{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+    <h2>📜 CERFA — reçus fiscaux</h2>
+
+    <hr>
+
+    {{ action_buttons([{'url': url_for('index'), 'label': "↩️ Retour à l'accueil", 'color': 'outline-dark'}]) }}
+
+    <div class="list-group mt-3">
+        <a href="{{ url_for('cerfa.frais_campagnes') }}" class="list-group-item list-group-item-action">
+            🚗 <strong>CERFA abandon de frais bénévoles</strong>
+            <div class="small text-muted">Questionnaire en ligne envoyé aux bénévoles, suivi des réponses, reçus fiscaux (imposables) et remboursements tickets TAG (non-imposables)</div>
+        </a>
+        <div class="list-group-item text-muted" title="À venir">
+            📦 CERFA Fournisseurs <span class="badge bg-secondary ms-2">à venir</span>
+        </div>
+        <div class="list-group-item text-muted" title="À venir">
+            💝 CERFA Donateurs <span class="badge bg-secondary ms-2">à venir</span>
+        </div>
+    </div>
+
+    <div class="mt-4 small text-muted">
+        Ancienne méthode (publipostage Word découpé) :
+        <a href="{{ url_for('tresorerie.cerfa') }}">découpe et envoi du fichier CERFA</a>
+    </div>
+
+</div>
+{% endblock %}

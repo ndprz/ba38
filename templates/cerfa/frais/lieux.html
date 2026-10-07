@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Lieux d'activité — CERFA frais{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 1100px;">
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h2 class="mb-0">📍 Lieux d'activité des bénévoles</h2>
+        <div>
+            {% if retour %}
+            <a href="{{ url_for('cerfa.frais_parametres', campagne_id=retour) }}" class="btn btn-outline-dark btn-sm">↩️ Paramètres</a>
+            {% endif %}
+            <a href="{{ url_for('cerfa.frais_campagnes') }}" class="btn btn-outline-dark btn-sm">↩️ Campagnes</a>
+        </div>
+    </div>
+    <p class="text-muted small">
+        Colonnes du tableau « journées par mois » du questionnaire. L'adresse sert au calcul automatique des km
+        aller-retour depuis le domicile du bénévole (itinéraire routier) ; sans adresse, le bénévole saisit ses km.
+        Le lieu « Autres » demande en plus un commentaire au bénévole. Un lieu désactivé n'est plus proposé
+        mais les journées déjà saisies sont conservées.
+    </p>
+
+    <table class="table table-sm align-middle">
+        <tbody>
+        {% for l in lieux %}
+            <tr class="{{ '' if l.actif else 'table-secondary' }}">
+                <td colspan="6" class="p-0">
+                    <form method="post" class="d-flex flex-wrap gap-2 align-items-center p-1">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="lieu_id" value="{{ l.id }}">
+                        <input type="number" name="ordre" value="{{ l.ordre }}" class="form-control form-control-sm" style="width: 70px;">
+                        <input type="text" name="nom" value="{{ l.nom }}" class="form-control form-control-sm" style="width: 180px;" required>
+                        <div style="flex: 1; min-width: 260px;">
+                            <input type="text" name="adresse" value="{{ l.adresse or '' }}" class="form-control form-control-sm"
+                                   placeholder="{{ 'sans objet' if l.est_autre else 'adresse complète' }}">
+                            <div class="small {{ 'text-success' if l.latitude is not none else 'text-danger' }}">
+                                {% if l.est_autre %}<span class="text-muted">km saisis par le bénévole</span>
+                                {% elif l.latitude is not none %}✔ {{ l.geocode_label }}
+                                {% else %}✖ non géocodé : km saisis par le bénévole{% endif %}
+                            </div>
+                        </div>
+                        <label class="small"><input type="checkbox" name="est_autre" value="1" {{ 'checked' if l.est_autre }}> Autres</label>
+                        <label class="small"><input type="checkbox" name="actif" value="1" {{ 'checked' if l.actif }}> Actif</label>
+                        <button class="btn btn-outline-success btn-sm">💾</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+            <tr class="table-light">
+                <td colspan="6" class="p-0">
+                    <form method="post" class="d-flex flex-wrap gap-2 align-items-center p-1">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="number" name="ordre" value="50" class="form-control form-control-sm" style="width: 70px;">
+                        <input type="text" name="nom" placeholder="Nouveau lieu" class="form-control form-control-sm" style="width: 180px;" required>
+                        <input type="text" name="adresse" placeholder="adresse complète" class="form-control form-control-sm" style="flex: 1; min-width: 260px;">
+                        <label class="small"><input type="checkbox" name="est_autre" value="1"> Autres</label>
+                        <label class="small"><input type="checkbox" name="actif" value="1" checked> Actif</label>
+                        <button class="btn btn-success btn-sm">➕ Ajouter</button>
+                    </form>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Vos frais de bénévole {{ campagne.annee_frais }}{% endblock %}
+
+{% block content %}
+<div class="container mt-5" style="max-width: 700px;">
+    <div class="alert alert-secondary">
+        <h4>C'est noté, {{ d.prenom }}.</h4>
+        Vous avez indiqué ne pas souhaiter déclarer de frais de bénévole pour {{ campagne.annee_frais }} :
+        vous ne recevrez plus de rappel. Merci pour votre engagement à nos côtés !
+    </div>
+    <form method="post" action="{{ url_for('cerfa.frais_q_reprendre', token=token) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-outline-primary">Finalement, je souhaite faire ma déclaration</button>
+    </form>
+</div>
+{% endblock %}

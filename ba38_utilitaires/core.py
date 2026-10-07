@@ -655,12 +655,13 @@ def prefixer_sujet_association(sujet: str, nom_association: str, longueur: int =
     return f"{nom} - {sujet}" if nom else sujet
 
 
-def nom_piece_jointe_facture(numero_facture, nom_association) -> str:
+def nom_piece_jointe_facture(numero_facture, nom_association, code_vif=None) -> str:
     """Nom lisible de la PDF jointe à un mail de facture/relance :
-    nom complet de l'association + numéro (caractères interdits retirés)."""
+    [code VIF +] nom complet de l'association + numéro (caractères interdits retirés)."""
     nom = re.sub(r'[\\/:*?"<>|\r\n\t]+', " ", str(nom_association or ""))
     nom = " ".join(nom.split())
-    return " - ".join(filter(None, [nom, f"Facture {numero_facture}" if numero_facture else ""])) + ".pdf"
+    vif = re.sub(r'[\\/:*?"<>|\s]+', "", str(code_vif or ""))
+    return " - ".join(filter(None, [vif, nom, f"Facture {numero_facture}" if numero_facture else ""])) + ".pdf"
 
 
 def is_valid_multi_email(value: str) -> bool:

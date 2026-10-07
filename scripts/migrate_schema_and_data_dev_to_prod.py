@@ -52,6 +52,10 @@ EXCLUDE_TABLES = {
     "cuisine_receptions",  # saisies terrain propres à chaque base, ids divergents
     "cuisine_reception_utilisations",  # référence cuisine_productions.id (diverge)
     "participation_ebp",  # référence participation_campagnes.id (diverge DEV/PROD)
+    "cerfa_frais_lieux",  # CERFA abandon de frais : lieux géocodés propres à chaque base
+    "cerfa_frais_campagnes",  # campagnes gérées séparément en PROD
+    "cerfa_frais_declarations",  # référence benevoles.id + jetons des liens bénévoles
+    "cerfa_frais_pieces",  # fichiers locaux propres à chaque instance
 }
 
 # -------------------------------------------------------------------

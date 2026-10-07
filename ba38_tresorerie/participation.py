@@ -427,6 +427,7 @@ def envoyer_participation_background(app, db_path, campagne_id, items, mail_mode
                     "adresse": adresse,
                     "email": item["email"],
                     "numero_facture": item["numero_facture"],
+                    "code_vif": item.get("code_vif"),
                     "lignes": json.loads(item["detail_json"]),
                     "montant_total": item["montant_total"],
                 }
@@ -441,7 +442,7 @@ def envoyer_participation_background(app, db_path, campagne_id, items, mail_mode
                     texte=item["corps"],
                     sender_override="ba380.comptable@banquealimentaire.org",
                     attachment_path=pdf_path,
-                    attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"]),
+                    attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"], code_vif=data_pdf.get("code_vif")),
                     bcc=["ba380.comptable@banquealimentaire.org"],
                     current_user_email=current_user_email
                 )
@@ -808,7 +809,10 @@ def resultats(campagne_id):
     factures = conn.execute("""
         SELECT pf.*,
                a.courriel_resp_tresorerie AS _assoc_tresorerie,
-               a.courriel_association AS _assoc_association
+               a.courriel_association AS _assoc_association,
+               LOWER(TRIM(IFNULL(a.chorus_pro, ''))) = 'oui' AS assoc_chorus_pro,
+               a.chorus_code_service AS assoc_chorus_service,
+               a.chorus_numero_engagement AS assoc_chorus_ej
         FROM participation_factures pf
         LEFT JOIN associations a ON a.Id = pf.association_id
         WHERE pf.campagne_id = ? AND pf.association_id IS NOT NULL
@@ -836,8 +840,17 @@ def resultats(campagne_id):
     mail_test_to = adresse_test_utilisateur()
     montant_total_campagne = sum(f["montant_total"] or 0 for f in factures)
 
+    from ba38_chorus import environnement_chorus
+    chorus_env = environnement_chorus()
+    factures_chorus = [f for f in factures if f["assoc_chorus_pro"]]
+    chorus_reste = sum(1 for f in factures_chorus
+                       if not f["chorus_id_facture"] or f["chorus_env"] != chorus_env)
+
     return render_template(
         "tresorerie/participation/resultats.html",
+        chorus_env=chorus_env,
+        nb_chorus=len(factures_chorus),
+        chorus_reste=chorus_reste,
         campagne=campagne,
         factures=factures,
         orphelines=orphelines,
@@ -912,6 +925,7 @@ def envoyer(campagne_id):
             "detail_json": f["detail_json"],
             "nom_association": f["nom_association"],
             "numero_facture": f["numero_facture"],
+            "code_vif": f["code_vif"],
             "montant_total": f["montant_total"],
             "modele_id": modele_id,
         })
@@ -972,6 +986,7 @@ def voir_pdf(facture_id):
         "adresse": adresse,
         "email": f["email"],
         "numero_facture": f["numero_facture"] or "—",
+        "code_vif": f["code_vif"],
         "lignes": json.loads(f["detail_json"]) if f["detail_json"] else [],
         "montant_total": f["montant_total"] or 0,
     }
@@ -979,7 +994,34 @@ def voir_pdf(facture_id):
     pdf_path = f"/tmp/participation_voir_{facture_id}.pdf"
     generer_facture_participation_pdf(data_pdf, pdf_path)
 
-    return send_file(pdf_path, mimetype="application/pdf")
+    return send_file(pdf_path, mimetype="application/pdf",
+                     download_name=nom_piece_jointe_facture(f["numero_facture"], f["nom_association"], code_vif=f["code_vif"]))
+
+
+def donnees_pdf_facture(conn, f):
+    """data_pdf (voir generer_facture_participation_pdf) d'une ligne
+    participation_factures, adresse/contact lus sur la fiche association
+    actuelle. Partagé par l'export Drive et le dépôt Chorus Pro."""
+    assoc = None
+    if f["association_id"]:
+        assoc = conn.execute("SELECT * FROM associations WHERE Id = ?", (f["association_id"],)).fetchone()
+
+    adresse = "\n".join(filter(None, [
+        assoc["adresse_association_1"] if assoc else "",
+        assoc["adresse_association_2"] if assoc else "",
+        " ".join(filter(None, [assoc["CP"], assoc["COMMUNE"]])) if assoc else "",
+    ]))
+
+    return {
+        "nom_association": f["nom_association"],
+        "contact": (assoc["responsable_tresorerie"] if assoc else "") or "",
+        "adresse": adresse,
+        "email": f["email"],
+        "numero_facture": f["numero_facture"],
+        "code_vif": f["code_vif"],
+        "lignes": json.loads(f["detail_json"]) if f["detail_json"] else [],
+        "montant_total": f["montant_total"] or 0,
+    }
 
 
 # ============================================================================
@@ -1084,6 +1126,7 @@ def renvoyer_gmail(facture_id):
         "adresse": adresse,
         "email": f["email"],
         "numero_facture": f["numero_facture"],
+        "code_vif": f["code_vif"],
         "lignes": json.loads(f["detail_json"]) if f["detail_json"] else [],
         "montant_total": f["montant_total"] or 0,
     }
@@ -1099,7 +1142,7 @@ def renvoyer_gmail(facture_id):
             destinataires=destinataires,
             texte=f["corps"],
             attachment_path=pdf_path,
-            attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"])
+            attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"], code_vif=data_pdf.get("code_vif"))
         )
 
         conn.execute("""
@@ -1255,6 +1298,7 @@ def envoyer_relances_participation_background(app, db_path, items, sujet_modele,
                     "adresse": adresse,
                     "email": item["email"],
                     "numero_facture": item["numero_facture"],
+                    "code_vif": item.get("code_vif"),
                     "lignes": json.loads(item["detail_json"]) if item["detail_json"] else [],
                     "montant_total": item["montant_total"],
                 }
@@ -1267,7 +1311,7 @@ def envoyer_relances_participation_background(app, db_path, items, sujet_modele,
                     texte=texte_mail,
                     sender_override=mail_sender,
                     attachment_path=pdf_path,
-                    attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"]),
+                    attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"], code_vif=data_pdf.get("code_vif")),
                     bcc=[mail_sender],
                     current_user_email=current_user_email
                 )
@@ -1506,6 +1550,7 @@ def relance(campagne_id):
                 "association_id": l["association_id"],
                 "nom_association": l["nom_association"],
                 "numero_facture": l["numero_facture"],
+                "code_vif": l["code_vif"],
                 "montant_total": l["montant_total"],
                 "detail_json": l["detail_json"],
                 "email": l["email"],
@@ -1641,6 +1686,7 @@ def relance_renvoyer_gmail(facture_id):
         "adresse": adresse,
         "email": f["email"],
         "numero_facture": f["numero_facture"],
+        "code_vif": f["code_vif"],
         "lignes": json.loads(f["detail_json"]) if f["detail_json"] else [],
         "montant_total": f["montant_total"] or 0,
     }
@@ -1656,7 +1702,7 @@ def relance_renvoyer_gmail(facture_id):
             destinataires=destinataires,
             texte=f["relance_corps"],
             attachment_path=pdf_path,
-            attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"])
+            attachment_filename=nom_piece_jointe_facture(data_pdf["numero_facture"], data_pdf["nom_association"], code_vif=data_pdf.get("code_vif"))
         )
 
         conn.execute("""
