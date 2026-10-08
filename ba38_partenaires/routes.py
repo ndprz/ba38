@@ -11,6 +11,10 @@ from flask import Blueprint, render_template, render_template_string, request, r
 from flask_login import login_required, current_user
 from ba38_utilitaires.core import get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_multi_email, is_valid_phone, require_access, get_db_path
 from ba38_utilitaires.organisation import get_organisation
+from ba38_partenaires.passage import (
+    JOURS_PASSAGE, HEURES_LIBELLES, PARKINGS, TYPES_PASSAGE,
+    normaliser_valeur, controler_passage,
+)
 from urllib.parse import urlencode
 from flask_wtf import FlaskForm
 from wtforms import HiddenField
@@ -61,6 +65,26 @@ class CSRFForm(FlaskForm):
 
 
 partenaires_bp = Blueprint("partenaires", __name__)
+
+
+@partenaires_bp.record_once
+def _globals_champs_passage(state):
+    """Listes et normalisation utilisées par templates/macros/passage.html
+    (globals Jinja : visibles dans les macros importées, contrairement à un
+    context processor)."""
+
+    def passage_normalise(type_champ, val):
+        try:
+            return normaliser_valeur(type_champ, val)
+        except ValueError:
+            return None
+
+    state.app.jinja_env.globals.update(
+        passage_jours=JOURS_PASSAGE,
+        passage_heures_libelles=HEURES_LIBELLES,
+        passage_parkings=PARKINGS,
+        passage_normalise=passage_normalise,
+    )
 
 @partenaires_bp.route("/partenaires")
 @login_required
@@ -628,6 +652,12 @@ def create_partner():
                         f"Valeur numérique invalide dans « {fname} » ➜ « {raw_value} »"
                     )
                     champs_invalides.append(fname)
+
+        # 🗓️ Passage à la BAI : jours / heure / parking normalisés
+        field_types = {f["field_name"]: f["type_champ"] for f in fields_config}
+        for fname, msg in controler_passage(field_types, valeurs):
+            erreurs.append(msg)
+            champs_invalides.append(fname)
 
         # ✅ Valeur par défaut si champ 'validite' non renseigné
         if not valeurs.get("validite"):
@@ -1231,6 +1261,31 @@ def update_partner(partner_id):
                         champs_invalides.append(fname)
 
         # ========================================================
+        # PASSAGE À LA BAI (jours / heure / parking)
+        # ========================================================
+        # Contrôle sur la ligne complète : un champ en lecture seule
+        # garde sa valeur en base pour la règle « obligatoire si P1/P6 ».
+
+        field_types = {
+            f["field_name"]: f.get("type_champ")
+            for f in fields_data
+        }
+
+        ligne = {**partner_dict, **updates}
+
+        for fname, msg in controler_passage(field_types, ligne, champs=set(updates)):
+
+            erreurs.append(msg)
+
+            champs_invalides.append(fname)
+
+        for fname, t in field_types.items():
+
+            if t in TYPES_PASSAGE and fname in updates:
+
+                updates[fname] = ligne[fname]
+
+        # ========================================================
         # ERREURS VALIDATION
         # ========================================================
 
@@ -1730,6 +1785,8 @@ def edition_tableau_associations():
         user_role=user_role,
         oui_non_fields=oui_non_fields,
         number_fields=number_fields,
+        field_types={row["field_name"].lower(): row["type_champ"] for row in fields_data},
+        passage_types=TYPES_PASSAGE,
         filtered_ids=filtered_ids
     )
 
@@ -1752,9 +1809,11 @@ def update_associations_table():
         WHERE appli='associations'
     """).fetchall()
 
+    # clés en minuscules : la liste Tabulator envoie les colonnes normalisées
+    # (ex. "emplacement" pour "Emplacement")
     field_types = {
 
-        row["field_name"]: row["type_champ"]
+        row["field_name"].lower(): row["type_champ"]
 
         for row in field_config
     }
@@ -1798,7 +1857,7 @@ def update_associations_table():
                 continue
 
             db_key = None
-            field_type = field_types.get(col)
+            field_type = field_types.get(col.lower())
 
             for k in asso_dict.keys():
 
@@ -1843,6 +1902,24 @@ def update_associations_table():
                 else:
                     modifications[col] = new_val if new_val else None
 
+        # 🗓️ Passage à la BAI : contrôle sur la ligne complète si un des
+        # champs jours / heure / parking a été modifié
+        modifs_passage = [
+            c for c in modifications
+            if field_types.get(c.lower()) in TYPES_PASSAGE
+        ]
+        if modifs_passage:
+            # ligne complète en clés minuscules, comme field_types
+            ligne = {k.lower(): v for k, v in asso_dict.items()}
+            ligne.update({k.lower(): v for k, v in modifications.items()})
+            nom = asso_dict.get("nom_association") or ""
+            col_par_cle = {c.lower(): c for c in modifs_passage}
+            for cle, msg in controler_passage(field_types, ligne, champs=set(col_par_cle)):
+                erreurs.append(f"Ligne {i + 1} ({nom}) : {msg}")
+                champs_invalides.append(col_par_cle.get(cle, cle))
+            for cle, c in col_par_cle.items():
+                modifications[c] = ligne[cle]
+
         if modifications and not champs_invalides:
             now = datetime.now()
             modifications["date_modif"] = now.strftime("%Y-%m-%d")
@@ -1882,12 +1959,17 @@ def update_associations_table():
             WHERE appli = 'associations'
         """).fetchall()
         oui_non_fields = [row["field_name"] for row in field_config if row["type_champ"] == "oui_non"]
+        number_fields = [row["field_name"] for row in field_config if row["type_champ"] == "number"]
 
         return render_template(
             "partenaires/edition_tableau_associations.html",
             rows=associations_data,
             selected_columns=columns,
-            oui_non_fields=oui_non_fields
+            oui_non_fields=oui_non_fields,
+            number_fields=number_fields,
+            field_types=field_types,
+            passage_types=TYPES_PASSAGE,
+            filtered_ids=filtered_ids
         )
 
     if lignes_modifiees == 0:

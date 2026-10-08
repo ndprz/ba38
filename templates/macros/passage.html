@@ -1,0 +1,115 @@
+{#
+  Saisie normalisée des champs de passage à la BAI (type_champ jours_semaine,
+  heure_passage, parking) — voir ba38_partenaires/passage.py.
+
+  La valeur envoyée au serveur est portée par un input caché `name` tenu à
+  jour en JS : le reste du code (hash de modification, tableau) lit donc un
+  seul champ comme pour les autres types.
+
+  Une valeur existante non conforme (ancienne saisie libre) est conservée
+  telle quelle et signalée : l'enregistrement la refusera tant qu'elle n'est
+  pas corrigée.
+#}
+
+{% macro champ_passage(type_champ, name, value, invalide=false, readonly=false, compact=false) %}
+{% set brut = (value or "")|string|trim %}
+{% set canon = passage_normalise(type_champ, brut) %}
+{% set non_conforme = brut and not canon %}
+{% set valeur = canon if canon else brut %}
+
+{% if type_champ == "parking" %}
+  <select name="{{ name }}" id="{{ name }}"
+          class="form-control {% if compact %}form-control-sm{% endif %} w-auto {% if invalide %}is-invalid{% endif %} {% if readonly %}readonly-select{% endif %}"
+          {% if readonly %}disabled{% endif %}>
+    <option value="">-- Choisir --</option>
+    {% for p in passage_parkings %}
+    <option value="{{ p }}" {% if p == canon %}selected{% endif %}>{{ p }}</option>
+    {% endfor %}
+    {% if non_conforme %}
+    <option value="{{ brut }}" selected>{{ brut }} (à corriger)</option>
+    {% endif %}
+  </select>
+  {% if readonly %}<input type="hidden" name="{{ name }}" value="{{ valeur }}">{% endif %}
+
+{% else %}
+<div class="champ-passage {% if invalide %}cp-invalide{% endif %}"
+     data-type="{{ type_champ }}">
+  <input type="hidden" class="cp-valeur" name="{{ name }}" value="{{ valeur }}">
+
+  {% if type_champ == "jours_semaine" %}
+    {% set coches = (canon or "").split(", ") %}
+    <div class="cp-ligne">
+    {% for j in passage_jours %}
+      <input type="checkbox" class="cp-jour" id="{{ name }}__{{ j }}" value="{{ j }}"
+             autocomplete="off" {% if j in coches %}checked{% endif %} {% if readonly %}disabled{% endif %}>
+      <label class="btn btn-outline-secondary {% if compact %}btn-sm px-1{% else %}btn-sm{% endif %}"
+             for="{{ name }}__{{ j }}">{{ j[:3] if compact else j }}</label>
+    {% endfor %}
+    </div>
+
+  {% elif type_champ == "heure_passage" %}
+    {% set mode = canon if canon in passage_heures_libelles else ("heure" if canon else "") %}
+    <div class="cp-ligne">
+      <select class="form-control {% if compact %}form-control-sm{% endif %} cp-mode w-auto"
+              {% if readonly %}disabled{% endif %}>
+        <option value="">--</option>
+        <option value="heure" {% if mode == "heure" %}selected{% endif %}>Heure</option>
+        {% for l in passage_heures_libelles %}
+        <option value="{{ l }}" {% if mode == l %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+      <input type="time" class="form-control {% if compact %}form-control-sm{% endif %} cp-heure w-auto"
+             value="{{ canon if mode == 'heure' else '' }}"
+             style="{% if mode != 'heure' %}display:none;{% endif %}"
+             {% if readonly %}disabled{% endif %}>
+    </div>
+  {% endif %}
+
+  {% if non_conforme %}
+    <div class="small text-danger mt-1">Valeur actuelle à corriger : « {{ brut }} »</div>
+  {% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
+
+{% macro script_champs_passage() %}
+<style>
+  /* Bootstrap 4.6 : pas de btn-check / gap → styles dédiés */
+  .champ-passage .cp-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .champ-passage .cp-jour { position: absolute; opacity: 0; pointer-events: none; }
+  .champ-passage .cp-jour + label { margin: 0; cursor: pointer; user-select: none; }
+  .champ-passage .cp-jour:checked + label { background: #6c757d; border-color: #6c757d; color: #fff; }
+  .champ-passage .cp-jour:focus-visible + label { box-shadow: 0 0 0 .2rem rgba(108,117,125,.5); }
+  .champ-passage .cp-jour:disabled + label { cursor: default; opacity: .65; }
+  .champ-passage.cp-invalide { border: 1px solid #dc3545; border-radius: .25rem; padding: 4px; }
+</style>
+<script>
+// Saisie des champs de passage : recopie la sélection dans l'input caché.
+(function () {
+  if (window.__champsPassage) return;
+  window.__champsPassage = true;
+
+  document.addEventListener("change", function (e) {
+    const bloc = e.target.closest(".champ-passage");
+    if (!bloc) return;
+    const cache = bloc.querySelector(".cp-valeur");
+    if (e.target === cache) return;
+
+    if (bloc.dataset.type === "jours_semaine") {
+      cache.value = Array.from(bloc.querySelectorAll(".cp-jour:checked"))
+        .map(function (c) { return c.value; }).join(", ");
+    } else if (bloc.dataset.type === "heure_passage") {
+      const mode = bloc.querySelector(".cp-mode").value;
+      const heure = bloc.querySelector(".cp-heure");
+      heure.style.display = mode === "heure" ? "" : "none";
+      if (mode === "heure" && e.target === bloc.querySelector(".cp-mode")) heure.focus();
+      cache.value = mode === "heure" ? heure.value : mode;
+    }
+    // l'input caché ne déclenche pas d'événement : on prévient les pages
+    // qui suivent les modifications non enregistrées
+    cache.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+})();
+</script>
+{% endmacro %}

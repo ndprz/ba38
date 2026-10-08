@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros/passage.html" import champ_passage, script_champs_passage %}
 
 {% block title %}Modifier les informations du partenaire{% endblock %}
 
@@ -121,6 +122,11 @@
               </option>
               {% endfor %}
           </select>
+
+          {% elif field['type_champ'] in ['jours_semaine', 'heure_passage', 'parking'] %}
+
+          {{ champ_passage(field['type_champ'], field['field_name'], field['value'],
+                           invalide=invalide, readonly=field.readonly) }}
 
           {% elif field['type_champ'] == 'oui_non' %}
 
@@ -553,5 +559,6 @@ function handleReturn(targetUrl) {
 
 </style>
 
+{{ script_champs_passage() }}
 {% endblock %}
 

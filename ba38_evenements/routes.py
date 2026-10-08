@@ -30,6 +30,7 @@ from pdf2image import convert_from_path
 import subprocess
 
 # Utils maison
+from ba38_partenaires.passage import PARKINGS_QUAI, heure_affichage
 from ba38_utilitaires.core import (
     get_db_connection, upload_database, write_log, get_static_event_dir,is_admin_global, require_access, has_access
 )
@@ -698,7 +699,7 @@ def _minutes_depuis_heure(heure: str):
     Retourne None si le texte n'est pas exploitable (ex: 'matin', 'au quai')."""
     if not heure:
         return None
-    m = re.search(r"(\d{1,2})\s*[hH]\s*(\d{2})?", heure)
+    m = re.search(r"(\d{1,2})\s*[hH:]\s*(\d{2})?", heure)
     if not m:
         return None
     h = int(m.group(1))
@@ -754,14 +755,16 @@ def set_planning_config(actif: bool, duree_affichage: int) -> None:
 
 def _rang_heure(heure: str):
     """Ordre d'affichage : le matin d'abord, puis les heures connues triées
-    chronologiquement, puis le reste (texte non exploitable) à la fin."""
+    chronologiquement, puis l'après-midi, puis le reste (texte non exploitable)."""
     h = heure.lower()
     if "matin" in h:
         return (0, 0, heure)
     minutes = _minutes_depuis_heure(heure)
     if minutes is not None:
         return (1, minutes, heure)
-    return (2, 0, heure)
+    if "midi" in h:
+        return (2, 0, heure)
+    return (3, 0, heure)
 
 
 def _normaliser_emplacement(emplacement: str) -> str:
@@ -772,9 +775,9 @@ def _normaliser_emplacement(emplacement: str) -> str:
 def generer_planning_du_jour(jour: str, duree_affichage: int = 30) -> list[dict]:
     """Construit les événements 'planning' virtuels (non stockés en base) listant les
     associations dont jour_de_passage_a_la_BAI correspond au jour donné : une page
-    par emplacement (P1, P6…), chacune regroupée par heure_de_passage et triée au
-    mieux chronologiquement. Les associations sans emplacement renseigné forment
-    une page à part, affichée en dernier."""
+    par parking de quai (P1, P6), chacune regroupée par heure_de_passage et triée
+    au mieux chronologiquement. Les autres associations (livraison, à la demande,
+    parking non renseigné) ne passent pas au quai et sont ignorées."""
 
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
@@ -796,8 +799,10 @@ def generer_planning_du_jour(jour: str, duree_affichage: int = 30) -> list[dict]
             continue
 
         emplacement = _normaliser_emplacement(r["Emplacement"])
+        if emplacement not in PARKINGS_QUAI:
+            continue
 
-        heure = (r["heure_de_passage"] or "").strip()
+        heure = heure_affichage(r["heure_de_passage"])
         cle = heure.lower() or "\uffff"
 
         groupes = par_emplacement.setdefault(emplacement, {})
@@ -806,17 +811,15 @@ def generer_planning_du_jour(jour: str, duree_affichage: int = 30) -> list[dict]
 
         groupes[cle]["lignes"].append(nom)
 
-    # emplacements connus triés (P1 avant P6), sans emplacement à la fin
-    ordre = sorted(par_emplacement, key=lambda e: (e == "", e))
+    ordre = [p for p in PARKINGS_QUAI if p in par_emplacement]
 
     plannings = []
     for emplacement in ordre:
         passages = sorted(par_emplacement[emplacement].values(), key=lambda g: _rang_heure(g["heure"]))
-        suffixe = emplacement or "autres"
         plannings.append({
-            "id": f"planning_{jour}_{suffixe}",
+            "id": f"planning_{jour}_{emplacement}",
             "type": "planning",
-            "titre": f"Passages {jour.capitalize()} — {emplacement or 'emplacement non renseigné'}",
+            "titre": f"Passages {jour.capitalize()} — {emplacement}",
             "duree_affichage": duree_affichage,
             "passages": passages,
         })

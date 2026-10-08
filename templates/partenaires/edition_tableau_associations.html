@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/passage.html" import champ_passage, script_champs_passage %}
 
 {% block title %}Mise à jour en tableau des associations{% endblock %}
 
@@ -157,6 +158,11 @@
 
           <span class="text-muted">{{ v }}</span>
 
+          {% elif field_types and field_types.get(column|lower) in passage_types %}
+
+          {{ champ_passage(field_types.get(column|lower), column ~ "_" ~ row_index, v,
+                           invalide=(column in champs_invalides), compact=true) }}
+
           {% elif column in oui_non_fields %}
 
           <select
@@ -290,4 +296,5 @@
   });
 
 </script>
+{{ script_champs_passage() }}
 {% endblock %}

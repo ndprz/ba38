@@ -454,6 +454,14 @@ def update_vif_field():
         except (ValueError, TypeError):
             return jsonify({"success": False, "error": "Valeur invalide"}), 400
 
+    if db_column == "jour_de_passage_a_la_BAI" and value is not None:
+        # même format que la saisie fiche : "Lundi, Jeudi" (lundi → vendredi)
+        from ba38_partenaires.passage import normaliser_jours
+        try:
+            value = normaliser_jours(value)
+        except ValueError as e:
+            return jsonify({"success": False, "error": str(e)}), 400
+
     db_path = get_db_path()
     with sqlite3.connect(db_path) as conn:
         conn.execute(
