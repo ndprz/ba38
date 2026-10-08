@@ -7,8 +7,9 @@
   seul champ comme pour les autres types.
 
   Une valeur existante non conforme (ancienne saisie libre) est conservée
-  telle quelle et signalée : l'enregistrement la refusera tant qu'elle n'est
-  pas corrigée.
+  telle quelle. Si le parking est P1/P6, elle est signalée et
+  l'enregistrement la refuse tant qu'elle n'est pas corrigée ; hors quai,
+  elle est tolérée.
 #}
 
 {% macro champ_passage(type_champ, name, value, invalide=false, readonly=false, compact=false) %}
@@ -19,7 +20,7 @@
 
 {% if type_champ == "parking" %}
   <select name="{{ name }}" id="{{ name }}"
-          class="form-control {% if compact %}form-control-sm{% endif %} w-auto {% if invalide %}is-invalid{% endif %} {% if readonly %}readonly-select{% endif %}"
+          class="form-control {% if compact %}form-control-sm{% endif %} w-auto cp-parking {% if invalide %}is-invalid{% endif %} {% if readonly %}readonly-select{% endif %}"
           {% if readonly %}disabled{% endif %}>
     <option value="">-- Choisir --</option>
     {% for p in passage_parkings %}
@@ -66,7 +67,8 @@
   {% endif %}
 
   {% if non_conforme %}
-    <div class="small text-danger mt-1">Valeur actuelle à corriger : « {{ brut }} »</div>
+    {# masqué en JS si le parking n'est pas P1/P6 (pas de contrôle hors quai) #}
+    <div class="small text-danger mt-1 cp-alerte">Valeur actuelle à corriger : « {{ brut }} »</div>
   {% endif %}
 </div>
 {% endif %}
@@ -90,7 +92,21 @@
   if (window.__champsPassage) return;
   window.__champsPassage = true;
 
+  // Avertissement « valeur à corriger » seulement pour un parking P1/P6.
+  // Portée : la ligne du tableau, sinon le formulaire de la fiche.
+  function majAlertes(portee) {
+    const parking = portee.querySelector(".cp-parking");
+    const auQuai = !parking || ["P1", "P6"].includes(parking.value);
+    portee.querySelectorAll(".cp-alerte").forEach(function (a) {
+      a.style.display = auQuai ? "" : "none";
+    });
+  }
+  function portee(el) { return el.closest("tr") || el.closest("form") || document; }
+
+  document.querySelectorAll(".cp-alerte").forEach(function (a) { majAlertes(portee(a)); });
+
   document.addEventListener("change", function (e) {
+    if (e.target.classList.contains("cp-parking")) { majAlertes(portee(e.target)); return; }
     const bloc = e.target.closest(".champ-passage");
     if (!bloc) return;
     const cache = bloc.querySelector(".cp-valeur");

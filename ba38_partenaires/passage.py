@@ -117,33 +117,49 @@ def controler_passage(field_types: dict, valeurs: dict, champs=None) -> list[tup
     champs      : limite la normalisation à ces champs (ceux réellement
                   soumis) ; la règle « obligatoire si P1/P6 » porte toujours
                   sur la ligne complète.
-    """
-    erreurs = []
-    par_type = {}
-    for fname, t in field_types.items():
-        if t in TYPES_PASSAGE and fname in valeurs:
-            par_type[t] = fname
-            if champs is not None and fname not in champs:
-                continue
-            try:
-                valeurs[fname] = normaliser_valeur(t, valeurs[fname])
-            except ValueError as e:
-                erreurs.append((fname, str(e)))
 
+    Jours et heure ne sont exigés (format + présence) que pour un parking
+    P1/P6 : hors quai, l'association n'est pas au planning et une ancienne
+    saisie libre est conservée telle quelle.
+    """
+    par_type = {
+        t: fname for fname, t in field_types.items()
+        if t in TYPES_PASSAGE and fname in valeurs
+    }
+    a_traiter = lambda fname: champs is None or fname in champs  # noqa: E731
+
+    erreurs = []
+
+    # parking d'abord : il décide de la rigueur sur jours / heure
     f_parking = par_type.get("parking")
-    if f_parking and not erreurs:
+    parking = None
+    if f_parking:
         try:
             parking = normaliser_parking(valeurs.get(f_parking))
-        except ValueError:
-            parking = None
-        if parking in PARKINGS_QUAI:
-            for t, libelle in (("jours_semaine", "les jours de passage"),
-                               ("heure_passage", "l'heure de passage")):
-                fname = par_type.get(t)
-                if fname and not valeurs.get(fname):
-                    erreurs.append((fname, f"Parking {parking} : {libelle} sont obligatoires."
-                                    if t == "jours_semaine" else
-                                    f"Parking {parking} : {libelle} est obligatoire."))
+            if a_traiter(f_parking):
+                valeurs[f_parking] = parking
+        except ValueError as e:
+            if a_traiter(f_parking):
+                erreurs.append((f_parking, str(e)))
+    # sans champ parking configuré, on reste strict
+    au_quai = parking in PARKINGS_QUAI if f_parking else True
+
+    for t in ("jours_semaine", "heure_passage"):
+        fname = par_type.get(t)
+        if not fname or not a_traiter(fname):
+            continue
+        try:
+            valeurs[fname] = normaliser_valeur(t, valeurs[fname])
+        except ValueError as e:
+            if au_quai:
+                erreurs.append((fname, str(e)))
+
+    if parking in PARKINGS_QUAI and not erreurs:
+        for t, message in (("jours_semaine", "les jours de passage sont obligatoires"),
+                           ("heure_passage", "l'heure de passage est obligatoire")):
+            fname = par_type.get(t)
+            if fname and not valeurs.get(fname):
+                erreurs.append((fname, f"Parking {parking} : {message}."))
     return erreurs
 
 
