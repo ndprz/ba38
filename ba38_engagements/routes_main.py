@@ -26,6 +26,19 @@ from ba38_engagements.utils_financement import calculer_montant_utilise
 # PAGE PRINCIPALE MODULE ENGAGEMENTS
 # ============================================================
 
+# Visibilité liste : ses propres demandes + celles des pôles dont
+# l'utilisateur est responsable ou suppléant
+FILTRE_DEMANDEUR_OU_POLE = """
+    (
+        e.demandeur_id = ?
+        OR e.pole_id IN (
+            SELECT id FROM engagement_poles
+            WHERE ? IN (responsable_id, suppleant1_id, suppleant2_id)
+        )
+    )
+"""
+
+
 @engagements_bp.route("/main")
 @login_required
 @require_access("engagements", "lecture")
@@ -121,13 +134,11 @@ def engagements_main():
 
         if not voir_tous_engagements:
 
-            where_clauses.append(
-                "e.demandeur_id = ?"
-            )
+            # Ses propres demandes + celles des pôles dont il est
+            # responsable ou suppléant (validation pôle)
+            where_clauses.append(FILTRE_DEMANDEUR_OU_POLE)
 
-            params.append(
-                current_user.id
-            )
+            params.extend([current_user.id, current_user.id])
 
         # =====================================================
         # CONSTRUCTION WHERE
@@ -163,13 +174,9 @@ def engagements_main():
 
         if not voir_tous_engagements:
 
-            stats_where.append(
-                "e.demandeur_id = ?"
-            )
+            stats_where.append(FILTRE_DEMANDEUR_OU_POLE)
 
-            stats_params.append(
-                current_user.id
-            )
+            stats_params.extend([current_user.id, current_user.id])
 
         stats_sql = f"""
 
