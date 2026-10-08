@@ -67,6 +67,9 @@
           {% else %}border-warning{% endif %}">
           <div class="card-body">
             <h5 class="card-title">{{ p.nom_recette }}</h5>
+            {% if p.date_production != date_filtre %}
+              <span class="badge bg-info text-dark mb-1">⏮️ Démarrée le {{ p.date_production | format_date_fr }}</span>
+            {% endif %}
             <p class="card-text text-muted mb-1">{{ p.espece or "" }} {{ p.mode_cuisson or "" }}</p>
             <span class="badge
               {% if p.statut == 'terminee' %}bg-success text-white

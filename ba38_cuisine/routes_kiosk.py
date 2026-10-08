@@ -14,7 +14,7 @@ import sqlite3
 from flask import render_template, jsonify
 
 from ba38_cuisine import production_cuisine_bp
-from ba38_cuisine.utils import _connect, today_paris, point_reference_refroidissement
+from ba38_cuisine.utils import _connect, today_paris, point_reference_refroidissement, date_debut_report
 
 
 @production_cuisine_bp.route("/api/production_active")
@@ -31,11 +31,13 @@ def api_production_active():
         productions = conn.execute(
             """
             SELECT * FROM cuisine_productions
-            WHERE date_production = ? AND actif = 1
-              AND statut IN ('en_cours', 'terminee')
-            ORDER BY statut = 'terminee', id
+            WHERE actif = 1
+              AND ((date_production = ? AND statut IN ('en_cours', 'terminee'))
+                   -- cuisson de nuit / pas terminée la veille : reportée
+                   OR (statut = 'en_cours' AND date_production >= ? AND date_production < ?))
+            ORDER BY statut = 'terminee', date_production, id
             """,
-            (date_jour,),
+            (date_jour, date_debut_report(date_jour), date_jour),
         ).fetchall()
 
         data = []

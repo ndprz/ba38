@@ -353,9 +353,31 @@ def corriger_etape_production(production_id, etape_id):
 @login_required
 @require_access("production_cuisine", "ecriture")
 def quantites_production(production_id):
+    # Plat témoin saisi avec les quantités (demande cuisinier) — stocké dans
+    # cuisine_production_validations, date_validation vide tant que la
+    # production n'est pas validée.
+    plat_temoin = request.form.get("plat_temoin")
+    if plat_temoin not in ("oui", "non"):
+        plat_temoin = "non"
+    poids_g = request.form.get("plat_temoin_poids_g") or None
+    if plat_temoin == "oui" and not poids_g:
+        flash("⚠️ Le poids du plat témoin est obligatoire si un plat témoin est conservé.", "warning")
+        return _redirect_run(production_id)
+
     try:
         with _connect() as conn:
             cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO cuisine_production_validations
+                (production_id, plat_temoin, plat_temoin_poids_g, date_validation)
+                VALUES (?, ?, ?, NULL)
+                ON CONFLICT(production_id) DO UPDATE SET
+                    plat_temoin = excluded.plat_temoin,
+                    plat_temoin_poids_g = excluded.plat_temoin_poids_g
+                """,
+                (production_id, plat_temoin, poids_g if plat_temoin == "oui" else None),
+            )
             for taille in ("1/2", "1/4", "1/8"):
                 champ = "qte_" + taille.replace("/", "_")
                 try:
@@ -381,23 +403,14 @@ def quantites_production(production_id):
 
 
 # ------------------------------------------------------------
-# ✅ Validation finale (plat témoin obligatoire si "oui")
+# ✅ Validation finale (plat témoin : saisi avec les quantités, conservé ici)
 # ------------------------------------------------------------
 @production_cuisine_bp.route("/<int:production_id>/validation", methods=["POST"])
 @login_required
 @require_access("production_cuisine", "ecriture")
 def validation_production(production_id):
-    plat_temoin = request.form.get("plat_temoin")
-    if plat_temoin not in ("oui", "non"):
-        plat_temoin = "non"
-
-    poids_g = request.form.get("plat_temoin_poids_g") or None
     valide_par = (request.form.get("valide_par") or request.form.get("benevole") or "").strip() or None
     commentaire = (request.form.get("commentaire") or "").strip() or None
-
-    if plat_temoin == "oui" and not poids_g:
-        flash("⚠️ Le poids du plat témoin est obligatoire si un plat témoin est conservé.", "warning")
-        return _redirect_run(production_id)
 
     try:
         with _connect() as conn:
@@ -406,17 +419,14 @@ def validation_production(production_id):
             cur.execute(
                 """
                 INSERT INTO cuisine_production_validations
-                (production_id, plat_temoin, plat_temoin_poids_g, valide_par, commentaire, date_validation)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (production_id, valide_par, commentaire, date_validation)
+                VALUES (?, ?, ?, ?)
                 ON CONFLICT(production_id) DO UPDATE SET
-                    plat_temoin = excluded.plat_temoin,
-                    plat_temoin_poids_g = excluded.plat_temoin_poids_g,
                     valide_par = excluded.valide_par,
                     commentaire = excluded.commentaire,
                     date_validation = excluded.date_validation
                 """,
-                (production_id, plat_temoin, poids_g if plat_temoin == "oui" else None,
-                 valide_par, commentaire, date_validation),
+                (production_id, valide_par, commentaire, date_validation),
             )
             cur.execute(
                 "UPDATE cuisine_productions SET statut = 'terminee', user_modif = ? WHERE id = ?",

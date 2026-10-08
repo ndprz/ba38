@@ -12,7 +12,7 @@ from ba38_cuisine import production_cuisine_bp
 from ba38_cuisine.utils import (
     _connect, today_paris, now_paris_str, decongelation_en_cours, etape_actuelle_libelle,
     categorie_depuis_famille, motifs_non_conformite, heure_dr,
-    receptions_en_stock, ajouter_utilisation, parse_poids,
+    receptions_en_stock, ajouter_utilisation, parse_poids, date_debut_report,
 )
 
 STATUTS = ("en_cours", "terminee", "annulee")
@@ -32,6 +32,14 @@ def _recettes_referentiel_json(conn):
     for r in recettes:
         r["categorie"] = categorie_depuis_famille(r["famille"])
     return recettes
+
+
+def _types_cuisson(conn):
+    return [
+        r["param_value"] for r in conn.execute(
+            "SELECT param_value FROM parametres WHERE param_name = 'cuisine_type_cuisson' ORDER BY param_value"
+        ).fetchall()
+    ]
 
 
 def _get_or_create_recette(conn, nom):
@@ -60,12 +68,18 @@ def liste_productions():
 
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
-        sql = "SELECT * FROM cuisine_productions WHERE date_production = ? AND actif = 1"
-        params = [date_filtre]
+        # + productions encore en cours des jours précédents (cuisson de
+        # nuit, pas terminée la veille) : elles restent à finir aujourd'hui.
+        sql = """SELECT * FROM cuisine_productions
+                 WHERE actif = 1
+                   AND (date_production = ?
+                        OR (statut = 'en_cours' AND date_production >= ? AND date_production < ?))"""
+        params = [date_filtre, date_debut_report(date_filtre), date_filtre]
         if statut_filtre in STATUTS:
             sql += " AND statut = ?"
             params.append(statut_filtre)
-        sql += " ORDER BY id DESC"
+        sql += " ORDER BY date_production < ? DESC, id DESC"
+        params.append(date_filtre)
         productions = conn.execute(sql, params).fetchall()
 
         # Étape en cours (ou prochaine) affichée à côté du statut — inutile
@@ -115,11 +129,7 @@ def creer_production():
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
         recettes_referentiel = _recettes_referentiel_json(conn)
-        types_cuisson = [
-            r["param_value"] for r in conn.execute(
-                "SELECT param_value FROM parametres WHERE param_name = 'cuisine_type_cuisson' ORDER BY param_value"
-            ).fetchall()
-        ]
+        types_cuisson = _types_cuisson(conn)
         receptions_disponibles = receptions_en_stock(conn, date_defaut)
 
     if request.method == "POST":
@@ -369,6 +379,8 @@ def detail_production(production_id):
             ).fetchall()
         }
 
+        types_cuisson = _types_cuisson(conn)
+
     # Bouton "← Retour" contextuel : si on arrive depuis le stock barquettes
     # (lien recette du détail de stock), on y revient plutôt que sur la
     # liste générale des productions.
@@ -400,7 +412,26 @@ def detail_production(production_id):
         stock_barquettes=stock_barquettes,
         retour_url=retour_url,
         libelles_barquettes=libelles_barquettes,
+        types_cuisson=types_cuisson,
     )
+
+
+@production_cuisine_bp.route("/<int:production_id>/mode_cuisson", methods=["POST"])
+@login_required
+@require_access("production_cuisine", "ecriture")
+def mode_cuisson_production(production_id):
+    """Mode de cuisson saisi/corrigé depuis l'étape Cuisson de la fiche."""
+    mode_cuisson = (request.form.get("mode_cuisson") or "").strip() or None
+    benevole = (request.form.get("benevole") or "").strip() or None
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE cuisine_productions SET mode_cuisson = ?, user_modif = ? WHERE id = ?",
+            (mode_cuisson, benevole, production_id),
+        )
+        conn.commit()
+    upload_database()
+    flash("✅ Mode de cuisson enregistré.", "success")
+    return redirect(url_for("production_cuisine.detail_production", production_id=production_id))
 
 
 @production_cuisine_bp.route("/<int:production_id>/renommer", methods=["POST"])

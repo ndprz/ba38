@@ -32,6 +32,18 @@ def today_paris() -> str:
     return datetime.now(PARIS_TZ).strftime("%Y-%m-%d")
 
 
+# Une production pas terminée (cuisson de nuit, validation oubliée la veille)
+# reste affichée dans les productions du jour pendant ce nombre de jours —
+# 3 pour couvrir un week-end, sans traîner indéfiniment les oubliées.
+JOURS_REPORT_PRODUCTIONS = 3
+
+
+def date_debut_report(date_jour: str) -> str:
+    """Date (AAAA-MM-JJ) à partir de laquelle une production encore en cours
+    est reportée sur `date_jour`."""
+    return (date.fromisoformat(date_jour) - timedelta(days=JOURS_REPORT_PRODUCTIONS)).isoformat()
+
+
 def now_paris_str() -> str:
     return datetime.now(PARIS_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
