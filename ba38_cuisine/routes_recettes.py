@@ -3,9 +3,10 @@
 # ============================================================
 
 import sqlite3
+from datetime import date
 
 from flask import render_template, request, redirect, url_for, flash, jsonify
-from flask_login import login_required
+from flask_login import current_user, login_required
 
 from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_cuisine import production_cuisine_bp
@@ -59,6 +60,40 @@ def _get_or_create_recette(conn, nom):
     return cur.lastrowid, nom
 
 
+def _supprimer_production(conn, production_id):
+    # Suppression douce (comme les autres tables du module : actif=0) —
+    # on ne perd pas l'historique (étapes, lots, photos).
+    conn.execute("UPDATE cuisine_productions SET actif = 0 WHERE id = ?", (production_id,))
+    # Les poids pris sur les réceptions qui alimentaient cette
+    # production reviennent dans leur solde (autre recette possible).
+    conn.execute(
+        "DELETE FROM cuisine_reception_utilisations WHERE production_id = ?",
+        (production_id,),
+    )
+
+
+def _terminer_production(conn, production_id, valide_par):
+    """Clôture sans passer par la fiche (production oubliée en cours) :
+    même enregistrement que la validation finale, plat témoin conservé
+    s'il avait été saisi."""
+    conn.execute(
+        """
+        INSERT INTO cuisine_production_validations
+        (production_id, valide_par, commentaire, date_validation)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(production_id) DO UPDATE SET
+            valide_par = excluded.valide_par,
+            commentaire = excluded.commentaire,
+            date_validation = excluded.date_validation
+        """,
+        (production_id, valide_par, "Clôturée depuis la liste des productions en cours", now_paris_str()),
+    )
+    conn.execute(
+        "UPDATE cuisine_productions SET statut = 'terminee', user_modif = ? WHERE id = ?",
+        (valide_par, production_id),
+    )
+
+
 @production_cuisine_bp.route("/")
 @login_required
 @require_access("production_cuisine", "lecture")
@@ -94,6 +129,10 @@ def liste_productions():
             for p in productions if p["statut"] == "en_cours"
         }
 
+        nb_en_cours_total = conn.execute(
+            "SELECT COUNT(*) FROM cuisine_productions WHERE statut = 'en_cours' AND actif = 1"
+        ).fetchone()[0]
+
         nb_receptions_attente = sum(
             1 for r in receptions_en_stock(conn, date_filtre) if not r["blocage"]
         )
@@ -105,9 +144,69 @@ def liste_productions():
         statut_filtre=statut_filtre,
         statuts=STATUTS,
         nb_receptions_attente=nb_receptions_attente,
+        nb_en_cours_total=nb_en_cours_total,
         etapes_actuelles=etapes_actuelles,
         drs=drs,
     )
+
+
+@production_cuisine_bp.route("/en_cours")
+@login_required
+@require_access("production_cuisine", "lecture")
+def productions_en_cours():
+    """Toutes les productions encore en cours, quelle que soit la date —
+    pour terminer ou supprimer les oubliées sans parcourir chaque jour."""
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        productions = conn.execute(
+            """SELECT * FROM cuisine_productions
+               WHERE statut = 'en_cours' AND actif = 1
+               ORDER BY date_production, id"""
+        ).fetchall()
+        etapes_actuelles = {p["id"]: etape_actuelle_libelle(conn, p["id"]) for p in productions}
+
+    aujourd_hui = date.fromisoformat(today_paris())
+    anciennete = {p["id"]: (aujourd_hui - date.fromisoformat(p["date_production"])).days for p in productions}
+
+    return render_template(
+        "production_cuisine/productions_en_cours.html",
+        productions=productions,
+        etapes_actuelles=etapes_actuelles,
+        anciennete=anciennete,
+    )
+
+
+@production_cuisine_bp.route("/en_cours/action", methods=["POST"])
+@login_required
+@require_access("production_cuisine", "ecriture")
+def productions_en_cours_action():
+    action = request.form.get("action")
+    ids = [int(v) for v in request.form.getlist("production_ids") if v.isdigit()]
+    if action not in ("terminer", "supprimer") or not ids:
+        flash("⚠️ Aucune production sélectionnée.", "warning")
+        return redirect(url_for("production_cuisine.productions_en_cours"))
+
+    with _connect() as conn:
+        # On ne touche qu'aux productions encore en cours (double clic,
+        # onglet resté ouvert...).
+        marques = ",".join("?" * len(ids))
+        ids = [r[0] for r in conn.execute(
+            f"SELECT id FROM cuisine_productions WHERE id IN ({marques}) AND statut = 'en_cours' AND actif = 1",
+            ids,
+        ).fetchall()]
+        for production_id in ids:
+            if action == "terminer":
+                _terminer_production(conn, production_id, current_user.username)
+            else:
+                _supprimer_production(conn, production_id)
+        conn.commit()
+
+    if ids:
+        upload_database()
+        write_log(f"🍲 Productions en cours — {action} par {current_user.username} : {ids}")
+    libelle = "terminée" if action == "terminer" else "supprimée"
+    flash(f"✅ {len(ids)} production{'s' if len(ids) > 1 else ''} {libelle}{'s' if len(ids) > 1 else ''}.", "success")
+    return redirect(url_for("production_cuisine.productions_en_cours"))
 
 
 @production_cuisine_bp.route("/api/heure_actuelle")
@@ -497,16 +596,7 @@ def supprimer_production(production_id):
             flash("⛔ Production introuvable.", "danger")
             return redirect(url_for("production_cuisine.liste_productions"))
 
-        cur = conn.cursor()
-        # Suppression douce (comme les autres tables du module : actif=0) —
-        # on ne perd pas l'historique (étapes, lots, photos).
-        cur.execute("UPDATE cuisine_productions SET actif = 0 WHERE id = ?", (production_id,))
-        # Les poids pris sur les réceptions qui alimentaient cette
-        # production reviennent dans leur solde (autre recette possible).
-        cur.execute(
-            "DELETE FROM cuisine_reception_utilisations WHERE production_id = ?",
-            (production_id,),
-        )
+        _supprimer_production(conn, production_id)
         conn.commit()
 
     upload_database()

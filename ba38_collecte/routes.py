@@ -4592,6 +4592,50 @@ def _creer_fichier_association(asso, annee, dossier):
     return chemin
 
 
+def _evaluer_formule_somme(ws, formule):
+    """Évalue une formule Excel du type =SUM(C15:C23) en relisant les valeurs
+    déjà présentes dans la feuille — openpyxl ne recalcule pas les formules,
+    mais Excel/LibreOffice afficheraient 0 (pas une case vide) tant
+    qu'aucune donnée n'est saisie dans la plage : on reproduit ce
+    comportement pour les lignes Total des modèles, qui n'utilisent que des
+    SUM simples sur une colonne ou une ligne. Retourne None si la formule
+    n'est pas un SUM reconnu (laissée telle quelle, affichée vide ailleurs)."""
+    m = re.fullmatch(r"=SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)", str(formule).strip(), re.IGNORECASE)
+    if not m:
+        return None
+    from openpyxl.utils import column_index_from_string
+    col1, row1, col2, row2 = m.groups()
+    c1, c2 = column_index_from_string(col1.upper()), column_index_from_string(col2.upper())
+    r1, r2 = int(row1), int(row2)
+    total = 0
+    for r in range(min(r1, r2), max(r1, r2) + 1):
+        for c in range(min(c1, c2), max(c1, c2) + 1):
+            v = ws.cell(r, c).value
+            if isinstance(v, (int, float)):
+                total += v
+    return total
+
+
+def _ligne_bordee(ws, r, colonnes):
+    """Une ligne Excel a un quadrillage imprimable si sa première colonne
+    visible porte une bordure — c'est ce qui distingue, dans les modèles
+    collecte gardée, le tableau proprement dit (avec ses lignes vides
+    laissées pour écrire d'autres magasins à la main) de la ligne Total et
+    des notes qui suivent (non bordées, simple texte, parfois surlignées)."""
+    b = ws.cell(r, colonnes[0]).border
+    return any(side is not None and side.style for side in (b.left, b.right, b.top, b.bottom))
+
+
+def _couleur_depuis_argb(argb):
+    if not argb or len(argb) < 6 or argb == "00000000":
+        return None
+    hexa = argb[-6:]
+    try:
+        return colors.Color(int(hexa[0:2], 16) / 255.0, int(hexa[2:4], 16) / 255.0, int(hexa[4:6], 16) / 255.0)
+    except ValueError:
+        return None
+
+
 def _lire_tableau_feuille_association(ws):
     """Reconstruit dynamiquement la structure d'un tableau (en-têtes,
     largeurs, données) depuis la feuille Excel RÉELLEMENT générée — plutôt
@@ -4601,14 +4645,17 @@ def _lire_tableau_feuille_association(ws):
     pour détecter la structure sans rien supposer d'autre : la première
     colonne du tableau contient 'code' (ou 'code produit') sur la ligne
     d'en-tête, et une éventuelle 2e ligne d'en-tête (sous-colonnes, ex.
-    'Bénévoles' réparti en 4 demi-journées) a sa première cellule vide.
+    'Bénévoles' réparti en 4 demi-journées) a sa première cellule vide. Les
+    colonnes masquées dans Excel (ex. 'libellé VIF', technique) sont
+    ignorées, comme le ferait une impression native du classeur.
 
-    Retourne (entetes, lignes_donnees, largeurs_mm) — lignes_donnees inclut
-    la ligne « Total » déjà présente dans le modèle (avec ses formules
-    Excel, qu'on affiche telles quelles : LibreOffice/Excel les auraient
-    déjà calculées, mais ouvrir le classeur pour les évaluer dépasserait ce
-    qu'il faut ici — la valeur affichée est donc vide tant que l'association
-    n'a pas ouvert/recalculé le fichier elle-même, comme avant)."""
+    Retourne (entetes, lignes_tableau, lignes_hors_tableau, largeurs_mm) :
+    - lignes_tableau = lignes quadrillées (header compris plus loin), y
+      compris les lignes vides du modèle (prévues pour écrire d'autres
+      magasins/produits à la main) ;
+    - lignes_hors_tableau = lignes suivantes non quadrillées (Total, notes),
+      sous forme de (valeurs, couleurs_fond) — formules SUM déjà évaluées
+      (voir _evaluer_formule_somme)."""
     from openpyxl.utils import get_column_letter, range_boundaries
 
     zone = ws.print_area or ws.dimensions
@@ -4616,9 +4663,14 @@ def _lire_tableau_feuille_association(ws):
     zone = zone.split("!")[-1].replace("$", "")
     min_col, min_row, max_col, max_row = range_boundaries(zone)
 
+    colonnes = [
+        c for c in range(min_col, max_col + 1)
+        if not getattr(ws.column_dimensions.get(get_column_letter(c)), "hidden", False)
+    ]
+
     ligne_entete = None
     for r in range(min_row, max_row + 1):
-        v = ws.cell(r, min_col).value
+        v = ws.cell(r, colonnes[0]).value
         if isinstance(v, str) and v.strip().lower().startswith("code"):
             ligne_entete = r
             break
@@ -4628,36 +4680,60 @@ def _lire_tableau_feuille_association(ws):
     sous_entete = ligne_entete + 1
     a_sous_entete = (
         sous_entete <= max_row
-        and ws.cell(sous_entete, min_col).value is None
+        and ws.cell(sous_entete, colonnes[0]).value is None
         and any(isinstance(ws.cell(sous_entete, c).value, str) and ws.cell(sous_entete, c).value.strip()
-                for c in range(min_col, max_col + 1))
+                for c in colonnes)
     )
 
     entetes = []
-    for c in range(min_col, max_col + 1):
+    for c in colonnes:
         principal = ws.cell(ligne_entete, c).value
         secondaire = ws.cell(sous_entete, c).value if a_sous_entete else None
         entetes.append(secondaire if isinstance(secondaire, str) and secondaire.strip() else principal)
 
+    def valeurs_ligne(r):
+        valeurs = []
+        for c in colonnes:
+            v = ws.cell(r, c).value
+            if isinstance(v, str) and v.strip().startswith("="):
+                calcul = _evaluer_formule_somme(ws, v)
+                v = calcul if calcul is not None else v
+            valeurs.append(v)
+        return valeurs
+
     debut_donnees = (sous_entete if a_sous_entete else ligne_entete) + 1
-    lignes_donnees = []
-    for r in range(debut_donnees, max_row + 1):
-        valeurs = [ws.cell(r, c).value for c in range(min_col, max_col + 1)]
+    lignes_tableau = []
+    r = debut_donnees
+    while r <= max_row and _ligne_bordee(ws, r, colonnes):
+        lignes_tableau.append(valeurs_ligne(r))
+        r += 1
+
+    lignes_hors_tableau = []
+    for r2 in range(r, max_row + 1):
+        valeurs = valeurs_ligne(r2)
         if not any(v is not None for v in valeurs):
             continue
-        lignes_donnees.append(valeurs)
-        if any(isinstance(v, str) and v.strip().lower() == "total" for v in valeurs):
-            break
+        couleurs_fond = []
+        for c in colonnes:
+            cell = ws.cell(r2, c)
+            argb = None
+            try:
+                if cell.fill and cell.fill.patternType:
+                    argb = cell.fill.fgColor.rgb
+            except Exception:
+                argb = None
+            couleurs_fond.append(_couleur_depuis_argb(argb) if isinstance(argb, str) else None)
+        lignes_hors_tableau.append((valeurs, couleurs_fond))
 
     largeurs_excel = []
-    for c in range(min_col, max_col + 1):
+    for c in colonnes:
         dim = ws.column_dimensions.get(get_column_letter(c))
         largeurs_excel.append(dim.width if dim and dim.width else 10.0)
     disponible_mm = 190.0
     total_excel = sum(largeurs_excel) or 1
     largeurs_mm = [max(15.0, largeur / total_excel * disponible_mm) for largeur in largeurs_excel]
 
-    return entetes, lignes_donnees, largeurs_mm
+    return entetes, lignes_tableau, lignes_hors_tableau, largeurs_mm
 
 
 def _creer_pdf_association(fichier_excel, asso, annee, dossier):
@@ -4676,7 +4752,7 @@ def _creer_pdf_association(fichier_excel, asso, annee, dossier):
     logo = os.path.join(current_app.root_path, "static", "images", "logo_ba_complet.png")
 
     def texte(valeur):
-        s = str(valeur or "").replace("\n", " ").strip()
+        s = ("" if valeur is None else str(valeur)).replace("\n", " ").strip()
         if s.startswith("="):
             # Formule Excel non calculée (openpyxl ne recalcule pas) —
             # afficher la formule brute serait trompeur, mieux vaut une
@@ -4716,8 +4792,9 @@ def _creer_pdf_association(fichier_excel, asso, annee, dossier):
         pdf.drawString(105 * mm, y - 8 * mm, titre)
         pdf.line(24 * mm, y - 11 * mm, 175 * mm, y - 11 * mm)
         code_vif = asso.get("code_vif") or ""
-        nom_asso = asso["nom"] + (f" (code {code_vif})" if code_vif else "")
-        pdf.drawString(24 * mm, y - 19 * mm, nom_asso)
+        pdf.drawString(24 * mm, y - 19 * mm, asso["nom"])
+        if code_vif:
+            pdf.drawString(70 * mm, y - 19 * mm, code_vif)
         return y - 25 * mm
 
     def grille(lignes, largeurs, x, y, hauteur_min, gras_premiere=False):
@@ -4743,13 +4820,40 @@ def _creer_pdf_association(fichier_excel, asso, annee, dossier):
             yy -= hauteur_ligne
         return yy
 
+    def lignes_libres(lignes_et_couleurs, largeurs, x, y):
+        yy = y
+        police, taille = "Helvetica", 6.5
+        interligne = taille * 1.25
+        for ligne, couleurs_fond in lignes_et_couleurs:
+            cellules = []
+            for col, largeur in enumerate(largeurs):
+                dispo = largeur - 2.4 * mm
+                cellules.append(decouper_texte(texte(ligne[col]), dispo, police, taille))
+            nb_lignes_texte = max(len(c) for c in cellules)
+            hauteur_ligne = nb_lignes_texte * interligne + 2 * mm
+            xx = x
+            for col, largeur in enumerate(largeurs):
+                if couleurs_fond[col] is not None:
+                    pdf.setFillColor(couleurs_fond[col])
+                    pdf.rect(xx, yy - hauteur_ligne, largeur, hauteur_ligne, stroke=0, fill=1)
+                    pdf.setFillColor(colors.black)
+                pdf.setFont(police, taille)
+                for num_ligne, morceau in enumerate(cellules[col]):
+                    pdf.drawString(xx + 1.2 * mm, yy - 1 * mm - (num_ligne + 1) * interligne, morceau)
+                xx += largeur
+            yy -= hauteur_ligne
+        return yy
+
     for nom_feuille, titre in (("produits", "FICHE PRODUITS"), ("magasins", "FICHE MAGASINS")):
         ws = wb[nom_feuille]
-        entetes, lignes_donnees, largeurs_mm = _lire_tableau_feuille_association(ws)
+        entetes, lignes_tableau, lignes_hors_tableau, largeurs_mm = _lire_tableau_feuille_association(ws)
         y = entete(titre)
-        lignes = [entetes] + lignes_donnees
+        lignes = [entetes] + lignes_tableau
         hauteur_ligne = max(5.5, min(8.0, 160 / max(len(lignes), 1))) * mm
-        grille(lignes, [l * mm for l in largeurs_mm], 10 * mm, y, hauteur_ligne, True)
+        largeurs = [l * mm for l in largeurs_mm]
+        y = grille(lignes, largeurs, 10 * mm, y, hauteur_ligne, True)
+        if lignes_hors_tableau:
+            lignes_libres(lignes_hors_tableau, largeurs, 10 * mm, y - 2 * mm)
         pdf.showPage()
 
     pdf.save()

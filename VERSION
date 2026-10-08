@@ -1,3 +1,3 @@
-VERSION=1.7.87
-MESSAGE=Cuisine : plat temoin dans Quantites conditionnees, mode de cuisson dans l'etape Cuisson, productions en cours reportees 3 jours (cuisson de nuit)
-DATE=2026-10-08 08:40
+VERSION=1.7.88
+MESSAGE=Cuisine : page Productions en cours (toutes dates) avec Terminer/Supprimer unitaire ou en lot ; + Collecte gardee PDF (autre session)
+DATE=2026-10-08 10:47

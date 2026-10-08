@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Productions en cours{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 1000px;">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">⏳ Productions en cours <span class="text-muted fs-5">(toutes dates)</span></h2>
+    <a href="{{ url_for('production_cuisine.liste_productions') }}" class="btn btn-outline-secondary">← Productions du jour</a>
+  </div>
+
+  {% if not productions %}
+    <p class="text-muted">✅ Aucune production en cours.</p>
+  {% else %}
+  <form method="POST" action="{{ url_for('production_cuisine.productions_en_cours_action') }}" id="form-en-cours">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" id="action-groupee">
+
+    <div class="d-flex gap-2 align-items-center mb-2 flex-wrap">
+      <span class="text-muted small" id="nb-selection">0 sélectionnée</span>
+      <button type="button" class="btn btn-success" data-action="terminer" disabled>✅ Terminer la sélection</button>
+      <button type="button" class="btn btn-outline-danger" data-action="supprimer" disabled>🗑️ Supprimer la sélection</button>
+    </div>
+
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th style="width: 2rem;"><input type="checkbox" class="form-check-input" id="tout-cocher"></th>
+          <th>Date</th>
+          <th>Recette</th>
+          <th>Où en est-elle ?</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in productions %}
+        <tr>
+          <td><input type="checkbox" class="form-check-input case-production" name="production_ids" value="{{ p.id }}"></td>
+          <td class="text-nowrap">
+            {{ p.date_production | format_date_fr }}
+            {% set j = anciennete[p.id] %}
+            {% if j > 0 %}<span class="badge {{ 'bg-danger text-white' if j > 3 else 'bg-warning text-dark' }}">il y a {{ j }} j</span>{% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('production_cuisine.detail_production', production_id=p.id) }}">{{ p.nom_recette }}</a>
+            <div class="text-muted small">{{ p.espece or "" }} {{ p.mode_cuisson or "" }}</div>
+          </td>
+          <td class="small">{{ etapes_actuelles.get(p.id, "") }}</td>
+          <td class="text-end text-nowrap">
+            <button type="button" class="btn btn-sm btn-success" data-action="terminer" data-id="{{ p.id }}"
+                    data-nom="{{ p.nom_recette }}">✅ Terminer</button>
+            <button type="button" class="btn btn-sm btn-outline-danger" data-action="supprimer" data-id="{{ p.id }}"
+                    data-nom="{{ p.nom_recette }}">🗑️</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </form>
+  <p class="text-muted small">
+    « Terminer » clôture la production comme la validation finale (plat témoin conservé s'il avait été saisi).
+    « Supprimer » la retire et rend les poids des réceptions utilisées disponibles.
+  </p>
+  {% endif %}
+
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById("form-en-cours");
+  if (!form) return;
+  var cases = Array.prototype.slice.call(form.querySelectorAll(".case-production"));
+  var toutCocher = document.getElementById("tout-cocher");
+  var boutonsGroupes = form.querySelectorAll("button[data-action]:not([data-id])");
+
+  function majSelection() {
+    var n = cases.filter(function (c) { return c.checked; }).length;
+    document.getElementById("nb-selection").textContent = n + " sélectionnée" + (n > 1 ? "s" : "");
+    boutonsGroupes.forEach(function (b) { b.disabled = n === 0; });
+    toutCocher.checked = n === cases.length;
+  }
+  cases.forEach(function (c) { c.addEventListener("change", majSelection); });
+  toutCocher.addEventListener("change", function () {
+    cases.forEach(function (c) { c.checked = toutCocher.checked; });
+    majSelection();
+  });
+
+  form.querySelectorAll("button[data-action]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var action = b.dataset.action;
+      var verbe = action === "terminer" ? "Terminer" : "Supprimer";
+      var message;
+      if (b.dataset.id) {
+        // Action sur une seule ligne : on ne garde que celle-ci cochée.
+        cases.forEach(function (c) { c.checked = c.value === b.dataset.id; });
+        message = verbe + " « " + b.dataset.nom + " » ?";
+      } else {
+        var n = cases.filter(function (c) { return c.checked; }).length;
+        message = verbe + " " + n + " production" + (n > 1 ? "s" : "") + " ?";
+      }
+      if (!confirm(message)) { majSelection(); return; }
+      document.getElementById("action-groupee").value = action;
+      form.submit();
+    });
+  });
+})();
+</script>
+{% endblock %}
