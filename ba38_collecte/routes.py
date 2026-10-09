@@ -4677,6 +4677,14 @@ def _lire_tableau_feuille_association(ws):
     if ligne_entete is None:
         ligne_entete = min_row
 
+    # Le print_area du modèle peut inclure, en bout de tableau, des colonnes
+    # redevenues inutilisées (fusionnées dans une colonne précédente, ex.
+    # l'ancienne colonne 'KG Brut' absorbée dans 'Poids en kg brut') : ni
+    # bordées ni masquées, elles n'apparaîtraient pas davantage à
+    # l'impression native puisque sans bordure. On ne garde que les
+    # colonnes dont l'en-tête est réellement bordée.
+    colonnes = [c for c in colonnes if _ligne_bordee(ws, ligne_entete, [c])]
+
     sous_entete = ligne_entete + 1
     a_sous_entete = (
         sous_entete <= max_row
@@ -4701,15 +4709,21 @@ def _lire_tableau_feuille_association(ws):
             valeurs.append(v)
         return valeurs
 
+    # Le print_area peut aussi se figer en retard sur de nouvelles lignes de
+    # note ajoutées sous le tableau (ex. texte en jaune) : on continue donc
+    # la recherche des lignes hors tableau jusqu'à la fin réelle de la
+    # feuille, pas seulement jusqu'à la borne du print_area.
+    limite = max(max_row, ws.max_row)
+
     debut_donnees = (sous_entete if a_sous_entete else ligne_entete) + 1
     lignes_tableau = []
     r = debut_donnees
-    while r <= max_row and _ligne_bordee(ws, r, colonnes):
+    while r <= limite and _ligne_bordee(ws, r, colonnes):
         lignes_tableau.append(valeurs_ligne(r))
         r += 1
 
     lignes_hors_tableau = []
-    for r2 in range(r, max_row + 1):
+    for r2 in range(r, limite + 1):
         valeurs = valeurs_ligne(r2)
         if not any(v is not None for v in valeurs):
             continue
@@ -5292,18 +5306,19 @@ def gardee_code_vif_override():
     return redirect(url_for("collecte.gardee", annee=annee))
 
 
-@collecte_bp.route("/collecte/gardee/excel")
-@login_required
-@require_access("collecte", "lecture")
-def gardee_excel():
-    annee = request.args.get("annee", type=int) or datetime.now().year
-
+def _generer_fichier_excel_gardee(annee):
+    """Reconstruit le fichier Excel combiné des associations gardant leur
+    collecte, ainsi que la fiche Excel/PDF personnalisée de chacune —
+    utilisé à la fois par la route dédiée (accès direct) et systématiquement
+    à l'ouverture de « Préparer l'envoi », pour que la page reflète toujours
+    les dernières données go-on-web sans bouton « Régénérer » à penser à
+    cliquer. Retourne (True, None) si tout s'est bien passé, ou
+    (False, message_erreur) sinon — jamais d'exception laissée remonter."""
     df_mag = _lire_magasins_gardes(annee)
     df_groupes = _lire_groupes(annee)
 
     if df_mag.empty or df_groupes.empty:
-        flash("❌ Fichier(s) manquant(s) (liste des magasins et/ou des groupes)", "danger")
-        return redirect(url_for("collecte.gardee", annee=annee))
+        return False, "❌ Fichier(s) manquant(s) (liste des magasins et/ou des groupes)"
 
     if "Code VIF" in df_mag.columns:
         df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
@@ -5373,17 +5388,32 @@ def gardee_excel():
             fichier_association = _creer_fichier_association(asso, annee, dossier)
             _creer_pdf_association(fichier_association, asso, annee, dossier)
     except RuntimeError as erreur:
-        flash(f"❌ Création PDF impossible : {erreur}", "danger")
-        return redirect(url_for("collecte.gardee", annee=annee))
+        return False, f"❌ Création PDF impossible : {erreur}"
     with open(chemin, "wb") as fichier:
         fichier.write(buffer.getvalue())
 
     write_log(f"📥 Export Associations gardant {annee} par {current_user.email}")
+    return True, None
+
+
+@collecte_bp.route("/collecte/gardee/excel")
+@login_required
+@require_access("collecte", "lecture")
+def gardee_excel():
+    """Accès direct (ex. depuis la page liste « 🏠 Créer la liste ») — la
+    génération se fait aussi automatiquement à l'ouverture de « Préparer
+    l'envoi », cette route reste utile pour y accéder sans attendre d'être
+    déjà sur cette page."""
+    annee = request.args.get("annee", type=int) or datetime.now().year
+    ok, erreur = _generer_fichier_excel_gardee(annee)
+    if not ok:
+        flash(erreur, "danger")
+        return redirect(url_for("collecte.gardee", annee=annee))
     flash(
         f"✅ Fichier associations_gardant_{annee}.xlsx créé. Contrôlez-le avant de préparer l'envoi.",
         "success",
     )
-    return redirect(url_for("collecte.gardee", annee=annee))
+    return redirect(url_for("collecte.gardee_envoi", annee=annee))
 
 
 @collecte_bp.route("/collecte/gardee/telecharger")
@@ -7022,9 +7052,17 @@ def gardee_envoi():
     annee = request.args.get("annee", type=int) or request.form.get("annee", type=int) or datetime.now().year
     dossier = _dossier_annee(annee)
     chemin = os.path.join(dossier, f"associations_gardant_{annee}.xlsx")
-    if not os.path.exists(chemin):
-        flash("❌ Créez et contrôlez d'abord le fichier Excel", "danger")
-        return redirect(url_for("collecte.gardee", annee=annee))
+
+    if request.method == "GET":
+        # Régénération systématique à l'ouverture de la page : plus besoin
+        # d'un bouton « Créer »/« Régénérer » séparé, la liste et les
+        # fiches par association reflètent toujours go-on-web à l'instant
+        # où on prépare l'envoi (~9s, acceptée sciemment par l'utilisateur
+        # contre le risque d'oublier de régénérer).
+        ok, erreur = _generer_fichier_excel_gardee(annee)
+        if not ok:
+            flash(erreur, "danger")
+            return redirect(url_for("collecte.gardee", annee=annee))
 
     associations = _associations_gardee_enrichies(annee)
     if associations is None:

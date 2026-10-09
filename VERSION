@@ -1,3 +1,3 @@
-VERSION=1.7.91
-MESSAGE=Associations : jour/heure contrôlés seulement pour les parkings P1/P6
-DATE=2026-10-08 14:10
+VERSION=1.7.92
+MESSAGE=Collecte Associations gardant : PDF fiches corrige (colonnes/lignes hors zone d'impression obsolete) + Preparer l'envoi regenere automatiquement le fichier Excel (fin des boutons Creer/Regenerer manuels)
+DATE=2026-10-09 15:10

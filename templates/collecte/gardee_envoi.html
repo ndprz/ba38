@@ -10,11 +10,12 @@
 
     {% call action_buttons() %}
         {{ action_button("↩️ Retour", href=url_for('collecte.gardee', annee=annee), color="outline-dark") }}
+        {{ action_button("🗜️ Télécharger tout (ZIP)", href=url_for('collecte.gardee_telecharger_zip', annee=annee), color="outline-secondary") }}
     {% endcall %}
 
     <div class="alert alert-warning">
-        Le fichier <strong>{{ fichier_nom }}</strong> sera joint à chaque mail.
-        Vérifiez que vous avez contrôlé son contenu avant de confirmer.
+        Le fichier <strong>{{ fichier_nom }}</strong> (régénéré à l'instant depuis go-on-web) sera joint
+        à chaque mail. Vérifiez que vous avez contrôlé son contenu avant de confirmer.
     </div>
 
     <div class="alert alert-info small">
