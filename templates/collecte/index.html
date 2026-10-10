@@ -91,62 +91,48 @@
         </div>
     </div>
 
-{% macro bloc_fichiers_drive(annee_cible, campagne_cible, indice_dossier=None) %}
     <div class="card mb-4">
-        <div class="card-header">
-            🔗 Paramètres des fichiers Google Drive {{ annee_cible }}
-        </div>
         <div class="card-body">
-            <h5 class="card-title">🔗 Fichiers Google Drive {{ annee_cible }} issus de GOW</h5>
+            <h5 class="card-title">🔗 Fichiers Google Drive issus de go-on-web</h5>
             <p class="card-text text-muted small">
-                Coller les liens des fichiers Google Sheets issus de go-on-web et de la production.
-                Ils sont conservés avec la campagne {{ annee_cible }}. Les fichiers doivent être
-                partagés en « Toute personne disposant du lien ».
-                {% if indice_dossier %}<br>📁 Dossier Drive : <em>{{ indice_dossier }}</em>{% endif %}
+                Retrouvés automatiquement par nom dans le drive partagé BA380 - COLLECTE — plus de
+                lien à coller ici. Fichiers effectivement utilisés en ce moment :
             </p>
-            <form method="POST" action="{{ url_for('collecte.enregistrer_liens_drive') }}" class="row align-items-end">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="annee" value="{{ annee_cible }}">
-                <div class="col-12 mb-4">
-                    <label class="form-label">Liste des magasins</label>
-                    <input type="text" name="magasins" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
-                           value="{{ campagne_cible.drive_magasins if campagne_cible else '' }}">
-                </div>
-                <div class="col-12 mb-4">
-                    <label class="form-label">Liste des véhicules / planning</label>
-                    <input type="text" name="vehicules" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
-                           value="{{ campagne_cible.drive_vehicules if campagne_cible else '' }}">
-                </div>
-                <div class="col-12 mb-4">
-                    <label class="form-label">Liste des colis</label>
-                    <input type="text" name="colis" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/…"
-                           value="{{ campagne_cible.drive_colis or '' if campagne_cible and campagne_cible.drive_colis is defined else '' }}">
-                </div>
-                <div class="col-12 mb-4">
-                    <label class="form-label">Liste des groupes (go-on-web)</label>
-                    <input type="text" name="groupes" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/..."
-                           value="{{ campagne_cible.drive_groupes or '' if campagne_cible and campagne_cible.drive_groupes is defined else '' }}">
-                </div>
-                <div class="col-12 mb-4">
-                    <label class="form-label">Liste des participants (go-on-web)</label>
-                    <input type="text" name="participants" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/..."
-                           value="{{ campagne_cible.drive_participants or '' if campagne_cible and campagne_cible.drive_participants is defined else '' }}">
-                </div>
-                <div class="col-12">
-                    <label class="form-label">Liste des participants pour mailing</label>
-                    <input type="text" name="participants_mailing" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/..."
-                           value="{{ campagne_cible.drive_participants_mailing or '' if campagne_cible and campagne_cible.drive_participants_mailing is defined else '' }}">
-                </div>
-                <div class="col-12">
-                    <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
-                </div>
-            </form>
+            <table class="table table-sm mb-0">
+                <thead>
+                    <tr><th>Fichier</th><th>Chemin dans le drive</th><th>Modifié le</th></tr>
+                </thead>
+                <tbody>
+                    {% for cle, info in fichiers_drive_utilises.items() %}
+                    <tr>
+                        <td>{{ info.label }}</td>
+                        {% if info.chemin %}
+                        <td class="small text-muted">{{ info.chemin }}</td>
+                        <td class="small">{{ info.modifie_le }}</td>
+                        {% else %}
+                        <td class="small text-warning" colspan="2">⚠️ Introuvable (repli sur l'ancien lien/fichier importé, si disponible)</td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% set infos_precedente = fichiers_drive_utilises_precedente.values()|selectattr("chemin")|list %}
+            {% if infos_precedente %}
+            <p class="text-muted small mt-3 mb-1">Année précédente ({{ annee - 1 }}), utilisée pour certains besoins (ex. planning véhicules) :</p>
+            <table class="table table-sm mb-0">
+                <tbody>
+                    {% for info in infos_precedente %}
+                    <tr>
+                        <td>{{ info.label }}</td>
+                        <td class="small text-muted">{{ info.chemin }}</td>
+                        <td class="small">{{ info.modifie_le }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
         </div>
     </div>
-{% endmacro %}
-
-{{ bloc_fichiers_drive(annee, campagne) }}
-{{ bloc_fichiers_drive(annee - 1, campagne_precedente, "Go on the web " ~ (annee - 1) ~ " après collecte") }}
 
     <div class="card mb-4">
         <div class="card-body">

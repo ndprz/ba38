@@ -186,15 +186,15 @@ def _dossier_production(annee):
 # ============================================================================
 
 DRIVE_CHAMPS = {
-    "magasins":  {"champ": "drive_magasins",  "label": "Liste des magasins"},
-    "vehicules": {"champ": "drive_vehicules", "label": "Liste des véhicules / planning"},
+    "magasins":  {"champ": "drive_magasins",  "label": "Liste des magasins", "nom_drive": "liste-magasins.xlsx"},
+    "vehicules": {"champ": "drive_vehicules", "label": "Liste des véhicules / planning", "nom_drive": "liste-vehicule.xlsx"},
     # "cagettes" (drive_cagettes) volontairement absent depuis que l'historique
     # des cagettes est géré dans l'appli (cagettes_production()) — la colonne
     # drive_cagettes reste en base (relique, jamais relue ni réécrite).
-    "colis":     {"champ": "drive_colis",     "label": "Liste des colis"},
-    "groupes":   {"champ": "drive_groupes",   "label": "Liste des groupes"},
-    "participants": {"champ": "drive_participants", "label": "Liste des participants"},
-    "participants_mailing": {"champ": "drive_participants_mailing", "label": "Liste des participants pour mailing"},
+    "colis":     {"champ": "drive_colis",     "label": "Liste des colis", "nom_drive": "liste-colis.xlsx"},
+    "groupes":   {"champ": "drive_groupes",   "label": "Liste des groupes", "nom_drive": "liste-groupes.xlsx"},
+    "participants": {"champ": "drive_participants", "label": "Liste des participants", "nom_drive": "liste-participants.xlsx"},
+    "participants_mailing": {"champ": "drive_participants_mailing", "label": "Liste des participants pour mailing", "nom_drive": "mailing-participants.xlsx"},
 }
 # "cagettes" volontairement absent ici : l'historique des cagettes n'est
 # plus un fichier Drive téléchargé à la volée, mais une grille gérée dans
@@ -239,8 +239,227 @@ def _url_export_drive(url):
     return f"https://docs.google.com/spreadsheets/d/{fid}/export?format=xlsx&_cachebust={int(datetime.now().timestamp())}"
 
 
+def _service_drive_collecte():
+    """Client Drive v3 authentifié (compte de service déjà utilisé ailleurs
+    dans l'appli, ex. Trésorerie), ou (None, None) si les identifiants sont
+    absents — la recherche automatique redevient alors silencieusement
+    indisponible, sans empêcher le repli sur l'ancien lien collé à la main
+    ou le dernier fichier importé."""
+    chemin_cle = os.getenv("SERVICE_ACCOUNT_FILE")
+    id_drive = os.getenv("BA380_COLLECTE_DRIVE_ID")
+    if not chemin_cle or not id_drive or not os.path.exists(chemin_cle):
+        return None, None
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+    credentials = service_account.Credentials.from_service_account_file(
+        chemin_cle, scopes=["https://www.googleapis.com/auth/drive.readonly"]
+    )
+    return build("drive", "v3", credentials=credentials), id_drive
+
+
+_CACHE_DOSSIER_FICHIERS_DRIVE_COLLECTE = {}
+
+
+def _dossier_fichiers_drive_collecte(service, drive_id, annee):
+    """Résout (et met en cache en mémoire pour la durée de vie du worker —
+    ces dossiers ne changent pour ainsi dire jamais une fois la campagne de
+    l'année lancée) le sous-dossier 'fichiers go on the web {annee}...' sous
+    'Collecte {annee}', pour éviter de refaire ces 2 recherches à chaque
+    fichier alors qu'une même page (ex. Préparer l'envoi) en télécharge
+    plusieurs d'affilée pour la même année. Pour une année déjà passée,
+    plusieurs variantes du dossier peuvent coexister (ex. 'après collecte',
+    repris pour les bilans) : on prend celui modifié le plus récemment,
+    sans autre distinction. Retourne (id, 'Collecte {annee} / <nom du
+    sous-dossier>') ou (None, None) si introuvable."""
+    if annee in _CACHE_DOSSIER_FICHIERS_DRIVE_COLLECTE:
+        return _CACHE_DOSSIER_FICHIERS_DRIVE_COLLECTE[annee]
+
+    def _premier(q):
+        resp = service.files().list(
+            q=q, corpora="drive", driveId=drive_id,
+            supportsAllDrives=True, includeItemsFromAllDrives=True,
+            fields="files(id,name,modifiedTime)",
+            orderBy="modifiedTime desc", pageSize=10,
+        ).execute()
+        fichiers = resp.get("files", [])
+        return fichiers[0] if fichiers else None
+
+    dossier_annee = _premier(
+        f"'{drive_id}' in parents and mimeType='application/vnd.google-apps.folder' "
+        f"and name='Collecte {annee}' and trashed=false"
+    )
+    dossier_fichiers = _premier(
+        f"'{dossier_annee['id']}' in parents and mimeType='application/vnd.google-apps.folder' "
+        f"and name contains 'go on the web {annee}' and trashed=false"
+    ) if dossier_annee else None
+
+    if dossier_fichiers:
+        resultat = (dossier_fichiers["id"], f"{dossier_annee['name']} / {dossier_fichiers['name']}")
+    else:
+        resultat = (None, None)
+    _CACHE_DOSSIER_FICHIERS_DRIVE_COLLECTE[annee] = resultat
+    return resultat
+
+
+def _chercher_fichier_drive_collecte(service, drive_id, annee, nom_fichier):
+    """Retrouve nom_fichier (ex. 'liste-magasins.xlsx') dans le sous-dossier
+    'fichiers go on the web {annee}...' du drive partagé BA380 - COLLECTE —
+    par nom, jamais par un lien collé à la main qui peut pointer vers une
+    copie périmée ou abandonnée (incident réel : le lien enregistré en
+    Paramètres pointait vers un fichier différent du vrai export go-on-web,
+    resté figé sur un ancien état malgré plusieurs réimports). Retourne
+    (id_fichier, type_mime, chemin_affichage, modifie_le) ou None si
+    introuvable."""
+    id_dossier, chemin_dossier = _dossier_fichiers_drive_collecte(service, drive_id, annee)
+    if not id_dossier:
+        return None
+
+    resp = service.files().list(
+        q=f"'{id_dossier}' in parents and name='{nom_fichier}' and trashed=false",
+        corpora="drive", driveId=drive_id,
+        supportsAllDrives=True, includeItemsFromAllDrives=True,
+        fields="files(id,name,mimeType,modifiedTime)",
+        orderBy="modifiedTime desc", pageSize=10,
+    ).execute()
+    fichiers = resp.get("files", [])
+    if not fichiers:
+        return None
+    fichier = fichiers[0]
+    return (fichier["id"], fichier["mimeType"], f"{chemin_dossier} / {fichier['name']}", fichier["modifiedTime"])
+
+
+def _fichier_drive_disponible(annee, cle):
+    """Vérifie, sans le télécharger, qu'un fichier est trouvable pour cle —
+    par recherche automatique dans le drive partagé BA380 - COLLECTE, ou à
+    défaut par l'ancien lien collé à la main. Sert uniquement aux
+    indicateurs de disponibilité des pages (ex. page Production) ; la
+    génération elle-même revalide et rapporte toute erreur réelle via
+    _fichier_drive / _telecharger_fichier_drive_collecte."""
+    conf = DRIVE_CHAMPS[cle]
+    nom_drive = conf.get("nom_drive")
+    try:
+        service, drive_id = _service_drive_collecte()
+        if service and nom_drive and _chercher_fichier_drive_collecte(service, drive_id, annee, nom_drive):
+            return True
+    except Exception:
+        pass
+    with get_db_connection() as conn:
+        campagne = conn.execute("SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)).fetchone()
+    return bool(campagne and _url_export_drive(campagne[conf["champ"]]))
+
+
+def _fichiers_drive_collecte_utilises(annee):
+    """Pour l'affichage en Paramètres (transparence sur ce que la recherche
+    automatique utilise réellement) : pour chaque type de fichier Collecte,
+    son chemin complet dans le drive partagé BA380 - COLLECTE et sa date de
+    dernière modification, ou None si introuvable (repli silencieux sur
+    l'ancien lien/fichier local, voir _fichier_drive — jamais signalé en
+    erreur ici, cette fonction ne fait qu'informer)."""
+    resultats = {}
+    try:
+        service, drive_id = _service_drive_collecte()
+    except Exception:
+        service, drive_id = None, None
+    for cle, conf in DRIVE_CHAMPS.items():
+        nom_drive = conf.get("nom_drive")
+        info = {"label": conf["label"], "chemin": None, "modifie_le": None}
+        if service and nom_drive:
+            try:
+                trouve = _chercher_fichier_drive_collecte(service, drive_id, annee, nom_drive)
+                if trouve:
+                    _id, _mime, chemin, modifie_le = trouve
+                    from zoneinfo import ZoneInfo
+                    info["chemin"] = chemin
+                    info["modifie_le"] = (
+                        datetime.fromisoformat(modifie_le)
+                        .astimezone(ZoneInfo("Europe/Paris"))
+                        .strftime("%d/%m/%Y %H:%M")
+                    )
+            except Exception:
+                pass
+        resultats[cle] = info
+    return resultats
+
+
+def _telecharger_fichier_drive_collecte(annee, cle):
+    """Télécharge, via la recherche par nom ci-dessus, le fichier
+    correspondant à cle et l'enregistre en local. Retourne le chemin local,
+    ou None si la recherche échoue (identifiants absents, dossier/fichier
+    introuvable) — l'appelant bascule alors sur l'ancien mécanisme de lien
+    collé, puis sur le dernier fichier importé."""
+    conf = DRIVE_CHAMPS[cle]
+    nom_drive = conf.get("nom_drive")
+    if not nom_drive:
+        return None
+    service, drive_id = _service_drive_collecte()
+    if not service:
+        return None
+    resultat = _chercher_fichier_drive_collecte(service, drive_id, annee, nom_drive)
+    if not resultat:
+        return None
+    fichier_id, mime_type, _chemin, _modifie_le = resultat
+
+    from googleapiclient.http import MediaIoBaseDownload
+    if mime_type == "application/vnd.google-apps.spreadsheet":
+        requete = service.files().export_media(
+            fileId=fichier_id,
+            mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    else:
+        requete = service.files().get_media(fileId=fichier_id, supportsAllDrives=True)
+
+    tampon = io.BytesIO()
+    telechargeur = MediaIoBaseDownload(tampon, requete)
+    termine = False
+    while not termine:
+        _, termine = telechargeur.next_chunk()
+    tampon.seek(0)
+    contenu = tampon.read()
+    if not contenu.startswith(b"PK"):
+        return None
+
+    dossier = _dossier_annee(annee)
+    os.makedirs(dossier, exist_ok=True)
+    noms_stockage = {
+        "vehicules": "liste_vehicules.xlsx",
+        "colis": "liste-colis.xlsx",
+        "participants_mailing": "liste_participants_mailing.xlsx",
+    }
+    nom_stockage = FICHIERS.get(cle, {}).get("nom_stockage") or noms_stockage[cle]
+    chemin = os.path.join(dossier, nom_stockage)
+    with open(chemin, "wb") as fichier:
+        fichier.write(contenu)
+    return chemin
+
+
 def _fichier_drive(annee, cle):
-    """Télécharge un export Google Sheets et retourne son chemin local."""
+    """Retourne le chemin local du fichier correspondant à cle, ou None si
+    introuvable par aucun moyen. Essaie dans l'ordre : (1) la recherche
+    automatique par nom dans le drive partagé BA380 - COLLECTE (voir
+    _telecharger_fichier_drive_collecte, la source fiable à privilégier),
+    puis (2), en repli silencieux, l'ancien lien Google Sheets collé à la
+    main dans Paramètres — conservé pour ne rien casser tant que (1) n'est
+    pas disponible partout (identifiants Drive absents, dossier non
+    partagé...).
+
+    Le lien Drive collé à la main, quand il est configuré, reste prioritaire
+    sur un éventuel fichier importé manuellement (voir upload_fichier) — un
+    import manuel réalisé pendant qu'un lien Drive existe sera donc écrasé
+    au prochain accès, ce qui est voulu : le lien Drive est la source à
+    tenir à jour, le reste n'est qu'un repli pour les années/fichiers sans
+    lien.
+
+    En cas d'échec du téléchargement par lien collé (lien cassé, accès
+    refusé, contenu invalide...), prévient l'utilisateur par un message
+    visible dans l'application (pas seulement dans les logs) et retourne
+    None — l'appelant bascule alors sur son fichier de repli local."""
+    try:
+        chemin = _telecharger_fichier_drive_collecte(annee, cle)
+        if chemin:
+            return chemin
+    except Exception as erreur:
+        write_log(f"⚠️ Recherche automatique Drive « {cle} » {annee} impossible : {erreur}")
+
     conf = DRIVE_CHAMPS[cle]
     with get_db_connection() as conn:
         _ensure_colonne_drive_colis(conn)
@@ -253,13 +472,26 @@ def _fichier_drive(annee, cle):
         return None
     dossier = _dossier_annee(annee)
     os.makedirs(dossier, exist_ok=True)
-    noms_stockage = {"vehicules": "liste_vehicules.xlsx", "colis": "liste-colis.xlsx"}
+    noms_stockage = {
+        "vehicules": "liste_vehicules.xlsx",
+        "colis": "liste-colis.xlsx",
+        "participants_mailing": "liste_participants_mailing.xlsx",
+    }
     nom_stockage = FICHIERS.get(cle, {}).get("nom_stockage") or noms_stockage[cle]
     chemin = os.path.join(dossier, nom_stockage)
-    reponse = requests.get(url, timeout=30)
-    reponse.raise_for_status()
-    if not reponse.content.startswith(b"PK"):
-        raise ValueError(f"contenu invalide pour « {conf['label']} »")
+    try:
+        reponse = requests.get(url, timeout=30)
+        reponse.raise_for_status()
+        if not reponse.content.startswith(b"PK"):
+            raise ValueError("contenu reçu invalide (pas un fichier Excel)")
+    except Exception as erreur:
+        message = (
+            f"⚠️ Lien Drive « {conf['label']} » inaccessible ({erreur}) — "
+            "utilisation du dernier fichier importé."
+        )
+        write_log(f"{message} (année {annee})")
+        flash(message, "warning")
+        return None
     with open(chemin, "wb") as fichier:
         fichier.write(reponse.content)
     return chemin
@@ -2210,6 +2442,8 @@ def collecte_main():
         mercuriale_importee_annee_precedente=(annee - 1) in mercuriale_annees_importees,
         mercuriale_import_annee=mercuriale_imports.get(annee),
         mercuriale_import_annee_precedente=mercuriale_imports.get(annee - 1),
+        fichiers_drive_utilises=_fichiers_drive_collecte_utilises(annee),
+        fichiers_drive_utilises_precedente=_fichiers_drive_collecte_utilises(annee - 1),
     )
 
 
@@ -3758,7 +3992,7 @@ def production():
 
     liens_manquants = [
         conf["label"] for cle, conf in DRIVE_CHAMPS_PRODUCTION.items()
-        if not (campagne and _url_export_drive(campagne[conf["champ"]]))
+        if not _fichier_drive_disponible(annee, cle)
     ]
 
     fichiers = {}
@@ -3806,9 +4040,8 @@ def production_generer():
     # laisser passer un caractère de type '/', '..' etc. dans un nom de fichier.
     camion = re.sub(r"[^A-Z0-9]", "", camion)
 
-    # Date du jeudi + liens Drive : renseignés une fois pour toutes sur la
-    # page principale du module (un nouveau dossier/jeu de 3 liens est créé
-    # par le club chaque année), plus besoin de les ressaisir ici.
+    # Date du jeudi : renseignée une fois pour toutes sur la page principale
+    # du module.
     with get_db_connection() as conn:
         _ensure_colonne_drive_colis(conn)
         conn.commit()
@@ -3817,42 +4050,29 @@ def production_generer():
         ).fetchone()
     date_jeudi = _date_fr_courte(campagne["date_debut"]) if campagne else None
 
-    urls_drive = {}
-    liens_manquants = []
-    for cle, conf in DRIVE_CHAMPS_PRODUCTION.items():
-        url = _url_export_drive(campagne[conf["champ"]]) if campagne else None
-        if url:
-            urls_drive[cle] = url
-        else:
-            liens_manquants.append(conf["label"])
-    if liens_manquants:
-        flash(
-            f"❌ Lien(s) Drive non configuré(s) pour {annee} : {', '.join(liens_manquants)} — "
-            f"à renseigner sur la page principale du module (section « Fichiers Drive »)",
-            "danger"
-        )
-        return redirect(url_for("collecte.production", annee=annee))
-
     dossier = _dossier_production(annee)
     os.makedirs(dossier, exist_ok=True)
 
-    # Téléchargement des 3 fichiers depuis le drive (partagés "Toute personne
-    # disposant du lien") : la page production doit toujours refléter le
-    # dernier état du planning go-on-web, pas un import ponctuel.
-    try:
-        for cle, url in urls_drive.items():
-            reponse = requests.get(url, timeout=30)
-            reponse.raise_for_status()
-            if not reponse.content.startswith(b"PK"):
-                raise ValueError(
-                    f"contenu invalide pour « {cle} » — vérifier que le fichier est "
-                    f"bien partagé en \"Toute personne disposant du lien\""
-                )
-            with open(os.path.join(dossier, f"{cle}.xlsx"), "wb") as f:
-                f.write(reponse.content)
-    except Exception as e:
-        flash(f"❌ Échec du téléchargement des fichiers depuis le drive : {e}", "danger")
-        write_log(f"❌ Génération documents production {annee} : échec téléchargement drive ({e})")
+    # Les 3 fichiers sont retrouvés automatiquement par nom dans le drive
+    # partagé BA380 - COLLECTE (voir _fichier_drive), avec repli sur
+    # l'ancien lien collé puis sur le dernier fichier importé — la page
+    # production doit toujours refléter le dernier état du planning
+    # go-on-web, pas un import ponctuel.
+    manquants = []
+    for cle in DRIVE_CHAMPS_PRODUCTION:
+        chemin_source = _fichier_drive(annee, cle)
+        if not chemin_source or not os.path.exists(chemin_source):
+            manquants.append(DRIVE_CHAMPS_PRODUCTION[cle]["label"])
+            continue
+        shutil.copy(chemin_source, os.path.join(dossier, f"{cle}.xlsx"))
+    if manquants:
+        flash(
+            f"❌ Fichier(s) introuvable(s) pour {annee} : {', '.join(manquants)} — "
+            f"vérifier le dossier « Collecte {annee} / fichiers go on the web {annee} » "
+            f"dans le drive partagé BA380 - COLLECTE.",
+            "danger"
+        )
+        write_log(f"❌ Génération documents production {annee} : fichier(s) introuvable(s) ({', '.join(manquants)})")
         return redirect(url_for("collecte.production", annee=annee))
 
     # Cagettes : régénéré depuis la grille de gestion (collecte_cagettes_production),
@@ -4042,11 +4262,7 @@ def _normaliser_gardee_par(s):
 def _lire_magasins_gardes(annee):
     """Magasins État='Collecte gardée' du référentiel de l'année (DataFrame
     vide si liste_magasins.xlsx est absent)."""
-    try:
-        chemin = _fichier_drive(annee, "magasins") or os.path.join(_dossier_annee(annee), FICHIERS["magasins"]["nom_stockage"])
-    except Exception as erreur:
-        write_log(f"⚠️ Lecture Drive magasins {annee} impossible : {erreur}")
-        chemin = os.path.join(_dossier_annee(annee), FICHIERS["magasins"]["nom_stockage"])
+    chemin = _fichier_drive(annee, "magasins") or os.path.join(_dossier_annee(annee), FICHIERS["magasins"]["nom_stockage"])
     if not os.path.exists(chemin):
         return pd.DataFrame()
     df = pd.read_excel(chemin)
@@ -4065,11 +4281,7 @@ def _lire_groupes(annee):
     mais son compteur n'est pas encore remonté) — s'y fier pour décider
     qu'une association « n'existe pas » ferait disparaître des associations
     bien réelles de la liste."""
-    try:
-        chemin = _fichier_drive(annee, "groupes") or os.path.join(_dossier_annee(annee), FICHIERS["groupes"]["nom_stockage"])
-    except Exception as erreur:
-        write_log(f"⚠️ Lecture Drive groupes {annee} impossible : {erreur}")
-        chemin = os.path.join(_dossier_annee(annee), FICHIERS["groupes"]["nom_stockage"])
+    chemin = _fichier_drive(annee, "groupes") or os.path.join(_dossier_annee(annee), FICHIERS["groupes"]["nom_stockage"])
     if not os.path.exists(chemin):
         return pd.DataFrame()
     df = pd.read_excel(chemin)
@@ -4081,11 +4293,7 @@ def _lire_participants(annee):
     """Tous les participants/contacts go-on-web de l'année (toutes années de
     collecte confondues dans l'export), colonnes normalisées (DataFrame vide
     si liste_participants.xlsx est absent)."""
-    try:
-        chemin = _fichier_drive(annee, "participants") or os.path.join(_dossier_annee(annee), FICHIERS["participants"]["nom_stockage"])
-    except Exception as erreur:
-        write_log(f"⚠️ Lecture Drive participants {annee} impossible : {erreur}")
-        chemin = os.path.join(_dossier_annee(annee), FICHIERS["participants"]["nom_stockage"])
+    chemin = _fichier_drive(annee, "participants") or os.path.join(_dossier_annee(annee), FICHIERS["participants"]["nom_stockage"])
     if not os.path.exists(chemin):
         return pd.DataFrame()
     df = pd.read_excel(chemin)
@@ -5400,20 +5608,21 @@ def _generer_fichier_excel_gardee(annee):
 @login_required
 @require_access("collecte", "lecture")
 def gardee_excel():
-    """Accès direct (ex. depuis la page liste « 🏠 Créer la liste ») — la
-    génération se fait aussi automatiquement à l'ouverture de « Préparer
-    l'envoi », cette route reste utile pour y accéder sans attendre d'être
-    déjà sur cette page."""
+    """Accès direct depuis la page d'accueil du module (« 🏠 Créer la
+    liste ») — génère le fichier combiné et les fiches par association,
+    puis renvoie sur la page liste (« Associations gardant »), à ne pas
+    confondre avec « 📧 Préparer l'envoi » qui régénère aussi automatiquement
+    à chaque ouverture (voir _generer_fichier_excel_gardee)."""
     annee = request.args.get("annee", type=int) or datetime.now().year
     ok, erreur = _generer_fichier_excel_gardee(annee)
     if not ok:
         flash(erreur, "danger")
-        return redirect(url_for("collecte.gardee", annee=annee))
-    flash(
-        f"✅ Fichier associations_gardant_{annee}.xlsx créé. Contrôlez-le avant de préparer l'envoi.",
-        "success",
-    )
-    return redirect(url_for("collecte.gardee_envoi", annee=annee))
+    else:
+        flash(
+            f"✅ Fichier associations_gardant_{annee}.xlsx créé. Contrôlez-le avant de préparer l'envoi.",
+            "success",
+        )
+    return redirect(url_for("collecte.gardee", annee=annee))
 
 
 @collecte_bp.route("/collecte/gardee/telecharger")
