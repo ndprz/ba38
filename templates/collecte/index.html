@@ -110,7 +110,7 @@
                         <td class="small text-muted">{{ info.chemin }}</td>
                         <td class="small">{{ info.modifie_le }}</td>
                         {% else %}
-                        <td class="small text-warning" colspan="2">⚠️ Introuvable (repli sur l'ancien lien/fichier importé, si disponible)</td>
+                        <td class="small text-warning" colspan="2">⚠️ Introuvable — vérifier l'accès au drive BA380 - COLLECTE</td>
                         {% endif %}
                     </tr>
                     {% endfor %}
@@ -220,8 +220,6 @@
 
     </div>
 
-    {% set magasins_prets = campagne and (campagne.fichier_magasins or campagne.drive_magasins) %}
-
     {{ entete_section("sectionGestionMagasins", "Gestion magasins", "modalAideSection2", "modalManuelSection2") }}
     <div id="sectionGestionMagasins" class="collapse mt-3">
 
@@ -274,7 +272,7 @@
 
     </div>
 
-    {% set prets = campagne and (campagne.fichier_magasins or campagne.drive_magasins) and campagne.fichier_pdf_precedent %}
+    {% set prets = magasins_prets and campagne and campagne.fichier_pdf_precedent %}
 
     {{ entete_section("sectionGestionTournees", "Gestion tournées", "modalAideSection3", "modalManuelSection3") }}
     <div id="sectionGestionTournees" class="collapse mt-3">
@@ -318,7 +316,7 @@
         </div>
     </div>
 
-    {% set assoc_prets = magasins_prets and campagne and (campagne.fichier_groupes or campagne.drive_groupes) %}
+    {% set assoc_prets = magasins_prets and groupes_prets %}
 
     {{ entete_section("sectionAssociationsGardant", "Associations gardant", "modalAideSection4", "modalManuelSection4") }}
     <div id="sectionAssociationsGardant" class="collapse mt-3">

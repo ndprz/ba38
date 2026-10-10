@@ -40,6 +40,7 @@ import shutil
 import re
 import csv
 import glob
+import time
 import json
 import copy
 import sqlite3
@@ -242,19 +243,24 @@ def _url_export_drive(url):
 def _service_drive_collecte():
     """Client Drive v3 authentifié (compte de service déjà utilisé ailleurs
     dans l'appli, ex. Trésorerie), ou (None, None) si les identifiants sont
-    absents — la recherche automatique redevient alors silencieusement
-    indisponible, sans empêcher le repli sur l'ancien lien collé à la main
-    ou le dernier fichier importé."""
+    absents — la recherche automatique devient alors indisponible (voir
+    _fichier_drive, qui échoue alors clairement, sans repli sur un ancien
+    fichier). Timeout de 30s sur toutes les requêtes (liste et
+    téléchargement), pour ne jamais bloquer indéfiniment un worker si
+    l'API Google reste muette (serveur à mémoire limitée)."""
     chemin_cle = os.getenv("SERVICE_ACCOUNT_FILE")
     id_drive = os.getenv("BA380_COLLECTE_DRIVE_ID")
     if not chemin_cle or not id_drive or not os.path.exists(chemin_cle):
         return None, None
+    import httplib2
+    import google_auth_httplib2
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
     credentials = service_account.Credentials.from_service_account_file(
         chemin_cle, scopes=["https://www.googleapis.com/auth/drive.readonly"]
     )
-    return build("drive", "v3", credentials=credentials), id_drive
+    http = google_auth_httplib2.AuthorizedHttp(credentials, http=httplib2.Http(timeout=30))
+    return build("drive", "v3", http=http), id_drive
 
 
 _CACHE_DOSSIER_FICHIERS_DRIVE_COLLECTE = {}
@@ -293,10 +299,13 @@ def _dossier_fichiers_drive_collecte(service, drive_id, annee):
         f"and name contains 'go on the web {annee}' and trashed=false"
     ) if dossier_annee else None
 
-    if dossier_fichiers:
-        resultat = (dossier_fichiers["id"], f"{dossier_annee['name']} / {dossier_fichiers['name']}")
-    else:
-        resultat = (None, None)
+    if not dossier_fichiers:
+        # Jamais mis en cache : un dossier pas encore créé (début de
+        # campagne) ou un aléa passager de l'API ne doit pas condamner
+        # l'année entière jusqu'au prochain redémarrage — on retente à
+        # chaque appel tant qu'on n'a pas trouvé.
+        return None, None
+    resultat = (dossier_fichiers["id"], f"{dossier_annee['name']} / {dossier_fichiers['name']}")
     _CACHE_DOSSIER_FICHIERS_DRIVE_COLLECTE[annee] = resultat
     return resultat
 
@@ -343,13 +352,28 @@ def _fichier_drive_disponible(annee, cle):
         return False
 
 
+_CACHE_FICHIERS_DRIVE_UTILISES = {}
+_DUREE_CACHE_FICHIERS_DRIVE_UTILISES = 30  # secondes
+
+
 def _fichiers_drive_collecte_utilises(annee):
     """Pour l'affichage en Paramètres (transparence sur ce que la recherche
     automatique utilise réellement) : pour chaque type de fichier Collecte,
     son chemin complet dans le drive partagé BA380 - COLLECTE et sa date de
-    dernière modification, ou None si introuvable (repli silencieux sur
-    l'ancien lien/fichier local, voir _fichier_drive — jamais signalé en
-    erreur ici, cette fonction ne fait qu'informer)."""
+    dernière modification, ou chemin/modifie_le=None si introuvable — pas
+    d'erreur ici, cette fonction ne fait qu'informer (voir _fichier_drive
+    pour le comportement, lui bloquant, au moment d'utiliser réellement un
+    fichier).
+
+    Mis en cache 30s (uniquement cette fonction d'affichage, jamais le
+    téléchargement réel) : sans ça, chaque chargement de la page d'accueil
+    du module déclenche jusqu'à 12 recherches Drive (6 fichiers × 2
+    années), à chaque fois qu'elle est ouverte."""
+    maintenant = time.time()
+    en_cache = _CACHE_FICHIERS_DRIVE_UTILISES.get(annee)
+    if en_cache and maintenant - en_cache[0] < _DUREE_CACHE_FICHIERS_DRIVE_UTILISES:
+        return en_cache[1]
+
     resultats = {}
     try:
         service, drive_id = _service_drive_collecte()
@@ -373,6 +397,8 @@ def _fichiers_drive_collecte_utilises(annee):
             except Exception:
                 pass
         resultats[cle] = info
+
+    _CACHE_FICHIERS_DRIVE_UTILISES[annee] = (maintenant, resultats)
     return resultats
 
 
@@ -380,8 +406,8 @@ def _telecharger_fichier_drive_collecte(annee, cle):
     """Télécharge, via la recherche par nom ci-dessus, le fichier
     correspondant à cle et l'enregistre en local. Retourne le chemin local,
     ou None si la recherche échoue (identifiants absents, dossier/fichier
-    introuvable) — l'appelant bascule alors sur l'ancien mécanisme de lien
-    collé, puis sur le dernier fichier importé."""
+    introuvable) — voir _fichier_drive, qui prévient alors l'utilisateur
+    clairement plutôt que d'utiliser un ancien fichier."""
     conf = DRIVE_CHAMPS[cle]
     nom_drive = conf.get("nom_drive")
     if not nom_drive:
@@ -2396,6 +2422,16 @@ def collecte_main():
             ).fetchall()
         }
 
+    fichiers_drive_utilises = _fichiers_drive_collecte_utilises(annee)
+    # Disponibilité recalculée depuis la même recherche Drive que le tableau
+    # affiché juste au-dessus (pas d'appel Drive supplémentaire) : les
+    # anciens champs campagne['fichier_magasins']/['drive_magasins'] ne sont
+    # plus jamais renseignés depuis que la recherche automatique a remplacé
+    # le lien à coller et l'import manuel pour ces fichiers — s'y fier
+    # bloquerait ces boutons en permanence pour toute nouvelle campagne.
+    magasins_prets = bool(fichiers_drive_utilises["magasins"]["chemin"])
+    groupes_prets = bool(fichiers_drive_utilises["groupes"]["chemin"])
+
     return render_template(
         "collecte/index.html",
         annee=annee,
@@ -2412,8 +2448,10 @@ def collecte_main():
         mercuriale_importee_annee_precedente=(annee - 1) in mercuriale_annees_importees,
         mercuriale_import_annee=mercuriale_imports.get(annee),
         mercuriale_import_annee_precedente=mercuriale_imports.get(annee - 1),
-        fichiers_drive_utilises=_fichiers_drive_collecte_utilises(annee),
+        fichiers_drive_utilises=fichiers_drive_utilises,
         fichiers_drive_utilises_precedente=_fichiers_drive_collecte_utilises(annee - 1),
+        magasins_prets=magasins_prets,
+        groupes_prets=groupes_prets,
     )
 
 
@@ -2777,7 +2815,7 @@ def _get_campagne_ou_redirect(annee):
             "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
         ).fetchone()
 
-    if not campagne or not (campagne["fichier_magasins"] or campagne["drive_magasins"]) or not campagne["fichier_pdf_precedent"]:
+    if not campagne or not _fichier_drive_disponible(annee, "magasins") or not campagne["fichier_pdf_precedent"]:
         flash(
             "⛔ Liste des magasins et PDF des tournées précédentes requis avant de générer "
             f"les tournées {annee}",
@@ -3222,7 +3260,7 @@ def _donnees_localisation(annee):
         ).fetchone()
 
     magasins_bai, magasins_gardee, adresses_invalides = [], [], []
-    if campagne and (campagne["fichier_magasins"] or campagne["drive_magasins"]):
+    if campagne and _fichier_drive_disponible(annee, "magasins"):
         magasins, adresses_invalides = _charger_magasins_localisation(annee, campagne)
         magasins_bai = [m for m in magasins if m["categorie"] == "bai"]
         magasins_gardee = [m for m in magasins if m["categorie"] == "gardee"]
@@ -3394,7 +3432,7 @@ def cagettes(annee):
             "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
         ).fetchone()
 
-    if not campagne or not (campagne["fichier_magasins"] or campagne["drive_magasins"]):
+    if not campagne or not _fichier_drive_disponible(annee, "magasins"):
         flash(f"⛔ Liste des magasins {annee} requise avant de saisir les cagettes", "danger")
         return redirect(url_for("collecte.collecte_main", annee=annee))
 
@@ -3601,7 +3639,7 @@ def initialiser_cagettes(annee):
             "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
         ).fetchone()
 
-    if not campagne or not (campagne["fichier_magasins"] or campagne["drive_magasins"]):
+    if not campagne or not _fichier_drive_disponible(annee, "magasins"):
         flash(f"⛔ Liste des magasins {annee} requise avant d'initialiser la saisie cagettes", "danger")
         return redirect(url_for("collecte.collecte_main", annee=annee))
 
@@ -4031,10 +4069,9 @@ def production_generer():
     os.makedirs(dossier, exist_ok=True)
 
     # Les 3 fichiers sont retrouvés automatiquement par nom dans le drive
-    # partagé BA380 - COLLECTE (voir _fichier_drive), avec repli sur
-    # l'ancien lien collé puis sur le dernier fichier importé — la page
-    # production doit toujours refléter le dernier état du planning
-    # go-on-web, pas un import ponctuel.
+    # partagé BA380 - COLLECTE (voir _fichier_drive) — jamais de repli sur
+    # un ancien fichier, la page production doit toujours refléter le
+    # dernier état du planning go-on-web, pas un import ponctuel.
     manquants = []
     for cle in DRIVE_CHAMPS_PRODUCTION:
         chemin_source = _fichier_drive(annee, cle)
