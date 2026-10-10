@@ -1,3 +1,3 @@
-VERSION=1.7.93
-MESSAGE=Collecte : fichiers go-on-web (magasins/vehicules/colis/groupes/participants) retrouves automatiquement par nom dans le drive partage BA380-COLLECTE (fin des liens Google Drive a coller a la main), affichage du chemin/date de chaque fichier utilise en Parametres
-DATE=2026-10-10 09:00
+VERSION=1.7.94
+MESSAGE=Collecte : plus aucun repli silencieux sur un fichier local/lien perime - si le drive BA380-COLLECTE est injoignable, echec clair (message + liste vide) plutot qu'une donnee fausse utilisee sans le savoir
+DATE=2026-10-10 11:00

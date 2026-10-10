@@ -329,23 +329,18 @@ def _chercher_fichier_drive_collecte(service, drive_id, annee, nom_fichier):
 
 
 def _fichier_drive_disponible(annee, cle):
-    """Vérifie, sans le télécharger, qu'un fichier est trouvable pour cle —
-    par recherche automatique dans le drive partagé BA380 - COLLECTE, ou à
-    défaut par l'ancien lien collé à la main. Sert uniquement aux
-    indicateurs de disponibilité des pages (ex. page Production) ; la
-    génération elle-même revalide et rapporte toute erreur réelle via
-    _fichier_drive / _telecharger_fichier_drive_collecte."""
+    """Vérifie, sans le télécharger, qu'un fichier est trouvable par
+    recherche automatique dans le drive partagé BA380 - COLLECTE. Sert
+    uniquement aux indicateurs de disponibilité des pages (ex. page
+    Production) ; la génération elle-même revalide et rapporte toute
+    erreur réelle via _fichier_drive / _telecharger_fichier_drive_collecte."""
     conf = DRIVE_CHAMPS[cle]
     nom_drive = conf.get("nom_drive")
     try:
         service, drive_id = _service_drive_collecte()
-        if service and nom_drive and _chercher_fichier_drive_collecte(service, drive_id, annee, nom_drive):
-            return True
+        return bool(service and nom_drive and _chercher_fichier_drive_collecte(service, drive_id, annee, nom_drive))
     except Exception:
-        pass
-    with get_db_connection() as conn:
-        campagne = conn.execute("SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)).fetchone()
-    return bool(campagne and _url_export_drive(campagne[conf["champ"]]))
+        return False
 
 
 def _fichiers_drive_collecte_utilises(annee):
@@ -433,68 +428,41 @@ def _telecharger_fichier_drive_collecte(annee, cle):
 
 
 def _fichier_drive(annee, cle):
-    """Retourne le chemin local du fichier correspondant à cle, ou None si
-    introuvable par aucun moyen. Essaie dans l'ordre : (1) la recherche
-    automatique par nom dans le drive partagé BA380 - COLLECTE (voir
-    _telecharger_fichier_drive_collecte, la source fiable à privilégier),
-    puis (2), en repli silencieux, l'ancien lien Google Sheets collé à la
-    main dans Paramètres — conservé pour ne rien casser tant que (1) n'est
-    pas disponible partout (identifiants Drive absents, dossier non
-    partagé...).
+    """Retourne le chemin local du fichier correspondant à cle, fraîchement
+    retéléchargé par recherche automatique dans le drive partagé
+    BA380 - COLLECTE (voir _telecharger_fichier_drive_collecte), ou None
+    s'il est introuvable.
 
-    Le lien Drive collé à la main, quand il est configuré, reste prioritaire
-    sur un éventuel fichier importé manuellement (voir upload_fichier) — un
-    import manuel réalisé pendant qu'un lien Drive existe sera donc écrasé
-    au prochain accès, ce qui est voulu : le lien Drive est la source à
-    tenir à jour, le reste n'est qu'un repli pour les années/fichiers sans
-    lien.
-
-    En cas d'échec du téléchargement par lien collé (lien cassé, accès
-    refusé, contenu invalide...), prévient l'utilisateur par un message
-    visible dans l'application (pas seulement dans les logs) et retourne
-    None — l'appelant bascule alors sur son fichier de repli local."""
+    Ne retombe JAMAIS sur un ancien fichier (ni l'ancien lien Google Sheets
+    collé à la main, ni un fichier précédemment importé localement) : un
+    incident réel a montré qu'un fichier périmé pouvait rester utilisé
+    silencieusement des semaines sans que personne ne s'en aperçoive
+    (« Super U Vinay » resté marqué comme non gardé alors qu'il l'était
+    depuis longtemps sur go-on-web). Mieux vaut un échec visible — qui
+    pousse à corriger l'accès au drive — qu'une donnée fausse utilisée sans
+    le savoir. Prévient l'utilisateur par un message visible en cas
+    d'échec."""
+    conf = DRIVE_CHAMPS[cle]
     try:
         chemin = _telecharger_fichier_drive_collecte(annee, cle)
         if chemin:
             return chemin
     except Exception as erreur:
         write_log(f"⚠️ Recherche automatique Drive « {cle} » {annee} impossible : {erreur}")
-
-    conf = DRIVE_CHAMPS[cle]
-    with get_db_connection() as conn:
-        _ensure_colonne_drive_colis(conn)
-        conn.commit()
-        campagne = conn.execute(
-            "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
-        ).fetchone()
-    url = _url_export_drive(campagne[conf["champ"]]) if campagne else None
-    if not url:
-        return None
-    dossier = _dossier_annee(annee)
-    os.makedirs(dossier, exist_ok=True)
-    noms_stockage = {
-        "vehicules": "liste_vehicules.xlsx",
-        "colis": "liste-colis.xlsx",
-        "participants_mailing": "liste_participants_mailing.xlsx",
-    }
-    nom_stockage = FICHIERS.get(cle, {}).get("nom_stockage") or noms_stockage[cle]
-    chemin = os.path.join(dossier, nom_stockage)
-    try:
-        reponse = requests.get(url, timeout=30)
-        reponse.raise_for_status()
-        if not reponse.content.startswith(b"PK"):
-            raise ValueError("contenu reçu invalide (pas un fichier Excel)")
-    except Exception as erreur:
-        message = (
-            f"⚠️ Lien Drive « {conf['label']} » inaccessible ({erreur}) — "
-            "utilisation du dernier fichier importé."
+        flash(
+            f"⛔ Impossible de récupérer « {conf['label']} » depuis le drive partagé "
+            f"BA380 - COLLECTE ({erreur}) — vérifiez l'accès au drive.",
+            "danger",
         )
-        write_log(f"{message} (année {annee})")
-        flash(message, "warning")
         return None
-    with open(chemin, "wb") as fichier:
-        fichier.write(reponse.content)
-    return chemin
+
+    flash(
+        f"⛔ « {conf['label']} » introuvable dans le drive partagé BA380 - COLLECTE "
+        f"pour {annee} — vérifiez que le fichier existe bien dans "
+        f"« Collecte {annee} / fichiers go on the web {annee} ».",
+        "danger",
+    )
+    return None
 
 
 def _est_camion_reel(code):
@@ -1190,7 +1158,9 @@ def _generer_tournees(campagne, params):
     annee = campagne["annee"]
     dossier = _dossier_annee(annee)
     pdf_path = os.path.join(dossier, campagne["fichier_pdf_precedent"])
-    magasins_path = _fichier_drive(annee, "magasins") or os.path.join(dossier, campagne["fichier_magasins"])
+    magasins_path = _fichier_drive(annee, "magasins")
+    if not magasins_path:
+        raise RuntimeError("Liste des magasins introuvable dans le drive partagé BA380 - COLLECTE")
 
     args_ns = argparse.Namespace(
         camions_supp=params["camions_supp"],
@@ -1293,7 +1263,9 @@ def _lire_referentiel_magasins_bai(annee, campagne):
     la liste figée de collecte_cagettes_magasins, jamais directement par la
     page de saisie (qui doit rester stable même si le fichier est remplacé en
     cours de campagne)."""
-    chemin = _fichier_drive(annee, "magasins") or os.path.join(_dossier_annee(annee), campagne["fichier_magasins"])
+    chemin = _fichier_drive(annee, "magasins")
+    if not chemin:
+        raise RuntimeError("Liste des magasins introuvable dans le drive partagé BA380 - COLLECTE")
 
     df = pd.read_excel(chemin)
     df.columns = [c.strip() for c in df.columns]
@@ -1400,12 +1372,8 @@ def _lire_magasins_autorisation(annee):
     accord encore donné (colonne 'Accord' vide), hors magasins État='Non
     collecté' — cible du publipostage de demande d'autorisation de
     collecter."""
-    try:
-        chemin = _fichier_drive(annee, "magasins") or os.path.join(_dossier_annee(annee), FICHIERS["magasins"]["nom_stockage"])
-    except Exception as erreur:
-        write_log(f"⚠️ Lecture Drive magasins {annee} impossible : {erreur}")
-        chemin = os.path.join(_dossier_annee(annee), FICHIERS["magasins"]["nom_stockage"])
-    if not os.path.exists(chemin):
+    chemin = _fichier_drive(annee, "magasins")
+    if not chemin:
         return []
 
     df = pd.read_excel(chemin)
@@ -1969,7 +1937,9 @@ def _charger_magasins_localisation(annee, campagne):
     l'état courant du fichier magasins (pas de liste figée ici, contrairement
     aux cagettes : c'est une vue d'ensemble, pas une saisie à préserver dans
     le temps)."""
-    chemin = _fichier_drive(annee, "magasins") or os.path.join(_dossier_annee(annee), campagne["fichier_magasins"])
+    chemin = _fichier_drive(annee, "magasins")
+    if not chemin:
+        return [], []
 
     df = pd.read_excel(chemin)
     df.columns = [c.strip() for c in df.columns]
@@ -2827,6 +2797,12 @@ def lancer_analyse():
     if campagne is None:
         return redirect(url_for("collecte.collecte_main", annee=annee))
 
+    dossier = _dossier_annee(annee)
+    pdf_path = os.path.join(dossier, campagne["fichier_pdf_precedent"])
+    magasins_path = _fichier_drive(annee, "magasins")
+    if not magasins_path:
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
     params_communs = {
         "poids_nouveaux": PARAMS_DEFAUT["poids_nouveaux"],
         "optimiser_anciens": True,
@@ -2843,9 +2819,6 @@ def lancer_analyse():
         analyse_id = cur.lastrowid
         conn.commit()
 
-    dossier = _dossier_annee(annee)
-    pdf_path = os.path.join(dossier, campagne["fichier_pdf_precedent"])
-    magasins_path = _fichier_drive(annee, "magasins") or os.path.join(dossier, campagne["fichier_magasins"])
     app_reel = current_app._get_current_object()
 
     lancer_tache_fond(
@@ -3632,7 +3605,11 @@ def initialiser_cagettes(annee):
         flash(f"⛔ Liste des magasins {annee} requise avant d'initialiser la saisie cagettes", "danger")
         return redirect(url_for("collecte.collecte_main", annee=annee))
 
-    magasins = _lire_referentiel_magasins_bai(annee, campagne)
+    try:
+        magasins = _lire_referentiel_magasins_bai(annee, campagne)
+    except RuntimeError as erreur:
+        flash(f"⛔ {erreur}", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
     maintenant = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     with get_db_connection() as conn:
@@ -4261,9 +4238,9 @@ def _normaliser_gardee_par(s):
 
 def _lire_magasins_gardes(annee):
     """Magasins État='Collecte gardée' du référentiel de l'année (DataFrame
-    vide si liste_magasins.xlsx est absent)."""
-    chemin = _fichier_drive(annee, "magasins") or os.path.join(_dossier_annee(annee), FICHIERS["magasins"]["nom_stockage"])
-    if not os.path.exists(chemin):
+    vide si introuvable dans le drive)."""
+    chemin = _fichier_drive(annee, "magasins")
+    if not chemin:
         return pd.DataFrame()
     df = pd.read_excel(chemin)
     df.columns = [str(c).strip() for c in df.columns]
@@ -4281,8 +4258,8 @@ def _lire_groupes(annee):
     mais son compteur n'est pas encore remonté) — s'y fier pour décider
     qu'une association « n'existe pas » ferait disparaître des associations
     bien réelles de la liste."""
-    chemin = _fichier_drive(annee, "groupes") or os.path.join(_dossier_annee(annee), FICHIERS["groupes"]["nom_stockage"])
-    if not os.path.exists(chemin):
+    chemin = _fichier_drive(annee, "groupes")
+    if not chemin:
         return pd.DataFrame()
     df = pd.read_excel(chemin)
     df.columns = [str(c).strip() for c in df.columns]
@@ -4292,9 +4269,9 @@ def _lire_groupes(annee):
 def _lire_participants(annee):
     """Tous les participants/contacts go-on-web de l'année (toutes années de
     collecte confondues dans l'export), colonnes normalisées (DataFrame vide
-    si liste_participants.xlsx est absent)."""
-    chemin = _fichier_drive(annee, "participants") or os.path.join(_dossier_annee(annee), FICHIERS["participants"]["nom_stockage"])
-    if not os.path.exists(chemin):
+    si introuvable dans le drive)."""
+    chemin = _fichier_drive(annee, "participants")
+    if not chemin:
         return pd.DataFrame()
     df = pd.read_excel(chemin)
     df.columns = [str(c).strip() for c in df.columns]
@@ -6029,10 +6006,8 @@ def _lire_fichier_magasins_brut(annee):
         campagne = conn.execute("SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)).fetchone()
     if not campagne:
         return []
-    chemin = _fichier_drive(annee, "magasins") or (
-        os.path.join(_dossier_annee(annee), campagne["fichier_magasins"]) if campagne["fichier_magasins"] else None
-    )
-    if not chemin or not os.path.exists(chemin):
+    chemin = _fichier_drive(annee, "magasins")
+    if not chemin:
         return []
 
     df = pd.read_excel(chemin)
