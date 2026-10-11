@@ -96,41 +96,13 @@
             <h5 class="card-title">🔗 Fichiers Google Drive issus de go-on-web</h5>
             <p class="card-text text-muted small">
                 Retrouvés automatiquement par nom dans le drive partagé BA380 - COLLECTE — plus de
-                lien à coller ici. Fichiers effectivement utilisés en ce moment :
+                lien à coller ici. Chaque action vérifie elle-même le fichier au moment de l'utiliser,
+                pour toujours prendre la dernière version.
             </p>
-            <table class="table table-sm mb-0">
-                <thead>
-                    <tr><th>Fichier</th><th>Chemin dans le drive</th><th>Modifié le</th></tr>
-                </thead>
-                <tbody>
-                    {% for cle, info in fichiers_drive_utilises.items() %}
-                    <tr>
-                        <td>{{ info.label }}</td>
-                        {% if info.chemin %}
-                        <td class="small text-muted">{{ info.chemin }}</td>
-                        <td class="small">{{ info.modifie_le }}</td>
-                        {% else %}
-                        <td class="small text-warning" colspan="2">⚠️ Introuvable — vérifier l'accès au drive BA380 - COLLECTE</td>
-                        {% endif %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% set infos_precedente = fichiers_drive_utilises_precedente.values()|selectattr("chemin")|list %}
-            {% if infos_precedente %}
-            <p class="text-muted small mt-3 mb-1">Année précédente ({{ annee - 1 }}), utilisée pour certains besoins (ex. planning véhicules) :</p>
-            <table class="table table-sm mb-0">
-                <tbody>
-                    {% for info in infos_precedente %}
-                    <tr>
-                        <td>{{ info.label }}</td>
-                        <td class="small text-muted">{{ info.chemin }}</td>
-                        <td class="small">{{ info.modifie_le }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% endif %}
+            <div id="fichiers-drive-statut" data-charge="0" class="text-muted small">
+                <span class="spinner-border spinner-border-sm"></span> Vérification au premier dépliage de
+                cette section…
+            </div>
         </div>
     </div>
 
@@ -219,6 +191,15 @@
     </div>
 
     </div>
+
+    {# Magasins/groupes sont désormais toujours considérés disponibles ici :
+       plus de vérification Drive préventive au chargement de la page (12
+       appels Drive sinon, pour une info repliée par défaut) — chaque action
+       vérifie elle-même au moment réel de l'utilisation (voir
+       collecte_main et _fichier_drive côté serveur) et affiche un message
+       clair si le fichier n'est pas là. #}
+    {% set magasins_prets = true %}
+    {% set groupes_prets = true %}
 
     {{ entete_section("sectionGestionMagasins", "Gestion magasins", "modalAideSection2", "modalManuelSection2") }}
     <div id="sectionGestionMagasins" class="collapse mt-3">
@@ -482,6 +463,21 @@
 <script>
 document.getElementById("selectAnnee").addEventListener("change", function () {
     window.location.href = "{{ url_for('collecte.collecte_main') }}?annee=" + this.value;
+});
+
+// Vérification Drive chargée à la demande, seulement au premier dépliage
+// de la section Paramètres — jamais au chargement de la page (voir
+// collecte_main côté serveur, qui ne fait plus cet appel).
+document.getElementById("sectionCollecteAnnuelle").addEventListener("show.bs.collapse", function () {
+    const zone = document.getElementById("fichiers-drive-statut");
+    if (zone.dataset.charge === "1") return;
+    zone.dataset.charge = "1";
+    fetch("{{ url_for('collecte.fichiers_drive_statut', annee=annee) }}")
+        .then(function (r) { return r.text(); })
+        .then(function (html) { zone.innerHTML = html; })
+        .catch(function () {
+            zone.innerHTML = "⛔ Échec de la vérification — réessayer en rechargeant la page.";
+        });
 });
 </script>
 {% endblock %}

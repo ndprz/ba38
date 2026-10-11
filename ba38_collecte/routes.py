@@ -2422,15 +2422,15 @@ def collecte_main():
             ).fetchall()
         }
 
-    fichiers_drive_utilises = _fichiers_drive_collecte_utilises(annee)
-    # Disponibilité recalculée depuis la même recherche Drive que le tableau
-    # affiché juste au-dessus (pas d'appel Drive supplémentaire) : les
-    # anciens champs campagne['fichier_magasins']/['drive_magasins'] ne sont
-    # plus jamais renseignés depuis que la recherche automatique a remplacé
-    # le lien à coller et l'import manuel pour ces fichiers — s'y fier
-    # bloquerait ces boutons en permanence pour toute nouvelle campagne.
-    magasins_prets = bool(fichiers_drive_utilises["magasins"]["chemin"])
-    groupes_prets = bool(fichiers_drive_utilises["groupes"]["chemin"])
+    # La disponibilité des fichiers Drive (magasins, groupes...) n'est plus
+    # vérifiée ici : ça demandait jusqu'à 12 recherches Drive à chaque
+    # ouverture de cette page, pour un tableau replié par défaut que
+    # personne ne regarde à chaque fois. Chaque action (génération,
+    # localisation, cagettes...) vérifie déjà elle-même au moment où elle a
+    # réellement besoin du fichier (voir _fichier_drive) — la fraîcheur de
+    # la donnée utilisée n'y perd rien, seul l'indicateur visuel préventif
+    # disparaît. Le tableau de la section Paramètres est maintenant chargé
+    # à la demande (voir fichiers_drive_statut ci-dessous).
 
     return render_template(
         "collecte/index.html",
@@ -2448,10 +2448,23 @@ def collecte_main():
         mercuriale_importee_annee_precedente=(annee - 1) in mercuriale_annees_importees,
         mercuriale_import_annee=mercuriale_imports.get(annee),
         mercuriale_import_annee_precedente=mercuriale_imports.get(annee - 1),
-        fichiers_drive_utilises=fichiers_drive_utilises,
+    )
+
+
+@collecte_bp.route("/collecte/fichiers-drive-statut")
+@login_required
+@require_access("collecte", "lecture")
+def fichiers_drive_statut():
+    """Fragment HTML chargé à la demande (JS, quand la section « Paramètres
+    de la collecte annuelle » est dépliée) listant le chemin et la date de
+    chaque fichier Drive utilisé — jamais calculé au chargement de la page
+    principale (voir collecte_main)."""
+    annee = request.args.get("annee", type=int) or datetime.now().year
+    return render_template(
+        "collecte/_fichiers_drive_statut.html",
+        annee=annee,
+        fichiers_drive_utilises=_fichiers_drive_collecte_utilises(annee),
         fichiers_drive_utilises_precedente=_fichiers_drive_collecte_utilises(annee - 1),
-        magasins_prets=magasins_prets,
-        groupes_prets=groupes_prets,
     )
 
 

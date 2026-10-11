@@ -1,0 +1,33 @@
+<table class="table table-sm mb-0">
+    <thead>
+        <tr><th>Fichier</th><th>Chemin dans le drive</th><th>Modifié le</th></tr>
+    </thead>
+    <tbody>
+        {% for cle, info in fichiers_drive_utilises.items() %}
+        <tr>
+            <td>{{ info.label }}</td>
+            {% if info.chemin %}
+            <td class="small text-muted">{{ info.chemin }}</td>
+            <td class="small">{{ info.modifie_le }}</td>
+            {% else %}
+            <td class="small text-warning" colspan="2">⚠️ Introuvable — vérifier l'accès au drive BA380 - COLLECTE</td>
+            {% endif %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% set infos_precedente = fichiers_drive_utilises_precedente.values()|selectattr("chemin")|list %}
+{% if infos_precedente %}
+<p class="text-muted small mt-3 mb-1">Année précédente ({{ annee - 1 }}), utilisée pour certains besoins (ex. planning véhicules) :</p>
+<table class="table table-sm mb-0">
+    <tbody>
+        {% for info in infos_precedente %}
+        <tr>
+            <td>{{ info.label }}</td>
+            <td class="small text-muted">{{ info.chemin }}</td>
+            <td class="small">{{ info.modifie_le }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
