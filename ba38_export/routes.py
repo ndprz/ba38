@@ -55,6 +55,23 @@ def generateur_excel():
     action = request.form.get("action")
     # write_log(f"➡️ Action demandée = {action}, data_type = {data_type}")
 
+    # 📂 Chargement d'un preset : son type (associations/bénévoles) prime sur
+    # celui affiché à l'écran, sinon les champs listés ne correspondent pas aux
+    # colonnes enregistrées et rien n'apparaît coché.
+    preset = None
+    preset_id = request.form.get("preset_id")
+    if action == "load_preset" and preset_id:
+        preset = cursor.execute(
+            """
+            SELECT id, preset_name, appli, selected_columns, filters_json, COALESCE(mode_or, 0) AS mode_or
+            FROM export_presets
+            WHERE id=? AND user_email=?
+            """,
+            (preset_id, current_user.email),
+        ).fetchone()
+        if preset:
+            data_type = preset["appli"]
+
     if not has_access(data_type, "lecture"):
         flash("⛔ Accès non autorisé.", "danger")
         return redirect(url_for("index"))
@@ -98,20 +115,9 @@ def generateur_excel():
     # ===================================================================
     # 🧠 Chargement d’un preset existant
     # ===================================================================
-    preset_id = request.form.get("preset_id")
     if action == "load_preset" and preset_id:
         # write_log(f"📥 Chargement du preset ID={preset_id}")
-        preset = cursor.execute(
-            """
-            SELECT id, preset_name, appli, selected_columns, filters_json, COALESCE(mode_or, 0) AS mode_or
-            FROM export_presets
-            WHERE id=? AND user_email=?
-            """,
-            (preset_id, current_user.email),
-        ).fetchone()
-
         if preset:
-            data_type = preset["appli"]
             selected_columns = (
                 preset["selected_columns"].split(",") if preset["selected_columns"] else []
             )

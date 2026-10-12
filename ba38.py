@@ -195,6 +195,24 @@ app.config["LOG_FILE"] = LOG_FILE
 
 
 
+@app.route('/documentation-interne/<nom_fichier>')
+@login_required
+def telecharger_documentation_interne(nom_fichier):
+    """Téléchargement de documents de travail internes (notes, comparatifs
+    de solutions...) qui ne relèvent pas de la documentation utilisateur
+    d'un module — liste blanche fermée, jamais de chemin construit depuis
+    l'entrée utilisateur."""
+    documents_autorises = {
+        "Securisation_Saisie_Pesee_Palox.docx",
+    }
+    if nom_fichier not in documents_autorises:
+        abort(404)
+    chemin = os.path.join(app.root_path, "documentation_interne", nom_fichier)
+    if not os.path.exists(chemin):
+        abort(404)
+    return send_file(chemin, as_attachment=True, download_name=nom_fichier)
+
+
 @app.route('/favicon.ico')
 def favicon():
     return send_from_directory(

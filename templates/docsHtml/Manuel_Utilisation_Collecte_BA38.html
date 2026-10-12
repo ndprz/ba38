@@ -1,7 +1,7 @@
 <h1 class="TOC-Heading" id="table-des-matières">Table des matières</h1>
 <p><strong>Application BA38 — Manuel d’utilisation détaillé du module
 Collecte</strong> Destiné au/à la responsable de la collecte annuelle.
-Version : 14/09/2026.</p>
+Version : 10/10/2026.</p>
 <h1 id="introduction">Introduction</h1>
 <h2 id="objet-de-ce-manuel">Objet de ce manuel</h2>
 <p>Ce manuel décrit, étape par étape, l’utilisation du module « Collecte
@@ -12,26 +12,36 @@ contextuelle disponible dans l’application (bouton « ℹ️ Aide utilisateur
 des explications pas à pas, à destination de la personne qui pilote la
 campagne de bout en bout.</p>
 <h2 id="vue-densemble-du-module">Vue d’ensemble du module</h2>
-<p>Le module « Collecte » couvre trois grandes phases de la campagne
-annuelle :</p>
+<p>Le module « Collecte » est organisé en six sections indépendantes
+:</p>
 <ul>
-<li><p>la <strong>simulation</strong> : calcule automatiquement des
-tournées optimisées (répartition des magasins par camion et
-demi-journée), pour tester différents scénarios avant de décider du
-planning réel ;</p></li>
-<li><p>la <strong>production</strong> : une fois le planning réel saisi
-dans go-on-web, génère les vrais documents utilisés le jour de la
-collecte (fiches de collecte, pointage, équipier, index, carte, classeur
-Excel) ;</p></li>
-<li><p>le <strong>suivi terrain</strong> : localisation des magasins et
-associations sur une carte, saisie des cagettes ramenées par les camions
-et calcul des poids collectés, envoi des documents aux chauffeurs et
-équipiers, envoi des fichiers aux associations qui gardent leur propre
-collecte.</p></li>
+<li><p><strong>📁 Paramètres de la collecte annuelle</strong> : dates de
+la campagne et récupération automatique des fichiers go-on-web
+(magasins, véhicules, colis, groupes, participants) depuis le drive
+partagé ;</p></li>
+<li><p><strong>📁 Gestion magasins</strong> : demande d’autorisation de
+collecter, localisation sur une carte, référentiel des magasins
+collectés ;</p></li>
+<li><p><strong>📁 Gestion tournées</strong> : la simulation calcule
+automatiquement des tournées optimisées (répartition des magasins par
+camion et demi-journée) pour tester différents scénarios, sans jamais
+modifier go-on-web — un outil d’aide à la décision ; une fois le
+planning réel saisi dans go-on-web, la production génère les vrais
+documents utilisés le jour de la collecte (fiches de collecte, pointage,
+équipier, index, carte, classeur Excel) et envoie les mails aux
+chauffeurs et équipiers ;</p></li>
+<li><p><strong>📁 Associations gardant</strong> : préparation et envoi
+des fiches Excel/PDF aux associations qui collectent elles-mêmes
+certains magasins, suivi des réponses et relances ;</p></li>
+<li><p><strong>📁 Résultat collecte</strong> : pesée palox à l’entrepôt,
+saisie des poids par magasin gardé et des quantités par produit,
+évolution pluriannuelle des magasins ;</p></li>
+<li><p><strong>📁 Participants</strong> : mail aux trieurs de l’année
+précédente, mail de prise de colis aux primo responsables.</p></li>
 </ul>
-<p>La simulation ne modifie jamais le planning go-on-web : c’est un
-outil d’aide à la décision. Seule la génération des documents réels
-(Production) produit ce qui est utilisé sur le terrain.</p>
+<p>Seule la génération des documents réels (Production) produit ce qui
+est utilisé sur le terrain — la simulation reste un outil d’aide à la
+décision, sans jamais modifier go-on-web.</p>
 <h2 id="accès-et-droits">Accès et droits</h2>
 <p>L’accès à ce module nécessite le droit « lecture » (ou supérieur) sur
 « Collecte ». Le lancement d’une génération (simulation ou production),
@@ -41,23 +51,31 @@ modification des textes de mails et les envois nécessitent le droit «
 <h2 id="ouvrir-le-module-et-choisir-lannée">Ouvrir le module et choisir
 l’année</h2>
 <p>Menu → Collecte. La page d’accueil du module (illustrée ci-dessous)
-liste cinq sections dépliables indépendamment : « Paramètres de la
+liste six sections dépliables indépendamment : « Paramètres de la
 collecte annuelle », « Gestion magasins », « Gestion tournées », «
-Associations gardant » et « Résultat collecte ». Sélectionner l’année de
-collecte en haut de page — une campagne est créée automatiquement au
-premier import de fichier pour une année donnée.</p>
+Associations gardant », « Résultat collecte » et « Participants ».
+Sélectionner l’année de collecte en haut de page — une campagne est
+créée automatiquement au premier import de fichier pour une année
+donnée.</p>
 <p><img
 src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId23.png"
 style="width:5.83333in;height:11.54167in"
 alt="Page d’accueil du module Collecte, sections dépliées" /></p>
 <p>Page d’accueil du module Collecte, sections dépliées</p>
+<p><em>Capture d’écran antérieure à la recherche automatique des
+fichiers Google Drive : la zone « Paramètres des fichiers Google Drive »
+y apparaît encore sous son ancienne forme (voir §1.2 pour l’écran
+actuel).</em></p>
 <h2 id="légende-des-couleurs-de-boutons">Légende des couleurs de
 boutons</h2>
 <p>Les couleurs des boutons d'action suivent une règle commune à tout le
 module, pour repérer d'un coup d'œil ce qu'il convient de faire :</p>
 <p>🟢 Vert : action prête à être lancée — le bouton reste grisé et
-désactivé tant qu'un fichier ou une information nécessaire manque
-encore.</p>
+désactivé tant qu'une information nécessaire manque encore (une date non
+renseignée, le fichier PDF des tournées précédentes non déposé...). Les
+fichiers go-on-web (magasins, groupes...) ne grisent plus aucun bouton
+par avance : leur disponibilité est vérifiée automatiquement au moment
+de l'action, avec un message d'erreur clair en cas d'échec.</p>
 <p>🟠 Orange : action principale recommandée de l'étape en cours.</p>
 <p>🟡 Jaune : action qui remplace ou écrase des données déjà générées —
 à utiliser en connaissance de cause, une nouvelle génération n'annule
@@ -76,32 +94,39 @@ Elles sont reprises automatiquement dans les documents de production
 jours sont déduits automatiquement : vendredi = jeudi + 1, etc.). Tant
 qu’aucune date n’est renseignée, seul le libellé du jour apparaît («
 Vendredi Matin »), sans date précise.</p>
-<h2 id="liens-google-drive">1.2 Liens Google Drive</h2>
-<p>Un nouveau dossier Drive étant créé chaque année, coller les liens
-Google Sheets demandés dans « Paramètres des fichiers Google Drive » :
-magasins, véhicules/planning, groupes, participants et participants pour
-mailing (le lien de partage complet de chaque fichier Google Sheets,
-celui-ci devant être partagé en « Toute personne disposant du lien »).
-Tant qu’un lien n’est pas renseigné pour l’année en cours, la génération
-des documents réels reste désactivée.</p>
-<p>Deux blocs identiques sont proposés : un pour l’année en cours, un
-pour l’année précédente (utile notamment pour recontacter les anciens
-trieurs avant que le planning de l’année en cours existe). Un fichier «
-Liste des colis » est également demandé — il sert au contrôle « Colis
-manquants » de la génération des documents réels (§10.3). Une carte «
-Mercuriale » permet par ailleurs de déposer, pour l’année en cours et
-l’année précédente séparément, le rapport de prix VIF qui valorise en
-euros la pesée palox et les quantités par produit (voir §10.1, §10.4,
-§10.5).</p>
+<h2 id="fichiers-google-drive">1.2 Fichiers Google Drive</h2>
+<p>Les fichiers go-on-web nécessaires à la collecte — magasins,
+véhicules/planning, colis, groupes, participants et participants pour
+mailing — sont désormais retrouvés automatiquement par l’application,
+sans rien à coller. Elle les recherche par leur nom dans le drive
+partagé « BA380 - COLLECTE », dossier « Collecte {année} / fichiers go
+on the web {année} » (voir le détail des règles en §10.1). La section
+affiche un tableau en lecture seule listant, pour chaque fichier, son
+emplacement exact et sa date de dernière modification. Ce tableau ne se
+charge que si l’on déplie cette section, afin de ne pas ralentir
+l’ouverture de la page. Les boutons des autres sections restent quant à
+eux toujours actifs : chaque action vérifie elle-même la disponibilité
+du fichier dont elle a besoin au moment où elle est lancée, avec un
+message d’erreur clair en cas d’échec.</p>
+<p>Un second tableau apparaît pour l’année précédente dès que des
+fichiers y sont trouvés — utile notamment pour recontacter les anciens
+trieurs avant que le planning de l’année en cours existe ; l’application
+reprend alors automatiquement la variante « après collecte » du dossier
+si elle existe et qu’elle est plus récente. Le fichier « Liste des colis
+» fait partie des six fichiers recherchés : il sert au contrôle « Colis
+manquants » de la génération des documents réels (§10.3). Si un fichier
+reste introuvable pour une raison quelconque (cas rare), sa ligne
+affiche un avertissement « Introuvable » : les écrans qui utilisent ce
+fichier affichent alors soit une liste vide, soit un message d’erreur —
+jamais une ancienne copie du fichier. Une carte « Mercuriale » permet
+par ailleurs de déposer, pour l’année en cours et l’année précédente
+séparément, le rapport de prix VIF qui valorise en euros la pesée palox
+et les quantités par produit (voir §10.1, §10.4, §10.5).</p>
 <h2 id="fichiers-nécessaires-à-la-simulation">1.3 Fichiers nécessaires à
 la simulation</h2>
-<p>Deux fichiers sont à importer pour pouvoir lancer une simulation,
-avec les boutons « Importer » ou « Remplacer » de cette même section
-:</p>
+<p>Un fichier est à importer pour pouvoir lancer une simulation, avec le
+bouton « Importer » ou « Remplacer » de cette même section :</p>
 <ul>
-<li><p><strong>Liste des magasins</strong> : export go-on-web de l’année
-en cours (adresses, horaires, coordonnées GPS, VIF, état, créneaux)
-;</p></li>
 <li><p><strong>Tournées de la collecte précédente</strong> : le PDF «
 fiches jour-véhicules-magasins » de la collecte précédente, disponible
 dans le dossier camions du drive collecte. Sert de point de départ à
@@ -505,12 +530,12 @@ alt="Liste des associations gardant leur propre collecte" /></p>
 <p>Liste des associations gardant leur propre collecte</p>
 <h2 id="créer-et-contrôler-la-liste">4.1 Créer et contrôler la
 liste</h2>
-<p>Le bouton « 🏠 Créer la liste » (vert quand les fichiers magasins et
-groupes de l’année sont disponibles, gris et désactivé sinon) croise la
-liste des magasins et la liste des groupes, génère le fichier Excel
-combiné ainsi que la fiche Excel/PDF personnalisée de chaque
-association, puis redirige directement vers « 📧 Préparer l’envoi » pour
-poursuivre l’envoi.</p>
+<p>Le bouton « 🏠 Créer la liste » (toujours actif — la disponibilité
+des fichiers magasins et groupes est vérifiée au moment du clic, pas
+avant) croise la liste des magasins et la liste des groupes, génère le
+fichier Excel combiné ainsi que la fiche Excel/PDF personnalisée de
+chaque association, puis redirige directement vers « 📧 Préparer l’envoi
+» pour poursuivre l’envoi.</p>
 <p>« 📋 Contrôler / corriger la liste » (rebaptisé, anciennement «
 Vérifier la liste ») ouvre le détail par association : contacts,
 adresses e-mail, magasins rattachés, et permet de forcer manuellement le
@@ -782,8 +807,8 @@ décrites dans ce manuel, dans l’ordre où elles interviennent au fil
 d’une campagne :</p>
 <ol type="1">
 <li><p><strong>Avant la collecte</strong> — Paramètres (§1) : dates,
-liens Drive, import de la liste des magasins et des tournées de l’année
-précédente.</p></li>
+fichiers Google Drive, import de la liste des magasins et des tournées
+de l’année précédente.</p></li>
 <li><p><strong>Préparation</strong> — Gestion magasins (§2) : vérifier
 la carte de localisation (stockage renseigné, adresses
 valides).</p></li>
@@ -927,47 +952,49 @@ affichée est « du JJ/MM/AAAA au JJ/MM/AAAA » si les deux dates sont
 renseignées, seulement la date de début si la fin est absente, ou
 simplement l'année brute (ex. « 2026 ») si aucune date de début n'est
 enregistrée.</p>
-<h3 id="liens-google-drive-1">Liens Google Drive</h3>
-<p>Cinq liens Drive distincts peuvent être enregistrés par campagne :
-magasins, véhicules/planning, groupes, participants, participants pour
-mailing — chacun doit correspondre à un fichier Google Sheets partagé en
-« Toute personne disposant du lien ».</p>
-<p>Un lien est validé uniquement par la présence d'un identifiant Drive
-reconnaissable dans l'URL. Si un ou plusieurs liens saisis n'en
-contiennent pas, TOUS les liens de la campagne sont rejetés en bloc (y
-compris les valides), avec un message listant les libellés en cause.</p>
-<p>Un champ de lien laissé vide est accepté (aucun lien n'est
-obligatoire).</p>
-<p>Quand un lien Drive est renseigné pour un type de donnée donné, il
-est toujours prioritaire sur le fichier importé manuellement : à chaque
-utilisation, l'application retélécharge l'export Google Sheets à la
-volée pour refléter le dernier état go-on-web. Le fichier importé
-manuellement ne sert de secours que si aucun lien Drive n'est
-renseigné.</p>
-<p>Un téléchargement Drive est jugé invalide si le contenu récupéré ne
-commence pas par la signature binaire d'un fichier xlsx (les octets « PK
-») — cas typique d'un lien pointant vers une page de connexion Google
-plutôt qu'un export direct (partage non public).</p>
-<p>En cas d'échec de téléchargement (réseau, contenu invalide, délai de
-30 secondes dépassé), le comportement diffère selon l'écran : pour la
-demande d'autorisation, la vue magasins gardés, les listes
-groupes/participants, l'échec est absorbé silencieusement (juste
-journalisé) avec repli sur le dernier fichier importé manuellement s'il
-existe ; pour la génération des tournées (simulation) et l'analyse 8
-scénarios, l'échec remonte comme une erreur bloquante affichée à
-l'utilisateur.</p>
-<p>Sur la page Production, seuls trois des six liens (magasins,
+<h3 id="fichiers-google-drive-1">Fichiers Google Drive</h3>
+<p>Six fichiers sont recherchés automatiquement par campagne : magasins,
+véhicules/planning, colis, groupes, participants, participants pour
+mailing. Chacun est retrouvé par son nom dans le dossier « Collecte
+{année} / fichiers go on the web {année} » du drive partagé « BA380 -
+COLLECTE », ou dans la variante « après collecte » du dossier si elle
+existe et qu'elle est plus récente.</p>
+<p>Quand un fichier est retrouvé automatiquement, il est toujours
+prioritaire : à chaque utilisation, l'application reprend la dernière
+version trouvée sur le drive, pour refléter le dernier état
+go-on-web.</p>
+<p>En cas d'échec de la recherche automatique (fichier introuvable,
+réseau, contenu invalide, délai dépassé), il n'y a plus aucun repli sur
+un fichier importé manuellement, quel que soit l'écran : les écrans de
+consultation (demande d'autorisation, magasins gardés, listes
+groupes/participants, carte de localisation) affichent une liste vide
+avec un message d'avertissement ; les écrans d'action (génération des
+tournées, analyse 8 scénarios, initialisation des cagettes) affichent un
+message d'erreur et n'effectuent pas l'action. Dans tous les cas, un
+message précise que le fichier est introuvable dans le drive partagé et
+qu'il faut vérifier l'accès au drive.</p>
+<p>Sur la page Production, seuls trois des six fichiers (magasins,
 véhicules, colis) sont requis ; si l'un manque, la génération est
-bloquée avec un message précisant le(s) lien(s) manquant(s).</p>
+bloquée avec un message précisant le(s) fichier(s) manquant(s).</p>
 <p>La liste figée de saisie des cagettes n'utilise le référentiel
-magasins (Drive ou import) que pour (ré)initialiser la liste une fois ;
-la page de saisie reste ensuite stable même si le fichier magasins est
-remplacé en cours de campagne — contrairement aux vues « localisation »
-ou « magasins gardés », qui reflètent toujours l'état courant du
-fichier.</p>
-<p>Les liens sont stockés par année : un nouveau jeu de liens est
-attendu chaque année (nouveau dossier Drive), jamais réutilisé
+magasins (trouvé automatiquement ou importé) que pour (ré)initialiser la
+liste une fois ; la page de saisie reste ensuite stable même si le
+fichier magasins change en cours de campagne — contrairement aux vues «
+localisation » ou « magasins gardés », qui reflètent toujours l'état
+courant du fichier.</p>
+<p>Les fichiers sont recherchés par année : une nouvelle recherche a
+lieu chaque année (nouveau dossier Drive), jamais réutilisée
 automatiquement d'une année sur l'autre.</p>
+<p>Contrairement à avant, les boutons de la page d'accueil ne sont plus
+grisés par anticipation selon la disponibilité de ces six fichiers : ils
+sont toujours actifs dès l'ouverture de la page, et seule l'action
+réellement lancée vérifie le fichier correspondant. Seules les
+informations non liées au drive (une date non renseignée, le fichier PDF
+des tournées précédentes non déposé) continuent de griser un bouton. De
+même, le tableau de suivi du §1.2 (chemin et date de chaque fichier)
+n'est lui-même calculé qu'à la demande, en dépliant la section «
+Fichiers Google Drive », afin de ne pas ralentir l'ouverture de la page
+— jusqu'à douze recherches Drive sont ainsi évitées par défaut.</p>
 <h3 id="import-de-fichiers">Import de fichiers</h3>
 <p>Quatre types de fichiers peuvent être importés manuellement par
 campagne : liste des magasins, PDF des tournées de la collecte
@@ -988,10 +1015,10 @@ fichier n'a été importé, l'interface affiche « Aucun fichier importé
 pour {année} ».</p>
 <p>L'accès aux actions en aval dépend de la présence d'au moins une
 source de données valable : la section « Gestion magasins » n'est
-activée que si un fichier magasins a été importé OU qu'un lien Drive
-magasins est renseigné (sans vérifier que le lien fonctionne réellement)
-; la section « Gestion tournées » exige en plus la présence du PDF des
-tournées précédentes.</p>
+activée que si un fichier magasins a été importé OU retrouvé
+automatiquement sur le drive (sans vérifier que ce fichier est
+exploitable) ; la section « Gestion tournées » exige en plus la présence
+du PDF des tournées précédentes.</p>
 <h3 id="mercuriale">Mercuriale</h3>
 <p>Rapport de prix VIF (fichier texte, encodage cp1252, tabulé) déposé
 séparément pour l'année en cours et l'année précédente. Sert uniquement
@@ -1251,9 +1278,9 @@ déclenchée manuellement après le calcul des 8 scénarios — jamais
 automatique pendant le calcul lui-même.</p>
 <h3 id="génération-des-documents-réels-production">Génération des
 documents réels (Production)</h3>
-<p>La génération nécessite les 3 liens Drive préconfigurés (magasins,
-véhicules, colis) ; les fichiers sont retéléchargés à chaque génération,
-jamais un import ponctuel figé.</p>
+<p>La génération nécessite les 3 fichiers (magasins, véhicules, colis)
+retrouvés automatiquement sur le drive ; ils sont repris à chaque
+génération, jamais un import ponctuel figé.</p>
 <p>Un code camion saisi pour une génération ciblée est nettoyé de tout
 caractère non alphanumérique, pour empêcher toute injection dans le nom
 de fichier généré.</p>

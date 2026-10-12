@@ -1,25 +1,34 @@
 <p><strong>Application BA38 – Module Collecte</strong> Version de la
-documentation : 15/09/2026</p>
+documentation : 10/10/2026</p>
 <p>Le module « Collecte » gère la préparation et le suivi de la collecte
-annuelle en magasins, en plusieurs temps :</p>
+annuelle en magasins, organisé en six sections indépendantes :</p>
 <ul>
-<li><p>la <strong>simulation</strong> : calcule automatiquement des
-tournées optimisées (répartition des magasins par camion et
-demi-journée), pour tester différents scénarios avant de décider du
-planning réel ;</p></li>
-<li><p>la <strong>production</strong> : une fois le planning réel saisi
-dans go-on-web, génère les vrais documents utilisés le jour de la
-collecte (fiches de collecte, pointage, équipier, index, carte, classeur
-Excel) ;</p></li>
-<li><p>le <strong>suivi terrain</strong> : localisation des magasins et
-associations sur une carte, saisie des cagettes ramenées par les camions
-et calcul des poids collectés, envoi des documents aux chauffeurs et
-équipiers, envoi des fichiers aux associations qui gardent leur propre
-collecte.</p></li>
+<li><p><strong>📁 Paramètres de la collecte annuelle</strong> : dates de
+la campagne et récupération automatique des fichiers go-on-web
+(magasins, véhicules, colis, groupes, participants) depuis le drive
+partagé ;</p></li>
+<li><p><strong>📁 Gestion magasins</strong> : demande d’autorisation de
+collecter, localisation sur une carte, référentiel des magasins
+collectés ;</p></li>
+<li><p><strong>📁 Gestion tournées</strong> : la simulation calcule
+automatiquement des tournées optimisées (répartition des magasins par
+camion et demi-journée) pour tester différents scénarios, sans jamais
+modifier go-on-web — un outil d’aide à la décision ; une fois le
+planning réel saisi dans go-on-web, la production génère les vrais
+documents utilisés le jour de la collecte (fiches de collecte, pointage,
+équipier, index, carte, classeur Excel) et envoie les mails aux
+chauffeurs et équipiers ;</p></li>
+<li><p><strong>📁 Associations gardant</strong> : préparation et envoi
+des fiches Excel/PDF aux associations qui collectent elles-mêmes
+certains magasins, suivi des réponses et relances ;</p></li>
+<li><p><strong>📁 Résultat collecte</strong> : pesée palox à l’entrepôt,
+saisie des poids par magasin gardé et des quantités par produit,
+évolution pluriannuelle des magasins ;</p></li>
+<li><p><strong>📁 Participants</strong> : mail aux trieurs de l’année
+précédente, mail de prise de colis aux primo responsables.</p></li>
 </ul>
-<p>La simulation ne modifie jamais le planning go-on-web : c’est un
-outil d’aide à la décision. Seule la génération des documents réels
-produit ce qui est utilisé sur le terrain.</p>
+<p>Seule la génération des documents réels (Production) produit ce qui
+est utilisé sur le terrain.</p>
 <p>L’accès à ce module nécessite le droit « lecture » (ou supérieur) sur
 « Collecte ». Le lancement d’une génération (simulation ou production),
 l’import de fichiers, la saisie des cagettes et des poids, la
@@ -27,21 +36,21 @@ modification des textes de mails et les envois nécessitent le droit «
 écriture ».</p>
 <p>Menu → Collecte. Sélectionner l’année de collecte en haut de page
 (une campagne est créée automatiquement au premier import de fichier
-pour une année donnée). Les cinq sections ci-dessous (📁 Paramètres, 📁
-Gestion magasins, 📁 Gestion tournées, 📁 Associations gardant, 📁
-Résultat collecte) sont indépendantes et peuvent être ouvertes
-séparément.</p>
+pour une année donnée). Ces six sections sont indépendantes et peuvent
+être ouvertes séparément.</p>
 <h2 id="légende-des-couleurs-de-boutons">Légende des couleurs de
 boutons</h2>
 <p>🟢 Vert : action prête à être lancée (le bouton reste grisé tant
-qu'un fichier ou une information nécessaire manque encore).</p>
+qu'une information nécessaire manque encore ; les fichiers go-on-web
+magasins/groupes ne sont plus vérifiés par avance, seulement au moment
+du clic).</p>
 <p>🟠 Orange : action principale recommandée de l'étape en cours.</p>
 <p>🟡 Jaune : action qui remplace ou écrase des données déjà générées (à
 utiliser en connaissance de cause, une nouvelle génération n'annule pas
 ce qui a déjà été envoyé).</p>
 <h1 id="paramètres-de-la-collecte-annuelle">1. Paramètres de la collecte
 annuelle</h1>
-<h2 id="dates-et-liens-google-drive">1.1 Dates et liens Google
+<h2 id="dates-et-fichiers-google-drive">1.1 Dates et fichiers Google
 Drive</h2>
 <p>Renseigner les dates de début et de fin de la collecte une seule fois
 par année. Elles sont reprises automatiquement dans les documents de
@@ -49,27 +58,35 @@ production (date de chaque demi-journée en en-tête des fiches équipier —
 les autres jours sont déduits automatiquement : vendredi = jeudi + 1,
 etc.). Tant qu’aucune date n’est renseignée, seul le libellé du jour
 apparaît (« Vendredi Matin »), sans date précise.</p>
-<p>Un nouveau dossier Drive étant créé chaque année, coller les liens
-Google Sheets demandés dans « Paramètres des fichiers Google Drive » :
-magasins, véhicules/planning, groupes, participants et participants pour
-mailing (le lien de partage complet de chaque fichier Google Sheets,
-celui-ci devant être partagé en « Toute personne disposant du lien »).
-Tant qu’un lien n’est pas renseigné pour l’année en cours, la génération
-des documents réels reste désactivée.</p>
-<p>Depuis peu, deux blocs identiques sont proposés : un pour l’année en
-cours, un pour l’année précédente (utile par exemple pour recontacter
-les anciens trieurs avant que le planning de l’année en cours existe).
-Un nouveau fichier « Liste des colis » est aussi demandé — colis
-affectés à chaque magasin collecté, utilisé par le contrôle « Colis
-manquants » lors de la génération des documents réels.</p>
+<p>Les fichiers go-on-web nécessaires à la collecte — magasins,
+véhicules/planning, colis, groupes, participants et participants pour
+mailing — sont désormais retrouvés automatiquement par l’application,
+sans rien à coller. Elle les recherche par leur nom dans le drive
+partagé « BA380 - COLLECTE », dossier « Collecte {année} / fichiers go
+on the web {année} ». La section affiche un tableau en lecture seule
+listant, pour chaque fichier, son emplacement exact et sa date de
+dernière modification. Ce tableau ne se charge que si l’on déplie cette
+section, afin de ne pas ralentir l’ouverture de la page. Les boutons des
+autres sections restent quant à eux toujours actifs : chaque action
+vérifie elle-même la disponibilité du fichier dont elle a besoin au
+moment où elle est lancée, avec un message d’erreur clair en cas
+d’échec.</p>
+<p>Un second tableau apparaît pour l’année précédente dès que des
+fichiers y sont trouvés — utile par exemple pour recontacter les anciens
+trieurs avant que le planning de l’année en cours existe ; l’application
+reprend alors automatiquement la variante « après collecte » du dossier
+si elle existe et qu’elle est plus récente. Le fichier « Liste des colis
+» fait partie des six fichiers recherchés : il sert au contrôle « Colis
+manquants » lors de la génération des documents réels. Si un fichier
+reste introuvable pour une raison quelconque (cas rare), sa ligne
+affiche un avertissement « Introuvable » : les écrans qui utilisent ce
+fichier affichent alors soit une liste vide, soit un message d’erreur —
+jamais une ancienne copie du fichier.</p>
 <h2 id="fichiers-nécessaires-à-la-simulation">1.2 Fichiers nécessaires à
 la simulation</h2>
-<p>Deux fichiers sont à importer pour pouvoir lancer une simulation,
-avec les boutons « Importer » ou « Remplacer » de cette même section
-:</p>
+<p>Un fichier est à importer pour pouvoir lancer une simulation, avec le
+bouton « Importer » ou « Remplacer » de cette même section :</p>
 <ul>
-<li><p><strong>Liste des magasins</strong> : export go-on-web de l’année
-en cours (adresses, horaires, coordonnées GPS, VIF, état) ;</p></li>
 <li><p><strong>Tournées de la collecte précédente</strong> : le PDF «
 fiches jour-véhicules-magasins » de la collecte précédente, disponible
 dans le dossier camions du drive collecte. Sert de point de départ à
@@ -417,11 +434,11 @@ assurent elles-mêmes la collecte d’un ou plusieurs magasins au lieu de
 remettre les produits à la BAI.</p>
 <h2 id="créer-et-contrôler-la-liste">4.1 Créer et contrôler la
 liste</h2>
-<p>Le bouton « 🏠 Créer la liste » (vert quand les fichiers magasins et
-groupes de l’année sont disponibles, gris sinon) croise la liste des
-magasins et la liste des groupes et génère le fichier combiné ainsi que
-la fiche Excel/PDF de chaque association, puis mène directement à « 📧
-Préparer l’envoi ».</p>
+<p>Le bouton « 🏠 Créer la liste » (toujours actif — la disponibilité
+des fichiers magasins et groupes est vérifiée au moment du clic, pas
+avant) croise la liste des magasins et la liste des groupes et génère le
+fichier combiné ainsi que la fiche Excel/PDF de chaque association, puis
+mène directement à « 📧 Préparer l’envoi ».</p>
 <p>« 📋 Contrôler / corriger la liste » ouvre le détail par association
 (contacts, adresses e-mail, magasins, Code VIF) et permet de forcer
 manuellement le Code VIF d’une association si besoin.</p>
