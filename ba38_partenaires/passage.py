@@ -18,6 +18,7 @@ Le même contrôle sert à la fiche (création / modification), à l'édition
 en tableau et à la mise à jour depuis la comparaison VIF.
 """
 
+import calendar
 import re
 import unicodedata
 
@@ -27,6 +28,11 @@ PARKINGS = ["P1", "P6", "Livraison", "À la demande"]
 PARKINGS_QUAI = ("P1", "P6")
 
 TYPES_PASSAGE = ("jours_semaine", "heure_passage", "parking")
+# champ texte libre (pas de type_champ dédié), contrôlé par nom de colonne
+CHAMP_FREQUENCE = "frequence"
+EXEMPLES_FREQUENCE = ("Hebdomadaire, 2x/semaine, 14j pair, 14j impair, "
+                      "« 1er mercredi du mois », « 1er et 3e jeudi du mois », "
+                      "« dernier mardi du mois »")
 
 _RE_HEURE = re.compile(
     r"^(\d{1,2})\s*[hH:]\s*(\d{2})?"
@@ -109,7 +115,8 @@ def normaliser_valeur(type_champ: str, val):
     return fn(val) if fn else val
 
 
-def controler_passage(field_types: dict, valeurs: dict, champs=None) -> list[tuple[str, str]]:
+def controler_passage(field_types: dict, valeurs: dict, champs=None,
+                      anciennes=None) -> list[tuple[str, str]]:
     """Normalise en place les champs de passage de `valeurs` (ligne complète
     d'une association) et renvoie les erreurs [(champ, message)].
 
@@ -118,9 +125,13 @@ def controler_passage(field_types: dict, valeurs: dict, champs=None) -> list[tup
                   soumis) ; la règle « obligatoire si P1/P6 » porte toujours
                   sur la ligne complète.
 
+    anciennes   : valeurs en base avant modification (fiche, tableau) ; une
+                  fréquence inchangée n'est pas recontrôlée.
+
     Jours et heure ne sont exigés (format + présence) que pour un parking
     P1/P6 : hors quai, l'association n'est pas au planning et une ancienne
-    saisie libre est conservée telle quelle.
+    saisie libre est conservée telle quelle. Pour P1/P6, la fréquence saisie
+    doit aussi être exploitable par le planning (regle_frequence).
     """
     par_type = {
         t: fname for fname, t in field_types.items()
@@ -160,7 +171,74 @@ def controler_passage(field_types: dict, valeurs: dict, champs=None) -> list[tup
             fname = par_type.get(t)
             if fname and not valeurs.get(fname):
                 erreurs.append((fname, f"Parking {parking} : {message}."))
+
+    f_freq = CHAMP_FREQUENCE
+    if au_quai and f_freq in valeurs and a_traiter(f_freq):
+        freq = (valeurs.get(f_freq) or "").strip()
+        inchangee = anciennes is not None and freq == (anciennes.get(f_freq) or "").strip()
+        if freq and not inchangee and regle_frequence(freq)[0] == "inconnue":
+            erreurs.append((f_freq,
+                f"Fréquence « {freq} » non exploitable par le planning des passages. "
+                f"Formats reconnus : {EXEMPLES_FREQUENCE}."))
     return erreurs
+
+
+# ------------------------------------------------------------
+# Fréquence (champ libre `frequence`, sans type_champ dédié)
+# ------------------------------------------------------------
+_ORDINAUX = {"1er": 1, "1e": 1, "1ere": 1, "premier": 1,
+             "2e": 2, "2eme": 2, "deuxieme": 2,
+             "3e": 3, "3eme": 3, "troisieme": 3,
+             "4e": 4, "4eme": 4, "quatrieme": 4}
+
+
+# ------------------------------------------------------------
+# Fréquence
+# ------------------------------------------------------------
+def regle_frequence(frequence: str):
+    """Traduit le champ libre `frequence` en règle exploitable par le
+    planning des passages (écran Événements, état PDF) :
+    - vide, hebdomadaire, 2x/semaine…              → chaque semaine
+    - « 14j pair / impair », « quinzaine paire »  → semaines ISO paires /
+      impaires (même règle que la comparaison VIF)
+    - « 1er / 2e / 3e / 4e / dernier <jour> du mois » (ou « tous les mois »,
+      « chaque mois ») → seulement ces occurrences du mois
+    Renvoie (type, valeur) avec type parmi :
+    'hebdo', 'parite' (0 = paire, 1 = impaire), 'mois' (set d'ordinaux,
+    -1 = dernier), 'inconnue'."""
+    f = _sans_accents(frequence or "")
+    if not f or "hebdo" in f or re.search(r"\d\s*x\s*/?\s*semaine", f):
+        return ("hebdo", None)
+
+    if re.search(r"\b(14|15)\s*j|quinzaine", f):
+        if re.search(r"\bimpaire?s?\b", f):
+            return ("parite", 1)
+        if re.search(r"\bpaire?s?\b", f):
+            return ("parite", 0)
+
+    if re.search(r"\bmois\b", f):
+        ordinaux = set()
+        for mot in re.findall(r"[a-z0-9]+", f):
+            if mot in _ORDINAUX:
+                ordinaux.add(_ORDINAUX[mot])
+            elif mot == "dernier":
+                ordinaux.add(-1)
+        if ordinaux:
+            return ("mois", ordinaux)
+
+    return ("inconnue", None)
+
+
+def passe_ce_jour(regle, d) -> bool:
+    type_, val = regle
+    if type_ == "parite":
+        return d.isocalendar()[1] % 2 == val
+    if type_ == "mois":
+        rang = (d.day - 1) // 7 + 1
+        dernier = d.day + 7 > calendar.monthrange(d.year, d.month)[1]
+        return rang in val or (-1 in val and dernier)
+    return True  # hebdo / inconnue
+
 
 
 def heure_affichage(val: str) -> str:

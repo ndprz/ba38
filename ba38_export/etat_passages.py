@@ -5,76 +5,24 @@
 
 Même base que le planning des passages de l'écran Événements
 (ba38_evenements.generer_planning_du_jour) : associations non désactivées,
-parking P1/P6, jour_de_passage_a_la_BAI / heure_de_passage normalisés.
-
-En plus, comme l'état est daté, le champ libre `frequence` est appliqué
-quand il est lisible :
-- hebdomadaire, 2x/semaine, vide…        → chaque semaine
-- « 14j pair / impair », « quinzaine paire », « 15 j pair »
-                                          → semaines ISO paires / impaires
-                                            (même règle que la comparaison VIF)
-- « 1er … 3ème … dernier <jour> du mois » → seulement ces occurrences du mois
-Une fréquence non reconnue n'exclut rien : l'association figure chaque
-semaine et la fréquence est imprimée à côté du nom pour vérification.
+parking P1/P6, jour_de_passage_a_la_BAI / heure_de_passage normalisés, et
+champ libre `frequence` appliqué quand il est lisible (règles :
+ba38_partenaires.passage.regle_frequence). Une fréquence non reconnue
+n'exclut rien : l'association figure chaque semaine et la fréquence est
+imprimée à côté du nom pour vérification.
 """
 
-import calendar
 import re
 from datetime import date, timedelta
 
-from ba38_partenaires.passage import JOURS_PASSAGE, PARKINGS_QUAI, _sans_accents
+from ba38_partenaires.passage import (
+    JOURS_PASSAGE, PARKINGS_QUAI, _sans_accents, passe_ce_jour, regle_frequence,
+)
 
 MOIS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
            "août", "septembre", "octobre", "novembre", "décembre"]
 
 _RE_HEURE = re.compile(r"^(\d{2}):(\d{2})$")
-_ORDINAUX = {"1er": 1, "1e": 1, "1ere": 1, "premier": 1,
-             "2e": 2, "2eme": 2, "deuxieme": 2,
-             "3e": 3, "3eme": 3, "troisieme": 3,
-             "4e": 4, "4eme": 4, "quatrieme": 4}
-
-
-# ------------------------------------------------------------
-# Fréquence
-# ------------------------------------------------------------
-def regle_frequence(frequence: str):
-    """Traduit le champ libre `frequence` en règle exploitable.
-    Renvoie (type, valeur) avec type parmi :
-    'hebdo', 'parite' (0 = paire, 1 = impaire), 'mois' (set d'ordinaux,
-    -1 = dernier), 'inconnue'."""
-    f = _sans_accents(frequence or "")
-    if not f or "hebdo" in f or re.search(r"\d\s*x\s*/?\s*semaine", f):
-        return ("hebdo", None)
-
-    if re.search(r"\b(14|15)\s*j|quinzaine", f):
-        if re.search(r"\bimpaire?s?\b", f):
-            return ("parite", 1)
-        if re.search(r"\bpaire?s?\b", f):
-            return ("parite", 0)
-
-    if "du mois" in f:
-        ordinaux = set()
-        for mot in re.findall(r"[a-z0-9]+", f):
-            if mot in _ORDINAUX:
-                ordinaux.add(_ORDINAUX[mot])
-            elif mot == "dernier":
-                ordinaux.add(-1)
-        if ordinaux:
-            return ("mois", ordinaux)
-
-    return ("inconnue", None)
-
-
-def passe_ce_jour(regle, d: date) -> bool:
-    type_, val = regle
-    if type_ == "parite":
-        return d.isocalendar()[1] % 2 == val
-    if type_ == "mois":
-        rang = (d.day - 1) // 7 + 1
-        dernier = d.day + 7 > calendar.monthrange(d.year, d.month)[1]
-        return rang in val or (-1 in val and dernier)
-    return True  # hebdo / inconnue
-
 
 # ------------------------------------------------------------
 # Jours fériés (la BA est fermée : la journée est signalée)

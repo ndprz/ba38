@@ -1,3 +1,3 @@
-VERSION=1.7.101
-MESSAGE=Benevoles : recherche exclut le champ user_modif
-DATE=2026-10-12 11:03
+VERSION=1.7.102
+MESSAGE=Passages : frequence appliquee sur l'ecran Evenements + controle de la frequence a la saisie association (P1/P6)
+DATE=2026-10-12 12:12

@@ -30,7 +30,8 @@ from pdf2image import convert_from_path
 import subprocess
 
 # Utils maison
-from ba38_partenaires.passage import PARKINGS_QUAI, heure_affichage
+from ba38_partenaires.passage import PARKINGS_QUAI, heure_affichage, passe_ce_jour, regle_frequence
+
 from ba38_utilitaires.core import (
     get_db_connection, upload_database, write_log, get_static_event_dir,is_admin_global, require_access, has_access
 )
@@ -772,17 +773,21 @@ def _normaliser_emplacement(emplacement: str) -> str:
     return re.sub(r"\s+", "", emplacement or "").upper()
 
 
-def generer_planning_du_jour(jour: str, duree_affichage: int = 30) -> list[dict]:
+def generer_planning_du_jour(jour: str, duree_affichage: int = 30, date_jour=None) -> list[dict]:
     """Construit les événements 'planning' virtuels (non stockés en base) listant les
     associations dont jour_de_passage_a_la_BAI correspond au jour donné : une page
     par parking de quai (P1, P6), chacune regroupée par heure_de_passage et triée
     au mieux chronologiquement. Les autres associations (livraison, à la demande,
-    parking non renseigné) ne passent pas au quai et sont ignorées."""
+    parking non renseigné) ne passent pas au quai et sont ignorées.
+
+    Si `date_jour` est fourni, le champ `frequence` est appliqué comme dans
+    l'état PDF des passages (14j pair/impair, « 1er … dernier X du mois ») ;
+    une fréquence non reconnue n'exclut pas l'association."""
 
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
     rows = conn.execute("""
-        SELECT nom_association, heure_de_passage, Emplacement
+        SELECT nom_association, heure_de_passage, Emplacement, frequence
         FROM associations
         WHERE jour_de_passage_a_la_BAI IS NOT NULL
           AND LOWER(jour_de_passage_a_la_BAI) LIKE ?
@@ -800,6 +805,9 @@ def generer_planning_du_jour(jour: str, duree_affichage: int = 30) -> list[dict]
 
         emplacement = _normaliser_emplacement(r["Emplacement"])
         if emplacement not in PARKINGS_QUAI:
+            continue
+
+        if date_jour and not passe_ce_jour(regle_frequence(r["frequence"]), date_jour):
             continue
 
         heure = heure_affichage(r["heure_de_passage"])
@@ -868,7 +876,8 @@ def api_evenements_actifs():
     planning_config = get_planning_config()
     if planning_config["actif"]:
         jour_courant = JOURS_SEMAINE_FR[now_dt.weekday()]
-        data.extend(generer_planning_du_jour(jour_courant, planning_config["duree_affichage"]))
+        data.extend(generer_planning_du_jour(
+            jour_courant, planning_config["duree_affichage"], now_dt.date()))
 
     return jsonify(data)
 

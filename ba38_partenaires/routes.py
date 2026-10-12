@@ -12,7 +12,7 @@ from flask_login import login_required, current_user
 from ba38_utilitaires.core import get_db_connection, upload_database, has_access, write_log, is_valid_email, is_valid_multi_email, is_valid_phone, require_access, get_db_path
 from ba38_utilitaires.organisation import get_organisation
 from ba38_partenaires.passage import (
-    JOURS_PASSAGE, HEURES_LIBELLES, PARKINGS, TYPES_PASSAGE,
+    JOURS_PASSAGE, HEURES_LIBELLES, PARKINGS, TYPES_PASSAGE, CHAMP_FREQUENCE,
     normaliser_valeur, controler_passage,
 )
 from urllib.parse import urlencode
@@ -1273,7 +1273,8 @@ def update_partner(partner_id):
 
         ligne = {**partner_dict, **updates}
 
-        for fname, msg in controler_passage(field_types, ligne, champs=set(updates)):
+        for fname, msg in controler_passage(field_types, ligne, champs=set(updates),
+                                          anciennes=partner_dict):
 
             erreurs.append(msg)
 
@@ -1903,10 +1904,10 @@ def update_associations_table():
                     modifications[col] = new_val if new_val else None
 
         # 🗓️ Passage à la BAI : contrôle sur la ligne complète si un des
-        # champs jours / heure / parking a été modifié
+        # champs jours / heure / parking / fréquence a été modifié
         modifs_passage = [
             c for c in modifications
-            if field_types.get(c.lower()) in TYPES_PASSAGE
+            if field_types.get(c.lower()) in TYPES_PASSAGE or c.lower() == CHAMP_FREQUENCE
         ]
         if modifs_passage:
             # ligne complète en clés minuscules, comme field_types
@@ -1914,7 +1915,8 @@ def update_associations_table():
             ligne.update({k.lower(): v for k, v in modifications.items()})
             nom = asso_dict.get("nom_association") or ""
             col_par_cle = {c.lower(): c for c in modifs_passage}
-            for cle, msg in controler_passage(field_types, ligne, champs=set(col_par_cle)):
+            for cle, msg in controler_passage(field_types, ligne, champs=set(col_par_cle),
+                                             anciennes={k.lower(): v for k, v in asso_dict.items()}):
                 erreurs.append(f"Ligne {i + 1} ({nom}) : {msg}")
                 champs_invalides.append(col_par_cle.get(cle, cle))
             for cle, c in col_par_cle.items():
