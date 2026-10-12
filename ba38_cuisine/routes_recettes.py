@@ -13,7 +13,7 @@ from ba38_cuisine import production_cuisine_bp
 from ba38_cuisine.utils import (
     _connect, today_paris, now_paris_str, decongelation_en_cours, etape_actuelle_libelle,
     categorie_depuis_famille, motifs_non_conformite, heure_dr,
-    receptions_en_stock, ajouter_utilisation, parse_poids, date_debut_report,
+    receptions_en_stock, ajouter_utilisation, parse_poids, suivi_cellule_en_cours,
 )
 
 STATUTS = ("en_cours", "terminee", "annulee")
@@ -104,12 +104,13 @@ def liste_productions():
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
         # + productions encore en cours des jours précédents (cuisson de
-        # nuit, pas terminée la veille) : elles restent à finir aujourd'hui.
+        # nuit, pas terminée un jour précédent), sans limite de durée : elles
+        # restent affichées jusqu'à être terminées ou annulées.
         sql = """SELECT * FROM cuisine_productions
                  WHERE actif = 1
                    AND (date_production = ?
-                        OR (statut = 'en_cours' AND date_production >= ? AND date_production < ?))"""
-        params = [date_filtre, date_debut_report(date_filtre), date_filtre]
+                        OR (statut = 'en_cours' AND date_production < ?))"""
+        params = [date_filtre, date_filtre]
         if statut_filtre in STATUTS:
             sql += " AND statut = ?"
             params.append(statut_filtre)
@@ -123,9 +124,9 @@ def liste_productions():
             p["id"]: etape_actuelle_libelle(conn, p["id"])
             for p in productions if p["statut"] == "en_cours"
         }
-        # DR affiché à côté de « Mise en cellule en cours »
-        drs = {
-            p["id"]: heure_dr(conn, p["id"], seulement_cellule_en_cours=True)
+        # DR, n° de cellule et alerte de durée à côté de « Mise en cellule en cours »
+        suivis_cellule = {
+            p["id"]: suivi_cellule_en_cours(conn, p["id"])
             for p in productions if p["statut"] == "en_cours"
         }
 
@@ -146,7 +147,7 @@ def liste_productions():
         nb_receptions_attente=nb_receptions_attente,
         nb_en_cours_total=nb_en_cours_total,
         etapes_actuelles=etapes_actuelles,
-        drs=drs,
+        suivis_cellule=suivis_cellule,
     )
 
 

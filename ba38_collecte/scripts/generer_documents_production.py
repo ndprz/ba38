@@ -2056,6 +2056,7 @@ def construire_vehicule_consignes(df_veh, caisses_premier_jour=None):
     cols = list(df_veh.columns)
     col_code = detecter_colonne(cols, ['code']) or 'Code'
     col_vehicule = detecter_colonne(cols, ['vehicule']) or detecter_colonne(cols, ['nom', 'camion'])
+    col_type_camion = detecter_colonne(cols, ['type', 'camion'])
     if col_code not in df_veh.columns:
         raise ValueError("Colonne 'Code' introuvable dans le fichier véhicules.")
 
@@ -2070,8 +2071,12 @@ def construire_vehicule_consignes(df_veh, caisses_premier_jour=None):
         nom = premiere_valeur_non_vide(grp[col_vehicule]) if col_vehicule else None
         if not nom:
             nom = NOMS_CAMIONS_CONNUS.get(code, '')
+        type_camion = premiere_valeur_non_vide(grp[col_type_camion]) if col_type_camion else None
 
-        ligne = {'Code': code, 'Véhicule': nom, 'Caisses 1er jour': caisses_premier_jour.get(code)}
+        ligne = {
+            'Code': code, 'Véhicule': nom, 'Type camion': type_camion,
+            'Caisses 1er jour': caisses_premier_jour.get(code),
+        }
         nb_renseignees = 0
         for col_source, col_sortie in COLONNES_CONSIGNES:
             if col_source in grp.columns:

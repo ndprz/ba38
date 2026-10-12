@@ -14,7 +14,7 @@ import sqlite3
 from flask import render_template, jsonify
 
 from ba38_cuisine import production_cuisine_bp
-from ba38_cuisine.utils import _connect, today_paris, point_reference_refroidissement, date_debut_report
+from ba38_cuisine.utils import _connect, today_paris, suivi_cellule_en_cours
 
 
 @production_cuisine_bp.route("/api/production_active")
@@ -33,11 +33,12 @@ def api_production_active():
             SELECT * FROM cuisine_productions
             WHERE actif = 1
               AND ((date_production = ? AND statut IN ('en_cours', 'terminee'))
-                   -- cuisson de nuit / pas terminée la veille : reportée
-                   OR (statut = 'en_cours' AND date_production >= ? AND date_production < ?))
+                   -- cuisson de nuit / pas terminée un jour précédent : reportée
+                   -- sans limite de durée, pour qu'un oubli reste visible
+                   OR (statut = 'en_cours' AND date_production < ?))
             ORDER BY statut = 'terminee', date_production, id
             """,
-            (date_jour, date_debut_report(date_jour), date_jour),
+            (date_jour, date_jour),
         ).fetchall()
 
         data = []
@@ -81,14 +82,9 @@ def api_production_active():
                     "conforme": conforme,
                 })
 
-            # DR (début de refroidissement) affiché pendant la mise en cellule :
-            # même point de référence que la conformité HACCP.
-            dr = None
-            cellule = next((e for e in etapes if e["code"] == "refroidissement_cellule"), None)
-            if cellule and cellule["statut"] == "en_cours":
-                reference = point_reference_refroidissement(derniere_par_code)
-                if reference:
-                    dr = reference[1][11:16]  # 'YYYY-MM-DD HH:MM:SS' → 'HH:MM'
+            # Pendant la mise en cellule : DR (même point de référence que la
+            # conformité HACCP), n° de cellule et durée écoulée avec alerte.
+            suivi = suivi_cellule_en_cours(conn, prod["id"])
 
             data.append({
                 "id": prod["id"],
@@ -98,7 +94,10 @@ def api_production_active():
                 "statut": prod["statut"],
                 "etapes": etapes,
                 "conformite_globale": conformite_globale,
-                "dr": dr,
+                "dr": suivi["dr"] if suivi else None,
+                "cellule": suivi["cellule"] if suivi else None,
+                "duree_cellule": suivi["duree"] if suivi else None,
+                "alerte_cellule": suivi["alerte"] if suivi else None,
             })
 
     return jsonify({"date": date_jour, "productions": data})

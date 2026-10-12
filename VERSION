@@ -1,3 +1,3 @@
-VERSION=1.7.103
-MESSAGE=Comparaison VIF : etats VIF a lancer dans l'aide + cocher recherche sur tous les clients (planning_partenaires)
-DATE=2026-10-12 12:25
+VERSION=1.7.104
+MESSAGE=Cuisine : report en_cours sans limite + n° cellule et alerte duree mise en cellule (1h10/1h30/2h) + bouton Affichage TV
+DATE=2026-10-12 13:20

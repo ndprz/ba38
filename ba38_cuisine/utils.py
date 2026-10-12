@@ -32,18 +32,6 @@ def today_paris() -> str:
     return datetime.now(PARIS_TZ).strftime("%Y-%m-%d")
 
 
-# Une production pas terminée (cuisson de nuit, validation oubliée la veille)
-# reste affichée dans les productions du jour pendant ce nombre de jours —
-# 3 pour couvrir un week-end, sans traîner indéfiniment les oubliées.
-JOURS_REPORT_PRODUCTIONS = 3
-
-
-def date_debut_report(date_jour: str) -> str:
-    """Date (AAAA-MM-JJ) à partir de laquelle une production encore en cours
-    est reportée sur `date_jour`."""
-    return (date.fromisoformat(date_jour) - timedelta(days=JOURS_REPORT_PRODUCTIONS)).isoformat()
-
-
 def now_paris_str() -> str:
     return datetime.now(PARIS_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -256,6 +244,58 @@ def heure_dr(conn, production_id, seulement_cellule_en_cours=False):
             return None
     reference = point_reference_refroidissement(lignes)
     return reference[1][11:16] if reference else None
+
+
+# Alertes de durée de mise en cellule demandées par le cuisinier (minutes,
+# comptées depuis le début de la mise en cellule — vérification en cellule
+# à 1h10) : pastille rouge à partir du premier seuil.
+SEUILS_ALERTE_CELLULE = (70, 90, 120)
+
+
+def format_duree(minutes):
+    """75 → '1h15', 42 → '42 min'."""
+    if minutes < 60:
+        return f"{minutes} min"
+    return f"{minutes // 60}h{minutes % 60:02d}"
+
+
+def suivi_cellule_en_cours(conn, production_id):
+    """Pendant une mise en cellule (démarrée, pas terminée) : dict avec
+    dr ('HH:MM' ou None), cellule (n° ou None), minutes écoulées depuis le
+    début de la mise en cellule, alerte (dernier
+    seuil de SEUILS_ALERTE_CELLULE atteint, ou None) et duree (libellé).
+    None hors mise en cellule."""
+    lignes = {
+        row["etape_code"]: row
+        for row in conn.execute(
+            """SELECT etape_code, heure_debut, heure_fin, temperature,
+                      temperature_debut, cellule_numero
+               FROM cuisine_production_etapes
+               WHERE production_id = ?
+               ORDER BY id""",
+            (production_id,),
+        ).fetchall()
+    }
+    cellule = lignes.get("refroidissement_cellule")
+    if not cellule or cellule["heure_fin"] is not None:
+        return None
+    reference = point_reference_refroidissement(lignes)
+    minutes = None
+    try:
+        debut = datetime.strptime(cellule["heure_debut"][:16], "%Y-%m-%d %H:%M").replace(tzinfo=PARIS_TZ)
+        minutes = max(0, int((datetime.now(PARIS_TZ) - debut).total_seconds() // 60))
+    except (TypeError, ValueError):
+        pass
+    alerte = None
+    if minutes is not None:
+        alerte = next((s for s in reversed(SEUILS_ALERTE_CELLULE) if minutes >= s), None)
+    return {
+        "dr": reference[1][11:16] if reference else None,
+        "cellule": cellule["cellule_numero"],
+        "minutes": minutes,
+        "alerte": alerte,
+        "duree": format_duree(minutes) if minutes is not None else None,
+    }
 
 
 def calculer_conformite_production(conn, production_id):

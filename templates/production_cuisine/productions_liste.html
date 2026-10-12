@@ -16,6 +16,9 @@
         ⏳ En cours (toutes dates)
         {% if nb_en_cours_total %}<span class="badge bg-warning text-dark">{{ nb_en_cours_total }}</span>{% endif %}
       </a>
+      <a href="{{ url_for('production_cuisine.affichage_production') }}" target="_blank" rel="noopener" class="btn btn-outline-dark btn-lg">
+        📺 Affichage TV
+      </a>
       <a href="{{ url_for('production_cuisine.liste_recettes_referentiel') }}" class="btn btn-outline-secondary btn-lg">
         📖 Référentiel recettes
       </a>
@@ -83,7 +86,12 @@
             </span>
             {% if p.id in etapes_actuelles %}
               <span class="text-muted small">{{ etapes_actuelles[p.id] }}</span>
-              {% if drs.get(p.id) %}<span class="badge bg-warning text-dark ms-1">DR : {{ drs[p.id] }}</span>{% endif %}
+              {% set suivi = suivis_cellule.get(p.id) %}
+              {% if suivi %}
+                {% if suivi.cellule is not none %}<span class="badge bg-info text-dark ms-1">🧊 Cellule {{ suivi.cellule }}</span>{% endif %}
+                {% if suivi.dr %}<span class="badge bg-warning text-dark ms-1">DR : {{ suivi.dr }}</span>{% endif %}
+                {% if suivi.alerte %}<span class="badge bg-danger ms-1" title="Durée depuis le début de la mise en cellule">⏱ {{ suivi.duree }}</span>{% endif %}
+              {% endif %}
             {% endif %}
           </div>
         </div>

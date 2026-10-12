@@ -91,9 +91,9 @@
       width: 25%;
     }
 
-    /* Mise en cellule : colonne élargie pour « en cours » + DR */
+    /* Mise en cellule : colonne élargie pour n° cellule + DR + alerte durée */
     thead th.col-cellule {
-      width: 15%;
+      width: 20%;
     }
 
     .dr {
@@ -101,6 +101,33 @@
       font-weight: 800;
       color: #f5c518;
       white-space: nowrap;
+    }
+
+    /* N° de cellule pendant la mise en cellule */
+    .cellule {
+      font-weight: 800;
+      color: #7fd3ff;
+      white-space: nowrap;
+    }
+
+    /* Alerte durée de mise en cellule (≥ 1h10, 1h30, 2h depuis le début de la mise en cellule) */
+    .alerte-cellule {
+      display: inline-block;
+      margin-left: 0.4em;
+      padding: 0 0.5em;
+      border-radius: 1em;
+      background: #d32f2f;
+      color: #fff;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .alerte-cellule.depassee {
+      animation: clignote 1s steps(2, start) infinite;
+    }
+
+    @keyframes clignote {
+      to { visibility: hidden; }
     }
 
     tbody tr {
@@ -301,8 +328,16 @@
     }
 
     function caseEtape(e, p) {
-      if (e.code === "refroidissement_cellule" && e.statut === "en_cours" && p.dr) {
-        return '<span class="etat en_cours" style="min-width:0">en cours</span><span class="dr">DR ' + esc(p.dr) + "</span>";
+      if (e.code === "refroidissement_cellule" && e.statut === "en_cours") {
+        let html = p.cellule != null
+          ? '<span class="cellule">Cellule ' + esc(p.cellule) + "</span>"
+          : '<span class="etat en_cours" style="min-width:0">en cours</span>';
+        if (p.dr) html += '<span class="dr">DR ' + esc(p.dr) + "</span>";
+        if (p.alerte_cellule) {
+          const cls = p.alerte_cellule >= 120 ? "alerte-cellule depassee" : "alerte-cellule";
+          html += '<span class="' + cls + '">' + esc(p.duree_cellule) + "</span>";
+        }
+        return html;
       }
       if (e.statut === "terminee") {
         return e.conforme === "non_conforme"
