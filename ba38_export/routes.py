@@ -323,6 +323,18 @@ def generateur_excel():
                         col_letter = worksheet.cell(row=1, column=col_idx).column_letter
                         for cell in worksheet[col_letter][1:]:
                             cell.number_format = "DD/MM/YYYY"
+
+                # ↔️ Largeur de colonne ajustée au contenu (ligne la plus longue
+                # d'une cellule multi-lignes), bornée pour les textes très longs
+                for col_cells in worksheet.columns:
+                    largeur = 0
+                    for cell in col_cells:
+                        if cell.value is None:
+                            continue
+                        texte = "JJ/MM/AAAA" if cell.is_date else str(cell.value)
+                        largeur = max(largeur, max(len(l) for l in texte.splitlines() or [""]))
+                    col_letter = col_cells[0].column_letter
+                    worksheet.column_dimensions[col_letter].width = min(max(largeur + 2, 8), 60)
             output.seek(0)
             conn.close()
             return send_file(
