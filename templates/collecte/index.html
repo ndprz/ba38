@@ -257,7 +257,12 @@
 
     {{ entete_section("sectionGestionTournees", "Gestion tournées", "modalAideSection3", "modalManuelSection3") }}
     <div id="sectionGestionTournees" class="collapse mt-3">
-        <h5 class="mb-3">Simulation</h5>
+        <button class="btn btn-outline-secondary mb-3" type="button"
+                data-bs-toggle="collapse" data-bs-target="#sousSectionSimulation"
+                aria-expanded="false" aria-controls="sousSectionSimulation">
+            📁 Simulation (utile surtout en début de campagne)
+        </button>
+        <div id="sousSectionSimulation" class="collapse mb-3">
         <div class="card mb-3 {% if not prets %}bg-light{% endif %}">
             <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div><h5 class="card-title mb-1">🚀 Génération des tournées</h5><p class="card-text small text-muted mb-0">Créer et consulter les versions simulées des tournées.</p></div>
@@ -276,6 +281,7 @@
                     <form method="POST" action="{{ url_for('collecte.lancer_analyse') }}" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="annee" value="{{ annee }}"><button type="submit" class="btn {{ 'btn-warning' if prets else 'btn-outline-secondary' }}" {% if not prets %}disabled{% endif %}>🔬 Lancer l'analyse</button></form>
                 </div>
             </div>
+        </div>
         </div>
         <h5 class="mt-4 mb-3">Production</h5>
         <div class="ms-3 ps-3 border-start border-3 border-warning">
