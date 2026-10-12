@@ -1,3 +1,3 @@
-VERSION=1.7.102
-MESSAGE=Passages : frequence appliquee sur l'ecran Evenements + controle de la frequence a la saisie association (P1/P6)
-DATE=2026-10-12 12:12
+VERSION=1.7.103
+MESSAGE=Comparaison VIF : etats VIF a lancer dans l'aide + cocher recherche sur tous les clients (planning_partenaires)
+DATE=2026-10-12 12:25
