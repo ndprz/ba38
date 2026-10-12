@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Passages des associations — {{ org.nom }}</title>
+<style>
+    @page {
+        size: A4 portrait; margin: 1.2cm 1.2cm 1.4cm 1.2cm;
+        @bottom-left { content: "{{ org.nom|replace('"', '')|safe }} — édité le {{ edite_le }}"; font-family: Arial, Helvetica, sans-serif; font-size: 7pt; color: #777; }
+        @bottom-right { content: "Page " counter(page) " / " counter(pages); font-family: Arial, Helvetica, sans-serif; font-size: 7pt; color: #777; }
+    }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 8pt; color: #222; }
+    h1 { font-size: 15pt; margin: 0 0 2px 0; color: #1F4E79; }
+    .sous-titre { font-size: 8.5pt; color: #555; margin-bottom: 10px; }
+    h2.mois { font-size: 13pt; color: #fff; background: #1F4E79; padding: 4px 8px; margin: 0 0 8px 0; }
+    h2.mois.saut { page-break-before: always; }
+    .jour { page-break-inside: avoid; margin-bottom: 7px; }
+    .jour-titre { font-weight: bold; font-size: 9.5pt; border-bottom: 2px solid #1F4E79; padding: 2px 0; }
+    .jour-titre .nb { float: right; font-weight: normal; font-size: 8.5pt; color: #555; }
+    .ferie { color: #B00020; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; margin-top: 3px; table-layout: fixed; }
+    td { border-bottom: 1px solid #ddd; padding: 0.5px 5px; vertical-align: top; }
+    td.dj { width: 17%; font-weight: bold; color: #1F4E79; background: #EEF4FA; }
+    td.h { width: 9%; }
+    td.p { width: 7%; text-align: center; }
+    td.f { width: 27%; font-size: 7.5pt; color: #666; font-style: italic; }
+    .vide { color: #888; font-style: italic; padding: 2px 5px; }
+    .a-verifier { page-break-before: always; }
+    .a-verifier h2 { font-size: 11pt; color: #B00020; }
+    .a-verifier li { margin-bottom: 2px; }
+</style>
+</head>
+<body>
+
+<h1>Passages des associations au quai</h1>
+<div class="sous-titre">
+    {{ etat.mois[0].libelle }} et {{ etat.mois[1].libelle }} — parkings P1 et P6, associations actives.
+    Fréquences appliquées (semaines paires/impaires, « 1er / dernier … du mois ») ; les jours fériés sont signalés.
+</div>
+
+{% for m in etat.mois %}
+<h2 class="mois{% if not loop.first %} saut{% endif %}">{{ m.libelle }}</h2>
+
+{% for j in m.jours if j.nb or j.ferie %}
+<div class="jour">
+    <div class="jour-titre">
+        {{ j.libelle }}
+        {% if j.ferie %}<span class="ferie"> — jour férié</span>{% endif %}
+        <span class="nb">{{ j.nb }} association{{ "s" if j.nb > 1 }}</span>
+    </div>
+    {% if j.demi_journees %}
+    <table>
+        {% for dj in j.demi_journees %}
+        {% for a in dj.lignes %}
+        <tr>
+            {% if loop.first %}<td class="dj" rowspan="{{ dj.lignes|length }}">{{ dj.libelle }}</td>{% endif %}
+            <td class="h">{{ a.heure }}</td>
+            <td>{{ a.nom }}</td>
+            <td class="p">{{ a.parking }}</td>
+            <td class="f">{{ a.frequence }}</td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+    </table>
+    {% else %}
+    <div class="vide">Aucun passage prévu.</div>
+    {% endif %}
+</div>
+{% endfor %}
+{% endfor %}
+
+{% if etat.a_verifier %}
+<div class="a-verifier">
+    <h2>Fréquences non reconnues ({{ etat.a_verifier|length }})</h2>
+    <p>Ces associations sont listées <strong>chaque semaine</strong> à leurs jours de passage,
+       faute de pouvoir interpréter leur fréquence. À vérifier ou à préciser dans la fiche association.</p>
+    <ul>
+        {% for l in etat.a_verifier %}<li>{{ l }}</li>{% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+</body>
+</html>

@@ -1,3 +1,3 @@
-VERSION=1.7.99
-MESSAGE=Export : generateur Excel, largeurs de colonnes ajustees au contenu
-DATE=2026-10-12 10:18
+VERSION=1.7.100
+MESSAGE=Export : etat PDF des passages des associations au quai (mois en cours + suivant, frequences appliquees) dans Generation de fichiers + aide
+DATE=2026-10-12 10:32

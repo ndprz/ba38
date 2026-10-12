@@ -1,6 +1,10 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, session
 from flask_login import login_required, current_user
 from ba38_utilitaires.core import get_db_connection, get_db_path, write_log, has_access
+from ba38_utilitaires.organisation import get_organisation
+from ba38_export.etat_passages import construire_etat
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from weasyprint import HTML
 from docx import Document
 import pandas as pd
@@ -414,6 +418,33 @@ def generation_fichiers():
             if not has_access("benevoles", "lecture"):
                 flash("⛔ Accès bénévoles non autorisé.", "danger")
                 return redirect(url_for("index"))
+
+    # 📄 État PDF des passages au quai (calcul façon planning Événements)
+    if request.method == "POST" and request.form.get("data_type") == "passages_associations":
+        if not has_access("associations", "lecture"):
+            flash("⛔ Accès associations non autorisé.", "danger")
+            return redirect(url_for("index"))
+
+        aujourdhui = datetime.now(ZoneInfo("Europe/Paris"))
+        conn = get_db_connection()
+        etat = construire_etat(conn, aujourdhui.date())
+        conn.close()
+
+        html = render_template(
+            "pdf_etat_passages_associations.html",
+            etat=etat,
+            org=get_organisation(),
+            edite_le=aujourdhui.strftime("%d/%m/%Y à %H:%M"),
+        )
+        pdf_buffer = io.BytesIO()
+        HTML(string=html).write_pdf(pdf_buffer)
+        pdf_buffer.seek(0)
+        return send_file(
+            pdf_buffer,
+            as_attachment=True,
+            download_name=f"passages_associations_{aujourdhui:%Y-%m}.pdf",
+            mimetype="application/pdf",
+        )
 
     if request.method == "POST":
         data_type = request.form.get("data_type", "all")

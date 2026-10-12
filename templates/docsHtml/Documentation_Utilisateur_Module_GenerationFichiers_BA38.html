@@ -19,10 +19,25 @@ besoins de distribution (jour et heure de passage BAI, fréquence, menu
 sec/frais, emplacement, jour et heure de distribution).</p></li>
 <li><p><strong>Tous les bénévoles</strong> : l’ensemble des bénévoles,
 avec tous les champs configurés.</p></li>
+<li><p><strong>État PDF : passages des associations</strong> : un PDF
+(et non un fichier Excel) listant, date par date pour le mois en cours
+et le mois suivant, les associations qui passent au quai (parkings P1 et
+P6), réparties en Matin / Après-midi et triées par heure. Même calcul
+que le planning des passages de l’écran Événements (associations actives
+uniquement). La fréquence de la fiche association est appliquée quand
+elle est lisible : « 14j pair / impair » ou « quinzaine paire » selon le
+numéro de semaine, « 1er / 2e / 3e / dernier mardi du mois » uniquement
+à ces dates. Une fréquence non reconnue n’exclut personne :
+l’association est listée chaque semaine et signalée en dernière page,
+pour être précisée dans sa fiche. Les jours fériés sont signalés en
+rouge ; les jours sans aucun passage n’apparaissent pas.</p></li>
 </ul>
 <h2 id="générer-un-fichier">Générer un fichier</h2>
 <p>Choisir le type d’extraction dans la liste déroulante puis cliquer
 sur “Générer” : le fichier Excel se télécharge directement.</p>
+<p>Pour l’état des passages, c’est un fichier PDF qui se télécharge
+(passages_associations_AAAA-MM.pdf) ; la mise en forme Excel décrite
+ci-dessous ne le concerne pas.</p>
 <p>Les fichiers générés sont mis en forme automatiquement : première
 ligne en gras figée en haut, largeur des colonnes ajustée au contenu,
 dates au format JJ/MM/AAAA, et filtres Excel activés sur toutes les
