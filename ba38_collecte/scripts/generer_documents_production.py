@@ -2110,7 +2110,7 @@ def ecrire_vehicule_consignes(lignes, chemin_sortie):
     from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.datavalidation import DataValidation
 
-    entetes = ['Code', 'Véhicule', 'Caisses 1er jour'] + [c for _, c in COLONNES_CONSIGNES]
+    entetes = ['Code', 'Véhicule', 'Type camion', 'Caisses 1er jour'] + [c for _, c in COLONNES_CONSIGNES]
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -2145,14 +2145,14 @@ def ecrire_vehicule_consignes(lignes, chemin_sortie):
             cell = ws.cell(row=r, column=c, value=val)
             cell.font = F_NRM
             cell.border = BRD
-            cell.alignment = A_TOP if entete in ('A preparer avant', 'Véhicule', 'caisses') else A_TOP_C
-            if vide and entete not in ('Code', 'Véhicule'):
+            cell.alignment = A_TOP if entete in ('A preparer avant', 'Véhicule', 'Type camion', 'caisses') else A_TOP_C
+            if vide and entete not in ('Code', 'Véhicule', 'Type camion'):
                 cell.fill = C_WARN
             elif fill:
                 cell.fill = fill
 
     largeurs = {
-        'Code': 8, 'Véhicule': 26, 'Caisses 1er jour': 14, 'A preparer avant': 42, 'Gilets': 8,
+        'Code': 8, 'Véhicule': 26, 'Type camion': 16, 'Caisses 1er jour': 14, 'A preparer avant': 42, 'Gilets': 8,
         'tracts secours': 10, 'nb caisses': 14, 'nb palettes': 10,
         'Date': 12, 'Fiche camion': 10, 'chariot à roulettes': 12, 'donné': 9, 'Garé BAI': 10,
         'pris': 8, 'clés à recuperer': 12, 'Quai': 8, 'caisses': 22,
