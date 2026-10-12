@@ -16,7 +16,8 @@
         ⏳ En cours (toutes dates)
         {% if nb_en_cours_total %}<span class="badge bg-warning text-dark">{{ nb_en_cours_total }}</span>{% endif %}
       </a>
-      <a href="{{ url_for('production_cuisine.affichage_production') }}" target="_blank" rel="noopener" class="btn btn-outline-dark btn-lg">
+      <a href="{{ url_for('production_cuisine.affichage_production', plein_ecran=1) }}" target="_blank" rel="noopener"
+         class="btn btn-outline-dark btn-lg" onclick="return ouvrirAffichageTV(this.href)">
         📺 Affichage TV
       </a>
       <a href="{{ url_for('production_cuisine.liste_recettes_referentiel') }}" class="btn btn-outline-secondary btn-lg">
@@ -102,4 +103,17 @@
   {% endif %}
 
 </div>
+
+<script>
+  // Écran TV dans une nouvelle fenêtre à la taille de l'écran ; le passage
+  // en vrai plein écran se fait au premier clic dans cette fenêtre (les
+  // navigateurs l'exigent).
+  function ouvrirAffichageTV(url) {
+    const fenetre = window.open(url, "ba38_affichage_tv",
+      "popup,left=0,top=0,width=" + screen.availWidth + ",height=" + screen.availHeight);
+    if (!fenetre) return true;  // popup bloquée : lien normal (nouvel onglet)
+    fenetre.focus();
+    return false;
+  }
+</script>
 {% endblock %}

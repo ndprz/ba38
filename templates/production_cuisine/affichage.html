@@ -103,6 +103,22 @@
       white-space: nowrap;
     }
 
+    /* Invite plein écran (fenêtre ouverte depuis « Productions du jour ») */
+    #invite-plein-ecran {
+      display: none;
+      position: fixed;
+      left: 50%;
+      bottom: 4vh;
+      transform: translateX(-50%);
+      z-index: 10;
+      padding: 0.5em 1.2em;
+      border-radius: 1em;
+      background: #ff7a00;
+      color: #000;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
     /* N° de cellule pendant la mise en cellule */
     .cellule {
       font-weight: 800;
@@ -280,6 +296,8 @@
 
 <body>
 
+  <div id="invite-plein-ecran">Cliquer n'importe où pour passer en plein écran</div>
+
   <header>
     <h1>Suivi Production Cuisine</h1>
     <div class="infos">
@@ -429,7 +447,8 @@
         afficher();
 
         // Recharge complète de temps en temps, uniquement si le serveur répond
-        if (Date.now() - debut > RECHARGEMENT_PAGE_MS) location.reload();
+        // (pas en plein écran : le rechargement en ferait sortir)
+        if (Date.now() - debut > RECHARGEMENT_PAGE_MS && !document.fullscreenElement) location.reload();
       } catch (e) {
         console.error("refresh error", e);
       }
@@ -447,6 +466,24 @@
     }, PAGE_SECONDES * 1000);
 
     window.addEventListener("resize", afficher);
+
+    // Ouverte avec ?plein_ecran=1 (bouton « Affichage TV ») : plein écran au
+    // premier clic — un navigateur refuse de le faire sans geste utilisateur.
+    // Les écrans TV de la cuisine (URL sans paramètre) ne sont pas concernés.
+    if (new URLSearchParams(location.search).get("plein_ecran") === "1"
+        && document.documentElement.requestFullscreen) {
+      const invite = document.getElementById("invite-plein-ecran");
+      const majInvite = function () {
+        invite.style.display = document.fullscreenElement ? "none" : "block";
+      };
+      document.addEventListener("click", function () {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(function () {});
+        }
+      });
+      document.addEventListener("fullscreenchange", majInvite);
+      majInvite();
+    }
 
     refresh();
     setInterval(refresh, REFRESH_SECONDES * 1000);
