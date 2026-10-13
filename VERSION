@@ -1,3 +1,3 @@
-VERSION=1.7.106
-MESSAGE=Cuisine : bouton Affichage TV ouvre une fenetre plein ecran (clic pour plein ecran)
-DATE=2026-10-12 13:25
+VERSION=1.7.108
+MESSAGE=Collecte : simulation avec capacite camions + simulation depuis liste-vehicule (secteurs, camions exclusifs/secours, coherence directionnelle BAI)
+DATE=2026-10-13 17:40

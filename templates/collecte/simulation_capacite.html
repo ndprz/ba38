@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Simulation avec capacité camions{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width:900px;">
+
+    <h2>🚚 Simulation avec capacité camions {{ annee }}</h2>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+    {% endcall %}
+
+    <p class="text-muted">
+        Variante de la génération des tournées : reprend le même moteur (PDF de la collecte précédente +
+        liste des magasins de cette année), ajoute à titre indicatif la colonne « Type camion »
+        (issue de liste-vehicule.xlsx) dans le résultat, et applique la correspondance des camions
+        ci-dessous avant de lancer l'optimisation — utile quand le code ou le nom d'un camion a changé
+        d'une année sur l'autre, pour que les magasins restant ancrés à un camion précis le restent bien
+        sur le camion « similaire » cette année. Tous les nouveaux camions de la flotte (présents dans
+        liste-vehicule.xlsx mais absents du PDF de l'an dernier) sont utilisés comme camions
+        supplémentaires, avec leur vrai nom — à la place des camions génériques « VX... » de la génération
+        standard (le champ « Camions supplémentaires » ci-dessous ne sert alors que de plancher minimum,
+        au cas où aucun nouveau camion réel ne serait disponible). Avec plus de camions réellement
+        utilisés, le nombre de tournées obtenu peut être supérieur à celui de la génération standard.
+    </p>
+
+    <div class="alert alert-info small">
+        La capacité (« Type camion », ex. « 20 m3 », « 12 m3 ») est affichée pour information dans le
+        résultat — elle n'est pas utilisée comme contrainte par l'algorithme d'optimisation, qui continue
+        à équilibrer les tournées par nombre de magasins comme pour la génération standard.
+    </div>
+
+    <h5 class="mt-4">1. Correspondance des camions</h5>
+    <p class="text-muted small">
+        Pour chaque camion présent dans le PDF des tournées {{ annee - 1 }}, indiquer le camion
+        correspondant cette année dans liste-vehicule.xlsx (même camion, éventuellement renommé ou
+        recodé). Laisser sur « — Inchangé — » si le code n'a pas changé.
+    </p>
+
+    {% if not camions_pdf %}
+    <div class="alert alert-warning small">Aucun camion détecté dans le PDF {{ annee - 1 }}.</div>
+    {% elif not camions_actuels %}
+    <div class="alert alert-warning small">
+        Liste des camions {{ annee }} (liste-vehicule.xlsx) introuvable dans le drive — la correspondance
+        ne peut pas être saisie pour l'instant.
+    </div>
+    {% endif %}
+
+    {% if camions_pdf %}
+    <form method="POST" action="{{ url_for('collecte.simulation_capacite_mapping', annee=annee) }}" class="mb-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr>
+                    <th>Camion {{ annee - 1 }} (PDF)</th>
+                    <th>Camion {{ annee }} correspondant</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in camions_pdf %}
+                <tr>
+                    <td>{{ c.code }}{% if c.nom %} — {{ c.nom }}{% endif %}</td>
+                    <td>
+                        <select name="mapping_{{ c.code }}" class="form-select form-select-sm">
+                            <option value="">— Inchangé ({{ c.code }}) —</option>
+                            {% for v in camions_actuels %}
+                            <option value="{{ v.code }}" {% if mapping_existant.get(c.code) == v.code %}selected{% endif %}>
+                                {{ v.code }}{% if v.nom %} — {{ v.nom }}{% endif %}{% if v.type_camion %} ({{ v.type_camion }}){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% call action_buttons() %}
+            {{ action_button("💾 Enregistrer la correspondance", type="submit", color="primary") }}
+        {% endcall %}
+    </form>
+    {% endif %}
+
+    <h5 class="mt-4">2. Lancer la simulation</h5>
+
+    <form method="POST" action="{{ url_for('collecte.simulation_capacite_generer', annee=annee) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="row g-3 mb-3">
+            <div class="col-sm-4">
+                <label class="form-label">Camions supplémentaires</label>
+                <input type="number" name="camions_supp" class="form-control" min="0" value="{{ params.camions_supp }}">
+            </div>
+            <div class="col-sm-4">
+                <label class="form-label">Poids nouveaux magasins (kg)</label>
+                <input type="number" name="poids_nouveaux" class="form-control" min="0" value="{{ params.poids_nouveaux }}">
+            </div>
+            <div class="col-sm-4">
+                <label class="form-label">Max magasins/tournée</label>
+                <input type="number" name="max_magasins" class="form-control" min="1" value="{{ params.max_magasins }}">
+                <div class="form-text">+1 automatique le dimanche</div>
+            </div>
+        </div>
+
+        <div class="form-check mb-2">
+            <input type="checkbox" name="optimiser_anciens" id="optimiser_anciens" class="form-check-input"
+                   {% if params.optimiser_anciens %}checked{% endif %}>
+            <label class="form-check-label" for="optimiser_anciens">
+                Autoriser le déplacement des magasins déjà présents l'an dernier (pas seulement les nouveaux)
+            </label>
+        </div>
+
+        <div class="form-check mb-2">
+            <input type="checkbox" name="corriger_mal_places" id="corriger_mal_places" class="form-check-input"
+                   {% if params.corriger_mal_places %}checked{% endif %}>
+            <label class="form-check-label" for="corriger_mal_places">
+                Corriger les magasins situés à plus de 8 km du centre de leur tournée
+            </label>
+        </div>
+
+        <div class="form-check mb-3">
+            <input type="checkbox" name="fusionner_legeres" id="fusionner_legeres" class="form-check-input"
+                   {% if params.fusionner_legeres %}checked{% endif %}>
+            <label class="form-check-label" for="fusionner_legeres">
+                Fusionner automatiquement les tournées très légères (2 magasins max chacune)
+            </label>
+        </div>
+
+        {% call action_buttons() %}
+            {{ action_button("🚚 Lancer la simulation", type="submit", color="success") }}
+        {% endcall %}
+    </form>
+
+</div>
+{% endblock %}

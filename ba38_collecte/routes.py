@@ -204,6 +204,16 @@ DRIVE_CHAMPS = {
 DRIVE_CHAMPS_PRODUCTION = {cle: DRIVE_CHAMPS[cle] for cle in ("magasins", "vehicules", "colis")}
 
 
+def _ensure_colonne_pdf_equipier(conn):
+    """La colonne fichier_pdf_equipier a été ajoutée après la création de la
+    table collecte_generations, pour la simulation avec capacité camions
+    uniquement (PDF façon 'Fiches équipier', sans bloc équipier) — migration
+    paresseuse, même logique que _ensure_colonne_drive_colis."""
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_generations)").fetchall()}
+    if "fichier_pdf_equipier" not in colonnes:
+        conn.execute("ALTER TABLE collecte_generations ADD COLUMN fichier_pdf_equipier TEXT")
+
+
 def _ensure_colonne_drive_colis(conn):
     """La colonne drive_colis a été ajoutée après la création de la table
     collecte_campagnes — migration paresseuse pour les bases déjà existantes
@@ -1176,11 +1186,47 @@ def _nom_fichier_genere(annee, params, horodatage):
     )
 
 
-def _generer_tournees(campagne, params):
+def _generer_tournees(campagne, params, mapping_camions=None, avec_type_camion=False, depuis_liste_vehicule=False,
+                       utiliser_camions_vides=True, camions_exclus=None):
     """Exécute le pipeline complet (extraction PDF + magasins + optimisation
     + export Excel) via collecte_moteur_tournees, tel qu'orchestré par
     main() dans le script d'origine. Retourne le nom du fichier Excel généré
-    et quelques compteurs pour l'affichage/la BDD."""
+    et quelques compteurs pour l'affichage/la BDD.
+
+    mapping_camions (optionnel) : dict {code camion tel qu'extrait des
+    fiches de départ (PDF de l'année précédente, ou liste-vehicule.xlsx si
+    depuis_liste_vehicule) -> code à utiliser à la place} — sert à garder
+    certains magasins groupés ensemble sur le même camion (même principe que
+    VIFS_ANCRES, mais réglable par campagne plutôt que codé en dur) : le code
+    d'un camion pouvant changer d'une année sur l'autre, ce mapping (saisi
+    manuellement par l'utilisateur, cf. simulation_capacite_form) permet de
+    garder les magasins ancrés sur le bon camion malgré ce changement — déjà
+    utilisé par la simulation avec capacité (PDF), et tout autant pertinent
+    en partant de liste-vehicule.xlsx. Sans mapping, le comportement est
+    strictement identique à avant (codes des fiches de départ utilisés tels
+    quels).
+
+    avec_type_camion (optionnel) : ajoute une colonne 'Type camion' (issue de
+    liste-vehicule.xlsx) à titre indicatif dans l'export — ne modifie jamais
+    l'algorithme d'optimisation lui-même (pas de contrainte de capacité).
+
+    depuis_liste_vehicule (optionnel) : repart de liste-vehicule.xlsx (qui
+    contient une première version, partielle, des affectations réelles de
+    cette année) au lieu du PDF de l'année précédente, et complète les
+    demi-journées encore manquantes pour les magasins déjà partiellement
+    affectés (d'après leurs créneaux, cf. _fiches_depuis_liste_vehicule et
+    optimiser_tournees/completer_via_creneaux).
+
+    utiliser_camions_vides (optionnel, défaut True) : si False, les camions
+    de liste-vehicule.xlsx sans aucun magasin ne sont PAS utilisés comme
+    capacité supplémentaire (ex. un camion plus utilisé cette année, sans
+    pour autant avoir été retiré du fichier) — seul le mécanisme habituel de
+    camions supplémentaires synthétiques (VX3xx, piloté par le champ
+    'Camions supplémentaires') reste disponible.
+
+    camions_exclus (optionnel) : liste de codes à retirer complètement de la
+    simulation pour cet essai ponctuel ('et si on retirait ce camion ?') —
+    tout son contenu est réinjecté ailleurs, sans modifier la flotte réelle."""
     annee = campagne["annee"]
     dossier = _dossier_annee(annee)
     pdf_path = os.path.join(dossier, campagne["fichier_pdf_precedent"])
@@ -1200,9 +1246,44 @@ def _generer_tournees(campagne, params):
         magasins=magasins_path,
         nouveaux=None,
         annee=annee,
+        camions_exclus=camions_exclus,
     )
 
-    fiches = moteur.extraire_pdf(pdf_path)
+    if depuis_liste_vehicule:
+        fiches = _fiches_depuis_liste_vehicule(annee)
+        if not fiches:
+            raise RuntimeError("liste-vehicule.xlsx introuvable ou vide — aucune affectation de départ")
+        args_ns.completer_via_creneaux = True
+        args_ns.creneaux_camions = _creneaux_camions_depuis_liste_vehicule(annee)
+    else:
+        fiches = moteur.extraire_pdf(pdf_path)
+    if mapping_camions:
+        for f in fiches:
+            f["vehicule"] = mapping_camions.get(f["vehicule"], f["vehicule"])
+
+    camions_actuels_annee = None
+    if avec_type_camion:
+        camions_actuels_annee = _camions_liste_vehicule(annee)
+
+    if avec_type_camion and utiliser_camions_vides:
+        # Camions réels de cette année absents des fiches de départ (code non
+        # repris, même après mapping) : utilisés en priorité comme capacité
+        # supplémentaire à la place des codes synthétiques VX3xx (cf.
+        # _pool_camions_supp dans moteur_tournees.py), avec leur vrai nom —
+        # pour que le résultat utilise les nouveaux camions réellement
+        # ajoutés à la flotte cette année (ex. V042, V043). Exclut aussi les
+        # camions VEHICULES_FIGES : un camion figé sans aucun magasin (ex.
+        # V023) n'est pas une capacité disponible mais un camion qui n'est
+        # plus utilisé cette année (gardé dans les données au cas où il
+        # serait réactivé plus tard).
+        codes_utilises = set(f["vehicule"] for f in fiches)
+        codes_exclus = set(camions_exclus or [])
+        args_ns.camions_supp_pool = [
+            {"code": c["code"], "nom": c["nom"]}
+            for c in camions_actuels_annee
+            if c["code"] not in codes_utilises and c["code"] not in moteur.VEHICULES_FIGES
+            and c["code"] not in codes_exclus
+        ]
 
     vifs_pdf_2025 = set()
     for f in fiches:
@@ -1212,13 +1293,28 @@ def _generer_tournees(campagne, params):
     df_mag = moteur.lire_magasins(magasins_path, vifs_pdf_2025, params["poids_nouveaux"], annee)
     df_t = moteur.optimiser_tournees(fiches, df_mag, args_ns)
 
+    colonnes_extra = None
+    if avec_type_camion:
+        type_par_code = {
+            c["code"]: c["type_camion"] for c in camions_actuels_annee if c.get("type_camion")
+        }
+        df_t["Type camion"] = df_t["Camion"].map(type_par_code).fillna("")
+        colonnes_extra = ["Type camion"]
+
     dossier_resultats = _dossier_resultats(annee)
     os.makedirs(dossier_resultats, exist_ok=True)
     horodatage = datetime.now().strftime("%Y%m%d_%H%M")
     nom_fichier = _nom_fichier_genere(annee, params, horodatage)
+    if depuis_liste_vehicule:
+        nom_fichier = "Vehicule_" + nom_fichier
+    if avec_type_camion:
+        nom_fichier = "Capacite_" + nom_fichier
     args_ns.output = os.path.join(dossier_resultats, nom_fichier)
 
-    moteur.generer_excel(df_t, df_mag, args_ns, args_ns.output, fiches, moteur.non_affectes_global, "")
+    moteur.generer_excel(
+        df_t, df_mag, args_ns, args_ns.output, fiches, moteur.non_affectes_global, "",
+        colonnes_extra=colonnes_extra,
+    )
 
     nom_carte_secteurs = os.path.splitext(nom_fichier)[0] + "_secteurs.html"
     data_secteurs = df_mag[["Nom", "Latitude", "Longitude", "Secteur"]].astype({
@@ -1233,14 +1329,216 @@ def _generer_tournees(campagne, params):
     chemin_carte_tournees = moteur.generer_carte_tournees(df_t, df_mag, args_ns, dossier_resultats)
     nom_carte_tournees = os.path.basename(chemin_carte_tournees)
 
+    nom_pdf_equipier = None
+    if avec_type_camion:
+        nom_pdf_equipier = os.path.splitext(nom_fichier)[0] + "_equipier.pdf"
+        moteur.generer_pdf_equipier(
+            df_t, os.path.join(dossier_resultats, nom_pdf_equipier), annee,
+            date_debut=campagne["date_debut"],
+        )
+
     return {
         "nom_fichier": nom_fichier,
         "nom_carte_secteurs": nom_carte_secteurs,
         "nom_carte_tournees": nom_carte_tournees,
+        "nom_pdf_equipier": nom_pdf_equipier,
         "nb_tournees": len(df_t),
         "nb_magasins": len(df_mag),
         "nb_nouveaux_magasins": int(df_mag["Nouveau"].sum()),
     }
+
+
+def _normaliser_colonne(s):
+    """Copie conforme de la fonction du même nom dans
+    ba38_collecte/scripts/generer_documents_production.py (pour une
+    détection de colonne identique dans les deux outils)."""
+    import unicodedata
+    s = unicodedata.normalize('NFD', str(s).strip().lower())
+    return ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+
+
+def detecter_colonne(df_cols, contient_tous):
+    """Copie conforme de la fonction du même nom dans
+    ba38_collecte/scripts/generer_documents_production.py."""
+    for col in df_cols:
+        cl = _normaliser_colonne(col)
+        if all(frag in cl for frag in contient_tous):
+            return col
+    return None
+
+
+def _ensure_table_mapping_camions(conn):
+    """Correspondance manuelle, saisie une fois par campagne, entre le code
+    d'un camion tel qu'extrait du PDF des tournées de l'année précédente et
+    le code à utiliser cette année (le code ou le nom d'un camion peut
+    changer d'une campagne à l'autre) — utilisée par la simulation avec
+    capacité camions pour garder les magasins ancrés (VIFS_ANCRES) sur le
+    bon camion malgré ce changement."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_mapping_camions (
+            annee INTEGER NOT NULL,
+            code_ancien TEXT NOT NULL,
+            code_nouveau TEXT NOT NULL,
+            maj_le TEXT,
+            maj_par TEXT,
+            PRIMARY KEY (annee, code_ancien)
+        )
+    """)
+
+
+def _mapping_camions(annee):
+    """Dict {code_ancien: code_nouveau} enregistré pour cette année, ou {} si
+    aucune correspondance n'a encore été saisie."""
+    with get_db_connection() as conn:
+        _ensure_table_mapping_camions(conn)
+        lignes = conn.execute(
+            "SELECT code_ancien, code_nouveau FROM collecte_mapping_camions WHERE annee = ?", (annee,)
+        ).fetchall()
+    return {l["code_ancien"]: l["code_nouveau"] for l in lignes if l["code_nouveau"]}
+
+
+def _camions_pdf_precedent(annee):
+    """Liste des camions (code + nom) distincts extraits du PDF des tournées
+    de l'année précédente — sert de base (colonne de gauche) à la
+    correspondance manuelle avec les camions de cette année."""
+    with get_db_connection() as conn:
+        campagne = conn.execute(
+            "SELECT * FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    if not campagne or not campagne["fichier_pdf_precedent"]:
+        return []
+    pdf_path = os.path.join(_dossier_annee(annee), campagne["fichier_pdf_precedent"])
+    if not os.path.exists(pdf_path):
+        return []
+    try:
+        fiches = moteur.extraire_pdf(pdf_path)
+    except Exception as erreur:
+        write_log(f"⚠️ Collecte {annee} : lecture PDF année précédente impossible pour mapping camions — {erreur}")
+        return []
+    vus = {}
+    for f in fiches:
+        code = f["vehicule"]
+        if code not in vus:
+            vus[code] = f.get("nom_vehicule", "").strip()
+    return [{"code": c, "nom": n} for c, n in sorted(vus.items())]
+
+
+def _fiches_depuis_liste_vehicule(annee):
+    """Construit la structure 'fiches' (même format que moteur.extraire_pdf :
+    liste de {demi_journee, vehicule, vif_codes, nom_vehicule}) directement
+    depuis les lignes déjà remplies de liste-vehicule.xlsx (Code VIF +
+    Magasin renseignés) — sert de point de départ pour la simulation
+    'depuis liste-vehicule' : cette liste contient une première version
+    (partielle) des affectations réelles de cette année, à compléter et
+    optimiser, plutôt que de repartir du PDF de l'année précédente."""
+    chemin = _fichier_drive(annee, "vehicules")
+    if not chemin or not os.path.exists(chemin):
+        return []
+    df = pd.read_excel(chemin)
+    df.columns = [str(c).strip() for c in df.columns]
+    jours = {"jeudi": "Jeudi", "vendredi": "Vendredi", "samedi": "Samedi", "dimanche": "Dimanche"}
+
+    par_cle = {}  # (demi_journee, code) -> {"vif_codes": [...], "nom_vehicule": str}
+    for _, ligne in df.iterrows():
+        code = str(ligne.get("Code", "")).strip().upper()
+        if not code or code == "NAN" or not _est_camion_reel(code):
+            continue
+        jour = jours.get(str(ligne.get("Tournée", "")).strip().lower())
+        if not jour:
+            continue
+        debut = str(ligne.get("Début", "")).strip()
+        m = re.match(r"(\d+)", debut)
+        periode = "Matin" if not m or int(m.group(1)) < 13 else "Apres Midi"
+        demi_journee = f"{jour} {periode}"
+        if demi_journee not in moteur.DEMI_JOURNEES:
+            continue
+        code_vif_brut = ligne.get("Code VIF")
+        if code_vif_brut is None or (isinstance(code_vif_brut, float) and pd.isna(code_vif_brut)):
+            continue
+        vif = _vif_fmt(code_vif_brut).lstrip("0")
+        if not vif:
+            continue
+        nom_vehicule = str(ligne.get("Véhicule", "")).strip()
+
+        entree = par_cle.setdefault((demi_journee, code), {"vif_codes": [], "nom_vehicule": ""})
+        if vif not in entree["vif_codes"]:
+            entree["vif_codes"].append(vif)
+        if nom_vehicule and nom_vehicule.lower() != "nan" and not entree["nom_vehicule"]:
+            entree["nom_vehicule"] = nom_vehicule
+
+    return [
+        {"demi_journee": dj, "vehicule": code, "vif_codes": e["vif_codes"], "nom_vehicule": e["nom_vehicule"]}
+        for (dj, code), e in par_cle.items()
+    ]
+
+
+def _creneaux_camions_depuis_liste_vehicule(annee):
+    """Pour chaque camion, l'ensemble des demi-journées où liste-vehicule.xlsx
+    prévoit une ligne pour lui (Code + Tournée + Début présents), QUE le
+    magasin soit déjà renseigné ou non — une ligne vide (camion/jour/heure
+    prévus, magasin pas encore saisi) compte comme un créneau réellement
+    prévu pour ce camion. Sert à empêcher la simulation 'depuis
+    liste-vehicule' d'affecter un magasin à un camion un jour où il ne roule
+    pas du tout (ex. V022 ne roule pas le dimanche)."""
+    chemin = _fichier_drive(annee, "vehicules")
+    if not chemin or not os.path.exists(chemin):
+        return {}
+    df = pd.read_excel(chemin)
+    df.columns = [str(c).strip() for c in df.columns]
+    jours = {"jeudi": "Jeudi", "vendredi": "Vendredi", "samedi": "Samedi", "dimanche": "Dimanche"}
+
+    creneaux = {}
+    for _, ligne in df.iterrows():
+        code = str(ligne.get("Code", "")).strip().upper()
+        if not code or code == "NAN" or not _est_camion_reel(code):
+            continue
+        jour = jours.get(str(ligne.get("Tournée", "")).strip().lower())
+        if not jour:
+            continue
+        debut = str(ligne.get("Début", "")).strip()
+        m = re.match(r"(\d+)", debut)
+        periode = "Matin" if not m or int(m.group(1)) < 13 else "Apres Midi"
+        demi_journee = f"{jour} {periode}"
+        if demi_journee not in moteur.DEMI_JOURNEES:
+            continue
+        creneaux.setdefault(code, set()).add(demi_journee)
+    return creneaux
+
+
+def _camions_liste_vehicule(annee):
+    """Camions (Code + Nom + Type camion) de liste-vehicule.xlsx pour cette
+    année — sert de base (colonne de droite) à la correspondance manuelle, et
+    source de la colonne 'Type camion' ajoutée à titre indicatif dans la
+    simulation avec capacité camions."""
+    chemin = _fichier_drive(annee, "vehicules")
+    if not chemin or not os.path.exists(chemin):
+        return []
+    df = pd.read_excel(chemin)
+    df.columns = [str(c).strip() for c in df.columns]
+    cols = list(df.columns)
+    col_code = detecter_colonne(cols, ['code']) or 'Code'
+    col_nom = detecter_colonne(cols, ['vehicule']) or detecter_colonne(cols, ['nom', 'camion'])
+    col_type = detecter_colonne(cols, ['type', 'camion'])
+    if col_code not in df.columns:
+        return []
+    def _valeur_propre(col):
+        if not col:
+            return ''
+        val = row.get(col, '')
+        return '' if pd.isna(val) else str(val).strip()
+
+    vus = {}
+    for _, row in df.iterrows():
+        # .upper() : certains codes sont saisis en minuscules dans
+        # liste-vehicule.xlsx (ex. 'v039') — normalisé pour matcher la
+        # convention des codes extraits du PDF (toujours en majuscules).
+        code = _valeur_propre(col_code).upper()
+        if not code or code in vus or not _est_camion_reel(code):
+            continue
+        nom = _valeur_propre(col_nom)
+        type_camion = _valeur_propre(col_type)
+        vus[code] = {"code": code, "nom": nom, "type_camion": type_camion}
+    return [vus[c] for c in sorted(vus)]
 
 
 def _charger_tournees(generation):
@@ -1275,6 +1573,7 @@ def _charger_tournees(generation):
             "secteur": "" if pd.isna(row.get("Secteur")) else str(row["Secteur"]),
             "magasins": ", ".join(magasins),
             "commentaire": "" if pd.isna(row.get("Commentaire optimisation")) else str(row["Commentaire optimisation"]),
+            "type_camion": "" if pd.isna(row.get("Type camion")) else str(row.get("Type camion")),
             "figee": bool(row["Camion"] in moteur.VEHICULES_FIGES),
         })
     return lignes
@@ -2838,6 +3137,191 @@ def _get_campagne_ou_redirect(annee):
     return campagne
 
 
+@collecte_bp.route("/collecte/<int:annee>/simulation-capacite")
+@login_required
+@require_access("collecte", "ecriture")
+def simulation_capacite_form(annee):
+    campagne = _get_campagne_ou_redirect(annee)
+    if campagne is None:
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    camions_pdf = _camions_pdf_precedent(annee)
+    camions_actuels = _camions_liste_vehicule(annee)
+    mapping_existant = _mapping_camions(annee)
+
+    return render_template(
+        "collecte/simulation_capacite.html",
+        annee=annee,
+        params=PARAMS_DEFAUT,
+        camions_pdf=camions_pdf,
+        camions_actuels=camions_actuels,
+        mapping_existant=mapping_existant,
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/simulation-capacite/mapping", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def simulation_capacite_mapping(annee):
+    campagne = _get_campagne_ou_redirect(annee)
+    if campagne is None:
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        _ensure_table_mapping_camions(conn)
+        for cle, valeur in request.form.items():
+            if not cle.startswith("mapping_"):
+                continue
+            code_ancien = cle[len("mapping_"):]
+            code_nouveau = valeur.strip()
+            if not code_nouveau:
+                conn.execute(
+                    "DELETE FROM collecte_mapping_camions WHERE annee = ? AND code_ancien = ?",
+                    (annee, code_ancien)
+                )
+                continue
+            conn.execute("""
+                INSERT INTO collecte_mapping_camions (annee, code_ancien, code_nouveau, maj_le, maj_par)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(annee, code_ancien) DO UPDATE SET
+                    code_nouveau = excluded.code_nouveau, maj_le = excluded.maj_le, maj_par = excluded.maj_par
+            """, (annee, code_ancien, code_nouveau, maintenant, current_user.email))
+        conn.commit()
+
+    flash("✅ Correspondance des camions enregistrée", "success")
+    return redirect(url_for("collecte.simulation_capacite_form", annee=annee))
+
+
+@collecte_bp.route("/collecte/<int:annee>/simulation-capacite/generer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def simulation_capacite_generer(annee):
+    campagne = _get_campagne_ou_redirect(annee)
+    if campagne is None:
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    params = {
+        "camions_supp": request.form.get("camions_supp", type=int, default=PARAMS_DEFAUT["camions_supp"]),
+        "poids_nouveaux": request.form.get("poids_nouveaux", type=int, default=PARAMS_DEFAUT["poids_nouveaux"]),
+        "max_magasins": request.form.get("max_magasins", type=int, default=PARAMS_DEFAUT["max_magasins"]),
+        "optimiser_anciens": bool(request.form.get("optimiser_anciens")),
+        "fusionner_legeres": bool(request.form.get("fusionner_legeres")),
+        "corriger_mal_places": bool(request.form.get("corriger_mal_places")),
+    }
+
+    mapping = _mapping_camions(annee)
+
+    try:
+        resultat = _generer_tournees(campagne, params, mapping_camions=mapping, avec_type_camion=True)
+    except Exception as e:
+        write_log(f"❌ Collecte {annee} : échec génération simulation capacité camions — {e}")
+        flash(f"❌ Échec de la génération : {e}", "danger")
+        return redirect(url_for("collecte.simulation_capacite_form", annee=annee))
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    params_enregistres = {**params, "type_simulation": "capacite"}
+    with get_db_connection() as conn:
+        _ensure_colonne_pdf_equipier(conn)
+        cur = conn.execute("""
+            INSERT INTO collecte_generations
+                (annee, fichier_excel, fichier_carte_secteurs, fichier_carte_tournees, fichier_pdf_equipier,
+                 parametres, genere_le, genere_par, nb_tournees, nb_magasins, nb_nouveaux_magasins)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            annee, resultat["nom_fichier"], resultat["nom_carte_secteurs"], resultat["nom_carte_tournees"],
+            resultat["nom_pdf_equipier"],
+            json.dumps(params_enregistres), maintenant, current_user.email,
+            resultat["nb_tournees"], resultat["nb_magasins"], resultat["nb_nouveaux_magasins"],
+        ))
+        generation_id = cur.lastrowid
+        conn.commit()
+
+    write_log(
+        f"✅ Collecte {annee} : simulation capacité camions générée par {current_user.email} "
+        f"({resultat['nb_tournees']} tournées, {resultat['nb_magasins']} magasins) — {resultat['nom_fichier']}"
+    )
+    flash(f"✅ Simulation avec capacité camions {annee} générée : {resultat['nb_tournees']} tournées", "success")
+
+    return redirect(url_for("collecte.resultats", generation_id=generation_id))
+
+
+@collecte_bp.route("/collecte/<int:annee>/simulation-vehicule")
+@login_required
+@require_access("collecte", "ecriture")
+def simulation_vehicule_form(annee):
+    campagne = _get_campagne_ou_redirect(annee)
+    if campagne is None:
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    return render_template(
+        "collecte/simulation_vehicule.html",
+        annee=annee,
+        params=PARAMS_DEFAUT,
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/simulation-vehicule/generer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def simulation_vehicule_generer(annee):
+    campagne = _get_campagne_ou_redirect(annee)
+    if campagne is None:
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    params = {
+        "camions_supp": request.form.get("camions_supp", type=int, default=PARAMS_DEFAUT["camions_supp"]),
+        "poids_nouveaux": request.form.get("poids_nouveaux", type=int, default=PARAMS_DEFAUT["poids_nouveaux"]),
+        "max_magasins": request.form.get("max_magasins", type=int, default=PARAMS_DEFAUT["max_magasins"]),
+        "optimiser_anciens": bool(request.form.get("optimiser_anciens")),
+        "fusionner_legeres": bool(request.form.get("fusionner_legeres")),
+        "corriger_mal_places": bool(request.form.get("corriger_mal_places")),
+    }
+
+    mapping = _mapping_camions(annee)
+    camions_exclus = [
+        c.strip().upper() for c in request.form.get("camions_exclus", "").split(",") if c.strip()
+    ]
+
+    try:
+        resultat = _generer_tournees(
+            campagne, params, mapping_camions=mapping, avec_type_camion=True,
+            depuis_liste_vehicule=True, camions_exclus=camions_exclus,
+        )
+    except Exception as e:
+        write_log(f"❌ Collecte {annee} : échec génération simulation depuis liste-vehicule — {e}")
+        flash(f"❌ Échec de la génération : {e}", "danger")
+        return redirect(url_for("collecte.simulation_vehicule_form", annee=annee))
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    params_enregistres = {**params, "type_simulation": "vehicule", "camions_exclus": camions_exclus}
+    with get_db_connection() as conn:
+        _ensure_colonne_pdf_equipier(conn)
+        cur = conn.execute("""
+            INSERT INTO collecte_generations
+                (annee, fichier_excel, fichier_carte_secteurs, fichier_carte_tournees, fichier_pdf_equipier,
+                 parametres, genere_le, genere_par, nb_tournees, nb_magasins, nb_nouveaux_magasins)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            annee, resultat["nom_fichier"], resultat["nom_carte_secteurs"], resultat["nom_carte_tournees"],
+            resultat["nom_pdf_equipier"],
+            json.dumps(params_enregistres), maintenant, current_user.email,
+            resultat["nb_tournees"], resultat["nb_magasins"], resultat["nb_nouveaux_magasins"],
+        ))
+        generation_id = cur.lastrowid
+        conn.commit()
+
+    write_log(
+        f"✅ Collecte {annee} : simulation depuis liste-vehicule générée par {current_user.email} "
+        f"({resultat['nb_tournees']} tournées, {resultat['nb_magasins']} magasins"
+        f"{', camions exclus : ' + ', '.join(camions_exclus) if camions_exclus else ''}) — {resultat['nom_fichier']}"
+    )
+    suffixe_exclus = f" (sans {', '.join(camions_exclus)})" if camions_exclus else ""
+    flash(f"✅ Simulation depuis liste-vehicule {annee} générée{suffixe_exclus} : {resultat['nb_tournees']} tournées", "success")
+
+    return redirect(url_for("collecte.resultats", generation_id=generation_id))
+
+
 @collecte_bp.route("/collecte/analyse", methods=["POST"])
 @login_required
 @require_access("collecte", "ecriture")
@@ -3176,6 +3660,7 @@ def generer():
 
 def _get_generation_ou_redirect(generation_id):
     with get_db_connection() as conn:
+        _ensure_colonne_pdf_equipier(conn)
         generation = conn.execute(
             "SELECT * FROM collecte_generations WHERE id = ?", (generation_id,)
         ).fetchone()
@@ -3774,6 +4259,26 @@ def resultats_excel(generation_id):
         as_attachment=True,
         download_name=generation["fichier_excel"],
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@collecte_bp.route("/collecte/resultats/<int:generation_id>/pdf-equipier")
+@login_required
+@require_access("collecte", "lecture")
+def resultats_pdf_equipier(generation_id):
+    generation = _get_generation_ou_redirect(generation_id)
+    if generation is None:
+        return redirect(url_for("collecte.collecte_main"))
+    if not generation["fichier_pdf_equipier"]:
+        flash("⛔ Pas de PDF équipier pour cette génération (disponible uniquement pour la simulation avec capacité camions)", "warning")
+        return redirect(url_for("collecte.resultats", generation_id=generation_id))
+
+    chemin = os.path.join(_dossier_resultats(generation["annee"]), generation["fichier_pdf_equipier"])
+    return send_file(
+        chemin,
+        as_attachment=True,
+        download_name=generation["fichier_pdf_equipier"],
+        mimetype="application/pdf",
     )
 
 

@@ -59,6 +59,9 @@
     {% call action_buttons() %}
         {{ action_button("📥 Télécharger Excel", href=url_for('collecte.resultats_excel', generation_id=generation.id), color="outline-success") }}
         {{ action_button("📄 Télécharger PDF", href=url_for('collecte.resultats_pdf', generation_id=generation.id), color="outline-danger") }}
+        {% if generation.fichier_pdf_equipier %}
+        {{ action_button("📋 PDF équipier (camion/magasins)", href=url_for('collecte.resultats_pdf_equipier', generation_id=generation.id), color="outline-danger") }}
+        {% endif %}
         {% if generation.fichier_carte_tournees %}
         <a href="{{ url_for('collecte.resultats_carte_tournees', generation_id=generation.id) }}" target="_blank"
            class="btn btn-outline-warning">🚚 Carte des tournées</a>
@@ -139,6 +142,7 @@ const table = new Tabulator("#tabulator-table", {
         { title: "Magasins", field: "magasins", width: 420, formatter: "textarea" },
         { title: "Tonnage", field: "tonnage", width: 100, hozAlign: "right",
           formatter: function(cell){ return Math.round(cell.getValue()) + " kg"; }, sorter: "number" },
+        { title: "Type camion", field: "type_camion", width: 110 },
         { title: "Km", field: "km", width: 80, hozAlign: "right", sorter: "number" },
         { title: "Durée", field: "duree", width: 220 },
         { title: "Commentaire", field: "commentaire", width: 320, formatter: "textarea" },
