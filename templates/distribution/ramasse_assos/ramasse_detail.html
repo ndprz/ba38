@@ -6,6 +6,14 @@
 
 <h2 class="mb-3">📄 Détail ramasse</h2>
 
+{{ action_buttons([
+    {
+        "label": "↩️ Retour",
+        "url": url_for('distribution.liste_ramasses'),
+        "color": "outline-dark"
+    }
+]) }}
+
 <div class="card p-3 mb-3">
 
     <div><strong>Date :</strong> {{ entete.date_ramasse }}</div>
@@ -37,13 +45,5 @@
     </tbody>
 
 </table>
-
-{{ action_buttons([
-    {
-        "label": "↩️ Retour",
-        "url": url_for('distribution.liste_ramasses'),
-        "color": "outline-dark"
-    }
-]) }}
 
 {% endblock %}

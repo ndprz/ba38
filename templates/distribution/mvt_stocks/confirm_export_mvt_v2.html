@@ -30,6 +30,12 @@ Export VIF mouvements
 
     <h2 class="no-print">📤 Export VIF des mouvements</h2>
 
+    <div class="no-print">
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('distribution.mouvements_stocks_v2'), color="outline-dark") }}
+    {% endcall %}
+    </div>
+
     <div class="print-title mb-3">
         <h3>🖨️ Mouvements de stocks du jour</h3>
         <div>Mouvement : {{ num_mvt }}</div>
@@ -306,6 +312,7 @@ Export VIF mouvements
             </div>
 
             <div class="mt-3 no-print">
+            {% call action_buttons() %}
 
                 {{ action_button(
                     "🔁 Réexporter la sélection",
@@ -313,6 +320,7 @@ Export VIF mouvements
                     color="warning"
                 ) }}
 
+            {% endcall %}
             </div>
 
             <hr class="mt-4 no-print">

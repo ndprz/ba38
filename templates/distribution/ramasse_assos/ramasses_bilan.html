@@ -7,6 +7,14 @@
     📈 Bilan des ramasses {{ annee }}
 </h2>
 
+{{ action_buttons([
+    {
+        "label": "↩️ Retour Distribution",
+        "url": url_for('distribution.distribution_main'),
+        "color": "outline-dark"
+    }
+]) }}
+
 <form method="get" class="mb-4">
 
     <div class="row align-items-center">
@@ -180,7 +188,7 @@
 
 {{ action_buttons([
     {
-        "label": "↩️ Retour",
+        "label": "↩️ Retour Distribution",
         "url": url_for('distribution.distribution_main'),
         "color": "outline-dark"
     }

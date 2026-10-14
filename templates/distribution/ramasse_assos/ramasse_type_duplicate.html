@@ -6,6 +6,10 @@
 
 <h3>📄 Dupliquer un modèle</h3>
 
+{% call action_buttons() %}
+    {{ action_button("↩️ Retour", href=url_for('distribution.ramasse_types_list'), color="outline-dark") }}
+{% endcall %}
+
 <div class="card p-3">
 
     <p><strong>Modèle source :</strong> {{ source.nom_type }}</p>
@@ -47,8 +51,8 @@
         </select>
 
         {% call action_buttons() %}
-            {{ action_button("Dupliquer", type="submit", color="success") }}
-            {{ action_button("Retour", href=url_for('distribution.ramasse_types_list'), color="outline-dark") }}
+            {{ action_button("📄 Dupliquer", type="submit", color="success") }}
+            {{ action_button("↩️ Retour", href=url_for('distribution.ramasse_types_list'), color="outline-dark") }}
         {% endcall %}
 
     </form>
