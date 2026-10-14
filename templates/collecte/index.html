@@ -328,8 +328,21 @@
             </div>
             <div class="card mb-3">
                 <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <div><h5 class="card-title mb-1">📧 Envoi mail tournées aux chauffeurs/équipiers</h5><p class="card-text small text-muted mb-0">Paramétrer puis envoyer les mails de tournée aux chauffeurs et équipiers.</p></div>
+                    <div><h5 class="card-title mb-1">📧 Envoi mail tournées aux chauffeurs/équipiers de la nouvelle collecte</h5><p class="card-text small text-muted mb-0">Paramétrer puis envoyer les mails de tournée aux chauffeurs et équipiers.</p></div>
                     {{ action_button("📧 Envoi mail tournées aux chauffeurs/équipiers", href=url_for('collecte.chauffeurs_equipiers', annee=annee), color="primary") }}
+                </div>
+            </div>
+            <div class="card mb-3">
+                <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <h5 class="card-title mb-1">📧 Envoi mail tournées aux chauffeurs/équipiers de l'année dernière</h5>
+                        <p class="card-text small text-muted mb-0">
+                            Demander leur disponibilité aux chauffeurs et équipiers de la collecte
+                            {{ annee - 1 }}, avant que le planning {{ annee }} n'existe — pas d'affectation
+                            par demi-journée, juste une demande de disponibilité.
+                        </p>
+                    </div>
+                    {{ action_button("📧 Ouvrir", href=url_for('collecte.mail_disponibilite_chauffeurs_equipiers', annee=annee), color="outline-primary") }}
                 </div>
             </div>
         </div>

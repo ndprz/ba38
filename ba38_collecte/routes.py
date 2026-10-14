@@ -974,6 +974,185 @@ def enregistrer_contenu_mail_trieurs():
     return redirect(url_for("collecte.mail_trieurs", annee=annee))
 
 
+# ============================================================================
+# 👥 Chauffeurs/équipiers (année précédente) — demande de disponibilité
+# ============================================================================
+# Distinct de chauffeurs_equipiers() : ici on ne connaît pas encore le
+# planning de l'année en cours, donc pas d'affectation par demi-journée à
+# afficher — on recontacte juste les chauffeurs/équipiers de l'an dernier
+# pour leur demander s'ils sont disponibles cette année (même principe que
+# mail_trieurs, étendu aux deux rôles R/E).
+MAIL_TEXTE_DISPONIBILITE_CHAUFFEURS_DEFAUT = (
+    "Bonjour <<nom>>,\n\n"
+    "Vous aviez participé à la collecte nationale des Banques Alimentaires l'an dernier comme "
+    "chauffeur ou équipier, un grand merci pour votre aide !\n\n"
+    "Nous préparons la collecte de cette année et serions ravis de vous compter à nouveau parmi "
+    "nos bénévoles. Si vous êtes disponible, répondez à ce mail ou contactez-nous directement.\n\n"
+    "Merci."
+)
+
+
+def _ensure_colonne_mail_disponibilite_chauffeurs(conn):
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_campagnes)").fetchall()}
+    if "mail_texte_disponibilite_chauffeurs" not in colonnes:
+        conn.execute("ALTER TABLE collecte_campagnes ADD COLUMN mail_texte_disponibilite_chauffeurs TEXT")
+
+
+def _charger_chauffeurs_equipiers_annee_precedente(annee):
+    """Chauffeurs/équipiers du planning véhicules de l'année précédente —
+    nom + rôle + email + téléphone portable, dédoublonnés, SANS affectation
+    par demi-journée (contrairement à _charger_affectations_chauffeurs_equipiers) :
+    on ne demande ici qu'une disponibilité, pas un planning qui n'existe pas
+    encore pour l'année en cours."""
+    annee_precedente = annee - 1
+    chemin = _fichier_drive(annee_precedente, "vehicules")
+    if not chemin:
+        chemin = os.path.join(_dossier_annee(annee_precedente), "liste_vehicules.xlsx")
+    if not os.path.exists(chemin):
+        raise FileNotFoundError(f"Le fichier véhicules {annee_precedente} est introuvable")
+
+    df = pd.read_excel(chemin)
+    df.columns = [str(col).strip() for col in df.columns]
+    personnes = {}
+    sans_email = set()
+    for _, ligne in df.iterrows():
+        code = str(ligne.get("Code", "")).strip()
+        if not code or code == "nan" or not _est_camion_reel(code):
+            continue
+        personne = str(ligne.get("Équipier", ligne.get("equipier", ""))).strip()
+        if not personne or personne == "nan":
+            continue
+        email = str(ligne.get("Email", "")).strip().lower()
+        if email == "nan":
+            email = ""
+        telephone = str(ligne.get("Portable", "")).strip()
+        if telephone == "nan":
+            telephone = ""
+        role_re = str(ligne.get("R/E", "")).strip().upper()
+        if role_re == "R":
+            role = "chauffeur"
+        elif role_re == "E":
+            role = "équipier"
+        else:
+            role = "chauffeur" if personne.lower().startswith("chauffeur") else "équipier"
+        cle = email or f"nom:{personne.lower()}"
+        entree = personnes.setdefault(cle, {"nom": personne, "role": role, "email": email, "telephone": telephone})
+        if telephone and not entree["telephone"]:
+            entree["telephone"] = telephone
+        if not email:
+            sans_email.add(personne)
+
+    destinataires = sorted(
+        (p for p in personnes.values() if p["email"]), key=lambda p: p["nom"].lower()
+    )
+    return destinataires, sorted(sans_email, key=str.lower)
+
+
+def _contenu_mail_disponibilite_chauffeurs(annee):
+    with get_db_connection() as conn:
+        _ensure_colonne_mail_disponibilite_chauffeurs(conn)
+        ligne = conn.execute(
+            "SELECT mail_texte_disponibilite_chauffeurs FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    return (
+        ligne["mail_texte_disponibilite_chauffeurs"] if ligne and ligne["mail_texte_disponibilite_chauffeurs"]
+        else MAIL_TEXTE_DISPONIBILITE_CHAUFFEURS_DEFAUT
+    )
+
+
+def _corps_mail_disponibilite_chauffeurs(personne, texte):
+    return texte.replace("<<nom>>", personne["nom"]).replace("<<telephone>>", personne["telephone"] or "—")
+
+
+def _corps_mail_disponibilite_chauffeurs_html(personne, texte):
+    html = str(escape(_corps_mail_disponibilite_chauffeurs(personne, texte))).replace("\n", "<br>\n")
+    return f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">{html}</div>'
+
+
+@collecte_bp.route("/collecte/mail_disponibilite_chauffeurs_equipiers", methods=["GET", "POST"])
+@login_required
+@require_access("collecte", "lecture")
+def mail_disponibilite_chauffeurs_equipiers():
+    annee = request.args.get("annee", type=int) or request.form.get("annee", type=int) or datetime.now().year
+    try:
+        destinataires, personnes_sans_email = _charger_chauffeurs_equipiers_annee_precedente(annee)
+        mail_texte = _contenu_mail_disponibilite_chauffeurs(annee)
+    except Exception as erreur:
+        flash(f"❌ Impossible de charger les chauffeurs/équipiers de {annee - 1} : {erreur}", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        if not destinataires:
+            flash("❌ Aucun chauffeur ou équipier avec une adresse email.", "danger")
+        elif action == "test":
+            email_test = request.form.get("test_destinataire", "")
+            exemple = next((p for p in destinataires if p["email"] == email_test), destinataires[0])
+            adresse_test = getattr(current_user, "email", "") or ""
+            if not adresse_test:
+                flash("❌ Votre compte n'a pas d'adresse email pour le test.", "danger")
+            else:
+                envoyer_mail(
+                    f"[TEST] Disponibilité chauffeurs/équipiers {annee}",
+                    [adresse_test],
+                    _corps_mail_disponibilite_chauffeurs_html(exemple, mail_texte),
+                    sender_override="ba380.directeur@banquealimentaire.org",
+                    is_html=True,
+                )
+                flash(f"✅ Mail de test envoyé à {adresse_test}.", "success")
+        elif action == "envoyer":
+            for personne in destinataires:
+                envoyer_mail(
+                    f"Collecte {annee} — recherche de chauffeurs et équipiers",
+                    [personne["email"]],
+                    _corps_mail_disponibilite_chauffeurs_html(personne, mail_texte),
+                    sender_override="ba380.directeur@banquealimentaire.org",
+                    is_html=True,
+                )
+            flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+
+    return render_template(
+        "collecte/mail_disponibilite_chauffeurs_equipiers.html",
+        annee=annee,
+        destinataires=destinataires,
+        personnes_sans_email=personnes_sans_email,
+        mail_texte=mail_texte,
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/mail_disponibilite_chauffeurs_equipiers/apercu")
+@login_required
+@require_access("collecte", "lecture")
+def mail_disponibilite_chauffeurs_equipiers_apercu(annee):
+    """Rendu HTML exact du mail pour la personne sélectionnée, sans rien
+    envoyer (même en test) — même principe que mail_trieurs_apercu."""
+    destinataires, _ = _charger_chauffeurs_equipiers_annee_precedente(annee)
+    if not destinataires:
+        abort(404)
+    mail_texte = _contenu_mail_disponibilite_chauffeurs(annee)
+    email = request.args.get("email", "")
+    personne = next((p for p in destinataires if p["email"] == email), destinataires[0])
+    html = _corps_mail_disponibilite_chauffeurs_html(personne, mail_texte)
+    return Response(html, mimetype="text/html")
+
+
+@collecte_bp.route("/collecte/mail_disponibilite_chauffeurs_equipiers/contenu-mail", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_contenu_mail_disponibilite_chauffeurs():
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    texte = request.form.get("mail_texte", "").strip()
+    with get_db_connection() as conn:
+        _ensure_colonne_mail_disponibilite_chauffeurs(conn)
+        conn.execute(
+            "UPDATE collecte_campagnes SET mail_texte_disponibilite_chauffeurs = ? WHERE annee = ?",
+            (texte, annee),
+        )
+        conn.commit()
+    flash("✅ Texte du mail enregistré.", "success")
+    return redirect(url_for("collecte.mail_disponibilite_chauffeurs_equipiers", annee=annee))
+
+
 MAIL_TEXTE_PRISE_COLIS_DEFAUT = (
     "Bonjour <<nom>>,\n\n"
     "Vous êtes référent(e) pour la collecte de <<magasin>>, merci pour votre implication !\n\n"

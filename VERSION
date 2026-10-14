@@ -1,3 +1,3 @@
-VERSION=1.7.113
-MESSAGE=Collecte : nouvelle page Gestion magasins "Pas de collecte - faute de benevoles" (marquage + mail + signalement sans email)
-DATE=2026-10-14 11:05
+VERSION=1.7.114
+MESSAGE=Collecte : demande de disponibilite chauffeurs/equipiers annee precedente (Gestion tournees) + telephone dans le mail
+DATE=2026-10-14 11:40
