@@ -59,6 +59,9 @@ VIFS_ANCRES = {
     '2380003': 'V012',  # Carrefour St Egreve - camion Ass. Familiale St Egrève
     '2380250': 'V012',  # ALDI St Egreve - idem
     '2380120': 'V022',  # Intermarché Vizille - affectation réelle 2024
+    '2380159': 'V036',  # Carrefour City Grenoble 31 J Jaurès - souhait association Vivacité
+    '2380287': 'V036',  # Intermarché Grenoble Berriat - idem
+    '2380066': 'V036',  # Monoprix Grenoble Lafayette - idem
 }
 
 # Camions strictement réservés à certains magasins (rien d'autre ne doit
@@ -69,6 +72,7 @@ VIFS_ANCRES = {
 CAMIONS_EXCLUSIFS = {
     'V012': {'2380003', '2380250'},  # Carrefour + ALDI St Egreve uniquement
     'V022': {'2380120'},  # Intermarché Vizille uniquement
+    'V036': {'2380159', '2380287', '2380066'},  # Carrefour City 31 J Jaurès + Intermarché Berriat + Monoprix Lafayette uniquement (souhait association Vivacité)
 }
 
 # Adresse du siège affichée sur la carte des tournées : tirée de la config
@@ -685,11 +689,20 @@ def optimiser_tournees(fiches, df_mag, args):
     # n'est jamais fourni.
     _creneaux_camions = getattr(args, 'creneaux_camions', None)
     TOURNEES_GELEES_EFF = TOURNEES_GELEES
+    # Indisponibilité réelle (camion qui ne roule pas cette demi-journée,
+    # cf. creneaux_camions) isolée de TOURNEES_GELEES_EFF : distincte du gel
+    # "contenu figé" (VEHICULES_FIGES/CAMIONS_EXCLUSIFS, ajouté plus bas à
+    # TOURNEES_GELEES_EFF pour TOUTES les demi-journées), pour que l'ancrage
+    # (VIFS_ANCRES, plus bas) puisse toujours déplacer un magasin vers un
+    # camion exclusif qui roule bien ce jour-là, même si son contenu est par
+    # ailleurs figé.
+    TOURNEES_INDISPONIBLES_EFF = set()
     if _creneaux_camions:
-        TOURNEES_GELEES_EFF = set(TOURNEES_GELEES) | {
+        TOURNEES_INDISPONIBLES_EFF = {
             (veh, dj) for veh, djs_dispo in _creneaux_camions.items()
             for dj in DEMI_JOURNEES if dj not in djs_dispo
         }
+        TOURNEES_GELEES_EFF = set(TOURNEES_GELEES) | TOURNEES_INDISPONIBLES_EFF
 
     # Camions exclusifs (CAMIONS_EXCLUSIFS) traités comme figés pour toutes
     # les passes de rééquilibrage/injection/regroupement : seul l'ancrage
@@ -1855,7 +1868,7 @@ def optimiser_tournees(fiches, df_mag, args):
             for (dj, veh), vifs in list(dj_veh.items()):
                 if veh == veh_cible or vif_a not in vifs:
                     continue
-                if (veh_cible, dj) in TOURNEES_GELEES_EFF:
+                if (veh_cible, dj) in TOURNEES_INDISPONIBLES_EFF:
                     # Le camion cible ne roule pas cette demi-journée (ex.
                     # V022 ne roule pas le dimanche) — ne pas y forcer le
                     # magasin, le laisser où il est.

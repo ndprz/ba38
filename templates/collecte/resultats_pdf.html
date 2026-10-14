@@ -12,12 +12,13 @@
     th { background: #1F4E79; color: #fff; }
     tr.dj { background: #DDEEFF; font-weight: bold; }
     tr.figee td { background: #FFD7D7; }
-    col.c-camion { width: 6%; }
-    col.c-nom { width: 16%; }
-    col.c-secteur { width: 16%; }
-    col.c-magasins { width: 34%; }
-    col.c-tonnage, col.c-km { width: 7%; }
-    col.c-duree { width: 14%; }
+    col.c-camion { width: 5%; }
+    col.c-nom { width: 13%; }
+    col.c-secteur { width: 13%; }
+    col.c-magasins { width: 28%; }
+    col.c-tonnage, col.c-km { width: 6%; }
+    col.c-duree { width: 12%; }
+    col.c-commentaire { width: 17%; }
 </style>
 </head>
 <body>
@@ -28,6 +29,7 @@
     <colgroup>
         <col class="c-camion"><col class="c-nom"><col class="c-secteur">
         <col class="c-magasins"><col class="c-tonnage"><col class="c-km"><col class="c-duree">
+        <col class="c-commentaire">
     </colgroup>
     <thead>
         <tr>
@@ -38,6 +40,7 @@
             <th>Tonnage</th>
             <th>Km</th>
             <th>Durée</th>
+            <th>Commentaire</th>
         </tr>
     </thead>
     <tbody>
@@ -45,7 +48,7 @@
         {% for l in lignes %}
         {% if l.demi_journee != ns.dj_courante %}
         {% set ns.dj_courante = l.demi_journee %}
-        <tr class="dj"><td colspan="7">{{ l.demi_journee }}</td></tr>
+        <tr class="dj"><td colspan="8">{{ l.demi_journee }}</td></tr>
         {% endif %}
         <tr class="{% if l.figee %}figee{% endif %}">
             <td>{{ l.camion }}</td>
@@ -55,6 +58,7 @@
             <td>{{ "%.0f"|format(l.tonnage) }} kg</td>
             <td>{{ l.km }}</td>
             <td>{{ l.duree }}</td>
+            <td>{{ l.commentaire }}</td>
         </tr>
         {% endfor %}
     </tbody>
