@@ -16,6 +16,9 @@
         ⏳ En cours (toutes dates)
         {% if nb_en_cours_total %}<span class="badge bg-warning text-dark">{{ nb_en_cours_total }}</span>{% endif %}
       </a>
+      <a href="{{ url_for('production_cuisine.etat_journalier_productions', date=date_filtre) }}" class="btn btn-outline-secondary btn-lg">
+        📊 État journalier
+      </a>
       <a href="{{ url_for('production_cuisine.affichage_production', plein_ecran=1) }}" target="_blank" rel="noopener"
          class="btn btn-outline-dark btn-lg" onclick="return ouvrirAffichageTV(this.href)">
         📺 Affichage TV

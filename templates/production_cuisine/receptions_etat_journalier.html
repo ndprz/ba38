@@ -91,6 +91,7 @@
           <th>Fournisseur</th>
           {% endif %}
           <th>Heure</th>
+          <th class="text-end">T° réception</th>
           <th>DLC</th>
           <th>DDM</th>
           <th class="text-end">Réceptionné (kg)</th>
@@ -109,6 +110,7 @@
           <td>{{ r.fournisseur_nom or "—" }}</td>
           {% endif %}
           <td>{{ r.heure_arrivee or "—" }}</td>
+          <td class="text-end text-nowrap">{% if r.temperature_mesuree is not none %}{{ r.temperature_mesuree|string|replace(".", ",") }} °C{% else %}—{% endif %}</td>
           <td>{% if r.dlc_ddm %}{{ r.dlc_ddm[8:10] }}/{{ r.dlc_ddm[5:7] }}/{{ r.dlc_ddm[0:4] }}{% else %}—{% endif %}</td>
           <td>{% if r.ddm %}{{ r.ddm[8:10] }}/{{ r.ddm[5:7] }}/{{ r.ddm[0:4] }}{% else %}—{% endif %}</td>
           <td class="text-end">{{ r.poids_kg|kg }}</td>

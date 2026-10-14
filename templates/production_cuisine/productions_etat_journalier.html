@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}État journalier des productions{% endblock %}
+
+{% block extra_css %}
+<style>
+  @media print {
+    header, nav, .no-print { display: none !important; }
+  }
+</style>
+{% endblock %}
+
+{# Heure seule si l'horodatage tombe le jour de la production, sinon JJ/MM HH:MM
+   (production terminée un autre jour que celui où elle a été commencée). #}
+{% macro horaire(valeur, jour) -%}
+  {%- if not valeur -%}—
+  {%- elif valeur[:10] == jour -%}{{ valeur[11:16] }}
+  {%- else -%}<span class="text-warning-emphasis">{{ valeur[8:10] }}/{{ valeur[5:7] }} {{ valeur[11:16] }}</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro temperature(valeur) -%}
+  {%- if valeur is not none -%}{{ valeur|string|replace(".", ",") }} °C{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width: 1400px;">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">📊 État journalier des productions</h2>
+    <div class="d-flex gap-2 no-print">
+      <a href="{{ url_for('production_cuisine.liste_productions', date=date_filtre) }}" class="btn btn-outline-secondary">← Retour</a>
+      <button type="button" class="btn btn-outline-dark" onclick="window.print()">🖨️ Imprimer</button>
+    </div>
+  </div>
+
+  <form method="GET" class="row g-2 align-items-end mb-3 no-print">
+    <div class="col-auto">
+      <label class="form-label">Période</label>
+      <select name="periode" class="form-select" onchange="this.form.submit()">
+        {% for code, libelle in periodes %}
+        <option value="{{ code }}" {% if code == periode %}selected{% endif %}>{{ libelle }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if periode == "jour" %}
+    <div class="col-auto">
+      <label class="form-label">Date</label>
+      <input type="date" name="date" value="{{ date_filtre }}" class="form-control"
+             onchange="this.form.submit()">
+    </div>
+    {% elif periode == "perso" %}
+    <div class="col-auto">
+      <label class="form-label">Du</label>
+      <input type="date" name="du" value="{{ date_debut }}" class="form-control"
+             onchange="this.form.submit()">
+    </div>
+    <div class="col-auto">
+      <label class="form-label">Au</label>
+      <input type="date" name="au" value="{{ date_fin }}" class="form-control"
+             onchange="this.form.submit()">
+    </div>
+    {% endif %}
+  </form>
+
+  <p class="fw-bold fs-5">
+    {% if multi_jours %}Du {{ date_debut[8:10] }}/{{ date_debut[5:7] }}/{{ date_debut[0:4] }} au {{ date_fin[8:10] }}/{{ date_fin[5:7] }}/{{ date_fin[0:4] }}
+    {% else %}{{ date_debut[8:10] }}/{{ date_debut[5:7] }}/{{ date_debut[0:4] }}{% endif %}
+    — {{ nb_productions }} production(s)
+    {% if nb_en_cours %}<span class="badge bg-warning text-dark">{{ nb_en_cours }} encore en cours</span>{% endif %}
+    {% if nb_non_conformes %}<span class="badge bg-danger text-white">{{ nb_non_conformes }} non conforme(s)</span>{% endif %}
+    — Barquettes : {% for t in tailles %}{{ t }} × {{ totaux.barquettes[t] }}{% if not loop.last %}, {% endif %}{% endfor %}
+    — Matières utilisées : {{ "%.1f"|format(totaux.matieres_kg) }} kg
+  </p>
+
+  {% if not groupes %}
+    <p class="text-muted">Aucune production enregistrée pour cette période.</p>
+  {% endif %}
+
+  {% for groupe, data in groupes %}
+  <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <strong>{{ groupe }}</strong>
+      <span>
+        {% for t in tailles %}<span class="badge bg-secondary text-white">{{ t }} × {{ data.barquettes[t] }}</span> {% endfor %}
+        <span class="badge bg-dark text-white">Matières {{ "%.1f"|format(data.matieres_kg) }} kg</span>
+      </span>
+    </div>
+    <div class="table-responsive">
+    <table class="table table-sm mb-0 align-middle">
+      <thead>
+        <tr>
+          {% if multi_jours %}<th>Date</th>{% endif %}
+          <th>Recette</th>
+          <th>Cuisson</th>
+          <th>Début</th>
+          <th>Fin</th>
+          <th class="text-end">T° cuisson</th>
+          <th>DR</th>
+          <th class="text-end">T° sortie cellule</th>
+          {% for t in tailles %}<th class="text-end">{{ t }}</th>{% endfor %}
+          <th>Plat témoin</th>
+          <th class="text-end">Matières (kg)</th>
+          <th>Conformité</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in data.lignes %}
+        {% set p = l.p %}
+        <tr>
+          {% if multi_jours %}<td class="text-nowrap">{{ p.date_production[8:10] }}/{{ p.date_production[5:7] }}/{{ p.date_production[0:4] }}</td>{% endif %}
+          <td>
+            <a href="{{ url_for('production_cuisine.detail_production', production_id=p.id) }}">{{ p.nom_recette }}</a>
+            {% if p.statut == 'en_cours' %}<span class="badge bg-warning text-dark">en cours</span>{% endif %}
+          </td>
+          <td>{{ p.mode_cuisson or "—" }}</td>
+          <td class="text-nowrap">{{ horaire(l.debut, p.date_production) }}</td>
+          <td class="text-nowrap">{{ horaire(l.fin, p.date_production) }}</td>
+          <td class="text-end text-nowrap">{{ temperature(l.t_cuisson) }}</td>
+          <td class="text-nowrap">{{ l.dr or "—" }}</td>
+          <td class="text-end text-nowrap">{{ temperature(l.t_cellule) }}</td>
+          {% for t in tailles %}<td class="text-end">{{ l.quantites.get(t) or "—" }}</td>{% endfor %}
+          <td class="text-nowrap">
+            {% if p.plat_temoin == 'oui' %}oui{% if p.plat_temoin_poids_g %} ({{ p.plat_temoin_poids_g|int }} g){% endif %}{% else %}non{% endif %}
+          </td>
+          <td class="text-end">{{ p.matieres_kg|kg if p.matieres_kg else "—" }}</td>
+          <td>
+            {% if l.non_conformites %}
+              {% for m in l.non_conformites %}
+              <div class="text-danger small" title="{{ m }}">⚠️ {{ m.split(" Détail :")[0] }}</div>
+              {% endfor %}
+            {% elif p.statut == 'terminee' %}
+              <span class="text-success">✅ Conforme</span>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+{% endblock %}

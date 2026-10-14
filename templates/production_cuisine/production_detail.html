@@ -627,6 +627,56 @@
           <input type="text" name="commentaire" class="form-control">
         </div>
 
+        {# Date de fin : « maintenant » par défaut ; une autre date/heure pour
+           une production commencée un jour précédent et oubliée en cours
+           (pré-remplie avec la dernière heure de fin d'étape saisie). #}
+        {% set deja_validee = validation and validation.date_validation %}
+        {% set commencee_avant = production.date_production < today %}
+        {% set fins_etapes = etapes_par_code.values() | selectattr("heure_fin") | map(attribute="heure_fin") | list %}
+        {% if deja_validee %}
+          {% set fin_proposee = validation.date_validation %}
+        {% elif fins_etapes %}
+          {% set fin_proposee = fins_etapes | max %}
+        {% else %}
+          {% set fin_proposee = production.date_production ~ " 18:00" %}
+        {% endif %}
+        {% set autre_date = deja_validee or commencee_avant %}
+        <div class="mb-3 p-2 rounded {{ 'border border-warning' if commencee_avant and not deja_validee else '' }}">
+          {% if commencee_avant and not deja_validee %}
+          <p class="mb-2 text-warning-emphasis">
+            ⏮️ Production commencée le <strong>{{ production.date_production | format_date_fr }}</strong> :
+            indiquez quand elle a réellement été terminée.
+          </p>
+          {% endif %}
+          <label class="form-label d-block">Terminée le</label>
+          <div class="d-flex gap-3 align-items-center flex-wrap">
+            <div class="form-check mb-0">
+              <input class="form-check-input" type="radio" name="choix_date_fin" id="fin-maintenant" value="maintenant"
+                     {% if not autre_date %}checked{% endif %}>
+              <label class="form-check-label" for="fin-maintenant">Maintenant</label>
+            </div>
+            <div class="form-check mb-0">
+              <input class="form-check-input" type="radio" name="choix_date_fin" id="fin-autre" value="autre"
+                     {% if autre_date %}checked{% endif %}>
+              <label class="form-check-label" for="fin-autre">Autre date/heure :</label>
+            </div>
+            <input type="datetime-local" name="date_fin" id="date-fin" class="form-control" style="max-width: 15rem;"
+                   min="{{ production.date_production }}T00:00"
+                   value="{{ fin_proposee.replace(' ', 'T')[:16] }}" {% if not autre_date %}disabled{% endif %}>
+          </div>
+        </div>
+        <script>
+          (function () {
+            var champ = document.getElementById("date-fin");
+            document.querySelectorAll("input[name=choix_date_fin]").forEach(function (r) {
+              r.addEventListener("change", function () {
+                champ.disabled = !document.getElementById("fin-autre").checked;
+                if (!champ.disabled) champ.focus();
+              });
+            });
+          })();
+        </script>
+
         <button type="submit" class="btn btn-success btn-lg">✅ Valider la production</button>
       </form>
     </div>

@@ -15,6 +15,7 @@ from ba38_cuisine.utils import (
     categorie_depuis_famille, motifs_non_conformite, heure_dr,
     receptions_en_stock, ajouter_utilisation, parse_poids, suivi_cellule_en_cours,
 )
+from ba38_cuisine.routes_receptions import PERIODES_ETAT, _bornes_periode
 
 STATUTS = ("en_cours", "terminee", "annulee")
 CATEGORIES_PRODUIT = ("carne", "legumes")
@@ -72,10 +73,27 @@ def _supprimer_production(conn, production_id):
     )
 
 
-def _terminer_production(conn, production_id, valide_par):
+def _fin_au_jour_de_production(conn, production_id):
+    """Date/heure de fin plausible d'une production oubliée en cours : la
+    dernière heure de fin d'étape saisie le jour de la production, sinon
+    23:59 ce jour-là — jamais dans le futur."""
+    date_production = conn.execute(
+        "SELECT date_production FROM cuisine_productions WHERE id = ?", (production_id,)
+    ).fetchone()[0]
+    derniere = conn.execute(
+        """SELECT MAX(heure_fin) FROM cuisine_production_etapes
+           WHERE production_id = ? AND substr(heure_fin, 1, 10) = ?""",
+        (production_id, date_production),
+    ).fetchone()[0]
+    return min(derniere or f"{date_production} 23:59:00", now_paris_str())
+
+
+def _terminer_production(conn, production_id, valide_par, au_jour_de_production=False):
     """Clôture sans passer par la fiche (production oubliée en cours) :
     même enregistrement que la validation finale, plat témoin conservé
-    s'il avait été saisi."""
+    s'il avait été saisi. `au_jour_de_production` : date de fin ramenée au
+    jour où la production a été commencée au lieu de maintenant."""
+    date_fin = _fin_au_jour_de_production(conn, production_id) if au_jour_de_production else now_paris_str()
     conn.execute(
         """
         INSERT INTO cuisine_production_validations
@@ -86,7 +104,7 @@ def _terminer_production(conn, production_id, valide_par):
             commentaire = excluded.commentaire,
             date_validation = excluded.date_validation
         """,
-        (production_id, valide_par, "Clôturée depuis la liste des productions en cours", now_paris_str()),
+        (production_id, valide_par, "Clôturée depuis la liste des productions en cours", date_fin),
     )
     conn.execute(
         "UPDATE cuisine_productions SET statut = 'terminee', user_modif = ? WHERE id = ?",
@@ -177,6 +195,127 @@ def productions_en_cours():
     )
 
 
+LIBELLES_CATEGORIE = {"carne": "🥩 Carné", "legumes": "🥬 Légumes"}
+
+
+@production_cuisine_bp.route("/etat-journalier")
+@login_required
+@require_access("production_cuisine", "lecture")
+def etat_journalier_productions():
+    """État journalier des productions — pendant de l'état des réceptions :
+    pour une période, chaque production (hors annulées) avec début/fin,
+    températures clés, DR, barquettes, plat témoin, matières utilisées et
+    non-conformités, regroupées par catégorie (carné / légumes)."""
+    periodes_valides = {code for code, _ in PERIODES_ETAT}
+    periode = request.args.get("periode")
+    if periode not in periodes_valides:
+        periode = "jour"
+    date_filtre = request.args.get("date") or today_paris()
+    try:
+        date.fromisoformat(date_filtre)
+    except ValueError:
+        date_filtre = today_paris()
+
+    if periode == "perso":
+        date_debut = request.args.get("du") or date_filtre
+        date_fin = request.args.get("au") or date_debut
+        try:
+            date.fromisoformat(date_debut)
+            date.fromisoformat(date_fin)
+        except ValueError:
+            date_debut = date_fin = date_filtre
+        if date_fin < date_debut:
+            date_debut, date_fin = date_fin, date_debut
+    else:
+        date_debut, date_fin = _bornes_periode(periode, date_filtre)
+    multi_jours = date_debut != date_fin
+
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        productions = conn.execute(
+            """
+            SELECT p.*, v.date_validation, v.valide_par, v.plat_temoin, v.plat_temoin_poids_g,
+                   (SELECT SUM(ru.poids_kg) FROM cuisine_reception_utilisations ru
+                     WHERE ru.production_id = p.id) AS matieres_kg
+            FROM cuisine_productions p
+            LEFT JOIN cuisine_production_validations v ON v.production_id = p.id
+            WHERE p.actif = 1 AND p.statut != 'annulee'
+              AND p.date_production BETWEEN ? AND ?
+            ORDER BY p.date_production, p.id
+            """,
+            (date_debut, date_fin),
+        ).fetchall()
+        ids = [p["id"] for p in productions]
+        marques = ",".join("?" * len(ids))
+
+        quantites = {}
+        etapes = {}
+        if ids:
+            for q in conn.execute(
+                f"SELECT production_id, taille, quantite FROM cuisine_production_quantites WHERE production_id IN ({marques})",
+                ids,
+            ).fetchall():
+                quantites.setdefault(q["production_id"], {})[q["taille"]] = q["quantite"]
+            for e in conn.execute(
+                f"""SELECT production_id, etape_code, heure_debut, heure_fin, temperature, non_applicable
+                    FROM cuisine_production_etapes WHERE production_id IN ({marques}) ORDER BY id""",
+                ids,
+            ).fetchall():
+                etapes.setdefault(e["production_id"], []).append(e)
+
+        lignes = []
+        for p in productions:
+            etapes_p = etapes.get(p["id"], [])
+            # Dernière ligne par étape (même règle que la fiche production)
+            par_code = {e["etape_code"]: e for e in etapes_p}
+            horaires = [h for e in etapes_p if not e["non_applicable"]
+                        for h in (e["heure_debut"], e["heure_fin"]) if h]
+            cuisson = par_code.get("cuisson")
+            cellule = par_code.get("refroidissement_cellule")
+            lignes.append({
+                "p": p,
+                "debut": min(horaires) if horaires else None,
+                "fin": p["date_validation"] if p["statut"] == "terminee" else None,
+                "t_cuisson": cuisson["temperature"] if cuisson and not cuisson["non_applicable"] else None,
+                "t_cellule": cellule["temperature"] if cellule and not cellule["non_applicable"] else None,
+                "dr": heure_dr(conn, p["id"]),
+                "quantites": quantites.get(p["id"], {}),
+                "non_conformites": motifs_non_conformite(conn, p["id"]),
+            })
+
+    tailles = ("1/2", "1/4", "1/8")
+    groupes = {}
+    totaux = {"barquettes": {t: 0 for t in tailles}, "matieres_kg": 0.0}
+    for ligne in lignes:
+        libelle = LIBELLES_CATEGORIE.get(ligne["p"]["categorie_produit"], "Catégorie non renseignée")
+        entree = groupes.setdefault(libelle, {"lignes": [], "barquettes": {t: 0 for t in tailles}, "matieres_kg": 0.0})
+        entree["lignes"].append(ligne)
+        for t in tailles:
+            n = ligne["quantites"].get(t, 0) or 0
+            entree["barquettes"][t] += n
+            totaux["barquettes"][t] += n
+        kg = ligne["p"]["matieres_kg"] or 0
+        entree["matieres_kg"] += kg
+        totaux["matieres_kg"] += kg
+
+    return render_template(
+        "production_cuisine/productions_etat_journalier.html",
+        date_filtre=date_filtre,
+        periode=periode,
+        periodes=PERIODES_ETAT,
+        date_debut=date_debut,
+        date_fin=date_fin,
+        multi_jours=multi_jours,
+        # Catégorie non renseignée en dernier
+        groupes=sorted(groupes.items(), key=lambda kv: (kv[0] not in LIBELLES_CATEGORIE.values(), kv[0])),
+        totaux=totaux,
+        tailles=tailles,
+        nb_productions=len(lignes),
+        nb_en_cours=sum(1 for l in lignes if l["p"]["statut"] == "en_cours"),
+        nb_non_conformes=sum(1 for l in lignes if l["non_conformites"]),
+    )
+
+
 @production_cuisine_bp.route("/en_cours/action", methods=["POST"])
 @login_required
 @require_access("production_cuisine", "ecriture")
@@ -197,7 +336,8 @@ def productions_en_cours_action():
         ).fetchall()]
         for production_id in ids:
             if action == "terminer":
-                _terminer_production(conn, production_id, current_user.username)
+                _terminer_production(conn, production_id, current_user.username,
+                                     au_jour_de_production=bool(request.form.get("fin_jour_production")))
             else:
                 _supprimer_production(conn, production_id)
         conn.commit()

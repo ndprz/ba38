@@ -45,6 +45,24 @@ Croix Rouge y compris l’epicerie</p>
 Valider les indicateurs/Action/modifier indicateurs du
 trimestre/Enregistrer sans rien saisir puis sortir par la croix en haut
 a droite.</p>
+<p><strong>Règle indicateurs pour assos particulières</strong></p>
+<p>(indication Christine DUPONT en octobre 2026)</p>
+<p>Nous leur distribuons des denrées, donc nous devons avoir en face un
+nombre de bénéficiaires.</p>
+<p>Dans le cas où ils ne vous fourniraient pas ces données, il est
+d’usage de calculer le nombre de bénéficiaires en fonction du tonnage
+distribué (tonnage divisé par la moyenne annuelle par bénéficiaire :
+soit 47 kilos en 2025).</p>
+<p>Cordialement,</p>
+<p>Christine Dupont</p>
+<p><strong>47 kg = tonnage annuel moyen 2025</strong></p>
+<ul>
+<li><p><strong>Restos du Cœur</strong> : tonnage trimestriel / 47 / 4
+(11,75)</p></li>
+<li><p><strong>Secours populaire</strong> : idem</p></li>
+<li><p><strong>Equilibre</strong> : beaucoup de ramasse, pas de tonnage,
+mais saisir les indicateurs (appliquer 11,75)</p></li>
+</ul>
 <p>Cliquer sur valider les indicateurs des associations, puis sur
 exporter csv.</p>
 <p>Un fichier nommé « AMS_ExportIndicateursEtat_11042022_111436.csv »
@@ -100,6 +118,26 @@ statut Mailjet (envoyé / ouvert / rebond / bloqué / spam)</p></li>
 l’AMS, c’est-à-dire non active dans VIF — vérifier la fiche partenaire
 VIF, onglet coordonnées)</p></li>
 </ul>
+<p><strong>Import du tonnage (colonne Tonnage Trimestre) :</strong></p>
+<p>Le bouton <strong>📦 Importer tonnage</strong> remplit la colonne
+Tonnage Trimestre : les kilos nets livrés à chaque association sur la
+période. Le fichier à importer se génère dans VIF :</p>
+<ul>
+<li><p>Menu <strong>Prépa-distribution → Distribution → Édition
+expéditions</strong>, état <strong>#BSPL</strong>, sur la période de la
+campagne.</p></li>
+<li><p>Enregistrer le résultat en <strong>fichier texte (.txt), colonnes
+séparées par des tabulations</strong>. L’import ne lit pas les fichiers
+Excel.</p></li>
+<li><p>Sur l’écran Résultats, choisir ce fichier sur son ordinateur avec
+le champ « Choisir un fichier », puis cliquer sur <strong>📦 Importer
+tonnage</strong>.</p></li>
+</ul>
+<p>Seule la colonne Kg Net est reprise. L’import ne modifie ni les
+statuts ni l’historique des envois, et peut être refait autant de fois
+que nécessaire. Quelques codes VIF ne correspondent à aucune association
+de la base (SPA, Restos du Cœur, dons internes…) : un message les
+signale, et le reste est importé normalement.</p>
 <h2 id="envoi-des-demandes-et-relances">4. Envoi des demandes et
 relances</h2>
 <p>Bouton <strong>📤 Envoyer mails</strong> sur l’écran Résultats. Un

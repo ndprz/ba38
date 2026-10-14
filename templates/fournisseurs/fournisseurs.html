@@ -458,6 +458,7 @@ body{
                 type="text"
                 id="filtre-fournisseur"
                 class="form-control"
+                autofocus
                 placeholder="🔎 Rechercher un fournisseur...">
 
         </div>
@@ -681,6 +682,12 @@ const filtreInput =
     document.getElementById(
         "filtre-fournisseur"
     );
+
+// Curseur dans la recherche au chargement (après rendu du tableau)
+filtreInput.focus();
+table.on("tableBuilt", function(){
+    filtreInput.focus();
+});
 
 filtreInput.addEventListener("input", function(){
 

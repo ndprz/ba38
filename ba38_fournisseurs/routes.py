@@ -328,8 +328,6 @@ def update_fournisseur(fournisseur_id):
                     champs_manquants = []
                     if not updates.get("mail"):
                         champs_manquants.append("email")
-                    if not updates.get("iban"):
-                        champs_manquants.append("IBAN")
                     if champs_manquants:
                         conn.close()
                         flash(
@@ -445,8 +443,6 @@ def create_fournisseur():
             champs_manquants = []
             if not mail:
                 champs_manquants.append("email")
-            if not iban:
-                champs_manquants.append("IBAN")
             if champs_manquants:
                 flash(
                     "⚠️ Champs manquants : " + ", ".join(champs_manquants)

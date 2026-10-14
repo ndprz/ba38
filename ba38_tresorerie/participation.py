@@ -202,7 +202,8 @@ def draw_eu_flag(c, x, y, width, height):
 def generer_facture_participation_pdf(data, output_path):
     """
     Génère une facture de participation PDF, mise en forme identique à
-    l'exemple EBP de référence (/srv/ba38/tmp/factures_*.pdf).
+    l'exemple EBP de référence
+    (/srv/ba38/documentation_technique/references/exemple_facture_EBP_reference.pdf).
 
     data doit contenir :
       - nom_association, contact (peut être vide), adresse (multi-lignes),

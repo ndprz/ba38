@@ -21,6 +21,12 @@
       <span class="text-muted small" id="nb-selection">0 sélectionnée</span>
       <button type="button" class="btn btn-success" data-action="terminer" disabled>✅ Terminer la sélection</button>
       <button type="button" class="btn btn-outline-danger" data-action="supprimer" disabled>🗑️ Supprimer la sélection</button>
+      <div class="form-check ms-2 mb-0">
+        <input class="form-check-input" type="checkbox" name="fin_jour_production" value="1" id="fin-jour-production" checked>
+        <label class="form-check-label" for="fin-jour-production">
+          Terminer à la date de la production <span class="text-muted small">(heure de la dernière étape saisie, sinon 23:59)</span>
+        </label>
+      </div>
     </div>
 
     <table class="table table-hover align-middle">
@@ -59,7 +65,8 @@
     </table>
   </form>
   <p class="text-muted small">
-    « Terminer » clôture la production comme la validation finale (plat témoin conservé s'il avait été saisi).
+    « Terminer » clôture la production comme la validation finale (plat témoin conservé s'il avait été saisi),
+    datée du jour où elle a été commencée si la case ci-dessus est cochée, sinon de maintenant.
     « Supprimer » la retire et rend les poids des réceptions utilisées disponibles.
   </p>
   {% endif %}

@@ -5,6 +5,7 @@
 
 import os
 import sqlite3
+from datetime import datetime
 
 from flask import request, redirect, url_for, flash, send_file, abort
 from flask_login import login_required
@@ -411,11 +412,28 @@ def quantites_production(production_id):
 def validation_production(production_id):
     valide_par = (request.form.get("valide_par") or request.form.get("benevole") or "").strip() or None
     commentaire = (request.form.get("commentaire") or "").strip() or None
+    # Date/heure de fin saisie : production oubliée en cours la veille,
+    # terminée réellement le jour où elle a été commencée.
+    date_validation = _datetime_local_vers_stockage(request.form.get("date_fin")) or now_paris_str()
 
     try:
         with _connect() as conn:
             cur = conn.cursor()
-            date_validation = now_paris_str()
+            ligne = conn.execute(
+                "SELECT date_production FROM cuisine_productions WHERE id = ? AND actif = 1", (production_id,)
+            ).fetchone()
+            if not ligne:
+                flash("⛔ Production introuvable.", "danger")
+                return redirect(url_for("production_cuisine.liste_productions"))
+            maintenant = now_paris_str()
+            try:
+                datetime.strptime(date_validation, "%Y-%m-%d %H:%M:%S")
+                date_ok = ligne[0] <= date_validation[:10] and date_validation <= maintenant
+            except ValueError:
+                date_ok = False
+            if not date_ok:
+                flash("⚠️ La date de fin doit être comprise entre le jour de la production et maintenant.", "warning")
+                return _redirect_run(production_id)
             cur.execute(
                 """
                 INSERT INTO cuisine_production_validations
