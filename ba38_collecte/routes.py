@@ -2239,6 +2239,247 @@ def autorisations_apercu_mail(annee):
     return Response(texte, mimetype="text/plain; charset=utf-8")
 
 
+def _lire_magasins_accord_pour_non_collecte(annee):
+    """Magasins de liste_magasins.xlsx déjà passés État='Non collecté' (dans
+    le fichier, hand-maintenu hors appli) ET ayant donné leur accord
+    auparavant (colonne 'Accord' non vide) — population cible de l'action
+    « pas de collecte cette année, faute de bénévoles » (cf.
+    non_collecte_benevoles) : l'État est basculé à la main par l'équipe
+    AVANT d'utiliser cette page, qui ne sert qu'à prévenir par mail les
+    magasins concernés, pas à décider lesquels le sont. Contrairement à
+    _lire_magasins_autorisation, les magasins SANS email sont inclus (et
+    signalés dans le template) : on doit pouvoir les marquer même si le mail
+    ne peut pas leur être envoyé."""
+    chemin = _fichier_drive(annee, "magasins")
+    if not chemin:
+        return []
+
+    df = pd.read_excel(chemin)
+    df.columns = [str(c).strip() for c in df.columns]
+    for col in ["Code VIF", "Nom", "État", "Ville", "Email", "Accord"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    magasins = []
+    for _, row in df.iterrows():
+        if str(row.get("État", "")).strip() != "Non collecté":
+            continue
+        accord = row.get("Accord")
+        if pd.isna(accord) or str(accord).strip() in ("", "nan"):
+            continue
+        code_vif = _vif_fmt(row.get("Code VIF"))
+        if not code_vif or code_vif.lower() == "nan":
+            continue
+        magasins.append({
+            "code_vif": code_vif,
+            "nom": str(row.get("Nom", "")).strip(),
+            "etat": str(row.get("État", "")).strip(),
+            "ville": str(row.get("Ville", "")).strip(),
+            "emails": _emails_magasin(str(row.get("Email", "")).strip()),
+        })
+    magasins.sort(key=lambda m: m["nom"].lower())
+    return magasins
+
+
+def _ensure_table_non_collectes_benevoles(conn):
+    """Magasins marqués « pas de collecte cette année, faute de bénévoles »
+    malgré leur accord donné (colonne 'Accord' du référentiel magasins,
+    hand-maintenue hors appli, jamais modifiée par l'application elle-même)
+    — cf. non_collecte_benevoles()."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_magasins_non_collectes (
+            annee INTEGER NOT NULL,
+            code_vif TEXT NOT NULL,
+            marque_le TEXT,
+            marque_par TEXT,
+            mail_envoye INTEGER DEFAULT 0,
+            mail_envoye_le TEXT,
+            PRIMARY KEY (annee, code_vif)
+        )
+    """)
+
+
+def _ensure_colonne_non_collecte_texte_mail(conn):
+    """Texte du mail envoyé aux magasins marqués 'pas de collecte, faute de
+    bénévoles' — personnalisable par campagne, même principe que les autres
+    textes de campagne (ex. autorisation_texte_mail)."""
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_campagnes)").fetchall()}
+    if "non_collecte_texte_mail" not in colonnes:
+        conn.execute("ALTER TABLE collecte_campagnes ADD COLUMN non_collecte_texte_mail TEXT")
+
+
+NON_COLLECTE_TEXTE_MAIL_DEFAUT = (
+    "Madame la Directrice, Monsieur le Directeur de <<Nom>>,\n\n"
+    "Nous vous remercions d'avoir donné votre accord pour participer à la collecte nationale "
+    "des Banques Alimentaires <<Annee>>.\n\n"
+    "Faute de bénévoles disponibles pour l'organiser cette année dans votre magasin, nous ne "
+    "pourrons malheureusement pas y réaliser la collecte.\n\n"
+    "Nous espérons pouvoir de nouveau compter sur votre accueil l'année prochaine, et vous "
+    "prions de nous excuser pour la gêne occasionnée.\n\n"
+    "Cordialement,\n"
+    "La Banque Alimentaire de l'Isère"
+)
+
+
+@collecte_bp.route("/collecte/<int:annee>/non-collecte-benevoles", methods=["GET", "POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def non_collecte_benevoles(annee):
+    """Marque les magasins déjà passés État='Non collecté' (et ayant donné
+    leur accord auparavant) comme « pas de collecte cette année, faute de
+    bénévoles » (collecte_magasins_non_collectes) et leur envoie un mail —
+    les magasins sans email sont inclus dans la liste mais signalés, le mail
+    ne pouvant pas leur être envoyé (cf. _lire_magasins_accord_pour_non_collecte)."""
+    magasins = _lire_magasins_accord_pour_non_collecte(annee)
+
+    if request.method == "POST":
+        if request.form.get("confirmation") != "oui":
+            flash("❌ Confirmez le contrôle avant l'envoi", "danger")
+            return redirect(url_for("collecte.non_collecte_benevoles", annee=annee))
+
+        mode_test = request.form.get("mode_test") == "on"
+        test_un_magasin = request.form.get("test_un_magasin") == "on"
+        code_vif_test = request.form.get("magasin_test_code_vif", "")
+        codes_selectionnes = set(request.form.getlist("magasins"))
+
+        if test_un_magasin:
+            magasins_a_traiter = [m for m in magasins if m["code_vif"] == code_vif_test]
+            if not magasins_a_traiter:
+                flash("❌ Sélectionnez un magasin pour le test", "danger")
+                return redirect(url_for("collecte.non_collecte_benevoles", annee=annee))
+        else:
+            magasins_a_traiter = [m for m in magasins if m["code_vif"] in codes_selectionnes]
+            if not magasins_a_traiter:
+                flash("❌ Aucun magasin sélectionné", "danger")
+                return redirect(url_for("collecte.non_collecte_benevoles", annee=annee))
+
+        if mode_test and not getattr(current_user, "email", ""):
+            flash("❌ Votre compte n'a pas d'adresse email pour le test", "danger")
+            return redirect(url_for("collecte.non_collecte_benevoles", annee=annee))
+
+        with get_db_connection() as conn:
+            _ensure_colonne_non_collecte_texte_mail(conn)
+            conn.commit()
+            campagne_mail = conn.execute(
+                "SELECT non_collecte_texte_mail FROM collecte_campagnes WHERE annee = ?", (annee,)
+            ).fetchone()
+        texte_mail_modele = (campagne_mail["non_collecte_texte_mail"] if campagne_mail else None) or NON_COLLECTE_TEXTE_MAIL_DEFAUT
+        texte_mail_modele = texte_mail_modele.replace("<<Annee>>", str(annee))
+
+        maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        marques = 0
+        envoyes = 0
+        sans_email = []
+        for magasin in magasins_a_traiter:
+            a_un_email = bool(magasin["emails"])
+            if a_un_email:
+                destinataires = [current_user.email] if mode_test else magasin["emails"]
+                envoyer_mail(
+                    sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — Pas de collecte cette année — {magasin['nom']}",
+                    destinataires=destinataires,
+                    texte=texte_mail_modele.replace("<<Nom>>", magasin["nom"]),
+                    sender_override=os.getenv("MAILJET_SENDER"),
+                    cc=None if mode_test else ["ba380.collecte@banquealimentaire.org"],
+                )
+                envoyes += 1
+            else:
+                sans_email.append(magasin["nom"])
+
+            if not mode_test:
+                with get_db_connection() as conn:
+                    _ensure_table_non_collectes_benevoles(conn)
+                    conn.execute("""
+                        INSERT INTO collecte_magasins_non_collectes
+                            (annee, code_vif, marque_le, marque_par, mail_envoye, mail_envoye_le)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(annee, code_vif) DO UPDATE SET
+                            marque_le = excluded.marque_le, marque_par = excluded.marque_par,
+                            mail_envoye = excluded.mail_envoye, mail_envoye_le = excluded.mail_envoye_le
+                    """, (annee, magasin["code_vif"], maintenant, current_user.email,
+                          1 if a_un_email else 0, maintenant if a_un_email else None))
+                    conn.commit()
+                marques += 1
+
+        message = (
+            f"✅ {marques if not mode_test else len(magasins_a_traiter)} magasin(s) marqué(s) "
+            f"« pas de collecte » {'(test) ' if mode_test else ''}— {envoyes} mail(s) envoyé(s)"
+        )
+        if sans_email:
+            message += f" — ⚠️ sans email, à contacter autrement : {', '.join(sans_email)}"
+        flash(message, "warning" if sans_email else "success")
+        write_log(f"📭 Marquage non-collecté (faute de bénévoles) {annee} : {marques} magasin(s), {envoyes} mail(s) par {current_user.email}")
+        return redirect(url_for("collecte.non_collecte_benevoles", annee=annee))
+
+    with get_db_connection() as conn:
+        _ensure_table_non_collectes_benevoles(conn)
+        _ensure_colonne_non_collecte_texte_mail(conn)
+        conn.commit()
+        deja_marques = {
+            r["code_vif"]: r for r in conn.execute(
+                "SELECT code_vif, mail_envoye FROM collecte_magasins_non_collectes WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
+        campagne = conn.execute(
+            "SELECT non_collecte_texte_mail FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    for magasin in magasins:
+        deja = deja_marques.get(magasin["code_vif"])
+        magasin["deja_marque"] = deja is not None
+        magasin["mail_deja_envoye"] = bool(deja and deja["mail_envoye"])
+
+    return render_template(
+        "collecte/non_collecte_benevoles.html",
+        annee=annee,
+        magasins=magasins,
+        texte_mail=(campagne["non_collecte_texte_mail"] if campagne else None) or NON_COLLECTE_TEXTE_MAIL_DEFAUT,
+    )
+
+
+@collecte_bp.route("/collecte/non-collecte-benevoles/texte", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_texte_non_collecte():
+    """Enregistre le texte du mail envoyé aux magasins marqués 'pas de
+    collecte, faute de bénévoles' — personnalisable en ligne, même principe
+    que enregistrer_texte_autorisation."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    texte_mail = request.form.get("texte_mail", "").strip()
+    with get_db_connection() as conn:
+        _ensure_colonne_non_collecte_texte_mail(conn)
+        conn.execute(
+            "UPDATE collecte_campagnes SET non_collecte_texte_mail = ? WHERE annee = ?",
+            (texte_mail or None, annee),
+        )
+        conn.commit()
+    flash("✅ Texte du mail enregistré.", "success")
+    return redirect(url_for("collecte.non_collecte_benevoles", annee=annee))
+
+
+@collecte_bp.route("/collecte/<int:annee>/non-collecte-benevoles/apercu-mail")
+@login_required
+@require_access("collecte", "lecture")
+def non_collecte_apercu_mail(annee):
+    """Affiche directement dans le navigateur (pas d'envoi, même de test) le
+    texte exact du mail pour le magasin sélectionné — même principe que
+    autorisations_apercu_mail."""
+    magasins = _lire_magasins_accord_pour_non_collecte(annee)
+    if not magasins:
+        flash("⛔ Aucun magasin disponible pour l'aperçu", "danger")
+        return redirect(url_for("collecte.non_collecte_benevoles", annee=annee))
+    code_vif = request.args.get("code_vif", "")
+    magasin = next((m for m in magasins if m["code_vif"] == code_vif), magasins[0])
+
+    with get_db_connection() as conn:
+        _ensure_colonne_non_collecte_texte_mail(conn)
+        conn.commit()
+        campagne_mail = conn.execute(
+            "SELECT non_collecte_texte_mail FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    texte_mail_modele = (campagne_mail["non_collecte_texte_mail"] if campagne_mail else None) or NON_COLLECTE_TEXTE_MAIL_DEFAUT
+    texte = texte_mail_modele.replace("<<Annee>>", str(annee)).replace("<<Nom>>", magasin["nom"])
+    return Response(texte, mimetype="text/plain; charset=utf-8")
+
+
 # Boîte englobante large autour de l'Isère (+ départements limitrophes), pour
 # repérer une adresse mal géocodée ou une coordonnée manifestement fausse
 # dans le référentiel (ex. lat/lon inversées, saisie erronée) — pas une

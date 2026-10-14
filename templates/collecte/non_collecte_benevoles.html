@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Pas de collecte — faute de bénévoles {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 1100px;">
+    <h2>📭 Pas de collecte cette année, faute de bénévoles — {{ annee }}</h2>
+    <p class="text-muted small">
+        Magasins déjà passés « Non collecté » dans le fichier magasins (État) et qui avaient donné leur accord
+        auparavant (colonne « Accord ») — la collecte n'aura finalement pas lieu cette année, faute de
+        bénévoles disponibles pour l'organiser. On les marque ici et on leur envoie un mail pour les prévenir.
+        Les magasins sans email sont inclus mais signalés : le mail ne peut pas leur être envoyé, il faut les
+        contacter autrement (téléphone).
+    </p>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+    {% endcall %}
+
+    <button class="btn btn-outline-secondary mb-3" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionParametresNonCollecte"
+            aria-expanded="false" aria-controls="sectionParametresNonCollecte">
+        📁 Paramètres (texte du mail)
+    </button>
+    <div id="sectionParametresNonCollecte" class="collapse mb-3">
+
+    <form method="post" action="{{ url_for('collecte.enregistrer_texte_non_collecte') }}" class="border rounded p-3 mb-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+        <div class="mb-3">
+            <label for="texte_mail" class="form-label"><strong>Texte du mail</strong></label>
+            <textarea name="texte_mail" id="texte_mail" class="form-control" rows="8">{{ texte_mail }}</textarea>
+            <small class="text-muted">
+                Repères disponibles : <code>&lt;&lt;Nom&gt;&gt;</code> (nom du magasin) et
+                <code>&lt;&lt;Annee&gt;&gt;</code>.
+            </small>
+        </div>
+        <button type="submit" class="btn btn-outline-primary">💾 Enregistrer le texte</button>
+    </form>
+
+    </div>
+
+    <form method="post" id="form-non-collecte">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <h5>Magasins ({{ magasins|length }})</h5>
+        <div class="mb-2">
+            <button type="button" id="btn-tout-cocher" class="btn btn-sm btn-outline-secondary">☑️ Tout cocher</button>
+            <button type="button" id="btn-tout-decocher" class="btn btn-sm btn-outline-secondary">⬜ Tout décocher</button>
+        </div>
+        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+            <table class="table table-sm table-striped">
+                <thead class="table-light" style="position: sticky; top: 0;">
+                    <tr>
+                        <th></th>
+                        <th>Code VIF</th>
+                        <th>Magasin</th>
+                        <th>État</th>
+                        <th>Ville</th>
+                        <th>Email(s)</th>
+                        <th>Déjà marqué</th>
+                        <th>Mail envoyé</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for m in magasins %}
+                <tr>
+                    <td><input class="case-magasin" type="checkbox" name="magasins" value="{{ m.code_vif }}" checked></td>
+                    <td>{{ m.code_vif }}</td>
+                    <td>{{ m.nom }}</td>
+                    <td>{{ m.etat }}</td>
+                    <td>{{ m.ville }}</td>
+                    <td>
+                        {% if m.emails %}{{ m.emails|join(', ') }}{% else %}<span class="text-danger">⚠️ Aucun email</span>{% endif %}
+                    </td>
+                    <td>{{ '✅' if m.deja_marque else '—' }}</td>
+                    <td>{{ '✅' if m.mail_deja_envoye else '—' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="border rounded p-3 mt-3 bg-light">
+            <p class="text-muted small mb-2">
+                Ces options concernent l'envoi dans son ensemble — elles ne font pas partie de la liste des
+                magasins ci-dessus.
+            </p>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="confirmation" value="oui" id="confirmation" required>
+                <label class="form-check-label" for="confirmation">J'ai contrôlé la sélection et le texte du mail et je confirme l'envoi.</label>
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="mode_test" id="mode_test" checked>
+                <label class="form-check-label" for="mode_test">Test : envoyer uniquement à l'adresse de test (aux magasins cochés), sans marquer les magasins.</label>
+            </div>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" name="test_un_magasin" id="test_un_magasin">
+                <label class="form-check-label" for="test_un_magasin">Test sur un seul magasin.</label>
+            </div>
+            <div class="mb-3 d-flex align-items-end gap-2 flex-wrap" style="max-width: 700px;">
+                <div class="flex-grow-1">
+                    <label class="form-label" for="magasin_test_code_vif">Magasin à tester / prévisualiser</label>
+                    <select class="form-select" name="magasin_test_code_vif" id="magasin_test_code_vif">
+                        {% for m in magasins %}
+                        <option value="{{ m.code_vif }}">{{ m.nom }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="button" id="btn-apercu-mail" class="btn btn-outline-info">
+                    ✉️ Aperçu du mail
+                </button>
+            </div>
+            <p class="text-muted small mb-0">
+                L'aperçu ouvre le texte du mail exact qui serait envoyé pour le magasin sélectionné ci-dessus,
+                sans envoyer aucun mail (même de test).
+            </p>
+        </div>
+
+        <button type="submit" class="btn btn-primary mt-3" id="btn-envoyer-mails">📧 Marquer et envoyer les mails</button>
+    </form>
+</div>
+
+<script>
+const cases = document.querySelectorAll(".case-magasin");
+document.getElementById("btn-tout-cocher").addEventListener("click", function () {
+    cases.forEach(function (c) { c.checked = true; });
+});
+document.getElementById("btn-tout-decocher").addEventListener("click", function () {
+    cases.forEach(function (c) { c.checked = false; });
+});
+
+document.getElementById("btn-apercu-mail").addEventListener("click", function () {
+    const codeVif = document.getElementById("magasin_test_code_vif").value;
+    const url = "{{ url_for('collecte.non_collecte_apercu_mail', annee=annee) }}?code_vif=" + encodeURIComponent(codeVif);
+    window.open(url, "_blank");
+});
+
+document.getElementById("btn-envoyer-mails").addEventListener("click", function (evenement) {
+    if (!document.getElementById("confirmation").checked) {
+        evenement.preventDefault();
+        alert("⚠️ Cochez d'abord « J'ai contrôlé la sélection et le texte du mail et je confirme l'envoi » — rien n'a été envoyé.");
+        return;
+    }
+
+    const modeTest = document.getElementById("mode_test").checked;
+    const unSeulMagasin = document.getElementById("test_un_magasin").checked;
+    const nomMagasin = document.getElementById("magasin_test_code_vif").selectedOptions[0].text;
+    const nbSelectionnes = Array.from(cases).filter(function (c) { return c.checked; }).length;
+
+    let message;
+    if (unSeulMagasin) {
+        message = "Envoyer un mail de TEST pour le magasin « " + nomMagasin + " » à votre propre adresse, sans rien marquer ?";
+    } else if (modeTest) {
+        message = "Envoyer un mail de TEST (pour les " + nbSelectionnes + " magasin(s) cochés, mais tous à votre propre adresse), sans rien marquer ?";
+    } else {
+        message = "⚠️ ENVOI RÉEL : marquer " + nbSelectionnes + " magasin(s) « pas de collecte » et leur envoyer le mail, à leurs vraies adresses ?";
+    }
+
+    if (!confirm(message)) {
+        evenement.preventDefault();
+    }
+});
+</script>
+{% endblock %}
