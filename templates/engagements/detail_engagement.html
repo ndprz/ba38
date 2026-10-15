@@ -249,6 +249,23 @@ Détail engagement #{{ engagement.id }}
                     ✅ Modèle validé — le workflow s'arrête ici
                 </span>
 
+                {% elif engagement.statut == "valide"
+                    and engagement.sous_type_depense == "deplacement"
+                    and engagement.zone_deplacement == "hors_departement" %}
+
+                {# Déplacement hors département approuvé : la saisie
+                   des frais génère la note de frais et transmet
+                   automatiquement à la trésorerie #}
+                <a href="{{ url_for(
+                        'engagements.note_frais_engagement',
+                        engagement_id=engagement.id
+                ) }}"
+                class="btn btn-warning">
+
+                    🚗 Saisir les frais du déplacement
+
+                </a>
+
                 {% elif engagement.statut == "valide" %}
 
                 <form method="POST"
@@ -496,6 +513,13 @@ Détail engagement #{{ engagement.id }}
                                 🔵 Validation bureau
                             </span>
 
+                        {% elif engagement.statut == "valide"
+                            and engagement.sous_type_depense == "deplacement"
+                            and engagement.zone_deplacement == "hors_departement" %}
+                            <span class="badge bg-success">
+                                🟢 Approuvé — frais à saisir au retour
+                            </span>
+
                         {% elif engagement.statut == "valide" %}
                             <span class="badge bg-success">
                                 🟢 Validé
@@ -600,6 +624,11 @@ Détail engagement #{{ engagement.id }}
                         {% if engagement.sous_type_depense == "deplacement" %}
 
                             🚗 Déplacement
+                            {% if engagement.zone_deplacement == "hors_departement" %}
+                                — hors département
+                            {% elif engagement.zone_deplacement == "isere" %}
+                                — Isère
+                            {% endif %}
 
                         {% else %}
 

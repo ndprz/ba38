@@ -455,6 +455,24 @@ def nouvelle_depense():
                 "commentaire_frais"
             )
 
+            # Déplacement : Isère (circuit habituel) ou hors
+            # département (autorisation préalable du pôle, frais
+            # saisis au retour via la note de frais)
+            zone_deplacement = (
+                request.form.get("zone_deplacement")
+                if sous_type_depense == "deplacement"
+                else None
+            )
+
+            deplacement_hors_dept = (
+                zone_deplacement == "hors_departement"
+            )
+
+            if deplacement_hors_dept:
+                kms = 0
+                peages = 0
+                repas = 0
+
             fournisseur_id = request.form.get(
                 "fournisseur_id"
             ) or None
@@ -499,6 +517,26 @@ def nouvelle_depense():
             signature_ip = get_real_ip()
 
             signature_user_agent = request.headers.get("User-Agent")
+
+            if (
+                sous_type_depense == "deplacement"
+                and zone_deplacement not in ("isere", "hors_departement")
+            ):
+
+                flash(
+                    "⚠️ Précisez si le déplacement est en Isère "
+                    "ou hors département.",
+                    "warning"
+                )
+
+                return render_template(
+                    "engagements/nouvelle_depense.html",
+                    poles=poles,
+                    paliers=paliers,
+                    benevoles=benevoles,
+                    subventions=subventions,
+                    fournisseurs=fournisseurs
+                )
 
             if (
                 sous_type_depense == "achat"
@@ -1093,6 +1131,13 @@ def nouvelle_depense():
                 _external=True
             )
 
+            mention_hors_dept = (
+                "\n            ⚠️ Déplacement HORS DÉPARTEMENT : demande "
+                "d'autorisation préalable.\n            Montant estimé, "
+                "la note de frais sera faite au retour.\n"
+                if deplacement_hors_dept else ""
+            )
+
             if statut == "validation_pole":
 
                 # ============================
@@ -1142,6 +1187,7 @@ def nouvelle_depense():
 
             Objet :
             {objet}
+            {mention_hors_dept}
 
             Montant :
             {montant:.2f} €
@@ -1198,6 +1244,7 @@ def nouvelle_depense():
 
             Objet :
             {objet}
+            {mention_hors_dept}
 
             Montant :
             {montant:.2f} €
@@ -1287,7 +1334,8 @@ def nouvelle_depense():
                     fournisseur_email,
                     fournisseur_iban,
 
-                    sous_type_depense
+                    sous_type_depense,
+                    zone_deplacement
 
                 )
                 VALUES (
@@ -1301,7 +1349,7 @@ def nouvelle_depense():
 
                     ?, ?, ?, ?, ?, ?,
 
-                    ?
+                    ?, ?
 
                 )
             """, (
@@ -1350,7 +1398,8 @@ def nouvelle_depense():
                 fournisseur_email,
                 fournisseur_iban,
 
-                sous_type_depense
+                sous_type_depense,
+                zone_deplacement
 
             ))
 
@@ -1361,6 +1410,8 @@ def nouvelle_depense():
             # bénévole (vous-même ou autre bénévole), que ce soit
             # un achat ou un déplacement. Également pour un déplacement
             # avec paiement fournisseur (au nom du fournisseur).
+            # Sauf déplacement hors département : la note de frais
+            # n'est faite qu'au retour, après approbation du pôle.
 
             generer_frais = (
                 type_engagement in ("benevole_self", "benevole_other")
@@ -1368,7 +1419,7 @@ def nouvelle_depense():
                     type_engagement == "fournisseur"
                     and sous_type_depense == "deplacement"
                 )
-            )
+            ) and not deplacement_hors_dept
 
             if generer_frais:
 
@@ -1549,6 +1600,7 @@ def detail_engagement(engagement_id):
 
                 d.type_engagement,
                 d.sous_type_depense,
+                d.zone_deplacement,
 
                 d.beneficiaire_user_id,
                 d.beneficiaire_benevole_id,
@@ -1812,7 +1864,8 @@ def modifier_depense_page(engagement_id):
                 d.date_frais,
                 d.kms,
                 d.peages,
-                d.repas
+                d.repas,
+                d.zone_deplacement
 
             FROM engagements e
 
@@ -1889,6 +1942,7 @@ def modifier_depense_page(engagement_id):
             "kms": engagement["kms"] if engagement["kms"] is not None else 0,
             "peages": engagement["peages"] if engagement["peages"] is not None else 0,
             "repas": engagement["repas"] if engagement["repas"] is not None else 0,
+            "zone_deplacement": engagement["zone_deplacement"] or "",
 
         }
 
@@ -2094,6 +2148,34 @@ def modifier_engagement_configuration(engagement_id):
         peages = request.form.get("peages") or 0
         repas = request.form.get("repas") or 0
 
+        zone_deplacement = (
+            request.form.get("zone_deplacement")
+            if sous_type_depense == "deplacement"
+            else None
+        )
+
+        if (
+            sous_type_depense == "deplacement"
+            and zone_deplacement not in ("isere", "hors_departement")
+        ):
+
+            flash(
+                "⚠️ Précisez si le déplacement est en Isère "
+                "ou hors département.",
+                "warning"
+            )
+
+            return redirect(url_for(
+                "engagements.modifier_depense_page",
+                engagement_id=engagement_id
+            ))
+
+        # Hors département : pas de kms/péages/repas avant
+        # l'approbation, seulement un montant estimé
+        deplacement_hors_dept = (
+            zone_deplacement == "hors_departement"
+        )
+
         if type_engagement not in (
             "benevole_self", "benevole_other", "fournisseur"
         ):
@@ -2209,7 +2291,12 @@ def modifier_engagement_configuration(engagement_id):
             fournisseur_email_final = None
             fournisseur_iban_final = None
 
-        if sous_type_depense == "deplacement":
+        if deplacement_hors_dept:
+            date_frais_final = date_frais
+            kms_final = 0
+            peages_final = 0
+            repas_final = 0
+        elif sous_type_depense == "deplacement":
             date_frais_final = date_frais
             kms_final = kms
             peages_final = peages
@@ -2254,7 +2341,8 @@ def modifier_engagement_configuration(engagement_id):
                 date_frais = ?,
                 kms = ?,
                 peages = ?,
-                repas = ?
+                repas = ?,
+                zone_deplacement = ?
             WHERE engagement_id = ?
         """, (
             objet,
@@ -2283,6 +2371,7 @@ def modifier_engagement_configuration(engagement_id):
             kms_final,
             peages_final,
             repas_final,
+            zone_deplacement,
 
             engagement_id
         ))
@@ -2327,7 +2416,7 @@ def modifier_engagement_configuration(engagement_id):
                 type_engagement == "fournisseur"
                 and sous_type_depense == "deplacement"
             )
-        )
+        ) and not deplacement_hors_dept
 
         ancien_type_engagement = (
             depense_avant["type_engagement"] if depense_avant else None

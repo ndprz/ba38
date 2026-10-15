@@ -49,6 +49,17 @@ document.addEventListener("DOMContentLoaded", function () {
         Note de frais
     </h2>
 
+    {% if engagement.sous_type_depense == "deplacement"
+        and engagement.zone_deplacement == "hors_departement"
+        and engagement.statut == "valide" %}
+    <div class="alert alert-info">
+        🗺️ Déplacement hors département approuvé (montant estimé :
+        {{ '%.2f'|format(engagement.montant_total or 0) }} €).
+        Saisissez les frais réels : la note de frais sera générée et
+        transmise automatiquement à la trésorerie.
+    </div>
+    {% endif %}
+
     <form method="POST">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -100,6 +111,7 @@ document.addEventListener("DOMContentLoaded", function () {
                                name="date_frais"
                                class="form-control date-fr"
                                placeholder="ex: 1003 ou 10/03/2026"
+                               value="{{ engagement.date_frais or '' }}"
                                required>
 
                     </div>

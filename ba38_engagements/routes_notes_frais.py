@@ -367,7 +367,8 @@ def note_frais_engagement(engagement_id):
                 d.precision_rubrique,
                 d.date_frais,
                 d.fournisseur_nom,
-                d.beneficiaire_benevole_id
+                d.beneficiaire_benevole_id,
+                d.zone_deplacement
             FROM engagements e
             LEFT JOIN engagements_depenses d
                 ON d.engagement_id = e.id
@@ -402,6 +403,28 @@ def note_frais_engagement(engagement_id):
                 )
             )
 
+        # Déplacement hors département : note de frais seulement
+        # une fois le déplacement approuvé par le pôle
+        hors_dept = (
+            sous_type == "deplacement"
+            and engagement["zone_deplacement"] == "hors_departement"
+        )
+
+        if hors_dept and engagement["statut"] not in ("valide", "a_payer"):
+
+            flash(
+                "⚠️ Déplacement hors département : la note de frais "
+                "ne peut être faite qu'après l'approbation du pôle.",
+                "warning"
+            )
+
+            return redirect(
+                url_for(
+                    "engagements.detail_engagement",
+                    engagement_id=engagement_id
+                )
+            )
+
         if request.method == "POST":
 
             objet = request.form.get(
@@ -421,15 +444,15 @@ def note_frais_engagement(engagement_id):
             if engagement["sous_type_depense"] == "deplacement":
 
                 kms = Decimal(
-                    request.form.get("kms") or "0"
+                    (request.form.get("kms") or "0").replace(",", ".")
                 )
 
                 peages = Decimal(
-                    request.form.get("peages") or "0"
+                    (request.form.get("peages") or "0").replace(",", ".")
                 )
 
                 repas = Decimal(
-                    request.form.get("repas") or "0"
+                    (request.form.get("repas") or "0").replace(",", ".")
                 )
 
                 tarif_km = Decimal("0.529")
@@ -527,6 +550,50 @@ def note_frais_engagement(engagement_id):
                 current_user.email
             ))
 
+
+            # Hors département approuvé : les frais réels sont
+            # saisis, on transmet à la trésorerie (comme un
+            # déplacement Isère après validation pôle)
+            if hors_dept and engagement["statut"] == "valide":
+
+                from .routes_workflow import notifier_tresorier_deplacement
+
+                conn.execute("""
+                    UPDATE engagements
+                    SET statut = 'a_payer'
+                    WHERE id = ?
+                """, (engagement_id,))
+
+                conn.execute("""
+                    INSERT INTO engagements_workflow (
+                        engagement_id,
+                        action,
+                        ancien_statut,
+                        nouveau_statut,
+                        commentaire,
+                        user_id,
+                        user_email
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    engagement_id,
+                    "transmission_auto_tresorerie",
+                    "valide",
+                    "a_payer",
+                    "Frais du déplacement hors département saisis : "
+                    "transmission automatique à la trésorerie",
+                    current_user.id,
+                    current_user.email
+                ))
+
+                notifier_tresorier_deplacement(
+                    conn,
+                    engagement_id,
+                    engagement["pole_id"],
+                    total,
+                    current_user.email,
+                    current_user.username
+                )
 
             conn.commit()
 

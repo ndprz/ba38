@@ -96,6 +96,54 @@
 
         </div>
 
+        <!-- ========================================== -->
+        <!-- ZONE DU DEPLACEMENT -->
+        <!-- ========================================== -->
+        <!-- Isère : circuit habituel (frais saisis tout de suite).
+             Hors département : autorisation préalable du pôle sur
+             un montant estimé, note de frais saisie au retour. -->
+
+        <div id="bloc-zone-deplacement"
+            class="ms-4 mt-1"
+            style="display:none;">
+
+            <div class="btn-group btn-group-sm" role="group">
+
+                <input type="radio"
+                    class="btn-check"
+                    name="zone_deplacement"
+                    id="zone_isere"
+                    value="isere"
+                    {% if valeurs.get('zone_deplacement') == 'isere' %}checked{% endif %}>
+
+                <label class="btn btn-outline-primary" for="zone_isere">
+                    📍 Isère
+                </label>
+
+                <input type="radio"
+                    class="btn-check"
+                    name="zone_deplacement"
+                    id="zone_hors_departement"
+                    value="hors_departement"
+                    {% if valeurs.get('zone_deplacement') == 'hors_departement' %}checked{% endif %}>
+
+                <label class="btn btn-outline-primary" for="zone_hors_departement">
+                    🗺️ Hors département
+                </label>
+
+            </div>
+
+            <div id="info-hors-departement"
+                class="small text-muted mt-1"
+                style="display:none;">
+                Autorisation préalable du pôle obligatoire : indiquez
+                un montant estimé. La note de frais (kms, péages,
+                repas) se fera au retour, depuis la fiche de
+                l'engagement, une fois le déplacement approuvé.
+            </div>
+
+        </div>
+
     </div>
 
 </div>
@@ -845,7 +893,7 @@
         <div class="row">
 
             <div class="col-md-3">
-                <label>Date déplacement</label>
+                <label id="nf_date_label">Date déplacement</label>
                 <input type="text"
                     id="nf_date_frais"
                     name="date_frais"
@@ -854,7 +902,7 @@
                     value="{{ valeurs.get('date_frais', '') or '' }}">
             </div>
 
-            <div class="col-md-3">
+            <div class="col-md-3 nf-frais-reels">
                 <label>Kilomètres</label>
                 <input type="number"
                     step="0.1"
@@ -864,7 +912,7 @@
                     value="{{ valeurs.get('kms', 0) or 0 }}">
             </div>
 
-            <div class="col-md-3">
+            <div class="col-md-3 nf-frais-reels">
                 <label>Péages (€)</label>
                 <input type="number"
                     step="0.01"
@@ -874,7 +922,7 @@
                     value="{{ valeurs.get('peages', 0) or 0 }}">
             </div>
 
-            <div class="col-md-3">
+            <div class="col-md-3 nf-frais-reels">
                 <label>Repas (€)</label>
                 <input type="number"
                     step="0.01"
@@ -886,9 +934,9 @@
 
         </div>
 
-        <hr>
+        <hr class="nf-frais-reels">
 
-        <div class="row">
+        <div class="row nf-frais-reels">
 
             <div class="col-md-4">
                 <strong>IK :</strong>
@@ -995,6 +1043,16 @@ function updateNoteFrais() {
     // ACHAT CLASSIQUE
     // ================================================
 
+    const blocZone =
+        document.getElementById(
+            "bloc-zone-deplacement"
+        );
+
+    if (blocZone) {
+        blocZone.style.display =
+            (type === "deplacement") ? "block" : "none";
+    }
+
     if (type !== "deplacement") {
 
         bloc.style.display = "none";
@@ -1017,6 +1075,38 @@ function updateNoteFrais() {
     // ================================================
 
     bloc.style.display = "block";
+
+    // Hors département : montant estimé saisi à la main,
+    // pas de kms/péages/repas avant l'approbation du pôle
+    const horsDept = document.getElementById(
+        "zone_hors_departement"
+    )?.checked;
+
+    document.getElementById(
+        "info-hors-departement"
+    ).style.display = horsDept ? "block" : "none";
+
+    document.querySelectorAll(".nf-frais-reels").forEach(el => {
+        el.style.display = horsDept ? "none" : "";
+    });
+
+    document.getElementById("nf_date_label").innerText =
+        horsDept ? "Date prévue du déplacement" : "Date déplacement";
+
+    if (horsDept) {
+
+        if (champMontant) {
+
+            champMontant.readOnly = false;
+
+            champMontant.classList.remove(
+                "bg-light"
+            );
+
+        }
+
+        return;
+    }
 
     if (champMontant) {
 
@@ -1367,6 +1457,18 @@ document.addEventListener(
                     }
                 }
             );
+
+        });
+
+        // ============================================
+        // ZONE DEPLACEMENT (Isère / hors département)
+        // ============================================
+
+        document.querySelectorAll(
+            'input[name="zone_deplacement"]'
+        ).forEach(el => {
+
+            el.addEventListener("change", updateNoteFrais);
 
         });
 

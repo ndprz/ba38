@@ -25,6 +25,144 @@ from ba38_engagements import engagements_bp
 
 
 # ============================================================
+# DEPLACEMENTS : NOTIFICATIONS
+# ============================================================
+
+def notifier_tresorier_deplacement(
+    conn,
+    engagement_id,
+    pole_id,
+    montant,
+    user_email,
+    user_name=None
+):
+    """Prévient le trésorier du pôle qu'une note de frais
+    déplacement est prête pour remboursement. Utilisé à la
+    validation pôle d'un déplacement Isère, et à la saisie des
+    frais d'un déplacement hors département approuvé."""
+
+    tresorier = conn.execute("""
+        SELECT
+            u.email AS tresorier_email,
+            p.nom_affiche
+
+        FROM engagement_poles p
+
+        LEFT JOIN users u
+            ON u.id = p.tresorier_user_id
+
+        WHERE p.id = ?
+    """, (
+        pole_id,
+    )).fetchone()
+
+    if not (tresorier and tresorier["tresorier_email"]):
+        return
+
+    lien = url_for(
+        "engagements.detail_engagement",
+        engagement_id=engagement_id,
+        _external=True
+    )
+
+    sujet = (
+        f"Engagement prêt pour règlement "
+        f"#{engagement_id}"
+    )
+
+    texte = f"""
+    Bonjour,
+
+    Une note de frais déplacement est prête
+    pour remboursement.
+
+    Engagement :
+    #{engagement_id}
+
+    Montant :
+    {float(montant or 0):.2f} €
+
+    Lien :
+    {lien}
+
+    ---
+    BA38
+    """
+
+    envoyer_mail(
+        sujet=sujet,
+        destinataires=[
+            tresorier["tresorier_email"]
+        ],
+        texte=texte,
+        sender_override="ba380@banquealimentaire.org",
+        sender_name=user_name or user_email,
+        reply_to=user_email
+    )
+
+    write_log(
+        f"[ENGAGEMENTS] Mail trésorerie envoyé à "
+        f"{tresorier['tresorier_email']}"
+    )
+
+
+def _notifier_demandeur_deplacement_approuve(
+    engagement,
+    engagement_id,
+    user_email,
+    user_name=None
+):
+    """Déplacement hors département approuvé par le pôle : le
+    demandeur pourra saisir ses frais au retour."""
+
+    if not engagement["demandeur_email"]:
+        return
+
+    lien = url_for(
+        "engagements.note_frais_engagement",
+        engagement_id=engagement_id,
+        _external=True
+    )
+
+    texte = f"""
+    Bonjour,
+
+    Votre déplacement hors département
+    (engagement #{engagement_id}) a été approuvé par le pôle.
+
+    Au retour, saisissez vos frais réels (date, kilomètres,
+    péages, repas) pour générer la note de frais et la
+    transmettre à la trésorerie :
+    {lien}
+
+    ---
+    BA38
+    """
+
+    # Un échec d'envoi ne doit pas annuler l'approbation
+    try:
+        envoyer_mail(
+            sujet=f"Déplacement approuvé #{engagement_id}",
+            destinataires=[engagement["demandeur_email"]],
+            texte=texte,
+            sender_override="ba380@banquealimentaire.org",
+            sender_name=user_name or user_email,
+            reply_to=user_email
+        )
+    except Exception as exc:
+        write_log(
+            f"[ENGAGEMENTS] Échec mail déplacement approuvé "
+            f"#{engagement_id} : {exc}"
+        )
+        return
+
+    write_log(
+        f"[ENGAGEMENTS] Déplacement hors département #{engagement_id} "
+        f"approuvé, mail envoyé à {engagement['demandeur_email']}"
+    )
+
+
+# ============================================================
 # VALIDATION POLE
 # ============================================================
 
@@ -66,11 +204,33 @@ def _executer_validation_pole(
 
     ancien_statut = engagement["statut"]
 
+    zone = conn.execute("""
+        SELECT zone_deplacement
+        FROM engagements_depenses
+        WHERE engagement_id = ?
+    """, (engagement_id,)).fetchone()
+
+    est_deplacement = engagement["sous_type_depense"] == "deplacement"
+
+    deplacement_hors_dept = est_deplacement and bool(zone) and (
+        zone["zone_deplacement"] == "hors_departement"
+    )
+
     # -----------------------------------------------------
-    # Déplacement
+    # Déplacement hors département : approbation préalable,
+    # la note de frais est saisie au retour (statut "valide"
+    # jusqu'à la saisie des frais, puis "a_payer")
     # -----------------------------------------------------
 
-    if engagement["sous_type_depense"] == "deplacement":
+    if deplacement_hors_dept:
+
+        nouveau_statut = "valide"
+
+    # -----------------------------------------------------
+    # Déplacement (Isère)
+    # -----------------------------------------------------
+
+    elif est_deplacement:
 
         nouveau_statut = "a_payer"
 
@@ -112,7 +272,7 @@ def _executer_validation_pole(
     # reste visible, sans changer le statut réellement appliqué ci-dessus.
     statut_historique_validation_pole = (
         "valide"
-        if engagement["sous_type_depense"] == "deplacement"
+        if est_deplacement
         else nouveau_statut
     )
 
@@ -132,12 +292,15 @@ def _executer_validation_pole(
         "validation_pole",
         ancien_statut,
         statut_historique_validation_pole,
-        "Validation du responsable de pôle",
+        "Déplacement hors département approuvé par le pôle "
+        "(note de frais à saisir au retour)"
+        if deplacement_hors_dept
+        else "Validation du responsable de pôle",
         user_id,
         user_email
     ))
 
-    if engagement["sous_type_depense"] == "deplacement":
+    if est_deplacement and not deplacement_hors_dept:
 
         conn.execute("""
             INSERT INTO engagements_workflow (
@@ -160,72 +323,23 @@ def _executer_validation_pole(
             user_email
         ))
 
-        # =====================================================
-        # MAIL TRESORERIE AUTO (DEPLACEMENT)
-        # =====================================================
-
-        tresorier = conn.execute("""
-            SELECT
-                u.email AS tresorier_email,
-                p.nom_affiche
-
-            FROM engagement_poles p
-
-            LEFT JOIN users u
-                ON u.id = p.tresorier_user_id
-
-            WHERE p.id = ?
-        """, (
+        notifier_tresorier_deplacement(
+            conn,
+            engagement_id,
             engagement["pole_id"],
-        )).fetchone()
+            montant,
+            user_email,
+            user_name
+        )
 
-        if tresorier and tresorier["tresorier_email"]:
+    elif deplacement_hors_dept:
 
-            lien = url_for(
-                "engagements.detail_engagement",
-                engagement_id=engagement_id,
-                _external=True
-            )
-
-            sujet = (
-                f"Engagement prêt pour règlement "
-                f"#{engagement_id}"
-            )
-
-            texte = f"""
-    Bonjour,
-
-    Une note de frais déplacement est prête
-    pour remboursement.
-
-    Engagement :
-    #{engagement_id}
-
-    Montant :
-    {montant:.2f} €
-
-    Lien :
-    {lien}
-
-    ---
-    BA38
-    """
-
-            envoyer_mail(
-                sujet=sujet,
-                destinataires=[
-                    tresorier["tresorier_email"]
-                ],
-                texte=texte,
-                sender_override="ba380@banquealimentaire.org",
-                sender_name=user_name or user_email,
-                reply_to=user_email
-            )
-
-            write_log(
-                f"[ENGAGEMENTS] Mail trésorerie envoyé à "
-                f"{tresorier['tresorier_email']}"
-            )
+        _notifier_demandeur_deplacement_approuve(
+            engagement,
+            engagement_id,
+            user_email,
+            user_name
+        )
 
     conn.commit()
 

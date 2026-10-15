@@ -48,6 +48,8 @@ def transmettre_tresorerie(engagement_id):
                 d.objet,
                 d.montant_total,
                 d.type_engagement,
+                d.sous_type_depense,
+                d.zone_deplacement,
                 p.nom_affiche,
                 u.email AS tresorier_email
 
@@ -75,6 +77,27 @@ def transmettre_tresorerie(engagement_id):
                 "(pôle/présidence) : seuls les engagements générés "
                 "chaque mois à partir de ce modèle passent par la "
                 "trésorerie.",
+                "warning"
+            )
+
+            return redirect(
+                url_for(
+                    "engagements.detail_engagement",
+                    engagement_id=engagement_id
+                )
+            )
+
+        # Déplacement hors département : passe à la trésorerie
+        # uniquement par la saisie des frais (note de frais)
+        if (
+            engagement["sous_type_depense"] == "deplacement"
+            and engagement["zone_deplacement"] == "hors_departement"
+        ):
+
+            flash(
+                "⚠️ Déplacement hors département : saisissez d'abord "
+                "les frais du déplacement (note de frais), la "
+                "transmission à la trésorerie est alors automatique.",
                 "warning"
             )
 
