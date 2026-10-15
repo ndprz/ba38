@@ -104,34 +104,42 @@
              un montant estimé, note de frais saisie au retour. -->
 
         <div id="bloc-zone-deplacement"
-            class="ms-4 mt-1"
-            style="display:none;">
+            class="mt-1"
+            style="display:none; margin-left:1.5rem;">
 
-            <div class="btn-group btn-group-sm" role="group">
+            <div style="display:flex; gap:1.5rem;">
 
-                <input type="radio"
-                    class="btn-check"
+            <div class="form-check">
+
+                <input class="form-check-input"
+                    type="radio"
                     name="zone_deplacement"
                     id="zone_isere"
                     value="isere"
                     {% if valeurs.get('zone_deplacement') == 'isere' %}checked{% endif %}>
 
-                <label class="btn btn-outline-primary" for="zone_isere">
+                <label class="form-check-label" for="zone_isere">
                     📍 Isère
                 </label>
 
-                <input type="radio"
-                    class="btn-check"
+            </div>
+
+            <div class="form-check">
+
+                <input class="form-check-input"
+                    type="radio"
                     name="zone_deplacement"
                     id="zone_hors_departement"
                     value="hors_departement"
                     {% if valeurs.get('zone_deplacement') == 'hors_departement' %}checked{% endif %}>
 
-                <label class="btn btn-outline-primary" for="zone_hors_departement">
+                <label class="form-check-label" for="zone_hors_departement">
                     🗺️ Hors département
                 </label>
 
             </div>
+
+            </div>{# /d-flex zones #}
 
             <div id="info-hors-departement"
                 class="small text-muted mt-1"
