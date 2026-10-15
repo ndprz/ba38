@@ -58,7 +58,7 @@
 
     {% call action_buttons() %}
         {{ action_button("📥 Télécharger Excel", href=url_for('collecte.resultats_excel', generation_id=generation.id), color="outline-success") }}
-        {{ action_button("📄 Télécharger PDF", href=url_for('collecte.resultats_pdf', generation_id=generation.id), color="outline-danger") }}
+        {{ action_button("📄 Télécharger PDF (selon filtres)", onclick="telechargerPdfFiltre()", color="outline-danger") }}
         {% if generation.fichier_pdf_equipier %}
         {{ action_button("📋 PDF équipier (camion/magasins)", href=url_for('collecte.resultats_pdf_equipier', generation_id=generation.id), color="outline-danger") }}
         {% endif %}
@@ -107,8 +107,42 @@
     <div id="tabulator-table"></div>
 
     <p class="small text-muted mt-2">
-        🔴 Ligne rouge : véhicule figé (jamais modifié par l'algorithme).
+        🔴 Ligne rouge : véhicule figé (jamais modifié par l'algorithme). Chaque colonne a son propre filtre
+        dans l'en-tête (liste déroulante ou saisie libre selon la colonne).
     </p>
+
+    {% if camions_non_utilises %}
+    <button class="btn btn-outline-secondary mb-3 mt-2" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionCamionsNonUtilises"
+            aria-expanded="false" aria-controls="sectionCamionsNonUtilises">
+        🚫 Camions non utilisés par demi-journée
+    </button>
+    <div id="sectionCamionsNonUtilises" class="collapse mb-3">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered">
+                <thead class="table-light">
+                    <tr>
+                        <th>Demi-journée</th>
+                        <th>Camions non utilisés</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for l in camions_non_utilises %}
+                    <tr>
+                        <td>{{ l.demi_journee }}</td>
+                        <td>{{ l.camions|map(attribute='code')|join(', ') }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <form id="form-pdf-filtre" method="POST" action="{{ url_for('collecte.resultats_pdf', generation_id=generation.id) }}" style="display:none;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="lignes_filtrees" id="input-lignes-filtrees">
+    </form>
 
 </div>
 
@@ -128,24 +162,36 @@ const table = new Tabulator("#tabulator-table", {
     height: "calc(100vh - 340px)",
     placeholder: "Aucune tournée",
     movableColumns: true,
-    groupBy: "demi_journee",
+    groupBy: "camion",
     groupStartOpen: true,
+    initialSort: [
+        { column: "camion", dir: "asc" },
+        { column: "ordre_dj", dir: "asc" },
+    ],
     rowFormatter: function(row) {
         if (row.getData().figee) {
             row.getElement().classList.add("ligne-figee");
         }
     },
     columns: [
-        { title: "Camion", field: "camion", width: 90, headerFilter: "input" },
-        { title: "Nom camion", field: "nom_camion", width: 220 },
-        { title: "Secteur", field: "secteur", width: 220 },
-        { title: "Magasins", field: "magasins", width: 420, formatter: "textarea" },
+        { title: "Camion", field: "camion", width: 90,
+          headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
+        { title: "Nom camion", field: "nom_camion", width: 220,
+          headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
+        { title: "Demi-journée", field: "demi_journee", width: 160,
+          headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
+        { title: "ordre_dj", field: "ordre_dj", visible: false },
+        { title: "Secteur", field: "secteur", width: 220,
+          headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
+        { title: "Magasins", field: "magasins", width: 420, formatter: "textarea", headerFilter: "input" },
         { title: "Tonnage", field: "tonnage", width: 100, hozAlign: "right",
-          formatter: function(cell){ return Math.round(cell.getValue()) + " kg"; }, sorter: "number" },
-        { title: "Type camion", field: "type_camion", width: 110 },
-        { title: "Km", field: "km", width: 80, hozAlign: "right", sorter: "number" },
-        { title: "Durée", field: "duree", width: 220 },
-        { title: "Commentaire", field: "commentaire", width: 320, formatter: "textarea" },
+          formatter: function(cell){ return Math.round(cell.getValue()) + " kg"; }, sorter: "number",
+          headerFilter: "input" },
+        { title: "Type camion", field: "type_camion", width: 110,
+          headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
+        { title: "Km", field: "km", width: 80, hozAlign: "right", sorter: "number", headerFilter: "input" },
+        { title: "Durée", field: "duree", width: 220, headerFilter: "input" },
+        { title: "Commentaire", field: "commentaire", width: 320, formatter: "textarea", headerFilter: "input" },
     ],
 });
 
@@ -196,6 +242,30 @@ if (selectVersion) {
     selectVersion.addEventListener("change", function () {
         window.location.href = "{{ url_for('collecte.resultats', generation_id=0) }}".replace("0", this.value);
     });
+}
+
+// ── Télécharger PDF selon les filtres actifs (colonnes + recherche) ────────
+// table.getData("active") ne garantit pas l'ordre visuel exact une fois le
+// groupBy appliqué (groupement géré à part du tri des données brutes) —
+// on passe par l'API de groupes de Tabulator, qui reflète exactement les
+// groupes/lignes dans l'ordre affiché à l'écran.
+function telechargerPdfFiltre() {
+    let lignesVisibles = [];
+    const groupes = table.getGroups();
+    if (groupes && groupes.length) {
+        groupes.forEach(function (g) {
+            g.getRows().forEach(function (r) {
+                const d = r.getData();
+                lignesVisibles.push([d.camion, d.demi_journee]);
+            });
+        });
+    } else {
+        lignesVisibles = table.getData("active").map(function (l) {
+            return [l.camion, l.demi_journee];
+        });
+    }
+    document.getElementById("input-lignes-filtrees").value = JSON.stringify(lignesVisibles);
+    document.getElementById("form-pdf-filtre").submit();
 }
 </script>
 {% endblock %}

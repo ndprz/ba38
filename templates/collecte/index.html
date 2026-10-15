@@ -239,6 +239,22 @@
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
             <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div>
+                    <h5 class="card-title mb-1">🚫 Pas de collecte le vendredi</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Marque des magasins collectés cette année (accord donné) comme « pas de collecte le
+                        vendredi, collecte à partir du samedi » — pris en compte par le générateur de tournées.
+                    </p>
+                    {% if not magasins_prets %}
+                    <p class="text-warning small mb-0">⚠️ Fichier magasins manquant pour {{ annee }}.</p>
+                    {% endif %}
+                </div>
+                {{ action_button("🚫 Gérer", href=url_for('collecte.sans_vendredi', annee=annee), color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
+            </div>
+        </div>
+
+        <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
+            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
                     <h5 class="card-title mb-1">🗺️ Localisation magasins et associations</h5>
                     <p class="card-text small text-muted mb-0">
                         Vue d'ensemble géographique des magasins collectés cette année et des associations partenaires actives.

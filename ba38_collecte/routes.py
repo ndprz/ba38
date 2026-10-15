@@ -515,6 +515,30 @@ def _est_camion_reel(code):
     return bool(match) and int(match.group(1)) < 90
 
 
+def _heure_decimale(horaire):
+    """'11h30' -> 11.5, '08h00' -> 8.0. None si illisible."""
+    m = re.match(r"(\d+)h(\d+)?", str(horaire))
+    if not m:
+        return None
+    return int(m.group(1)) + (int(m.group(2)) if m.group(2) else 0) / 60
+
+
+def _periode_depuis_horaires(debut, fin):
+    """Classe un créneau du planning véhicules en 'Matin' ou 'Apres Midi' —
+    d'après le MILIEU du créneau (début+fin)/2, pas seulement l'heure de
+    début : un créneau '12h00-18h00' commence avant 13h mais est bien un
+    créneau d'après-midi (constaté sur V042 Sécurité Civile) — seule
+    l'heure de début aurait classé ce créneau à tort en Matin. Repli sur
+    l'heure de début seule si l'heure de fin est absente ou illisible."""
+    h_debut = _heure_decimale(debut)
+    if h_debut is None:
+        return "Matin"
+    h_fin = _heure_decimale(fin)
+    if h_fin is None:
+        return "Matin" if h_debut < 13 else "Apres Midi"
+    return "Matin" if (h_debut + h_fin) / 2 < 13 else "Apres Midi"
+
+
 def _charger_affectations_chauffeurs_equipiers(annee):
     """Construit les affectations par personne depuis le planning véhicules."""
     chemin = _fichier_drive(annee, "vehicules")
@@ -535,12 +559,14 @@ def _charger_affectations_chauffeurs_equipiers(annee):
         personne = str(ligne.get("Équipier", ligne.get("equipier", ""))).strip()
         jour = jours.get(str(ligne.get("Tournée", "")).strip().lower())
         debut = str(ligne.get("Début", "")).strip()
+        fin = str(ligne.get("Fin", "")).strip()
         if not code or code == "nan" or not personne or personne == "nan" or not jour:
             continue
         if not _est_camion_reel(code):
             continue
-        match = re.match(r"(\d+)", debut)
-        periode = "Matin" if not match or int(match.group(1)) < 13 else "Après-midi"
+        periode = _periode_depuis_horaires(debut, fin)
+        if periode == "Apres Midi":
+            periode = "Après-midi"
         demi_journee = f"{jour} {periode}"
         email = str(ligne.get("Email", "")).strip().lower()
         if email == "nan":
@@ -619,6 +645,7 @@ def _charger_magasins_par_camion(annee):
         code = str(ligne.get("Code", "")).strip()
         jour = jours.get(str(ligne.get("Tournée", "")).strip().lower())
         debut = str(ligne.get("Début", "")).strip()
+        fin = str(ligne.get("Fin", "")).strip()
         if not code or code == "nan" or not jour or not _est_camion_reel(code):
             continue
         code_vif_brut = ligne.get("Code VIF")
@@ -627,8 +654,7 @@ def _charger_magasins_par_camion(annee):
         code_vif = _vif_fmt(code_vif_brut)
         if not code_vif:
             continue
-        match = re.match(r"(\d+)", debut)
-        periode = "Matin" if not match or int(match.group(1)) < 13 else "Apres Midi"
+        periode = _periode_depuis_horaires(debut, fin)
         demi_journee = f"{jour} {periode}"
         if demi_journee not in moteur.DEMI_JOURNEES:
             continue
@@ -709,13 +735,13 @@ def _combos_cagettes_production(annee):
         code = str(ligne.get("Code", "")).strip()
         jour = jours.get(str(ligne.get("Tournée", "")).strip().lower())
         debut = str(ligne.get("Début", "")).strip()
+        fin = str(ligne.get("Fin", "")).strip()
         if not code or code == "nan" or not jour or not _est_camion_reel(code):
             continue
         code_vif = _vif_fmt(ligne.get("Code VIF"))
         if not code_vif:
             continue
-        match = re.match(r"(\d+)", debut)
-        periode = "Matin" if not match or int(match.group(1)) < 13 else "Apres Midi"
+        periode = _periode_depuis_horaires(debut, fin)
         demi_journee = f"{jour} {periode}"
         if demi_journee not in moteur.DEMI_JOURNEES:
             continue
@@ -1386,8 +1412,11 @@ def _generer_tournees(campagne, params, mapping_camions=None, avec_type_camion=F
     quels).
 
     avec_type_camion (optionnel) : ajoute une colonne 'Type camion' (issue de
-    liste-vehicule.xlsx) à titre indicatif dans l'export — ne modifie jamais
-    l'algorithme d'optimisation lui-même (pas de contrainte de capacité).
+    liste-vehicule.xlsx) à titre indicatif dans l'export, et transmet aussi
+    ce mapping à l'optimiseur (args.types_camions) qui s'en sert pour une
+    passe d'échange de tournées entières entre camions réels mal assortis
+    en taille (ex. un 12 m3 surchargé pendant qu'un 20 m3 roule à vide) —
+    cf. _volume_camion/_tonnage_tournee dans moteur_tournees.py.
 
     depuis_liste_vehicule (optionnel) : repart de liste-vehicule.xlsx (qui
     contient une première version, partielle, des affectations réelles de
@@ -1426,6 +1455,7 @@ def _generer_tournees(campagne, params, mapping_camions=None, avec_type_camion=F
         nouveaux=None,
         annee=annee,
         camions_exclus=camions_exclus,
+        vifs_sans_vendredi={v.lstrip("0") for v in _vifs_sans_vendredi(annee)},
     )
 
     if depuis_liste_vehicule:
@@ -1441,8 +1471,20 @@ def _generer_tournees(campagne, params, mapping_camions=None, avec_type_camion=F
             f["vehicule"] = mapping_camions.get(f["vehicule"], f["vehicule"])
 
     camions_actuels_annee = None
+    type_par_code = {}
     if avec_type_camion:
         camions_actuels_annee = _camions_liste_vehicule(annee)
+        type_par_code = {
+            c["code"]: c["type_camion"] for c in camions_actuels_annee if c.get("type_camion")
+        }
+        args_ns.types_camions = type_par_code
+
+    vifs_pdf_2025 = set()
+    for f in fiches:
+        for v in f["vif_codes"]:
+            vifs_pdf_2025.add(str(v).lstrip("0"))
+
+    df_mag = moteur.lire_magasins(magasins_path, vifs_pdf_2025, params["poids_nouveaux"], annee)
 
     if avec_type_camion and utiliser_camions_vides:
         # Camions réels de cette année absents des fiches de départ (code non
@@ -1455,28 +1497,48 @@ def _generer_tournees(campagne, params, mapping_camions=None, avec_type_camion=F
         # V023) n'est pas une capacité disponible mais un camion qui n'est
         # plus utilisé cette année (gardé dans les données au cas où il
         # serait réactivé plus tard).
-        codes_utilises = set(f["vehicule"] for f in fiches)
+        # "Utilisé" = a au moins un magasin encore ACTIF cette année (pas
+        # simplement présent quelque part dans le PDF) : un camion dont tous
+        # les magasins sont passés en 'Collecte gardée' sans stockage BAI+
+        # (ex. V009 CAMION SOLIFAIM, repris par une association) n'a plus
+        # rien à charger depuis le PDF et doit être traité comme une vraie
+        # capacité disponible, pas comme "déjà utilisé".
+        vifs_actifs_pool = set(df_mag["Code VIF"].astype(str).str.lstrip("0"))
+        codes_utilises = {
+            f["vehicule"] for f in fiches
+            if any(str(v).lstrip("0") in vifs_actifs_pool for v in f["vif_codes"])
+        }
         codes_exclus = set(camions_exclus or [])
         args_ns.camions_supp_pool = [
             {"code": c["code"], "nom": c["nom"]}
             for c in camions_actuels_annee
             if c["code"] not in codes_utilises and c["code"] not in moteur.VEHICULES_FIGES
-            and c["code"] not in codes_exclus
+            and c["code"] not in moteur.CAMIONS_EXCLUSIFS and c["code"] not in codes_exclus
         ]
 
-    vifs_pdf_2025 = set()
-    for f in fiches:
-        for v in f["vif_codes"]:
-            vifs_pdf_2025.add(str(v).lstrip("0"))
+        # Créneaux réels des camions supplémentaires (ex. Mingat 1/2/3,
+        # Sécurité Civile, VALDO) : contrairement au mode 'depuis liste
+        # vehicule' (qui applique déjà creneaux_camions à TOUS les camions,
+        # cf. plus haut), ici on se limite au pool supplémentaire — les
+        # camions déjà présents dans les fiches de départ (le PDF de l'an
+        # dernier) viennent d'une année où liste-vehicule.xlsx de CETTE année
+        # n'est pas forcément encore complètement rempli pour eux, et leur
+        # appliquer la même contrainte les bloquerait à tort sur des jours où
+        # ils roulent réellement mais pas encore saisis. Les camions neufs du
+        # pool, eux, n'ont pas cette ambiguïté : leurs lignes dans
+        # liste-vehicule.xlsx sont la seule source de vérité sur leurs jours
+        # réels (ex. Sécurité Civile ne roule pas le samedi).
+        if not depuis_liste_vehicule:
+            codes_pool_supp = {c["code"] for c in args_ns.camions_supp_pool}
+            args_ns.creneaux_camions = {
+                code: djs for code, djs in _creneaux_camions_depuis_liste_vehicule(annee).items()
+                if code in codes_pool_supp
+            }
 
-    df_mag = moteur.lire_magasins(magasins_path, vifs_pdf_2025, params["poids_nouveaux"], annee)
     df_t = moteur.optimiser_tournees(fiches, df_mag, args_ns)
 
     colonnes_extra = None
     if avec_type_camion:
-        type_par_code = {
-            c["code"]: c["type_camion"] for c in camions_actuels_annee if c.get("type_camion")
-        }
         df_t["Type camion"] = df_t["Camion"].map(type_par_code).fillna("")
         colonnes_extra = ["Type camion"]
 
@@ -1626,8 +1688,8 @@ def _fiches_depuis_liste_vehicule(annee):
         if not jour:
             continue
         debut = str(ligne.get("Début", "")).strip()
-        m = re.match(r"(\d+)", debut)
-        periode = "Matin" if not m or int(m.group(1)) < 13 else "Apres Midi"
+        fin = str(ligne.get("Fin", "")).strip()
+        periode = _periode_depuis_horaires(debut, fin)
         demi_journee = f"{jour} {periode}"
         if demi_journee not in moteur.DEMI_JOURNEES:
             continue
@@ -1675,8 +1737,8 @@ def _creneaux_camions_depuis_liste_vehicule(annee):
         if not jour:
             continue
         debut = str(ligne.get("Début", "")).strip()
-        m = re.match(r"(\d+)", debut)
-        periode = "Matin" if not m or int(m.group(1)) < 13 else "Apres Midi"
+        fin = str(ligne.get("Fin", "")).strip()
+        periode = _periode_depuis_horaires(debut, fin)
         demi_journee = f"{jour} {periode}"
         if demi_journee not in moteur.DEMI_JOURNEES:
             continue
@@ -1720,6 +1782,38 @@ def _camions_liste_vehicule(annee):
     return [vus[c] for c in sorted(vus)]
 
 
+def _camions_non_utilises(annee, lignes):
+    """Pour chaque demi-journée présente dans le résultat, les camions
+    réels de cette année (liste-vehicule.xlsx) qui ONT un créneau réel
+    défini ce jour-là (cf. _creneaux_camions_depuis_liste_vehicule) mais
+    sont absents de cette génération — un camion sans créneau défini pour
+    une demi-journée (il ne roule simplement pas ce jour-là) n'est jamais
+    signalé pour cette demi-journée. Utile pour repérer d'un coup d'œil les
+    camions inutilisés avant de valider une version (cf. resultats())."""
+    camions = _camions_liste_vehicule(annee)
+    if not camions:
+        return []
+    tous_codes = {c["code"]: c["nom"] for c in camions}
+    creneaux_reels = _creneaux_camions_depuis_liste_vehicule(annee)
+
+    utilises_par_dj = {}
+    for l in lignes:
+        utilises_par_dj.setdefault(l["demi_journee"], set()).add(l["camion"])
+
+    resultat = []
+    for dj in moteur.DEMI_JOURNEES:
+        if dj not in utilises_par_dj:
+            continue
+        non_utilises = sorted(
+            ({"code": code, "nom": nom} for code, nom in tous_codes.items()
+             if code not in utilises_par_dj[dj] and dj in creneaux_reels.get(code, set())),
+            key=lambda c: c["code"],
+        )
+        if non_utilises:
+            resultat.append({"demi_journee": dj, "camions": non_utilises})
+    return resultat
+
+
 def _charger_tournees(generation):
     """Relit le fichier Excel généré (onglet Tournees) pour l'affichage web.
     header=7 : même décalage que celui utilisé par Generer_documents_bai38.py
@@ -1744,6 +1838,7 @@ def _charger_tournees(generation):
         ]
         lignes.append({
             "demi_journee": str(row["Demi-journee"]),
+            "ordre_dj": int(row["_ordre_dj"]),
             "camion": str(row["Camion"]),
             "nom_camion": "" if pd.isna(row.get("Nom camion")) else str(row["Nom camion"]),
             "tonnage": 0.0 if pd.isna(row.get("Tonnage")) else float(row["Tonnage"]),
@@ -2460,6 +2555,84 @@ def _lire_magasins_accord_pour_non_collecte(annee):
     return magasins
 
 
+def _ensure_table_magasins_sans_vendredi(conn):
+    """Magasins marqués « pas de collecte le vendredi, collecte à partir du
+    samedi » — restriction de planning admin, indépendante de la colonne
+    'Créneaux' (déclarative, saisie par le magasin lui-même) — cf.
+    sans_vendredi() et moteur.optimiser_tournees (args.vifs_sans_vendredi)."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_magasins_sans_vendredi (
+            annee INTEGER NOT NULL,
+            code_vif TEXT NOT NULL,
+            marque_le TEXT,
+            marque_par TEXT,
+            PRIMARY KEY (annee, code_vif)
+        )
+    """)
+
+
+def _lire_magasins_pour_sans_vendredi(annee):
+    """Magasins de liste_magasins.xlsx collectés cette année (État != 'Non
+    collecté') ET ayant donné leur accord (colonne 'Accord' non vide) —
+    population éligible à la restriction « pas de collecte le vendredi »,
+    même filtre que _lire_magasins_autorisation côté État mais restreint
+    aux magasins ayant déjà un accord (symétrique de
+    _lire_magasins_accord_pour_non_collecte, qui cible lui l'État='Non
+    collecté'). Pas de présélection automatique : rien dans go-on-web ni
+    dans les fichiers (Créneaux déclarés, PDF année précédente) ne reflète
+    de façon fiable qui est déjà réellement non collecté le vendredi cette
+    année (retour utilisateur direct, 2026-10-15) — colonne 'Commentaire'
+    la seule trace, en texte libre non exploitable automatiquement (ex.
+    notes contradictoires). Repérage et sélection entièrement manuels,
+    l'utilisateur identifiant les magasins concernés via la visualisation
+    des magasins."""
+    chemin = _fichier_drive(annee, "magasins")
+    if not chemin:
+        return []
+
+    df = pd.read_excel(chemin)
+    df.columns = [str(c).strip() for c in df.columns]
+    for col in ["Code VIF", "Nom", "État", "Ville", "Accord", "Commentaire"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    magasins = []
+    for _, row in df.iterrows():
+        if str(row.get("État", "")).strip() == "Non collecté":
+            continue
+        accord = row.get("Accord")
+        if pd.isna(accord) or str(accord).strip() in ("", "nan"):
+            continue
+        code_vif = _vif_fmt(row.get("Code VIF"))
+        if not code_vif or code_vif.lower() == "nan":
+            continue
+        commentaire = str(row.get("Commentaire", "")).strip()
+        magasins.append({
+            "code_vif": code_vif,
+            "nom": str(row.get("Nom", "")).strip(),
+            "etat": str(row.get("État", "")).strip(),
+            "ville": str(row.get("Ville", "")).strip(),
+            "commentaire": "" if commentaire.lower() == "nan" else commentaire,
+        })
+    magasins.sort(key=lambda m: m["nom"].lower())
+    return magasins
+
+
+def _vifs_sans_vendredi(annee):
+    """Set des code_vif marqués « pas de collecte le vendredi » pour cette
+    année (collecte_magasins_sans_vendredi) — pour pré-cocher la page de
+    gestion et pour contraindre l'optimiseur (args.vifs_sans_vendredi,
+    cf. _generer_tournees)."""
+    with get_db_connection() as conn:
+        _ensure_table_magasins_sans_vendredi(conn)
+        conn.commit()
+        return {
+            r["code_vif"] for r in conn.execute(
+                "SELECT code_vif FROM collecte_magasins_sans_vendredi WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
+
+
 def _ensure_table_non_collectes_benevoles(conn):
     """Magasins marqués « pas de collecte cette année, faute de bénévoles »
     malgré leur accord donné (colonne 'Accord' du référentiel magasins,
@@ -2657,6 +2830,55 @@ def non_collecte_apercu_mail(annee):
     texte_mail_modele = (campagne_mail["non_collecte_texte_mail"] if campagne_mail else None) or NON_COLLECTE_TEXTE_MAIL_DEFAUT
     texte = texte_mail_modele.replace("<<Annee>>", str(annee)).replace("<<Nom>>", magasin["nom"])
     return Response(texte, mimetype="text/plain; charset=utf-8")
+
+
+@collecte_bp.route("/collecte/<int:annee>/sans-vendredi", methods=["GET", "POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def sans_vendredi(annee):
+    """Gestion des magasins (collectés cette année, accord donné) marqués
+    « pas de collecte le vendredi, collecte à partir du samedi » — simple
+    restriction de planning (collecte_magasins_sans_vendredi), prise en
+    compte par l'optimiseur de tournées (args.vifs_sans_vendredi, cf.
+    _generer_tournees et moteur.optimiser_tournees) : aucun envoi de mail
+    ici, juste un marquage interne."""
+    magasins = _lire_magasins_pour_sans_vendredi(annee)
+
+    if request.method == "POST":
+        codes_coches = set(request.form.getlist("magasins"))
+        codes_eligibles = {m["code_vif"] for m in magasins}
+        maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with get_db_connection() as conn:
+            _ensure_table_magasins_sans_vendredi(conn)
+            deja = {
+                r["code_vif"] for r in conn.execute(
+                    "SELECT code_vif FROM collecte_magasins_sans_vendredi WHERE annee = ?", (annee,)
+                ).fetchall()
+            }
+            a_ajouter = (codes_coches & codes_eligibles) - deja
+            a_retirer = (deja & codes_eligibles) - codes_coches
+            for code in a_ajouter:
+                conn.execute("""
+                    INSERT INTO collecte_magasins_sans_vendredi (annee, code_vif, marque_le, marque_par)
+                    VALUES (?, ?, ?, ?)
+                """, (annee, code, maintenant, current_user.email))
+            for code in a_retirer:
+                conn.execute(
+                    "DELETE FROM collecte_magasins_sans_vendredi WHERE annee = ? AND code_vif = ?",
+                    (annee, code),
+                )
+            conn.commit()
+        flash(f"✅ {len(a_ajouter)} magasin(s) ajouté(s), {len(a_retirer)} retiré(s)", "success")
+        write_log(f"🚫 Sans vendredi {annee} : +{len(a_ajouter)} / -{len(a_retirer)} par {current_user.email}")
+        return redirect(url_for("collecte.sans_vendredi", annee=annee))
+
+    deja_marques = _vifs_sans_vendredi(annee)
+    for magasin in magasins:
+        magasin["deja_marque"] = magasin["code_vif"] in deja_marques
+
+    return render_template(
+        "collecte/sans_vendredi.html", annee=annee, magasins=magasins,
+    )
 
 
 # Boîte englobante large autour de l'Isère (+ départements limitrophes), pour
@@ -4147,6 +4369,7 @@ def resultats(generation_id):
         autres_generations=autres_generations,
         lignes=lignes,
         params=params_utilises,
+        camions_non_utilises=_camions_non_utilises(generation["annee"], lignes),
     )
 
 
@@ -4702,15 +4925,32 @@ def resultats_pdf_equipier(generation_id):
     )
 
 
-@collecte_bp.route("/collecte/resultats/<int:generation_id>/pdf")
+@collecte_bp.route("/collecte/resultats/<int:generation_id>/pdf", methods=["GET", "POST"])
 @login_required
 @require_access("collecte", "lecture")
 def resultats_pdf(generation_id):
+    """Le PDF complet reste accessible en GET (lien direct, historique) ; un
+    POST avec 'lignes_filtrees' (JSON, liste ORDONNÉE de [camion,
+    demi_journee]) restreint ET réordonne le PDF pour correspondre
+    exactement aux lignes et à l'ordre actuellement affichés dans le
+    tableau Tabulator (groupes inclus — cf. telechargerPdfFiltre() dans
+    resultats.html) : on ne se contente pas de filtrer, l'ordre d'arrivée
+    de cette liste prime sur l'ordre naturel de _charger_tournees()."""
     generation = _get_generation_ou_redirect(generation_id)
     if generation is None:
         return redirect(url_for("collecte.collecte_main"))
 
     lignes = _charger_tournees(generation)
+
+    cles_brutes = request.form.get("lignes_filtrees", "").strip()
+    if cles_brutes:
+        try:
+            cles = [tuple(c) for c in json.loads(cles_brutes)]
+            lignes_par_cle = {(l["camion"], l["demi_journee"]): l for l in lignes}
+            lignes = [lignes_par_cle[c] for c in cles if c in lignes_par_cle]
+        except (ValueError, TypeError, IndexError):
+            pass
+
     html = render_template(
         "collecte/resultats_pdf.html", annee=generation["annee"], lignes=lignes,
         org=get_organisation(),

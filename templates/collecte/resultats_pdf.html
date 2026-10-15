@@ -13,12 +13,15 @@
     tr.dj { background: #DDEEFF; font-weight: bold; }
     tr.figee td { background: #FFD7D7; }
     col.c-camion { width: 5%; }
-    col.c-nom { width: 13%; }
-    col.c-secteur { width: 13%; }
-    col.c-magasins { width: 28%; }
-    col.c-tonnage, col.c-km { width: 6%; }
-    col.c-duree { width: 12%; }
-    col.c-commentaire { width: 17%; }
+    col.c-nom { width: 11%; }
+    col.c-dj { width: 9%; }
+    col.c-secteur { width: 11%; }
+    col.c-magasins { width: 20%; }
+    col.c-tonnage { width: 6%; }
+    col.c-type { width: 7%; }
+    col.c-km { width: 6%; }
+    col.c-duree { width: 11%; }
+    col.c-commentaire { width: 14%; }
 </style>
 </head>
 <body>
@@ -27,35 +30,44 @@
 
 <table>
     <colgroup>
-        <col class="c-camion"><col class="c-nom"><col class="c-secteur">
-        <col class="c-magasins"><col class="c-tonnage"><col class="c-km"><col class="c-duree">
+        <col class="c-camion"><col class="c-nom"><col class="c-dj"><col class="c-secteur">
+        <col class="c-magasins"><col class="c-tonnage"><col class="c-type"><col class="c-km"><col class="c-duree">
         <col class="c-commentaire">
     </colgroup>
     <thead>
         <tr>
             <th>Camion</th>
             <th>Nom camion</th>
+            <th>Demi-journée</th>
             <th>Secteur</th>
             <th>Magasins</th>
             <th>Tonnage</th>
+            <th>Type camion</th>
             <th>Km</th>
             <th>Durée</th>
             <th>Commentaire</th>
         </tr>
     </thead>
     <tbody>
-        {% set ns = namespace(dj_courante=None) %}
+        {# Un en-tête de groupe à chaque changement de camion — reflète
+           l'ordre exact reçu (filtré + trié côté Tabulator, cf.
+           telechargerPdfFiltre() dans resultats.html), pas un tri recalculé
+           ici : si l'écran est groupé/trié par camion (réglage par défaut),
+           le PDF l'est aussi. #}
+        {% set ns = namespace(camion_courant=None) %}
         {% for l in lignes %}
-        {% if l.demi_journee != ns.dj_courante %}
-        {% set ns.dj_courante = l.demi_journee %}
-        <tr class="dj"><td colspan="8">{{ l.demi_journee }}</td></tr>
+        {% if l.camion != ns.camion_courant %}
+        {% set ns.camion_courant = l.camion %}
+        <tr class="dj"><td colspan="10">{{ l.camion }}{% if l.nom_camion %} — {{ l.nom_camion }}{% endif %}</td></tr>
         {% endif %}
         <tr class="{% if l.figee %}figee{% endif %}">
             <td>{{ l.camion }}</td>
             <td>{{ l.nom_camion }}</td>
+            <td>{{ l.demi_journee }}</td>
             <td>{{ l.secteur }}</td>
             <td>{{ l.magasins }}</td>
             <td>{{ "%.0f"|format(l.tonnage) }} kg</td>
+            <td>{{ l.type_camion }}</td>
             <td>{{ l.km }}</td>
             <td>{{ l.duree }}</td>
             <td>{{ l.commentaire }}</td>

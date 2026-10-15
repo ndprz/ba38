@@ -1,5 +1,5 @@
 <p><strong>Application BA38 – Module Collecte</strong> Version de la
-documentation : 10/10/2026</p>
+documentation : 14/10/2026</p>
 <p>Le module « Collecte » gère la préparation et le suivi de la collecte
 annuelle en magasins, organisé en six sections indépendantes :</p>
 <ul>
@@ -8,8 +8,9 @@ la campagne et récupération automatique des fichiers go-on-web
 (magasins, véhicules, colis, groupes, participants) depuis le drive
 partagé ;</p></li>
 <li><p><strong>📁 Gestion magasins</strong> : demande d’autorisation de
-collecter, localisation sur une carte, référentiel des magasins
-collectés ;</p></li>
+collecter, mail aux magasins passés « Non collecté » faute de bénévoles,
+localisation sur une carte, référentiel des magasins collectés
+;</p></li>
 <li><p><strong>📁 Gestion tournées</strong> : la simulation calcule
 automatiquement des tournées optimisées (répartition des magasins par
 camion et demi-journée) pour tester différents scénarios, sans jamais
@@ -87,13 +88,13 @@ la simulation</h2>
 <p>Un fichier est à importer pour pouvoir lancer une simulation, avec le
 bouton « Importer » ou « Remplacer » de cette même section :</p>
 <ul>
-<li><p><strong>Tournées de la collecte précédente</strong> : le PDF «
+<li><strong>Tournées de la collecte précédente</strong> : le PDF «
 fiches jour-véhicules-magasins » de la collecte précédente, disponible
 dans le dossier camions du drive collecte. Sert de point de départ à
 l’algorithme, qui fait évoluer ces tournées en tenant compte des
 magasins ajoutés ou arrêtés cette année — les camions (codes et noms) en
 sont aussi extraits directement, aucun fichier véhicules séparé n’est
-nécessaire ici.</p></li>
+nécessaire ici.</li>
 </ul>
 <h2 id="mercuriale">1.3 Mercuriale</h2>
 <p>Une fois la pesée palox terminée, déposer le rapport de prix
@@ -131,7 +132,27 @@ la lettre et du texte du mail, sans rien envoyer (même en test).</p>
 <p>Comme pour les autres envois du module, le mode test (coché par
 défaut) permet d’envoyer un exemplaire à sa propre adresse avant tout
 envoi réel, y compris pour un seul magasin sélectionné.</p>
-<h2 id="localisation-magasins-et-associations">2.2 Localisation magasins
+<h2 id="pas-de-collecte-faute-de-bénévoles">2.2 Pas de collecte — faute
+de bénévoles</h2>
+<p>Cette page, juste après la demande d’autorisation, cible les magasins
+déjà basculés à l’état « Non collecté » dans le référentiel magasins et
+ayant donné leur accord auparavant — cas où la collecte ne peut
+finalement pas avoir lieu cette année faute de bénévoles disponibles
+pour l’organiser. Le basculement à l’état « Non collecté » se fait dans
+le référentiel magasins (hors application) ; cette page sert uniquement
+à prévenir les magasins concernés et à suivre les envois.</p>
+<p>Chaque magasin peut être coché ou décoché individuellement avant
+l’envoi, comme pour la demande d’autorisation. Le texte du mail est
+personnalisable (bloc « 📁 Paramètres »), avec le repère
+&lt;&lt;Nom&gt;&gt; et &lt;&lt;Annee&gt;&gt;, et un aperçu permet de
+contrôler le rendu exact sans rien envoyer.</p>
+<p>Les magasins sans adresse e-mail sont inclus dans la liste mais
+signalés par un bandeau rouge « ⚠️ Aucun email » — ils peuvent quand
+même être marqués, mais doivent être recontactés par téléphone. Après
+l’envoi, un message récapitule le nombre de magasins marqués, le nombre
+de mails envoyés, et liste nommément les magasins sans email à
+recontacter autrement.</p>
+<h2 id="localisation-magasins-et-associations">2.3 Localisation magasins
 et associations</h2>
 <p>Le bouton « 🗺️ Voir la carte » ouvre une carte interactive de tous
 les magasins collectés par la BAI et des associations partenaires
@@ -167,7 +188,7 @@ automatiquement la carte sur les résultats trouvés. Le bouton plein
 <p>Un lien de partage (généré depuis cette page) permet de consulter la
 carte sans connexion à l’application, valable 180 jours — pratique pour
 la transmettre à un partenaire extérieur.</p>
-<h2 id="règles-de-géolocalisation">2.3 Règles de géolocalisation</h2>
+<h2 id="règles-de-géolocalisation">2.4 Règles de géolocalisation</h2>
 <p>Les adresses des magasins et des associations sont géolocalisées
 automatiquement (aucune saisie manuelle de coordonnées). Trois règles
 s’appliquent pour fiabiliser ce calcul et expliquent pourquoi l’adresse
@@ -193,7 +214,7 @@ invalides » en haut de la carte — corriger alors l’adresse (ou, pour une
 association, ajouter une adresse de distribution) directement dans le
 référentiel source, puis revenir sur la carte pour vérifier la
 correction.</p>
-<h2 id="référentiel-magasins-collecte">2.4 Référentiel magasins
+<h2 id="référentiel-magasins-collecte">2.5 Référentiel magasins
 collecte</h2>
 <p>Sous Gestion magasins, cette page liste tous les magasins du
 référentiel pluriannuel : ceux réellement collectés cette année (avec
@@ -267,7 +288,8 @@ associé, donc toujours écartées.</p>
 <p>La page résultat affiche le détail des tournées (tableau
 filtrable/triable), avec :</p>
 <ul>
-<li><p>l’export Excel et l’export PDF du tableau,</p></li>
+<li><p>l’export Excel et l’export PDF du tableau (le PDF inclut
+désormais la colonne Commentaire, identique à l’affichage web),</p></li>
 <li><p>la carte des secteurs et la carte des tournées (itinéraire réel
 calculé),</p></li>
 <li><p>la sélection d’une autre version générée pour la même
@@ -402,9 +424,9 @@ regroupe magasins et associations gardant leur collecte dans une même
 liste.</p>
 <h2 id="envoi-des-mails-aux-chauffeurs-et-équipiers">3.5 Envoi des mails
 aux chauffeurs et équipiers</h2>
-<p>Ouvrir « Envoi mail tournées aux chauffeurs/équipiers ». La page
-récupère les affectations du fichier véhicules/planning et regroupe les
-informations par adresse e-mail.</p>
+<p>Ouvrir « Envoi mail tournées aux chauffeurs/équipiers de la nouvelle
+collecte ». La page récupère les affectations du fichier
+véhicules/planning et regroupe les informations par adresse e-mail.</p>
 <p>Un encart « Ordre à suivre » rappelle la marche à suivre : texte du
 mail, image et pièces jointes (📁 Paramètres), aperçu, test, envoi.</p>
 <p>Le texte du mail est unique (plus de début/fin séparés) : le repère
@@ -428,6 +450,21 @@ un message personnalisé à chaque chauffeur ou équipier ayant une adresse
 e-mail.</p>
 <p>Les personnes sans adresse e-mail sont signalées sur la page et ne
 reçoivent pas de message.</p>
+<h2 id="demande-de-disponibilité-année-précédente">3.6 Demande de
+disponibilité (année précédente)</h2>
+<p>Juste en dessous, « Envoi mail tournées aux chauffeurs/équipiers de
+l’année dernière » sert à recontacter, avant que le planning de l’année
+en cours n’existe, les chauffeurs et équipiers de l’année précédente
+(nom, rôle, email, téléphone portable) pour leur demander simplement
+s’ils sont disponibles cette année — contrairement à la page précédente
+(§3.5), il n’y a ici aucune affectation par demi-journée à afficher,
+puisque le planning de la nouvelle campagne n’existe pas encore.</p>
+<p>Le texte du mail est personnalisable avec les repères
+&lt;&lt;nom&gt;&gt; et &lt;&lt;telephone&gt;&gt; (son portable de
+l’année précédente, ou « — » si absent). Mêmes principes que les autres
+envois du module : aperçu du mail pour la personne sélectionnée, test
+sur sa propre adresse, puis envoi à tous les destinataires ayant une
+adresse e-mail.</p>
 <h1 id="associations-gardant">4. Associations gardant</h1>
 <p>La section « 📁 Associations gardant » concerne les associations qui
 assurent elles-mêmes la collecte d’un ou plusieurs magasins au lieu de
@@ -701,9 +738,9 @@ campagne plutôt qu’au dernier moment.</p></li>
 affiché dans les tableaux de saisie et d’envoi du module, pour faciliter
 le rapprochement avec les fichiers d’import/export.</p>
 <ul>
-<li><p>Utiliser le bouton « ⚠️ Magasins à zéro » et peser les cagettes
+<li>Utiliser le bouton « ⚠️ Magasins à zéro » et peser les cagettes
 avant d’exporter le fichier d’import VIF : la quantité exportée
-n’utilise que le poids réel après pesée, jamais une estimation.</p></li>
+n’utilise que le poids réel après pesée, jamais une estimation.</li>
 </ul>
 <p>Pour le modèle Excel des associations gardant leur collecte,
 privilégier l’éditeur de produits en ligne pour un simple ajout/retrait

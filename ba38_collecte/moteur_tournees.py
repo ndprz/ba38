@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 
 # ─── CONSTANTES ──────────────────────────────────────────────────────────────
 BAI_LAT, BAI_LON = 45.18867, 5.68456  # 11 allée de la Pinea, 38600 Fontaine
-VEHICULES_FIGES  = sorted(['V007','V008','V009','V013','V019','V023','V026','V027','V028','V037'], key=lambda v: int(v[1:]))  # V019 = camion de secours (panne), jamais en tournée régulière
+VEHICULES_FIGES  = sorted(['V007','V008','V013','V019','V026','V027','V028','V037'], key=lambda v: int(v[1:]))  # V019 = camion de secours (panne), jamais en tournée régulière ; V009 retiré (CAMION SOLIFAIM, doit être réoptimisable, retour utilisateur 2026-10-15) ; V023 passé en CAMIONS_EXCLUSIFS (retour utilisateur 2026-10-15)
 
 # Nombre maximum de secteurs géographiques distincts tolérés dans une même
 # tournée (toutes les passes d'optimisation partagent ce seuil, pour éviter
@@ -32,19 +32,31 @@ MAX_SECTEURS_PAR_TOURNEE = 2
 # mélangés à un autre, même un seul, même sous la tolérance habituelle de
 # MAX_SECTEURS_PAR_TOURNEE (retour utilisateur direct sur Plateau Nord, puis
 # Pontcharra).
-SECTEURS_ISOLES = {'Plateau Nord', 'Pontcharra', 'Gresivaudan', 'Sud Vercors'}
+SECTEURS_ISOLES = {'Plateau Nord', 'Pontcharra', 'Gresivaudan Nord', 'Gresivaudan Sud', 'Sud Vercors'}
+
+# Paires de secteurs qui ne doivent jamais se retrouver ensemble dans une
+# même tournée, sans pour autant isoler chacun d'eux de tout le reste
+# (contrairement à SECTEURS_ISOLES) : Vizille et Vif restent à moins de
+# 8 km l'un de l'autre mais sont deux bourgs distincts que l'utilisateur
+# ne veut jamais voir mélangés dans la même tournée (retour direct),
+# alors que chacun peut par ailleurs très bien se combiner avec un autre
+# secteur voisin non isolé.
+PAIRES_SECTEURS_INCOMPATIBLES = {frozenset({'Vizille', 'Vif'})}
 
 
 def _secteurs_compatibles(secs):
     """Vérifie qu'un ensemble de secteurs peut cohabiter dans une même
-    tournée : au plus MAX_SECTEURS_PAR_TOURNEE secteurs distincts, ET aucun
+    tournée : au plus MAX_SECTEURS_PAR_TOURNEE secteurs distincts, aucun
     secteur de SECTEURS_ISOLES ne doit se retrouver mélangé à un autre
     secteur (une tournée touchant un secteur isolé doit lui être
-    exclusivement dédiée)."""
+    exclusivement dédiée), et aucune paire de PAIRES_SECTEURS_INCOMPATIBLES
+    ne doit se retrouver réunie."""
     secs = set(s for s in secs if s)
     if len(secs) > MAX_SECTEURS_PAR_TOURNEE:
         return False
     if len(secs) > 1 and (secs & SECTEURS_ISOLES):
+        return False
+    if any(paire <= secs for paire in PAIRES_SECTEURS_INCOMPATIBLES):
         return False
     return True
 
@@ -62,6 +74,7 @@ VIFS_ANCRES = {
     '2380159': 'V036',  # Carrefour City Grenoble 31 J Jaurès - souhait association Vivacité
     '2380287': 'V036',  # Intermarché Grenoble Berriat - idem
     '2380066': 'V036',  # Monoprix Grenoble Lafayette - idem
+    '2380314': 'V023',  # Lidl Voiron Kofler - camion RIGODON (retour utilisateur 2026-10-15)
 }
 
 # Camions strictement réservés à certains magasins (rien d'autre ne doit
@@ -73,6 +86,7 @@ CAMIONS_EXCLUSIFS = {
     'V012': {'2380003', '2380250'},  # Carrefour + ALDI St Egreve uniquement
     'V022': {'2380120'},  # Intermarché Vizille uniquement
     'V036': {'2380159', '2380287', '2380066'},  # Carrefour City 31 J Jaurès + Intermarché Berriat + Monoprix Lafayette uniquement (souhait association Vivacité)
+    'V023': {'2380314'},  # Lidl Voiron Kofler uniquement (camion RIGODON)
 }
 
 # Adresse du siège affichée sur la carte des tournées : tirée de la config
@@ -100,11 +114,6 @@ TOURNEES_GELEES = set([
     # V027 : gel Vendredi et Samedi (toutes DJ)
     ('V027', 'Vendredi Matin'), ('V027', 'Vendredi Apres Midi'),
     ('V027', 'Samedi Matin'),   ('V027', 'Samedi Apres Midi'),
-    # V009 : gel toutes DJ (n'existe que le Samedi)
-    ('V009', 'Samedi Matin'),   ('V009', 'Samedi Apres Midi'),
-    ('V009', 'Vendredi Matin'), ('V009', 'Vendredi Apres Midi'),
-    ('V009', 'Jeudi Matin'),    ('V009', 'Jeudi Apres Midi'),
-    ('V009', 'Dimanche Matin'),
     # V028 : gel Vendredi, Samedi et Dimanche
     ('V028', 'Vendredi Matin'), ('V028', 'Vendredi Apres Midi'),
     ('V028', 'Samedi Matin'),   ('V028', 'Samedi Apres Midi'),
@@ -118,10 +127,6 @@ TOURNEES_GELEES = set([
     # V013 : gel Vendredi et Samedi
     ('V013', 'Vendredi Matin'), ('V013', 'Vendredi Apres Midi'),
     ('V013', 'Samedi Matin'),   ('V013', 'Samedi Apres Midi'),
-    # V023 : gel toutes DJ (Super U Voreppe ramené par association)
-    ('V023', 'Vendredi Matin'), ('V023', 'Vendredi Apres Midi'),
-    ('V023', 'Samedi Matin'),   ('V023', 'Samedi Apres Midi'),
-    ('V023', 'Dimanche Matin'), ('V023', 'Jeudi Matin'), ('V023', 'Jeudi Apres Midi'),
     # V003, V006 : gel Jeudi uniquement
     ('V003', 'Jeudi Matin'), ('V003', 'Jeudi Apres Midi'),
     ('V006', 'Jeudi Matin'), ('V006', 'Jeudi Apres Midi'),
@@ -491,11 +496,12 @@ def lire_magasins(path_mag, vifs_pdf_2025, poids_nouveaux, annee=None):
 
     VILLES_PROTEGEES_FUSION = (
         {'Biviers', 'Crolles', 'Froges', 'Saint Ismier', 'Domene', 'Le Versoud'}
-        | {'Voiron', 'Saint Jean De Moirans'} | {'Rives', 'Renage'}
+        | {'Voiron', 'Saint Jean De Moirans'} | {'Rives', 'Renage', 'Moirans', 'Voreppe'}
         | {'Seyssinet Pariset', 'Seyssins', 'Fontaine'} | {'Apprieu', 'Colombe', 'Le Grand Lemps'}
         | {'Varces Allieres Et Risset', 'Vif', 'Vizille', 'Claix'} | {'La Terrasse', 'Le Touvet', 'Tencin'}
         | {'Peage De Roussillon', 'Salaise Sur Sanne'}
         | {'Poisat', 'Saint Martin Dheres', 'Saint Martin D Heres', 'Gieres', 'Gières'}
+        | {'Bresson', 'Saint Martin D Uriage'}
     )
 
     SEUIL_FUSION_VILLES_KM = 5.0  # confirmation large : le texte est déjà quasi identique
@@ -548,22 +554,33 @@ def lire_magasins(path_mag, vifs_pdf_2025, poids_nouveaux, annee=None):
         if lon < 5.721:                     return 'Grenoble Centre Ouest'# Monoprix Lory, U Express, Itm Vallier
         return 'Grenoble Centre Est'                                      # Foch, Stalingrad, Aldi, Super U
 
-    GRESIVAUDAN_VILLES = {'Biviers', 'Crolles', 'Froges', 'Saint Ismier', 'Domene', 'Le Versoud'}
+    # Grésivaudan coupé en 2 secteurs de part et d'autre de l'Isère (retour
+    # utilisateur direct) : Domène/Le Versoud/Froges au SUD de l'Isère,
+    # Biviers/Saint Ismier/Crolles au NORD.
+    GRESIVAUDAN_SUD_VILLES = {'Domene', 'Le Versoud', 'Froges'}
+    GRESIVAUDAN_NORD_VILLES = {'Biviers', 'Saint Ismier', 'Crolles'}
 
     def _attribuer_secteur(row):
         ville = row['Ville_norm']
         # Regroupement Grésivaudan en priorité (avant le test SEUIL_GROS)
-        if ville in GRESIVAUDAN_VILLES:
-            return 'Gresivaudan'
+        if ville in GRESIVAUDAN_SUD_VILLES:
+            return 'Gresivaudan Sud'
+        if ville in GRESIVAUDAN_NORD_VILLES:
+            return 'Gresivaudan Nord'
         if ville in {'Voiron', 'Saint Jean De Moirans'}:                return 'Voiron'
-        if ville in {'Rives', 'Renage'}:                                return 'Rives'
+        # Essai : Rives/Renage + Moirans + Voreppe fusionnés en un seul secteur
+        # (retour utilisateur, 2026-10-14).
+        if ville in {'Rives', 'Renage', 'Moirans', 'Voreppe'}:          return 'Rives Moirans Voreppe'
         if ville in {'Seyssinet Pariset', 'Seyssins', 'Fontaine'}:     return 'Seyssinet'
         if ville in {'Apprieu', 'Colombe', 'Le Grand Lemps'}:          return 'Plateau Nord'
-        if ville in {'Varces Allieres Et Risset', 'Vif', 'Vizille', 'Claix'}: return 'Sud Vercors'
+        if ville in {'Varces Allieres Et Risset', 'Claix'}:            return 'Sud Vercors'
+        if ville == 'Vizille':                                          return 'Vizille'
+        if ville == 'Vif':                                              return 'Vif'
         if ville in {'La Terrasse', 'Le Touvet', 'Tencin'}:            return 'Chartreuse Est'
         if ville in {'Peage De Roussillon', 'Salaise Sur Sanne'}:      return 'Roussillon'
         if ville in {'Chapareillan', 'Pontcharra'}:                    return 'Pontcharra'
         if ville in {'Poisat', 'Saint Martin Dheres', 'Saint Martin D Heres', 'Gieres', 'Gières'}: return 'Saint Martin Dheres'
+        if ville in {'Bresson', 'Saint Martin D Uriage'}:              return 'Saint Martin D Uriage'
         nb = nb_par_ville.get(ville, 0)
         if nb <= SEUIL_GROS:
             return ville
@@ -821,6 +838,23 @@ def optimiser_tournees(fiches, df_mag, args):
             creneaux_raw = str(row_copy.get('Créneaux', '')).strip()
             row_copy['djs_creneaux'] = parse_creneaux(creneaux_raw) if creneaux_raw and creneaux_raw != 'nan' else None
             vif2row[vif] = row_copy
+
+    # Magasins marqués « pas de collecte le vendredi » (cf. gestion magasins,
+    # collecte_magasins_sans_vendredi) : restriction admin indépendante de la
+    # colonne 'Créneaux' (déclarative, saisie par le magasin lui-même) —
+    # retire Vendredi Matin/Apres Midi des DJ autorisées, en conservant
+    # celles déjà issues des créneaux s'il y en a.
+    _vifs_sans_vendredi = set(getattr(args, 'vifs_sans_vendredi', None) or [])
+    for vif in _vifs_sans_vendredi:
+        row_v = vif2row.get(vif)
+        if row_v is None:
+            continue
+        djs_cr = row_v.get('djs_creneaux')
+        djs_autorises = (set(djs_cr) if djs_cr is not None else set(DEMI_JOURNEES)) - {'Vendredi Matin', 'Vendredi Apres Midi'}
+        row_v2 = row_v.copy()
+        row_v2['djs_creneaux'] = djs_autorises
+        vif2row[vif] = row_v2
+
     new_vifs = set(str(r['Code VIF']).strip().lstrip('0') for _, r in df_mag.iterrows() if r['Nouveau'])
     nouveaux_vehs = set(c['code'] for c in pool_supp)
 
@@ -862,6 +896,25 @@ def optimiser_tournees(fiches, df_mag, args):
                 print(f"  Retiré (camion exclusif {veh}) : '{nom_v}' ({dj}) → à replacer ailleurs")
                 orphelins_exclusifs.append((v, dj))
 
+    # Magasins dont les DJ autorisées (djs_creneaux — Créneaux déclarés ou
+    # restriction 'sans vendredi' ci-dessus) excluent la demi-journée où ils
+    # se trouvent encore par reprise des fiches de départ : retirés puis
+    # réinjectés sur une DJ autorisée via la logique d'injection ci-dessous.
+    orphelins_creneaux = []  # [(vif, demi_journee_retiree), ...]
+    for (dj, veh), vifs in list(dj_veh.items()):
+        retires = [v for v in vifs
+                   if vif2row.get(v, {}).get('djs_creneaux') is not None
+                   and dj not in vif2row[v]['djs_creneaux']]
+        if not retires:
+            continue
+        dj_veh[(dj, veh)] = [v for v in vifs if v not in retires]
+        if not dj_veh[(dj, veh)]:
+            del dj_veh[(dj, veh)]
+        for v in retires:
+            nom_v = str(vif2row.get(v, {}).get('Nom', v))
+            print(f"  Retiré (créneau interdit {dj}) : '{nom_v}' ({veh}) → à replacer ailleurs")
+            orphelins_creneaux.append((v, dj))
+
     # ── INJECTION DES NOUVEAUX MAGASINS PAR SECTEUR STRICT ─────────────────
     # Un nouveau magasin va UNIQUEMENT dans une tournée de son secteur exact.
     # Si aucune place → nouvelle tournée avec camion supplémentaire disponible.
@@ -897,26 +950,32 @@ def optimiser_tournees(fiches, df_mag, args):
             if lon < 5.721:  return 'Grenoble Centre Ouest'
             return 'Grenoble Centre Est'
         # ── Regroupements géographiques ───────────────────────────────────────
-        GRESIVAUDAN   = {'Biviers', 'Crolles', 'Froges', 'Saint Ismier', 'Domene', 'Le Versoud'}
+        GRESIVAUDAN_SUD = {'Domene', 'Le Versoud', 'Froges'}
+        GRESIVAUDAN_NORD = {'Biviers', 'Saint Ismier', 'Crolles'}
         VOIRON_GRP    = {'Voiron', 'Saint Jean De Moirans'}
-        RIVES_GRP     = {'Rives', 'Renage'}
+        RIVES_GRP     = {'Rives', 'Renage', 'Moirans', 'Voreppe'}
         SEYSSINET_GRP = {'Seyssinet Pariset', 'Seyssins', 'Fontaine'}
         PLATEAU_NORD  = {'Apprieu', 'Colombe', 'Le Grand Lemps'}
-        SUD_VERCORS   = {'Varces Allieres Et Risset', 'Vif', 'Vizille', 'Claix'}
+        SUD_VERCORS   = {'Varces Allieres Et Risset', 'Claix'}
         CHARTREUSE_E  = {'La Terrasse', 'Le Touvet', 'Tencin'}
         ROUSSILLON    = {'Peage De Roussillon', 'Salaise Sur Sanne'}
         PONTCHARRA_GRP = {'Chapareillan', 'Pontcharra'}
         SMH_GRP       = {'Poisat', 'Saint Martin Dheres', 'Saint Martin D Heres', 'Gieres', 'Gières'}
-        if v in GRESIVAUDAN:   return 'Gresivaudan'
+        URIAGE_GRP    = {'Bresson', 'Saint Martin D Uriage'}
+        if v in GRESIVAUDAN_SUD:  return 'Gresivaudan Sud'
+        if v in GRESIVAUDAN_NORD: return 'Gresivaudan Nord'
         if v in VOIRON_GRP:    return 'Voiron'
-        if v in RIVES_GRP:     return 'Rives'
+        if v in RIVES_GRP:     return 'Rives Moirans Voreppe'
         if v in SEYSSINET_GRP: return 'Seyssinet'
         if v in PLATEAU_NORD:  return 'Plateau Nord'
         if v in SUD_VERCORS:   return 'Sud Vercors'
+        if v == 'Vizille':     return 'Vizille'
+        if v == 'Vif':         return 'Vif'
         if v in CHARTREUSE_E:  return 'Chartreuse Est'
         if v in ROUSSILLON:    return 'Roussillon'
         if v in PONTCHARRA_GRP: return 'Pontcharra'
         if v in SMH_GRP:       return 'Saint Martin Dheres'
+        if v in URIAGE_GRP:    return 'Saint Martin D Uriage'
         return v
 
     def _secteur_vif_calc2(vif):
@@ -967,6 +1026,14 @@ def optimiser_tournees(fiches, df_mag, args):
     # réinjecter uniquement sur les demi-journées d'où ils ont été retirés.
     for vif, dj_orig in orphelins_exclusifs:
         vifs_a_injecter.setdefault(vif, set()).add(dj_orig)
+
+    # Magasins retirés pour créneau interdit (orphelins_creneaux) : à
+    # réinjecter sur n'importe laquelle de leurs DJ autorisées (pas
+    # uniquement la DJ d'origine, puisque c'est elle qui est interdite).
+    for vif, dj_orig in orphelins_creneaux:
+        djs_cr = vif2row.get(vif, {}).get('djs_creneaux')
+        autorisees = set(djs_cr) if djs_cr is not None else set(DEMI_JOURNEES)
+        vifs_a_injecter.setdefault(vif, set()).update(autorisees)
 
     # Mode 'depuis liste-vehicule' (args.completer_via_creneaux) : en plus des
     # magasins entièrement nouveaux, complète aussi les demi-journées encore
@@ -1030,12 +1097,10 @@ def optimiser_tournees(fiches, df_mag, args):
                 sec_dom = _sec_dominant(vifs)
                 if not sec_dom: continue  # secteur indéterminé → ignorer
                 if sec_dom != sec_new: continue  # STRICT : même secteur uniquement
-                # Tolérance +1 si tournée mono-secteur et non figée
+                # Pas de tolérance au-delà du plafond du jour (max_dim le
+                # dimanche, max_norm sinon) — jamais 6 magasins hors dimanche.
                 secs_existants = {_secteur_vif_calc2(v) for v in vifs if _secteur_vif_calc2(v)}
-                mono = (len(secs_existants) == 1 and sec_new in secs_existants
-                        and veh not in VEHICULES_FIGES_EFF and (veh, dj) not in TOURNEES_GELEES_EFF)
-                limite = max_c_dj + 2 if mono else max_c_dj
-                if len(vifs) >= limite: continue
+                if len(vifs) >= max_c_dj: continue
                 # Vérifier la compatibilité des secteurs après ajout
                 secs_apres = secs_existants | {sec_new}
                 if not _secteurs_compatibles_dir(secs_apres): continue
@@ -1090,14 +1155,16 @@ def optimiser_tournees(fiches, df_mag, args):
             if veh_new:
                 dj_veh[(dj, veh_new)] = [vif_new]
             else:
-                # 3bis. Retry avec MAX+1 si même secteur (hors dimanche)
+                # 3bis. Retry en relâchant la contrainte de secteur dominant
+                # (plus de tolérance de capacité : jamais 6 magasins hors
+                # dimanche, cf. max_c_dj qui vaut déjà max_norm ici).
                 if dj not in DJ_DIMANCHE:
                     best_p1 = None; best_dist_p1 = float('inf')
                     for (d2, veh2), vifs2 in dj_veh.items():
                         if d2 != dj: continue
                         if veh2 in VEHICULES_FIGES_EFF: continue
                         if (veh2, dj) in TOURNEES_GELEES_EFF: continue
-                        if len(vifs2) >= max_c_dj + 2: continue  # accepter jusqu'à max+2
+                        if len(vifs2) >= max_c_dj: continue
                         sec2 = _sec_dominant(vifs2)
                         if not sec2 or sec2 != sec_new: continue  # même secteur dominant
                         secs2 = {_secteur_vif_calc2(v) for v in vifs2 if _secteur_vif_calc2(v)} | {sec_new}
@@ -1298,6 +1365,13 @@ def optimiser_tournees(fiches, df_mag, args):
             sec_prio = SECTEURS_PRIORITAIRES_VX.get(veh_new)
             total = 0
             for dj in DJ_VX:
+                if (veh_new, dj) in TOURNEES_GELEES_EFF:
+                    # Camion réel (camions_supp_pool) sans créneau ce jour-là
+                    # d'après liste-vehicule.xlsx (ex. Sécurité Civile ne
+                    # roule pas le samedi) — ne jamais lui affecter de
+                    # magasin ce jour, contrairement aux codes synthétiques
+                    # VX3xx qui n'ont pas cette contrainte.
+                    continue
                 if sec_prio:
                     nb = _delester_dj_secteur(veh_new, dj, max_norm, sec_prio)
                     if nb == 0:
@@ -1511,59 +1585,67 @@ def optimiser_tournees(fiches, df_mag, args):
     else:
         print("  → Aucun transfert possible vers tournées légères")
 
-    # ── Réduction des secteurs : extraire les magasins isolés des tournées à 3+ secteurs ──
+    # ── Réduction des secteurs : extraire les magasins isolés des tournées
+    # incompatibles (3+ secteurs, secteur isolé mélangé, ou paire de
+    # PAIRES_SECTEURS_INCOMPATIBLES réunie) ───────────────────────────────
+    def _reduire_secteurs_incompatibles():
+        nb_reductions = 0
+        for dj in DEMI_JOURNEES:
+            max_c_dj = max_dim if dj in DJ_DIMANCHE else max_norm
+            modifie = True
+            while modifie:
+                modifie = False
+                for (d, veh_src), vifs in list(dj_veh.items()):
+                    if d != dj: continue
+                    if veh_src in VEHICULES_FIGES_EFF: continue
+                    if (veh_src, dj) in TOURNEES_GELEES_EFF: continue
+                    if len(vifs) < 2: continue
+                    # Calculer les secteurs de la tournée
+                    secs = [_secteur_vif_calc2(v) for v in vifs if _secteur_vif_calc2(v)]
+                    from collections import Counter as _C
+                    cnt = _C(secs)
+                    if _secteurs_compatibles_dir(set(cnt.keys())): continue  # déjà compatible → OK
+                    # Identifier les secteurs minoritaires (1 seul magasin)
+                    secs_min = {s for s,n in cnt.items() if n == 1}
+                    if not secs_min: continue
+                    # Tenter de déplacer chaque magasin isolé
+                    for vif in list(vifs):
+                        sec_v = _secteur_vif_calc2(vif)
+                        if sec_v not in secs_min: continue
+                        r_v = vif2row.get(vif)
+                        if r_v is None: continue
+                        lat_v = float(r_v.get('Latitude', BAI_LAT))
+                        lon_v = float(r_v.get('Longitude', BAI_LON))
+                        # Chercher une tournée du même secteur avec de la place
+                        best_key = None; best_score = float('inf')
+                        for (d2, veh2), vifs2 in dj_veh.items():
+                            if d2 != dj or veh2 == veh_src: continue
+                            if (veh2, dj) in TOURNEES_GELEES_EFF: continue
+                            if veh2 in VEHICULES_FIGES_EFF: continue
+                            if len(vifs2) >= max_c_dj: continue
+                            sec2 = _sec_dominant(vifs2)
+                            if not sec2 or sec2 != sec_v: continue
+                            # Vérifier que le déplacement ne crée pas une tournée
+                            # source elle-même incompatible (secteurs isolés,
+                            # paires incompatibles, ou >2 secteurs)
+                            secs_src_apres = set(_secteur_vif_calc2(v) for v in vifs if v != vif and _secteur_vif_calc2(v))
+                            if not _secteurs_compatibles_dir(secs_src_apres): continue
+                            clat2, clon2 = _centre_vifs(vifs2)
+                            d_km = haversine(lat_v, lon_v, clat2, clon2)
+                            if d_km < best_score:
+                                best_score = d_km; best_key = (d2, veh2)
+                        if best_key:
+                            nom_v = str(r_v.get('Nom', vif))
+                            dj_veh[(dj, veh_src)] = [v for v in dj_veh[(dj, veh_src)] if v != vif]
+                            if vif not in dj_veh[best_key]: dj_veh[best_key].append(vif)
+                            print(f"  Réduction secteur: '{nom_v}' {veh_src}→{best_key[1]} ({dj})")
+                            nb_reductions += 1
+                            modifie = True
+                            break  # recommencer la boucle
+        return nb_reductions
+
     print("  Réduction des secteurs...")
-    nb_reductions = 0
-    for dj in DEMI_JOURNEES:
-        max_c_dj = max_dim if dj in DJ_DIMANCHE else max_norm
-        modifie = True
-        while modifie:
-            modifie = False
-            for (d, veh_src), vifs in list(dj_veh.items()):
-                if d != dj: continue
-                if veh_src in VEHICULES_FIGES_EFF: continue
-                if (veh_src, dj) in TOURNEES_GELEES_EFF: continue
-                if len(vifs) < 2: continue
-                # Calculer les secteurs de la tournée
-                secs = [_secteur_vif_calc2(v) for v in vifs if _secteur_vif_calc2(v)]
-                from collections import Counter as _C
-                cnt = _C(secs)
-                if len(cnt) < 3: continue  # déjà ≤ 2 secteurs → OK
-                # Identifier les secteurs minoritaires (1 seul magasin)
-                secs_min = {s for s,n in cnt.items() if n == 1}
-                if not secs_min: continue
-                # Tenter de déplacer chaque magasin isolé
-                for vif in list(vifs):
-                    sec_v = _secteur_vif_calc2(vif)
-                    if sec_v not in secs_min: continue
-                    r_v = vif2row.get(vif)
-                    if r_v is None: continue
-                    lat_v = float(r_v.get('Latitude', BAI_LAT))
-                    lon_v = float(r_v.get('Longitude', BAI_LON))
-                    # Chercher une tournée du même secteur avec de la place
-                    best_key = None; best_score = float('inf')
-                    for (d2, veh2), vifs2 in dj_veh.items():
-                        if d2 != dj or veh2 == veh_src: continue
-                        if (veh2, dj) in TOURNEES_GELEES_EFF: continue
-                        if veh2 in VEHICULES_FIGES_EFF: continue
-                        if len(vifs2) >= max_c_dj: continue
-                        sec2 = _sec_dominant(vifs2)
-                        if not sec2 or sec2 != sec_v: continue
-                        # Vérifier que le déplacement ne crée pas de 3ème secteur dans la source
-                        secs_src_apres = set(_secteur_vif_calc2(v) for v in vifs if v != vif and _secteur_vif_calc2(v))
-                        if len(secs_src_apres) > 2: continue
-                        clat2, clon2 = _centre_vifs(vifs2)
-                        d_km = haversine(lat_v, lon_v, clat2, clon2)
-                        if d_km < best_score:
-                            best_score = d_km; best_key = (d2, veh2)
-                    if best_key:
-                        nom_v = str(r_v.get('Nom', vif))
-                        dj_veh[(dj, veh_src)] = [v for v in dj_veh[(dj, veh_src)] if v != vif]
-                        if vif not in dj_veh[best_key]: dj_veh[best_key].append(vif)
-                        print(f"  Réduction secteur: '{nom_v}' {veh_src}→{best_key[1]} ({dj})")
-                        nb_reductions += 1
-                        modifie = True
-                        break  # recommencer la boucle
+    nb_reductions = _reduire_secteurs_incompatibles()
     if nb_reductions:
         print(f"  → {nb_reductions} magasin(s) déplacé(s) pour réduire les secteurs")
 
@@ -1714,7 +1796,6 @@ def optimiser_tournees(fiches, df_mag, args):
             lon_v = float(r_v.get('Longitude', BAI_LON))
             nom_v = str(r_v.get('Nom', vif))
             # Chercher la meilleure tournée disponible
-            est_absent_partout = vif not in {v for (d,_), vl in dj_veh.items() for v in vl}
             best_key = None; best_dist = float('inf')
             for (d, veh), vifs in dj_veh.items():
                 if d != dj: continue
@@ -1722,10 +1803,10 @@ def optimiser_tournees(fiches, df_mag, args):
                 if (veh, dj) in TOURNEES_GELEES_EFF: continue
                 nb = len(vifs)
                 secs = {_secteur_vif_calc2(v) for v in vifs if _secteur_vif_calc2(v)}
-                mono = len(secs)==1 and sec_v in secs
-                # Tolérance +1 si mono-secteur OU si nouveau absent de toutes les DJ
-                limite = max_c_dj + 2 if mono else (max_c_dj + 2 if (vif in new_vifs and est_absent_partout) else max_c_dj)
-                if nb >= limite: continue
+                # Pas de tolérance au-delà du plafond du jour — jamais 6
+                # magasins hors dimanche (max_c_dj vaut déjà max_dim le
+                # dimanche, max_norm sinon).
+                if nb >= max_c_dj: continue
                 # Vérifier la compatibilité des secteurs
                 secs_apres = secs | {sec_v}
                 if not _secteurs_compatibles_dir(secs_apres): continue
@@ -1766,8 +1847,8 @@ def optimiser_tournees(fiches, df_mag, args):
         # Détecter les doublons inter-tournées
         for vif, cams in vif2cams.items():
             if len(cams) > 1:
-                r = vif2row.get(vif, {})
-                nom = str(r.get('Nom', vif)) if r else vif
+                r = vif2row.get(vif)
+                nom = str(r.get('Nom', vif)) if r is not None else vif
                 print(f"  [WARN] '{nom}' présent dans {len(cams)} tournées le {dj} : {cams}")
                 # Garder uniquement le premier camion (celui avec le plus de magasins)
                 cam_garder = max(cams, key=lambda v: len(dj_veh.get((dj, v), [])))
@@ -1781,85 +1862,72 @@ def optimiser_tournees(fiches, df_mag, args):
     elif nb_doublons == 0:
         print("  ✓ Aucun doublon détecté")
 
-    # ── Tournées à 1 seul magasin (sauf camions figés) ────────────────────────
-    # Un camion supplémentaire (VX) réduit à 1 magasin est éliminé : mieux vaut
-    # rattacher ce magasin à une tournée voisine que de mobiliser un véhicule
-    # de plus. En revanche, un véhicule EXISTANT non figé sortira de toute façon
-    # ce jour-là — le vider complètement (comme on faisait avant) le laisse
-    # inutilisé alors qu'il pourrait emporter 1-2 magasins proches en plus.
-    # On tente donc de le compléter, et on ne le vide que si rien de proche
-    # n'a pu lui être ajouté.
-    nb_elimines = 0
-    nb_completes_1mag = 0
-    for dj in DEMI_JOURNEES:
-        max_c_dj = max_dim if dj in DJ_DIMANCHE else max_norm
-        for (d, veh), vifs in list(dj_veh.items()):
-            if d != dj: continue
-            if veh in VEHICULES_FIGES_EFF: continue  # préserver les figés
-            if (veh, dj) in TOURNEES_GELEES_EFF: continue
-            if len(vifs) != 1: continue
-            vif_seul = vifs[0]
-            r_seul = vif2row.get(vif_seul)
-            if r_seul is None: continue
-            lat_s = float(r_seul.get('Latitude', BAI_LAT))
-            lon_s = float(r_seul.get('Longitude', BAI_LON))
-            sec_s = _secteur_vif_calc2(vif_seul)
-            est_vx = veh in nouveaux_vehs  # camion supplémentaire (VX3xx)
+    # ── Tournées à 1 seul magasin (sauf camions figés/gelés) ──────────────────
+    # Jamais de tournée à 1 seul magasin, camion supplémentaire (VX) ou
+    # existant : on la fusionne systématiquement dans la tournée compatible
+    # la plus proche qui a de la place (retour utilisateur direct — mieux
+    # vaut regrouper que de faire sortir un camion pour un seul magasin).
+    # Fonction réutilisable : appelée ici une première fois, puis à nouveau
+    # en toute fin (après cohérence jour/2e réduction, qui peuvent chacune
+    # isoler un magasin sur sa propre tournée).
+    def _eliminer_tournees_1mag():
+        nb = 0
+        for dj in DEMI_JOURNEES:
+            max_c_dj = max_dim if dj in DJ_DIMANCHE else max_norm
+            for (d, veh), vifs in list(dj_veh.items()):
+                if d != dj: continue
+                if veh in VEHICULES_FIGES_EFF: continue  # préserver les figés/exclusifs
+                if (veh, dj) in TOURNEES_GELEES_EFF: continue
+                if len(vifs) != 1: continue
+                vif_seul = vifs[0]
+                if vif_seul in VIFS_ANCRES: continue
+                # Ne jamais vider complètement un camion réel (code autre que
+                # VXxxx) : s'il ne lui reste aucun autre magasin sur une autre
+                # demi-journée, mieux vaut le laisser avec ce seul magasin que
+                # le rendre totalement inutilisé (retour utilisateur direct :
+                # tout camion réel aux créneaux définis doit être utilisé,
+                # sauf s'il est figé).
+                if not veh.startswith('VX'):
+                    autres = any(
+                        v2 == veh and d2 != dj and vl
+                        for (d2, v2), vl in dj_veh.items()
+                    )
+                    if not autres:
+                        continue
+                r_seul = vif2row.get(vif_seul)
+                if r_seul is None: continue
+                lat_s = float(r_seul.get('Latitude', BAI_LAT))
+                lon_s = float(r_seul.get('Longitude', BAI_LON))
+                sec_s = _secteur_vif_calc2(vif_seul)
 
-            if not est_vx:
-                # Véhicule existant : chercher un magasin proche du même secteur
-                # dans une tournée qui a de la marge, pour compléter plutôt que
-                # de vider ce camion.
-                best_vif = None; best_src = None; best_dist = float('inf')
+                best_key = None; best_score = float('inf')
                 for (d2, veh2), vifs2 in dj_veh.items():
                     if d2 != dj or veh2 == veh: continue
-                    if veh2 in VEHICULES_FIGES_EFF: continue
                     if (veh2, dj) in TOURNEES_GELEES_EFF: continue
-                    if len(vifs2) <= 2: continue  # ne pas dégarnir une tournée déjà légère
-                    for v in vifs2:
-                        if _secteur_vif_calc2(v) != sec_s: continue
-                        r_v = vif2row.get(v)
-                        if r_v is None: continue
-                        d_km = haversine(float(r_v.get('Latitude', BAI_LAT)),
-                                          float(r_v.get('Longitude', BAI_LON)), lat_s, lon_s)
-                        if d_km < best_dist:
-                            best_dist = d_km; best_vif = v; best_src = veh2
-                if best_vif:
-                    nom_a = str(vif2row.get(best_vif, {}).get('Nom', best_vif))
-                    dj_veh[(dj, best_src)] = [v for v in dj_veh[(dj, best_src)] if v != best_vif]
-                    dj_veh[(dj, veh)].append(best_vif)
-                    print(f"  Complément tournée 1 mag: '{nom_a}' {best_src}→{veh} ({dj}, évite un véhicule existant inutilisé)")
-                    nb_completes_1mag += 1
-                    continue  # ne pas éliminer ce camion, il n'est plus à 1 magasin
-                # sinon : rien de proche à ajouter, on laisse la tournée à 1
-                # magasin telle quelle (mieux qu'un véhicule totalement vide).
-                continue
+                    if veh2 in VEHICULES_FIGES_EFF: continue
+                    sec2 = _sec_dominant([v for v in vifs2 if v not in new_vifs])
+                    if len(vifs2) >= max_c_dj: continue
+                    secs_dest_apres = {_secteur_vif_calc2(v) for v in vifs2 if _secteur_vif_calc2(v)}
+                    secs_dest_apres.add(sec_s)
+                    secs_dest_apres.discard('')
+                    if not _secteurs_compatibles_dir(secs_dest_apres): continue
+                    clat, clon = _centre_vifs(vifs2)
+                    d_km = haversine(lat_s, lon_s, clat, clon)
+                    pen = 0.0 if (not sec2 or not sec_s or sec2 == sec_s) else max(10.0, d_km)
+                    score = d_km + pen
+                    if score < best_score:
+                        best_score = score; best_key = (d2, veh2)
+                if best_key:
+                    nom_s = str(r_seul.get('Nom', vif_seul))
+                    if vif_seul not in dj_veh[best_key]: dj_veh[best_key].append(vif_seul)
+                    del dj_veh[(dj, veh)]
+                    print(f"  Tournée 1 mag éliminée: '{nom_s}' ({veh}/{dj}) → {best_key[1]}")
+                    nb += 1
+        return nb
 
-            # Chercher la tournée la plus proche avec de la place
-            best_key = None; best_score = float('inf')
-            for (d2, veh2), vifs2 in dj_veh.items():
-                if d2 != dj or veh2 == veh: continue
-                if (veh2, dj) in TOURNEES_GELEES_EFF: continue
-                if veh2 in VEHICULES_FIGES_EFF: continue
-                sec2 = _sec_dominant([v for v in vifs2 if v not in new_vifs])
-                limite2 = max_c_dj + 2 if (sec2 and sec_s and sec2 == sec_s) else max_c_dj
-                if len(vifs2) >= limite2: continue
-                clat, clon = _centre_vifs(vifs2)
-                d_km = haversine(lat_s, lon_s, clat, clon)
-                pen = 0.0 if (not sec2 or not sec_s or sec2 == sec_s) else max(10.0, d_km)
-                score = d_km + pen
-                if score < best_score:
-                    best_score = score; best_key = (d2, veh2)
-            if best_key:
-                nom_s = str(r_seul.get('Nom', vif_seul))
-                if vif_seul not in dj_veh[best_key]: dj_veh[best_key].append(vif_seul)
-                del dj_veh[(dj, veh)]
-                print(f"  Tournée 1 mag éliminée: '{nom_s}' ({veh}/{dj}) → {best_key[1]}")
-                nb_elimines += 1
+    nb_elimines = _eliminer_tournees_1mag()
     if nb_elimines:
-        print(f"  → {nb_elimines} tournée(s) à 1 magasin éliminée(s) (camions supplémentaires)")
-    if nb_completes_1mag:
-        print(f"  → {nb_completes_1mag} tournée(s) à 1 magasin complétée(s) (véhicules existants, pour éviter un camion inutilisé)")
+        print(f"  → {nb_elimines} tournée(s) à 1 magasin éliminée(s)")
 
     # ── Ancrage forcé de certains magasins à leur camion (VIFS_ANCRES) ───────
     if VIFS_ANCRES:
@@ -1974,7 +2042,13 @@ def optimiser_tournees(fiches, df_mag, args):
             # les plus récemment ajoutés à la flotte) restent systématiquement
             # sous-utilisés, les premiers ayant déjà pris toute l'occasion de
             # soulagement disponible avant leur tour.
-            ordre_leger = sorted(pool_codes, key=lambda v: len(dj_veh.get((dj, v), [])))
+            # Tri secondaire par code (alphabétique) pour départager les
+            # ex-aequo de façon déterministe — sans lui, l'ordre de
+            # parcours de pool_codes (un set, donc dépendant du hachage des
+            # chaînes, qui varie d'un process Python à l'autre) décidait du
+            # gagnant, rendant le résultat non reproductible d'un lancement
+            # à l'autre pour un même jeu de paramètres.
+            ordre_leger = sorted(pool_codes, key=lambda v: (len(dj_veh.get((dj, v), [])), v))
             for veh_leger in ordre_leger:
                 if veh_leger in VEHICULES_FIGES_EFF or (veh_leger, dj) in TOURNEES_GELEES_EFF:
                     continue
@@ -2022,6 +2096,245 @@ def optimiser_tournees(fiches, df_mag, args):
                     nb_allegements += 1
         if nb_allegements:
             print(f"  → {nb_allegements} magasin(s) déplacé(s) pour mieux utiliser les camions {sorted(pool_codes)}")
+
+    # ── Cohérence matin/après-midi : garder le même camion pour un magasin
+    # présent sur les deux demi-journées d'un même jour, quand c'est possible
+    # sans violer les contraintes déjà en vigueur (secteurs, capacité, camion
+    # figé/gelé/exclusif, magasin ancré) — en tout dernier, pour ne pas être
+    # défait par une passe suivante. Best-effort : un magasin reste sur des
+    # camions différents matin/après-midi si aucun déplacement compatible
+    # n'est trouvé.
+    def _tenter_alignement(dj_depart, veh_depart, dj_cible, veh_cible, vif):
+        """Essaie de déplacer vif de (dj_depart, veh_depart) vers
+        (dj_depart, veh_cible) — c'est-à-dire aligner la demi-journée
+        dj_depart sur le camion déjà utilisé pour ce magasin sur l'autre
+        demi-journée du même jour (dj_cible). Retourne True si le
+        déplacement a été fait."""
+        if veh_depart in VEHICULES_FIGES_EFF or (veh_depart, dj_depart) in TOURNEES_GELEES_EFF:
+            return False
+        if veh_cible in VEHICULES_FIGES_EFF or (veh_cible, dj_depart) in TOURNEES_GELEES_EFF:
+            return False
+        max_c = max_dim if dj_depart in DJ_DIMANCHE else max_norm
+        cle_dest = (dj_depart, veh_cible)
+        vifs_dest = dj_veh.get(cle_dest, [])
+        if len(vifs_dest) >= max_c:
+            return False
+        secs_dest_apres = {_secteur_vif_calc2(v) for v in vifs_dest if _secteur_vif_calc2(v)}
+        secs_dest_apres.add(_secteur_vif_calc2(vif))
+        secs_dest_apres.discard('')
+        if not _secteurs_compatibles_dir(secs_dest_apres):
+            return False
+        dj_veh[(dj_depart, veh_depart)] = [v for v in dj_veh[(dj_depart, veh_depart)] if v != vif]
+        dj_veh.setdefault(cle_dest, []).append(vif)
+        return True
+
+    def _coherence_jour():
+        nb = 0
+        for _jour in ('Jeudi', 'Vendredi', 'Samedi'):
+            dj_matin, dj_am = f'{_jour} Matin', f'{_jour} Apres Midi'
+            if dj_matin not in DEMI_JOURNEES or dj_am not in DEMI_JOURNEES:
+                continue
+            veh_matin_par_vif = {}
+            for (d, veh), vifs in dj_veh.items():
+                if d == dj_matin:
+                    for v in vifs:
+                        veh_matin_par_vif[v] = veh
+            for (d, veh_am), vifs_am in list(dj_veh.items()):
+                if d != dj_am:
+                    continue
+                for vif in list(vifs_am):
+                    if vif in VIFS_ANCRES:
+                        continue
+                    veh_matin = veh_matin_par_vif.get(vif)
+                    if not veh_matin or veh_matin == veh_am:
+                        continue
+                    nom_v = str(vif2row.get(vif, {}).get('Nom', vif))
+                    # Essai 1 : aligner l'après-midi sur le camion du matin.
+                    if _tenter_alignement(dj_am, veh_am, dj_matin, veh_matin, vif):
+                        print(f"  Cohérence jour: '{nom_v}' {veh_am}→{veh_matin} ({dj_am}, même camion qu'en matinée)")
+                        nb += 1
+                        continue
+                    # Essai 2 (repli) : le camion du matin n'a pas de créneau
+                    # ou de place l'après-midi (ex. camion limité à une
+                    # demi-journée précise) — tenter l'inverse, aligner le
+                    # matin sur le camion de l'après-midi.
+                    if _tenter_alignement(dj_matin, veh_matin, dj_am, veh_am, vif):
+                        print(f"  Cohérence jour: '{nom_v}' {veh_matin}→{veh_am} ({dj_matin}, même camion qu'en après-midi)")
+                        nb += 1
+        return nb
+
+    nb_coherence_jour = _coherence_jour()
+    if nb_coherence_jour:
+        print(f"  → {nb_coherence_jour} magasin(s) replacé(s) pour garder le même camion matin/après-midi")
+
+    # Un second passage de réduction des secteurs, tout en fin : les passes
+    # précédentes (camions supplémentaires, regroupement, allègement,
+    # cohérence jour) ont pu faire apparaître de nouvelles tournées
+    # mono-secteur qui n'existaient pas encore lors du premier passage —
+    # par exemple un camion exclusif qui n'acceptait qu'un seul magasin au
+    # départ peut désormais avoir un voisin de même secteur disponible.
+    nb_reductions_fin = _reduire_secteurs_incompatibles()
+    if nb_reductions_fin:
+        print(f"  → {nb_reductions_fin} magasin(s) déplacé(s) pour réduire les secteurs (2e passage)")
+
+    # Un second passage d'élimination des tournées à 1 magasin, tout en fin :
+    # la cohérence jour et le 2e passage de réduction ci-dessus peuvent
+    # chacun isoler un magasin sur sa propre tournée (ex. en le retirant
+    # d'une tournée pour en préserver la compatibilité de secteurs).
+    nb_elimines_fin = _eliminer_tournees_1mag()
+    if nb_elimines_fin:
+        print(f"  → {nb_elimines_fin} tournée(s) à 1 magasin éliminée(s) (2e passage)")
+
+    # ── Renforcement des camions réels sous-chargés ──────────────────────────
+    # Un camion réel (hors VX synthétique) avec très peu de magasins — par
+    # exemple sauvé de justesse par la garde "jamais totalement vide" de
+    # _eliminer_tournees_1mag ci-dessus — reste sous-chargé : on va le
+    # renforcer en lui prenant des magasins d'un AUTRE camion, même si celui-ci
+    # n'est pas à sa pleine capacité (contrairement à l'Allègement plus haut,
+    # qui ne soulage que les tournées pleines), tant que les secteurs restent
+    # cohérents et que la source garde au moins 2 magasins (retour utilisateur
+    # direct : « il faut plus charger quitte à décharger un autre camion, mais
+    # en restant cohérent pour les secteurs »).
+    SEUIL_SOUS_CHARGE = 3
+    # Créneaux réels connus (toutes sources confondues, cf. args.creneaux_camions
+    # — mode 'depuis liste-vehicule' : tous les camions ; mode PDF/capacité :
+    # seulement le pool supplémentaire) : un camion réel avec un créneau connu
+    # ce jour-là mais ENCORE AUCUNE entrée dans dj_veh (donc invisible à la
+    # simple itération de dj_veh.items()) doit être traité comme sous-chargé
+    # au même titre qu'une tournée à 1-2 magasins — sinon il reste totalement
+    # ignoré par cette passe de renfort.
+    _creneaux_tous = getattr(args, 'creneaux_camions', None) or {}
+    nb_renforts = 0
+    for dj in DEMI_JOURNEES:
+        candidats_reels = {veh for (d, veh) in dj_veh.keys() if d == dj}
+        candidats_reels |= {code for code, djs in _creneaux_tous.items() if dj in djs}
+        sous_charges = sorted(
+            (veh for veh in candidats_reels
+             if not veh.startswith('VX')
+             and veh not in VEHICULES_FIGES_EFF and (veh, dj) not in TOURNEES_GELEES_EFF
+             and len(dj_veh.get((dj, veh), [])) < SEUIL_SOUS_CHARGE),
+            key=lambda v: (len(dj_veh.get((dj, v), [])), v),
+        )
+        for veh_leger in sous_charges:
+            cle_leger = (dj, veh_leger)
+            while len(dj_veh.get(cle_leger, [])) < SEUIL_SOUS_CHARGE:
+                vifs_leger = dj_veh.get(cle_leger, [])
+                clat, clon = _centre_vifs(vifs_leger) if vifs_leger else (BAI_LAT, BAI_LON)
+                secs_leger = {_secteur_vif_calc2(v) for v in vifs_leger if _secteur_vif_calc2(v)}
+
+                meilleur = None  # (veh_src, vif, distance)
+                for (d, veh_src), vifs_src in dj_veh.items():
+                    if d != dj or veh_src == veh_leger:
+                        continue
+                    if veh_src in VEHICULES_FIGES_EFF or (veh_src, dj) in TOURNEES_GELEES_EFF:
+                        continue
+                    if len(vifs_src) - 1 < 2:
+                        continue  # garder au moins 2 magasins dans la source
+                    for vif in vifs_src:
+                        if vif in VIFS_ANCRES:
+                            continue
+                        sec_v = _secteur_vif_calc2(vif)
+                        if not sec_v:
+                            continue
+                        if not _secteurs_compatibles_dir(secs_leger | {sec_v}):
+                            continue
+                        secs_src_apres = {_secteur_vif_calc2(v) for v in vifs_src if v != vif and _secteur_vif_calc2(v)}
+                        if not _secteurs_compatibles_dir(secs_src_apres):
+                            continue
+                        r_v = vif2row.get(vif)
+                        if r_v is None:
+                            continue
+                        d_km = haversine(clat, clon, float(r_v.get('Latitude', BAI_LAT)), float(r_v.get('Longitude', BAI_LON)))
+                        if meilleur is None or d_km < meilleur[2]:
+                            meilleur = (veh_src, vif, d_km)
+
+                if meilleur is None:
+                    break
+                veh_src, vif, _ = meilleur
+                dj_veh[(dj, veh_src)] = [v for v in dj_veh[(dj, veh_src)] if v != vif]
+                dj_veh.setdefault(cle_leger, []).append(vif)
+                nom_v = str(vif2row.get(vif, {}).get('Nom', vif))
+                print(f"  Renfort camion sous-chargé : '{nom_v}' {veh_src}→{veh_leger} ({dj})")
+                nb_renforts += 1
+    if nb_renforts:
+        print(f"  → {nb_renforts} magasin(s) déplacé(s) pour renforcer des camions réels sous-chargés")
+
+    # Un second (et dernier) passage de cohérence jour, tout en fin : le
+    # renforcement des camions sous-chargés juste au-dessus traite chaque
+    # demi-journée indépendamment et peut donc redéfaire l'alignement
+    # matin/après-midi obtenu plus haut (ex. un magasin repris matin et
+    # après-midi se retrouve avec deux camions différents parce que le
+    # renfort n'a eu l'occasion d'agir que sur l'une des deux demi-journées).
+    nb_coherence_fin = _coherence_jour()
+    if nb_coherence_fin:
+        print(f"  → {nb_coherence_fin} magasin(s) replacé(s) pour garder le même camion matin/après-midi (2e passage)")
+
+    # ── Échange selon la taille réelle du camion (Type camion) ───────────────
+    # Retour utilisateur direct : certains magasins se retrouvent sur un
+    # camion dont le volume réel (12 m3, 20 m3...) ne correspond pas au
+    # tonnage de la tournée — ex. un 12 m3 chargé à 1146 kg pendant qu'un
+    # 20 m3 ne roule qu'à 488 kg. On échange alors les DEUX tournées
+    # entières (tous les magasins, d'un coup) entre les deux camions
+    # concernés — jamais de découpage magasin par magasin : la géographie de
+    # chaque tournée ne change pas, seul le véhicule qui la fait change.
+    # Lancé en tout dernier (après le 2e passage de cohérence jour) pour que
+    # matin/après-midi restent alignés : le contenu étant déjà identique les
+    # deux demi-journées à ce stade, le même échange est retenu pour les
+    # deux, sans repasse supplémentaire nécessaire.
+    _types_camions = getattr(args, 'types_camions', None) or {}
+
+    def _volume_camion(code):
+        m = re.search(r'(\d+)', str(_types_camions.get(code, '')))
+        return int(m.group(1)) if m else None
+
+    def _tonnage_tournee(dj, veh):
+        total = 0.0
+        for vif in dj_veh.get((dj, veh), []):
+            row = vif2row.get(vif)
+            if row is None:
+                continue
+            nb_passages = vif_passages.get(vif, 1)
+            tonnage_annuel = float(row['Tonnage_precedent']) if row['Tonnage_precedent'] else 0
+            total += tonnage_annuel / nb_passages if nb_passages > 0 else 0
+        return total
+
+    nb_echanges_taille = 0
+    if _types_camions:
+        for dj in DEMI_JOURNEES:
+            candidats = sorted(
+                veh for veh in {v for (d, v) in dj_veh.keys() if d == dj}
+                if not veh.startswith('VX')
+                and veh not in VEHICULES_FIGES_EFF and (veh, dj) not in TOURNEES_GELEES_EFF
+                and _volume_camion(veh) is not None
+            )
+            max_iter = len(candidats) ** 2 + 5
+            progresse = True
+            while progresse and max_iter > 0:
+                progresse = False
+                max_iter -= 1
+                for v1 in candidats:
+                    for v2 in candidats:
+                        if v1 >= v2:
+                            continue
+                        vol1, vol2 = _volume_camion(v1), _volume_camion(v2)
+                        if vol1 == vol2:
+                            continue
+                        petit, grand = (v1, v2) if vol1 < vol2 else (v2, v1)
+                        t_petit = _tonnage_tournee(dj, petit)
+                        t_grand = _tonnage_tournee(dj, grand)
+                        if t_petit > t_grand:
+                            dj_veh[(dj, petit)], dj_veh[(dj, grand)] = (
+                                dj_veh.get((dj, grand), []), dj_veh.get((dj, petit), []),
+                            )
+                            print(f"  Échange taille camion : {petit} ({_volume_camion(petit)}m3, "
+                                  f"{round(t_grand)}kg) <-> {grand} ({_volume_camion(grand)}m3, {round(t_petit)}kg) ({dj})")
+                            nb_echanges_taille += 1
+                            progresse = True
+                            break
+                    if progresse:
+                        break
+    if nb_echanges_taille:
+        print(f"  → {nb_echanges_taille} échange(s) de tournée entre camions pour mieux correspondre au tonnage réel (Type camion)")
 
     # Coefficients trafic TomTom 2025 Grenoble
     SECTEURS_METRO_XL = {
@@ -2873,15 +3186,19 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
                     elif lat_c > 45.187: sec_c = 'Grenoble Centre Nord'
                     elif lon_c < 5.721: sec_c = 'Grenoble Centre Ouest'
                     else: sec_c = 'Grenoble Centre Est'
-                elif vil_c in {'Biviers', 'Crolles', 'Froges', 'Saint Ismier', 'Domene', 'Le Versoud'}: sec_c = 'Gresivaudan'
+                elif vil_c in {'Domene', 'Le Versoud', 'Froges'}:               sec_c = 'Gresivaudan Sud'
+                elif vil_c in {'Biviers', 'Saint Ismier', 'Crolles'}:            sec_c = 'Gresivaudan Nord'
                 elif vil_c in {'Voiron', 'Saint Jean De Moirans'}:                sec_c = 'Voiron'
-                elif vil_c in {'Rives', 'Renage'}:                                sec_c = 'Rives'
+                elif vil_c in {'Rives', 'Renage', 'Moirans', 'Voreppe'}:          sec_c = 'Rives Moirans Voreppe'
                 elif vil_c in {'Seyssinet Pariset', 'Seyssins', 'Fontaine'}:     sec_c = 'Seyssinet'
                 elif vil_c in {'Apprieu', 'Colombe', 'Le Grand Lemps'}:          sec_c = 'Plateau Nord'
-                elif vil_c in {'Varces Allieres Et Risset', 'Vif', 'Vizille', 'Claix'}: sec_c = 'Sud Vercors'
+                elif vil_c in {'Varces Allieres Et Risset', 'Claix'}:            sec_c = 'Sud Vercors'
+                elif vil_c == 'Vizille':                                         sec_c = 'Vizille'
+                elif vil_c == 'Vif':                                            sec_c = 'Vif'
                 elif vil_c in {'La Terrasse', 'Le Touvet', 'Tencin'}:            sec_c = 'Chartreuse Est'
                 elif vil_c in {'Peage De Roussillon', 'Salaise Sur Sanne'}:      sec_c = 'Roussillon'
                 elif vil_c in {'Poisat', 'Saint Martin Dheres', 'Saint Martin D Heres', 'Gieres', 'Gières'}: sec_c = 'Saint Martin Dheres'
+                elif vil_c in {'Bresson', 'Saint Martin D Uriage'}:              sec_c = 'Saint Martin D Uriage'
                 else:
                     sec_c = vil_c
                 if vif: vif2secteur_25[vif] = sec_c
