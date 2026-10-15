@@ -25,6 +25,13 @@
 
             <input type="hidden" name="submitted" value="1">
 
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="confiance" value="1" id="confiance" checked>
+                <label class="form-check-label" for="confiance">
+                    Ne plus me demander de code sur cet appareil pendant {{ confiance_jours }} jours
+                </label>
+            </div>
+
             <div class="d-grid">
                 <button type="submit" class="btn btn-primary">
                     ✅ Valider
@@ -32,6 +39,11 @@
             </div>
 
         </form>
+
+        <div class="text-center mt-3 small">
+            Téléphone pas sous la main ?
+            <a href="{{ url_for('login_code') }}">Recevoir un code par SMS ou email</a>
+        </div>
 
     </div>
 

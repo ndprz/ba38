@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Planning ESOPE – modèle{% endblock %}
+{% block content %}
+<style>
+  .esope-grille { table-layout: fixed; width: 100%; font-size: .85rem; }
+  .esope-grille th, .esope-grille td { vertical-align: top; border: 1px solid #dee2e6; padding: 4px 6px; white-space: normal; overflow-wrap: anywhere; }
+  .esope-grille col.c-fct { width: 9%; } .esope-grille col.c-poste { width: 6%; } .esope-grille col.c-lundi { width: 9%; }
+  .esope-grille .fct { color: #fff; font-weight: 600; }
+  .esope-grille .vide { background: repeating-linear-gradient(45deg, #f8f9fa, #f8f9fa 6px, #eef0f2 6px, #eef0f2 12px); }
+  .esope-grille td.manque { background: #fde2e4; }
+  .esope-plage { color: #6c757d; font-size: .75rem; }
+  .esope-nom { display: block; }
+  .esope-nom.cliquable { cursor: pointer; } .esope-nom.cliquable:hover { text-decoration: underline; }
+  .esope-rec { font-size: .72rem; color: #0d6efd; }
+  .esope-partiel { font-style: italic; color: #6f42c1; font-size: .75rem; }
+</style>
+<div class="container-fluid mt-3">
+<h2>🔁 Planning ESOPE – semaine type</h2>
+{% set actif = 'modele' %}{% include "planning/esope/_nav.html" %}
+
+<div class="alert alert-light border small">
+  Le modèle sert à <b>générer</b> chaque mois (page d'accueil ESOPE). Une personne qui vient
+  <b>une semaine sur deux</b> est enregistrée avec la date d'une de ses semaines de venue ; l'alternance
+  est calculée à partir de cette date (et non des semaines paires/impaires, qui se décalent les années à 53 semaines).
+  Deux bénévoles qui alternent sur le même poste sont tous les deux dans la case, chacun avec sa date.
+  Modifier le modèle ne change pas les mois déjà générés.
+</div>
+
+<table class="esope-grille">
+  <colgroup><col class="c-fct"><col class="c-poste"><col class="c-lundi">{% for j in jours[1:] %}<col>{% endfor %}</colgroup>
+  <thead class="table-light"><tr><th>Fonction</th><th>Poste</th>{% for j in jours %}<th>{{ j.nom|capitalize }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for l in lignes %}
+    <tr>
+      {% if l.premiere %}<td class="fct" rowspan="{{ l.nb_postes }}" style="background: {{ l.couleur }}">{{ l.fonction }}</td>{% endif %}
+      <td class="small">{{ l.poste }}</td>
+      {% for j in jours %}
+        {% set t = grille.get(l.cle, {}).get(j.idx) %}
+        {% if t %}
+          {% set entrees = modele.get(t.id, []) %}
+          {% set hebdo = entrees | selectattr('frequence', 'equalto', 1) | list | length %}
+          <td id="ct-{{ t.id }}" class="{{ 'manque' if entrees|length == 0 }}">
+            <div class="esope-plage">{{ t.plage }}{% if t.libelle %} · {{ t.libelle }}{% endif %} · {{ t.nb_min }}{% if t.nb_max != t.nb_min %}–{{ t.nb_max }}{% endif %} pers.</div>
+            {% for m in entrees %}
+              <span class="esope-nom {{ 'cliquable' if peut_ecrire }}" {% if peut_ecrire %}onclick="ouvrirEntree({{ m.id }})"{% endif %} title="{{ m.commentaire or '' }}">
+                {{ m.libelle }}{% if m.partiel %} <span class="esope-partiel">({{ m.partiel }})</span>{% endif %}{% if m.commentaire %} 💬{% endif %}
+                {% if m.frequence > 1 %}<br><span class="esope-rec">↻ {{ m.recurrence }}</span>{% endif %}
+              </span>
+            {% endfor %}
+            {% if peut_ecrire %}<button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" onclick="ouvrirAjout({{ t.id }})">➕ ajouter</button>{% endif %}
+            {% if hebdo > t.nb_max %}<div class="small text-danger">⚠ {{ hebdo }} personnes chaque semaine pour {{ t.nb_max }} place(s)</div>{% endif %}
+          </td>
+        {% else %}
+          <td class="vide"></td>
+        {% endif %}
+      {% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if peut_ecrire %}
+<div class="modal fade" id="modalEntree" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <form method="POST" action="{{ url_for('esope.modele_enregistrer') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="id" id="m_id">
+    <input type="hidden" name="creneau_type_id" id="m_ct">
+    <div class="modal-header"><h5 class="modal-title" id="m_titre"></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <label class="form-label">Bénévole</label>
+      <select name="benevole_id" id="m_benevole" class="form-select" required></select>
+      <label class="form-label mt-3">Fréquence</label>
+      <select name="frequence" id="m_frequence" class="form-select" onchange="majRef()">
+        <option value="1">Toutes les semaines</option>
+        <option value="2">Une semaine sur deux</option>
+        <option value="3">Une semaine sur trois</option>
+        <option value="4">Une semaine sur quatre</option>
+      </select>
+      <div id="m_ref_bloc" class="mt-3">
+        <label class="form-label">Une date où il ou elle vient</label>
+        <input type="date" name="date_reference" id="m_ref" class="form-control">
+        <div class="form-text">N'importe quel jour d'une semaine de venue ; l'alternance part de cette semaine.</div>
+      </div>
+      <div class="row mt-3">
+        <div class="col"><label class="form-label">Arrive à <small class="text-muted">(si partiel)</small></label><input type="time" name="heure_debut" id="m_debut" class="form-control"></div>
+        <div class="col"><label class="form-label">Part à <small class="text-muted">(si partiel)</small></label><input type="time" name="heure_fin" id="m_fin" class="form-control"></div>
+      </div>
+      <label class="form-label mt-3">Commentaire</label>
+      <input type="text" name="commentaire" id="m_commentaire" class="form-control" maxlength="200">
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-danger me-auto" id="m_suppr" onclick="supprimerEntree()">🗑️ Retirer du modèle</button>
+      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+      <button class="btn btn-primary">💾 Enregistrer</button>
+    </div>
+  </form>
+  <form method="POST" id="formSuppr" class="d-none"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+</div></div></div>
+
+{% set types = [] %}
+{% for l in grille.values() %}{% for t in l.values() %}{% set _ = types.append(t) %}{% endfor %}{% endfor %}
+<script>
+const BENEVOLES = {{ benevoles | tojson }};
+const JOURS = {{ jours | map(attribute='nom') | list | tojson }};
+const TYPES = {
+{% for t in types %}
+  {{ t.id }}: {fonction_id: {{ t.fonction_id }}, fonction: {{ t.fonction | tojson }}, poste: {{ (t.poste or '') | tojson }}, jour: {{ t.jour }}, plage: {{ t.plage | tojson }}},
+{% endfor %}
+};
+const ENTREES = {
+{% for liste in modele.values() %}{% for m in liste %}
+  {{ m.id }}: {ct: {{ m.creneau_type_id }}, benevole_id: {{ m.benevole_id }}, frequence: {{ m.frequence }}, ref: {{ (m.date_reference or '') | tojson }},
+    debut: {{ (m.heure_debut or '') | tojson }}, fin: {{ (m.heure_fin or '') | tojson }}, commentaire: {{ (m.commentaire or '') | tojson }}},
+{% endfor %}{% endfor %}
+};
+const URL_SUPPR = "{{ url_for('esope.modele_supprimer', mid=999999999) }}";
+
+function majRef() {
+  const f = document.getElementById("m_frequence").value;
+  document.getElementById("m_ref_bloc").style.display = f === "1" ? "none" : "";
+  document.getElementById("m_ref").required = f !== "1";
+}
+
+function remplirBenevoles(t, selection) {
+  const sel = document.getElementById("m_benevole");
+  sel.innerHTML = '<option value="">— Choisir —</option>';
+  const prio = [], fct = [], autres = [];
+  for (const b of BENEVOLES) {
+    const aFct = b.fonctions.includes(t.fonction_id), dispo = b.jours_idx.includes(t.jour);
+    (aFct && dispo ? prio : aFct ? fct : autres).push(b);
+  }
+  // un bénévole retiré de l'ESOPE mais encore dans le modèle reste sélectionnable
+  if (selection && !BENEVOLES.some(b => b.id === selection)) autres.push({id: selection, libelle: "(bénévole n° " + selection + ")"});
+  const groupe = (label, liste) => {
+    if (!liste.length) return;
+    const og = document.createElement("optgroup"); og.label = label;
+    for (const b of liste) { const o = document.createElement("option"); o.value = b.id; o.textContent = b.libelle; if (b.id === selection) o.selected = true; og.appendChild(o); }
+    sel.appendChild(og);
+  };
+  groupe("Fonction " + t.fonction + " et disponibles le " + JOURS[t.jour], prio);
+  groupe("Fonction " + t.fonction + " (autre jour)", fct);
+  groupe("Autres bénévoles ESOPE", autres);
+}
+
+function ouvrir(ctId, e, idEntree) {
+  const t = TYPES[ctId];
+  document.getElementById("m_id").value = idEntree || "";
+  document.getElementById("m_ct").value = ctId;
+  document.getElementById("m_titre").textContent = t.fonction + (t.poste ? " – " + t.poste : "") + " · " + JOURS[t.jour] + " " + t.plage;
+  remplirBenevoles(t, e ? e.benevole_id : null);
+  document.getElementById("m_frequence").value = e ? e.frequence : 1;
+  document.getElementById("m_ref").value = e ? e.ref : "";
+  document.getElementById("m_debut").value = e ? e.debut : "";
+  document.getElementById("m_fin").value = e ? e.fin : "";
+  document.getElementById("m_commentaire").value = e ? e.commentaire : "";
+  document.getElementById("m_suppr").style.display = idEntree ? "" : "none";
+  document.getElementById("formSuppr").action = idEntree ? URL_SUPPR.replace("999999999", idEntree) : "";
+  majRef();
+  new bootstrap.Modal(document.getElementById("modalEntree")).show();
+}
+function ouvrirAjout(ctId) { ouvrir(ctId, null, null); }
+function ouvrirEntree(id) { ouvrir(ENTREES[id].ct, ENTREES[id], id); }
+function supprimerEntree() { if (confirm("Retirer ce bénévole du planning modèle ?")) document.getElementById("formSuppr").submit(); }
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button %}
+
+{% block title %}Téléphones de connexion{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 760px;">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">📱 Téléphones de connexion</h3>
+    {{ action_button("⬅️ Retour", href=url_for('admin.gestion_utilisateurs'), color="outline-dark") }}
+  </div>
+
+  <p class="mb-1"><strong>{{ user.username }}</strong> — {{ user.email }}</p>
+  <p class="text-muted small">
+    Les codes de connexion peuvent être envoyés par SMS à ces numéros (la personne choisit le sien
+    dans une liste masquée), ou par email à l'adresse du compte.
+    Sur un compte partagé, ajoutez <strong>une ligne par personne</strong>.
+    {% if not user.force_2fa and not user.totp_enabled %}
+    <br>⚠️ La double authentification n'est pas imposée à ce compte (case 2FA de la gestion des
+    utilisateurs) : ces numéros ne servent pas tant qu'elle ne l'est pas.
+    {% endif %}
+  </p>
+
+  <table class="table table-sm align-middle">
+    <thead>
+      <tr><th>Personne</th><th>Numéro</th><th>Statut</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for t in telephones %}
+      <tr>
+        <td><strong>{{ t.libelle }}</strong></td>
+        <td class="text-nowrap">{{ t.affiche }}</td>
+        <td class="small">
+          {% if t.verifie_le %}
+            <span class="badge bg-success">vérifié</span>
+            {% if t.utilise_le %}<br>dernier code le {{ t.utilise_le[:10] }}{% endif %}
+          {% else %}
+            <span class="badge bg-secondary" title="Devient « vérifié » au premier code correctement saisi">pas encore utilisé</span>
+          {% endif %}
+        </td>
+        <td class="text-end text-nowrap">
+          <form method="POST" action="{{ url_for('securite.telephone_action', user_id=user.id, tel_id=t.id, action='tester') }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">📨 SMS de test</button>
+          </form>
+          <form method="POST" action="{{ url_for('securite.telephone_action', user_id=user.id, tel_id=t.id, action='supprimer') }}" class="d-inline"
+                onsubmit="return confirm('Retirer le numéro de {{ t.libelle|e }} ?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="text-muted">Aucun numéro : seul l'envoi par email est possible.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h5 class="mt-4">➕ Ajouter un numéro</h5>
+  <form method="POST" class="row g-2 align-items-end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="col-sm-5">
+      <label class="form-label small mb-0" for="libelle">Prénom (ou fonction)</label>
+      <input type="text" class="form-control" id="libelle" name="libelle" maxlength="40" placeholder="Marie" required>
+    </div>
+    <div class="col-sm-4">
+      <label class="form-label small mb-0" for="numero">Portable</label>
+      <input type="tel" class="form-control" id="numero" name="numero" placeholder="06 12 34 56 78" required>
+    </div>
+    <div class="col-sm-3 d-grid">
+      <button type="submit" class="btn btn-primary">Ajouter</button>
+    </div>
+  </form>
+  <p class="text-muted small mt-2">
+    Ces numéros ne servent qu'à la sécurité des connexions, jamais à d'autres envois.
+  </p>
+</div>
+{% endblock %}

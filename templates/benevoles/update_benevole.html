@@ -175,6 +175,10 @@
         {% endfor %}
     </form>
 
+    {% if esope_profil and esope_profil.est_esope %}
+    {% include "planning/esope/_bloc_fiche_benevole.html" %}
+    {% endif %}
+
 
     {% if can_upload_photo %}
     <hr class="my-4">
@@ -230,7 +234,7 @@
     </form>
 
 
-    <!-- 🔴 Ligne d’actions : suppression photo + suppression bénévole -->
+    <!-- 🔴 Ligne d’actions : suppression photo + désactivation (archivage) du bénévole -->
     {% call action_buttons() %}
 
         {% if photo_filename %}
@@ -241,12 +245,7 @@
         </form>
         {% endif %}
 
-        <form method="POST" action="{{ url_for('benevoles.delete_benevole', benevole_id=benevole_id) }}"
-            onsubmit="return confirmDelete();" class="m-0">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="confirm_final" id="confirm_final">
-            {{ action_button("🗑️ Supprimer le bénévole", type="submit", color="danger") }}
-        </form>
+        {{ action_button("💤 Désactiver (archiver)", href=url_for('benevoles.desactiver_benevole', benevole_id=benevole_id), color="outline-warning") }}
 
     {% endcall %}
     {% endif %}
@@ -295,19 +294,6 @@
             return confirm("🗑️ Supprimer définitivement la photo de ce bénévole ?");
         }
 
-        function confirmDelete() {
-            if (confirm("⚠️ Êtes-vous sûr de vouloir supprimer ce bénévole ?")) {
-                const confirmation = prompt("Tapez 'supprimer' pour confirmer la suppression définitive :");
-                if (confirmation === 'supprimer') {
-                    document.getElementById('confirm_final').value = 'supprimer';
-                    return true;
-                } else {
-                    alert("❌ Confirmation incorrecte. Suppression annulée.");
-                    return false;
-                }
-            }
-            return false;
-        }
         function handleSave() {
             if (!formModified) {
                 alert("Aucune modification détectée.");

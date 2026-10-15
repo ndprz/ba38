@@ -7,3 +7,4 @@ from ba38_planning.pesee import planning_pesee_bp
 from ba38_planning.tournees import planning_tournees_bp
 from ba38_planning.vif import planning_vif_bp
 from ba38_planning.report import planning_report_bp
+from ba38_planning.esope import esope_bp

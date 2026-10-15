@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Problème de connexion{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 560px;">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  {% if envoye %}
+    <h2 class="mb-3">✅ Message envoyé</h2>
+    <p>L'équipe informatique a bien reçu votre message et vous répondra dès que possible.</p>
+    <p class="text-muted">Vous avez oublié votre mot de passe ? Vous pouvez aussi le changer vous-même
+      avec <a href="{{ url_for('reset_password_request') }}">« Mot de passe oublié »</a>.</p>
+
+  {% else %}
+    <h2 class="mb-2">🆘 Problème de connexion</h2>
+    <p class="text-muted">
+      Expliquez-nous ce qui ne marche pas, nous vous répondrons.
+      <br>Mot de passe oublié ? <a href="{{ url_for('reset_password_request') }}">Changez-le vous-même ici</a>, c'est immédiat.
+    </p>
+
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <!-- Champ piège pour les robots (invisible pour les personnes) -->
+      <div style="position:absolute; left:-5000px;" aria-hidden="true">
+        <label>Site web <input type="text" name="site_web" tabindex="-1" autocomplete="off"></label>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label" for="nom">Votre nom et prénom *</label>
+        <input type="text" class="form-control" id="nom" name="nom" maxlength="100" value="{{ champs.nom }}" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="email">Votre email</label>
+        <input type="email" class="form-control" id="email" name="email" maxlength="120" value="{{ champs.email }}" autocomplete="email">
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="telephone">Ou votre téléphone</label>
+        <input type="tel" class="form-control" id="telephone" name="telephone" maxlength="30" value="{{ champs.telephone }}" autocomplete="tel">
+        <div class="form-text">Un email ou un téléphone, pour que nous puissions vous répondre.</div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="identifiant">Identifiant de connexion utilisé (si vous le connaissez)</label>
+        <input type="text" class="form-control" id="identifiant" name="identifiant" maxlength="120" value="{{ champs.identifiant }}" placeholder="ba380.xxx@banquealimentaire.org">
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="message">Que se passe-t-il ? *</label>
+        <textarea class="form-control" id="message" name="message" rows="5" maxlength="3000" required
+                  placeholder="Ex. : je ne reçois pas le code par SMS, mon compte est bloqué…">{{ champs.message }}</textarea>
+        <div class="form-text">⚠️ N'écrivez jamais votre mot de passe dans ce message.</div>
+      </div>
+      <div class="d-grid">
+        <button type="submit" class="btn btn-primary btn-lg w-100">📨 Envoyer au support</button>
+      </div>
+    </form>
+  {% endif %}
+
+  <p class="mt-4">Vous pouvez aussi écrire directement à <a href="mailto:{{ contact }}">{{ contact }}</a>.</p>
+  <div class="mt-2"><a href="{{ url_for('login') }}" class="text-secondary">← Retour à la connexion</a></div>
+</div>
+{% endblock %}

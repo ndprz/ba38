@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Planning ESOPE – paramétrage{% endblock %}
+{% block content %}
+<style>
+  .param td, .param th { vertical-align: middle; }
+  .param input.form-control, .param select.form-select { padding: 2px 6px; font-size: .85rem; }
+  tr.inactif { opacity: .5; }
+</style>
+<div class="container-fluid mt-3">
+<h2>⚙️ Planning ESOPE – paramétrage</h2>
+{% set actif = 'parametrage' %}{% include "planning/esope/_nav.html" %}
+
+<div class="row g-4">
+<div class="col-xl-4">
+  <h5>Fonctions</h5>
+  <p class="small text-muted">L'ordre fixe la position des lignes dans le planning. Une fonction désactivée disparaît du planning, du modèle et des cases à cocher des bénévoles.</p>
+  <table class="table table-sm param">
+    <thead class="table-light"><tr><th>Nom</th><th style="width:70px">Ordre</th><th style="width:50px">Couleur</th><th style="width:50px">Active</th><th></th></tr></thead>
+    <tbody>
+    {% for f in fonctions %}
+      <tr class="{{ 'inactif' if not f.actif }}">
+        <td><input form="f-fct-{{ f.id }}" name="nom" value="{{ f.nom }}" class="form-control" required></td>
+        <td><input form="f-fct-{{ f.id }}" name="ordre" type="number" value="{{ f.ordre }}" class="form-control"></td>
+        <td><input form="f-fct-{{ f.id }}" name="couleur" type="color" value="{{ f.couleur }}" class="form-control form-control-color p-0"></td>
+        <td class="text-center"><input form="f-fct-{{ f.id }}" name="actif" type="checkbox" value="1" class="form-check-input" {{ 'checked' if f.actif }}></td>
+        <td><form id="f-fct-{{ f.id }}" method="POST" action="{{ url_for('esope.fonction_enregistrer') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ f.id }}">
+              <button class="btn btn-sm btn-outline-primary" title="Enregistrer">💾</button></form></td>
+      </tr>
+    {% endfor %}
+      <tr class="table-light">
+        <td><input form="f-fct-new" name="nom" placeholder="Nouvelle fonction" class="form-control" required></td>
+        <td><input form="f-fct-new" name="ordre" type="number" value="{{ ((fonctions | map(attribute='ordre') | max) or 0) + 10 }}" class="form-control"></td>
+        <td><input form="f-fct-new" name="couleur" type="color" value="#6c757d" class="form-control form-control-color p-0"></td>
+        <td></td>
+        <td><form id="f-fct-new" method="POST" action="{{ url_for('esope.fonction_enregistrer') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-success" title="Ajouter">➕</button></form></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="col-xl-8">
+  <h5>Créneaux habituels (poste × jour)</h5>
+  <p class="small text-muted">Une ligne par poste et par jour. Les changements s'appliquent aux mois <b>générés ensuite</b> ; les mois déjà générés ne bougent pas (pour un seul jour, utilisez ⚙️ dans le planning). Un créneau déjà utilisé est désactivé au lieu d'être supprimé.</p>
+  <table class="table table-sm param">
+    <thead class="table-light"><tr><th>Fonction</th><th style="width:90px">Poste</th><th style="width:110px">Jour</th><th style="width:95px">Début</th><th style="width:95px">Fin</th><th style="width:60px">Min</th><th style="width:60px">Max</th><th>Précision</th><th style="width:45px">Actif</th><th style="width:85px"></th></tr></thead>
+    <tbody>
+    {% macro ligne(t, fid) %}
+        <td><select form="{{ fid }}" name="fonction_id" class="form-select" required>
+              {% for f in fonctions %}<option value="{{ f.id }}" {{ 'selected' if t and t.fonction_id == f.id }}>{{ f.nom }}</option>{% endfor %}</select></td>
+        <td><input form="{{ fid }}" name="poste" value="{{ t.poste if t else '' }}" class="form-control" placeholder="—"></td>
+        <td><select form="{{ fid }}" name="jour" class="form-select">
+              {% for j in jours %}<option value="{{ loop.index0 }}" {{ 'selected' if t and t.jour == loop.index0 }}>{{ j|capitalize }}</option>{% endfor %}</select></td>
+        <td><input form="{{ fid }}" name="heure_debut" type="time" value="{{ t.heure_debut if t else '' }}" class="form-control" required></td>
+        <td><input form="{{ fid }}" name="heure_fin" type="time" value="{{ t.heure_fin if t else '' }}" class="form-control" required></td>
+        <td><input form="{{ fid }}" name="nb_min" type="number" min="0" value="{{ t.nb_min if t else 1 }}" class="form-control"></td>
+        <td><input form="{{ fid }}" name="nb_max" type="number" min="1" value="{{ t.nb_max if t else 1 }}" class="form-control"></td>
+        <td><input form="{{ fid }}" name="libelle" value="{{ (t.libelle or '') if t else '' }}" class="form-control" placeholder="ex. sushis"></td>
+    {% endmacro %}
+    {% for t in types %}
+      <tr class="{{ 'inactif' if not t.actif }}">
+        {{ ligne(t, 'f-ct-' ~ t.id) }}
+        <td class="text-center"><input form="f-ct-{{ t.id }}" name="actif" type="checkbox" value="1" class="form-check-input" {{ 'checked' if t.actif }}></td>
+        <td class="text-nowrap">
+          <form id="f-ct-{{ t.id }}" method="POST" action="{{ url_for('esope.creneau_type_enregistrer') }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ t.id }}">
+            <button class="btn btn-sm btn-outline-primary" title="Enregistrer">💾</button></form>
+          <form method="POST" action="{{ url_for('esope.creneau_type_supprimer', ctid=t.id) }}" class="d-inline"
+                onsubmit="return confirm('{{ 'Ce créneau est utilisé : il sera désactivé. Continuer ?' if t.utilise else 'Supprimer ce créneau ?' }}')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-danger" title="{{ 'Désactiver' if t.utilise else 'Supprimer' }}">🗑️</button></form>
+        </td>
+      </tr>
+    {% endfor %}
+      <tr class="table-light">
+        {{ ligne(none, 'f-ct-new') }}
+        <td></td>
+        <td><form id="f-ct-new" method="POST" action="{{ url_for('esope.creneau_type_enregistrer') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-success" title="Ajouter">➕</button></form></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+</div>
+</div>
+{% endblock %}

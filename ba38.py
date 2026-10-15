@@ -33,6 +33,11 @@ from ba38_utilitaires.core import get_db_connection, write_log, send_reset_email
 from ba38_utilitaires.core import get_user_info,has_access, is_admin_global, format_date_fr, build_menu, require_admin_global
 from ba38_utilitaires.core import is_blocked, record_attempt, reset_attempts, is_suspicious_ip, is_suspicious_ua, get_attempt_count, require_access
 from ba38_utilitaires.core import date_fr
+from ba38_securite.core import (
+    secondes_verrouillage, message_verrouillage, notifier_verrouillage, enregistrer_echec, effacer_echecs,
+    pays_refuse, message_pays_refuse, notifier_pays_refuse_mot_de_passe_correct, apres_connexion_reussie,
+    appareil_de_confiance, telephones_du_compte, CONFIANCE_JOURS, envoyer_code, verifier_code, masquer_numero, masquer_email,
+)
 from ba38_utilitaires.organisation import get_organisation
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, g, current_app, send_from_directory, abort
 from flask_login import current_user, LoginManager, UserMixin, login_user, logout_user, login_required
@@ -86,6 +91,7 @@ from ba38_utilitaires import signature_bp
 from ba38_evenements import evenements_bp
 from ba38_tresorerie import factures_bp
 from ba38_planning import planning_report_bp
+from ba38_planning import esope_bp  # Planning ESOPE
 from ba38_utilitaires import aide_bp
 from ba38_engagements import engagements_bp
 from ba38_benevoles import droit_image_bp
@@ -98,6 +104,7 @@ from ba38_sms.routes import sms_webhook_mo
 from ba38_admin import organisation_bp
 from ba38_collecte import collecte_bp
 from ba38_utilitaires import vif_bp
+from ba38_securite import securite_bp
 
 
 
@@ -404,6 +411,7 @@ app.register_blueprint(signature_bp)
 app.register_blueprint(evenements_bp)
 app.register_blueprint(factures_bp)
 app.register_blueprint(planning_report_bp)
+app.register_blueprint(esope_bp)
 app.register_blueprint(aide_bp)
 app.register_blueprint(engagements_bp)
 app.register_blueprint(droit_image_bp)
@@ -415,6 +423,7 @@ app.register_blueprint(organisation_bp)
 app.register_blueprint(collecte_bp)
 app.register_blueprint(vif_bp)
 app.register_blueprint(sms_bp)
+app.register_blueprint(securite_bp)
 
 
 # Migration : ajout colonne email_verifie si absente
@@ -476,20 +485,20 @@ def format_label(value):
     return re.sub(r"\b(\w)", lambda m: m.group(1).upper(), text)
 
 
-def log_connexion(user, action="login"):
+def log_connexion(user, action="login", via=None):
     """📋 Enregistre une connexion ou déconnexion dans la table log_connexions."""
     try:
         db_path = get_db_path()
-        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+        ip = get_real_ip()
         user_agent = request.headers.get("User-Agent")
         env = os.getenv("ENVIRONMENT", "prod").lower()
         now = datetime.utcnow().isoformat()
 
         with get_db_connection() as conn:
             conn.execute("""
-                INSERT INTO log_connexions (email, username, environ, ip, user_agent, timestamp, action)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (user.email, user.username, env, ip, user_agent, now, action))
+                INSERT INTO log_connexions (email, username, environ, ip, user_agent, timestamp, action, via)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (user.email, user.username, env, ip, user_agent, now, action, via))
     except Exception as e:
         write_log(f"⚠️ Erreur log_connexion : {e}")
 
@@ -773,6 +782,7 @@ def set_user_roles():
             ("distribution", "ecriture"),
             ("evenements", "ecriture"),
             ("planning", "ecriture"),
+            ("planning_esope", "ecriture"),
         ]
         return
 
@@ -887,6 +897,13 @@ def load_user(user_id):
     conn.close()
 
     if user:
+        # 🔒 Compte désactivé (admin, inactivité) → session coupée tout de suite
+        if str(user["actif"]).strip().lower() not in ("1", "oui", "true"):
+            return None
+        # 🔒 Jeton de session changé ("ce n'est pas moi") → toutes les
+        # sessions ouvertes avant le changement tombent
+        if user["jeton_session"] and session.get("jeton_session") != user["jeton_session"]:
+            return None
         return User(
             user['id'], user['username'], user['email'],
             user['password_hash'], user['role'],
@@ -1006,14 +1023,6 @@ def verify_email(token):
     flash("Votre email est confirmé. Votre compte est maintenant actif — vous pouvez vous connecter.", "success")
     return redirect(url_for('login'))
 
-def get_real_ip():
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        # cas avec plusieurs IP (proxy chain)
-        return forwarded.split(",")[0].strip()
-    return request.remote_addr
-
-
 from ba38_utilitaires.core import (
     get_real_ip,
     is_bad_user_agent,
@@ -1022,6 +1031,72 @@ from ba38_utilitaires.core import (
 )
 
 import time
+
+
+def ouvrir_session(user, ip, ua, via=None, confiance_jours=0):
+    """
+    Ouvre la session d'un utilisateur authentifié (mot de passe + éventuelle
+    2FA déjà vérifiés). Point unique pour la connexion simple, l'application
+    2FA et le code SMS/email, pour que les sessions soient identiques.
+    via : moyen de 2FA ("application", "SMS Marie", "email", "appareil de
+          confiance"), tracé dans log_connexions (qui, sur un compte partagé).
+    """
+    user_obj = User(
+        user["id"],
+        user["username"],
+        user["email"],
+        user["password_hash"],
+        user["role"],
+        test_only=user["test_only"]
+    )
+
+    login_user(user_obj)
+
+    # 🔒 Compte restreint au mode test → verrouillage immédiat
+    if user_obj.test_only:
+        session["test_user"] = True
+
+    # 🔴 IMPORTANT : session persistante
+    session.permanent = True
+    session.modified = True
+
+    # session métier
+    email = user["email"]
+    role = user["role"]
+
+    session["user_id"] = str(user["id"])
+    session["username"] = user["username"]
+    session["email"] = email
+    session["environment"] = os.getenv("ENVIRONMENT", "prod").lower()
+    session["login_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    session["login_ip"] = ip
+    session["last_ip"] = ip
+    session["user_agent"] = ua
+    session["roles_utilisateurs"] = get_user_roles(email)
+    if via:
+        session["login_via"] = via
+
+    # 🔑 Admin → droits complets
+    if role == "admin":
+        session["roles_utilisateurs"] = [
+            ("benevoles", "ecriture"),
+            ("associations", "ecriture"),
+            ("fournisseurs", "ecriture"),
+            ("distribution", "ecriture"),
+            ("evenements", "ecriture"),
+        ]
+        session["user_role"] = "admin"
+
+    # nettoyage sécurité
+    session.pop("pre_2fa_user", None)
+    session.pop("code_2fa", None)
+
+    # logs
+    from ba38_utilitaires.core import write_connexion_log
+    write_connexion_log(user["id"], user["username"])
+    log_connexion(user_obj, action="login", via=via)
+    apres_connexion_reussie(user, ip, ua, confiance_jours=confiance_jours)
+    return user_obj
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -1107,33 +1182,45 @@ def login():
         conn.close()
 
         # ============================================================================
+        # 🔒 Verrouillage par compte (toutes IP confondues), AVANT de vérifier
+        # le mot de passe : sinon une attaque qui insiste finit par entrer.
+        # Pas de "LOGIN KO" ici (fail2ban) : rien n'a été essayé.
+        # ============================================================================
+        reste = secondes_verrouillage(username)
+        if reste:
+            write_log(f"🔒 COMPTE VERROUILLÉ {username} | IP={ip} | reste={reste}s")
+            flash(message_verrouillage(reste), "danger")
+            return render_template("login.html", form=form)
+
+        mot_de_passe_ok = bool(user and check_password_hash(user["password_hash"], password))
+
+        # ============================================================================
+        # 🌍 Filtre des pays : même message que le mot de passe soit bon ou non
+        # (ne rien révéler à un attaquant étranger). Bon mot de passe → alerte
+        # titulaire + admin ; mauvais → compté comme un échec normal.
+        # ============================================================================
+        pays = pays_refuse(ip, user)
+        if pays:
+            if mot_de_passe_ok:
+                write_log(f"🌍 LOGIN PAYS REFUSÉ (mot de passe correct) {username} | IP={ip} ({pays})")
+                notifier_pays_refuse_mot_de_passe_correct(user, ip, pays)
+            else:
+                enregistrer_echec(ip, username)
+                write_log(f"❌ LOGIN KO {username} | IP={ip} | pays={pays}")
+            flash(message_pays_refuse(), "danger")
+            return render_template("login.html", form=form)
+
+        # ============================================================================
         # ✅ CAS 1 : LOGIN OK
         # ============================================================================
-        if user and check_password_hash(user["password_hash"], password):
+        if mot_de_passe_ok:
 
             # 🔁 Reset compteur brute force
-            reset_attempts(ip, username)
+            effacer_echecs(username)
 
             # ============================================================================
-            # 🔐 Gestion 2FA
-            # ============================================================================
-            # Le 2FA est demandé si : imposé par un admin (force_2fa), déjà activé
-            # par l'utilisateur (totp_enabled, quel que soit force_2fa), ou activé
-            # volontairement via la case à cocher de l'écran de connexion.
-            if user["force_2fa"] == 1 or user["totp_enabled"] or form.activer_2fa.data:
-
-                session["pre_2fa_user"] = user["id"]
-                session.modified = True
-
-                # Activation initiale
-                if not user["totp_enabled"]:
-                    return redirect(url_for("setup_2fa"))
-
-                # Vérification code
-                return redirect(url_for("login_2fa"))
-
-            # ============================================================================
-            # 🔓 Vérification compte actif
+            # 🔓 Vérification compte actif (avant la 2FA : un compte désactivé
+            # ne doit même pas recevoir de code)
             # ============================================================================
             if str(user["actif"]).strip().lower() not in ("1", "oui", "true"):
                 write_log(f"❌ Compte inactif : {user['email']} | IP={ip}")
@@ -1141,61 +1228,32 @@ def login():
                 return redirect(url_for("login"))
 
             # ============================================================================
-            # 🔐 Création session utilisateur
+            # 🔐 Gestion 2FA
             # ============================================================================
-            user_obj = User(
-                user["id"],
-                user["username"],
-                user["email"],
-                user["password_hash"],
-                user["role"],
-                test_only=user["test_only"]
-            )
+            # Le 2FA est demandé si : imposé par un admin (force_2fa), déjà activé
+            # par l'utilisateur (totp_enabled, quel que soit force_2fa), ou activé
+            # volontairement via la case à cocher de l'écran de connexion.
+            # Sauf sur un appareil de confiance (code déjà saisi < CONFIANCE_JOURS jours).
+            besoin_2fa = user["force_2fa"] == 1 or user["totp_enabled"] or form.activer_2fa.data
+            if besoin_2fa and not (appareil_de_confiance(user) and not form.activer_2fa.data):
 
-            login_user(user_obj)
+                session["pre_2fa_user"] = user["id"]
+                session.modified = True
 
-            # 🔒 Compte restreint au mode test → verrouillage immédiat
-            if user_obj.test_only:
-                session["test_user"] = True
+                # Application d'authentification déjà configurée
+                if user["totp_enabled"]:
+                    return redirect(url_for("login_2fa"))
 
-            # 🔴 IMPORTANT : session persistante
-            session.permanent = True
-            session.modified = True
+                # Activation volontaire de l'application (case à cocher)
+                if form.activer_2fa.data:
+                    return redirect(url_for("setup_2fa"))
 
-            # session métier
-            email = user["email"]
-            role = user["role"]
+                # 2FA imposée sans application → code par SMS ou email
+                return redirect(url_for("login_code"))
 
-            session["user_id"] = str(user["id"])
-            session["username"] = user["username"]
-            session["email"] = email
-            session["environment"] = os.getenv("ENVIRONMENT", "prod").lower()
-            session["login_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            session["login_ip"] = ip
-            session["last_ip"] = ip
-            session["user_agent"] = ua
-            session["roles_utilisateurs"] = get_user_roles(email)
-
-            # 🔑 Admin → droits complets
-            if role == "admin":
-                session["roles_utilisateurs"] = [
-                    ("benevoles", "ecriture"),
-                    ("associations", "ecriture"),
-                    ("fournisseurs", "ecriture"),
-                    ("distribution", "ecriture"),
-                    ("evenements", "ecriture"),
-                ]
-                session["user_role"] = "admin"
-
-            # nettoyage sécurité
-            session.pop("pre_2fa_user", None)
-
-            # logs
-            from ba38_utilitaires.core import write_connexion_log
-            write_connexion_log(user["id"], user["username"])
-            log_connexion(user_obj, action="login")
-
-            write_log(f"✅ LOGIN OKername | IP={ip} | {round(time.time()-start,2)}s")
+            via = "appareil de confiance" if besoin_2fa else None
+            ouvrir_session(user, ip, ua, via=via)
+            write_log(f"✅ LOGIN OK {username} | IP={ip}{' | ' + via if via else ''} | {round(time.time()-start,2)}s")
 
             return redirect(url_for("index"))
 
@@ -1203,14 +1261,16 @@ def login():
         # ❌ CAS 2 : LOGIN KO
         # ============================================================================
         # 👉 on enregistre uniquement ici (important)
-        record_attempt(ip, username)
+        enregistrer_echec(ip, username)
 
         write_log(f"❌ LOGIN KO {username} | IP={ip} | COUNT={get_attempt_count(ip, username)}")
 
-        # 🚫 Blocage temporaire Flask si trop d’échecs
-        if is_blocked(ip, username):
-            write_log(f"🚫 Blocage brute force {username} | IP={ip}")
-            flash("⛔ Trop de tentatives. Réessayez dans 5 minutes.", "danger")
+        # 🚫 Ce dernier échec vient de verrouiller le compte → titulaire prévenu
+        reste = secondes_verrouillage(username)
+        if reste:
+            write_log(f"🚫 Verrouillage compte {username} | IP={ip}")
+            notifier_verrouillage(username, ip)
+            flash(message_verrouillage(reste), "danger")
             return render_template("login.html", form=form)
 
         # 🐢 ralentissement supplémentaire si user inexistant (anti enumeration)
@@ -1276,50 +1336,134 @@ def login_2fa():
 
         write_log(f"🔐 LOGIN_2FA user_id={user_id} {user['email']} | IP{ip}")
 
+        # 🔒 Les échecs de code comptent dans le verrouillage du compte
+        # (sinon 1 million de codes à essayer sans limite)
+        login_cle = user["email"].strip().lower()
+        reste = secondes_verrouillage(login_cle)
+        if reste:
+            session.pop("pre_2fa_user", None)
+            flash(message_verrouillage(reste), "danger")
+            return redirect(url_for("login"))
+
+        # Le chemin 2FA court-circuite la vérification "actif" du login simple
+        if str(user["actif"]).strip().lower() not in ("1", "oui", "true"):
+            session.pop("pre_2fa_user", None)
+            write_log(f"❌ Compte inactif (2FA) : {user['email']} | IP={ip}")
+            flash("Votre compte n'est pas actif. Veuillez contacter l'administration.", "danger")
+            return redirect(url_for("login"))
+
         code = request.form.get("code")
         totp = pyotp.TOTP(user["totp_secret"])
 
-        if totp.verify(code):
+        if totp.verify("".join(ch for ch in (code or "") if ch.isdigit()), valid_window=1):
+            effacer_echecs(login_cle)
 
-            user_obj = User(
-                user["id"],
-                user["username"],
-                user["email"],
-                user["password_hash"],
-                user["role"],
-                test_only=user["test_only"]
-            )
-
-            login_user(user_obj)
-
-            # 🔒 Compte restreint au mode test → verrouillage immédiat
-            if user_obj.test_only:
-                session["test_user"] = True
-
-            session.permanent = True
-            session.modified = True
-
-            session["user_id"] = str(user["id"])
-            session["username"] = user["username"]
-            session["email"] = user["email"]
-            session["environment"] = os.getenv("ENVIRONMENT", "prod").lower()
-            session["login_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            session["login_ip"] = ip
-            session["last_ip"] = ip
-            session["user_agent"] = ua
-            session["user_role"] = user["role"]
-            session["roles_utilisateurs"] = get_user_roles(user["email"])
-
-            session.pop("pre_2fa_user", None)
+            ouvrir_session(user, ip, ua, via="application",
+                           confiance_jours=CONFIANCE_JOURS if request.form.get("confiance") else 0)
 
             write_log(f"✅ LOGIN 2FA OK user_id={user_id} {user['email']} | IP={ip} | {round(time.time()-start,2)}s")
 
             return redirect(url_for("index"))
 
+        enregistrer_echec(ip, login_cle)
         write_log(f"❌ LOGIN 2FA KO user_id={user_id} {user['email']} | IP={ip}")
+        if secondes_verrouillage(login_cle):
+            notifier_verrouillage(login_cle, ip)
         flash("❌ Code invalide", "danger")
 
-    return render_template("login_2fa.html")
+    return render_template("login_2fa.html", confiance_jours=CONFIANCE_JOURS)
+
+
+# ============================================================================
+# 📱 LOGIN PAR CODE SMS / EMAIL (2FA sans application)
+# ============================================================================
+@app.route("/login_code", methods=["GET", "POST"])
+def login_code():
+    """
+    Étape 2 de la connexion quand la 2FA est imposée sans application :
+    1. choix du destinataire (téléphones du compte, masqués + email du compte)
+       → un compte partagé a un numéro par personne ;
+    2. saisie du code reçu (+ "faire confiance à cet appareil CONFIANCE_JOURS jours").
+    Les échecs comptent dans le verrouillage du compte.
+    """
+    ip = get_real_ip()
+    ua = request.headers.get("User-Agent", "")
+
+    if current_user.is_authenticated:
+        return redirect(url_for("index"))
+
+    user_id = session.get("pre_2fa_user")
+    if not user_id:
+        return redirect(url_for("login"))
+
+    conn = get_real_db_connection()
+    user = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    conn.close()
+    if not user or str(user["actif"]).strip().lower() not in ("1", "oui", "true"):
+        session.pop("pre_2fa_user", None)
+        return redirect(url_for("login"))
+
+    login_cle = user["email"].strip().lower()
+    reste = secondes_verrouillage(login_cle)
+    if reste:
+        session.pop("pre_2fa_user", None)
+        session.pop("code_2fa", None)
+        flash(message_verrouillage(reste), "danger")
+        return redirect(url_for("login"))
+
+    telephones = telephones_du_compte(user["id"])
+    action = request.form.get("action") if request.method == "POST" else request.args.get("action")
+
+    # 🔁 Changer de destinataire
+    if action == "changer":
+        session.pop("code_2fa", None)
+
+    # 📨 Envoi du code
+    if request.method == "POST" and action == "envoyer":
+        choix = request.form.get("choix", "")
+        tel = next((t for t in telephones if str(t["id"]) == choix), None)
+        if choix != "email" and tel is None:
+            flash("Choisissez où recevoir le code.", "warning")
+        else:
+            ok, erreur = envoyer_code(user, tel)
+            if not ok:
+                flash(erreur, "danger")
+        return redirect(url_for("login_code"))
+
+    # ✅ Vérification du code
+    if request.method == "POST" and action == "verifier":
+        ok, via = verifier_code(user, request.form.get("code"))
+        if ok:
+            effacer_echecs(login_cle)
+            ouvrir_session(user, ip, ua, via=via,
+                           confiance_jours=CONFIANCE_JOURS if request.form.get("confiance") else 0)
+            write_log(f"✅ LOGIN CODE OK {user['email']} | {via} | IP={ip}")
+            return redirect(url_for("index"))
+
+        enregistrer_echec(ip, login_cle)
+        write_log(f"❌ LOGIN CODE KO {user['email']} | IP={ip}")
+        reste = secondes_verrouillage(login_cle)
+        if reste:
+            notifier_verrouillage(login_cle, ip)
+            session.pop("pre_2fa_user", None)
+            session.pop("code_2fa", None)
+            flash(message_verrouillage(reste), "danger")
+            return redirect(url_for("login"))
+        flash("❌ Code incorrect ou expiré. Vérifiez le dernier code reçu, ou demandez-en un nouveau.", "danger")
+        return redirect(url_for("login_code"))
+
+    code_en_cours = session.get("code_2fa")
+    if code_en_cours and code_en_cours.get("user_id") != user["id"]:
+        code_en_cours = None
+
+    return render_template(
+        "login_code.html",
+        telephones=[{"id": t["id"], "libelle": t["libelle"], "masque": masquer_numero(t["numero"])} for t in telephones],
+        email_masque=masquer_email(user["email"]),
+        code_en_cours=code_en_cours,
+        a_application=bool(user["totp_enabled"]),
+        confiance_jours=CONFIANCE_JOURS,
+    )
 
 
 
@@ -1866,7 +2010,7 @@ def setup_2fa():
 
         totp = pyotp.TOTP(secret)
 
-        if totp.verify(code):
+        if totp.verify("".join(ch for ch in (code or "") if ch.isdigit()), valid_window=1):
             conn.execute(
                 "UPDATE users SET totp_enabled=1 WHERE id=?",
                 (user_id,)
@@ -1889,7 +2033,8 @@ def setup_2fa():
 
     uri = totp.provisioning_uri(
         name=user["email"].split("@")[0],
-        issuer_name="BA380"
+        # DEV et PROD ont des secrets distincts : libellés distincts dans l'appli
+        issuer_name="BA380 DEV" if os.getenv("ENVIRONMENT", "").upper() == "DEV" else "BA380"
     )
 
     write_log(f"DEBUG URI = {uri}")
@@ -1935,7 +2080,7 @@ def verify_2fa():
 
         totp = pyotp.TOTP(user["totp_secret"])
 
-        if totp.verify(code):
+        if totp.verify("".join(ch for ch in (code or "") if ch.isdigit()), valid_window=1):
             conn = get_db_connection()
             conn.execute(
                 "UPDATE users SET totp_enabled=1 WHERE id=?",

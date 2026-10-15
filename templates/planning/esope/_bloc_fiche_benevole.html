@@ -1,0 +1,43 @@
+{# Bloc ESOPE de la fiche bénévole (visible si benevoles.esope = oui) #}
+{% set peut_modifier = has_access('planning_esope', 'ecriture') or has_access('benevoles', 'ecriture') %}
+<fieldset class="mb-3">
+  <legend class="d-flex justify-content-between align-items-center bg-light p-2 rounded">
+    <span>🛒 ESOPE</span>
+    {% if has_access('planning_esope', 'lecture') %}<a class="small" href="{{ url_for('esope.benevoles') }}">Tous les bénévoles ESOPE</a>{% endif %}
+  </legend>
+  <form method="POST" action="{{ url_for('esope.benevole_profil', benevole_id=benevole_id) }}" class="p-3 border rounded bg-white">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="row mb-2">
+      <div class="col-md-4 fw-bold text-end">Fonctions ESOPE</div>
+      <div class="col-md-8">
+        {% for f in esope_profil.fonctions %}
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" name="fonctions" value="{{ f.id }}" id="esope_f{{ f.id }}"
+                 {{ 'checked' if f.id in esope_profil.fonctions_cochees }} {{ 'disabled' if not peut_modifier }}>
+          <label class="form-check-label" for="esope_f{{ f.id }}">{{ f.nom }}</label>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-4 fw-bold text-end">Jours disponibles</div>
+      <div class="col-md-8">
+        {% for j in esope_profil.jours %}
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" name="jours" value="{{ j }}" id="esope_j{{ loop.index }}"
+                 {{ 'checked' if j in esope_profil.jours_coches }} {{ 'disabled' if not peut_modifier }}>
+          <label class="form-check-label" for="esope_j{{ loop.index }}">{{ j|capitalize }}</label>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-md-4 fw-bold text-end">Commentaire ESOPE</div>
+      <div class="col-md-8"><input type="text" name="commentaire" class="form-control" maxlength="300"
+           value="{{ esope_profil.commentaire }}" {{ 'readonly' if not peut_modifier }}></div>
+    </div>
+    {% if peut_modifier %}
+    <div class="text-end"><button class="btn btn-sm btn-primary">💾 Enregistrer le profil ESOPE</button></div>
+    {% endif %}
+  </form>
+</fieldset>

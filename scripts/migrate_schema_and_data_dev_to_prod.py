@@ -40,6 +40,9 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 EXCLUDE_TABLES = {
+    "users_appareils",    # ba38_securite : référence users.id, propre à chaque env
+    "users_telephones",   # idem (numéros saisis par l'admin de chaque env)
+    "securite_alertes",   # anti-spam des alertes, propre à chaque env
     "cuisine_ingredients_carnes",
     "cuisine_stock_barquettes",
     "cuisine_consignes_clients",  # référence associations.id (diverge DEV/PROD)
@@ -56,6 +59,18 @@ EXCLUDE_TABLES = {
     "cerfa_frais_campagnes",  # campagnes gérées séparément en PROD
     "cerfa_frais_declarations",  # référence benevoles.id + jetons des liens bénévoles
     "cerfa_frais_pieces",  # fichiers locaux propres à chaque instance
+    # Planning ESOPE : paramétrage et plannings maintenus séparément en PROD
+    # (scripts/migrate_planning_esope.py crée tables et données de départ)
+    "esope_fonctions",
+    "esope_creneaux_types",
+    "esope_benevoles_fonctions",  # référence benevoles.id (diverge)
+    "esope_modele",
+    "esope_creneaux",
+    "esope_affectations",
+    "esope_historique",
+    "esope_fermetures",
+    "esope_periodes",
+    "esope_liens",  # jetons des liens bénévoles + référence benevoles.id
 }
 
 # -------------------------------------------------------------------

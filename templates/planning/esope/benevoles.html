@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Planning ESOPE – bénévoles{% endblock %}
+{% block content %}
+<style>
+  .tb-esope { font-size: .85rem; }
+  .tb-esope th.v { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; font-weight: 600; padding: 6px 2px; }
+  .tb-esope td, .tb-esope th { vertical-align: middle; text-align: center; }
+  .tb-esope td.nom { text-align: left; white-space: nowrap; }
+  .tb-esope .sep { border-left: 2px solid #adb5bd; }
+  .tb-esope input.form-control { font-size: .8rem; padding: 2px 6px; }
+  .tb-esope td input[type=checkbox] { float: none; margin: 0; }
+  .ok { outline: 2px solid #198754; } .ko { outline: 2px solid #dc3545; }
+</style>
+<div class="container-fluid mt-3">
+<h2>👥 Bénévoles ESOPE</h2>
+{% set actif = 'benevoles' %}{% include "planning/esope/_nav.html" %}
+
+<div class="d-flex flex-wrap gap-3 align-items-center mb-2">
+  <input type="search" id="filtre" class="form-control" style="max-width:280px" placeholder="🔍 Rechercher un nom…" oninput="filtrer()">
+  <span class="small text-muted">{{ benevoles|length }} bénévoles dont le champ « esope » vaut oui dans leur fiche.
+    {% if peut_ecrire %}Chaque case est enregistrée dès qu'on la coche.{% endif %}
+    Pour ajouter un bénévole à l'ESOPE : fiche bénévole, champ « esope » = oui.</span>
+</div>
+
+<table class="table table-sm table-bordered table-hover tb-esope">
+  <thead class="table-light">
+    <tr>
+      <th rowspan="2" class="text-start align-bottom">Bénévole</th>
+      <th colspan="{{ fonctions|length }}">Fonctions possibles</th>
+      <th colspan="6" class="sep">Jours disponibles</th>
+      <th rowspan="2" class="align-bottom" style="min-width:220px">Commentaire ESOPE</th>
+    </tr>
+    <tr>
+      {% for f in fonctions %}<th class="v" style="border-bottom: 3px solid {{ f.couleur }}">{{ f.nom }}</th>{% endfor %}
+      {% for j in jours_courts %}<th class="{{ 'sep' if loop.first }}">{{ j }}</th>{% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+  {% for b in benevoles %}
+    <tr data-nom="{{ b.libelle|lower }}">
+      <td class="nom"><a href="{{ url_for('benevoles.update_benevole', benevole_id=b.id) }}" title="{{ b.telephone_portable or '' }} {{ b.email or '' }}">{{ b.libelle }}</a></td>
+      {% for f in fonctions %}
+        <td><input type="checkbox" class="form-check-input" {{ 'checked' if f.id in b.fonctions }} {{ 'disabled' if not peut_ecrire }}
+                   onchange="maj(this, {benevole_id: {{ b.id }}, champ: 'fonction', fonction_id: {{ f.id }}, valeur: this.checked})"></td>
+      {% endfor %}
+      {% for j in jours %}
+        <td class="{{ 'sep' if loop.first }}"><input type="checkbox" class="form-check-input" {{ 'checked' if j in b.jours }} {{ 'disabled' if not peut_ecrire }}
+                   onchange="maj(this, {benevole_id: {{ b.id }}, champ: 'jour', jour: '{{ j }}', valeur: this.checked})"></td>
+      {% endfor %}
+      <td><input type="text" class="form-control" value="{{ b.esope_commentaire or '' }}" maxlength="300" {{ 'readonly' if not peut_ecrire }}
+                 onchange="maj(this, {benevole_id: {{ b.id }}, champ: 'commentaire', valeur: this.value})"></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="99" class="text-muted">Aucun bénévole n'a le champ « esope » à oui.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<script>
+const csrfToken = "{{ csrf_token() }}";
+async function maj(el, donnees) {
+  el.classList.remove("ok", "ko");
+  try {
+    const r = await fetch("{{ url_for('esope.benevoles_maj') }}", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-CSRFToken": csrfToken},
+      body: JSON.stringify(donnees),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.erreur || ("Erreur " + r.status));
+    el.classList.add("ok");
+    setTimeout(() => el.classList.remove("ok"), 900);
+  } catch (e) {
+    el.classList.add("ko");
+    if (el.type === "checkbox") el.checked = !el.checked;
+    alert("❌ Non enregistré : " + e.message);
+  }
+}
+function filtrer() {
+  const q = document.getElementById("filtre").value.trim().toLowerCase();
+  document.querySelectorAll("tbody tr[data-nom]").forEach(tr => { tr.style.display = !q || tr.dataset.nom.includes(q) ? "" : "none"; });
+}
+</script>
+{% endblock %}

@@ -19,6 +19,15 @@ from dotenv import load_dotenv
 from datetime import datetime
 
 
+def profil_esope(conn, benevole_id):
+    """Bloc ESOPE de la fiche bénévole (import local : évite un import circulaire avec ba38_planning)."""
+    from ba38_planning.esope.donnees import profil_benevole
+    try:
+        return profil_benevole(conn, benevole_id)
+    except sqlite3.OperationalError:  # tables ESOPE absentes (base non migrée)
+        return None
+
+
 load_dotenv()
 
 TYPE_BENE_PARAM = "type_benevole"
@@ -1217,6 +1226,7 @@ def update_benevole(benevole_id):
     if os.path.exists(photo_path):
         photo_filename = f"{benevole_id}.jpg"
 
+    esope_profil = profil_esope(conn, benevole_id)
     conn.close()
 
     return render_template(
@@ -1229,7 +1239,8 @@ def update_benevole(benevole_id):
         benevole=benevole_dict,
         photo_filename=photo_filename,
         lecture_seule=lecture_seule,
-        can_upload_photo=can_upload_photo
+        can_upload_photo=can_upload_photo,
+        esope_profil=esope_profil
     )
 
 @benevoles_bp.route("/update_benevoles_table", methods=["POST"])

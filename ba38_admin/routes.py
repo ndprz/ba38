@@ -10,6 +10,7 @@ from ba38_utilitaires.forms import RegistrationForm
 from werkzeug.security import generate_password_hash
 
 import sqlite3
+from datetime import datetime
 import markdown
 import os
 
@@ -292,7 +293,11 @@ def gestion_utilisateurs():
                 role,
                 actif,
                 force_2fa,
-                test_only
+                test_only,
+                derniere_connexion,
+                etranger_autorise_jusqu,
+                exempt_inactivite,
+                desactive_inactivite_le
             FROM users
             ORDER BY email
         """)
@@ -340,9 +345,17 @@ def gestion_utilisateurs():
 
         users_enrichis = []
 
+        from ba38_securite.core import secondes_verrouillage
+
+        nb_telephones = dict(cur.execute(
+            "SELECT user_id, COUNT(*) FROM users_telephones GROUP BY user_id"
+        ).fetchall())
+
         for user in users:
             u = dict(user)
             email = normalize_email(u["email"])
+            u["verrou_secondes"] = secondes_verrouillage(email)
+            u["nb_telephones"] = nb_telephones.get(u["id"], 0)
 
             # ADMIN GLOBAL → résumé figé
             if u["role"] == "admin":
@@ -534,6 +547,8 @@ def update_users_batch():
             new_password = request.form.get(f"users[{idx}][new_password]", "").strip()
             force_2fa = request.form.get(f"users[{idx}][force_2fa]") == "1"
             test_only = 1 if request.form.get(f"users[{idx}][test_only]") == "1" else 0
+            etranger_jusqu = request.form.get(f"users[{idx}][etranger_autorise_jusqu]", "").strip() or None
+            exempt_inactivite = 1 if request.form.get(f"users[{idx}][exempt_inactivite]") == "1" else 0
 
 
             if not user_id:
@@ -541,6 +556,22 @@ def update_users_batch():
 
             # Actif → bool
             actif_db = 1 if actif == "Oui" else 0
+
+            # Réactivation : le compteur d'inactivité repart d'aujourd'hui,
+            # sinon le script nocturne le redésactiverait aussitôt
+            avant = cur.execute("SELECT actif FROM users WHERE id = ?", (user_id,)).fetchone()
+            if avant and actif_db == 1 and str(avant["actif"]).strip().lower() not in ("1", "oui", "true"):
+                cur.execute("""
+                    UPDATE users
+                    SET derniere_connexion = ?, avertissement_inactivite_le = NULL, desactive_inactivite_le = NULL
+                    WHERE id = ?
+                """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_id))
+
+            cur.execute("""
+                UPDATE users
+                SET etranger_autorise_jusqu = ?, exempt_inactivite = ?
+                WHERE id = ?
+            """, (etranger_jusqu, exempt_inactivite, user_id))
 
             # Mise à jour des champs standards
             cur.execute("""

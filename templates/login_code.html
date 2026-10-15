@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Code de connexion{% endblock %}
+
+{% block content %}
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 70vh;">
+  <div class="card shadow p-4" style="max-width: 460px; width: 100%;">
+
+    {% if not code_en_cours %}
+      <!-- 1️⃣ Choix du destinataire -->
+      <h3 class="text-center mb-2">🔐 Code de connexion</h3>
+      <p class="text-center text-muted mb-4">
+        Pour vérifier que c'est bien vous, nous allons vous envoyer un code.<br>
+        <strong>Où voulez-vous le recevoir ?</strong>
+      </p>
+
+      <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="envoyer">
+        <div class="d-grid gap-2">
+          {% for t in telephones %}
+          <button type="submit" name="choix" value="{{ t.id }}" class="btn btn-outline-primary btn-lg choix-code">
+            <span>📱 <strong>{{ t.libelle }}</strong></span>
+            <span class="text-nowrap">{{ t.masque }}</span>
+          </button>
+          {% endfor %}
+          <button type="submit" name="choix" value="email" class="btn btn-outline-secondary btn-lg choix-code">
+            <span>✉️ Par email</span>
+            <span class="text-nowrap small">{{ email_masque }}</span>
+          </button>
+        </div>
+      </form>
+
+      {% if a_application %}
+      <div class="text-center mt-3">
+        <a href="{{ url_for('login_2fa') }}">Utiliser plutôt mon application d'authentification</a>
+      </div>
+      {% endif %}
+
+    {% else %}
+      <!-- 2️⃣ Saisie du code -->
+      <h3 class="text-center mb-2">🔐 Entrez le code reçu</h3>
+      <p class="text-center text-muted mb-4">
+        Code envoyé {% if code_en_cours.via == "email" %}par email à{% else %}par SMS au{% endif %}
+        <strong class="text-nowrap">{{ code_en_cours.destination }}</strong>.<br>
+        Il est valable 10 minutes.
+      </p>
+
+      <form method="POST" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="verifier">
+
+        <div class="mb-3">
+          <input type="text" name="code" id="code" class="form-control text-center"
+                 placeholder="123456" maxlength="7" inputmode="numeric"
+                 autocomplete="one-time-code" required autofocus
+                 style="font-size: 1.8rem; letter-spacing: 0.4rem;">
+        </div>
+
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" name="confiance" value="1" id="confiance" checked>
+          <label class="form-check-label" for="confiance">
+            Ne plus me demander de code sur cet appareil pendant {{ confiance_jours }} jours
+          </label>
+        </div>
+
+        <div class="d-grid">
+          <button type="submit" class="btn btn-primary btn-lg w-100">✅ Valider</button>
+        </div>
+      </form>
+
+      <div class="text-center mt-3 small">
+        Pas reçu ? Attendez une minute, puis
+        <a href="{{ url_for('login_code', action='changer') }}">renvoyer un code ou choisir un autre moyen</a>.
+      </div>
+    {% endif %}
+
+    <div class="text-center mt-4">
+      <a href="{{ url_for('login') }}" class="text-secondary small">← Retour à la connexion</a>
+    </div>
+  </div>
+</div>
+
+<style>
+  .choix-code {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0 .75rem;
+    text-align: left;
+    white-space: normal;
+  }
+</style>
+{% endblock %}

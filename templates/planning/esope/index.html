@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Planning ESOPE{% endblock %}
+{% block content %}
+<div class="container-fluid mt-3">
+<h2>🛒 Planning ESOPE</h2>
+{% set actif = 'index' %}{% include "planning/esope/_nav.html" %}
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header fw-bold">Plannings des prochains mois</div>
+      <div class="card-body p-0">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr><th>Mois</th><th class="text-end">Créneaux</th><th class="text-end">Bénévoles placés</th><th></th></tr></thead>
+          <tbody>
+          {% for m in mois %}
+            <tr>
+              <td class="fw-bold">{{ m.libelle }}</td>
+              <td class="text-end">{{ m.nb_creneaux or '—' }}</td>
+              <td class="text-end">{{ m.nb_affectations if m.nb_creneaux else '—' }}</td>
+              <td class="text-end text-nowrap">
+                {% if m.nb_creneaux %}
+                  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('esope.semaine', date=m.valeur ~ '-01') }}">📅 Voir</a>
+                  <a class="btn btn-sm btn-outline-secondary" target="_blank" href="{{ url_for('esope.imprimer', mois=m.valeur) }}">🖨️ Imprimer</a>
+                  <a class="btn btn-sm btn-outline-success" href="{{ url_for('esope.envoi', mois=m.valeur) }}">📨 Envoi{% if m.statut_envoi %} · {{ m.statut_envoi }}{% endif %}{% if m.nb_alertes %} <span class="badge bg-warning text-dark">⚠ {{ m.nb_alertes }}</span>{% endif %}</a>
+                {% endif %}
+                {% if peut_ecrire %}
+                <form method="POST" action="{{ url_for('esope.generer') }}" class="d-inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="mois" value="{{ m.valeur }}">
+                  <button class="btn btn-sm {{ 'btn-outline-success' if m.nb_creneaux else 'btn-success' }}" name="action" value="generer"
+                          title="Crée les créneaux manquants et y place les bénévoles du modèle. Ne modifie pas ce qui existe déjà.">
+                    {{ '➕ Compléter' if m.nb_creneaux else '⚙️ Générer' }}
+                  </button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if peut_ecrire %}
+      <div class="card-footer small">
+        <form method="POST" action="{{ url_for('esope.generer') }}" class="d-flex flex-wrap gap-2 align-items-center"
+              onsubmit="return !event.submitter || event.submitter.value !== 'reinitialiser' || confirm('Réinitialiser ce mois ?\n\nTous les créneaux réguliers du mois et les bénévoles qui y sont placés seront supprimés, puis recréés à partir du planning modèle. Les retouches manuelles seront perdues. Les événements sont conservés.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <span>Autre mois :</span>
+          <input type="month" name="mois" class="form-control form-control-sm" style="width:auto" placeholder="AAAA-MM" required>
+          <button class="btn btn-sm btn-success" name="action" value="generer">⚙️ Générer / compléter</button>
+          <button class="btn btn-sm btn-outline-danger" name="action" value="reinitialiser">🔄 Réinitialiser depuis le modèle</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header fw-bold">Comment ça marche</div>
+      <div class="card-body small">
+        <ol class="mb-2">
+          <li><b>Paramétrage</b> : fonctions, postes, horaires et nombre de bénévoles par poste.</li>
+          <li><b>Bénévoles ESOPE</b> : fonctions possibles et jours de disponibilité de chacun ({{ nb_benevoles }} bénévoles marqués ESOPE).</li>
+          <li><b>Planning modèle</b> : la semaine type, avec les personnes qui viennent toutes les semaines ou une semaine sur deux.</li>
+          <li><b>Générer</b> le mois : les créneaux sont créés et les bénévoles du modèle placés.</li>
+          <li><b>Planning</b> : retouches, absences, horaires partiels, impression.</li>
+          <li><b>Envoi aux bénévoles</b> : chacun reçoit ses créneaux et un lien personnel pour confirmer ou annuler ; les réponses arrivent par mail à la responsable.</li>
+        </ol>
+        <div class="text-muted">Les jours de fermeture (fériés, congés) sont à saisir <b>avant</b> de générer le mois :
+          <a href="{{ url_for('esope.fermetures') }}">jours de fermeture</a>.
+          Toutes les actions sont tracées dans l'<a href="{{ url_for('esope.historique') }}">historique</a>.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}

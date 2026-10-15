@@ -18,6 +18,9 @@
       class="form-control"
       placeholder="Rechercher (email, nom…)  —  Échap pour effacer"
     />
+    <button type="button" id="toggleDroits" class="btn btn-outline-secondary text-nowrap" onclick="basculerDroits()">
+      👁️ Droits en détail
+    </button>
   </div>
 
   <a href="{{ url_for('admin.gestion_roles_par_appli') }}">
@@ -25,10 +28,10 @@
   </a>
 
   <!-- TABLEAU SEUL -->
-  <form method="post" action="{{ url_for('admin.update_users_batch') }}">
+  <form method="post" action="{{ url_for('admin.update_users_batch') }}" onsubmit="saveScrollPosition()">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="table-scroll">
-      <table id="usersTable" class="table table-bordered table-sm">
+      <table id="usersTable" class="table table-bordered table-sm droits-replies">
         <thead>
           <tr>
             <th>Id</th>
@@ -40,6 +43,7 @@
             <th>Droits actifs</th>
             <th>2FA</th>
             <th>Mode test</th>
+            <th>Sécurité</th>
             <th>Droits</th>
             <th>Supprimer</th>
           </tr>
@@ -102,18 +106,35 @@
 
             <!-- Mot de passe -->
             <td>
-              <input
-                type="password"
-                name="users[{{ loop.index0 }}][new_password]"
-                class="form-control"
-                placeholder="Laisser vide si inchangé"
-              />
+              <div class="input-group input-group-sm flex-nowrap">
+                <input
+                  type="password"
+                  name="users[{{ loop.index0 }}][new_password]"
+                  class="form-control"
+                  placeholder="Laisser vide si inchangé"
+                  autocomplete="new-password"
+                />
+                <button type="button" class="btn btn-outline-secondary" onclick="basculerMotDePasse(this)"
+                        title="Afficher / masquer le mot de passe">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+                    <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+                  </svg>
+                </button>
+              </div>
             </td>
 
             <!-- Droits actifs -->
             <td>
               {% if user.resume_roles %}
-              <ul class="mb-0">
+              <span class="droits-resume text-nowrap">
+                {% if user.role == 'admin' %}
+                <span class="badge bg-danger">admin</span>
+                {% else %}
+                {{ user.resume_roles|length }} appli{{ 's' if user.resume_roles|length > 1 }}
+                {% endif %}
+              </span>
+              <ul class="mb-0 droits-detail">
                 {% for role in user.resume_roles %}
                 <li>
                   <strong>{{ role.label }}</strong>
@@ -160,6 +181,48 @@
                 title="Restreint en permanence au mode test (ex. accès DSI FFBA)"
                 {% if user.test_only %}checked{% endif %}
               />
+            </td>
+
+            <!-- Sécurité : dernière connexion, verrouillage, étranger, inactivité -->
+            <td class="small" style="min-width: 190px;">
+              <div title="Dernière connexion">
+                🕒 {{ user.derniere_connexion[:10] if user.derniere_connexion else "—" }}
+              </div>
+              {% if user.desactive_inactivite_le %}
+              <div class="text-danger">Désactivé (inactif) le {{ user.desactive_inactivite_le[:10] }}</div>
+              {% endif %}
+              {% if user.verrou_secondes %}
+              <div class="mt-1">
+                <span class="badge bg-danger">🔒 Bloqué {{ (user.verrou_secondes + 59) // 60 }} min</span>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-danger py-0"
+                  data-unlock-url="{{ url_for('securite.debloquer', user_id=user.id) }}"
+                  onclick="debloquerCompte(this)"
+                >🔓 Débloquer</button>
+              </div>
+              {% endif %}
+              <a class="d-block mt-1" href="{{ url_for('securite.telephones', user_id=user.id) }}" onclick="saveScrollPosition()">
+                📱 Téléphones ({{ user.nb_telephones }})
+              </a>
+              <label class="mt-1 d-block" title="Autorise la connexion depuis l'étranger jusqu'à cette date incluse">
+                🌍 Étranger jusqu'au
+                <input
+                  type="date"
+                  class="form-control form-control-sm"
+                  name="users[{{ loop.index0 }}][etranger_autorise_jusqu]"
+                  value="{{ user.etranger_autorise_jusqu or '' }}"
+                />
+              </label>
+              <label class="mt-1 d-block" title="Jamais désactivé pour inactivité (ex. bénévole saisonnier)">
+                <input
+                  type="checkbox"
+                  name="users[{{ loop.index0 }}][exempt_inactivite]"
+                  value="1"
+                  {% if user.exempt_inactivite %}checked{% endif %}
+                />
+                Jamais désactivé si inactif
+              </label>
             </td>
 
             <!-- Accès droits -->
@@ -250,7 +313,16 @@
     <div class="row mb-3">
       <div class="col-md-4">
         <label class="form-label">Mot de passe</label>
-        <input type="password" name="password" class="form-control" required />
+        <div class="input-group">
+          <input type="password" name="password" class="form-control" autocomplete="new-password" required />
+          <button type="button" class="btn btn-outline-secondary" onclick="basculerMotDePasse(this)"
+                  title="Afficher / masquer le mot de passe">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+              <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div class="col-md-4">
@@ -377,6 +449,10 @@
     }
 
 
+    /* Droits actifs : résumé (replié) ou liste détaillée */
+    .users-page #usersTable.droits-replies .droits-detail { display: none; }
+    .users-page #usersTable:not(.droits-replies) .droits-resume { display: none; }
+
     .highlight {
     background-color: yellow;
     font-weight: bold;
@@ -420,6 +496,11 @@ function applyFilter() {
     document.querySelectorAll("#usersTable tbody tr").forEach(row => {
 
         let text = row.innerText;
+
+        // 🔹 droits détaillés masqués (repliés) : absents de innerText
+        row.querySelectorAll(".droits-detail").forEach(ul => {
+            text += " " + ul.textContent;
+        });
 
         // 🔹 reconstruire texte complet
         row.querySelectorAll("input").forEach(input => {
@@ -476,22 +557,58 @@ function applyFilter() {
       // =====================================================
       // 🔹 5. RESTAURATION SCROLL
       // =====================================================
-      const savedScroll = localStorage.getItem("scrollY_gestion_users");
+      // Le tableau défile dans sa propre zone (.table-scroll) : il faut
+      // restaurer sa position à lui, en plus de celle de la page.
+      let saved = null;
+      try {
+        saved = JSON.parse(sessionStorage.getItem("scroll_gestion_users"));
+        sessionStorage.removeItem("scroll_gestion_users");
+      } catch (e) {}
 
-      if (savedScroll !== null) {
-        window.scrollTo(0, parseInt(savedScroll));
-        localStorage.removeItem("scrollY_gestion_users");
+      if (saved) {
+        const zone = document.querySelector(".users-page .table-scroll");
+        if (zone) {
+          zone.scrollTop = saved.top || 0;
+          zone.scrollLeft = saved.left || 0;
+        }
+        window.scrollTo(0, saved.page || 0);
       }
+
+      // =====================================================
+      // 🔹 6. DROITS EN DÉTAIL (mémorisé)
+      // =====================================================
+      let detail = false;
+      try { detail = localStorage.getItem("droits_detail_users") === "1"; } catch (e) {}
+      appliquerDroits(detail);
     });
+
+function appliquerDroits(detail) {
+    document.getElementById("usersTable").classList.toggle("droits-replies", !detail);
+    document.getElementById("toggleDroits").textContent = detail ? "🙈 Masquer le détail des droits" : "👁️ Droits en détail";
+}
+
+function basculerDroits() {
+    const detail = document.getElementById("usersTable").classList.contains("droits-replies");
+    appliquerDroits(detail);
+    try { localStorage.setItem("droits_detail_users", detail ? "1" : "0"); } catch (e) {}
+}
 
     /**
      * =========================================================
-     * 🔹 6. SAUVEGARDE POSITION SCROLL
-     * (appelée au clic sur bouton "Droits")
+     * 🔹 7. SAUVEGARDE POSITION SCROLL
+     * (avant tout rechargement : Enregistrer, Supprimer, Reset 2FA,
+     *  Débloquer, bouton "Droits")
      * =========================================================
      */
 function saveScrollPosition() {
-    localStorage.setItem("scrollY_gestion_users", window.scrollY);
+    const zone = document.querySelector(".users-page .table-scroll");
+    try {
+        sessionStorage.setItem("scroll_gestion_users", JSON.stringify({
+            page: window.scrollY,
+            top: zone ? zone.scrollTop : 0,
+            left: zone ? zone.scrollLeft : 0,
+        }));
+    } catch (e) {}
 }
 
 // 🔥 DOIT ÊTRE GLOBAL
@@ -510,6 +627,7 @@ function confirmerSuppression(btn) {
   const email = btn.dataset.email;
   const url = btn.dataset.deleteUrl;
   if (!confirm(`Supprimer l'utilisateur "${email}" ?\n\nCette action est irréversible.`)) return;
+  saveScrollPosition();
   const csrf = document.querySelector('input[name="csrf_token"]');
   const form = document.createElement('form');
   form.method = 'POST';
@@ -526,10 +644,33 @@ function confirmerSuppression(btn) {
 function confirmerReset2FA(btn) {
   const url = btn.dataset.resetUrl;
   if (!confirm('Réinitialiser le 2FA ?')) return;
+  saveScrollPosition();
   const csrf = document.querySelector('input[name="csrf_token"]');
   const form = document.createElement('form');
   form.method = 'POST';
   form.action = url;
+  const csrfInput = document.createElement('input');
+  csrfInput.type = 'hidden';
+  csrfInput.name = 'csrf_token';
+  csrfInput.value = csrf ? csrf.value : '';
+  form.appendChild(csrfInput);
+  document.body.appendChild(form);
+  form.submit();
+}
+
+function basculerMotDePasse(btn) {
+  const champ = btn.parentElement.querySelector("input");
+  const visible = champ.type === "password";
+  champ.type = visible ? "text" : "password";
+  btn.classList.toggle("active", visible);
+}
+
+function debloquerCompte(btn) {
+  saveScrollPosition();
+  const csrf = document.querySelector('input[name="csrf_token"]');
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = btn.dataset.unlockUrl;
   const csrfInput = document.createElement('input');
   csrfInput.type = 'hidden';
   csrfInput.name = 'csrf_token';

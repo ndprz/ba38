@@ -159,6 +159,24 @@
         </div>
     </div>
 
+    {% if has_access('planning_esope', 'lecture') %}
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header text-white fs-4 fw-bold text-center" style="background:#6f42c1">
+                ESOPE
+            </div>
+            <div class="card-body">
+                <a href="{{ url_for('esope.modele') }}" class="btn btn-outline-secondary mb-2 w-100">
+                    🔁 Planning modèle ESOPE
+                </a>
+                <a href="{{ url_for('esope.index') }}" class="btn w-100 text-white" style="background:#6f42c1">
+                    🛒 Planning ESOPE
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
 </div>
 
 {% else %}

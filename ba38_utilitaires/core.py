@@ -170,8 +170,19 @@ BLOCK_DURATION = 300
 WINDOW = 300
 
 def get_real_ip():
-    if "X-Forwarded-For" in request.headers:
-        return request.headers.get("X-Forwarded-For").split(",")[0].strip()
+    """IP du client telle que vue par nginx.
+
+    ⚠️ Jamais la PREMIÈRE entrée de X-Forwarded-For : nginx y ajoute l'IP
+    réelle EN FIN de liste ($proxy_add_x_forwarded_for), le début est fourni
+    par le client et donc falsifiable (contournement du blocage brute force
+    et de fail2ban, voire bannissement de l'IP de quelqu'un d'autre).
+    X-Real-IP est posé par nginx ($remote_addr) et écrase celui du client."""
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip.strip()
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[-1].strip()
     return request.remote_addr
 
 def is_blocked(ip, login):
@@ -277,7 +288,7 @@ def write_connexion_log(user_id, username, action="login"):
     Écrit un message dans le journal des connexions (login / logout).
     """
     try:
-        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+        ip = get_real_ip()
         session_id = request.cookies.get("ba38_session", "unknown")
 
         log_path = get_log_path("connexions.log")
@@ -1615,11 +1626,6 @@ BLOCK_DURATION = 600   # blocage (10 minutes)
 blocked_ips = {}
 
 
-def get_real_ip():
-    """Récupère la vraie IP (compatible proxy / nginx)"""
-    if request.headers.get("X-Forwarded-For"):
-        return request.headers.get("X-Forwarded-For").split(",")[0].strip()
-    return request.remote_addr
 
 
 def is_bad_user_agent():

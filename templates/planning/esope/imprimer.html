@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Planning ESOPE{% if titre %} – {{ titre }}{% endif %}</title>
+<style>
+  @page { size: A4 landscape; margin: 8mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 8pt; color: #000; margin: 0; }
+  .page { page-break-after: always; break-after: page; }
+  .page:last-child { page-break-after: auto; break-after: auto; }
+  .entete { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 3mm; }
+  .entete h1 { font-size: 13pt; margin: 0; }
+  .entete .meta { font-size: 7.5pt; color: #444; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th, td { border: 0.6pt solid #555; padding: 0.7mm 1.1mm; vertical-align: top; }
+  th { background: #e9ecef; font-size: 8.5pt; }
+  col.c-fct { width: 10%; } col.c-poste { width: 5.5%; } col.c-lundi { width: 9%; }
+  td.fct { font-weight: bold; border-left: 3mm solid var(--c); }
+  td.vide { background: #f1f1f1; }
+  td.ferme, th.ferme { background: #ddd; color: #555; }
+  td.hors-mois { background: #f7f7f7; color: #999; }
+  td.manque .plage::after { content: " ⚠"; }
+  .plage { font-size: 7pt; color: #555; }
+  .nom { display: block; line-height: 1.15; }
+  .nom.annule { text-decoration: line-through; color: #888; }
+  .partiel { font-style: italic; font-size: 7.5pt; }
+  .libre { display: block; color: #999; line-height: 1.15; }
+  .evts { margin-top: 3mm; }
+  .evts h2 { font-size: 10pt; margin: 0 0 1mm; }
+  .evts td { font-size: 8pt; }
+  .pied { margin-top: 2mm; font-size: 7pt; color: #666; }
+  .barre { padding: 8px; background: #f8f9fa; border-bottom: 1px solid #ddd; font-size: 11pt; }
+  @media print { .barre { display: none; } }
+</style>
+</head>
+<body>
+<div class="barre">
+  <button onclick="window.print()">🖨️ Imprimer</button>
+  Format conseillé : A4 paysage, sans en-têtes ni pieds de page du navigateur.
+</div>
+
+{% for s in semaines %}
+<div class="page">
+  <div class="entete">
+    <h1>Planning ESOPE – {{ s.titre }}</h1>
+    <span class="meta">Imprimé le {{ imprime_le.strftime('%d/%m/%Y') }}</span>
+  </div>
+  <table>
+    <colgroup><col class="c-fct"><col class="c-poste"><col class="c-lundi">{% for j in s.jours[1:] %}<col>{% endfor %}</colgroup>
+    <thead>
+      <tr>
+        <th>Fonction</th><th>Poste</th>
+        {% for j in s.jours %}
+        <th class="{{ 'ferme' if j.fermeture is not none }}">{{ j.nom|capitalize }} {{ j.date.day }}/{{ '%02d' % j.date.month }}{% if j.fermeture is not none %}<br><small>Fermé{% if j.fermeture %} – {{ j.fermeture }}{% endif %}</small>{% endif %}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+    {% for l in lignes %}
+      <tr>
+        {% if l.premiere %}<td class="fct" rowspan="{{ l.nb_postes }}" style="--c: {{ l.couleur }}">{{ l.fonction }}</td>{% endif %}
+        <td>{{ l.poste }}</td>
+        {% for j in s.jours %}
+          {% set c = s.grille.get(l.cle, {}).get(j.idx) %}
+          {% if j.hors_mois %}
+            <td class="hors-mois"></td>
+          {% elif c and c.ferme %}
+            <td class="ferme"><span class="plage">{{ c.plage }}</span><span class="libre">fermé</span></td>
+          {% elif c %}
+            <td class="{{ c.couverture }}">
+              <div class="plage">{{ c.plage }}{% if c.libelle %} · {{ c.libelle }}{% endif %}</div>
+              {% for a in c.affectations %}
+                <span class="nom {{ a.statut }}">{{ a.libelle }}{% if a.partiel %} <span class="partiel">({{ a.partiel }})</span>{% endif %}</span>
+              {% endfor %}
+              {% if c.places_vides > 2 %}<span class="libre">+ {{ c.places_vides }} places</span>
+              {% else %}{% for i in range(c.places_vides) %}<span class="libre">………………</span>{% endfor %}{% endif %}
+            </td>
+          {% else %}
+            <td class="{{ 'ferme' if j.fermeture is not none else 'vide' }}"></td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {% set evts = s.evenements | rejectattr('date', 'none') | list %}
+  {% if evts %}
+  <div class="evts">
+    <h2>Événements</h2>
+    <table>
+      <colgroup><col style="width:16%"><col style="width:22%"><col style="width:16%"><col style="width:10%"><col></colgroup>
+      {% for c in evts %}
+      <tr>
+        <td>{{ c.date_txt|capitalize }}</td><td><b>{{ c.libelle }}</b></td><td>{{ c.lieu or '' }}</td><td>{{ c.plage }}</td>
+        <td>{% for a in c.affectations if a.statut != 'annule' %}{{ a.libelle }}{% if a.partiel %} <span class="partiel">({{ a.partiel }})</span>{% endif %}{{ ', ' if not loop.last }}{% endfor %}
+            {% if c.places_vides %} <span class="libre" style="display:inline">+ {{ c.places_vides }} place(s)</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+  <div class="pied">⚠ = poste non couvert · (horaires) = présence partielle · nom barré = absence signalée</div>
+</div>
+{% endfor %}
+</body>
+</html>

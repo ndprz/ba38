@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Planning ESOPE – historique{% endblock %}
+{% block content %}
+<div class="container-fluid mt-3">
+<h2>🕒 Planning ESOPE – historique</h2>
+{% set actif = 'historique' %}{% include "planning/esope/_nav.html" %}
+{% set actions = {'ajout': 'Ajout', 'modification': 'Modification', 'retrait': 'Retrait', 'generation': 'Génération du mois',
+                  'reinitialisation': 'Réinitialisation du mois', 'creneau_modifie': 'Créneau modifié',
+                  'creneau_supprime': 'Créneau supprimé', 'evenement_cree': 'Événement créé'} %}
+<p class="small text-muted">300 dernières actions.</p>
+<table class="table table-sm small">
+  <thead class="table-light"><tr><th>Date</th><th>Par</th><th>Action</th><th>Créneau</th><th>Bénévole</th><th>Avant</th><th>Après</th><th>Commentaire</th></tr></thead>
+  <tbody>
+  {% for h in lignes %}
+    <tr>
+      <td class="text-nowrap">{{ h.date_heure[8:10] }}/{{ h.date_heure[5:7] }}/{{ h.date_heure[:4] }} {{ h.date_heure[11:16] }}</td>
+      <td>{{ (h.auteur or '').split('@')[0] }}</td>
+      <td>{{ actions.get(h.action, h.action) }}</td>
+      <td class="text-nowrap">{% if h.creneau_date %}{{ h.creneau_date[8:10] }}/{{ h.creneau_date[5:7] }} {{ h.fonction or h.creneau_libelle or '' }}{% if h.poste %} {{ h.poste }}{% endif %}{% endif %}</td>
+      <td>{{ h.nom or '' }} {{ h.prenom or '' }}</td>
+      <td>{{ h.ancien or '' }}</td><td>{{ h.nouveau or '' }}</td><td>{{ h.commentaire or '' }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="text-muted">Aucune action enregistrée.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

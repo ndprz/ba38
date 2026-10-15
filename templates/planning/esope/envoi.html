@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}Planning ESOPE – envoi {{ mois_txt }}{% endblock %}
+{% block content %}
+<style>
+  .etat { font-size: .78rem; white-space: nowrap; }
+  .tb-suivi td, .tb-suivi th { vertical-align: middle; font-size: .85rem; }
+  .copie { cursor: pointer; }
+</style>
+<div class="container-fluid mt-3">
+<h2>📨 Planning ESOPE – envoi aux bénévoles</h2>
+{% set actif = 'envoi' %}{% include "planning/esope/_nav.html" %}
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+  <a class="btn btn-outline-secondary" href="{{ url_for('esope.envoi', mois=precedent) }}">◀</a>
+  <form method="GET" class="m-0"><input type="month" name="mois" value="{{ mois }}" class="form-control" onchange="this.form.submit()"></form>
+  <a class="btn btn-outline-secondary" href="{{ url_for('esope.envoi', mois=suivant) }}">▶</a>
+  <h4 class="mb-0 ms-2 me-2">{{ mois_txt }}</h4>
+  {% set couleur = {'brouillon': 'secondary', 'envoye': 'primary', 'verrouille': 'dark'}[periode.statut] %}
+  <span class="badge bg-{{ couleur }} fs-6">{{ '🔒 ' if periode.statut == 'verrouille' }}{{ statuts_periode[periode.statut] }}</span>
+  <a class="btn btn-outline-primary ms-auto" href="{{ url_for('esope.semaine', date=premier_lundi) }}">📅 Voir le planning du mois</a>
+</div>
+
+{% if not etat.nb_creneaux %}
+<div class="alert alert-warning">Le planning de {{ mois_txt|lower }} n'est pas encore généré : générez-le depuis l'accueil ESOPE avant d'envoyer le pré-planning.</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+  {# ── Envoi ─────────────────────────────────────────── #}
+  <div class="col-xl-7">
+    <div class="card h-100">
+      <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+        <span>Envoyer le pré-planning</span>
+        {% if peut_ecrire %}
+        <form method="POST" action="{{ url_for('esope.envoi_toggle_mode') }}" class="m-0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="mois" value="{{ mois }}">
+          {% if mail_mode == 'TEST' %}
+            <button class="btn btn-sm btn-warning">🧪 Mode TEST (cliquer pour passer en réel)</button>
+          {% else %}
+            <button class="btn btn-sm btn-danger">🚀 Mode RÉEL (cliquer pour passer en test)</button>
+          {% endif %}
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        {% if mail_mode == 'TEST' %}
+        <div class="alert alert-warning py-2">🧪 Mode TEST : {{ max_test }} mails au plus, tous envoyés à <b>{{ adresse_test }}</b>. Les bénévoles ne reçoivent rien.</div>
+        {% endif %}
+        <p class="mb-2">Chaque bénévole reçoit ses créneaux du mois, le planning complet en PDF et un <b>lien personnel</b> (sans compte Basilic) pour confirmer ou annuler chaque créneau et indiquer ses disponibilités.
+          Chaque réponse arrive par mail à la responsable ESOPE et apparaît ci-dessous.</p>
+        <div class="mb-3">
+          <span class="me-4">À envoyer : <b>{{ compte.a_envoyer }}</b></span>
+          <span class="me-4">Envoyés sans réponse : <b>{{ compte.envoye + compte.ouvert }}</b> <span class="text-muted">(dont {{ compte.ouvert }} ouverts)</span></span>
+          <span class="me-4">Ont répondu : <b>{{ compte.repondu }}</b></span>
+          {% if compte.erreur %}<span class="me-4 text-danger">Erreurs : <b>{{ compte.erreur }}</b></span>{% endif %}
+          <span class="text-muted">Sans mail : {{ compte.sans_mail }}</span>
+        </div>
+        {% if peut_ecrire %}
+        <div>
+          <form method="POST" action="{{ url_for('esope.envoi_envoyer') }}" class="mb-3"
+                onsubmit="return confirm('Envoyer le pré-planning de {{ mois_txt|lower }} aux bénévoles qui ne l\'ont pas encore reçu ?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="mois" value="{{ mois }}">
+            <input type="hidden" name="type" value="preplanning">
+            <div class="form-check mb-2">
+              <input type="checkbox" class="form-check-input" name="sans_creneau" value="1" id="sans_creneau" checked>
+              <label class="form-check-label" for="sans_creneau">Envoyer aussi aux bénévoles sans créneau ce mois-ci (pour qu'ils proposent leurs disponibilités)</label>
+            </div>
+            <button class="btn btn-success" {{ 'disabled' if not etat.nb_creneaux }}>📨 Envoyer le pré-planning</button>
+          </form>
+          <form method="POST" action="{{ url_for('esope.envoi_envoyer') }}" class="d-inline-block me-2"
+                onsubmit="return confirm('Relancer les bénévoles qui n\'ont pas encore répondu ?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="mois" value="{{ mois }}">
+            <input type="hidden" name="type" value="relance">
+            <button class="btn btn-outline-primary" {{ 'disabled' if not (compte.envoye + compte.ouvert) }}>🔔 Relancer les sans réponse</button>
+          </form>
+          <a class="btn btn-outline-secondary" target="_blank" rel="noopener" href="{{ url_for('esope.textes') }}">✏️ Textes des mails</a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── Verrouillage ──────────────────────────────────── #}
+  <div class="col-xl-5">
+    <div class="card h-100">
+      <div class="card-header fw-bold">Verrouillage du mois</div>
+      <div class="card-body small">
+        <p>Une fois le mois <b>verrouillé</b>, les bénévoles ne peuvent plus confirmer : ils peuvent seulement <b>annuler</b> un créneau (signaler une absence), ce qui prévient aussitôt la responsable. Le gestionnaire peut toujours tout modifier.</p>
+        {% if periode.envoye_le %}<div class="text-muted">Envoyé le {{ periode.envoye_le[8:10] }}/{{ periode.envoye_le[5:7] }} à {{ periode.envoye_le[11:16] }} par {{ (periode.envoye_par or '').split('@')[0] }}</div>{% endif %}
+        {% if periode.verrouille_le %}<div class="text-muted">Verrouillé le {{ periode.verrouille_le[8:10] }}/{{ periode.verrouille_le[5:7] }} à {{ periode.verrouille_le[11:16] }} par {{ (periode.verrouille_par or '').split('@')[0] }}</div>{% endif %}
+        {% if peut_ecrire %}
+        <form method="POST" action="{{ url_for('esope.envoi_statut') }}" class="mt-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="mois" value="{{ mois }}">
+          {% if periode.statut == 'verrouille' %}
+            <button class="btn btn-outline-dark" name="action" value="deverrouille">🔓 Déverrouiller</button>
+          {% else %}
+            <button class="btn btn-dark" name="action" value="verrouille" onclick="return confirm('Verrouiller le planning de {{ mois_txt|lower }} ?')">🔒 Verrouiller le mois</button>
+          {% endif %}
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Réponses des bénévoles ───────────────────────── #}
+{% if alertes or dispos or toutes %}
+<div class="card mb-3 {{ 'border-warning' if nb_a_voir }}">
+  <div class="card-header fw-bold {{ 'bg-warning-subtle' if nb_a_voir }} d-flex justify-content-between align-items-center flex-wrap">
+    <span>{% if nb_a_voir %}⚠️ Réponses des bénévoles à voir ({{ nb_a_voir }}){% else %}Réponses des bénévoles{% endif %}
+      {% if toutes %}<span class="fw-normal small text-muted"> · toutes les réponses du mois</span>{% endif %}</span>
+    <span>
+      {% if toutes %}<a class="small me-3" href="{{ url_for('esope.envoi', mois=mois) }}">Masquer les réponses déjà vues</a>
+      {% else %}<a class="small me-3" href="{{ url_for('esope.envoi', mois=mois, toutes=1) }}">Afficher aussi les réponses déjà vues</a>{% endif %}
+      {% if peut_ecrire and nb_a_voir %}
+      <form method="POST" action="{{ url_for('esope.alertes_vu') }}" class="d-inline m-0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="mois" value="{{ mois }}">
+        <input type="hidden" name="retour" value="{{ request.full_path }}">
+        <button class="btn btn-sm btn-outline-dark">✔ Tout marquer comme vu</button>
+      </form>
+      {% endif %}
+    </span>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0 tb-suivi">
+      {% for a in alertes %}
+      <tr class="{{ 'text-muted' if not a.alerte }}">
+        <td class="text-nowrap">{{ a.reponse_le[8:10] }}/{{ a.reponse_le[5:7] }} {{ a.reponse_le[11:16] }}</td>
+        <td class="fw-bold">{{ a.libelle }}</td>
+        <td>{% if a.statut == 'annule' %}<span class="badge bg-danger">Absence</span>{% elif a.statut == 'confirme' %}<span class="badge bg-success">Confirmé</span>{% else %}<span class="badge bg-secondary">Prévu</span>{% endif %}</td>
+        <td>{% if a.creneau %}{{ a.creneau.date_txt }} – {{ a.creneau.intitule }} ({{ a.creneau.plage }}){% endif %}</td>
+        <td class="fst-italic">{{ a.reponse_commentaire or '' }}</td>
+        <td class="text-end">{% if a.alerte and peut_ecrire %}<form method="POST" action="{{ url_for('esope.alertes_vu') }}" class="m-0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="mois" value="{{ mois }}">
+          <input type="hidden" name="retour" value="{{ request.full_path }}">
+          <input type="hidden" name="affectation_id" value="{{ a.id }}"><button class="btn btn-sm btn-outline-secondary">Vu</button></form>
+          {% elif not a.alerte %}<span class="small">vu</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% for l in dispos %}
+      <tr class="{{ 'text-muted' if l.lien.disponibilites_vu }}">
+        <td class="text-nowrap">{{ l.lien.disponibilites_le[8:10] }}/{{ l.lien.disponibilites_le[5:7] }} {{ l.lien.disponibilites_le[11:16] }}</td>
+        <td class="fw-bold">{{ l.libelle }}</td>
+        <td><span class="badge bg-info text-dark">Disponibilités</span></td>
+        <td colspan="2" class="fst-italic">{{ l.lien.disponibilites }}</td>
+        <td class="text-end">{% if not l.lien.disponibilites_vu and peut_ecrire %}<form method="POST" action="{{ url_for('esope.alertes_vu') }}" class="m-0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="mois" value="{{ mois }}">
+          <input type="hidden" name="retour" value="{{ request.full_path }}">
+          <input type="hidden" name="lien_id" value="{{ l.lien.id }}"><button class="btn btn-sm btn-outline-secondary">Vu</button></form>
+          {% elif l.lien.disponibilites_vu %}<span class="small">vu</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% if not alertes and not dispos %}<tr><td class="text-muted">Aucune réponse pour ce mois.</td></tr>{% endif %}
+    </table>
+  </div>
+</div>
+{% else %}
+<p class="small mb-3"><a href="{{ url_for('esope.envoi', mois=mois, toutes=1) }}">Afficher les réponses déjà vues</a></p>
+{% endif %}
+
+{# ── Suivi par bénévole ─────────────────────────────── #}
+{% set etats = {'a_envoyer': ('À envoyer', 'secondary'), 'envoye': ('Envoyé', 'primary'), 'ouvert': ('Lien ouvert', 'info'),
+                'repondu': ('A répondu', 'success'), 'erreur': ("Erreur d'envoi", 'danger'), 'sans_mail': ('Pas de mail', 'warning')} %}
+<div class="d-flex align-items-center gap-2 mb-2">
+  <input type="search" id="filtre" class="form-control" style="max-width:260px" placeholder="🔍 Rechercher…" oninput="filtrer()">
+  <select id="filtreEtat" class="form-select" style="max-width:220px" onchange="filtrer()">
+    <option value="">Tous les états</option>
+    {% for k, v in etats.items() %}<option value="{{ k }}">{{ v[0] }}</option>{% endfor %}
+  </select>
+</div>
+<table class="table table-sm table-hover tb-suivi">
+  <thead class="table-light"><tr><th>Bénévole</th><th class="text-center">Créneaux</th><th class="text-center">✔ Confirmés</th><th class="text-center">❌ Annulés</th><th class="text-center">Sans réponse</th><th>État</th><th>Envoi</th><th>Disponibilités</th><th></th></tr></thead>
+  <tbody>
+  {% for l in lignes %}
+    <tr data-nom="{{ l.libelle|lower }}" data-etat="{{ l.etat }}">
+      <td><span class="fw-bold">{{ l.libelle }}</span>{% if not l.esope %} <span class="badge bg-light text-dark border" title="Affecté ce mois-ci mais champ esope ≠ oui">hors ESOPE</span>{% endif %}
+        <div class="small text-muted">{{ l.email or '' }}{% if l.telephone_portable %} · {{ l.telephone_portable }}{% endif %}</div></td>
+      <td class="text-center">{{ l.nb_actifs }}</td>
+      <td class="text-center text-success">{{ l.nb_confirmes or '' }}</td>
+      <td class="text-center text-danger">{{ l.nb_annules or '' }}</td>
+      <td class="text-center">{{ l.nb_prevus or '' }}</td>
+      <td><span class="badge bg-{{ etats[l.etat][1] }} etat">{{ etats[l.etat][0] }}</span>{% if l.nb_alertes %} <span class="badge bg-warning text-dark etat">⚠ {{ l.nb_alertes }} à voir</span>{% endif %}</td>
+      <td class="small text-nowrap">
+        {% if l.lien and l.lien.envoye_le %}{{ l.lien.envoye_le[8:10] }}/{{ l.lien.envoye_le[5:7] }} {{ l.lien.envoye_le[11:16] }}{% if l.lien.envoi_mode_test %} <span class="badge bg-warning text-dark">test</span>{% endif %}
+          {% if l.lien.nb_relances %}<br>{{ l.lien.nb_relances }} relance(s){% endif %}
+          {% if l.lien.envoi_erreur %}<br><span class="text-danger" title="{{ l.lien.envoi_erreur }}">⚠ {{ l.lien.envoi_erreur[:40] }}</span>{% endif %}
+        {% endif %}
+      </td>
+      <td class="small fst-italic">{{ l.lien.disponibilites if l.lien and l.lien.disponibilites else '' }}</td>
+      <td class="text-end text-nowrap">
+        {% if peut_ecrire %}
+          {% if l.email_ok %}
+          <form method="POST" action="{{ url_for('esope.envoi_envoyer') }}" class="d-inline m-0" onsubmit="return confirm('Envoyer le mail à {{ l.libelle|e }} ?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="mois" value="{{ mois }}">
+            <input type="hidden" name="benevole_id" value="{{ l.id }}">
+            <input type="hidden" name="type" value="{{ 'relance' if l.lien and l.lien.envoye_le and not l.lien.envoi_erreur else 'preplanning' }}">
+            <button class="btn btn-sm btn-outline-primary" title="Envoyer / renvoyer le mail à ce bénévole">✉️</button>
+          </form>
+          {% endif %}
+          <a class="btn btn-sm btn-outline-secondary" target="_blank" href="{{ url_for('esope.envoi_ouvrir_lien', benevole_id=l.id, mois=mois) }}"
+             title="Ouvrir sa page pour saisir ses réponses à sa place (bénévole sans mail, réponse par téléphone…)">📝</a>
+          {% if l.lien %}<button type="button" class="btn btn-sm btn-outline-secondary copie" title="Copier son lien personnel"
+             onclick="navigator.clipboard.writeText('{{ url_lien(l.lien.token) }}').then(() => this.textContent = '✔')">🔗</button>{% endif %}
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<script>
+function filtrer() {
+  const q = document.getElementById("filtre").value.trim().toLowerCase();
+  const e = document.getElementById("filtreEtat").value;
+  document.querySelectorAll("tbody tr[data-nom]").forEach(tr => {
+    tr.style.display = (!q || tr.dataset.nom.includes(q)) && (!e || tr.dataset.etat === e) ? "" : "none";
+  });
+}
+</script>
+{% endblock %}

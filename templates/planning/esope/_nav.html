@@ -1,0 +1,32 @@
+{# Barre de boutons commune au module Planning ESOPE. Variable : actif #}
+{% from "macros/buttons.html" import action_button, action_buttons %}
+{% call action_buttons() %}
+    {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAideEsope')).show()", color="outline-info") }}
+    {% if actif != 'index' %}{{ action_button("🛒 Accueil ESOPE", href=url_for('esope.index'), color="outline-secondary") }}{% endif %}
+    {% if actif != 'semaine' %}{{ action_button("📅 Planning", href=url_for('esope.semaine'), color="outline-primary") }}{% endif %}
+    {% if actif != 'envoi' %}{{ action_button("📨 Envoi aux bénévoles", href=url_for('esope.envoi'), color="outline-success") }}{% endif %}
+    {% if actif != 'modele' %}{{ action_button("🔁 Planning modèle", href=url_for('esope.modele'), color="outline-secondary") }}{% endif %}
+    {% if actif != 'evenements' %}{{ action_button("🎉 Événements", href=url_for('esope.evenements'), color="outline-secondary") }}{% endif %}
+    {% if actif != 'benevoles' %}{{ action_button("👥 Bénévoles ESOPE", href=url_for('esope.benevoles'), color="outline-secondary") }}{% endif %}
+    {% if has_access('planning_esope', 'ecriture') and actif != 'parametrage' %}{{ action_button("⚙️ Paramétrage", href=url_for('esope.parametrage'), color="outline-secondary") }}{% endif %}
+    {% if has_access('planning', 'lecture') %}{{ action_button("↩️ Retour Plannings", href=url_for('planning_dist.planning_main'), color="outline-dark") }}{% endif %}
+    {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
+{% endcall %}
+
+<div class="modal fade" id="modalAideEsope" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📄 Aide – Planning ESOPE</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="max-height: 70vh; overflow:auto; font-size: 0.9rem; line-height: 1.4;">
+        {% include "docsHtml/Documentation_Utilisateur_Module_PlanningESOPE_BA38.html" %}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAideEsope')">🖨️ Imprimer</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>

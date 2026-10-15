@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}ESOPE – mon planning de {{ mois_txt }}{% endblock %}
+{% block content %}
+<style>
+  .creneau { border: 1px solid #dee2e6; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; background: #fff; }
+  .creneau.st-confirme { border-left: 6px solid #198754; }
+  .creneau.st-annule { border-left: 6px solid #dc3545; background: #fff5f5; }
+  .creneau.st-prevu { border-left: 6px solid #6c757d; }
+  .creneau.passe { opacity: .55; }
+  .creneau .quand { font-weight: 600; font-size: 1.05rem; }
+  .creneau .actions .btn { min-width: 120px; }
+</style>
+<div class="container mt-3 mb-5" style="max-width: 760px;">
+  {% if gestionnaire %}
+  <div class="alert alert-info small">👤 Vous êtes connecté(e) à Basilic : les réponses saisies ici sont enregistrées au nom du bénévole, avec votre nom dans l'historique.</div>
+  {% endif %}
+  <h3>Bonjour {{ benevole.prenom or benevole.nom }},</h3>
+  <p class="lead mb-1">Voici vos créneaux à l'épicerie sociale <b>ESOPE</b> pour <b>{{ mois_txt }}</b>.</p>
+  {% if verrouille %}
+  <div class="alert alert-secondary">🔒 Le planning de ce mois est finalisé. En cas d'empêchement, cliquez sur <b>« Je ne pourrai pas venir »</b> : la responsable sera prévenue tout de suite.</div>
+  {% else %}
+  <p class="text-muted">Merci de <b>confirmer</b> ou d'<b>annuler</b> chaque créneau. Vous pouvez changer d'avis tant que le planning n'est pas finalisé.</p>
+  {% endif %}
+
+  {% set a_confirmer = creneaux | selectattr('statut', 'equalto', 'prevu') | rejectattr('passe') | rejectattr('ferme') | list %}
+  {% if a_confirmer|length > 1 and not verrouille %}
+  <form method="POST" action="{{ url_for('esope.public_reponse', token=token) }}" class="mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="tout_confirmer">
+    <button class="btn btn-success btn-lg w-100">✔ Je confirme tous mes créneaux ({{ a_confirmer|length }})</button>
+  </form>
+  {% endif %}
+
+  {% for c in creneaux %}
+  <div class="creneau st-{{ c.statut }} {{ 'passe' if c.passe }}">
+    <div class="d-flex justify-content-between flex-wrap gap-2">
+      <div>
+        <div class="quand">{{ c.date_txt }} · {{ c.plage }}</div>
+        <div>{{ c.intitule }}{% if c.partiel %} <span class="badge bg-light text-dark border">présence partielle</span>{% endif %}</div>
+        {% if c.reponse_commentaire %}<div class="small fst-italic text-muted mt-1">Votre commentaire : {{ c.reponse_commentaire }}</div>{% endif %}
+      </div>
+      <div>
+        {% if c.ferme %}<span class="badge bg-secondary">Créneau fermé</span>
+        {% elif c.statut == 'confirme' %}<span class="badge bg-success fs-6">✔ Confirmé</span>
+        {% elif c.statut == 'annule' %}<span class="badge bg-danger fs-6">✖ Annulé</span>
+        {% else %}<span class="badge bg-secondary fs-6">À confirmer</span>{% endif %}
+      </div>
+    </div>
+    {% if not c.passe and not c.ferme %}
+    <form method="POST" action="{{ url_for('esope.public_reponse', token=token) }}" class="actions mt-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="affectation_id" value="{{ c.id }}">
+      <input type="text" name="commentaire" class="form-control form-control-sm mb-2" maxlength="500"
+             placeholder="Commentaire (facultatif) : retard, départ plus tôt, autre proposition…">
+      <div class="d-flex flex-wrap gap-2">
+        {% if not verrouille and c.statut != 'confirme' %}<button class="btn btn-success" name="action" value="confirmer">✔ Je confirme</button>{% endif %}
+        {% if c.statut != 'annule' %}<button class="btn btn-outline-danger" name="action" value="annuler"
+            onclick="return confirm('Confirmez-vous votre absence sur ce créneau ?')">✖ {{ 'Je ne pourrai pas venir' if verrouille or c.statut == 'confirme' else "J'annule" }}</button>{% endif %}
+        <button class="btn btn-outline-secondary" name="action" value="commenter">💬 Envoyer le commentaire</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="alert alert-light border">Vous n'avez pas de créneau prévu ce mois-ci.</div>
+  {% endfor %}
+
+  <div class="card mt-4">
+    <div class="card-body">
+      <h5>📝 Mes disponibilités</h5>
+      <p class="small text-muted mb-2">Vous pouvez venir plus souvent, sur un autre jour ou un autre poste ? Indiquez-le ici, la responsable vous recontactera.</p>
+      <form method="POST" action="{{ url_for('esope.public_disponibilites', token=token) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <textarea name="disponibilites" class="form-control mb-2" rows="3" maxlength="1000"
+                  placeholder="Ex. : disponible le jeudi après-midi, ou le samedi 21 en remplacement">{{ lien.disponibilites or '' }}</textarea>
+        <button class="btn btn-primary">Envoyer mes disponibilités</button>
+      </form>
+    </div>
+  </div>
+
+  <p class="mt-4"><a href="{{ url_for('esope.public_planning', token=token) }}" target="_blank">📅 Voir le planning complet de {{ mois_txt }}</a></p>
+  <p class="small text-muted">Ce lien est personnel : merci de ne pas le transmettre.</p>
+</div>
+{% endblock %}

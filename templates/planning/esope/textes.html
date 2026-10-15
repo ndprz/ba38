@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Planning ESOPE – textes des mails{% endblock %}
+{% block content %}
+<div class="container mt-3">
+<h2>✏️ Planning ESOPE – textes des mails</h2>
+{% set actif = 'textes' %}{% include "planning/esope/_nav.html" %}
+<div class="alert alert-light border small">
+  Variables remplacées automatiquement : <code>&lt;&lt;prenom&gt;&gt;</code>, <code>&lt;&lt;nom&gt;&gt;</code>, <code>&lt;&lt;mois&gt;&gt;</code>,
+  <code>&lt;&lt;creneaux&gt;&gt;</code> (liste des créneaux du bénévole), <code>&lt;&lt;lien&gt;&gt;</code> (son lien personnel).
+  Le texte est en HTML : <code>&lt;p&gt;</code> pour un paragraphe, <code>&lt;b&gt;</code> pour du gras, <code>&lt;br&gt;</code> pour un retour à la ligne.
+  Le pré-planning est accompagné du PDF du planning du mois.
+</div>
+{% for code, titre in codes.items() %}
+{% set m = modeles.get(code) %}
+<div class="card mb-4" id="{{ code }}">
+  <div class="card-header fw-bold">{{ titre }}</div>
+  <div class="card-body">
+    {% if m %}
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="code" value="{{ code }}">
+      <label class="form-label">Objet</label>
+      <input name="sujet" class="form-control mb-2" value="{{ m.sujet }}" required>
+      <label class="form-label">Texte</label>
+      <textarea name="corps" class="form-control font-monospace mb-2" rows="10" required>{{ m.corps }}</textarea>
+      <div class="d-flex justify-content-between align-items-center">
+        <small class="text-muted">Modifié le {{ m.date_modification or '—' }}</small>
+        <button class="btn btn-primary">💾 Enregistrer</button>
+      </div>
+    </form>
+    <details class="mt-2"><summary class="small">Aperçu</summary><div class="border rounded p-2 mt-2 small">{{ m.corps | safe }}</div></details>
+    {% else %}
+    <div class="text-danger">Modèle absent : lancer scripts/migrate_planning_esope.py.</div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+</div>
+{% endblock %}

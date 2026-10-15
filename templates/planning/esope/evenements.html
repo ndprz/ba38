@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Planning ESOPE – événements{% endblock %}
+{% block content %}
+<div class="container-fluid mt-3">
+<h2>🎉 Planning ESOPE – événements</h2>
+{% set actif = 'evenements' %}{% include "planning/esope/_nav.html" %}
+
+<div class="row g-4">
+{% if peut_ecrire %}
+<div class="col-lg-4">
+  <div class="card"><div class="card-header fw-bold">Nouvel événement</div><div class="card-body">
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="form-label">Libellé *</label><input name="libelle" class="form-control mb-2" required maxlength="100" placeholder="ex. Collecte nationale, Fête de Noël…">
+    <div class="row">
+      <div class="col"><label class="form-label">Date *</label><input type="date" name="date" class="form-control mb-2" required></div>
+      <div class="col"><label class="form-label">Lieu</label><input name="lieu" class="form-control mb-2" maxlength="100"></div>
+    </div>
+    <div class="row">
+      <div class="col"><label class="form-label">Début *</label><input type="time" name="heure_debut" class="form-control mb-2" required></div>
+      <div class="col"><label class="form-label">Fin *</label><input type="time" name="heure_fin" class="form-control mb-2" required></div>
+    </div>
+    <div class="row">
+      <div class="col"><label class="form-label">Bénévoles minimum</label><input type="number" min="0" name="nb_min" value="1" class="form-control mb-2"></div>
+      <div class="col"><label class="form-label">Bénévoles maximum</label><input type="number" min="1" name="nb_max" value="4" class="form-control mb-2"></div>
+    </div>
+    <label class="form-label">Commentaire</label><input name="commentaire" class="form-control mb-3" maxlength="200">
+    <button class="btn btn-success">➕ Créer l'événement</button>
+    <div class="form-text">Les bénévoles s'ajoutent ensuite depuis le planning de la semaine, comme pour un créneau habituel.</div>
+  </form>
+  </div></div>
+</div>
+{% endif %}
+<div class="col-lg-8">
+  <table class="table table-sm align-middle">
+    <thead class="table-light"><tr><th>Date</th><th>Événement</th><th>Lieu</th><th>Horaires</th><th>Bénévoles</th><th></th></tr></thead>
+    <tbody>
+    {% for c in evenements %}
+      <tr class="{{ 'table-danger' if c.couverture == 'manque' }}">
+        <td class="text-nowrap">{{ c.date_txt|capitalize }}</td>
+        <td class="fw-bold">{{ c.libelle }}{% if c.commentaire %}<div class="small fw-normal text-muted">{{ c.commentaire }}</div>{% endif %}</td>
+        <td>{{ c.lieu or '' }}</td>
+        <td class="text-nowrap">{{ c.plage }}</td>
+        <td>{% for a in c.affectations if a.statut != 'annule' %}{{ a.libelle }}{{ ', ' if not loop.last }}{% endfor %}
+            <span class="small text-muted">({{ c.nb_actifs }}/{{ c.nb_max }})</span></td>
+        <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('esope.semaine', date=c.date) }}">📅 Ouvrir</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="text-muted">Aucun événement à venir.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+</div>
+{% endblock %}

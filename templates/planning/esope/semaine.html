@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+{% block title %}Planning ESOPE – {{ titre }}{% endblock %}
+{% block content %}
+<style>
+  .esope-grille { table-layout: fixed; width: 100%; font-size: .85rem; }
+  .esope-grille th, .esope-grille td { vertical-align: top; border: 1px solid #dee2e6; padding: 4px 6px; white-space: normal; overflow-wrap: anywhere; }
+  .esope-grille col.c-fct { width: 9%; }
+  .esope-grille col.c-poste { width: 6%; }
+  .esope-grille col.c-lundi { width: 9%; }
+  .esope-grille .fct { color: #fff; font-weight: 600; writing-mode: horizontal-tb; }
+  .esope-grille .vide { background: repeating-linear-gradient(45deg, #f8f9fa, #f8f9fa 6px, #eef0f2 6px, #eef0f2 12px); }
+  .esope-grille td.manque { background: #fde2e4; }
+  .esope-grille td.trop { background: #fff3cd; }
+  .esope-grille td.ferme, .esope-grille td.jour-ferme { background: #e9ecef; color: #6c757d; }
+  .esope-plage { color: #6c757d; font-size: .75rem; display: flex; justify-content: space-between; gap: 4px; }
+  .esope-nom { display: block; line-height: 1.3; margin-bottom: 1px; }
+  .esope-nom.cliquable { cursor: pointer; }
+  .esope-nom.cliquable:hover { text-decoration: underline; }
+  .esope-nom.st-confirme::before { content: "✔ "; color: #198754; }
+  .esope-nom.st-annule { text-decoration: line-through; color: #adb5bd; }
+  .esope-nom.alerte { background: #fff3cd; border-radius: 3px; }
+  .esope-partiel { font-style: italic; color: #6f42c1; font-size: .75rem; }
+  .esope-libre { color: #adb5bd; display: block; }
+  .esope-outils a, .esope-outils button { font-size: .75rem; padding: 0 2px; text-decoration: none; border: 0; background: none; }
+  .legende span { display: inline-block; padding: 1px 8px; border: 1px solid #dee2e6; margin-right: 6px; border-radius: 4px; }
+</style>
+
+<div class="container-fluid mt-3">
+<h2>🛒 Planning ESOPE</h2>
+{% set actif = 'semaine' %}{% include "planning/esope/_nav.html" %}
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+  <a class="btn btn-outline-secondary" href="{{ url_for('esope.semaine', date=precedente) }}">◀ Semaine précédente</a>
+  <form method="GET" class="d-flex gap-1">
+    <input type="date" name="date" value="{{ lundi.isoformat() }}" class="form-control" onchange="this.form.submit()">
+  </form>
+  <a class="btn btn-outline-secondary" href="{{ url_for('esope.semaine', date=suivante) }}">Semaine suivante ▶</a>
+  <h4 class="mb-0 ms-2">{{ titre }}</h4>
+  <div class="ms-auto d-flex gap-2">
+    <a class="btn btn-outline-primary" target="_blank" href="{{ url_for('esope.imprimer', date=lundi.isoformat()) }}">🖨️ Imprimer la semaine</a>
+    <a class="btn btn-outline-primary" target="_blank" href="{{ url_for('esope.imprimer', mois=mois_courant) }}">🖨️ Imprimer le mois</a>
+    {% if peut_sms %}<a class="btn btn-outline-secondary" target="_blank" rel="noopener" href="{{ url_for('sms.envoi_sms_benevoles', fonctions='esope') }}">📱 SMS bénévoles ESOPE</a>{% endif %}
+  </div>
+</div>
+
+<div class="legende small mb-2">
+  <span style="background:#fde2e4">poste non couvert</span>
+  <span style="background:#fff3cd">trop de bénévoles</span>
+  <span style="background:#e9ecef">fermé</span>
+  <span>✔ confirmé</span>
+  <span><s>annulé</s></span>
+  <span class="esope-partiel">(horaires partiels)</span>
+  {% if peut_ecrire %}<span class="text-muted border-0">Cliquez sur un nom pour le modifier, sur ➕ pour ajouter, sur ⚙️ pour changer le créneau du jour.</span>{% endif %}
+</div>
+
+{% set nb_alertes = [] %}
+{% for l in grille.values() %}{% for c in l.values() %}{% for a in c.affectations if a.alerte %}{% set _ = nb_alertes.append(a) %}{% endfor %}{% endfor %}{% endfor %}
+{% for c in evenements %}{% for a in c.affectations if a.alerte %}{% set _ = nb_alertes.append(a) %}{% endfor %}{% endfor %}
+{% if nb_alertes %}
+<div class="alert alert-warning py-2">⚠ {{ nb_alertes|length }} réponse(s) de bénévoles à voir cette semaine (surlignées en jaune).
+  <a href="{{ url_for('esope.envoi', mois=mois_courant) }}">Voir le suivi des réponses</a></div>
+{% endif %}
+
+{% if not grille %}
+<div class="alert alert-info">
+  Aucun créneau pour cette semaine.
+  {% if peut_ecrire %}
+  <form method="POST" action="{{ url_for('esope.generer') }}" class="d-inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="mois" value="{{ mois_courant }}">
+    <button class="btn btn-sm btn-success ms-2" name="action" value="generer">⚙️ Générer le mois à partir du modèle</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+{% macro cellule(c, jour) %}
+  <div class="esope-plage">
+    <span>{{ c.plage }}{% if c.libelle and c.creneau_type_id is not none %} · {{ c.libelle }}{% endif %}</span>
+    <span class="esope-outils text-nowrap">
+      {% set mails = c.affectations | rejectattr('statut', 'equalto', 'annule') | map(attribute='email') | select | join(',') %}
+      {% if mails %}<a href="mailto:?bcc={{ mails }}" target="_blank" rel="noopener" title="Écrire aux bénévoles du créneau (nouvel onglet)">✉️</a>{% endif %}
+      {% if peut_ecrire %}<button type="button" title="Modifier ce créneau (ce jour seulement)" onclick="ouvrirCreneau({{ c.id }})">⚙️</button>{% endif %}
+    </span>
+  </div>
+  {% if c.commentaire %}<div class="small text-muted fst-italic">{{ c.commentaire }}</div>{% endif %}
+  {% for a in c.affectations %}
+    <span class="esope-nom st-{{ a.statut }} {{ 'cliquable' if peut_ecrire }} {{ 'alerte' if a.alerte }}"
+          {% if peut_ecrire %}onclick="ouvrirAffectation({{ a.id }})"{% endif %}
+          title="{{ a.libelle }}{% if a.telephone_portable %} – {{ a.telephone_portable }}{% endif %}{% if a.commentaire %} – {{ a.commentaire }}{% endif %}">
+      {% if a.alerte %}⚠ {% endif %}{{ a.libelle }}{% if a.partiel %} <span class="esope-partiel">({{ a.partiel }})</span>{% endif %}{% if a.commentaire %} 💬{% endif %}
+    </span>
+  {% endfor %}
+  {% if not c.ferme %}
+    {% for i in range(c.places_vides) %}
+      {% if loop.first and peut_ecrire %}
+        <span class="esope-libre"><button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" onclick="ouvrirAjout({{ c.id }})">➕ ajouter</button>{% if c.places_vides > 1 %} <small>({{ c.places_vides }} places)</small>{% endif %}</span>
+      {% elif loop.first %}
+        <span class="esope-libre">— {% if c.places_vides > 1 %}({{ c.places_vides }} places){% endif %}</span>
+      {% endif %}
+    {% endfor %}
+  {% else %}
+    <span class="esope-libre">fermé</span>
+  {% endif %}
+{% endmacro %}
+
+{% if grille %}
+<table class="esope-grille">
+  <colgroup><col class="c-fct"><col class="c-poste"><col class="c-lundi">{% for j in jours[1:] %}<col>{% endfor %}</colgroup>
+  <thead class="table-light">
+    <tr>
+      <th>Fonction</th><th>Poste</th>
+      {% for j in jours %}
+      <th class="{{ 'jour-ferme' if j.fermeture is not none }}">{{ j.nom|capitalize }} {{ j.date.day }}/{{ '%02d' % j.date.month }}
+        {% if j.fermeture is not none %}<div class="small fw-normal">🚫 Fermé{% if j.fermeture %} – {{ j.fermeture }}{% endif %}</div>{% endif %}
+      </th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+  {% for l in lignes %}
+    <tr>
+      {% if l.premiere %}<td class="fct" rowspan="{{ l.nb_postes }}" style="background: {{ l.couleur }}">{{ l.fonction }}</td>{% endif %}
+      <td class="small">{{ l.poste }}</td>
+      {% for j in jours %}
+        {% set c = grille.get(l.cle, {}).get(j.idx) %}
+        {% if c %}
+          <td class="{{ c.couverture }}">{{ cellule(c, j) }}</td>
+        {% else %}
+          <td class="{{ 'jour-ferme' if j.fermeture is not none else 'vide' }}"></td>
+        {% endif %}
+      {% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h5 class="mt-4">🎉 Événements de la semaine</h5>
+{% if evenements %}
+<div class="row g-2">
+  {% for c in evenements %}
+  <div class="col-md-4">
+    <div class="card"><div class="card-body p-2 {{ c.couverture }}" style="font-size:.85rem">
+      <div class="fw-bold">{{ c.libelle }} <span class="fw-normal text-muted">– {{ c.date_txt }}{% if c.lieu %}, {{ c.lieu }}{% endif %}</span></div>
+      {{ cellule(c, none) }}
+    </div></div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="text-muted small">Aucun événement cette semaine. {% if peut_ecrire %}<a href="{{ url_for('esope.evenements') }}">Créer un événement</a>{% endif %}</p>
+{% endif %}
+</div>
+
+{% if peut_ecrire %}
+{# ── Fenêtre : ajouter un bénévole ─────────────────────────── #}
+<div class="modal fade" id="modalAjout" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <form method="POST" action="{{ url_for('esope.affectation_ajouter') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="retour" value="{{ request.full_path }}">
+    <input type="hidden" name="creneau_id" id="ajout_creneau">
+    <div class="modal-header"><h5 class="modal-title" id="ajout_titre">Ajouter un bénévole</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <label class="form-label">Bénévole</label>
+      <select name="benevole_id" id="ajout_benevole" class="form-select" required></select>
+      <div class="form-text">En premier : les bénévoles qui ont cette fonction et sont disponibles ce jour-là.</div>
+      <div class="row mt-3">
+        <div class="col"><label class="form-label">Arrive à <small class="text-muted">(si partiel)</small></label><input type="time" name="heure_debut" class="form-control"></div>
+        <div class="col"><label class="form-label">Part à <small class="text-muted">(si partiel)</small></label><input type="time" name="heure_fin" class="form-control"></div>
+      </div>
+      <label class="form-label mt-3">Commentaire</label>
+      <input type="text" name="commentaire" class="form-control" maxlength="200">
+    </div>
+    <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button><button class="btn btn-primary">➕ Ajouter</button></div>
+  </form>
+</div></div></div>
+
+{# ── Fenêtre : modifier une affectation ────────────────────── #}
+<div class="modal fade" id="modalAff" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <form method="POST" id="formAff">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="retour" value="{{ request.full_path }}">
+    <div class="modal-header"><h5 class="modal-title" id="aff_titre"></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <div class="small text-muted mb-2" id="aff_contact"></div>
+      <div class="alert alert-warning py-1 px-2 small" id="aff_reponse" style="display:none"></div>
+      <label class="form-label">Statut</label>
+      <select name="statut" id="aff_statut" class="form-select">
+        {% for k, v in statuts.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+      </select>
+      <div class="row mt-3">
+        <div class="col"><label class="form-label">Arrive à <small class="text-muted">(si partiel)</small></label><input type="time" name="heure_debut" id="aff_debut" class="form-control"></div>
+        <div class="col"><label class="form-label">Part à <small class="text-muted">(si partiel)</small></label><input type="time" name="heure_fin" id="aff_fin" class="form-control"></div>
+      </div>
+      <label class="form-label mt-3">Commentaire</label>
+      <input type="text" name="commentaire" id="aff_commentaire" class="form-control" maxlength="200">
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-danger me-auto" onclick="retirerAffectation()">🗑️ Retirer du créneau</button>
+      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+      <button class="btn btn-primary">💾 Enregistrer</button>
+    </div>
+  </form>
+  <form method="POST" id="formAffSuppr" class="d-none">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="retour" value="{{ request.full_path }}">
+  </form>
+</div></div></div>
+
+{# ── Fenêtre : modifier un créneau (ce jour seulement) ─────── #}
+<div class="modal fade" id="modalCreneau" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <form method="POST" id="formCreneau">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="retour" value="{{ request.full_path }}">
+    <div class="modal-header"><h5 class="modal-title" id="cr_titre"></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <div id="cr_evt" class="mb-3">
+        <label class="form-label">Libellé</label><input type="text" name="libelle" id="cr_libelle" class="form-control mb-2">
+        <div class="row"><div class="col"><label class="form-label">Date</label><input type="date" name="date" id="cr_date" class="form-control"></div>
+        <div class="col"><label class="form-label">Lieu</label><input type="text" name="lieu" id="cr_lieu" class="form-control"></div></div>
+      </div>
+      <div class="row">
+        <div class="col"><label class="form-label">Début</label><input type="time" name="heure_debut" id="cr_debut" class="form-control" required></div>
+        <div class="col"><label class="form-label">Fin</label><input type="time" name="heure_fin" id="cr_fin" class="form-control" required></div>
+      </div>
+      <div class="row mt-3">
+        <div class="col"><label class="form-label">Bénévoles minimum</label><input type="number" min="0" name="nb_min" id="cr_min" class="form-control"></div>
+        <div class="col"><label class="form-label">Bénévoles maximum</label><input type="number" min="1" name="nb_max" id="cr_max" class="form-control"></div>
+      </div>
+      <label class="form-label mt-3">Commentaire</label><input type="text" name="commentaire" id="cr_commentaire" class="form-control" maxlength="200">
+      <div class="form-check mt-3"><input class="form-check-input" type="checkbox" name="ferme" id="cr_ferme" value="1"><label class="form-check-label" for="cr_ferme">Créneau fermé ce jour-là</label></div>
+      <div class="form-text">Ces changements ne valent que pour ce jour. Pour changer les horaires habituels, passez par le Paramétrage.</div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-danger me-auto" onclick="supprimerCreneau()">🗑️ Supprimer le créneau</button>
+      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+      <button class="btn btn-primary">💾 Enregistrer</button>
+    </div>
+  </form>
+  <form method="POST" id="formCreneauSuppr" class="d-none">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="retour" value="{{ request.full_path }}">
+  </form>
+</div></div></div>
+
+{% set tous = [] %}
+{% for l in grille.values() %}{% for c in l.values() %}{% set _ = tous.append(c) %}{% endfor %}{% endfor %}
+{% for c in evenements %}{% set _ = tous.append(c) %}{% endfor %}
+<script>
+const BENEVOLES = {{ benevoles | tojson }};
+const CRENEAUX = {
+{% for c in tous %}
+  {{ c.id }}: {id: {{ c.id }}, fonction_id: {{ c.fonction_id | tojson }}, fonction: {{ (c.fonction or c.libelle or '') | tojson }}, poste: {{ (c.poste or '') | tojson }},
+    date: {{ c.date | tojson }}, jour: {{ c.jour_idx }}, evenement: {{ (c.creneau_type_id is none) | tojson }}, libelle: {{ (c.libelle or '') | tojson }}, lieu: {{ (c.lieu or '') | tojson }},
+    debut: {{ c.heure_debut | tojson }}, fin: {{ c.heure_fin | tojson }}, nb_min: {{ c.nb_min }}, nb_max: {{ c.nb_max }}, ferme: {{ c.ferme | tojson }}, commentaire: {{ (c.commentaire or '') | tojson }},
+    benevoles: {{ c.affectations | rejectattr('statut', 'equalto', 'annule') | map(attribute='benevole_id') | list | tojson }} },
+{% endfor %}
+};
+const AFFECTATIONS = {
+{% for c in tous %}{% for a in c.affectations %}
+  {{ a.id }}: {id: {{ a.id }}, creneau_id: {{ c.id }}, libelle: {{ a.libelle | tojson }}, statut: {{ a.statut | tojson }}, debut: {{ (a.heure_debut or '') | tojson }},
+    fin: {{ (a.heure_fin or '') | tojson }}, commentaire: {{ (a.commentaire or '') | tojson }}, tel: {{ (a.telephone_portable or '') | tojson }}, email: {{ (a.email or '') | tojson }},
+    reponse_le: {{ (a.reponse_le or '') | tojson }}, reponse_commentaire: {{ (a.reponse_commentaire or '') | tojson }}, alerte: {{ (a.alerte or 0) | tojson }} },
+{% endfor %}{% endfor %}
+};
+const JOURS = {{ jours | map(attribute='nom') | list | tojson }};
+const URL_AFF = "{{ url_for('esope.affectation_modifier', aff_id=999999999) }}";
+const URL_AFF_SUPPR = "{{ url_for('esope.affectation_supprimer', aff_id=999999999) }}";
+const URL_CR = "{{ url_for('esope.creneau_modifier', creneau_id=999999999) }}";
+const URL_CR_SUPPR = "{{ url_for('esope.creneau_supprimer', creneau_id=999999999) }}";
+
+function titreCreneau(c) {
+  const d = new Date(c.date + "T12:00:00");
+  const jour = d.toLocaleDateString("fr-FR", {weekday: "long", day: "numeric", month: "long"});
+  return (c.evenement ? c.libelle : c.fonction + (c.poste ? " – " + c.poste : "")) + " · " + jour;
+}
+
+function ouvrirAjout(id) {
+  const c = CRENEAUX[id];
+  document.getElementById("ajout_creneau").value = id;
+  document.getElementById("ajout_titre").textContent = "Ajouter · " + titreCreneau(c);
+  const sel = document.getElementById("ajout_benevole");
+  sel.innerHTML = "";
+  const deja = new Set(c.benevoles);
+  const prio = [], fct = [], autres = [];
+  for (const b of BENEVOLES) {
+    if (deja.has(b.id)) continue;
+    const aFct = c.fonction_id && b.fonctions.includes(c.fonction_id);
+    const dispo = b.jours_idx.includes(c.jour);
+    (aFct && dispo ? prio : (aFct || (c.evenement && dispo)) ? fct : autres).push(b);
+  }
+  const groupe = (label, liste) => {
+    if (!liste.length) return;
+    const og = document.createElement("optgroup"); og.label = label;
+    for (const b of liste) {
+      const o = document.createElement("option"); o.value = b.id;
+      o.textContent = b.libelle + (b.esope_commentaire ? " – " + b.esope_commentaire : "");
+      og.appendChild(o);
+    }
+    sel.appendChild(og);
+  };
+  const vide = document.createElement("option"); vide.value = ""; vide.textContent = "— Choisir —"; sel.appendChild(vide);
+  if (c.evenement) {
+    groupe("Disponibles ce jour-là", fct);
+  } else {
+    groupe("Fonction " + c.fonction + " et disponibles le " + JOURS[c.jour], prio);
+    groupe("Fonction " + c.fonction + " (autre jour)", fct);
+  }
+  groupe("Autres bénévoles ESOPE", autres);
+  new bootstrap.Modal(document.getElementById("modalAjout")).show();
+}
+
+function ouvrirAffectation(id) {
+  const a = AFFECTATIONS[id];
+  document.getElementById("formAff").action = URL_AFF.replace("999999999", id);
+  document.getElementById("formAffSuppr").action = URL_AFF_SUPPR.replace("999999999", id);
+  document.getElementById("aff_titre").textContent = a.libelle + " · " + titreCreneau(CRENEAUX[a.creneau_id]);
+  document.getElementById("aff_contact").textContent = [a.tel, a.email].filter(Boolean).join(" · ");
+  const rep = document.getElementById("aff_reponse");
+  if (a.reponse_le) {
+    rep.style.display = "";
+    rep.textContent = (a.alerte ? "⚠ Nouvelle réponse" : "Réponse") + " du bénévole le " + a.reponse_le.slice(8, 10) + "/" + a.reponse_le.slice(5, 7)
+      + " à " + a.reponse_le.slice(11, 16) + (a.reponse_commentaire ? " : « " + a.reponse_commentaire + " »" : "")
+      + (a.alerte ? " (enregistrer marque la réponse comme vue)" : "");
+  } else { rep.style.display = "none"; }
+  document.getElementById("aff_statut").value = a.statut;
+  document.getElementById("aff_debut").value = a.debut;
+  document.getElementById("aff_fin").value = a.fin;
+  document.getElementById("aff_commentaire").value = a.commentaire;
+  new bootstrap.Modal(document.getElementById("modalAff")).show();
+}
+
+function retirerAffectation() {
+  if (confirm("Retirer ce bénévole du créneau ?\n\n(Pour garder une trace de son absence, choisissez plutôt le statut « Annulé ».)"))
+    document.getElementById("formAffSuppr").submit();
+}
+
+function ouvrirCreneau(id) {
+  const c = CRENEAUX[id];
+  document.getElementById("formCreneau").action = URL_CR.replace("999999999", id);
+  document.getElementById("formCreneauSuppr").action = URL_CR_SUPPR.replace("999999999", id);
+  document.getElementById("cr_titre").textContent = titreCreneau(c);
+  document.getElementById("cr_evt").style.display = c.evenement ? "" : "none";
+  document.getElementById("cr_libelle").value = c.libelle;
+  document.getElementById("cr_date").value = c.date;
+  document.getElementById("cr_lieu").value = c.lieu;
+  document.getElementById("cr_debut").value = c.debut;
+  document.getElementById("cr_fin").value = c.fin;
+  document.getElementById("cr_min").value = c.nb_min;
+  document.getElementById("cr_max").value = c.nb_max;
+  document.getElementById("cr_commentaire").value = c.commentaire;
+  document.getElementById("cr_ferme").checked = !!c.ferme;
+  new bootstrap.Modal(document.getElementById("modalCreneau")).show();
+}
+
+function supprimerCreneau() {
+  if (confirm("Supprimer ce créneau et les bénévoles qui y sont placés ?\n\nUn créneau régulier supprimé est recréé si l'on complète le mois : pour laisser la case vide ce jour-là, cochez plutôt « Créneau fermé »."))
+    document.getElementById("formCreneauSuppr").submit();
+}
+</script>
+{% endif %}
+{% endblock %}

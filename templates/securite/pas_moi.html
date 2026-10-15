@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Sécuriser mon compte{% endblock %}
+
+{% block content %}
+<div class="container mt-5" style="max-width: 560px;">
+  {% if etat == "confirmer" %}
+    <h2 class="mb-3">🔒 Bloquer l'accès à mon compte</h2>
+    <p>Vous avez reçu une alerte de connexion depuis un nouvel appareil et ce n'était pas vous.</p>
+    <p>En cliquant sur le bouton :</p>
+    <ul>
+      <li>toutes les connexions ouvertes sur votre compte seront coupées ;</li>
+      <li>votre mot de passe actuel ne fonctionnera plus ;</li>
+      <li>vous recevrez un email pour choisir un nouveau mot de passe.</li>
+    </ul>
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="d-grid">
+        <button type="submit" class="btn btn-danger btn-lg">🔒 Bloquer l'accès à mon compte</button>
+      </div>
+    </form>
+    <p class="mt-3 text-muted">Si en fait c'était bien vous, fermez simplement cette page.</p>
+
+  {% elif etat == "fait" %}
+    <h2 class="mb-3">✅ Votre compte est protégé</h2>
+    <p>Toutes les connexions ont été coupées et l'ancien mot de passe ne fonctionne plus.</p>
+    <p><strong>Regardez votre boîte mail</strong> : un message vous permet de choisir un nouveau mot de passe (valable 24 heures).</p>
+    <p>L'équipe informatique a été prévenue.</p>
+
+  {% elif etat == "deja_fait" %}
+    <h2 class="mb-3">✅ Déjà fait</h2>
+    <p>Ce lien a déjà été utilisé : votre compte a été sécurisé.</p>
+    <p>Pour choisir un nouveau mot de passe, utilisez « Mot de passe oublié » sur la page de connexion.</p>
+
+  {% else %}
+    <h2 class="mb-3">⚠️ Lien {% if etat == "expire" %}expiré{% else %}invalide{% endif %}</h2>
+    <p>Ce lien n'est plus utilisable.</p>
+  {% endif %}
+
+  <p class="mt-4">Une question ? Écrivez à <a href="mailto:{{ contact }}">{{ contact }}</a>.</p>
+  <div class="mt-3"><a href="{{ url_for('login') }}" class="text-secondary">← Page de connexion</a></div>
+</div>
+{% endblock %}
