@@ -12,6 +12,7 @@
     th { background: #1F4E79; color: #fff; }
     tr.dj { background: #DDEEFF; font-weight: bold; }
     tr.figee td { background: #FFD7D7; }
+    p.parametres { font-size: 8pt; color: #555; margin: 0 0 4px 0; }
     col.c-camion { width: 5%; }
     col.c-nom { width: 11%; }
     col.c-dj { width: 9%; }
@@ -27,6 +28,19 @@
 <body>
 
 <h1>Tournées de collecte {{ org.nom }} — {{ annee }}</h1>
+{% if generation %}
+<p class="parametres">
+    Générée le {{ generation.genere_le|date_fr }} par {{ generation.genere_par }} —
+    {{ generation.nb_tournees }} tournées, {{ generation.nb_magasins }} magasins
+    ({{ generation.nb_nouveaux_magasins }} nouveaux) —
+    camions supp. {{ params.camions_supp }}, max {{ params.max_magasins }} magasins/tournée,
+    {{ params.poids_nouveaux }} kg nouveaux
+    {%- if params.optimiser_anciens %}, opt. anciens{% endif -%}
+    {%- if params.fusionner_legeres %}, fusion légères{% endif -%}
+    {%- if params.corriger_mal_places %}, correction mal placés{% endif -%}
+    {%- if params.camions_exclus %}, exclus : {{ params.camions_exclus|join(', ') }}{% endif %}
+</p>
+{% endif %}
 
 <table>
     <colgroup>

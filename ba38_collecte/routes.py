@@ -1355,6 +1355,7 @@ PRODUCTION_FICHIERS_SORTIE = {
     "equipier":  {"nom": "fiches_jour_vehicule_magasin_equipier_{annee}_GOTW.pdf", "label": "Fiches équipier"},
     "index":     {"nom": "fiches_equipier_jour_vehicule_{annee}_GOTW.pdf", "label": "Index alphabétique équipiers"},
     "consignes": {"nom": "vehicule_consignes.xlsx", "label": "Consignes véhicules (1 ligne/camion)"},
+    "numeros_camions": {"nom": "numeros_camions_{annee}.pdf", "label": "Numéros de camion (étiquettes)"},
     "carte":     {"nom": "carte_tournees_production.html", "label": "Carte interactive des tournées"},
 }
 
@@ -1576,6 +1577,7 @@ def _generer_tournees(campagne, params, mapping_camions=None, avec_type_camion=F
         moteur.generer_pdf_equipier(
             df_t, os.path.join(dossier_resultats, nom_pdf_equipier), annee,
             date_debut=campagne["date_debut"],
+            params={**params, "camions_exclus": camions_exclus} if camions_exclus else params,
         )
 
     return {
@@ -3179,6 +3181,11 @@ DOCUMENTS_AIDE_COLLECTE = {
         "docx": "Manuel_Utilisation_Collecte_BA38.docx",
         "html": "Manuel_Utilisation_Collecte_BA38.html",
         "label": "Manuel d'utilisation détaillé — Module Collecte",
+    },
+    "regles_optimisation": {
+        "docx": "Regles_Fonctionnelles_Optimisation_Simulation_Collecte_BA38.docx",
+        "html": None,
+        "label": "Règles fonctionnelles d'optimisation — Simulation des tournées",
     },
 }
 
@@ -4953,6 +4960,8 @@ def resultats_pdf(generation_id):
 
     html = render_template(
         "collecte/resultats_pdf.html", annee=generation["annee"], lignes=lignes,
+        generation=generation,
+        params=json.loads(generation["parametres"]) if generation["parametres"] else {},
         org=get_organisation(),
     )
 
@@ -5361,6 +5370,7 @@ def production_generer():
         "--output-equipier", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["equipier"]["nom"].format(annee=annee)),
         "--output-index", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["index"]["nom"].format(annee=annee)),
         "--output-vehicule-consignes", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["consignes"]["nom"]),
+        "--output-numeros-camions", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["numeros_camions"]["nom"].format(annee=annee)),
     ]
     if date_jeudi:
         cmd += ["--date-jeudi", date_jeudi]

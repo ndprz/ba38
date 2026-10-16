@@ -3766,7 +3766,26 @@ function openGmaps() {
     return html_path
 
 
-def generer_pdf_equipier(df_t, output_path, annee, date_debut=None):
+def _resume_parametres(params):
+    """Résumé compact (une ligne) des paramètres de simulation utilisés pour
+    générer la tournée — destiné à être imprimé sur les PDF (équipier et
+    'selon filtre') pour qu'on sache, document en main, avec quels réglages
+    il a été produit."""
+    if not params:
+        return ''
+    parts = [
+        f"camions supp. {params.get('camions_supp', '?')}",
+        f"max {params.get('max_magasins', '?')} magasins/tournée",
+        f"{params.get('poids_nouveaux', '?')} kg nouveaux",
+    ]
+    if params.get('optimiser_anciens'): parts.append('opt. anciens')
+    if params.get('fusionner_legeres'): parts.append('fusion légères')
+    if params.get('corriger_mal_places'): parts.append('correction mal placés')
+    if params.get('camions_exclus'): parts.append(f"exclus : {', '.join(params['camions_exclus'])}")
+    return 'Paramètres : ' + ', '.join(parts)
+
+
+def generer_pdf_equipier(df_t, output_path, annee, date_debut=None, params=None):
     """PDF 'façon Fiches équipier' (cf. draw_equipier_page dans
     generer_documents_production.py), adapté à la simulation : une page par
     demi-journée, une ligne par camion (Code | Nom camion | Type camion |
@@ -3778,7 +3797,12 @@ def generer_pdf_equipier(df_t, output_path, annee, date_debut=None):
     ou datetime) — permet d'afficher la vraie date calendaire par demi-
     journée en en-tête, comme sur la fiche équipier de Production (même
     décalage Jeudi/Vendredi/Samedi/Dimanche = +0/+1/+2/+3 jours que
-    _phrase_jours_collecte dans routes.py)."""
+    _phrase_jours_collecte dans routes.py).
+
+    params (optionnel) : dict des paramètres de simulation (camions_supp,
+    max_magasins, poids_nouveaux...), imprimé en pied de page via
+    _resume_parametres — pour qu'on sache avec quels réglages le document a
+    été produit."""
     from reportlab.pdfgen import canvas as rl_canvas
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
@@ -3822,9 +3846,13 @@ def generer_pdf_equipier(df_t, output_path, annee, date_debut=None):
         cv.setFont('Helvetica', 8)
         cv.drawRightString(PW - PMR, PH - PMT, f"Page {page_num}")
 
+    resume_params = _resume_parametres(params)
+
     def _footer(cv):
         cv.setFillColor(GRIS)
         cv.setFont('Helvetica', 7)
+        if resume_params:
+            cv.drawString(PML, PMB - 2 * mm, _fit(cv, resume_params, 'Helvetica', 7, PW - PML - PMR))
         cv.drawString(PML, PMB - 6 * mm, f"Simulation (non définitif) — édité le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
     cv = rl_canvas.Canvas(output_path, pagesize=A4)

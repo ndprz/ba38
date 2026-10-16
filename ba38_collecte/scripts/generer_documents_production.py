@@ -885,6 +885,43 @@ def draw_index_page(cv, dj_label, rows, page_num, page_w, page_h, col_nom=IDX_CO
     return page_num
 
 
+def draw_numeros_camions(cv, camions):
+    """Document « Numéros de camion » : une page par camion (A4 PAYSAGE, pour
+    une impression plus grande), 2 étiquettes identiques côte à côte (modèle
+    fourni par l'utilisateur — numero camions.pdf) — grand code (ex. V001)
+    dans un encadré, nom du camion repris dans un bandeau en bas de
+    l'encadré. Les 2 étiquettes d'une même page sont découpées/collées
+    séparément (ex. une par côté de la fiche camion, ou une pour le camion
+    et une pour le classeur de bord)."""
+    page_w, page_h = landscape(A4)
+    LABEL_W, LABEL_H = 115*mm, 160*mm
+    GUTTER = 25*mm
+    BANDE_H = 14*mm
+    y_top = page_h - 15*mm
+    zone_w = 2*LABEL_W + GUTTER
+    x0 = (page_w - zone_w) / 2
+
+    for code, nom in camions:
+        for i in range(2):
+            x = x0 + i*(LABEL_W + GUTTER)
+            y = y_top - LABEL_H
+            cv.setStrokeColor(C_BLACK)
+            cv.setLineWidth(1.2)
+            cv.rect(x, y, LABEL_W, LABEL_H, fill=0, stroke=1)
+            cv.setLineWidth(0.8)
+            cv.rect(x, y, LABEL_W, BANDE_H, fill=0, stroke=1)
+            cv.setFont('Helvetica-Bold', 12)
+            cv.setFillColor(C_BLACK)
+            nom_aff = fit_text(cv, nom or code, 'Helvetica-Bold', 12, LABEL_W - 4*mm)
+            cv.drawCentredString(x + LABEL_W/2, y + BANDE_H/2 - 4, nom_aff)
+            taille = 220
+            while cv.stringWidth(code, 'Helvetica-Bold', taille) > LABEL_W - 10*mm and taille > 20:
+                taille -= 2
+            cv.setFont('Helvetica-Bold', taille)
+            cv.drawCentredString(x + LABEL_W/2, y + BANDE_H + (LABEL_H - BANDE_H)/2 - taille*0.33, code)
+        cv.showPage()
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # CONSTRUCTION DES TOURNÉES DEPUIS liste-vehicule.xlsx (au lieu du PDF 2025)
 # ══════════════════════════════════════════════════════════════════════════
@@ -2227,6 +2264,10 @@ def main():
                         help="Chemin du classeur consignes véhicules — une ligne par camion, "
                              "condensée depuis liste-vehicule.xlsx (défaut : "
                              "Tournées definitives <année>/vehicule_consignes.xlsx)")
+    parser.add_argument('--output-numeros-camions', default=None,
+                        help="Chemin du PDF des numéros de camion — une page par camion, "
+                             "2 étiquettes identiques (grand code + nom) — défaut : "
+                             "Tournées definitives <année>/numeros_camions_{annee}.pdf")
 
     # Rétro-compatibilité : anciens noms d'arguments des scripts d'origine
     parser.add_argument('--output', default=None, help=argparse.SUPPRESS)
@@ -2274,6 +2315,8 @@ def main():
         args.output_index = os.path.join(out_dir, f'fiches_equipier_jour_vehicule_{args.annee}_{ORIGINE}.pdf')
     if args.output_vehicule_consignes is None:
         args.output_vehicule_consignes = os.path.join(out_dir, 'vehicule_consignes.xlsx')
+    if args.output_numeros_camions is None:
+        args.output_numeros_camions = os.path.join(out_dir, f'numeros_camions_{args.annee}.pdf')
 
     print(f"Vehicules : {args.vehicules}")
     print(f"Ref       : {args.magasins}")
@@ -2352,6 +2395,18 @@ def main():
         lignes_consignes = construire_vehicule_consignes(df_veh, caisses_premier_jour)
         print(f"  → {len(lignes_consignes)} camion(s) distinct(s)")
         args.output_vehicule_consignes = ecrire_vehicule_consignes(lignes_consignes, args.output_vehicule_consignes)
+
+        # ── Numéros de camion : une page par camion réel, 2 étiquettes
+        # identiques (grand code + nom), sur le modèle fourni par l'utilisateur.
+        print(f"\nSortie 6 (numéros de camion) : {args.output_numeros_camions}")
+        camions_tries = sorted(
+            ((code, nom_camion_par_code.get(code, '')) for code in codes_veh),
+            key=lambda kv: camion_sort_key(kv[0]),
+        )
+        print(f"  → {len(camions_tries)} camion(s) distinct(s)")
+        cv6 = rl_canvas.Canvas(args.output_numeros_camions, pagesize=landscape(A4))
+        draw_numeros_camions(cv6, camions_tries)
+        args.output_numeros_camions = sauver_pdf_avec_repli(cv6, args.output_numeros_camions)
 
     # Référentiel magasins (documents 1 uniquement)
     df_ref = pd.read_excel(args.magasins)
