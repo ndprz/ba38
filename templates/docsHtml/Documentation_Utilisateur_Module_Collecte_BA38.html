@@ -221,6 +221,20 @@ référentiel pluriannuel : ceux réellement collectés cette année (avec
 leur adresse mail si disponible) et ceux qui ne le sont plus (« Non
 collecté »), pour garder une trace complète d’une année sur l’autre. Un
 bouton permet de télécharger la liste en Excel.</p>
+<h2 id="pas-de-collecte-le-vendredi">2.6 Pas de collecte le
+vendredi</h2>
+<p>Cette page (sous Gestion magasins) cible les magasins déjà collectés
+cette année et ayant donné leur accord, pour lesquels la collecte ne
+doit plus avoir lieu le vendredi (collecte décalée au samedi). Le
+repérage de ces magasins reste manuel (observation du planning go-on-web
+ou de la colonne Commentaire du référentiel magasins) : aucune donnée du
+fichier ne permet de le déduire automatiquement.</p>
+<p>Une fois un magasin coché puis enregistré, le générateur de tournées
+ne le place plus jamais sur Vendredi Matin ni Vendredi Après-midi,
+quelle que soit la simulation lancée ensuite : s'il s'y retrouve par
+reprise de l'année précédente, il est retiré puis réaffecté
+automatiquement sur une demi-journée autorisée. Aucun mail n'est envoyé
+par cette page.</p>
 <h1 id="gestion-tournées">3. Gestion tournées</h1>
 <h2 id="lancer-une-simulation">3.1 Lancer une simulation</h2>
 <p>Une fois les deux fichiers importés, le bouton « 🚀 Générer les
@@ -300,6 +314,20 @@ par l’algorithme).</p></li>
 <p>L’historique (bouton « 📋 Historique ») liste toutes les versions
 générées pour l’année, avec leurs paramètres, et permet de les
 consulter, télécharger ou supprimer individuellement.</p>
+<p>La simulation « Simulation avec capacité camions » affiche en plus
+une colonne Type camion (12 m3, 20 m3...) à titre indicatif, et une
+dernière étape de l'algorithme échange des tournées entières entre deux
+camions dont la taille réelle ne correspond pas au tonnage transporté
+(ex. un 12 m3 surchargé pendant qu'un 20 m3 roule à vide).</p>
+<p>Le PDF imprimable (bouton « 📄 Télécharger PDF (selon filtres) »)
+reprend désormais, en en-tête, les paramètres exacts utilisés pour cette
+génération (camions supplémentaires, max magasins/tournée, options
+actives...) — pratique pour retrouver, document en main, comment un
+résultat a été obtenu.</p>
+<p>Un bouton « 📄 Télécharger (Word) » (section Simulation) permet de
+télécharger un document de référence détaillant toutes les règles
+appliquées par l'algorithme d'optimisation (secteurs géographiques,
+camions figés/exclusifs, créneaux...).</p>
 <h2 id="analyse-comparative-8-scénarios">3.3 Analyse comparative — 8
 scénarios</h2>
 <p>Le bouton « 🔬 Lancer l’analyse des 8 scénarios » compare, en tâche
@@ -390,6 +418,12 @@ cag1 de tous les magasins de cette tournée)</td>
 <tr class="odd">
 <td>Carte interactive</td>
 <td>Carte des tournées avec itinéraire routier réel</td>
+</tr>
+<tr class="even">
+<td>Numéros de camion (étiquettes)</td>
+<td>Une page par camion (format paysage), 2 étiquettes identiques avec
+le code du camion en grand et son nom — à découper/coller sur le
+camion.</td>
 </tr>
 </tbody>
 </table>

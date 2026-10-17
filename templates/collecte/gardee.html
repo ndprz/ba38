@@ -178,6 +178,25 @@
                         {% endif %}
                     </form>
 
+                    <form method="POST" action="{{ url_for('collecte.gardee_email_override') }}"
+                          class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="annee" value="{{ annee }}">
+                        <input type="hidden" name="nom_association" value="{{ asso.nom }}">
+                        <label class="small text-muted mb-0">Email d'envoi forcé (sinon contact go-on-web ci-dessous) :</label>
+                        <input type="text" name="email" value="{{ asso.email_force }}" placeholder="adresse@exemple.fr ; autre@exemple.fr"
+                               class="form-control form-control-sm" style="max-width:280px;">
+                        <button type="submit" class="btn btn-sm btn-outline-primary">Enregistrer</button>
+                        {% if asso.email_force %}
+                        <button type="submit" name="reset" value="1" class="btn btn-sm btn-outline-secondary">
+                            ↩️ Rétablir go-on-web
+                        </button>
+                        {% endif %}
+                    </form>
+
+                    {% if asso.email_force %}
+                    <p class="small mb-2"><span class="badge bg-primary">Email d'envoi forcé</span> {{ asso.email_force }} — le(s) contact(s) go-on-web ci-dessous ne sont plus utilisés pour l'envoi.</p>
+                    {% endif %}
                     {% if asso.referents %}
                     <ul class="list-unstyled small mb-3">
                         {% for r in asso.referents %}

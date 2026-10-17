@@ -1,7 +1,7 @@
 <h1 class="TOC-Heading" id="table-des-matières">Table des matières</h1>
 <p><strong>Application BA38 — Manuel d’utilisation détaillé du module
 Collecte</strong> Destiné au/à la responsable de la collecte annuelle.
-Version : 10/10/2026.</p>
+Version : 14/10/2026.</p>
 <h1 id="introduction">Introduction</h1>
 <h2 id="objet-de-ce-manuel">Objet de ce manuel</h2>
 <p>Ce manuel décrit, étape par étape, l’utilisation du module « Collecte
@@ -20,8 +20,9 @@ la campagne et récupération automatique des fichiers go-on-web
 (magasins, véhicules, colis, groupes, participants) depuis le drive
 partagé ;</p></li>
 <li><p><strong>📁 Gestion magasins</strong> : demande d’autorisation de
-collecter, localisation sur une carte, référentiel des magasins
-collectés ;</p></li>
+collecter, mail aux magasins passés « Non collecté » faute de bénévoles,
+localisation sur une carte, référentiel des magasins collectés
+;</p></li>
 <li><p><strong>📁 Gestion tournées</strong> : la simulation calcule
 automatiquement des tournées optimisées (répartition des magasins par
 camion et demi-journée) pour tester différents scénarios, sans jamais
@@ -61,6 +62,7 @@ donnée.</p>
 src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId23.png"
 style="width:5.83333in;height:11.54167in"
 alt="Page d’accueil du module Collecte, sections dépliées" /></p>
+<p>Page d’accueil du module Collecte, sections dépliées</p>
 <p>Page d’accueil du module Collecte, sections dépliées</p>
 <p><em>Capture d’écran antérieure à la recherche automatique des
 fichiers Google Drive : la zone « Paramètres des fichiers Google Drive »
@@ -127,13 +129,13 @@ la simulation</h2>
 <p>Un fichier est à importer pour pouvoir lancer une simulation, avec le
 bouton « Importer » ou « Remplacer » de cette même section :</p>
 <ul>
-<li><p><strong>Tournées de la collecte précédente</strong> : le PDF «
+<li><strong>Tournées de la collecte précédente</strong> : le PDF «
 fiches jour-véhicules-magasins » de la collecte précédente, disponible
 dans le dossier camions du drive collecte. Sert de point de départ à
 l’algorithme, qui fait évoluer ces tournées en tenant compte des
 magasins ajoutés ou arrêtés cette année — les camions (codes et noms) en
 sont aussi extraits directement, aucun fichier véhicules séparé n’est
-nécessaire ici.</p></li>
+nécessaire ici.</li>
 </ul>
 <p><strong>À savoir sur la colonne « Créneaux »</strong> du fichier
 magasins : un magasin dont les horaires sont saisis sur une seule ligne
@@ -144,11 +146,16 @@ seule demi-journée dans toute l’application (« Dimanche Matin ») : un
 créneau du dimanche, quelle que soit son heure, y est toujours
 rattaché.</p>
 <h1 id="gestion-magasins">2. Gestion magasins</h1>
-<p>Une page dédiée liste l’ensemble du référentiel pluriannuel de
-magasins : ceux réellement collectés cette année, avec leur adresse mail
-si disponible, et ceux qui ne le sont plus, marqués « Non collecté »
-plutôt que supprimés, pour conserver l’historique d’une année sur
-l’autre. Export Excel disponible.</p>
+<dl>
+<dt>Une page dédiée liste l’ensemble du référentiel pluriannuel de
+magasins</dt>
+<dd>
+<p>ceux réellement collectés cette année, avec leur adresse mail si
+disponible, et ceux qui ne le sont plus, marqués « Non collecté » plutôt
+que supprimés, pour conserver l’historique d’une année sur l’autre.
+Export Excel disponible.</p>
+</dd>
+</dl>
 <h2 id="gestion-des-autorisations">2.1 Gestion des autorisations</h2>
 <p>Le bouton « ✍️ Gérer les envois » ouvre la liste des magasins ayant
 une adresse e-mail renseignée et n’ayant pas encore donné leur accord
@@ -191,15 +198,39 @@ joint) : &lt;&lt;Nom&gt;&gt; et &lt;&lt;Annee&gt;&gt;.</p>
 <p>L’affiche des produits recherchés (2ᵉ page du PDF) se dépose en image
 (PNG, JPG ou GIF) — elle est conservée d’une campagne et d’une session à
 l’autre, à ne redéposer qu’en cas de changement réel du visuel.</p>
-<h2 id="localisation-magasins-et-associations">2.2 Localisation magasins
+<h2 id="pas-de-collecte-faute-de-bénévoles">2.2 Pas de collecte — faute
+de bénévoles</h2>
+<p>Juste après la demande d’autorisation, cette page cible les magasins
+déjà basculés à l’état « Non collecté » dans le référentiel magasins
+(bascule faite hors application, directement dans le fichier) et ayant
+donné leur accord auparavant — cas où la collecte ne peut finalement pas
+avoir lieu cette année faute de bénévoles disponibles pour
+l’organiser.</p>
+<p>Étapes recommandées :</p>
+<p>Ouvrir « 📁 Paramètres » et vérifier/adapter le texte du mail
+(repères &lt;&lt;Nom&gt;&gt; et &lt;&lt;Annee&gt;&gt;).</p>
+<p>Vérifier la liste des magasins proposés et décocher, si besoin, ceux
+à exclure de cet envoi.</p>
+<p>Utiliser « ✉️ Aperçu du mail » pour contrôler le rendu exact pour un
+magasin au choix, sans rien envoyer.</p>
+<p>Cocher la case de confirmation, puis cliquer sur « 📧 Marquer et
+envoyer les mails ».</p>
+<p>Les magasins sans adresse e-mail sont inclus dans la liste mais
+signalés par un bandeau rouge « ⚠️ Aucun email » — ils sont tout de même
+marqués, mais aucun mail ne peut leur être envoyé : il faut les
+recontacter par téléphone. Le message affiché après l’envoi récapitule
+le nombre de magasins marqués, le nombre de mails effectivement envoyés,
+et liste nommément les magasins sans email à recontacter autrement.</p>
+<h2 id="localisation-magasins-et-associations">2.3 Localisation magasins
 et associations</h2>
 <p>Le bouton « 🗺️ Voir la carte » ouvre une carte interactive de tous
 les magasins collectés par la BAI et des associations partenaires
 actives de l’année en cours.</p>
 <p><img
-src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId33.png"
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId35.png"
 style="width:5.83333in;height:3.75in"
 alt="Carte de localisation des magasins et associations" /></p>
+<p>Carte de localisation des magasins et associations</p>
 <p>Carte de localisation des magasins et associations</p>
 <p>Trois catégories de marqueurs, activables séparément avec les cases à
 cocher au-dessus de la carte :</p>
@@ -260,14 +291,32 @@ invalides » en haut de la carte — corriger alors l’adresse (ou, pour une
 association, ajouter une adresse de distribution) directement dans le
 référentiel source, puis revenir sur la carte pour vérifier la
 correction.</p>
+<h2 id="pas-de-collecte-le-vendredi">2.4 Pas de collecte le
+vendredi</h2>
+<p>Cette page (sous Gestion magasins) liste les magasins collectés cette
+année et ayant donné leur accord, pour cocher ceux qui ne doivent plus
+être collectés le vendredi (collecte décalée au samedi). Le repérage des
+magasins concernés reste entièrement manuel : ni la colonne Créneaux
+déclarée par le magasin, ni l'historique des tournées de l'année
+précédente ne reflètent cette décision de façon fiable — seule
+l'observation directe (planning go-on-web, colonne Commentaire du
+référentiel magasins) permet de les identifier.</p>
+<p>Une fois un magasin coché puis enregistré, les trois modes de
+simulation (PDF année précédente, avec capacité camions, depuis
+liste-vehicule) le respectent de la même façon : il n'est plus jamais
+placé sur Vendredi Matin ni Vendredi Après-midi — s'il s'y retrouve par
+reprise de l'année précédente, il est retiré puis réaffecté
+automatiquement sur une demi-journée autorisée. Aucun mail n'est envoyé
+par cette page : c'est un simple marquage interne.</p>
 <h1 id="gestion-tournées">3. Gestion tournées</h1>
 <h2 id="lancer-une-simulation">3.1 Lancer une simulation</h2>
 <p>Une fois les deux fichiers de la section 1.3 importés, le bouton « 🚀
 Générer les tournées » ouvre le formulaire de paramètres :</p>
 <p><img
-src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId39.png"
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId41.png"
 style="width:5.83333in;height:3.75in"
 alt="Formulaire de génération d’une simulation de tournées" /></p>
+<p>Formulaire de génération d’une simulation de tournées</p>
 <p>Formulaire de génération d’une simulation de tournées</p>
 <table>
 <colgroup>
@@ -337,16 +386,19 @@ associé, donc toujours écartées.</p></li>
 <p>Le bouton « 📊 Voir le résultat » (ou l’historique des générations)
 ouvre le détail d’une version :</p>
 <p><img
-src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId43.png"
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId45.png"
 style="width:5.83333in;height:3.80833in"
 alt="Page de résultat d’une génération de tournées" /></p>
+<p>Page de résultat d’une génération de tournées</p>
 <p>Page de résultat d’une génération de tournées</p>
 <p>Cette page offre :</p>
 <ul>
 <li><p>un tableau filtrable/triable, groupé par demi-journée puis
 camion, avec le secteur, les magasins, le tonnage, la distance et la
 durée estimées ;</p></li>
-<li><p>l’export Excel et l’export PDF du tableau ;</p></li>
+<li><p>l’export Excel et l’export PDF du tableau (le PDF inclut
+désormais la colonne Commentaire, identique à l’affichage web)
+;</p></li>
 <li><p>la carte des secteurs et la carte des tournées (itinéraire réel
 calculé) ;</p></li>
 <li><p>la sélection d’une autre version générée pour la même année
@@ -357,6 +409,25 @@ par l’algorithme).</p></li>
 <p>Le bouton « 📋 Historique » (sur la page d’accueil du module) liste
 toutes les versions générées pour l’année, avec leurs paramètres, et
 permet de les consulter, télécharger ou supprimer individuellement.</p>
+<p>La « Simulation avec capacité camions » affiche en plus une colonne
+Type camion (12 m3, 20 m3, 20 m3 hayon...) à titre indicatif, et active
+une dernière étape de l'algorithme qui échange des tournées entières
+(tous leurs magasins, sans découpage) entre deux camions dont la taille
+réelle ne correspond pas au tonnage transporté — ex. un 12 m3 surchargé
+pendant qu'un 20 m3 roule à vide. Seule l'identité du véhicule change,
+jamais la géographie de la tournée ; les camions figés, gelés ou
+exclusifs n'y participent jamais (cf. §10.3).</p>
+<p>Le PDF imprimable (bouton « 📄 Télécharger PDF (selon filtres) »)
+reprend désormais, en en-tête, les paramètres exacts utilisés pour cette
+génération (camions supplémentaires, max magasins/tournée, options
+actives, camions exclus...) — pratique pour retrouver, document en main,
+comment un résultat a été obtenu. Le PDF équipier (simulation) affiche
+le même résumé en pied de chaque page.</p>
+<p>Un bouton « 📄 Télécharger (Word) » (section Simulation) permet de
+télécharger un document de référence détaillant toutes les règles
+appliquées par l'algorithme d'optimisation (secteurs géographiques,
+camions figés/exclusifs/ancrés, créneaux, ordre exact des
+étapes...).</p>
 <h2 id="analyse-comparative-8-scénarios">3.3 Analyse comparative — 8
 scénarios</h2>
 <p>Le bouton « 🔬 Lancer l’analyse des 8 scénarios » compare, en tâche
@@ -377,9 +448,10 @@ documents réels (Production)</h2>
 <p>Le bouton « 🚛 Générer documents » ouvre la page Production,
 indépendante de la simulation.</p>
 <p><img
-src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId48.png"
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId50.png"
 style="width:5.83333in;height:6.83333in"
 alt="Page Production : lancement, documents générés et journal" /></p>
+<p>Page Production : lancement, documents générés et journal</p>
 <p>Page Production : lancement, documents générés et journal</p>
 <p>Contrairement à la simulation, la page Production ne calcule pas de
 tournées : elle <strong>met en forme les documents à partir du planning
@@ -453,6 +525,12 @@ cag1 de tous les magasins de cette tournée)</td>
 <td>Carte interactive</td>
 <td>Carte des tournées avec itinéraire routier réel</td>
 </tr>
+<tr class="even">
+<td>Numéros de camion (étiquettes)</td>
+<td>Une page par camion (format paysage, pour une impression plus
+grande), 2 étiquettes identiques avec le code du camion en grand et son
+nom en bandeau — à découper/coller sur le camion.</td>
+</tr>
 </tbody>
 </table>
 <p>Après chaque génération, le journal affiché en bas de page (visible
@@ -482,13 +560,14 @@ regroupe magasins ET associations gardant leur collecte dans une même
 liste (voir le détail des règles en §10.3).</p>
 <h2 id="envoi-des-mails-aux-chauffeurs-et-équipiers">3.5 Envoi des mails
 aux chauffeurs et équipiers</h2>
-<p>Ouvrir « Envoi mail tournées aux chauffeurs/équipiers ». La page
-récupère les affectations du fichier véhicules/planning et regroupe les
-informations par adresse e-mail.</p>
+<p>Ouvrir « Envoi mail tournées aux chauffeurs/équipiers de la nouvelle
+collecte ». La page récupère les affectations du fichier
+véhicules/planning et regroupe les informations par adresse e-mail.</p>
 <p><img
-src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId52.png"
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId54.png"
 style="width:5.83333in;height:3.75in"
 alt="Page d’envoi des mails aux chauffeurs et équipiers" /></p>
+<p>Page d’envoi des mails aux chauffeurs et équipiers</p>
 <p>Page d’envoi des mails aux chauffeurs et équipiers</p>
 <p>Un encart « Ordre à suivre » rappelle la marche à suivre : texte du
 mail, image et pièces jointes (📁 Paramètres), aperçu, test, puis
@@ -519,14 +598,33 @@ un message personnalisé à chaque chauffeur ou équipier ayant une adresse
 e-mail.</p>
 <p>Les personnes sans adresse e-mail sont signalées en haut de la page
 (encart orange) et ne reçoivent pas de message.</p>
+<h2 id="demande-de-disponibilité-année-précédente">3.6 Demande de
+disponibilité (année précédente)</h2>
+<p>Juste en dessous, « Envoi mail tournées aux chauffeurs/équipiers de
+l’année dernière » sert à recontacter, avant que le planning de l’année
+en cours n’existe, les chauffeurs et équipiers de l’année précédente
+pour leur demander simplement s’ils sont disponibles cette année —
+contrairement à la page précédente (§3.5), il n’y a ici aucune
+affectation par demi-journée à afficher, puisque le planning de la
+nouvelle campagne n’existe pas encore : la page se contente de récupérer
+nom, rôle (chauffeur/équipier), email et téléphone portable depuis le
+fichier véhicules/planning de l’année précédente.</p>
+<p>Le texte du mail est personnalisable avec les repères
+&lt;&lt;nom&gt;&gt; et &lt;&lt;telephone&gt;&gt; (son portable de
+l’année précédente, ou « — » si absent). Mêmes principes que les autres
+envois du module : tableau récapitulatif des destinataires (avec leur
+rôle et téléphone), aperçu du mail pour la personne sélectionnée, test
+sur sa propre adresse, puis envoi à tous les destinataires ayant une
+adresse e-mail.</p>
 <h1 id="associations-gardant">4. Associations gardant</h1>
 <p>La section « 📁 Associations gardant » concerne les associations qui
 assurent elles-mêmes la collecte d’un ou plusieurs magasins au lieu de
 remettre les produits à la BAI.</p>
 <p><img
-src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId57.png"
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId60.png"
 style="width:5.83333in;height:3.75in"
 alt="Liste des associations gardant leur propre collecte" /></p>
+<p>Liste des associations gardant leur propre collecte</p>
 <p>Liste des associations gardant leur propre collecte</p>
 <h2 id="créer-et-contrôler-la-liste">4.1 Créer et contrôler la
 liste</h2>
@@ -647,9 +745,10 @@ n’apparaîtra plus).</p>
 demi-journée. Chaque case est enregistrée automatiquement dès qu’elle
 est quittée, sans bouton à cliquer.</p>
 <p><img
-src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId62.png"
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId68.png"
 style="width:5.83333in;height:3.75in"
 alt="Page de saisie des cagettes, avec poids et filtres" /></p>
+<p>Page de saisie des cagettes, avec poids et filtres</p>
 <p>Page de saisie des cagettes, avec poids et filtres</p>
 <p>Une case reste grisée (« — ») et non modifiable dans deux cas :</p>
 <ul>
@@ -852,9 +951,9 @@ campagne plutôt qu’au dernier moment.</p></li>
 dans tous les tableaux de saisie et d’envoi du module, pour faciliter le
 rapprochement avec les fichiers d’import/export externes.</p>
 <ul>
-<li><p>Utiliser le bouton « ⚠️ Magasins à zéro » et peser les cagettes
+<li>Utiliser le bouton « ⚠️ Magasins à zéro » et peser les cagettes
 avant d’exporter le fichier d’import VIF : la quantité exportée
-n’utilise que le poids réel après pesée, jamais une estimation.</p></li>
+n’utilise que le poids réel après pesée, jamais une estimation.</li>
 </ul>
 <p>Pour le modèle Excel des associations gardant leur collecte,
 privilégier l'éditeur de produits en ligne pour un simple ajout/retrait
@@ -996,10 +1095,15 @@ n'est lui-même calculé qu'à la demande, en dépliant la section «
 Fichiers Google Drive », afin de ne pas ralentir l'ouverture de la page
 — jusqu'à douze recherches Drive sont ainsi évitées par défaut.</p>
 <h3 id="import-de-fichiers">Import de fichiers</h3>
-<p>Quatre types de fichiers peuvent être importés manuellement par
-campagne : liste des magasins, PDF des tournées de la collecte
-précédente, liste des groupes, liste des participants — chacun avec une
-extension attendue stricte.</p>
+<dl>
+<dt>Quatre types de fichiers peuvent être importés manuellement par
+campagne</dt>
+<dd>
+<p>liste des magasins, PDF des tournées de la collecte précédente, liste
+des groupes, liste des participants — chacun avec une extension attendue
+stricte.</p>
+</dd>
+</dl>
 <p>Toute extension ne correspondant pas au type attendu est rejetée,
 avec un message précisant les extensions acceptées ; le fichier n'est
 pas enregistré.</p>
@@ -1089,6 +1193,44 @@ envoi.</p>
 <p>Les aperçus (PDF de la lettre, texte du mail) sont des rendus
 purement locaux affichés dans le navigateur, accessibles sans consommer
 d'envoi Mailjet, y compris en mode test.</p>
+<h3 id="pas-de-collecte-faute-de-bénévoles-1">Pas de collecte, faute de
+bénévoles</h3>
+<p>La population cible est lue dans le même fichier magasins que la
+demande d'autorisation, mais avec un filtre inversé et complémentaire :
+état exactement égal à « Non collecté » <strong>et</strong> colonne «
+Accord » non vide (un magasin jamais sollicité, ou sans accord donné,
+n'apparaît pas ici). Le basculement d'un magasin à l'état « Non collecté
+» se fait toujours dans le référentiel magasins, hors application —
+cette page ne fait que recenser les magasins déjà dans cet état et leur
+envoyer un mail, elle ne modifie jamais l'état lui-même.</p>
+<p>Contrairement à la demande d'autorisation, les magasins sans email
+renseigné ne sont <strong>pas</strong> exclus de la liste : ils sont
+inclus, cochables et marquables comme les autres, mais aucun mail ne
+peut leur être envoyé (signalé par un bandeau et par le récapitulatif de
+fin d'envoi).</p>
+<p>Chaque magasin marqué (hors mode test) est enregistré dans une table
+dédiée (année + Code VIF), avec la date, l'auteur et si un mail a bien
+pu être envoyé — indépendante de la colonne « Accord » et de l'état «
+Non collecté » du référentiel, qui restent gérés manuellement en dehors
+de l'application. Un magasin déjà marqué peut être re-sélectionné et
+re-traité (utile si son email est complété après coup).</p>
+<h3 id="pas-de-collecte-le-vendredi-1">Pas de collecte le vendredi</h3>
+<p>Population éligible : magasins à l'État différent de « Non collecté »
+ET ayant une valeur dans la colonne Accord du référentiel magasins
+(collecte_magasins_sans_vendredi, table clé annee+code_vif). Sélection
+entièrement manuelle par l'utilisateur, faute de signal fiable
+exploitable automatiquement : la colonne Créneaux déclarée par le
+magasin n'exclut pas forcément le vendredi même quand il ne doit plus y
+être collecté, et le PDF de l'année précédente ne reflète pas non plus
+une décision prise en cours de campagne — deux approches testées et
+abandonnées avant de retenir le marquage manuel.</p>
+<p>Côté optimiseur, chaque magasin marqué se voit retirer Vendredi Matin
+et Vendredi Après-midi de ses demi-journées autorisées (fusionné avec
+ses créneaux déclarés éventuels, cf. §10.3 « créneaux horaires »). Une
+passe dédiée, exécutée juste avant l'injection des nouveaux magasins,
+retire activement le magasin de toute tournée du vendredi où il se
+retrouverait par reprise de l'année précédente, et le réinjecte comme un
+magasin manquant sur une demi-journée autorisée.</p>
 <h3 id="localisation-magasins-et-associations-1">Localisation magasins
 et associations</h3>
 <p>La carte affiche les magasins à l'état « Collecté par la BAI » et «
@@ -1257,6 +1399,23 @@ tournée, jamais à l'algorithme d'affectation lui-même.</p>
 calculés par le moteur de tournées (garantit la cohérence carte/tournées
 réelles) ; c'est un outil de visualisation pure, qui ne participe à
 aucune décision d'affectation.</p>
+<h3 id="simulation-taille-réelle-du-camion-type-camion">Simulation —
+taille réelle du camion (Type camion)</h3>
+<p>Actif uniquement en « Simulation avec capacité camions ». Le nombre
+de magasins par tournée (cf. « paramètres réglables ») ne tient pas
+compte du volume réel du camion (12 m3, 20 m3, 20 m3 hayon...) : deux
+tournées de même taille peuvent représenter des tonnages très
+différents. En tout dernier dans l'algorithme, pour chaque demi-journée,
+si un camion de plus petit volume transporte un tonnage supérieur à
+celui d'un camion de plus grand volume, les deux tournées entières sont
+échangées entre les deux camions : le petit récupère la plus légère, le
+grand la plus lourde.</p>
+<p>L'opération se répète jusqu'à ce qu'aucun camion ne transporte plus
+qu'un camion de volume supérieur sur la même demi-journée. Seule
+l'identité du véhicule change à chaque échange, jamais la géographie de
+la tournée ni son secteur. Les camions figés, les tournées gelées et les
+camions exclusifs (cf. « ancrage de magasins spécifiques ») n'y
+participent jamais, ni comme source ni comme destination.</p>
 <h3 id="analyse-comparative-8-scénarios-1">Analyse comparative (8
 scénarios)</h3>
 <p>L'analyse compare exactement 8 scénarios, croisement de 4 valeurs de
@@ -1335,6 +1494,30 @@ personnalisé à chaque destinataire.</p>
 <p>Tous les mails (test et réel) sont envoyés avec un expéditeur fixe
 (ba380.directeur@banquealimentaire.org), jamais l'adresse de
 l'utilisateur connecté.</p>
+<h3
+id="demande-de-disponibilité-chauffeurséquipiers-année-précédente">Demande
+de disponibilité chauffeurs/équipiers (année précédente)</h3>
+<p>Page distincte de l'envoi mail tournées ci-dessus, bien que les deux
+lisent la même colonne « Code » (camion réel) du planning véhicules :
+celle-ci lit systématiquement le fichier de l'année
+<strong>précédente</strong> (année de la page − 1), jamais celui de
+l'année en cours, et ne construit aucun regroupement par
+demi-journée/camion — seules les colonnes Équipier, R/E, Email et
+Portable sont exploitées. Le rôle suit la même règle que l'envoi mail
+tournées (colonne R/E, repli sur le nom si vide) ; la clé de
+dédoublonnage est également l'email si présent, sinon le nom.</p>
+<p>Le numéro de téléphone est lu dans la colonne « Portable » (pas «
+Téléphone » ni « Tel », qui concernent le magasin et non la personne) ;
+si plusieurs lignes existent pour une même personne, le premier numéro
+non vide rencontré est conservé.</p>
+<p>Le texte du mail ne contient aucun repère
+&lt;&lt;affectations&gt;&gt; ni &lt;&lt;image&gt;&gt; : seuls
+&lt;&lt;nom&gt;&gt; et &lt;&lt;telephone&gt;&gt; (remplacé par « — » si
+absent) sont substitués. Le texte est personnalisable par campagne,
+indépendamment du texte de l'envoi mail tournées (colonne dédiée en
+base). Mêmes règles d'envoi que les autres mails du module : expéditeur
+fixe, test vers l'adresse du compte connecté, personnes sans email
+recensées à part sans mail envoyé.</p>
 <h3 id="gestion-des-cagettes-production">Gestion des cagettes
 (Production)</h3>
 <p>Les lignes de la grille correspondent aux couples (magasin,
@@ -1478,10 +1661,15 @@ saisies faites via ce lien sont tracées comme provenant de l'association
 elle-même, distinctes d'une saisie interne.</p>
 <h3 id="suivi-manuel-et-indice-davancement">Suivi manuel et indice
 d'avancement</h3>
-<p>Le suivi comporte deux cases indépendantes par association et par
-année : « Répondu » et « Résultat envoyé ». Ces deux cases sont
-exclusivement cochées à la main par l'équipe collecte ; la vérification
-elle-même se fait hors de l'application.</p>
+<dl>
+<dt>Le suivi comporte deux cases indépendantes par association et par
+année</dt>
+<dd>
+<p>« Répondu » et « Résultat envoyé ». Ces deux cases sont exclusivement
+cochées à la main par l'équipe collecte ; la vérification elle-même se
+fait hors de l'application.</p>
+</dd>
+</dl>
 <p>Un indice automatique d'avancement de la saisie en ligne est calculé
 et affiché à titre d'aide à la décision à côté de ces cases, mais ne
 coche jamais aucune case automatiquement — aucune synchronisation entre

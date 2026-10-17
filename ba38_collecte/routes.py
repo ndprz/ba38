@@ -5566,6 +5566,38 @@ def _ensure_table_code_vif_overrides(conn):
     """)
 
 
+def _ensure_table_email_overrides(conn):
+    """Table des corrections manuelles d'email d'envoi propres à la liste
+    'Associations gardant' — n'affecte jamais la table associations
+    (Partenaires) ni liste_participants.xlsx (go-on-web), seulement ce que
+    cette liste affiche/utilise pour l'envoi. Même principe que
+    _ensure_table_code_vif_overrides (clé = nom normalisé, pas d'année :
+    le bon contact d'une association reste valable d'une campagne à
+    l'autre)."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_gardee_email_overrides (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom_normalise TEXT NOT NULL UNIQUE,
+            nom_association TEXT NOT NULL,
+            email TEXT NOT NULL,
+            defini_par TEXT,
+            defini_le TEXT
+        )
+    """)
+
+
+def _email_overrides():
+    """Dict {nom normalisé: email(s) forcé(s)} — cf.
+    _ensure_table_email_overrides."""
+    with get_db_connection() as conn:
+        _ensure_table_email_overrides(conn)
+        conn.commit()
+        rows = conn.execute(
+            "SELECT nom_normalise, email FROM collecte_gardee_email_overrides"
+        ).fetchall()
+    return {r["nom_normalise"]: r["email"] for r in rows}
+
+
 def _ensure_table_suivi_gardee(conn):
     """Table de suivi manuel des réponses des associations gardant leur
     collecte — deux cases indépendantes (réponse au 1er message, résultat
@@ -6658,9 +6690,11 @@ def gardee():
         associations, sans_association = _construire_associations(df_mag, df_groupes)
         df_participants = _lire_participants(annee)
         index_code_vif = _table_code_vif_associations()
+        email_overrides = _email_overrides()
         for asso in associations:
             asso["referents"] = _referents_association(asso["nom"], df_participants)
             asso["code_vif"], asso["ecart_code_vif"], asso["code_vif_force"] = _code_vif_association(asso["nom"], index_code_vif)
+            asso["email_force"] = email_overrides.get(_cle_recherche_association(asso["nom"]), "")
 
     return render_template(
         "collecte/gardee.html",
@@ -6716,6 +6750,52 @@ def gardee_code_vif_override():
     return redirect(url_for("collecte.gardee", annee=annee))
 
 
+@collecte_bp.route("/collecte/gardee/email_override", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def gardee_email_override():
+    """Force (ou efface) l'email utilisé pour envoyer à une association dans
+    la liste 'Associations gardant' uniquement — par défaut (sans
+    correction), l'email reste celui du contact go-on-web marqué GR (ou de
+    tous les participants du groupe) dans liste_participants.xlsx ; cette
+    correction n'écrit jamais dans ce fichier ni dans la table associations
+    (Partenaires). Plusieurs adresses peuvent être séparées par ';' ou ','."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    nom_association = (request.form.get("nom_association") or "").strip()
+    email = "" if request.form.get("reset") else (request.form.get("email") or "").strip()
+    cle = _cle_recherche_association(nom_association)
+
+    if email and not _emails_magasin(email):
+        flash("❌ Aucune adresse email valide reconnue", "danger")
+        return redirect(url_for("collecte.gardee", annee=annee))
+
+    with get_db_connection() as conn:
+        _ensure_table_email_overrides(conn)
+        if email:
+            conn.execute("""
+                INSERT INTO collecte_gardee_email_overrides
+                    (nom_normalise, nom_association, email, defini_par, defini_le)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(nom_normalise) DO UPDATE SET
+                    email = excluded.email,
+                    nom_association = excluded.nom_association,
+                    defini_par = excluded.defini_par,
+                    defini_le = excluded.defini_le
+            """, (cle, nom_association, email, current_user.email, datetime.now().strftime("%Y-%m-%d %H:%M")))
+            conn.commit()
+            flash(f"✅ Email d'envoi forcé pour « {nom_association} » : {email} (liste Associations gardant uniquement)", "success")
+            write_log(f"✏️ Email gardant forcé : {nom_association!r} -> {email!r} par {current_user.email}")
+        else:
+            conn.execute(
+                "DELETE FROM collecte_gardee_email_overrides WHERE nom_normalise = ?", (cle,)
+            )
+            conn.commit()
+            flash(f"↩️ Email automatique (go-on-web) rétabli pour « {nom_association} »", "success")
+            write_log(f"↩️ Email gardant : correction manuelle effacée pour {nom_association!r} par {current_user.email}")
+
+    return redirect(url_for("collecte.gardee", annee=annee))
+
+
 def _generer_fichier_excel_gardee(annee):
     """Reconstruit le fichier Excel combiné des associations gardant leur
     collecte, ainsi que la fiche Excel/PDF personnalisée de chacune —
@@ -6736,9 +6816,11 @@ def _generer_fichier_excel_gardee(annee):
     associations, sans_association = _construire_associations(df_mag, df_groupes)
     df_participants = _lire_participants(annee)
     index_code_vif = _table_code_vif_associations()
+    email_overrides = _email_overrides()
     for asso in associations:
         asso["referents"] = _referents_association(asso["nom"], df_participants)
         asso["code_vif"], asso["ecart_code_vif"], asso["code_vif_force"] = _code_vif_association(asso["nom"], index_code_vif)
+        asso["email_force"] = email_overrides.get(_cle_recherche_association(asso["nom"]), "")
 
     def _fmt_referents(referents):
         return " ; ".join(
@@ -6760,6 +6842,7 @@ def _generer_fichier_excel_gardee(annee):
         "Référent - Email": a["referents"][0]["email"] if a["referents"] else "",
         "Référent - Téléphone": a["referents"][0]["telephone"] if a["referents"] else "",
         "Autres contacts": _fmt_referents(a["referents"][1:]),
+        "Email d'envoi forcé": a["email_force"],
         "Fiche groupe": a["fiche_groupe"],
     } for a in associations])
 
@@ -8447,9 +8530,14 @@ def _associations_gardee_enrichies(annee):
         df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
     associations, _ = _construire_associations(df_mag, df_groupes)
     index_code_vif = _table_code_vif_associations()
+    email_overrides = _email_overrides()
     for asso in associations:
         asso["referents"] = _referents_association(asso["nom"], df_participants)
-        asso["emails"] = sorted({r["email"] for r in asso["referents"] if "@" in r["email"]})
+        asso["email_force"] = email_overrides.get(_cle_recherche_association(asso["nom"]), "")
+        if asso["email_force"]:
+            asso["emails"] = _emails_magasin(asso["email_force"])
+        else:
+            asso["emails"] = sorted({r["email"] for r in asso["referents"] if "@" in r["email"]})
         asso["code_vif"], asso["ecart_code_vif"], asso["code_vif_force"] = _code_vif_association(asso["nom"], index_code_vif)
     return associations
 

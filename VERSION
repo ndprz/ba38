@@ -1,3 +1,3 @@
-VERSION=1.7.124
-MESSAGE=Collecte : echange taille reelle camion, parametres imprimes sur PDF, page Pas de collecte le vendredi, doc regles fonctionnelles, generation numeros de camion (etiquettes paysage)
-DATE=2026-10-16 10:38
+VERSION=1.7.125
+MESSAGE=Collecte : email d'envoi forcable par association (Associations gardant), independant de go-on-web
+DATE=2026-10-17 10:44

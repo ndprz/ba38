@@ -1,0 +1,568 @@
+<p><strong>Règles fonctionnelles d'optimisation</strong></p>
+<p>Simulation des tournées de collecte — module Collecte</p>
+<p><em>Document de référence — à jour au 16/10/2026</em></p>
+<h1 id="objet-du-document">1. Objet du document</h1>
+<p>Ce document décrit, en langage fonctionnel (sans code), les règles
+appliquées par le générateur de simulation des tournées de collecte
+(module Collecte) pour répartir les magasins entre les camions,
+demi-journée par demi-journée. Il recense : les données de départ et les
+paramètres réglables, les règles géographiques (secteurs), les camions à
+statut particulier (figés, gelés, exclusifs), les magasins à traitement
+particulier (ancrés, sans collecte le vendredi, créneaux déclarés), et
+l'ordre exact des étapes appliquées par l'algorithme.</p>
+<p><em>Ce document reflète l'état du code à la date indiquée ci-dessus.
+Les listes de camions et de magasins concernés (figés, exclusifs,
+ancrés...) évoluent au fil des campagnes : il doit être mis à jour en
+même temps que le code si ces règles changent.</em></p>
+<h1 id="vue-densemble-du-fonctionnement">2. Vue d'ensemble du
+fonctionnement</h1>
+<p>La simulation part d'une répartition de départ (tournées de l'année
+précédente, ou affectations déjà connues de l'année en cours) puis
+applique, dans un ordre fixe, une trentaine d'étapes de correction et
+d'optimisation (retraits de magasins mal placés, rééquilibrages de
+charge, regroupements géographiques, remplissage des tournées trop
+légères, etc.). Chaque étape ne modifie que ce qui est nécessaire et
+respecte les règles déjà posées par les étapes précédentes (secteurs
+compatibles, camions figés, magasins ancrés...). Le résultat final est
+un fichier Excel (onglet « Tournées »), accompagné d'une carte, d'un PDF
+« équipier » et d'un PDF imprimable détaillé.</p>
+<p>Le principe général : chaque camion, sur une demi-journée donnée,
+dessert un petit nombre de magasins (le « plafond ») appartenant à un
+même secteur géographique (ou à deux secteurs compatibles au maximum).
+L'algorithme cherche à respecter ce principe partout, tout en conservant
+autant que possible les habitudes de l'année précédente et en utilisant
+tous les camions réellement disponibles.</p>
+<h1 id="données-de-départ-et-modes-de-génération">3. Données de départ
+et modes de génération</h1>
+<h2 id="fichier-des-magasins">3.1 Fichier des magasins</h2>
+<p>Le fichier « liste des magasins » de l'année est la référence pour
+savoir quels magasins sont actifs cette année. Seuls sont retenus les
+magasins à l'État « Collecté par la BAI », ainsi que les magasins en «
+Collecte gardée » (collecte assurée par une autre association) dont le
+champ Stockage indique un partage avec la BAI (ex. « BAI + Équilibre »)
+— la BAI doit alors quand même y passer un camion pour le stockage. Les
+magasins « Non collecté » et les « Collecte gardée » sans stockage
+partagé sont exclus de la simulation.</p>
+<h2 id="deux-modes-de-départ">3.2 Deux modes de départ</h2>
+<ul>
+<li><p><strong>Mode « PDF année précédente » (historique) —</strong>
+repart des tournées réellement effectuées l'année précédente (extraites
+du PDF des fiches jour/véhicule/magasin). Un magasin actif cette année
+mais absent de ce PDF est considéré comme « nouveau » et se voit
+attribuer un poids forfaitaire (paramètre « poids nouveaux magasins »)
+en l'absence d'historique de tonnage.</p></li>
+<li><p><strong>Mode « depuis liste-véhicule » —</strong> repart du
+fichier liste-véhicule.xlsx de l'année EN COURS, déjà partiellement
+rempli à la main (créneaux et affectations connus). Pour un magasin déjà
+affecté sur certaines demi-journées mais pas toutes, l'algorithme
+complète automatiquement les demi-journées manquantes d'après les
+créneaux qu'il a déclarés. Ce mode tient aussi compte des vrais jours de
+roulement de chaque camion (un camion qui ne roule pas un jour donné
+n'est jamais sollicité ce jour-là).</p></li>
+</ul>
+<h2 id="colonne-type-camion-option">3.3 Colonne « Type camion »
+(option)</h2>
+<p>Quand l'option est activée, chaque camion reçoit une colonne
+indicative « Type camion » (12 m3, 20 m3, 20 m3 hayon...) reprise du
+fichier liste-véhicule.xlsx, et la passe « Échange selon la taille
+réelle du camion » (§10, dernière étape) est activée — voir §9.</p>
+<h1 id="paramètres-réglables-de-la-simulation">4. Paramètres réglables
+de la simulation</h1>
+<p>Chaque génération de simulation se fait avec un jeu de paramètres
+choisis par l'utilisateur :</p>
+<ul>
+<li><p><strong>Camions supplémentaires —</strong> nombre de camions « de
+renfort » à ajouter à la flotte pour cette simulation. S'il existe de
+vrais camions réels non utilisés cette année (ex. nouvellement ajoutés à
+la flotte), ils sont utilisés en priorité à la place de camions fictifs
+; ce paramètre devient alors un plancher minimum, complété par des
+camions fictifs si besoin.</p></li>
+<li><p><strong>Max magasins par tournée —</strong> plafond du nombre de
+magasins qu'une tournée peut contenir, hors dimanche. Le dimanche matin
+bénéficie toujours d'une tolérance de +1 par rapport à ce plafond (une
+seule demi-journée ce jour-là).</p></li>
+<li><p><strong>Poids des nouveaux magasins (kg) —</strong> tonnage
+forfaitaire attribué à un magasin nouvellement intégré à la collecte
+(aucun historique de tonnage disponible).</p></li>
+<li><p><strong>Optimiser les anciens magasins —</strong> si désactivé,
+seuls les nouveaux magasins peuvent être déplacés lors des étapes de
+regroupement géographique et de correction des magasins mal placés ; les
+magasins déjà présents l'année précédente restent sur leur tournée
+d'origine pour ces deux étapes.</p></li>
+<li><p><strong>Fusionner les tournées légères —</strong> si activé, deux
+tournées très légères (2 magasins ou moins chacune) partageant un
+secteur commun sont fusionnées en une seule, si leur total reste sous le
+plafond.</p></li>
+<li><p><strong>Corriger les magasins mal placés —</strong> si activé, un
+magasin situé à plus de 8 km du centre géographique de sa tournée est
+déplacé vers une tournée plus proche du même secteur, si une place y est
+disponible.</p></li>
+<li><p><strong>Camions exclus (essai ponctuel) —</strong> liste de
+camions à retirer entièrement de cette simulation précise (« et si on
+retirait ce camion ? ») ; leur contenu est redistribué ailleurs.
+N'affecte jamais la flotte réelle, seulement cet essai.</p></li>
+</ul>
+<h1 id="règles-de-secteur-géographique">5. Règles de secteur
+géographique</h1>
+<h2 id="principe-général">5.1 Principe général</h2>
+<p>Chaque magasin se voit attribuer un « secteur » géographique, utilisé
+tout au long de l'algorithme pour juger si deux magasins ont vocation à
+être sur la même tournée. Par défaut, le secteur d'un magasin est sa
+ville. Certaines villes voisines sont regroupées en un seul secteur
+nommé (tableau §5.2), et les grandes villes (plus de 6 magasins) sont
+découpées en plusieurs secteurs géographiques (ex. Grenoble, voir
+§5.3).</p>
+<p>Les petites variantes d'écriture d'un même nom de ville (tirets,
+apostrophes, accents — ex. « Le Grand Lemps » / « Le Grand-Lemps ») sont
+automatiquement fusionnées, mais uniquement après confirmation par les
+coordonnées GPS (moins de 5 km d'écart) : un même texte mais des
+adresses trop éloignées n'est pas fusionné (coïncidence de nom).</p>
+<h2 id="secteurs-regroupant-plusieurs-villes">5.2 Secteurs regroupant
+plusieurs villes</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 66%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th><strong>Secteur</strong></th>
+<th><strong>Villes regroupées</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Gresivaudan Sud</td>
+<td>Domène, Le Versoud, Froges</td>
+</tr>
+<tr class="even">
+<td>Gresivaudan Nord</td>
+<td>Biviers, Saint-Ismier, Crolles</td>
+</tr>
+<tr class="odd">
+<td>Voiron</td>
+<td>Voiron, Saint-Jean-de-Moirans</td>
+</tr>
+<tr class="even">
+<td>Rives Moirans Voreppe</td>
+<td>Rives, Renage, Moirans, Voreppe</td>
+</tr>
+<tr class="odd">
+<td>Seyssinet</td>
+<td>Seyssinet-Pariset, Seyssins, Fontaine</td>
+</tr>
+<tr class="even">
+<td>Plateau Nord</td>
+<td>Apprieu, Colombe, Le Grand-Lemps</td>
+</tr>
+<tr class="odd">
+<td>Sud Vercors</td>
+<td>Varces-Allières-et-Risset, Claix</td>
+</tr>
+<tr class="even">
+<td>Vizille</td>
+<td>Vizille (secteur isolé, non regroupé)</td>
+</tr>
+<tr class="odd">
+<td>Vif</td>
+<td>Vif (secteur isolé, non regroupé)</td>
+</tr>
+<tr class="even">
+<td>Chartreuse Est</td>
+<td>La Terrasse, Le Touvet, Tencin</td>
+</tr>
+<tr class="odd">
+<td>Roussillon</td>
+<td>Péage-de-Roussillon, Salaise-sur-Sanne</td>
+</tr>
+<tr class="even">
+<td>Pontcharra</td>
+<td>Chapareillan, Pontcharra</td>
+</tr>
+<tr class="odd">
+<td>Saint Martin Dheres</td>
+<td>Poisat, Saint-Martin-d'Hères, Gières</td>
+</tr>
+<tr class="even">
+<td>Saint Martin D Uriage</td>
+<td>Bresson, Saint-Martin-d'Uriage</td>
+</tr>
+</tbody>
+</table>
+<p><em>Grésivaudan est scindé en deux secteurs de part et d'autre de
+l'Isère (retour utilisateur direct) plutôt que traité comme un seul
+grand secteur.</em></p>
+<h2 id="grenoble-découpage-en-7-secteurs">5.3 Grenoble : découpage en 7
+secteurs</h2>
+<p>Grenoble étant une grande ville (plus de 6 magasins), elle est
+découpée en 7 secteurs géographiques d'après les coordonnées GPS réelles
+des magasins :</p>
+<ul>
+<li><p>Grenoble Nord (Île Verte, Esplanade)</p></li>
+<li><p>Grenoble Sud (Reynoard, Libération, Lidl)</p></li>
+<li><p>Grenoble Ouest (Fusillés, Rhin et Danube, Vallier)</p></li>
+<li><p>Grenoble Est (Albert 1er, Lafayette, Spars)</p></li>
+<li><p>Grenoble Centre Nord (Jaurès, Berriat, Viallet)</p></li>
+<li><p>Grenoble Centre Ouest (Monoprix Lory, U Express, Intermarché
+Vallier)</p></li>
+<li><p>Grenoble Centre Est (Foch, Stalingrad, Aldi, Super U)</p></li>
+</ul>
+<p><em>Les autres grandes villes (hors Grenoble) sont simplement
+découpées en deux (Nord/Sud) selon la latitude moyenne de leurs
+magasins.</em></p>
+<h2 id="compatibilité-des-secteurs-dans-une-même-tournée">5.4
+Compatibilité des secteurs dans une même tournée</h2>
+<p>Une tournée ne peut mélanger des magasins de secteurs différents que
+si :</p>
+<ul>
+<li><p>elle ne compte pas plus de 2 secteurs distincts (plafond partagé
+par toutes les étapes de l'algorithme) ;</p></li>
+<li><p>aucun de ces secteurs n'appartient à la liste des « secteurs
+isolés » (ci-dessous), qui doivent toujours être desservis seuls, sans
+mélange avec un autre secteur ;</p></li>
+<li><p>la paire de secteurs réunie n'est pas une paire explicitement
+interdite (ci-dessous).</p></li>
+<li><p><strong>Secteurs isolés (jamais mélangés, même à un seul autre
+secteur) :</strong> Plateau Nord, Pontcharra, Gresivaudan Nord,
+Gresivaudan Sud, Sud Vercors.</p></li>
+<li><p><strong>Paires de secteurs explicitement interdites :</strong>
+Vizille + Vif (moins de 8 km de distance mais deux bourgs que
+l'utilisateur ne veut jamais voir mélangés sur une même tournée ; chacun
+peut en revanche se combiner avec un autre secteur voisin non
+isolé).</p></li>
+</ul>
+<h1 id="camions-à-statut-particulier">6. Camions à statut
+particulier</h1>
+<h2 id="camions-figés-contenu-jamais-modifié">6.1 Camions figés (contenu
+jamais modifié)</h2>
+<p>Le contenu de ces camions n'est jamais modifié par l'algorithme,
+quelle que soit la demi-journée : V007, V008, V013, V019, V026, V027,
+V028, V037.</p>
+<ul>
+<li><p>V019 est le camion de secours (en cas de panne) : jamais utilisé
+en tournée régulière.</p></li>
+<li><p>V037 n'existe que le jeudi.</p></li>
+</ul>
+<h2
+id="tournées-gelées-ponctuellement-combinaison-camion-demi-journée">6.2
+Tournées gelées ponctuellement (combinaison camion + demi-journée)</h2>
+<p>Certains camions ne sont figés que sur certaines demi-journées
+précises (le reste de leur contenu, sur les autres demi-journées, reste
+optimisable normalement) :</p>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 59%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th><strong>Camion</strong></th>
+<th><strong>Demi-journées gelées</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>V027, V007, V008, V013</td>
+<td>Vendredi et Samedi (matin + après-midi)</td>
+</tr>
+<tr class="even">
+<td>V028</td>
+<td>Vendredi, Samedi et Dimanche</td>
+</tr>
+<tr class="odd">
+<td>V003, V006</td>
+<td>Jeudi uniquement</td>
+</tr>
+<tr class="even">
+<td>V026</td>
+<td>Toutes les demi-journées</td>
+</tr>
+</tbody>
+</table>
+<h2 id="camions-exclusifs-et-magasins-ancrés">6.3 Camions exclusifs et
+magasins ancrés</h2>
+<p>Certains camions sont réservés à une liste précise de magasins : tout
+autre magasin qui s'y retrouverait (par reprise de l'année précédente)
+en est activement retiré, puis réaffecté ailleurs. À l'inverse, les
+magasins listés sont « ancrés » sur leur camion : si l'algorithme les
+déplace ailleurs en cours de traitement, ils sont systématiquement
+recentrés sur leur camion en toute fin de calcul.</p>
+<table>
+<colgroup>
+<col style="width: 18%" />
+<col style="width: 46%" />
+<col style="width: 34%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th><strong>Camion</strong></th>
+<th><strong>Magasin(s) exclusif(s)</strong></th>
+<th><strong>Raison</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>V012</td>
+<td>Carrefour St-Égrève, ALDI St-Égrève</td>
+<td>Camion de l'Association Familiale de Saint-Égrève</td>
+</tr>
+<tr class="even">
+<td>V022</td>
+<td>Intermarché Vizille</td>
+<td>Affectation réelle historique (2024)</td>
+</tr>
+<tr class="odd">
+<td>V036</td>
+<td>Carrefour City Grenoble 31 J. Jaurès, Intermarché Grenoble Berriat,
+Monoprix Grenoble Lafayette</td>
+<td>Souhait de l'association Vivacité</td>
+</tr>
+<tr class="even">
+<td>V023 (RIGODON)</td>
+<td>Lidl Voiron Kofler</td>
+<td>Camion dédié « Rigodon »</td>
+</tr>
+</tbody>
+</table>
+<h1 id="créneaux-déclarés-par-magasin">7. Créneaux déclarés par
+magasin</h1>
+<p>Le fichier des magasins peut comporter, pour chacun, une colonne «
+Créneaux » en texte libre (une ligne par plage horaire, ex. « vendredi
+09h30-11h30 » / « samedi 14h30-17h30 »), renseignée lors de la procédure
+d'autorisation. Quand elle est renseignée, elle restreint les
+demi-journées sur lesquelles ce magasin peut être placé ; absente,
+aucune restriction n'est appliquée.</p>
+<ul>
+<li><p>Règle Matin / Après-midi : une plage commençant avant 13h compte
+pour le Matin, une plage finissant à 13h ou après compte pour
+l'Après-midi (une plage qui couvre toute la journée, ex. 08h15-20h00,
+compte donc pour les deux demi-journées).</p></li>
+<li><p>Le dimanche ne compte qu'une seule demi-journée (« Dimanche Matin
+») : toute plage déclarée ce jour-là s'y rattache, quelle que soit
+l'heure.</p></li>
+<li><p>Si un magasin repris de l'année précédente se retrouve, par
+reprise automatique, sur une demi-journée que ses créneaux interdisent
+désormais, il en est retiré puis réaffecté sur une demi-journée
+autorisée.</p></li>
+</ul>
+<h1 id="magasins-pas-de-collecte-le-vendredi">8. Magasins « pas de
+collecte le vendredi »</h1>
+<p>Une page dédiée (« Gestion magasins » → « Pas de collecte le vendredi
+») permet de marquer, au cas par cas, des magasins collectés cette année
+et ayant donné leur accord comme devant être collectés uniquement à
+partir du samedi. Le repérage de ces magasins est manuel (aucune donnée
+fiable ne permet de le déduire automatiquement du fichier magasins ou de
+l'historique) : l'utilisateur les identifie lui-même, par exemple via la
+visualisation des magasins, puis les coche dans cette page.</p>
+<p>Une fois marqué, un magasin ne peut plus jamais être placé par
+l'algorithme sur Vendredi Matin ou Vendredi Après-midi, quelle que soit
+l'étape : s'il s'y retrouve par reprise de l'année précédente, il en est
+retiré puis réaffecté sur une demi-journée autorisée (même mécanisme que
+les créneaux déclarés, §7).</p>
+<h1 id="taille-réelle-des-camions-type-camion">9. Taille réelle des
+camions (Type camion)</h1>
+<p>Le nombre de magasins par tournée (§4) ne tient pas compte, par
+lui-même, du volume réel du camion (12 m3, 20 m3, 20 m3 hayon...) : deux
+tournées de même taille (nombre de magasins) peuvent représenter des
+tonnages très différents. Une dernière étape, en tout dernier dans
+l'algorithme, corrige ce décalage.</p>
+<p>Pour chaque demi-journée, si un camion de PLUS PETIT volume
+transporte un tonnage supérieur à celui d'un camion de plus grand
+volume, les deux tournées entières (tous leurs magasins, sans découpage)
+sont échangées entre les deux camions : le petit camion récupère la
+tournée la plus légère, le grand camion récupère la plus lourde. Seule
+l'identité du véhicule change ; la géographie de chaque tournée reste
+identique. L'opération se répète jusqu'à ce qu'aucun camion ne
+transporte plus que celui d'un volume supérieur. Les camions figés,
+gelés ou exclusifs (§6) n'y participent jamais.</p>
+<h1 id="déroulement-de-lalgorithme-étapes-ordonnées">10. Déroulement de
+l'algorithme — étapes ordonnées</h1>
+<p>Les étapes s'exécutent toujours dans cet ordre. Chaque étape ne
+modifie que ce qui est nécessaire et respecte les règles posées par les
+étapes précédentes.</p>
+<table>
+<colgroup>
+<col style="width: 5%" />
+<col style="width: 33%" />
+<col style="width: 61%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th><strong>#</strong></th>
+<th><strong>Étape</strong></th>
+<th><strong>Règle / objectif</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>Lecture des magasins actifs</td>
+<td>Filtre État/Stockage (§3.1), calcul des secteurs (§5), fusion des
+variantes de ville.</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>Lecture des tournées de départ</td>
+<td>PDF de l'année précédente, ou liste-véhicule.xlsx de l'année
+(§3.2).</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>Retrait des magasins hors camion exclusif</td>
+<td>Tout magasin non autorisé sur un camion exclusif (§6.3) en est
+retiré, à réaffecter.</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>Retrait des magasins hors créneau autorisé</td>
+<td>Créneaux déclarés (§7) et magasins « pas de collecte le vendredi »
+(§8) : retrait des demi-journées interdites, à réaffecter.</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>Injection des nouveaux magasins</td>
+<td>Strictement par secteur exact ; à défaut de place, création d'une
+tournée sur un camion supplémentaire disponible.</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Complétion des demi-journées manquantes</td>
+<td>Mode « liste-véhicule » uniquement : un magasin partiellement
+affecté est complété sur les demi-journées que ses créneaux
+autorisent.</td>
+</tr>
+<tr class="odd">
+<td>7</td>
+<td>Affectation des camions supplémentaires</td>
+<td>Chaque camion de renfort (§4) reçoit des magasins pris sur les
+tournées les plus chargées d'un même secteur.</td>
+</tr>
+<tr class="even">
+<td>8</td>
+<td>Rééquilibrage des charges</td>
+<td>Par demi-journée, transfert de magasins des tournées les plus
+chargées vers les plus légères.</td>
+</tr>
+<tr class="odd">
+<td>9</td>
+<td>Regroupement géographique</td>
+<td>Échanges de magasins entre tournées d'une même demi-journée pour
+réduire la distance totale parcourue.</td>
+</tr>
+<tr class="even">
+<td>10</td>
+<td>Remplissage des tournées légères</td>
+<td>Une tournée de 2-3 magasins reçoit, si possible, un magasin proche
+du même secteur pris sur une tournée chargée.</td>
+</tr>
+<tr class="odd">
+<td>11</td>
+<td>Réduction des secteurs incompatibles (1er passage)</td>
+<td>Un magasin isolé dans un secteur minoritaire d'une tournée
+incompatible (§5.4) est déplacé vers une tournée de son secteur.</td>
+</tr>
+<tr class="even">
+<td>12</td>
+<td>Correction des magasins mal placés</td>
+<td>Option : un magasin à plus de 8 km du centre de sa tournée est
+déplacé vers une tournée plus proche du même secteur.</td>
+</tr>
+<tr class="odd">
+<td>13</td>
+<td>Fusion des tournées légères</td>
+<td>Option : deux tournées de 2 magasins ou moins partageant un secteur
+commun sont fusionnées.</td>
+</tr>
+<tr class="even">
+<td>14</td>
+<td>Injection des magasins manquants par demi-journée</td>
+<td>Rattrape les magasins présents l'année précédente sur une
+demi-journée mais absents cette année, ou dont les créneaux couvrent
+désormais une demi-journée nouvelle.</td>
+</tr>
+<tr class="odd">
+<td>15</td>
+<td>Déduplication et vérification inter-tournées</td>
+<td>Supprime les doublons dans une même tournée ; si un magasin se
+retrouve dans 2 tournées d'une même demi-journée, il n'est conservé que
+dans la plus fournie.</td>
+</tr>
+<tr class="even">
+<td>16</td>
+<td>Élimination des tournées à 1 magasin (1er passage)</td>
+<td>Jamais de tournée à un seul magasin : fusion dans la tournée
+compatible la plus proche. Un camion réel sans aucun autre contenu
+ailleurs est toutefois préservé avec son unique magasin plutôt que
+laissé inutilisé.</td>
+</tr>
+<tr class="odd">
+<td>17</td>
+<td>Ancrage forcé (VIFS_ANCRES)</td>
+<td>Les magasins ancrés (§6.3) sont recentrés sur leur camion cible,
+sauf si ce camion ne roule pas ce jour-là.</td>
+</tr>
+<tr class="even">
+<td>18</td>
+<td>Regroupement du même secteur exact</td>
+<td>Si un secteur reste éclaté entre plusieurs camions d'une même
+demi-journée, les magasins minoritaires rejoignent le camion qui en a
+déjà le plus (sans dépasser le plafond normal).</td>
+</tr>
+<tr class="odd">
+<td>19</td>
+<td>Allègement des tournées pleines</td>
+<td>Les camions supplémentaires réels encore sous-chargés reçoivent des
+magasins pris sur des tournées pleines d'un secteur compatible.</td>
+</tr>
+<tr class="even">
+<td>20</td>
+<td>Cohérence matin/après-midi (1er passage)</td>
+<td>Un magasin collecté matin et après-midi le même jour est aligné sur
+le même camion si possible.</td>
+</tr>
+<tr class="odd">
+<td>21</td>
+<td>Réduction des secteurs incompatibles (2e passage)</td>
+<td>Repasse la même règle qu'à l'étape 11 : de nouvelles tournées
+mono-secteur ont pu apparaître entretemps.</td>
+</tr>
+<tr class="even">
+<td>22</td>
+<td>Élimination des tournées à 1 magasin (2e passage)</td>
+<td>Repasse la même règle qu'à l'étape 16, pour les cas isolés par les
+étapes 20-21.</td>
+</tr>
+<tr class="odd">
+<td>23</td>
+<td>Renforcement des camions réels sous-chargés</td>
+<td>Un camion réel avec moins de 3 magasins reçoit des magasins pris sur
+un autre camion (même non plein), tant que celui-ci garde au moins 2
+magasins et que les secteurs restent compatibles.</td>
+</tr>
+<tr class="even">
+<td>24</td>
+<td>Cohérence matin/après-midi (2e passage, final)</td>
+<td>Dernière passe : corrige les décalages matin/après-midi qu'aurait pu
+réintroduire le renforcement (étape 23).</td>
+</tr>
+<tr class="odd">
+<td>25</td>
+<td>Échange selon la taille réelle du camion</td>
+<td>Voir §9 : échange de tournées entières entre camions mal assortis en
+volume/tonnage.</td>
+</tr>
+<tr class="even">
+<td>26</td>
+<td>Construction du résultat final</td>
+<td>Calcul des distances, durées estimées et génération des lignes de
+tournées (Excel, carte, PDF).</td>
+</tr>
+</tbody>
+</table>
+<h1 id="note-de-maintenance">11. Note de maintenance</h1>
+<p>Ce document décrit le comportement du générateur de simulation à la
+date indiquée en page de garde. Les listes nominatives (camions figés,
+exclusifs, magasins ancrés, magasins sans collecte le vendredi) évoluent
+au fil des campagnes et doivent être relues/mises à jour à chaque
+changement correspondant dans le code ou dans les pages de gestion
+dédiées.</p>

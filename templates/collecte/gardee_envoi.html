@@ -90,7 +90,10 @@
             <tr>
                 <td>{{ asso.code_vif or '—' }}</td>
                 <td>{{ asso.nom }}</td>
-                <td style="max-width: 220px; white-space: normal; word-break: break-word;">{{ asso.emails|join(', ') or 'Aucune adresse' }}</td>
+                <td style="max-width: 220px; white-space: normal; word-break: break-word;">
+                    {{ asso.emails|join(', ') or 'Aucune adresse' }}
+                    {% if asso.email_force %}<span class="badge bg-primary" title="Email forcé, indépendant de go-on-web">forcé</span>{% endif %}
+                </td>
                 <td>{{ asso.magasins|length }}</td>
                 <td>
                     <input type="checkbox" class="case-suivi" data-champ="repondu" data-association="{{ asso.nom }}"

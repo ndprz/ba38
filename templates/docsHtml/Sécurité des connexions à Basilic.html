@@ -1,0 +1,349 @@
+<h1 id="sécurité-des-connexions-à-basilic-généré-par-ia">Sécurité des
+connexions à Basilic (généré par IA)</h1>
+<p>Oct 15, 2026 · @Nicolas DUPRAZ</p>
+<p><strong>Ce guide sert de support au séminaire informatique du mardi
+20 octobre 2026.</strong> La partie 1 présente les protections mises en
+place et les décisions à prendre. La partie 2 est le mode d'emploi à
+remettre aux utilisateurs. La partie 3 donne les conseils pour choisir
+un bon mot de passe.</p>
+<h1 id="partie-1-ce-que-nous-mettons-en-place">Partie 1 — Ce que nous
+mettons en place</h1>
+<h2 id="pourquoi-renforcer-la-sécurité">Pourquoi renforcer la
+sécurité</h2>
+<p>Basilic contient les coordonnées de nos bénévoles, celles des
+associations partenaires et des données financières. Un compte piraté
+expose ces personnes et engage la responsabilité de l'association au
+titre du RGPD.</p>
+<p>Les attaques qui visent les associations sont presque toujours les
+mêmes :</p>
+<ul>
+<li><p><strong>le faux email</strong> (hameçonnage) qui imite un message
+officiel pour vous faire taper votre mot de passe sur un faux site
+;</p></li>
+<li><p><strong>les essais automatiques</strong> de milliers de mots de
+passe sur la page de connexion, jour et nuit ;</p></li>
+<li><p><strong>la réutilisation</strong> d'un mot de passe volé sur un
+autre site (boutique en ligne, réseau social) où vous aviez mis le
+même.</p></li>
+</ul>
+<p>Dans les trois cas, le mot de passe seul ne suffit plus : celui qui
+le connaît peut entrer, depuis n'importe où. Notre objectif est de
+bloquer ces attaques <strong>sans compliquer la vie des
+bénévoles</strong> : la plupart des protections sont invisibles, et la
+seule nouveauté visible est un code de connexion, demandé au plus une
+fois tous les 6 jours sur un même appareil.</p>
+<h2
+id="déjà-en-place-depuis-le-15-octobre-sans-rien-changer-pour-vous">Déjà
+en place depuis le 15 octobre, sans rien changer pour vous</h2>
+<p>Cinq protections fonctionnent depuis la version 1.7.119 de Basilic.
+Elles ne demandent rien aux utilisateurs tant que tout va bien.</p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Protection</th>
+<th>Ce qu'elle fait</th>
+<th>Ce que l'utilisateur voit</th>
+<th>Comment c'est débloqué</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Verrouillage du compte</td>
+<td>Après 5 erreurs de mot de passe ou de code en 15 minutes, le compte
+est bloqué 15 minutes, d'où que viennent les essais</td>
+<td>Un message « compte bloqué » et un email d'avertissement</td>
+<td>Tout seul après 15 minutes, ou tout de suite par
+l'administrateur</td>
+</tr>
+<tr class="even">
+<td>Filtre des pays</td>
+<td>Connexion refusée depuis l'étranger</td>
+<td>Rien en France ; à l'étranger, un message demandant de contacter le
+support</td>
+<td>L'administrateur autorise le compte jusqu'à une date (vacances)</td>
+</tr>
+<tr class="odd">
+<td>Alerte nouvel appareil</td>
+<td>Un email « Est-ce bien vous ? » à chaque connexion depuis un
+ordinateur ou téléphone inconnu</td>
+<td>L'email, avec un lien « Ce n'est pas moi »</td>
+<td>Rien à faire si c'était vous</td>
+</tr>
+<tr class="even">
+<td>Comptes inactifs</td>
+<td>Un compte inutilisé depuis 5 mois est averti, puis désactivé 30
+jours plus tard sans connexion</td>
+<td>Un email d'avertissement avec la date limite</td>
+<td>L'administrateur réactive le compte sur simple demande</td>
+</tr>
+<tr class="odd">
+<td>Bouton support</td>
+<td>Un formulaire « Problème de connexion ? Écrire au support » sur la
+page de connexion</td>
+<td>Le lien sous « Mot de passe oublié »</td>
+<td>Le support répond par email ou téléphone</td>
+</tr>
+</tbody>
+</table>
+<p>Nous avons aussi corrigé quatre failles techniques : l'adresse
+d'origine d'une connexion pouvait être falsifiée, le blocage après
+plusieurs échecs ne bloquait rien, le code de double authentification
+pouvait être essayé sans limite, et un compte désactivé restait connecté
+jusqu'à 24 heures.</p>
+<h2 id="ce-qui-va-changer-le-code-de-connexion">Ce qui va changer : le
+code de connexion</h2>
+<p>La nouveauté visible est la <strong>double authentification</strong>
+: après le mot de passe, Basilic demande un code à 6 chiffres envoyé par
+SMS ou par email. Un pirate qui a volé le mot de passe ne reçoit pas ce
+code, il reste donc dehors.</p>
+<p>Pour que ce soit supportable au quotidien :</p>
+<ul>
+<li><p>le code n'est demandé <strong>qu'une fois tous les 6
+jours</strong> sur un même ordinateur ou téléphone ;</p></li>
+<li><p>un compte partagé (secrétariat, bénévoles qui se relaient) peut
+avoir <strong>un numéro de portable par personne</strong> : chacun
+choisit le sien dans une liste où les numéros sont masqués ;</p></li>
+<li><p>sans portable enregistré, le code arrive <strong>par
+email</strong> à l'adresse du compte ;</p></li>
+<li><p>ceux qui le souhaitent peuvent utiliser une application
+d'authentification à la place.</p></li>
+</ul>
+<p>C'est l'administrateur qui active le code compte par compte, et qui
+enregistre les numéros de portable. Un utilisateur ne peut pas ajouter
+son numéro lui-même : sinon, un pirate qui aurait le mot de passe
+pourrait ajouter le sien.</p>
+<p><strong>Calendrier proposé</strong></p>
+<ol type="1">
+<li><p>Les 3 administrateurs, dès la semaine du séminaire.</p></li>
+<li><p>Les comptes sensibles : trésorerie, comptabilité, bénévolat,
+données des associations.</p></li>
+<li><p>Tous les autres comptes, par vagues, après distribution de la
+partie 2 de ce guide.</p></li>
+</ol>
+<p><strong>À décider au séminaire</strong></p>
+<ul class="task-list">
+<li><p><label><input type="checkbox" />La liste des comptes sensibles de
+la vague 2</label></p></li>
+<li><p><label><input type="checkbox" />Les dates des vagues 2 et
+3</label></p></li>
+<li><p><label><input type="checkbox" />Qui collecte les numéros de
+portable, et pour quels comptes</label></p></li>
+<li><p><label><input type="checkbox" />Pour chaque compte partagé : qui
+lit sa boîte mail (sinon le code par email n'arrive à
+personne)</label></p></li>
+<li><p><label><input type="checkbox" />La règle des mots de passe : 12
+caractères minimum et refus des mots de passe déjà piratés
+(recommandation de l'ANSSI), ou règles de complexité (majuscule,
+chiffre, symbole)</label></p></li>
+<li><p><label><input type="checkbox" />Qui, en dehors de
+l'administrateur informatique, peut débloquer un compte en son
+absence</label></p></li>
+</ul>
+<h1 id="partie-2-mode-demploi-pour-les-utilisateurs">Partie 2 — Mode
+d'emploi pour les utilisateurs</h1>
+<h2 id="se-connecter-avec-un-code">Se connecter avec un code</h2>
+<p>Vous tapez votre email et votre mot de passe comme d'habitude. Si le
+code est activé pour votre compte, Basilic vous demande ensuite de
+confirmer que c'est bien vous.</p>
+<ol type="1">
+<li><p>L'écran <strong>« Où voulez-vous le recevoir ? »</strong>
+s'affiche. Cliquez sur <strong>votre prénom</strong> (le numéro est en
+partie caché, par exemple 06 •• •• •• 12) pour recevoir le code par SMS,
+ou sur <strong>« Par email »</strong>.</p></li>
+<li><p>Le code à 6 chiffres arrive en quelques secondes. Il est valable
+<strong>10 minutes</strong>.</p></li>
+<li><p>Tapez-le dans la case de l'écran <strong>« Entrez le code reçu
+»</strong>. Sur un téléphone, le clavier propose souvent le code tout
+seul.</p></li>
+<li><p>Laissez cochée la case <strong>« Ne plus me demander de code sur
+cet appareil pendant 6 jours »</strong>, puis cliquez sur
+<strong>Valider</strong>.</p></li>
+</ol>
+<p>Pendant les 6 jours suivants, sur ce même ordinateur ou téléphone et
+avec le même navigateur, le mot de passe suffit.</p>
+<p><strong>Quand décocher la case des 6 jours ?</strong> Sur un
+ordinateur utilisé par d'autres personnes que vous (accueil, poste en
+libre-service) si vous vous connectez avec votre compte personnel. Sur
+le poste habituel d'un compte partagé, laissez-la cochée.</p>
+<p><strong>Pas reçu le code ?</strong> Attendez une minute, puis cliquez
+sur « renvoyer un code ou choisir un autre moyen ». Vous pouvez demander
+3 codes par quart d'heure au maximum. Utilisez toujours le dernier code
+reçu.</p>
+<p><strong>Compte partagé</strong> (secrétariat, bénévoles qui se
+relaient selon les jours) : chaque personne a sa ligne dans la liste,
+avec son prénom. Cliquez sur le vôtre : le code arrive sur votre
+portable. Si votre prénom n'apparaît pas, demandez à l'administrateur
+d'ajouter votre numéro.</p>
+<p><strong>Application d'authentification</strong> (facultatif) : si
+vous utilisez déjà Google Authenticator ou une application semblable,
+cochez « Activer la double authentification » sur l'écran de connexion
+et scannez le QR code proposé. Le code se lit alors dans l'application,
+sans SMS ni email. Le lien « Recevoir un code par SMS ou email » reste
+disponible le jour où le téléphone n'est pas là.</p>
+<h2 id="les-emails-de-sécurité-que-vous-pouvez-recevoir">Les emails de
+sécurité que vous pouvez recevoir</h2>
+<p>Ces emails arrivent de « BA38 Sécurité ». Aucun ne vous demandera
+jamais votre mot de passe ni votre code.</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Objet de l'email</th>
+<th>Pourquoi vous le recevez</th>
+<th>Ce que vous faites</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Votre code de connexion BA38 : 123456</td>
+<td>Vous avez choisi « Par email » à la connexion</td>
+<td>Tapez le code dans Basilic. Si vous n'étiez pas en train de vous
+connecter, votre mot de passe est connu : changez-le</td>
+</tr>
+<tr class="even">
+<td>Nouvelle connexion à votre compte BA38</td>
+<td>Connexion depuis un ordinateur, un téléphone ou un navigateur
+inconnu</td>
+<td>Si c'était vous : rien. Sinon : cliquez sur le lien « Ce n'est pas
+moi », puis sur le bouton rouge</td>
+</tr>
+<tr class="odd">
+<td>Tentatives de connexion sur votre compte</td>
+<td>5 erreurs de mot de passe ou de code : le compte est bloqué 15
+minutes</td>
+<td>Si c'était vous : attendez 15 minutes ou utilisez « Mot de passe
+oublié ». Sinon : rien, le compte s'est protégé seul</td>
+</tr>
+<tr class="even">
+<td>Connexion depuis l'étranger sur votre compte</td>
+<td>Votre mot de passe a été tapé correctement depuis l'étranger</td>
+<td>Si vous voyagez : demandez une autorisation au support. Sinon :
+changez votre mot de passe tout de suite</td>
+</tr>
+<tr class="odd">
+<td>Votre compte BA38 va être désactivé</td>
+<td>Aucune connexion depuis 5 mois</td>
+<td>Connectez-vous une fois avant la date indiquée pour garder le
+compte</td>
+</tr>
+<tr class="even">
+<td>Votre compte BA38 a été désactivé</td>
+<td>Aucune connexion depuis 6 mois</td>
+<td>Si vous en avez besoin, écrivez au support : il sera réactivé</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Ce que fait « Ce n'est pas moi »</strong> : toutes les
+connexions ouvertes sur votre compte sont coupées, l'ancien mot de passe
+ne fonctionne plus, et vous recevez un email pour en choisir un nouveau
+(valable 24 heures). L'équipe informatique est prévenue
+automatiquement.</p>
+<h2 id="en-cas-de-problème">En cas de problème</h2>
+<p><strong>J'ai oublié mon mot de passe.</strong> Cliquez sur « Mot de
+passe oublié ? » sur la page de connexion. Vous recevez un email pour en
+choisir un nouveau. Pas besoin d'attendre le support.</p>
+<p><strong>Mon compte est bloqué.</strong> Attendez 15 minutes : il se
+débloque tout seul. Si vous n'êtes plus sûr de votre mot de passe,
+utilisez « Mot de passe oublié » plutôt que de réessayer.</p>
+<p><strong>Je pars à l'étranger et je dois me connecter.</strong>
+Prévenez le support <strong>avant le départ</strong>, avec vos dates.
+L'administrateur autorise votre compte jusqu'à la date de retour. Avec
+un forfait mobile français utilisé en Europe, la connexion depuis votre
+téléphone passe en général sans autorisation ; c'est le wifi d'un hôtel
+ou d'un café à l'étranger qui sera bloqué.</p>
+<p><strong>Je ne reçois pas le code.</strong> Vérifiez vos courriers
+indésirables (spam) pour l'email. Pour le SMS, attendez une minute, puis
+redemandez un code ou choisissez « Par email ». Si votre numéro a
+changé, prévenez le support.</p>
+<p><strong>J'ai changé de téléphone ou d'ordinateur.</strong> Rien à
+faire : vous recevrez l'email « Nouvelle connexion » et le code sera
+redemandé une fois sur le nouvel appareil.</p>
+<p><strong>Pour tout le reste</strong> : sur la page de connexion,
+cliquez sur <strong>« Problème de connexion ? Écrire au support
+»</strong>. Indiquez votre nom, un email ou un téléphone pour vous
+répondre, et ce qui se passe. N'écrivez jamais votre mot de passe dans
+ce message. Vous pouvez aussi écrire directement à
+ba380.informatique2@banquealimentaire.org.</p>
+<h1 id="partie-3-bien-choisir-son-mot-de-passe">Partie 3 — Bien choisir
+son mot de passe</h1>
+<h2 id="la-phrase-de-passe-longue-facile-à-retenir-et-à-taper">La phrase
+de passe : longue, facile à retenir et à taper</h2>
+<p>Un bon mot de passe est <strong>long</strong>, pas compliqué. Quatre
+ou cinq mots ordinaires mis bout à bout résistent mieux aux attaques que
+« Banque2026! », et ils se retiennent sans post-it.</p>
+<p><strong>La méthode en 3 étapes</strong></p>
+<ol type="1">
+<li><p>Pensez à une image qui ne parle qu'à vous : un souvenir, un lieu,
+une scène un peu absurde.</p></li>
+<li><p>Décrivez-la en 4 ou 5 mots, séparés par des espaces.</p></li>
+<li><p>Vérifiez qu'elle fait au moins 16 caractères, espaces
+compris.</p></li>
+</ol>
+<p><strong>Exemples pour comprendre la méthode</strong> (ne les utilisez
+pas, ils sont publiés ici) :</p>
+<ul>
+<li><p>le chat roux dort sous le tilleul</p></li>
+<li><p>velo bleu dans la cave de mamie</p></li>
+<li><p>trois poireaux pour la soupe du jeudi</p></li>
+</ul>
+<p><strong>Pour qu'elle soit facile à taper</strong>, sur un ordinateur
+comme sur un téléphone :</p>
+<ul>
+<li><p>tout en <strong>minuscules</strong>, pour ne pas jongler avec la
+touche majuscule ;</p></li>
+<li><p><strong>sans accents</strong> ni caractères spéciaux, qui se
+cachent sur le clavier d'un téléphone ou d'un ordinateur étranger
+;</p></li>
+<li><p>avec des <strong>espaces</strong> entre les mots : Basilic les
+accepte, et la phrase se relit comme une vraie phrase.</p></li>
+</ul>
+<p><strong>À éviter</strong> : votre nom, celui de vos proches ou de
+votre animal, une date de naissance, une citation ou un titre de chanson
+connus, une suite de clavier (azerty, 123456), et le même mot de passe
+que pour votre messagerie ou un autre site.</p>
+<p>Basilic accepte aujourd'hui un mot de passe de 6 caractères. La règle
+retenue au séminaire (par exemple 12 caractères minimum) s'appliquera au
+prochain changement de mot de passe.</p>
+<h2 id="laisser-le-navigateur-retenir-le-mot-de-passe">Laisser le
+navigateur retenir le mot de passe</h2>
+<p>Le plus simple est de laisser <strong>le navigateur</strong>
+mémoriser le mot de passe : il le remplit tout seul à chaque
+connexion.</p>
+<ul>
+<li><p><strong>Chrome</strong> (ordinateur et Android) et
+<strong>Edge</strong> proposent d'enregistrer le mot de passe après la
+première connexion : cliquez sur « Enregistrer ».</p></li>
+<li><p><strong>iPhone, iPad et Mac</strong> : Safari l'enregistre dans
+le trousseau iCloud.</p></li>
+<li><p><strong>Firefox</strong> fait de même.</p></li>
+<li><p>Pour ceux qui utilisent plusieurs appareils différents,
+<strong>Bitwarden</strong> (gratuit) les garde tous au même
+endroit.</p></li>
+</ul>
+<p><strong>Jamais sur un ordinateur partagé</strong> (accueil, entrepôt,
+poste en libre-service) : la personne suivante pourrait se connecter
+avec votre compte. Et votre ordinateur ou téléphone doit lui-même être
+protégé par un code de verrouillage.</p>
+<h2 id="les-règles-dor">Les règles d'or</h2>
+<ul>
+<li><p><strong>Ne donnez jamais</strong> votre mot de passe ni un code
+reçu par SMS ou email, à personne. L'équipe informatique ne vous les
+demandera jamais, ni par email ni par téléphone.</p></li>
+<li><p><strong>Vérifiez l'adresse</strong> avant de taper votre mot de
+passe : la vraie page de connexion est sur <strong>ba380.org</strong>.
+Un email qui vous presse (« votre compte sera supprimé ») avec un lien
+vers une autre adresse est un piège.</p></li>
+<li><p><strong>Un doute ?</strong> Changez votre mot de passe avec « Mot
+de passe oublié » et prévenez le support. Ce n'est jamais une
+gêne.</p></li>
+</ul>

@@ -1,0 +1,236 @@
+<p><strong>Sécuriser la saisie des pesées palox</strong></p>
+<p><em>en cas de panne réseau ou de dysfonctionnement de
+Basilic</em></p>
+<p>Document de travail — Banque Alimentaire de l'Isère — 10 octobre
+2026</p>
+<h1 id="contexte-et-besoin">1. Contexte et besoin</h1>
+<p>La pesée des palox à l'entrepôt (page « Pesée » de Collecte, une page
+par catégorie de produit) imprime une étiquette à chaque pesée et
+enregistre le poids dans Basilic. Les denrées continuent d'arriver
+pendant toute la journée : la pesée et le rangement ne peuvent pas
+s'arrêter, quoi qu'il arrive côté informatique.</p>
+<p>Deux types de panne ont déjà été vécus réellement sur ce poste :</p>
+<ul>
+<li><p>une coupure réseau : le poste ne peut plus joindre le serveur
+Basilic, qui fonctionne pourtant normalement ;</p></li>
+<li><p>une panne de Basilic lui-même (serveur en défaut) : même en bon
+réseau, aucune page ne répond.</p></li>
+</ul>
+<p>Il y a une vingtaine de catégories de produits pesés, et les palox
+qui s'enchaînent ne sont pas forcément de la même catégorie —
+l'opérateur peut avoir à changer de page (donc de catégorie) à tout
+moment, y compris pendant une panne.</p>
+<h1 id="ce-qui-se-passe-aujourdhui-en-cas-de-panne">2. Ce qui se passe
+aujourd'hui en cas de panne</h1>
+<p>Comportement actuel de la page de pesée :</p>
+<ul>
+<li><p>le poids et le numéro de palox sont saisis, puis envoyés à
+Basilic ;</p></li>
+<li><p>l'étiquette ne s'imprime qu'après la réponse du serveur
+confirmant l'enregistrement — si le serveur ne répond pas, rien ne
+s'imprime ;</p></li>
+<li><p>en cas d'échec (réseau ou serveur), un message d'erreur simple
+s'affiche (« Erreur réseau ») ; rien n'est retenté automatiquement, rien
+n'est mémorisé ;</p></li>
+<li><p>après une pesée réussie, la page redirige automatiquement vers la
+liste des catégories — donc à chaque pesée, il faut une page qui répond
+pour revenir peser le palox suivant.</p></li>
+</ul>
+<p><strong>Résultat : une panne, même brève, interrompt immédiatement la
+possibilité de peser et d'imprimer — alors que le travail physique
+(réception, pesée, rangement) ne peut pas attendre.</strong></p>
+<h1 id="contraintes-à-respecter-dans-la-solution">3. Contraintes à
+respecter dans la solution</h1>
+<ul>
+<li><p>l'étiquette doit pouvoir s'imprimer immédiatement, même sans
+réponse de Basilic ;</p></li>
+<li><p>l'opérateur doit pouvoir changer de catégorie et enchaîner les
+pesées sans qu'une page réponde à chaque fois ;</p></li>
+<li><p>aucune pesée effectuée pendant la panne ne doit être perdue —
+elle doit être enregistrée dans Basilic dès que possible, sans ressaisie
+manuelle ;</p></li>
+<li><p>la solution doit résister à un plantage/redémarrage du poste
+pendant la panne (le poste n'est pas en mode kiosque, donc son disque et
+son navigateur sont conservés après redémarrage) ;</p></li>
+<li><p>en tout dernier recours, l'étiquette imprimée (poids, numéro,
+date/heure) reste une preuve matérielle de la pesée, comme avec l'ancien
+classeur papier — une ressaisie manuelle depuis les étiquettes resterait
+toujours possible si tout le reste échouait.</p></li>
+</ul>
+<h1 id="solutions-envisagées">4. Solutions envisagées</h1>
+<h2 id="simple-réessai-automatique-mémoire-du-navigateur">4.1 Simple
+réessai automatique + mémoire du navigateur</h2>
+<p>Idée de départ : imprimer tout de suite, garder les pesées non
+confirmées dans la mémoire du navigateur (« localStorage »), et les
+renvoyer automatiquement en arrière-plan dès que Basilic répond à
+nouveau.</p>
+<p><em>Limite découverte en discussion :</em></p>
+<ul>
+<li><p>cette mémoire ne survit que tant que l'onglet reste ouvert sur
+une page déjà chargée — si l'opérateur doit changer de catégorie (donc
+changer de page) pendant la panne, le navigateur ne peut tout simplement
+pas afficher la nouvelle page tant que le serveur ne répond pas, quelle
+que soit la mémoire déjà stockée.</p></li>
+</ul>
+<p>Ne répond donc pas, à elle seule, au cas général (catégories
+différentes qui s'enchaînent).</p>
+<h2 id="rester-sur-une-seule-page-catégories-préchargées">4.2 Rester sur
+une seule page, catégories préchargées</h2>
+<p>Variante : charger une seule fois toutes les catégories (seuils de
+poids, gabarit d'étiquette) dans la page, et permettre de changer de
+catégorie directement dans le navigateur, sans recharger de page depuis
+le serveur.</p>
+<p><em>Limite :</em></p>
+<ul>
+<li><p>ça fonctionne tant que l'onglet reste ouvert depuis avant la
+panne ;</p></li>
+<li><p>mais si la page est rechargée ou le navigateur relancé pendant la
+panne (fermeture accidentelle, redémarrage du poste), le navigateur ne
+peut de nouveau rien afficher tant que le serveur ne répond pas — on
+retombe sur la même limite que 4.1.</p></li>
+</ul>
+<h2
+id="mode-hors-ligne-du-navigateur-pwa-service-worker-recommandée">4.3
+Mode hors-ligne du navigateur (PWA / « service worker ») —
+recommandée</h2>
+<p>Un « service worker » est un petit programme que le navigateur
+installe une fois (au premier chargement normal de la page) et qui reste
+capable d'intercepter toutes les demandes de page ou de données, même
+quand le serveur ne répond pas.</p>
+<p>Principe :</p>
+<ul>
+<li><p>tant que Basilic répond normalement, rien ne change pour
+l'opérateur ;</p></li>
+<li><p>si une demande échoue (réseau coupé OU Basilic en panne — le
+navigateur ne fait pas la différence, les deux se traduisent par un
+échec de la même façon), le service worker sert une version déjà
+enregistrée de la page et des données des 20 catégories, au lieu d'un
+message d'erreur ;</p></li>
+<li><p>l'opérateur peut alors changer de catégorie, saisir un poids,
+imprimer l'étiquette immédiatement — tout cela reste disponible
+hors-ligne ;</p></li>
+<li><p>chaque pesée est mise de côté (toujours dans le navigateur, mais
+gérée par le service worker) et renvoyée automatiquement à Basilic dès
+que la connexion ou le serveur redevient disponible, sans action de
+l'opérateur ;</p></li>
+<li><p>ce mécanisme survit à un redémarrage du poste (le service worker
+et les données mises de côté sont stockés sur le disque, pas seulement
+en mémoire), tant que le poste n'est pas en mode kiosque — ce qui est le
+cas ici.</p></li>
+</ul>
+<p><strong>Avantages :</strong></p>
+<ul>
+<li><p>couvre les deux pannes déjà vécues (réseau et Basilic) avec le
+même mécanisme ;</p></li>
+<li><p>aucune installation ni poste séparé à maintenir — c'est toujours
+la même application Basilic ;</p></li>
+<li><p>technique standard et largement éprouvée (« Progressive Web App
+»), bien supportée par les navigateurs actuels.</p></li>
+</ul>
+<p><strong>Points de vigilance :</strong></p>
+<ul>
+<li><p>terrain nouveau pour cette application (jamais mis en œuvre ici
+auparavant) — demande un peu plus de soin à la mise en place et aux
+tests ;</p></li>
+<li><p>il faut bien définir ce qui est mis de côté pour la
+synchronisation différée (gestion des conflits si, par exemple, un même
+numéro de palox venait à être utilisé deux fois pendant la panne sur
+deux postes).</p></li>
+</ul>
+<h2 id="installation-locale-autonome-sur-le-poste-de-lentrepôt">4.4
+Installation locale autonome sur le poste de l'entrepôt</h2>
+<p>Autre piste : faire tourner une petite version de l'outil de pesée
+directement sur le poste de l'entrepôt, avec sa propre petite base de
+données locale, sans aucune dépendance au réseau pour fonctionner — puis
+resynchroniser vers Basilic dès que possible.</p>
+<p><strong>Avantages :</strong></p>
+<ul>
+<li><p>robustesse maximale sur le papier : fonctionne même si le serveur
+central est totalement indisponible pendant longtemps, pas seulement le
+temps d'une panne courte.</p></li>
+</ul>
+<p><strong>Inconvénients :</strong></p>
+<ul>
+<li><p>un second système à installer, maintenir et faire évoluer en
+parallèle de Basilic (mises à jour à répercuter aux deux endroits)
+;</p></li>
+<li><p>une logique de synchronisation à construire et à fiabiliser (que
+faire en cas de doublon de numéro de palox entre le local et le central,
+par exemple) ;</p></li>
+<li><p>plus de charge de maintenance dans la durée pour un bénéfice qui,
+au vu des pannes déjà vécues (coupures ponctuelles, pas une
+indisponibilité prolongée du serveur central), ne semble pas nécessaire
+par rapport à la solution 4.3.</p></li>
+</ul>
+<h1 id="comparatif-synthétique">5. Comparatif synthétique</h1>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th><strong>Solution</strong></th>
+<th><strong>Coupure réseau</strong></th>
+<th><strong>Panne Basilic</strong></th>
+<th><strong>Survit à un redémarrage</strong></th>
+<th><strong>Nouveau système à maintenir</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>4.1 Réessai + mémoire navigateur</td>
+<td>Partiellement (même page seulement)</td>
+<td>Partiellement (même page seulement)</td>
+<td>Non</td>
+<td>Non</td>
+</tr>
+<tr class="even">
+<td>4.2 Catégories préchargées, même page</td>
+<td>Partiellement (tant que l'onglet reste ouvert)</td>
+<td>Partiellement (tant que l'onglet reste ouvert)</td>
+<td>Non</td>
+<td>Non</td>
+</tr>
+<tr class="odd">
+<td>4.3 Mode hors-ligne (PWA) — recommandée</td>
+<td>Oui</td>
+<td>Oui</td>
+<td>Oui</td>
+<td>Non</td>
+</tr>
+<tr class="even">
+<td>4.4 Installation locale autonome</td>
+<td>Oui</td>
+<td>Oui (même panne longue)</td>
+<td>Oui</td>
+<td>Oui — à maintenir et synchroniser</td>
+</tr>
+</tbody>
+</table>
+<h1 id="recommandation">6. Recommandation</h1>
+<p>Le mode hors-ligne du navigateur (4.3) répond aux deux pannes
+réellement vécues, sans ajouter de système séparé à maintenir dans la
+durée. L'installation locale autonome (4.4) n'apporterait un vrai
+bénéfice supplémentaire qu'en cas d'indisponibilité prolongée du serveur
+central (plusieurs heures ou jours) — ce qui n'a pas été le cas
+jusqu'ici.</p>
+<p><strong>Recommandation : solution 4.3 (mode hors-ligne).</strong></p>
+<h1 id="points-à-trancher-avant-de-lancer-le-développement">7. Points à
+trancher avant de lancer le développement</h1>
+<ul>
+<li><p>Confirmer le choix de la solution 4.3, ou demander à creuser
+davantage la 4.4 malgré sa charge de maintenance.</p></li>
+<li><p>Que faire si, pendant une panne, le même numéro de palox est
+saisi deux fois sur le même poste (peu probable si un seul poste pèse à
+la fois, mais à trancher) — proposition : signaler le conflit à la
+synchronisation pour vérification manuelle, sans jamais bloquer la pesée
+suivante sur le moment.</p></li>
+<li><p>Les autres boutons de la page (corriger un poids, supprimer une
+pesée, réinitialiser la numérotation) resteraient indisponibles pendant
+une panne — ils agissent sur des pesées déjà enregistrées, ce n'est pas
+nécessaire pour continuer à peser et imprimer.</p></li>
+</ul>
