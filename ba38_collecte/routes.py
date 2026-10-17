@@ -6747,6 +6747,14 @@ def gardee_code_vif_override():
             flash(f"↩️ Code VIF automatique rétabli pour « {nom_association} »", "success")
             write_log(f"↩️ Code VIF gardant : correction manuelle effacée pour {nom_association!r} par {current_user.email}")
 
+    # Fichier Excel contrôlé déjà généré : le rafraîchir tout de suite pour
+    # qu'un « Télécharger le fichier contrôlé » immédiat après la correction
+    # ne renvoie jamais une version obsolète (sans la correction) — sans
+    # bloquer sur une erreur ici, « Préparer l'envoi » le régénère de toute
+    # façon à chaque ouverture.
+    if os.path.exists(os.path.join(_dossier_annee(annee), f"associations_gardant_{annee}.xlsx")):
+        _generer_fichier_excel_gardee(annee)
+
     return redirect(url_for("collecte.gardee", annee=annee))
 
 
@@ -6792,6 +6800,12 @@ def gardee_email_override():
             conn.commit()
             flash(f"↩️ Email automatique (go-on-web) rétabli pour « {nom_association} »", "success")
             write_log(f"↩️ Email gardant : correction manuelle effacée pour {nom_association!r} par {current_user.email}")
+
+    # Cf. gardee_code_vif_override : rafraîchir tout de suite le fichier
+    # Excel contrôlé déjà généré, pour qu'un téléchargement immédiat après
+    # la correction reflète bien le nouvel email.
+    if os.path.exists(os.path.join(_dossier_annee(annee), f"associations_gardant_{annee}.xlsx")):
+        _generer_fichier_excel_gardee(annee)
 
     return redirect(url_for("collecte.gardee", annee=annee))
 
