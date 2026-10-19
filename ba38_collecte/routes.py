@@ -957,6 +957,7 @@ def mail_trieurs():
                     [personne["email"]],
                     _corps_mail_trieurs_html(personne, mail_texte),
                     sender_override="ba380.directeur@banquealimentaire.org",
+                    cc=[current_user.email],
                     is_html=True,
                 )
             flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
@@ -1133,6 +1134,7 @@ def mail_disponibilite_chauffeurs_equipiers():
                     [personne["email"]],
                     _corps_mail_disponibilite_chauffeurs_html(personne, mail_texte),
                     sender_override="ba380.directeur@banquealimentaire.org",
+                    cc=[current_user.email],
                     is_html=True,
                 )
             flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
@@ -1304,6 +1306,7 @@ def mail_prise_colis():
                     [personne["email"]],
                     _corps_mail_prise_colis_html(personne, mail_texte),
                     sender_override="ba380.directeur@banquealimentaire.org",
+                    cc=[current_user.email],
                     is_html=True,
                 )
             flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
@@ -3463,6 +3466,7 @@ def chauffeurs_equipiers():
                     [personne["email"]],
                     _corps_mail_affectations_html(personne, mail_texte, image_url),
                     sender_override="ba380.directeur@banquealimentaire.org",
+                    cc=[current_user.email],
                     attachment_paths=chemins_pj or None,
                     is_html=True,
                 )
