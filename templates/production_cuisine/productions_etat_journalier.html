@@ -5,7 +5,16 @@
 {% block extra_css %}
 <style>
   @media print {
+    @page { size: A4 landscape; margin: 8mm; }
     header, nav, .no-print { display: none !important; }
+    /* Tableau large : rien de masqué par le défilement horizontal, police
+       réduite pour tenir sur la largeur d'une page paysage */
+    .container, .container-fluid { max-width: none !important; width: 100% !important; padding: 0 !important; }
+    .table-responsive { overflow: visible !important; }
+    table { font-size: 9pt; }
+    .table > :not(caption) > * > * { padding: .15rem .3rem; }
+    tr { break-inside: avoid; }
+    .badge { border: 1px solid #999; }
   }
 </style>
 {% endblock %}
@@ -97,6 +106,7 @@
           <th>Fin</th>
           <th class="text-end">T° cuisson</th>
           <th>DR</th>
+          <th title="Fin de mise en cellule − heure du DR">Refroidissement</th>
           <th class="text-end">T° sortie cellule</th>
           {% for t in tailles %}<th class="text-end">{{ t }}</th>{% endfor %}
           <th>Plat témoin</th>
@@ -118,6 +128,9 @@
           <td class="text-nowrap">{{ horaire(l.fin, p.date_production) }}</td>
           <td class="text-end text-nowrap">{{ temperature(l.t_cuisson) }}</td>
           <td class="text-nowrap">{{ l.dr or "—" }}</td>
+          <td class="text-nowrap{% if l.duree_refroidissement is not none and l.duree_refroidissement >= duree_refroid_max %} text-danger fw-bold{% endif %}">
+            {{ format_duree(l.duree_refroidissement) if l.duree_refroidissement is not none else "—" }}
+          </td>
           <td class="text-end text-nowrap">{{ temperature(l.t_cellule) }}</td>
           {% for t in tailles %}<td class="text-end">{{ l.quantites.get(t) or "—" }}</td>{% endfor %}
           <td class="text-nowrap">

@@ -13,6 +13,7 @@ from ba38_cuisine import production_cuisine_bp
 from ba38_cuisine.utils import (
     _connect, today_paris, now_paris_str, decongelation_en_cours, etape_actuelle_libelle,
     categorie_depuis_famille, motifs_non_conformite, heure_dr,
+    duree_refroidissement, format_duree, DUREE_REFROIDISSEMENT_MAX,
     receptions_en_stock, ajouter_utilisation, parse_poids, suivi_cellule_en_cours,
 )
 from ba38_cuisine.routes_receptions import PERIODES_ETAT, _bornes_periode
@@ -279,6 +280,7 @@ def etat_journalier_productions():
                 "t_cuisson": cuisson["temperature"] if cuisson and not cuisson["non_applicable"] else None,
                 "t_cellule": cellule["temperature"] if cellule and not cellule["non_applicable"] else None,
                 "dr": heure_dr(conn, p["id"]),
+                "duree_refroidissement": duree_refroidissement(conn, p["id"]),
                 "quantites": quantites.get(p["id"], {}),
                 "non_conformites": motifs_non_conformite(conn, p["id"]),
             })
@@ -310,6 +312,8 @@ def etat_journalier_productions():
         groupes=sorted(groupes.items(), key=lambda kv: (kv[0] not in LIBELLES_CATEGORIE.values(), kv[0])),
         totaux=totaux,
         tailles=tailles,
+        format_duree=format_duree,
+        duree_refroid_max=DUREE_REFROIDISSEMENT_MAX,
         nb_productions=len(lignes),
         nb_en_cours=sum(1 for l in lignes if l["p"]["statut"] == "en_cours"),
         nb_non_conformes=sum(1 for l in lignes if l["non_conformites"]),
@@ -525,6 +529,7 @@ def detail_production(production_id):
             conformite_globale = mise_en_cellule["conforme"]
         motifs_nc = motifs_non_conformite(conn, production_id)
         dr = heure_dr(conn, production_id)
+        duree_refroid = duree_refroidissement(conn, production_id)
 
         recettes_referentiel = _recettes_referentiel_json(conn)
 
@@ -648,6 +653,9 @@ def detail_production(production_id):
         conformite_globale=conformite_globale,
         motifs_nc=motifs_nc,
         dr=dr,
+        duree_refroid=duree_refroid,
+        duree_refroid_txt=format_duree(duree_refroid),
+        duree_refroid_max=DUREE_REFROIDISSEMENT_MAX,
         recettes_referentiel=recettes_referentiel,
         stock_barquettes=stock_barquettes,
         retour_url=retour_url,

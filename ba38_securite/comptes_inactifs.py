@@ -9,7 +9,8 @@ Désactivation des comptes inactifs (tâche planifiée quotidienne).
 Une connexion annule l'avertissement (cf. apres_connexion_reussie).
 Une réactivation par un admin remet le compteur à zéro (update_users_batch).
 
-Jamais concernés : admins, comptes test_only, comptes "exempt_inactivite".
+Jamais concernés : admins, comptes test_only, comptes "exempt_inactivite",
+comptes "mode_tablette" (postes partagés en kiosque).
 
 L'environnement (base, mails) est celui de l'arborescence où se trouve le
 script : /srv/ba38/prod/ba38_securite/... → PROD. Le .env est chargé
@@ -57,6 +58,7 @@ def main(dry_run):
           AND COALESCE(role, '') != 'admin'
           AND COALESCE(test_only, 0) = 0
           AND COALESCE(exempt_inactivite, 0) = 0
+          AND COALESCE(mode_tablette, 0) = 0
           AND derniere_connexion IS NOT NULL
     """).fetchall()
 

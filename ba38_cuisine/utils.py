@@ -298,6 +298,51 @@ def suivi_cellule_en_cours(conn, production_id):
     }
 
 
+def duree_refroidissement(conn, production_id):
+    """Durée de refroidissement en minutes = fin de mise en cellule − heure
+    du DR (point_reference_refroidissement). None tant que la mise en
+    cellule n'est pas terminée, si elle est non applicable, ou s'il n'y a
+    pas de DR (aucun relevé ≥ 63°C). Même calcul que l'écart utilisé par
+    calculer_conformite_production (seuil DUREE_REFROIDISSEMENT_MAX)."""
+    lignes = {
+        row["etape_code"]: row
+        for row in conn.execute(
+            """SELECT etape_code, heure_debut, heure_fin, temperature, temperature_debut, non_applicable
+               FROM cuisine_production_etapes
+               WHERE production_id = ?
+               ORDER BY id""",
+            (production_id,),
+        ).fetchall()
+    }
+    cellule = lignes.get("refroidissement_cellule")
+    if not cellule or cellule["heure_fin"] is None or cellule["non_applicable"]:
+        return None
+    reference = point_reference_refroidissement(lignes)
+    if reference is None:
+        return None
+    fmt = "%Y-%m-%d %H:%M:%S"
+    try:
+        delta = datetime.strptime(cellule["heure_fin"], fmt) - datetime.strptime(reference[1], fmt)
+    except ValueError:
+        return None
+    return round(delta.total_seconds() / 60)
+
+
+# Seuil HACCP de la durée de refroidissement (DR → fin de mise en cellule)
+DUREE_REFROIDISSEMENT_MAX = 120
+
+
+def format_duree(minutes):
+    """'45 min', '1 h 05', '2 h' — None → ''."""
+    if minutes is None:
+        return ""
+    signe = "-" if minutes < 0 else ""
+    h, m = divmod(abs(int(minutes)), 60)
+    if not h:
+        return f"{signe}{m} min"
+    return f"{signe}{h} h {m:02d}" if m else f"{signe}{h} h"
+
+
 def calculer_conformite_production(conn, production_id):
     """Calcule la conformité HACCP de la production à partir des relevés de
     température des points "chauds" (fin de cuisson, tranchage à chaud

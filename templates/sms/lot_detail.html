@@ -36,9 +36,17 @@
       {% else %}
         <p class="mb-0">
           <span class="badge bg-success">{{ lot.nb_ok }} envoyé(s)</span>
+          {% if lot.nb_moderation %}<span class="badge bg-warning text-dark">{{ lot.nb_moderation }} en cours de validation</span>{% endif %}
           {% if lot.nb_erreur %}<span class="badge bg-danger">{{ lot.nb_erreur }} erreur(s)</span>{% endif %}
           <span class="text-muted small ms-2">Terminé le {{ lot.date_fin }}</span>
         </p>
+        {% if lot.nb_moderation %}
+          <p class="text-muted small mt-2 mb-0">
+            ⏳ Les SMS « en cours de validation » sont momentanément bloqués par SmsFactor pour
+            vérification automatique — ils sont généralement délivrés quelques minutes après.
+            Un contrôle automatique (toutes les 3h) corrige leur statut définitif dès qu'il est connu.
+          </p>
+        {% endif %}
       {% endif %}
     </div>
   </div>
@@ -55,6 +63,7 @@
         <td>
           {% if e.statut == 'envoye' %}<span class="badge bg-success">Envoyé</span>
           {% elif e.statut == 'erreur' %}<span class="badge bg-danger">Erreur</span>
+          {% elif e.statut == 'moderation' %}<span class="badge bg-warning text-dark">En cours de validation</span>
           {% elif e.statut == 'simule_dev' %}<span class="badge bg-secondary">Simulé (DEV)</span>
           {% else %}<span class="badge bg-info">En attente</span>
           {% endif %}

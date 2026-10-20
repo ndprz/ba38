@@ -200,10 +200,23 @@ def envoyer_sms_lot_background(app, db_path, lot_id, destinataires, texte, curre
                     statut, ticket, cout, erreur = "simule_dev", None, 0, None
                 else:
                     code = resultat.get("status")
-                    statut = "envoye" if code == 1 else "erreur"
                     ticket = resultat.get("ticket")
                     cout = resultat.get("cost")
-                    erreur = None if statut == "envoye" else f"{resultat.get('message')} (code {code})"
+
+                    if code == 1:
+                        statut, erreur = "envoye", None
+                    elif code == -8:
+                        # "Campagne en attente de validation" : ne signifie PAS un échec
+                        # (confirmé par SmsFactor et par un cas réel 2026-10-20 : les 11
+                        # SMS d'un lot marqué -8 ont bien été DELIVERED quelques minutes
+                        # après). Statut dédié, résolu plus tard par le script de
+                        # réconciliation (scripts_taches/verifier_sms_moderation.py).
+                        statut = "moderation"
+                        erreur = "En attente de validation SmsFactor — sera probablement délivré sous peu (code -8)"
+                    else:
+                        statut = "erreur"
+                        erreur = f"{resultat.get('message')} (code {code})"
+
                     if code == -3:
                         credit_epuise = True
 
@@ -227,10 +240,13 @@ def envoyer_sms_lot_background(app, db_path, lot_id, destinataires, texte, curre
         nb_erreur = conn.execute(
             "SELECT COUNT(*) FROM sms_envois WHERE lot_id=? AND statut='erreur'", (lot_id,)
         ).fetchone()[0]
+        nb_moderation = conn.execute(
+            "SELECT COUNT(*) FROM sms_envois WHERE lot_id=? AND statut='moderation'", (lot_id,)
+        ).fetchone()[0]
 
         conn.execute(
-            "UPDATE sms_lots SET nb_ok=?, nb_erreur=?, date_fin=? WHERE id=?",
-            (nb_ok, nb_erreur, datetime.now().isoformat(timespec="seconds"), lot_id),
+            "UPDATE sms_lots SET nb_ok=?, nb_erreur=?, nb_moderation=?, date_fin=? WHERE id=?",
+            (nb_ok, nb_erreur, nb_moderation, datetime.now().isoformat(timespec="seconds"), lot_id),
         )
         conn.commit()
 

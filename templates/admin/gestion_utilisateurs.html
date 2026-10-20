@@ -223,6 +223,23 @@
                 />
                 Jamais désactivé si inactif
               </label>
+              <label class="mt-1 d-block" title="Poste partagé verrouillé en kiosque : connexion par identifiant court (sans @), session de 30 jours, jamais désactivé pour inactivité">
+                <input
+                  type="checkbox"
+                  name="users[{{ loop.index0 }}][mode_tablette]"
+                  value="1"
+                  {% if user.mode_tablette %}checked{% endif %}
+                />
+                📱 Mode tablette
+              </label>
+              <input
+                type="text"
+                class="form-control form-control-sm mt-1"
+                name="users[{{ loop.index0 }}][identifiant_tablette]"
+                value="{{ user.identifiant_tablette or '' }}"
+                placeholder="identifiant court (ex. tab1)"
+                title="Identifiant de connexion du mode tablette (sans @)"
+              />
             </td>
 
             <!-- Accès droits -->
@@ -288,6 +305,7 @@
         <input
           type="email"
           name="email"
+          id="new_email"
           class="form-control"
           required
           pattern="^[a-zA-Z0-9._%+-]+@banquealimentaire\.org$"
@@ -340,6 +358,25 @@
             Compte restreint au mode test (ex. accès DSI FFBA)
           </label>
         </div>
+      </div>
+    </div>
+
+    <div class="row mb-3">
+      <div class="col-md-4 d-flex align-items-end">
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" id="new_mode_tablette" name="mode_tablette" value="1" />
+          <label class="form-check-label" for="new_mode_tablette"
+                 title="Poste partagé verrouillé en kiosque : connexion par identifiant court, session de 30 jours, jamais désactivé pour inactivité">
+            📱 Mode tablette
+          </label>
+        </div>
+      </div>
+      <div class="col-md-4" id="bloc_identifiant_tablette" style="display:none">
+        <label class="form-label">Identifiant de connexion (sans @)</label>
+        <input type="text" name="identifiant_tablette" id="new_identifiant_tablette" class="form-control"
+               placeholder="ex. tab1" pattern="[A-Za-z0-9._\-]{2,30}"
+               title="Lettres, chiffres, . _ - (2 à 30 caractères), sans @" />
+        <div class="form-text">Email facultatif : ba380.&lt;identifiant&gt;@banquealimentaire.org s'il est laissé vide.</div>
       </div>
     </div>
 
@@ -713,6 +750,23 @@ function highlightRow(row, filter) {
 }
 
 
+// 📱 Ajout d'un utilisateur : en mode tablette, l'identifiant court devient
+// obligatoire et l'email facultatif (déduit côté serveur s'il est vide)
+(function () {
+    var caseTablette = document.getElementById("new_mode_tablette");
+    if (!caseTablette) return;
+    var bloc = document.getElementById("bloc_identifiant_tablette");
+    var identifiant = document.getElementById("new_identifiant_tablette");
+    var email = document.getElementById("new_email");
+    function maj() {
+        var on = caseTablette.checked;
+        bloc.style.display = on ? "" : "none";
+        identifiant.required = on;
+        email.required = !on;
+    }
+    caseTablette.addEventListener("change", maj);
+    maj();
+})();
 </script>
 </div>
 

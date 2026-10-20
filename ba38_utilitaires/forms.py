@@ -1,3 +1,5 @@
+import re
+
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SubmitField, HiddenField, SelectField, BooleanField
 from wtforms.validators import DataRequired, Email, Length, EqualTo, Optional, ValidationError
@@ -5,8 +7,18 @@ from flask import request
 from ba38_utilitaires.core import get_db_connection  # ✅ connexion centralisée
 
 # 📌 Formulaire de connexion
+def _email_ou_identifiant_tablette(form, field):
+    """Email, ou identifiant court sans @ d'un compte mode tablette (ex.
+    "tab1" : la recherche du compte se limite alors à mode_tablette = 1)."""
+    valeur = (field.data or "").strip()
+    if "@" in valeur:
+        Email(message="Adresse email invalide")(form, field)
+    elif not re.fullmatch(r"[A-Za-z0-9._-]{2,30}", valeur):
+        raise ValidationError("Email ou identifiant invalide")
+
+
 class LoginForm(FlaskForm):
-    email = StringField("Email", validators=[DataRequired(), Email()])
+    email = StringField("Email (ou identifiant tablette)", validators=[DataRequired(), _email_ou_identifiant_tablette])
     password = PasswordField("Mot de passe", validators=[DataRequired()])
     activer_2fa = BooleanField("Activer la double authentification (2FA) sur mon compte")
     submit = SubmitField("Se connecter")

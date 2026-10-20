@@ -32,7 +32,7 @@ MAX_SECTEURS_PAR_TOURNEE = 2
 # mélangés à un autre, même un seul, même sous la tolérance habituelle de
 # MAX_SECTEURS_PAR_TOURNEE (retour utilisateur direct sur Plateau Nord, puis
 # Pontcharra).
-SECTEURS_ISOLES = {'Plateau Nord', 'Pontcharra', 'Gresivaudan Nord', 'Gresivaudan Sud', 'Sud Vercors'}
+SECTEURS_ISOLES = {'Plateau Nord', 'Pontcharra', 'Gresivaudan', 'Sud Vercors'}
 
 # Paires de secteurs qui ne doivent jamais se retrouver ensemble dans une
 # même tournée, sans pour autant isoler chacun d'eux de tout le reste
@@ -75,6 +75,7 @@ VIFS_ANCRES = {
     '2380287': 'V036',  # Intermarché Grenoble Berriat - idem
     '2380066': 'V036',  # Monoprix Grenoble Lafayette - idem
     '2380314': 'V023',  # Lidl Voiron Kofler - camion RIGODON (retour utilisateur 2026-10-15)
+    '2380106': 'V024',  # Intermarché Le Touvet - retour utilisateur 2026-10-19
 }
 
 # Camions strictement réservés à certains magasins (rien d'autre ne doit
@@ -87,7 +88,24 @@ CAMIONS_EXCLUSIFS = {
     'V022': {'2380120'},  # Intermarché Vizille uniquement
     'V036': {'2380159', '2380287', '2380066'},  # Carrefour City 31 J Jaurès + Intermarché Berriat + Monoprix Lafayette uniquement (souhait association Vivacité)
     'V023': {'2380314'},  # Lidl Voiron Kofler uniquement (camion RIGODON)
+    'V024': {'2380106'},  # Intermarché Le Touvet uniquement (retour utilisateur 2026-10-19)
 }
+
+# Camions pour lesquels on force, en tout dernier recours, un contenu
+# identique sur toutes leurs demi-journées — retour utilisateur direct sur
+# V021, qui reste écartelé entre deux contenus totalement différents
+# matin/après-midi malgré toutes les autres passes (jeu de chaises
+# musicales avec d'autres camions, cf. _unifier_demi_journees_camions dans
+# optimiser_tournees).
+CAMIONS_UNIFIER_DEMI_JOURNEES = {'V021', 'V009'}
+
+# Secteurs où, en cas d'égalité entre les 2 camions les plus fournis, on
+# force quand même un regroupement (choix déterministe par code camion)
+# plutôt que de laisser la garde habituelle ne rien faire — retour
+# utilisateur direct sur Seyssinet, resté fragmenté sur 4 camions de ~2
+# magasins faute de majorité claire (cf. regroupement du même secteur
+# exact dans optimiser_tournees).
+SECTEURS_REGROUPEMENT_FORCE = {'Seyssinet'}
 
 # Adresse du siège affichée sur la carte des tournées : tirée de la config
 # organisation quand ce module tourne dans l'appli Flask (import optionnel —
@@ -554,19 +572,18 @@ def lire_magasins(path_mag, vifs_pdf_2025, poids_nouveaux, annee=None):
         if lon < 5.721:                     return 'Grenoble Centre Ouest'# Monoprix Lory, U Express, Itm Vallier
         return 'Grenoble Centre Est'                                      # Foch, Stalingrad, Aldi, Super U
 
-    # Grésivaudan coupé en 2 secteurs de part et d'autre de l'Isère (retour
-    # utilisateur direct) : Domène/Le Versoud/Froges au SUD de l'Isère,
-    # Biviers/Saint Ismier/Crolles au NORD.
-    GRESIVAUDAN_SUD_VILLES = {'Domene', 'Le Versoud', 'Froges'}
-    GRESIVAUDAN_NORD_VILLES = {'Biviers', 'Saint Ismier', 'Crolles'}
+    # Grésivaudan fusionné en un seul secteur (retour utilisateur direct,
+    # 2026-10-19) : la coupure Nord/Sud de part et d'autre de l'Isère
+    # faisait déborder Nord (6 magasins) sur 2 camions pendant que Sud (4)
+    # tenait seul sur 1 — fusionnés, les 10 magasins se répartissent
+    # librement sur le nombre de camions nécessaire.
+    GRESIVAUDAN_VILLES = {'Domene', 'Le Versoud', 'Froges', 'Biviers', 'Saint Ismier', 'Crolles'}
 
     def _attribuer_secteur(row):
         ville = row['Ville_norm']
         # Regroupement Grésivaudan en priorité (avant le test SEUIL_GROS)
-        if ville in GRESIVAUDAN_SUD_VILLES:
-            return 'Gresivaudan Sud'
-        if ville in GRESIVAUDAN_NORD_VILLES:
-            return 'Gresivaudan Nord'
+        if ville in GRESIVAUDAN_VILLES:
+            return 'Gresivaudan'
         if ville in {'Voiron', 'Saint Jean De Moirans'}:                return 'Voiron'
         # Essai : Rives/Renage + Moirans + Voreppe fusionnés en un seul secteur
         # (retour utilisateur, 2026-10-14).
@@ -950,8 +967,7 @@ def optimiser_tournees(fiches, df_mag, args):
             if lon < 5.721:  return 'Grenoble Centre Ouest'
             return 'Grenoble Centre Est'
         # ── Regroupements géographiques ───────────────────────────────────────
-        GRESIVAUDAN_SUD = {'Domene', 'Le Versoud', 'Froges'}
-        GRESIVAUDAN_NORD = {'Biviers', 'Saint Ismier', 'Crolles'}
+        GRESIVAUDAN_GRP = {'Domene', 'Le Versoud', 'Froges', 'Biviers', 'Saint Ismier', 'Crolles'}
         VOIRON_GRP    = {'Voiron', 'Saint Jean De Moirans'}
         RIVES_GRP     = {'Rives', 'Renage', 'Moirans', 'Voreppe'}
         SEYSSINET_GRP = {'Seyssinet Pariset', 'Seyssins', 'Fontaine'}
@@ -962,8 +978,7 @@ def optimiser_tournees(fiches, df_mag, args):
         PONTCHARRA_GRP = {'Chapareillan', 'Pontcharra'}
         SMH_GRP       = {'Poisat', 'Saint Martin Dheres', 'Saint Martin D Heres', 'Gieres', 'Gières'}
         URIAGE_GRP    = {'Bresson', 'Saint Martin D Uriage'}
-        if v in GRESIVAUDAN_SUD:  return 'Gresivaudan Sud'
-        if v in GRESIVAUDAN_NORD: return 'Gresivaudan Nord'
+        if v in GRESIVAUDAN_GRP: return 'Gresivaudan'
         if v in VOIRON_GRP:    return 'Voiron'
         if v in RIVES_GRP:     return 'Rives Moirans Voreppe'
         if v in SEYSSINET_GRP: return 'Seyssinet'
@@ -1047,6 +1062,16 @@ def optimiser_tournees(fiches, df_mag, args):
             vifs_couverts_par_dj[d].update(vifs_c)
         nb_completes = 0
         for vif, row_v in vif2row.items():
+            if vif not in vifs_actifs:
+                # vif2row vient du référentiel COMPLET, sans filtre État
+                # (cf. plus haut) : un magasin "Collecte gardée" sans
+                # stockage BAI+ (ou "Non collecté") peut y garder des
+                # créneaux déclarés d'une année où il était encore actif —
+                # il ne doit pour autant jamais être (ré)injecté dans la
+                # simulation (retour utilisateur direct : ALDI Bourgoin
+                # L'Etissey, gardé par CR Bourgoin, se retrouvait affecté à
+                # un camion BAI).
+                continue
             djs_cr = row_v.get('djs_creneaux')
             if not djs_cr:
                 continue
@@ -1983,14 +2008,19 @@ def optimiser_tournees(fiches, df_mag, args):
             if len(par_veh) < 2:
                 continue  # déjà sur un seul camion ce jour-là
             effectifs = sorted((len(v) for v in par_veh.values()), reverse=True)
-            if len(effectifs) > 1 and effectifs[0] == effectifs[1]:
+            if len(effectifs) > 1 and effectifs[0] == effectifs[1] and sec not in SECTEURS_REGROUPEMENT_FORCE:
                 # Égalité entre les 2 camions les plus fournis de ce secteur
                 # (ex. déjà 1 magasin de chaque côté, ou 2 et 2) : aucun n'est
                 # clairement "dominant" — ne rien déplacer plutôt que de
                 # deviner, pour ne pas risquer de casser un regroupement déjà
-                # correct par ailleurs.
+                # correct par ailleurs. Exception : secteurs nommés dans
+                # SECTEURS_REGROUPEMENT_FORCE (retour utilisateur direct —
+                # ex. Seyssinet, resté éclaté sur 4 camions de ~2 magasins
+                # faute de majorité claire), où on force quand même un choix
+                # déterministe (départage par code camion) plutôt que de
+                # laisser la fragmentation perdurer.
                 continue
-            veh_dominant = max(par_veh, key=lambda v: len(par_veh[v]))
+            veh_dominant = max(par_veh, key=lambda v: (len(par_veh[v]), v))
             if veh_dominant in VEHICULES_FIGES_EFF or (veh_dominant, dj) in TOURNEES_GELEES_EFF:
                 continue
             for veh_src, vifs_src in list(par_veh.items()):
@@ -2236,6 +2266,13 @@ def optimiser_tournees(fiches, df_mag, args):
                         sec_v = _secteur_vif_calc2(vif)
                         if not sec_v:
                             continue
+                        if sec_v in SECTEURS_REGROUPEMENT_FORCE:
+                            # Ne jamais piocher dans un secteur qu'on vient de
+                            # consolider de force (cf. SECTEURS_REGROUPEMENT_FORCE) —
+                            # sinon ce renforcement redéfait aussitôt ce
+                            # regroupement pour combler un camion ailleurs
+                            # (retour utilisateur direct sur Seyssinet).
+                            continue
                         if not _secteurs_compatibles_dir(secs_leger | {sec_v}):
                             continue
                         secs_src_apres = {_secteur_vif_calc2(v) for v in vifs_src if v != vif and _secteur_vif_calc2(v)}
@@ -2335,6 +2372,100 @@ def optimiser_tournees(fiches, df_mag, args):
                         break
     if nb_echanges_taille:
         print(f"  → {nb_echanges_taille} échange(s) de tournée entre camions pour mieux correspondre au tonnage réel (Type camion)")
+
+    # ── Réconciliation finale : camions nommés rendus identiques sur TOUTES
+    # leurs demi-journées, vendredi et samedi compris (pas seulement
+    # matin/après-midi d'un même jour — retour utilisateur direct sur V021,
+    # qui doit garder EXACTEMENT les mêmes magasins toute la semaine) ────────
+    # Pour chaque camion nommé : on retient, parmi toutes ses demi-journées,
+    # le contenu le plus léger (= le moins de magasins) et on l'impose à
+    # toutes les autres. Si un autre camion porte déjà exactement ce contenu
+    # sur une demi-journée à aligner, échange complet des deux tournées
+    # (aucun magasin perdu) ; sinon, les magasins en trop sont replacés sur
+    # la tournée compatible la plus proche (même logique que l'élimination
+    # des tournées à 1 magasin).
+    if CAMIONS_UNIFIER_DEMI_JOURNEES:
+        nb_unifications = 0
+        # Boucle de convergence : avec plusieurs camions nommés, la
+        # réconciliation de l'un peut reprendre un magasin qui venait tout
+        # juste de servir à en réconcilier un autre (ex. V009 et V021
+        # cherchant tous deux à replacer le même orphelin) — on repasse donc
+        # sur tous les camions nommés jusqu'à ce qu'un passage complet ne
+        # change plus rien, borné pour éviter toute boucle infinie.
+        for _tentative in range(len(CAMIONS_UNIFIER_DEMI_JOURNEES) + 2):
+            progresse = False
+            for veh in sorted(CAMIONS_UNIFIER_DEMI_JOURNEES):
+                if veh in VEHICULES_FIGES_EFF:
+                    continue
+                djs_du_camion = [dj for dj in DEMI_JOURNEES
+                                  if (dj, veh) in dj_veh and (veh, dj) not in TOURNEES_GELEES_EFF]
+                if len(djs_du_camion) < 2:
+                    continue
+                contenus = {dj: list(dj_veh.get((dj, veh), [])) for dj in djs_du_camion}
+                if len({tuple(sorted(c)) for c in contenus.values()}) <= 1:
+                    continue  # déjà identique partout
+
+                dj_garde = min(djs_du_camion, key=lambda d: len(contenus[d]))
+                vifs_cible = contenus[dj_garde]
+
+                for dj_a_aligner in djs_du_camion:
+                    if dj_a_aligner == dj_garde:
+                        continue
+                    ancien = contenus[dj_a_aligner]
+                    if set(ancien) == set(vifs_cible):
+                        continue
+
+                    veh_source = None
+                    for (d2, veh2), vifs2 in dj_veh.items():
+                        if d2 != dj_a_aligner or veh2 == veh or veh2 in CAMIONS_UNIFIER_DEMI_JOURNEES:
+                            continue
+                        if set(vifs2) == set(vifs_cible):
+                            veh_source = veh2
+                            break
+
+                    if veh_source:
+                        dj_veh[(dj_a_aligner, veh_source)] = ancien
+                    else:
+                        # Replacer les magasins en trop plutôt que de les
+                        # perdre — jamais sur un autre camion nommé ici, pour
+                        # ne pas défaire sa propre réconciliation en chaîne.
+                        orphelins = [v for v in ancien if v not in vifs_cible]
+                        max_c_o = max_dim if dj_a_aligner in DJ_DIMANCHE else max_norm
+                        for vif_o in orphelins:
+                            r_o = vif2row.get(vif_o)
+                            if r_o is None:
+                                continue
+                            lat_o = float(r_o.get('Latitude', BAI_LAT))
+                            lon_o = float(r_o.get('Longitude', BAI_LON))
+                            sec_o = _secteur_vif_calc2(vif_o)
+                            best_key = None; best_score = float('inf')
+                            for (d2, veh2), vifs2 in dj_veh.items():
+                                if d2 != dj_a_aligner or veh2 == veh or veh2 in CAMIONS_UNIFIER_DEMI_JOURNEES:
+                                    continue
+                                if veh2 in VEHICULES_FIGES_EFF or (veh2, dj_a_aligner) in TOURNEES_GELEES_EFF:
+                                    continue
+                                if len(vifs2) >= max_c_o:
+                                    continue
+                                secs_apres = {_secteur_vif_calc2(v) for v in vifs2 if _secteur_vif_calc2(v)} | {sec_o}
+                                if not _secteurs_compatibles_dir(secs_apres):
+                                    continue
+                                clat, clon = _centre_vifs(vifs2) if vifs2 else (BAI_LAT, BAI_LON)
+                                d_km = haversine(lat_o, lon_o, clat, clon)
+                                if d_km < best_score:
+                                    best_score = d_km; best_key = (d2, veh2)
+                            if best_key:
+                                dj_veh.setdefault(best_key, []).append(vif_o)
+                                nom_o = str(r_o.get('Nom', vif_o))
+                                print(f"  Réconciliation {veh} : '{nom_o}' replacé sur {best_key[1]} ({dj_a_aligner})")
+
+                    dj_veh[(dj_a_aligner, veh)] = list(vifs_cible)
+                    print(f"  Réconciliation {veh} : {dj_a_aligner} aligné sur {dj_garde} ({len(vifs_cible)} magasin(s))")
+                    nb_unifications += 1
+                    progresse = True
+            if not progresse:
+                break
+        if nb_unifications:
+            print(f"  → {nb_unifications} demi-journée(s) rendue(s) identiques (camions nommés)")
 
     # Coefficients trafic TomTom 2025 Grenoble
     SECTEURS_METRO_XL = {
@@ -3186,8 +3317,7 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
                     elif lat_c > 45.187: sec_c = 'Grenoble Centre Nord'
                     elif lon_c < 5.721: sec_c = 'Grenoble Centre Ouest'
                     else: sec_c = 'Grenoble Centre Est'
-                elif vil_c in {'Domene', 'Le Versoud', 'Froges'}:               sec_c = 'Gresivaudan Sud'
-                elif vil_c in {'Biviers', 'Saint Ismier', 'Crolles'}:            sec_c = 'Gresivaudan Nord'
+                elif vil_c in {'Domene', 'Le Versoud', 'Froges', 'Biviers', 'Saint Ismier', 'Crolles'}: sec_c = 'Gresivaudan'
                 elif vil_c in {'Voiron', 'Saint Jean De Moirans'}:                sec_c = 'Voiron'
                 elif vil_c in {'Rives', 'Renage', 'Moirans', 'Voreppe'}:          sec_c = 'Rives Moirans Voreppe'
                 elif vil_c in {'Seyssinet Pariset', 'Seyssins', 'Fontaine'}:     sec_c = 'Seyssinet'

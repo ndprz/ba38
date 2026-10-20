@@ -1,3 +1,3 @@
-VERSION=1.7.127
-MESSAGE=Collecte : copie (CC) de l'expediteur sur les envois sans copie existante (affectations tournees, disponibilite chauffeurs/equipiers, mail trieurs, mail prise colis)
-DATE=2026-10-19 10:12
+VERSION=1.7.130
+MESSAGE=SMS: fix statut code -8 (en attente de validation != erreur), script reconciliation auto, doc/aide en ligne
+DATE=2026-10-20 09:08

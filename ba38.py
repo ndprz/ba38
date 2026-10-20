@@ -28,7 +28,7 @@ import logging
 # Flask
 # --------------------------------------------------
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from ba38_utilitaires.core import get_db_connection, write_log, send_reset_email, get_user_roles, get_db_path, get_db_info, upload_database, get_version, get_all_users, format_tel, get_param_value, get_real_db_connection
 from ba38_utilitaires.core import get_user_info,has_access, is_admin_global, format_date_fr, build_menu, require_admin_global
 from ba38_utilitaires.core import is_blocked, record_attempt, reset_attempts, is_suspicious_ip, is_suspicious_ua, get_attempt_count, require_access
@@ -194,6 +194,29 @@ app.config.update(
     SESSION_USE_SIGNER=True,
 )
 Session(app)
+
+# 📱 Comptes "mode tablette" (postes partagés verrouillés en kiosque) : la
+# session dure DUREE_SESSION_TABLETTE au lieu de PERMANENT_SESSION_LIFETIME,
+# pour ne pas avoir à se reconnecter chaque matin / après un week-end.
+# Seules les sessions marquées session["mode_tablette"] (posé par
+# ouvrir_session) sont concernées ; le contrôle du compte à chaque requête
+# (actif, jeton de session → déconnexion à distance) reste inchangé.
+DUREE_SESSION_TABLETTE = timedelta(days=30)
+
+
+class _SessionInterfaceTablette(type(app.session_interface)):
+    def _upsert_session(self, session_lifetime, session, store_id):
+        if session.get("mode_tablette"):
+            session_lifetime = DUREE_SESSION_TABLETTE
+        return super()._upsert_session(session_lifetime, session, store_id)
+
+    def get_expiration_time(self, app, session):
+        if session.permanent and session.get("mode_tablette"):
+            return datetime.now(timezone.utc) + DUREE_SESSION_TABLETTE
+        return super().get_expiration_time(app, session)
+
+
+app.session_interface.__class__ = _SessionInterfaceTablette
 
 
 # ✅ Augmente la taille maximale des requêtes POST à 10 Mo
@@ -904,6 +927,9 @@ def load_user(user_id):
         # sessions ouvertes avant le changement tombent
         if user["jeton_session"] and session.get("jeton_session") != user["jeton_session"]:
             return None
+        # 📱 Mode tablette retiré par l'admin → la session repasse à 24 h
+        if session.get("mode_tablette") and not user["mode_tablette"]:
+            session.pop("mode_tablette", None)
         return User(
             user['id'], user['username'], user['email'],
             user['password_hash'], user['role'],
@@ -1060,6 +1086,12 @@ def ouvrir_session(user, ip, ua, via=None, confiance_jours=0):
     session.permanent = True
     session.modified = True
 
+    # 📱 Poste tablette : session de 30 jours (cf. _SessionInterfaceTablette)
+    if user["mode_tablette"]:
+        session["mode_tablette"] = True
+    else:
+        session.pop("mode_tablette", None)
+
     # session métier
     email = user["email"]
     role = user["role"]
@@ -1175,10 +1207,17 @@ def login():
 
         # 🔎 Recherche utilisateur (toujours la base réelle, cf. load_user)
         conn = get_real_db_connection()
-        user = conn.execute(
-            "SELECT * FROM users WHERE LOWER(email) = ?",
-            (username,)
-        ).fetchone()
+        if "@" in username:
+            user = conn.execute(
+                "SELECT * FROM users WHERE LOWER(email) = ?",
+                (username,)
+            ).fetchone()
+        else:
+            # 📱 Identifiant court (ex. "tab1") : réservé aux comptes mode tablette
+            user = conn.execute(
+                "SELECT * FROM users WHERE mode_tablette = 1 AND LOWER(identifiant_tablette) = ?",
+                (username,)
+            ).fetchone()
         conn.close()
 
         # ============================================================================

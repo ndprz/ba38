@@ -436,6 +436,10 @@
                   {% endif %}
                   {{ ligne.heure_fin }}{% if ligne.temperature is not none %} ({{ ligne.temperature }}°C){% endif %}
                   {% if ref.code == 'refroidissement_cellule' and dr %} · DR : {{ dr }}{% endif %}
+                  {% if ref.code == 'refroidissement_cellule' and duree_refroid is not none %} ·
+                    <span class="badge {{ 'bg-danger' if duree_refroid >= duree_refroid_max else 'bg-info' }} text-white" style="font-size: .9rem;"
+                          title="Fin de mise en cellule − heure du DR (seuil {{ duree_refroid_max }} min)">⏱️ Refroidissement : {{ duree_refroid_txt }}</span>
+                  {% endif %}
                   {% if ligne.conforme %} ·
                     {% if ligne.conforme == 'conforme' %}<span class="badge bg-success text-white" style="font-size: .9rem;">✅ Conforme</span>
                     {% else %}<span class="badge bg-danger text-white" style="font-size: .9rem;">⚠️ Non conforme</span>{% endif %}

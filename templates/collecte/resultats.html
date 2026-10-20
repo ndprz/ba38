@@ -139,6 +139,38 @@
     </div>
     {% endif %}
 
+    {% if matin_apresmidi_differents %}
+    <button class="btn btn-outline-warning mb-3 mt-2" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionMatinApresmidiDifferents"
+            aria-expanded="false" aria-controls="sectionMatinApresmidiDifferents">
+        ⚠️ Tournées différentes matin/après-midi ({{ matin_apresmidi_differents|length }})
+    </button>
+    <div id="sectionMatinApresmidiDifferents" class="collapse mb-3">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered">
+                <thead class="table-light">
+                    <tr>
+                        <th>Camion</th>
+                        <th>Jour</th>
+                        <th>Magasins le matin</th>
+                        <th>Magasins l'après-midi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for l in matin_apresmidi_differents %}
+                    <tr>
+                        <td>{{ l.camion }}</td>
+                        <td>{{ l.jour }}</td>
+                        <td>{{ l.magasins_matin|join(', ') }}</td>
+                        <td>{{ l.magasins_apres_midi|join(', ') }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
     <form id="form-pdf-filtre" method="POST" action="{{ url_for('collecte.resultats_pdf', generation_id=generation.id) }}" style="display:none;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="lignes_filtrees" id="input-lignes-filtrees">

@@ -297,7 +297,9 @@ def gestion_utilisateurs():
                 derniere_connexion,
                 etranger_autorise_jusqu,
                 exempt_inactivite,
-                desactive_inactivite_le
+                desactive_inactivite_le,
+                mode_tablette,
+                identifiant_tablette
             FROM users
             ORDER BY email
         """)
@@ -472,6 +474,20 @@ def ajouter_utilisateur():
     role = request.form.get("role", "user")
     actif = request.form.get("actif", "Oui")
     test_only = 1 if request.form.get("test_only") == "1" else 0
+    mode_tablette = 1 if request.form.get("mode_tablette") == "1" else 0
+    identifiant_tablette = request.form.get("identifiant_tablette", "").strip().lower() or None
+
+    # 📱 Mode tablette : on se connecte avec l'identifiant court (ex. "tab1") ;
+    # l'email reste l'identité interne du compte (droits, alertes). Laissé
+    # vide, il est déduit de l'identifiant : ba380.<identifiant>@banquealimentaire.org
+    if mode_tablette:
+        if not identifiant_tablette or not re.fullmatch(r"[a-z0-9._-]{2,30}", identifiant_tablette):
+            flash("📱 Mode tablette : identifiant court obligatoire (lettres, chiffres, . _ -, sans @).", "danger")
+            return redirect(url_for("admin.gestion_utilisateurs"))
+        if not email:
+            email = f"ba380.{identifiant_tablette}@banquealimentaire.org"
+    else:
+        identifiant_tablette = None
 
     # --- Validation minimale ---
     if not email or not password:
@@ -494,12 +510,20 @@ def ajouter_utilisateur():
                 flash("⚠️ Un utilisateur avec cet email existe déjà.", "warning")
                 return redirect(url_for("admin.gestion_utilisateurs"))
 
+            if identifiant_tablette and cur.execute(
+                "SELECT 1 FROM users WHERE LOWER(identifiant_tablette) = ?", (identifiant_tablette,)
+            ).fetchone():
+                flash(f"⚠️ L'identifiant tablette « {identifiant_tablette} » est déjà utilisé.", "warning")
+                return redirect(url_for("admin.gestion_utilisateurs"))
+
             hashed_password = generate_password_hash(password)
 
             cur.execute("""
-                INSERT INTO users (username, email, password_hash, role, actif, test_only)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (username, email, hashed_password, role, actif_db, test_only))
+                INSERT INTO users (username, email, password_hash, role, actif, test_only,
+                                   mode_tablette, identifiant_tablette, exempt_inactivite)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (username, email, hashed_password, role, actif_db, test_only,
+                  mode_tablette, identifiant_tablette, mode_tablette))
 
             conn.commit()
 
@@ -549,6 +573,8 @@ def update_users_batch():
             test_only = 1 if request.form.get(f"users[{idx}][test_only]") == "1" else 0
             etranger_jusqu = request.form.get(f"users[{idx}][etranger_autorise_jusqu]", "").strip() or None
             exempt_inactivite = 1 if request.form.get(f"users[{idx}][exempt_inactivite]") == "1" else 0
+            mode_tablette = 1 if request.form.get(f"users[{idx}][mode_tablette]") == "1" else 0
+            identifiant_tablette = request.form.get(f"users[{idx}][identifiant_tablette]", "").strip().lower() or None
 
 
             if not user_id:
@@ -572,6 +598,23 @@ def update_users_batch():
                 SET etranger_autorise_jusqu = ?, exempt_inactivite = ?
                 WHERE id = ?
             """, (etranger_jusqu, exempt_inactivite, user_id))
+
+            # 📱 Mode tablette : identifiant court obligatoire, sans @, unique
+            if mode_tablette and not identifiant_tablette:
+                flash(f"⚠️ {username} : mode tablette non enregistré, identifiant court manquant.", "warning")
+            elif identifiant_tablette and not re.fullmatch(r"[a-z0-9._-]{2,30}", identifiant_tablette):
+                flash(f"⚠️ {username} : identifiant tablette « {identifiant_tablette} » invalide "
+                      "(lettres, chiffres, . _ -, sans @).", "warning")
+            elif identifiant_tablette and cur.execute(
+                "SELECT 1 FROM users WHERE LOWER(identifiant_tablette) = ? AND id != ?",
+                (identifiant_tablette, user_id),
+            ).fetchone():
+                flash(f"⚠️ {username} : identifiant tablette « {identifiant_tablette} » déjà utilisé.", "warning")
+            else:
+                cur.execute(
+                    "UPDATE users SET mode_tablette = ?, identifiant_tablette = ? WHERE id = ?",
+                    (mode_tablette, identifiant_tablette, user_id),
+                )
 
             # Mise à jour des champs standards
             cur.execute("""

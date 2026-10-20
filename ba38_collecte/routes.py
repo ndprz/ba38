@@ -1787,6 +1787,40 @@ def _camions_liste_vehicule(annee):
     return [vus[c] for c in sorted(vus)]
 
 
+def _camions_matin_apresmidi_differents(lignes):
+    """Camions dont le contenu diffère entre matin et après-midi d'un même
+    jour (Jeudi/Vendredi/Samedi) — à signaler à l'utilisateur plutôt que
+    de les laisser invisibles : le moteur essaie d'aligner les deux (cf.
+    « Cohérence jour » dans moteur_tournees.py) mais n'y parvient pas
+    toujours (jeu de chaises musicales avec d'autres camions). Les camions
+    listés dans CAMIONS_UNIFIER_DEMI_JOURNEES ne devraient jamais apparaître
+    ici (forcés identiques en tout dernier) — une présence malgré tout
+    signalerait un cas à examiner."""
+    par_camion_dj = {}
+    for l in lignes:
+        par_camion_dj[(l["camion"], l["demi_journee"])] = {
+            m.strip() for m in l["magasins"].split(",") if m.strip()
+        }
+
+    resultat = []
+    for jour in ("Jeudi", "Vendredi", "Samedi"):
+        dj_matin, dj_am = f"{jour} Matin", f"{jour} Apres Midi"
+        camions_jour = sorted({c for (c, d) in par_camion_dj if d in (dj_matin, dj_am)})
+        for camion in camions_jour:
+            mags_matin = par_camion_dj.get((camion, dj_matin))
+            mags_am = par_camion_dj.get((camion, dj_am))
+            if mags_matin is None or mags_am is None:
+                continue  # absent d'une des deux demi-journées : non comparable
+            if mags_matin != mags_am:
+                resultat.append({
+                    "camion": camion,
+                    "jour": jour,
+                    "magasins_matin": sorted(mags_matin),
+                    "magasins_apres_midi": sorted(mags_am),
+                })
+    return resultat
+
+
 def _camions_non_utilises(annee, lignes):
     """Pour chaque demi-journée présente dans le résultat, les camions
     réels de cette année (liste-vehicule.xlsx) qui ONT un créneau réel
@@ -4381,6 +4415,7 @@ def resultats(generation_id):
         lignes=lignes,
         params=params_utilises,
         camions_non_utilises=_camions_non_utilises(generation["annee"], lignes),
+        matin_apresmidi_differents=_camions_matin_apresmidi_differents(lignes),
     )
 
 
