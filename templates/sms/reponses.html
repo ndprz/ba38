@@ -22,6 +22,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ action_button("✔️ Tout marquer comme lu", type="submit", color="outline-secondary") }}
     </form>
+    {{ action_button("📋 Mes envois", href=url_for('sms.mes_envois_sms'), color="outline-secondary") }}
     {{ action_button("↩️ Retour à l'envoi de SMS", href=url_for('sms.envoi_sms_benevoles'), color="outline-dark") }}
   {% endcall %}
 

@@ -383,6 +383,12 @@ def lot_detail(lot_id):
         flash("❌ Envoi introuvable.", "danger")
         return redirect(url_for("sms.envoi_sms_benevoles"))
 
+    user_email = getattr(current_user, "email", "") or ""
+    if session.get("user_role") != "admin" and lot["envoye_par"] != user_email:
+        conn.close()
+        flash("⛔ Cet envoi a été lancé par quelqu'un d'autre.", "danger")
+        return redirect(url_for("sms.mes_envois_sms"))
+
     envois = conn.execute("""
         SELECT e.*, b.nom, b.prenom,
                (SELECT r.message FROM sms_reponses r WHERE r.envoi_id = e.id ORDER BY r.id DESC LIMIT 1) AS reponse_message,
@@ -402,6 +408,30 @@ def lot_detail(lot_id):
         envois=[dict(e) for e in envois],
         en_cours=en_cours,
     )
+
+
+@sms_bp.route("/sms/mes_envois")
+@login_required
+@require_access("sms_benevoles", "lecture")
+def mes_envois_sms():
+    """
+    Historique personnel des envois : chacun ne voit que ses propres lots
+    (sms_lots.envoye_par), sur le même principe que /sms/reponses. Les
+    admins globaux voient tout.
+    """
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+
+    if session.get("user_role") == "admin":
+        lots = conn.execute("SELECT * FROM sms_lots ORDER BY id DESC").fetchall()
+    else:
+        user_email = getattr(current_user, "email", "") or ""
+        lots = conn.execute(
+            "SELECT * FROM sms_lots WHERE envoye_par = ? ORDER BY id DESC", (user_email,)
+        ).fetchall()
+
+    conn.close()
+    return render_template("sms/mes_envois.html", lots=[dict(l) for l in lots])
 
 
 @sms_bp.route("/sms/textes", methods=["GET", "POST"])
