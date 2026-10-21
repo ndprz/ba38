@@ -3206,15 +3206,15 @@ def sans_vendredi(annee):
             return redirect(url_for("collecte.sans_vendredi", annee=annee))
 
         maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        a_ajouter, a_retirer = set(), set()
+        a_ajouter, a_retirer, deja_mail_envoye = set(), set(), set()
         if not mode_test:
             with get_db_connection() as conn:
                 _ensure_table_magasins_sans_vendredi(conn)
-                deja = {
-                    r["code_vif"] for r in conn.execute(
-                        "SELECT code_vif FROM collecte_magasins_sans_vendredi WHERE annee = ?", (annee,)
-                    ).fetchall()
-                }
+                lignes_existantes = conn.execute(
+                    "SELECT code_vif, mail_envoye FROM collecte_magasins_sans_vendredi WHERE annee = ?", (annee,)
+                ).fetchall()
+                deja = {r["code_vif"] for r in lignes_existantes}
+                deja_mail_envoye = {r["code_vif"] for r in lignes_existantes if r["mail_envoye"]}
                 a_ajouter = (codes_coches & codes_eligibles) - deja
                 a_retirer = (deja & codes_eligibles) - codes_coches
                 for code in a_retirer:
@@ -3249,11 +3249,15 @@ def sans_vendredi(annee):
 
         envoyes = 0
         sans_email = []
-        # Hors test : on n'envoie le mail qu'aux magasins NOUVELLEMENT marqués
-        # (a_ajouter), jamais à ceux déjà marqués lors d'une précédente
-        # session (sinon un simple réenregistrement renverrait le mail à
-        # tout le monde à chaque fois).
-        cible_envoi = magasins_a_mailer if (mode_test or test_un_magasin) else [m for m in magasins_a_mailer if m["code_vif"] in a_ajouter]
+        # Hors test : on envoie le mail à tout magasin coché qui ne l'a pas
+        # encore reçu (nouvellement marqué OU déjà marqué mais jamais mailé,
+        # ex. les marquages d'avant l'existence de cette fonctionnalité
+        # d'envoi) — jamais à un magasin déjà notifié (mail_envoye=1), sinon
+        # un simple réenregistrement le renverrait à chaque fois (retour
+        # utilisateur direct, 2026-10-21 : marquages du 2026-10-15 jamais
+        # mailés faute d'avoir existé à l'époque, blocage le premier jugé
+        # trop strict).
+        cible_envoi = magasins_a_mailer if (mode_test or test_un_magasin) else [m for m in magasins_a_mailer if m["code_vif"] not in deja_mail_envoye]
         for magasin in cible_envoi:
             if not magasin["emails"]:
                 sans_email.append(magasin["nom"])
