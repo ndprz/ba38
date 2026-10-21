@@ -54,6 +54,33 @@
           </div>
         </div>
 
+        <div class="mb-3">
+          <label class="form-label fw-bold d-block">Texte au-dessus de la signature <span class="text-muted fw-normal small">(facultatif)</span></label>
+          <div class="row">
+            <div class="col-md-4">
+              <label class="form-label small mb-1">Mention</label>
+              <select name="mention" id="mention_select" class="form-select" onchange="majTextePave()">
+                <option value="">(aucune)</option>
+                {% for m in mentions %}
+                <option value="{{ m }}" {% if derniere_mention == m %}selected{% endif %}>{{ m }}</option>
+                {% endfor %}
+                <option value="__autre__" {% if derniere_mention and derniere_mention not in mentions %}selected{% endif %}>Autre…</option>
+              </select>
+            </div>
+            <div class="col-md-4" id="bloc_mention_autre" style="display:none;">
+              <label class="form-label small mb-1">Mention libre</label>
+              <input type="text" name="mention_autre" id="mention_autre" class="form-control" maxlength="60"
+                     value="{{ derniere_mention if derniere_mention and derniere_mention not in mentions else '' }}" oninput="majTextePave()">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small mb-1">Fonction du signataire</label>
+              <input type="text" name="fonction_signataire" id="fonction_signataire" class="form-control" maxlength="60"
+                     placeholder="ex. Trésorier" value="{{ derniere_fonction }}" oninput="majTextePave()">
+            </div>
+          </div>
+          <p class="text-muted small mt-1 mb-0">Inscrit sur le document juste au-dessus du pavé de signature. Le signataire ne peut pas le modifier.</p>
+        </div>
+
         <div class="mb-3" id="bloc_positionnement" style="display:none;">
           <label class="form-label fw-bold d-block">Emplacement de la signature</label>
           <p class="text-muted small mb-2">Cliquez sur la page à l'endroit où le pavé de signature doit apparaître.</p>
@@ -62,11 +89,21 @@
             <span id="label_page" class="mx-2">Page 1 / 1</span>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_page_suiv">Page suivante ▶</button>
           </div>
+          <div class="d-flex align-items-center gap-2 mb-2" style="max-width:700px;">
+            <label for="taille_pave" class="form-label small mb-0 text-nowrap">Taille du pavé</label>
+            <input type="range" class="form-range" id="taille_pave" min="50" max="100" step="5" value="100">
+            <span id="label_taille_pave" class="small text-nowrap" style="min-width:3em;">100 %</span>
+          </div>
+          <p class="text-muted small mb-2">Choisissez une zone vide du document. Plus le pavé est petit, plus la signature et son texte sont réduits.</p>
           <div style="position:relative; display:inline-block; border:1px solid #ccc;">
             <canvas id="pdf_canvas"></canvas>
             <canvas id="overlay_canvas" style="position:absolute; top:0; left:0; cursor:crosshair;"></canvas>
           </div>
           <p id="label_position" class="mt-2 fw-bold text-danger">⚠️ Cliquez sur la page pour positionner la signature.</p>
+          <div id="alerte_champs" class="alert alert-info py-2 small" style="display:none; max-width:700px;">
+            ℹ️ Ce document est un formulaire : ses champs seront figés avec leur contenu actuel avant
+            l'envoi, pour que le document signé ne soit plus modifiable. Remplissez-les avant de le déposer.
+          </div>
         </div>
 
         <input type="hidden" name="sig_page" id="sig_page">
@@ -82,9 +119,17 @@
 
   <h4>📋 Mes demandes de signature</h4>
   {% if demandes %}
+  {# Formulaire séparé (les lignes contiennent déjà leurs propres <form>) :
+     les cases y sont rattachées par l'attribut form="form_selection". #}
+  <form method="POST" action="{{ url_for('signature.supprimer_selection') }}" id="form_selection"
+        onsubmit="return confirmDeleteSelection();" class="mb-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-sm btn-danger" id="btn_supprimer_selection" disabled>🗑️ Supprimer la sélection</button>
+  </form>
   <table class="table table-bordered">
     <thead>
       <tr>
+        <th style="width:2.5em;"><input type="checkbox" class="form-check-input" id="cocher_tout" title="Tout sélectionner" onchange="cocherTout(this.checked)"></th>
         <th>Date</th>
         <th>Document</th>
         <th>Signataire</th>
@@ -95,6 +140,7 @@
     <tbody>
       {% for demande in demandes %}
       <tr>
+        <td><input type="checkbox" class="form-check-input case-selection" name="ids" value="{{ demande['id'] }}" form="form_selection" onchange="majSelection()"></td>
         <td>{{ demande['date_creation'] }}</td>
         <td>{{ demande['nom_document'] }}</td>
         <td>
@@ -191,11 +237,70 @@
     return true;
   }
 
+  // Fonction pré-remplie avec la dernière saisie quand je signe moi-même ;
+  // vidée pour un tiers (on retient la saisie pour la remettre si on revient).
+  const FONCTION_MOI_MEME = {{ derniere_fonction|tojson }};
+  let fonctionMoiMeme = FONCTION_MOI_MEME;
+
+  function majSelection() {
+    const cases = document.querySelectorAll(".case-selection");
+    const cochees = document.querySelectorAll(".case-selection:checked").length;
+    const bouton = document.getElementById("btn_supprimer_selection");
+    bouton.disabled = cochees === 0;
+    bouton.textContent = cochees ? "🗑️ Supprimer la sélection (" + cochees + ")" : "🗑️ Supprimer la sélection";
+    const tout = document.getElementById("cocher_tout");
+    tout.checked = cochees > 0 && cochees === cases.length;
+    tout.indeterminate = cochees > 0 && cochees < cases.length;
+  }
+
+  function cocherTout(coche) {
+    document.querySelectorAll(".case-selection").forEach(function (c) { c.checked = coche; });
+    majSelection();
+  }
+
+  function confirmDeleteSelection() {
+    const n = document.querySelectorAll(".case-selection:checked").length;
+    if (!n) return false;
+    if (!confirm("❗ Voulez-vous vraiment supprimer " + n + " demande(s) de signature (base + fichiers) ?")) {
+      return false;
+    }
+    const confirmation = prompt("⚠️ Tapez SUPPRIMER pour confirmer");
+    if (confirmation !== "SUPPRIMER") {
+      alert("Suppression annulée");
+      return false;
+    }
+    return true;
+  }
+
   function toggleDestinataire() {
     const tiers = document.getElementById("type_tiers").checked;
     document.getElementById("bloc_destinataire").style.display = tiers ? "flex" : "none";
     document.querySelector("input[name='destinataire_nom']").required = tiers;
     document.querySelector("input[name='destinataire_email']").required = tiers;
+    const champFonction = document.getElementById("fonction_signataire");
+    if (tiers) {
+      fonctionMoiMeme = champFonction.value;
+      champFonction.value = "";
+    } else {
+      champFonction.value = fonctionMoiMeme;
+    }
+    majTextePave();
+  }
+
+  // Lignes inscrites au-dessus du pavé (même ordre que côté serveur).
+  function lignesTextePave() {
+    const select = document.getElementById("mention_select");
+    const mention = select.value === "__autre__"
+      ? document.getElementById("mention_autre").value.trim()
+      : select.value;
+    const fonction = document.getElementById("fonction_signataire").value.trim();
+    return [mention, fonction].filter(Boolean);
+  }
+
+  function majTextePave() {
+    document.getElementById("bloc_mention_autre").style.display =
+      document.getElementById("mention_select").value === "__autre__" ? "block" : "none";
+    if (pdfDoc) dessinerPositionSiPresente();
   }
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
@@ -205,13 +310,33 @@
   // pavé plus petit que ça fait recalculer un scaleFactor < 1 côté LibreSign,
   // qui réduit d'autant le texte ET l'image de signature manuscrite apposés
   // dans le pavé (constaté avec l'ancien pavé 220x40, signature illisible).
+  // Taille maximale (100 %) ; le curseur "Taille du pavé" la réduit jusqu'à
+  // 50 % en gardant les proportions.
   const PAVE_WIDTH = 350;
   const PAVE_HEIGHT = 100;
+  const curseurTaille = document.getElementById("taille_pave");
+  function dimensionsPave() {
+    const ratio = parseInt(curseurTaille.value, 10) / 100;
+    return { width: PAVE_WIDTH * ratio, height: PAVE_HEIGHT * ratio };
+  }
+  const MARGE_TEXTE_PAVE = 4 + 14 * 2;
 
   let pdfDoc = null;
   let pageNum = 1;
   let renderScale = 1;
   let positionChoisie = null; // {page, top, left, width, height}
+  // Le serveur fige tous les champs de formulaire avant l'envoi : on prévient
+  // dès qu'un champ est détecté (sur n'importe quelle page).
+  function detecterFormulaire(doc) {
+    const pages = [];
+    for (let i = 1; i <= doc.numPages; i++) pages.push(doc.getPage(i).then(function (p) { return p.getAnnotations(); }));
+    Promise.all(pages).then(function (listes) {
+      const formulaire = listes.some(function (annots) {
+        return annots.some(function (a) { return a.subtype === "Widget" && a.fieldType !== "Sig"; });
+      });
+      document.getElementById("alerte_champs").style.display = formulaire ? "block" : "none";
+    });
+  }
 
   const pdfCanvas = document.getElementById("pdf_canvas");
   const overlayCanvas = document.getElementById("overlay_canvas");
@@ -224,6 +349,7 @@
     positionChoisie = null;
     btnEnvoyer.disabled = true;
     document.getElementById("bloc_positionnement").style.display = "none";
+    document.getElementById("alerte_champs").style.display = "none";
     if (!fichier) return;
 
     const reader = new FileReader();
@@ -231,6 +357,7 @@
       pdfjsLib.getDocument({ data: new Uint8Array(this.result) }).promise.then(function (doc) {
         pdfDoc = doc;
         pageNum = 1;
+        detecterFormulaire(doc);
         document.getElementById("bloc_positionnement").style.display = "block";
         renderPage(pageNum);
       }).catch(function (err) {
@@ -249,7 +376,10 @@
       pdfCanvas.width = overlayCanvas.width = viewport.width;
       pdfCanvas.height = overlayCanvas.height = viewport.height;
 
-      page.render({ canvasContext: pdfCanvas.getContext("2d"), viewport: viewport });
+      // ENABLE : champs de formulaire dessinés avec leur contenu, tels qu'ils
+      // seront figés dans le PDF envoyé.
+      page.render({ canvasContext: pdfCanvas.getContext("2d"), viewport: viewport,
+                    annotationMode: pdfjsLib.AnnotationMode.ENABLE });
       overlayCanvas.getContext("2d").clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
       labelPage.textContent = "Page " + num + " / " + pdfDoc.numPages;
@@ -269,6 +399,17 @@
     const h = positionChoisie.height * renderScale;
     ctx.fillRect(x, y, w, h);
     ctx.strokeRect(x, y, w, h);
+
+    // Aperçu du texte au-dessus du pavé (même placement que côté serveur :
+    // dernière ligne à 4 pt au-dessus du pavé, interligne 14 pt, 10 pt).
+    const lignes = lignesTextePave();
+    ctx.fillStyle = "rgb(13, 110, 253)";
+    lignes.slice().reverse().forEach(function (ligne, i) {
+      const gras = i === lignes.length - 1 && lignes.length > 1;
+      ctx.font = (gras ? "bold " : "") + (10 * renderScale) + "px Helvetica, Arial, sans-serif";
+      ctx.fillText(ligne, x, y - (4 + 14 * i) * renderScale);
+    });
+
   }
 
   document.getElementById("btn_page_prec").addEventListener("click", function () {
@@ -278,21 +419,18 @@
     if (pdfDoc && pageNum < pdfDoc.numPages) { pageNum++; renderPage(pageNum); }
   });
 
-  overlayCanvas.addEventListener("click", function (e) {
-    const rect = overlayCanvas.getBoundingClientRect();
-    const scaleX = overlayCanvas.width / rect.width;
-    const scaleY = overlayCanvas.height / rect.height;
-    const clicCanvasX = (e.clientX - rect.left) * scaleX;
-    const clicCanvasY = (e.clientY - rect.top) * scaleY;
-
-    let left = (clicCanvasX / renderScale) - PAVE_WIDTH / 2;
-    let top = (clicCanvasY / renderScale) - PAVE_HEIGHT / 2;
+  // Place le pavé centré sur (centreX, centreY) en points PDF, à la taille du
+  // curseur, en le gardant dans la page (+ marge en haut pour mention/fonction).
+  function placerPave(centreX, centreY) {
+    const dims = dimensionsPave();
     const pageWidthPts = overlayCanvas.width / renderScale;
     const pageHeightPts = overlayCanvas.height / renderScale;
-    left = Math.max(0, Math.min(left, pageWidthPts - PAVE_WIDTH));
-    top = Math.max(0, Math.min(top, pageHeightPts - PAVE_HEIGHT));
+    let left = centreX - dims.width / 2;
+    let top = centreY - dims.height / 2;
+    left = Math.max(0, Math.min(left, pageWidthPts - dims.width));
+    top = Math.max(MARGE_TEXTE_PAVE, Math.min(top, pageHeightPts - dims.height));
 
-    positionChoisie = { page: pageNum, top: top, left: left, width: PAVE_WIDTH, height: PAVE_HEIGHT };
+    positionChoisie = { page: pageNum, top: top, left: left, width: dims.width, height: dims.height };
 
     document.getElementById("sig_page").value = positionChoisie.page;
     document.getElementById("sig_top").value = Math.round(positionChoisie.top);
@@ -300,12 +438,34 @@
     document.getElementById("sig_width").value = Math.round(positionChoisie.width);
     document.getElementById("sig_height").value = Math.round(positionChoisie.height);
 
-    labelPosition.textContent = "📍 Signature positionnée : page " + pageNum;
+    labelPosition.textContent = "📍 Signature positionnée : page " + positionChoisie.page;
     labelPosition.classList.remove("text-danger");
     labelPosition.classList.add("text-success");
     btnEnvoyer.disabled = false;
 
     dessinerPositionSiPresente();
+  }
+
+  overlayCanvas.addEventListener("click", function (e) {
+    const rect = overlayCanvas.getBoundingClientRect();
+    const scaleX = overlayCanvas.width / rect.width;
+    const scaleY = overlayCanvas.height / rect.height;
+    placerPave(
+      (e.clientX - rect.left) * scaleX / renderScale,
+      (e.clientY - rect.top) * scaleY / renderScale
+    );
   });
+
+  // Redimensionnement en direct autour du même centre (si le pavé est sur la
+  // page affichée ; sinon la nouvelle taille servira au prochain clic).
+  curseurTaille.addEventListener("input", function () {
+    document.getElementById("label_taille_pave").textContent = curseurTaille.value + " %";
+    if (positionChoisie && positionChoisie.page === pageNum) {
+      placerPave(positionChoisie.left + positionChoisie.width / 2,
+                 positionChoisie.top + positionChoisie.height / 2);
+    }
+  });
+
+  majTextePave();
 </script>
 {% endblock %}

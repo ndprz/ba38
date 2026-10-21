@@ -149,3 +149,16 @@ def telecharger_document_signe(file_uuid):
     )
     _raise_for_status(resp, "téléchargement document signé")
     return resp.content
+
+
+def supprimer_document(file_id):
+    """Supprime la demande côté LibreSign (signataires, éléments visibles) ET
+    les PDF original + signé stockés dans Nextcloud (deleteFile=true)."""
+    resp = requests.delete(
+        f"{_base_url()}/ocs/v2.php/apps/libresign/api/v1/file/file_id/{file_id}",
+        auth=_auth(),
+        headers=_headers(),
+        params={"deleteFile": "true"},
+        timeout=30,
+    )
+    _raise_for_status(resp, "suppression document")
