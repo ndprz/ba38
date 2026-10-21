@@ -164,6 +164,10 @@ def _dossier_production(annee):
     return os.path.join(_dossier_annee(annee), "production")
 
 
+def _dossier_sans_vendredi(annee):
+    return os.path.join(_dossier_annee(annee), "sans_vendredi")
+
+
 # ============================================================================
 # 🚛 PRODUCTION — génération des documents réels (fiches, pointage, équipier,
 # index, carte) directement depuis les 3 exports go-on-web du drive collecte,
@@ -2685,9 +2689,36 @@ def _ensure_table_magasins_sans_vendredi(conn):
             code_vif TEXT NOT NULL,
             marque_le TEXT,
             marque_par TEXT,
+            mail_envoye INTEGER DEFAULT 0,
+            mail_envoye_le TEXT,
             PRIMARY KEY (annee, code_vif)
         )
     """)
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_magasins_sans_vendredi)").fetchall()}
+    if "mail_envoye" not in colonnes:
+        conn.execute("ALTER TABLE collecte_magasins_sans_vendredi ADD COLUMN mail_envoye INTEGER DEFAULT 0")
+    if "mail_envoye_le" not in colonnes:
+        conn.execute("ALTER TABLE collecte_magasins_sans_vendredi ADD COLUMN mail_envoye_le TEXT")
+
+
+def _ensure_colonne_sans_vendredi_texte_mail(conn):
+    """Texte du mail envoyé aux magasins marqués « pas de collecte le
+    vendredi » — personnalisable par campagne, même principe que
+    non_collecte_texte_mail/autorisation_texte_mail."""
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_campagnes)").fetchall()}
+    if "sans_vendredi_texte_mail" not in colonnes:
+        conn.execute("ALTER TABLE collecte_campagnes ADD COLUMN sans_vendredi_texte_mail TEXT")
+
+
+SANS_VENDREDI_TEXTE_MAIL_DEFAUT = (
+    "Madame la Directrice, Monsieur le Directeur de <<Nom>>,\n\n"
+    "Dans le cadre de l'organisation de la collecte nationale des Banques Alimentaires <<Annee>>, nous "
+    "vous informons que votre magasin ne sera plus collecté le vendredi.\n\n"
+    "La collecte sera désormais réalisée à partir du samedi.\n\n"
+    "Nous vous remercions de votre compréhension et de votre engagement à nos côtés.\n\n"
+    "Cordialement,\n"
+    "La Banque Alimentaire de l'Isère"
+)
 
 
 def _lire_magasins_pour_sans_vendredi(annee):
@@ -2711,7 +2742,7 @@ def _lire_magasins_pour_sans_vendredi(annee):
 
     df = pd.read_excel(chemin)
     df.columns = [str(c).strip() for c in df.columns]
-    for col in ["Code VIF", "Nom", "État", "Ville", "Accord", "Commentaire"]:
+    for col in ["Code VIF", "Nom", "État", "Ville", "Email", "Accord", "Commentaire"]:
         if col not in df.columns:
             df[col] = ""
 
@@ -2726,11 +2757,17 @@ def _lire_magasins_pour_sans_vendredi(annee):
         if not code_vif or code_vif.lower() == "nan":
             continue
         commentaire = str(row.get("Commentaire", "")).strip()
+        try:
+            accord_fmt = pd.to_datetime(float(accord), unit="D", origin="1899-12-30").strftime("%d/%m/%Y")
+        except (TypeError, ValueError):
+            accord_fmt = str(accord).strip()
         magasins.append({
             "code_vif": code_vif,
             "nom": str(row.get("Nom", "")).strip(),
             "etat": str(row.get("État", "")).strip(),
             "ville": str(row.get("Ville", "")).strip(),
+            "accord": accord_fmt,
+            "emails": _emails_magasin(str(row.get("Email", "")).strip()),
             "commentaire": "" if commentaire.lower() == "nan" else commentaire,
         })
     magasins.sort(key=lambda m: m["nom"].lower())
@@ -2750,6 +2787,106 @@ def _vifs_sans_vendredi(annee):
                 "SELECT code_vif FROM collecte_magasins_sans_vendredi WHERE annee = ?", (annee,)
             ).fetchall()
         }
+
+
+def _ensure_table_detection_sans_vendredi(conn):
+    """Détections automatiques (upload d'une capture d'écran du planning
+    go-on-web, analysée par l'IA) des enseignes dont les 4 cases du
+    vendredi sont grises — vient en complément du repérage manuel
+    (_lire_magasins_pour_sans_vendredi), jamais à la place : l'utilisateur
+    reste seul à valider via la case à cocher avant tout enregistrement
+    (cf. sans_vendredi())."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_detection_sans_vendredi (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            annee INTEGER NOT NULL,
+            statut TEXT NOT NULL DEFAULT 'en_cours',
+            enseignes_detectees TEXT,
+            erreur TEXT,
+            lance_le TEXT,
+            lance_par TEXT,
+            image_nom TEXT
+        )
+    """)
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_detection_sans_vendredi)").fetchall()}
+    if "image_nom" not in colonnes:
+        conn.execute("ALTER TABLE collecte_detection_sans_vendredi ADD COLUMN image_nom TEXT")
+
+
+def _normaliser_nom_enseigne(nom):
+    import unicodedata as _ud_ne, re as _re_ne
+    n = _ud_ne.normalize('NFD', str(nom)).encode('ascii', 'ignore').decode('ascii')
+    return _re_ne.sub(r"[^a-z0-9]+", ' ', n.lower()).strip()
+
+
+def _detecter_sans_vendredi_background(app, detection_id, annee, image_bytes, media_type):
+    """Envoie l'image à l'API Claude (vision) pour repérer les enseignes
+    dont le vendredi est entièrement gris sur la capture d'écran go-on-web
+    fournie — tourne en arrière-plan, même principe que
+    _generer_redaction_background (appel IA potentiellement long)."""
+    import base64, json as _json
+    with app.app_context():
+        try:
+            api_key = os.getenv("CLAUDE_API_KEY")
+            if not api_key:
+                raise RuntimeError("CLAUDE_API_KEY absente du .env")
+
+            prompt = (
+                "Cette image est une capture d'écran d'un planning go-on-web de collecte alimentaire. "
+                "Chaque ligne correspond à un magasin (colonne « Enseigne »). La colonne « Ven. » "
+                "(vendredi) contient de petites cases représentant les créneaux du vendredi — ATTENTION, "
+                "le nombre de cases varie d'un magasin à l'autre (1, 2, 3 ou 4 selon ses créneaux propres), "
+                "ce n'est PAS toujours 4. Chaque case est soit verte (pleine, sans chiffre visible), soit "
+                "grise (avec un petit chiffre dedans), et parfois une case porte un badge rouge ou est "
+                "colorée en rose/magenta.\n\n"
+                "Identifie les lignes où TOUTES les cases présentes dans la colonne vendredi sont grises "
+                "(aucune verte, aucun badge rouge, aucune case rose/magenta) — qu'il y ait 1 seule case ou "
+                "plusieurs, le critère est qu'aucune ne soit verte/rouge/rose, pas un nombre précis de "
+                "cases. Ignore uniquement les lignes dont le nom n'est pas totalement lisible ou dont la "
+                "ligne est coupée en haut/bas de l'image (jamais à cause du nombre de cases vendredi).\n\n"
+                "Réponds UNIQUEMENT avec un objet JSON de cette forme exacte, sans aucun texte autour :\n"
+                '{"magasins_vendredi_gris": ["Nom enseigne 1", "Nom enseigne 2"]}'
+            )
+
+            client = anthropic.Anthropic(api_key=api_key)
+            response = client.messages.create(
+                model="claude-sonnet-5",
+                max_tokens=2000,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "source": {
+                            "type": "base64", "media_type": media_type,
+                            "data": base64.b64encode(image_bytes).decode("ascii"),
+                        }},
+                        {"type": "text", "text": prompt},
+                    ],
+                }],
+            )
+            texte = "".join(bloc.text for bloc in response.content if bloc.type == "text").strip()
+            if texte.startswith("```"):
+                texte = texte.strip("`")
+                if texte.lower().startswith("json"):
+                    texte = texte[4:]
+            data = _json.loads(texte)
+            noms = [str(n).strip() for n in data.get("magasins_vendredi_gris", []) if str(n).strip()]
+
+            with get_db_connection() as conn:
+                conn.execute(
+                    "UPDATE collecte_detection_sans_vendredi SET statut = 'termine', enseignes_detectees = ? WHERE id = ?",
+                    (_json.dumps(noms, ensure_ascii=False), detection_id)
+                )
+                conn.commit()
+            write_log(f"🤖 Collecte {annee} : détection vendredi gris #{detection_id} terminée ({len(noms)} enseigne(s))")
+
+        except Exception as e:
+            write_log(f"❌ Collecte {annee} : erreur détection vendredi gris #{detection_id} — {e}")
+            with get_db_connection() as conn:
+                conn.execute(
+                    "UPDATE collecte_detection_sans_vendredi SET statut = 'erreur', erreur = ? WHERE id = ?",
+                    (str(e), detection_id)
+                )
+                conn.commit()
 
 
 def _ensure_table_non_collectes_benevoles(conn):
@@ -2951,6 +3088,88 @@ def non_collecte_apercu_mail(annee):
     return Response(texte, mimetype="text/plain; charset=utf-8")
 
 
+@collecte_bp.route("/collecte/<int:annee>/sans-vendredi/detecter-image", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def sans_vendredi_detecter_image(annee):
+    """Upload d'une capture d'écran du planning go-on-web, analysée par
+    l'IA (arrière-plan) pour repérer les enseignes dont le vendredi est
+    entièrement gris — vient uniquement pré-cocher la page sans_vendredi(),
+    jamais enregistrer directement (cf. _detecter_sans_vendredi_background)."""
+    fichier = request.files.get("image")
+    if not fichier or not fichier.filename:
+        flash("⛔ Aucune image fournie", "warning")
+        return redirect(url_for("collecte.sans_vendredi", annee=annee))
+
+    media_type = fichier.mimetype or ""
+    if media_type not in ("image/png", "image/jpeg", "image/webp", "image/gif"):
+        flash("⛔ Format d'image non supporté (PNG/JPEG/WEBP/GIF attendu)", "warning")
+        return redirect(url_for("collecte.sans_vendredi", annee=annee))
+
+    image_bytes = fichier.read()
+    if len(image_bytes) > 10 * 1024 * 1024:
+        flash("⛔ Image trop volumineuse (10 Mo max)", "warning")
+        return redirect(url_for("collecte.sans_vendredi", annee=annee))
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        _ensure_table_detection_sans_vendredi(conn)
+        cur = conn.execute("""
+            INSERT INTO collecte_detection_sans_vendredi (annee, statut, lance_le, lance_par)
+            VALUES (?, 'en_cours', ?, ?)
+        """, (annee, maintenant, current_user.email))
+        detection_id = cur.lastrowid
+        conn.commit()
+
+    # Image conservée sur disque (pas seulement le résultat détecté) pour
+    # rester visible d'une session à l'autre — relancé à chaque nouvelle
+    # analyse, l'ancienne image d'une détection précédente n'est jamais
+    # supprimée (historique).
+    extension = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif"}[media_type]
+    dossier_images = _dossier_sans_vendredi(annee)
+    os.makedirs(dossier_images, exist_ok=True)
+    image_nom = f"detection_{detection_id}{extension}"
+    with open(os.path.join(dossier_images, image_nom), "wb") as f:
+        f.write(image_bytes)
+    with get_db_connection() as conn:
+        conn.execute(
+            "UPDATE collecte_detection_sans_vendredi SET image_nom = ? WHERE id = ?",
+            (image_nom, detection_id)
+        )
+        conn.commit()
+
+    app_reel = current_app._get_current_object()
+    lancer_tache_fond(
+        target=_detecter_sans_vendredi_background,
+        args=(app_reel, detection_id, annee, image_bytes, media_type),
+        nom="Collecte : detection image vendredi gris",
+        utilisateur=current_user.email,
+    )
+    write_log(f"🤖 Collecte {annee} : détection vendredi gris #{detection_id} lancée par {current_user.email}")
+    flash("🤖 Analyse de l'image lancée (compter 15 à 30 secondes) — rechargez la page pour voir le résultat", "info")
+    return redirect(url_for("collecte.sans_vendredi", annee=annee))
+
+
+@collecte_bp.route("/collecte/<int:annee>/sans-vendredi/image/<int:detection_id>")
+@login_required
+@require_access("collecte", "lecture")
+def sans_vendredi_image(annee, detection_id):
+    """Ressert l'image uploadée pour une détection donnée — conservée sur
+    disque pour rester visible d'une session à l'autre (cf.
+    sans_vendredi_detecter_image)."""
+    with get_db_connection() as conn:
+        row = conn.execute(
+            "SELECT image_nom FROM collecte_detection_sans_vendredi WHERE id = ? AND annee = ?",
+            (detection_id, annee)
+        ).fetchone()
+    if not row or not row["image_nom"]:
+        abort(404)
+    chemin = os.path.join(_dossier_sans_vendredi(annee), row["image_nom"])
+    if not os.path.exists(chemin):
+        abort(404)
+    return send_file(chemin)
+
+
 @collecte_bp.route("/collecte/<int:annee>/sans-vendredi", methods=["GET", "POST"])
 @login_required
 @require_access("collecte", "ecriture")
@@ -2964,40 +3183,236 @@ def sans_vendredi(annee):
     magasins = _lire_magasins_pour_sans_vendredi(annee)
 
     if request.method == "POST":
+        if request.form.get("confirmation") != "oui":
+            flash("❌ Confirmez le contrôle avant l'envoi", "danger")
+            return redirect(url_for("collecte.sans_vendredi", annee=annee))
+
+        mode_test = request.form.get("mode_test") == "on"
+        test_un_magasin = request.form.get("test_un_magasin") == "on"
+        code_vif_test = request.form.get("magasin_test_code_vif", "")
         codes_coches = set(request.form.getlist("magasins"))
         codes_eligibles = {m["code_vif"] for m in magasins}
+
+        if test_un_magasin:
+            magasins_a_mailer = [m for m in magasins if m["code_vif"] == code_vif_test]
+            if not magasins_a_mailer:
+                flash("❌ Sélectionnez un magasin pour le test", "danger")
+                return redirect(url_for("collecte.sans_vendredi", annee=annee))
+        else:
+            magasins_a_mailer = [m for m in magasins if m["code_vif"] in codes_coches]
+
+        if mode_test and not getattr(current_user, "email", ""):
+            flash("❌ Votre compte n'a pas d'adresse email pour le test", "danger")
+            return redirect(url_for("collecte.sans_vendredi", annee=annee))
+
         maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        a_ajouter, a_retirer = set(), set()
+        if not mode_test:
+            with get_db_connection() as conn:
+                _ensure_table_magasins_sans_vendredi(conn)
+                deja = {
+                    r["code_vif"] for r in conn.execute(
+                        "SELECT code_vif FROM collecte_magasins_sans_vendredi WHERE annee = ?", (annee,)
+                    ).fetchall()
+                }
+                a_ajouter = (codes_coches & codes_eligibles) - deja
+                a_retirer = (deja & codes_eligibles) - codes_coches
+                for code in a_retirer:
+                    conn.execute(
+                        "DELETE FROM collecte_magasins_sans_vendredi WHERE annee = ? AND code_vif = ?",
+                        (annee, code),
+                    )
+                conn.commit()
+
         with get_db_connection() as conn:
-            _ensure_table_magasins_sans_vendredi(conn)
-            deja = {
-                r["code_vif"] for r in conn.execute(
-                    "SELECT code_vif FROM collecte_magasins_sans_vendredi WHERE annee = ?", (annee,)
-                ).fetchall()
-            }
-            a_ajouter = (codes_coches & codes_eligibles) - deja
-            a_retirer = (deja & codes_eligibles) - codes_coches
-            for code in a_ajouter:
-                conn.execute("""
-                    INSERT INTO collecte_magasins_sans_vendredi (annee, code_vif, marque_le, marque_par)
-                    VALUES (?, ?, ?, ?)
-                """, (annee, code, maintenant, current_user.email))
-            for code in a_retirer:
-                conn.execute(
-                    "DELETE FROM collecte_magasins_sans_vendredi WHERE annee = ? AND code_vif = ?",
-                    (annee, code),
-                )
+            _ensure_colonne_sans_vendredi_texte_mail(conn)
             conn.commit()
-        flash(f"✅ {len(a_ajouter)} magasin(s) ajouté(s), {len(a_retirer)} retiré(s)", "success")
-        write_log(f"🚫 Sans vendredi {annee} : +{len(a_ajouter)} / -{len(a_retirer)} par {current_user.email}")
+            campagne_mail = conn.execute(
+                "SELECT sans_vendredi_texte_mail FROM collecte_campagnes WHERE annee = ?", (annee,)
+            ).fetchone()
+        texte_mail_modele = (campagne_mail["sans_vendredi_texte_mail"] if campagne_mail else None) or SANS_VENDREDI_TEXTE_MAIL_DEFAUT
+        texte_mail_modele = texte_mail_modele.replace("<<Annee>>", str(annee))
+
+        # Marquage AVANT l'envoi (hors test) : la mise à jour mail_envoye
+        # ci-dessous porte sur une ligne qui doit déjà exister, sinon elle ne
+        # fait rien silencieusement (bug trouvé en testant : mail bien
+        # envoyé mais mail_envoye resté à 0 faute de ligne à mettre à jour).
+        if not mode_test:
+            with get_db_connection() as conn:
+                for code in a_ajouter:
+                    conn.execute("""
+                        INSERT INTO collecte_magasins_sans_vendredi (annee, code_vif, marque_le, marque_par)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(annee, code_vif) DO NOTHING
+                    """, (annee, code, maintenant, current_user.email))
+                conn.commit()
+
+        envoyes = 0
+        sans_email = []
+        # Hors test : on n'envoie le mail qu'aux magasins NOUVELLEMENT marqués
+        # (a_ajouter), jamais à ceux déjà marqués lors d'une précédente
+        # session (sinon un simple réenregistrement renverrait le mail à
+        # tout le monde à chaque fois).
+        cible_envoi = magasins_a_mailer if (mode_test or test_un_magasin) else [m for m in magasins_a_mailer if m["code_vif"] in a_ajouter]
+        for magasin in cible_envoi:
+            if not magasin["emails"]:
+                sans_email.append(magasin["nom"])
+                continue
+            destinataires = [current_user.email] if mode_test else magasin["emails"]
+            envoyer_mail(
+                sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — Pas de collecte le vendredi — {magasin['nom']}",
+                destinataires=destinataires,
+                texte=texte_mail_modele.replace("<<Nom>>", magasin["nom"]),
+                sender_override=os.getenv("MAILJET_SENDER"),
+                cc=None if mode_test else ["ba380.collecte@banquealimentaire.org"],
+            )
+            envoyes += 1
+            if not mode_test:
+                with get_db_connection() as conn:
+                    conn.execute(
+                        "UPDATE collecte_magasins_sans_vendredi SET mail_envoye = 1, mail_envoye_le = ? WHERE annee = ? AND code_vif = ?",
+                        (maintenant, annee, magasin["code_vif"]),
+                    )
+                    conn.commit()
+
+        if not mode_test:
+            message = f"✅ {len(a_ajouter)} magasin(s) ajouté(s), {len(a_retirer)} retiré(s) — {envoyes} mail(s) envoyé(s)"
+        else:
+            message = f"✅ Test : {envoyes} mail(s) envoyé(s) à votre adresse, rien n'a été marqué"
+        if sans_email:
+            message += f" — ⚠️ sans email, à contacter autrement : {', '.join(sans_email)}"
+        flash(message, "warning" if sans_email else "success")
+        write_log(f"🚫 Sans vendredi {annee} : +{len(a_ajouter)} / -{len(a_retirer)} / {envoyes} mail(s) par {current_user.email}")
         return redirect(url_for("collecte.sans_vendredi", annee=annee))
 
-    deja_marques = _vifs_sans_vendredi(annee)
+    with get_db_connection() as conn:
+        _ensure_table_magasins_sans_vendredi(conn)
+        conn.commit()
+        deja_marques = {
+            r["code_vif"]: r for r in conn.execute(
+                "SELECT code_vif, mail_envoye FROM collecte_magasins_sans_vendredi WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
     for magasin in magasins:
-        magasin["deja_marque"] = magasin["code_vif"] in deja_marques
+        deja = deja_marques.get(magasin["code_vif"])
+        magasin["deja_marque"] = deja is not None
+        magasin["mail_deja_envoye"] = bool(deja and deja["mail_envoye"])
+
+    derniere_detection = None
+    with get_db_connection() as conn:
+        _ensure_table_detection_sans_vendredi(conn)
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM collecte_detection_sans_vendredi WHERE annee = ? ORDER BY id DESC LIMIT 1",
+            (annee,)
+        ).fetchone()
+    if row:
+        derniere_detection = dict(row)
+        if row["statut"] == "termine" and row["enseignes_detectees"]:
+            noms_detectes = json.loads(row["enseignes_detectees"])
+            noms_non_matches = []
+            for nom_d in noms_detectes:
+                nn = _normaliser_nom_enseigne(nom_d)
+                trouve = next((m for m in magasins if _normaliser_nom_enseigne(m["nom"]) == nn), None)
+                if trouve is None:
+                    trouve = next((m for m in magasins
+                                   if nn in _normaliser_nom_enseigne(m["nom"])
+                                   or _normaliser_nom_enseigne(m["nom"]) in nn), None)
+                if trouve is None:
+                    # Dernier recours : ressemblance approximative (ex. OCR
+                    # ayant lu « Lidl Tigneu » au lieu de « Lidl Tignieu » —
+                    # ni égal ni sous-chaîne, mais clairement le même magasin).
+                    # Seuil volontairement élevé (0.93) : deux enseignes
+                    # homonymes d'une même ville mais de magasins DIFFÉRENTS
+                    # (ex. « Satoriz ... Béal » vs « Satoriz ... G.Péri »,
+                    # ratio 0.88) ne doivent jamais être confondues — un faux
+                    # positif coche le mauvais magasin, pire qu'un magasin
+                    # non reconnu laissé à vérifier manuellement (retour
+                    # utilisateur direct, 2026-10-21).
+                    import difflib as _difflib_sv
+                    proches = _difflib_sv.get_close_matches(
+                        nn, [_normaliser_nom_enseigne(m["nom"]) for m in magasins], n=1, cutoff=0.93
+                    )
+                    if proches:
+                        trouve = next((m for m in magasins if _normaliser_nom_enseigne(m["nom"]) == proches[0]), None)
+                if trouve:
+                    trouve["detecte"] = True
+                    trouve["detecte_nouveau"] = not trouve["deja_marque"]
+                else:
+                    noms_non_matches.append(nom_d)
+            derniere_detection["noms_non_matches"] = noms_non_matches
+
+    for magasin in magasins:
+        magasin.setdefault("detecte", False)
+        magasin.setdefault("detecte_nouveau", False)
+        magasin["coche"] = magasin["deja_marque"] or magasin["detecte_nouveau"]
+
+    # Après une détection terminée, n'afficher par défaut que les magasins
+    # repérés dans l'image (retour utilisateur direct) — le tableau complet
+    # reste accessible via ?tous=1, notamment pour gérer les magasins marqués
+    # en dehors de toute image (saisie manuelle historique).
+    voir_tous = request.args.get("tous") == "1"
+    magasins_affiches = magasins
+    if derniere_detection and derniere_detection["statut"] == "termine" and not voir_tous:
+        magasins_affiches = [m for m in magasins if m["detecte"]]
+
+    with get_db_connection() as conn:
+        _ensure_colonne_sans_vendredi_texte_mail(conn)
+        conn.commit()
+        campagne = conn.execute(
+            "SELECT sans_vendredi_texte_mail FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
 
     return render_template(
-        "collecte/sans_vendredi.html", annee=annee, magasins=magasins,
+        "collecte/sans_vendredi.html", annee=annee, magasins=magasins_affiches,
+        nb_magasins_total=len(magasins), voir_tous=voir_tous,
+        derniere_detection=derniere_detection,
+        texte_mail=(campagne["sans_vendredi_texte_mail"] if campagne else None) or SANS_VENDREDI_TEXTE_MAIL_DEFAUT,
     )
+
+
+@collecte_bp.route("/collecte/sans-vendredi/texte", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_texte_sans_vendredi():
+    """Enregistre le texte du mail envoyé aux magasins marqués 'pas de
+    collecte le vendredi' — même principe que enregistrer_texte_non_collecte."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    texte_mail = request.form.get("texte_mail", "").strip()
+    with get_db_connection() as conn:
+        _ensure_colonne_sans_vendredi_texte_mail(conn)
+        conn.execute(
+            "UPDATE collecte_campagnes SET sans_vendredi_texte_mail = ? WHERE annee = ?",
+            (texte_mail or None, annee),
+        )
+        conn.commit()
+    flash("✅ Texte du mail enregistré.", "success")
+    return redirect(url_for("collecte.sans_vendredi", annee=annee))
+
+
+@collecte_bp.route("/collecte/<int:annee>/sans-vendredi/apercu-mail")
+@login_required
+@require_access("collecte", "lecture")
+def sans_vendredi_apercu_mail(annee):
+    """Affiche directement dans le navigateur (pas d'envoi, même de test) le
+    texte exact du mail pour le magasin sélectionné — même principe que
+    non_collecte_apercu_mail."""
+    magasins = _lire_magasins_pour_sans_vendredi(annee)
+    if not magasins:
+        flash("⛔ Aucun magasin disponible pour l'aperçu", "danger")
+        return redirect(url_for("collecte.sans_vendredi", annee=annee))
+    code_vif = request.args.get("code_vif", "")
+    magasin = next((m for m in magasins if m["code_vif"] == code_vif), magasins[0])
+
+    with get_db_connection() as conn:
+        _ensure_colonne_sans_vendredi_texte_mail(conn)
+        conn.commit()
+        campagne_mail = conn.execute(
+            "SELECT sans_vendredi_texte_mail FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    texte_mail_modele = (campagne_mail["sans_vendredi_texte_mail"] if campagne_mail else None) or SANS_VENDREDI_TEXTE_MAIL_DEFAUT
+    texte = texte_mail_modele.replace("<<Annee>>", str(annee)).replace("<<Nom>>", magasin["nom"])
+    return Response(texte, mimetype="text/plain; charset=utf-8")
 
 
 # Boîte englobante large autour de l'Isère (+ départements limitrophes), pour

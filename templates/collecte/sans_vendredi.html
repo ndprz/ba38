@@ -9,20 +9,92 @@
     <h2>🚫 Pas de collecte le vendredi — {{ annee }}</h2>
     <p class="text-muted small">
         Magasins collectés cette année ayant donné leur accord : cochez ceux qui ne doivent plus être
-        collectés le vendredi (repérage manuel, ex. via la carte de localisation ou la colonne Commentaire
-        ci-dessous), la collecte commençant alors le samedi. Pris en compte automatiquement par le générateur
-        de tournées (jamais replacé sur le vendredi, réinjecté sur une demi-journée autorisée si besoin).
-        Aucun mail n'est envoyé ici.
+        collectés le vendredi (repérage manuel ou assisté par image ci-dessous), la collecte commençant
+        alors le samedi. Pris en compte automatiquement par le générateur de tournées (jamais replacé sur
+        le vendredi, réinjecté sur une demi-journée autorisée si besoin). Un mail prévient le magasin à
+        l'enregistrement — uniquement les magasins nouvellement cochés, jamais ceux déjà marqués lors
+        d'une session précédente.
     </p>
 
     {% call action_buttons() %}
         {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
     {% endcall %}
 
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">🤖 Détecter depuis une capture d'écran go-on-web</h5>
+            <p class="text-muted small mb-2">
+                Collez/choisissez une capture du planning go-on-web (colonne « Ven. » avec les cases par
+                magasin) : l'IA repère les enseignes dont le vendredi est entièrement gris et les coche
+                ci-dessous (à vérifier et enregistrer vous-même, rien n'est sauvegardé automatiquement).
+                Peut être relancé avec une nouvelle image à tout moment pour rafraîchir la détection —
+                l'image reste visible ci-dessous d'une session à l'autre.
+            </p>
+            <form method="post" action="{{ url_for('collecte.sans_vendredi_detecter_image', annee=annee) }}"
+                  enctype="multipart/form-data" class="d-flex gap-2 align-items-center flex-wrap">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/gif"
+                       class="form-control form-control-sm" style="max-width:320px;" required>
+                <button type="submit" class="btn btn-sm btn-outline-primary">🤖 Analyser l'image</button>
+            </form>
+
+            {% if derniere_detection %}
+            <div class="mt-2 small">
+                {% if derniere_detection.statut == 'en_cours' %}
+                    <span class="text-muted">⏳ Analyse en cours (lancée {{ derniere_detection.lance_le }} par {{ derniere_detection.lance_par }}) — rechargez la page dans quelques instants.</span>
+                {% elif derniere_detection.statut == 'erreur' %}
+                    <span class="text-danger">❌ Échec de l'analyse : {{ derniere_detection.erreur }}</span>
+                {% elif derniere_detection.statut == 'termine' %}
+                    <span class="text-success">✅ Dernière analyse du {{ derniere_detection.lance_le }} par {{ derniere_detection.lance_par }} — seuls les magasins repérés sont affichés ci-dessous.</span>
+                    {% if derniere_detection.noms_non_matches %}
+                    <br><span class="text-warning">⚠️ Non reconnu(s) dans la liste des magasins éligibles : {{ derniere_detection.noms_non_matches|join(', ') }}</span>
+                    {% endif %}
+                {% endif %}
+                {% if derniere_detection.image_nom %}
+                <div class="mt-2">
+                    <img src="{{ url_for('collecte.sans_vendredi_image', annee=annee, detection_id=derniere_detection.id) }}"
+                         alt="Capture analysée" class="img-fluid border rounded" style="max-height:400px;">
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <button class="btn btn-outline-secondary mb-3" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionParametresSansVendredi"
+            aria-expanded="false" aria-controls="sectionParametresSansVendredi">
+        📁 Paramètres (texte du mail)
+    </button>
+    <div id="sectionParametresSansVendredi" class="collapse mb-3">
+        <form method="post" action="{{ url_for('collecte.enregistrer_texte_sans_vendredi') }}" class="border rounded p-3 mb-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="annee" value="{{ annee }}">
+            <div class="mb-3">
+                <label for="texte_mail" class="form-label"><strong>Texte du mail</strong></label>
+                <textarea name="texte_mail" id="texte_mail" class="form-control" rows="8">{{ texte_mail }}</textarea>
+                <small class="text-muted">
+                    Repères disponibles : <code>&lt;&lt;Nom&gt;&gt;</code> (nom du magasin) et
+                    <code>&lt;&lt;Annee&gt;&gt;</code>.
+                </small>
+            </div>
+            <button type="submit" class="btn btn-outline-primary">💾 Enregistrer le texte</button>
+        </form>
+    </div>
+
     <form method="post" id="form-sans-vendredi">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-        <h5>Magasins ({{ magasins|length }})</h5>
+        <h5>
+            Magasins ({{ magasins|length }}{% if nb_magasins_total != magasins|length %} / {{ nb_magasins_total }}{% endif %})
+            {% if nb_magasins_total != magasins|length %}
+            <span class="small fw-normal">— filtré sur les magasins repérés par la dernière image
+                (<a href="{{ url_for('collecte.sans_vendredi', annee=annee, tous=1) }}">voir tous les magasins</a>)</span>
+            {% elif voir_tous %}
+            <span class="small fw-normal">— tous les magasins
+                (<a href="{{ url_for('collecte.sans_vendredi', annee=annee) }}">revenir aux magasins repérés</a>)</span>
+            {% endif %}
+        </h5>
         <div class="mb-2">
             <button type="button" id="btn-tout-cocher" class="btn btn-sm btn-outline-secondary">☑️ Tout cocher</button>
             <button type="button" id="btn-tout-decocher" class="btn btn-sm btn-outline-secondary">⬜ Tout décocher</button>
@@ -36,17 +108,25 @@
                         <th>Magasin</th>
                         <th>État</th>
                         <th>Ville</th>
+                        <th>Accord</th>
+                        <th>Email(s)</th>
+                        <th>Mail envoyé</th>
                         <th>Commentaire</th>
                     </tr>
                 </thead>
                 <tbody>
                 {% for m in magasins %}
-                <tr>
-                    <td><input class="case-magasin" type="checkbox" name="magasins" value="{{ m.code_vif }}" {% if m.deja_marque %}checked{% endif %}></td>
+                <tr{% if m.detecte_nouveau %} class="table-warning"{% endif %}>
+                    <td><input class="case-magasin" type="checkbox" name="magasins" value="{{ m.code_vif }}" {% if m.coche %}checked{% endif %}></td>
                     <td>{{ m.code_vif }}</td>
-                    <td>{{ m.nom }}</td>
+                    <td>{{ m.nom }}{% if m.detecte_nouveau %} <span class="badge bg-warning text-dark">détecté par image</span>{% endif %}</td>
                     <td>{{ m.etat }}</td>
                     <td>{{ m.ville }}</td>
+                    <td>{{ m.accord }}</td>
+                    <td>
+                        {% if m.emails %}{{ m.emails|join(', ') }}{% else %}<span class="text-danger">⚠️ Aucun email</span>{% endif %}
+                    </td>
+                    <td>{{ '✅' if m.mail_deja_envoye else '—' }}</td>
                     <td class="small">{{ m.commentaire }}</td>
                 </tr>
                 {% endfor %}
@@ -54,7 +134,44 @@
             </table>
         </div>
 
-        <button type="submit" class="btn btn-primary mt-3">💾 Enregistrer</button>
+        <div class="border rounded p-3 mt-3 bg-light">
+            <p class="text-muted small mb-2">
+                Ces options concernent l'envoi dans son ensemble — elles ne font pas partie de la liste des
+                magasins ci-dessus. Le mail n'est envoyé qu'aux magasins nouvellement cochés (pas déjà
+                marqués), jamais aux magasins déjà notifiés.
+            </p>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="confirmation" value="oui" id="confirmation" required>
+                <label class="form-check-label" for="confirmation">J'ai contrôlé la sélection et le texte du mail et je confirme l'enregistrement.</label>
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="mode_test" id="mode_test" checked>
+                <label class="form-check-label" for="mode_test">Test : envoyer uniquement à l'adresse de test (aux magasins cochés), sans rien marquer.</label>
+            </div>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" name="test_un_magasin" id="test_un_magasin">
+                <label class="form-check-label" for="test_un_magasin">Test sur un seul magasin.</label>
+            </div>
+            <div class="mb-3 d-flex align-items-end gap-2 flex-wrap" style="max-width: 700px;">
+                <div class="flex-grow-1">
+                    <label class="form-label" for="magasin_test_code_vif">Magasin à tester / prévisualiser</label>
+                    <select class="form-select" name="magasin_test_code_vif" id="magasin_test_code_vif">
+                        {% for m in magasins %}
+                        <option value="{{ m.code_vif }}">{{ m.nom }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="button" id="btn-apercu-mail" class="btn btn-outline-info">
+                    ✉️ Aperçu du mail
+                </button>
+            </div>
+            <p class="text-muted small mb-0">
+                L'aperçu ouvre le texte du mail exact qui serait envoyé pour le magasin sélectionné ci-dessus,
+                sans envoyer aucun mail (même de test).
+            </p>
+        </div>
+
+        <button type="submit" class="btn btn-primary mt-3" id="btn-envoyer-mails">💾 Enregistrer{% if not voir_tous %} et envoyer les mails{% endif %}</button>
     </form>
 </div>
 
@@ -65,6 +182,38 @@ document.getElementById("btn-tout-cocher").addEventListener("click", function ()
 });
 document.getElementById("btn-tout-decocher").addEventListener("click", function () {
     cases.forEach(function (c) { c.checked = false; });
+});
+
+document.getElementById("btn-apercu-mail").addEventListener("click", function () {
+    const codeVif = document.getElementById("magasin_test_code_vif").value;
+    const url = "{{ url_for('collecte.sans_vendredi_apercu_mail', annee=annee) }}?code_vif=" + encodeURIComponent(codeVif);
+    window.open(url, "_blank");
+});
+
+document.getElementById("btn-envoyer-mails").addEventListener("click", function (evenement) {
+    if (!document.getElementById("confirmation").checked) {
+        evenement.preventDefault();
+        alert("⚠️ Cochez d'abord « J'ai contrôlé la sélection et le texte du mail et je confirme l'enregistrement » — rien n'a été fait.");
+        return;
+    }
+
+    const modeTest = document.getElementById("mode_test").checked;
+    const unSeulMagasin = document.getElementById("test_un_magasin").checked;
+    const nomMagasin = document.getElementById("magasin_test_code_vif").selectedOptions[0].text;
+    const nbSelectionnes = Array.from(cases).filter(function (c) { return c.checked; }).length;
+
+    let message;
+    if (unSeulMagasin) {
+        message = "Envoyer un mail de TEST pour le magasin « " + nomMagasin + " » à votre propre adresse, sans rien marquer ?";
+    } else if (modeTest) {
+        message = "Envoyer un mail de TEST (pour les " + nbSelectionnes + " magasin(s) cochés, mais tous à votre propre adresse), sans rien marquer ?";
+    } else {
+        message = "⚠️ ENVOI RÉEL : marquer les changements et envoyer le mail aux magasins nouvellement cochés (sur " + nbSelectionnes + " coché(s)), à leurs vraies adresses ?";
+    }
+
+    if (!confirm(message)) {
+        evenement.preventDefault();
+    }
 });
 </script>
 {% endblock %}

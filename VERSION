@@ -1,3 +1,3 @@
-VERSION=1.7.134
-MESSAGE=Collecte : ancrages supplementaires (Grande Rue, Tencin), fusion secteurs (Chartreuse Est/Gresivaudan), memes magasins matin/apres-midi (V009/V010/V011/V020/V021), meme camion sur toutes DJ (Plateau Nord, Tullins), dedoublonnage inter-camions, reduction ecarts matin/apres-midi, fix ancrage vs camion exclu pour simulation, page Production Voir/filtrer + colonne Type camion, controles coherence affiches
-DATE=2026-10-21 13:25
+VERSION=1.7.135
+MESSAGE=Collecte : page Pas de collecte le vendredi - detection par image (IA), filtre sur magasins reperes, colonne Accord, texte editable + envoi mail (comme Pas de collecte faute de benevoles), image conservee entre sessions
+DATE=2026-10-21 14:54
