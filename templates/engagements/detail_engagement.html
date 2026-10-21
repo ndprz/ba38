@@ -739,10 +739,17 @@ Détail engagement #{{ engagement.id }}
                         {% if engagement.devis_derogation %}
 
                         <br>
+                        {% if engagement.devis_derogation_motif %}
+                        <span class="badge bg-warning text-dark text-wrap text-start">
+                            ⚠️ Dérogation : un seul devis —
+                            {{ engagement.devis_derogation_motif }}{% if engagement.devis_derogation_precision %} : {{ engagement.devis_derogation_precision }}{% endif %}
+                        </span>
+                        {% else %}
                         <span class="badge bg-warning text-dark">
                             ⚠️ Dérogation : pas de mise en concurrence,
                             conditions négociées
                         </span>
+                        {% endif %}
 
                         {% endif %}
 

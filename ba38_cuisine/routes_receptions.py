@@ -9,7 +9,7 @@ from datetime import date, timedelta
 import os
 
 from flask import render_template, request, redirect, url_for, flash, send_file, abort
-from flask_login import login_required
+from flask_login import login_required, current_user
 
 from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_cuisine import production_cuisine_bp
@@ -360,11 +360,15 @@ def affecter_reception(reception_id):
 @require_access("production_cuisine", "ecriture")
 def retirer_utilisation(utilisation_id):
     """Annule l'utilisation d'une réception par une production : le poids
-    correspondant revient dans le solde de la réception."""
+    correspondant revient dans le solde de la réception. Possible aussi sur
+    une production terminée (lot ajouté par erreur) — d'où la trace dans le log."""
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
         utilisation = conn.execute(
-            "SELECT reception_id, production_id, poids_kg FROM cuisine_reception_utilisations WHERE id = ?",
+            """SELECT ru.reception_id, ru.production_id, ru.poids_kg, p.statut
+               FROM cuisine_reception_utilisations ru
+               LEFT JOIN cuisine_productions p ON p.id = ru.production_id
+               WHERE ru.id = ?""",
             (utilisation_id,),
         ).fetchone()
         if not utilisation:
@@ -375,7 +379,8 @@ def retirer_utilisation(utilisation_id):
 
     write_log(
         f"↩️ Réception cuisine #{utilisation['reception_id']} : {utilisation['poids_kg']} kg retirés "
-        f"de la production #{utilisation['production_id']}"
+        f"de la production #{utilisation['production_id']} ({utilisation['statut']}) "
+        f"par {getattr(current_user, 'email', None)}"
     )
     upload_database()
     flash(f"✅ {format_kg(utilisation['poids_kg'])} kg remis dans le stock de la réception.", "success")

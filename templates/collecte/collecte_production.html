@@ -107,10 +107,17 @@
                         {{ f.label }}
                     </span>
                     {% if f.existe %}
-                    <a href="{{ url_for('collecte.production_telecharger', cle=cle, annee=annee) }}"
-                       class="btn btn-sm btn-outline-primary" {% if cle == 'carte' %}target="_blank"{% endif %}>
-                        📥 Télécharger
-                    </a>
+                    <span class="d-flex gap-2">
+                        {% if cle == 'excel' %}
+                        <a href="{{ url_for('collecte.production_resultats', annee=annee) }}" class="btn btn-sm btn-outline-secondary">
+                            👁️ Voir / filtrer
+                        </a>
+                        {% endif %}
+                        <a href="{{ url_for('collecte.production_telecharger', cle=cle, annee=annee) }}"
+                           class="btn btn-sm btn-outline-primary" {% if cle == 'carte' %}target="_blank"{% endif %}>
+                            📥 Télécharger
+                        </a>
+                    </span>
                     {% else %}
                     <span class="text-muted small">non généré</span>
                     {% endif %}

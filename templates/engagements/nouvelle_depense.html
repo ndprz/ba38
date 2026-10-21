@@ -362,20 +362,59 @@ Nouvelle demande d'engagement
 
             </div>
 
-            <div class="form-check mt-2">
+            <div id="zone_derogation" class="mt-2 d-none">
 
-                <input class="form-check-input"
-                    type="checkbox"
-                    name="devis_derogation"
-                    id="devis_derogation"
-                    {% if request.form.get('devis_derogation') %}checked{% endif %}>
+                <div class="form-check">
 
-                <label class="form-check-label" for="devis_derogation">
+                    <input class="form-check-input"
+                        type="checkbox"
+                        name="devis_derogation"
+                        id="devis_derogation"
+                        {% if request.form.get('devis_derogation') %}checked{% endif %}>
 
-                    Pas de mise en concurrence, conditions négociées
-                    (contrat-cadre, fournisseur imposé...)
+                    <label class="form-check-label" for="devis_derogation">
 
-                </label>
+                        Un seul devis : dérogation à la mise en concurrence
+                        (motif obligatoire, le responsable de pôle et la
+                        présidence en sont informés par mail)
+
+                    </label>
+
+                </div>
+
+                <div id="zone_derogation_motif" class="row g-2 mt-1 d-none">
+
+                    <div class="col-md-6">
+
+                        <select name="devis_derogation_motif"
+                            id="devis_derogation_motif"
+                            class="form-select">
+
+                            <option value="">-- Motif de la dérogation --</option>
+
+                            {% for m in motifs_derogation_devis() %}
+                            <option value="{{ m }}"
+                                {% if request.form.get('devis_derogation_motif') == m %}selected{% endif %}>
+                                {{ m }}
+                            </option>
+                            {% endfor %}
+
+                        </select>
+
+                    </div>
+
+                    <div class="col-md-6 d-none" id="zone_derogation_precision">
+
+                        <input type="text"
+                            name="devis_derogation_precision"
+                            id="devis_derogation_precision"
+                            class="form-control"
+                            placeholder="Précisez le motif"
+                            value="{{ request.form.get('devis_derogation_precision', '') }}">
+
+                    </div>
+
+                </div>
 
             </div>
 
@@ -515,6 +554,20 @@ document.addEventListener(
 
         }
 
+        const champMotifDerogation =
+            document.getElementById(
+                "devis_derogation_motif"
+            );
+
+        if (champMotifDerogation){
+
+            champMotifDerogation.addEventListener(
+                "change",
+                updateDevis
+            );
+
+        }
+
     }
 );
 
@@ -569,8 +622,28 @@ function updateDevis() {
     const unDevisObligatoire =
         palierTrouve?.un_devis === "o";
 
-    const deuxDevisObligatoires =
+    let deuxDevisObligatoires =
         palierTrouve?.deux_devis === "o";
+
+    // Fournisseur référencé trésorerie : pas de mise en
+    // concurrence, 1 seul devis suffit (même règle côté serveur).
+    const typeEngagement =
+        document.querySelector(
+            'input[name="type_engagement"]:checked'
+        )?.value;
+
+    const fournisseurIdChoisi =
+        document.getElementById("fournisseur_id_input")?.value;
+
+    const fournisseurReference =
+        typeEngagement === "fournisseur"
+        && fournisseurIdChoisi
+        && fournisseursParId[fournisseurIdChoisi]
+            ?.fournisseur_reference_tresorerie === "oui";
+
+    if (deuxDevisObligatoires && fournisseurReference){
+        deuxDevisObligatoires = false;
+    }
 
     const blocDevis =
         document.getElementById("bloc_devis");
@@ -582,16 +655,53 @@ function updateDevis() {
         document.getElementById("zone_devis_2");
 
     const devisRequis =
-        unDevisObligatoire || deuxDevisObligatoires;
+        unDevisObligatoire || deuxDevisObligatoires
+        || (palierTrouve?.deux_devis === "o");
+
+    // Dérogation : proposée seulement quand 2 devis sont exigés ;
+    // elle lève le 2e devis, le 1er reste obligatoire.
+    document.getElementById("zone_derogation")
+        .classList.toggle("d-none", !deuxDevisObligatoires);
 
     const derogationCochee =
-        document.getElementById(
+        deuxDevisObligatoires
+        && document.getElementById(
             "devis_derogation"
         )?.checked;
 
+    const champMotif =
+        document.getElementById("devis_derogation_motif");
+
+    const champPrecision =
+        document.getElementById("devis_derogation_precision");
+
+    const motifAutre =
+        derogationCochee && champMotif.value === "Autre";
+
+    document.getElementById("zone_derogation_motif")
+        .classList.toggle("d-none", !derogationCochee);
+
+    document.getElementById("zone_derogation_precision")
+        .classList.toggle("d-none", !motifAutre);
+
+    champMotif.required = derogationCochee;
+    champPrecision.required = motifAutre;
+
     blocDevis.classList.toggle("d-none", !devisRequis);
+
+    const messageDevis =
+        document.getElementById("message_devis");
+
+    if (messageDevis){
+        messageDevis.innerHTML =
+            (palierTrouve?.deux_devis === "o" && fournisseurReference)
+            ? '<div class="alert alert-info py-1 small mb-2">'
+              + "Fournisseur référencé trésorerie : "
+              + "un seul devis demandé.</div>"
+            : "";
+    }
     zoneDevis1.classList.toggle(
-        "d-none", !devisRequis || derogationCochee
+        "d-none", !devisRequis
     );
     zoneDevis2.classList.toggle(
         "d-none", !deuxDevisObligatoires || derogationCochee
@@ -599,7 +709,7 @@ function updateDevis() {
 
     document.querySelector(
         'input[name="devis_file_1"]'
-    ).required = devisRequis && !derogationCochee;
+    ).required = devisRequis;
 
     document.querySelector(
         'input[name="devis_file_2"]'

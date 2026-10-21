@@ -23,6 +23,21 @@ import uuid
 from ba38_engagements import engagements_bp
 
 
+def demandeur_en_conflit_pole(engagement, responsable_id):
+    """
+    Conflit d'intérêt : le responsable de pôle a fait la demande pour
+    lui-même (ou pour un fournisseur). Dans ce cas seul le suppléant 1
+    peut valider. S'il demande pour un autre bénévole (benevole_other),
+    il n'est pas bénéficiaire : il reçoit la demande et la valide lui-même.
+    Règle désactivée en DEV pour faciliter les tests.
+    """
+    if os.getenv("ENVIRONMENT", "prod").lower() == "dev":
+        return False
+    if engagement["demandeur_id"] != responsable_id:
+        return False
+    return engagement["type_engagement"] != "benevole_other"
+
+
 
 # ============================================================
 # DEPLACEMENTS : NOTIFICATIONS
@@ -459,7 +474,8 @@ def valider_engagement_pole(engagement_id):
             SELECT
                 e.*,
                 d.montant_total,
-                d.sous_type_depense
+                d.sous_type_depense,
+                d.type_engagement
             FROM engagements e
 
             LEFT JOIN engagements_depenses d
@@ -492,11 +508,8 @@ def valider_engagement_pole(engagement_id):
 
         # Si le demandeur est le responsable, seul le suppléant 1 valide.
         # (règle désactivée en DEV pour faciliter les tests)
-        est_prod = os.getenv("ENVIRONMENT", "prod").lower() != "dev"
-
-        demandeur_est_responsable = (
-            est_prod
-            and engagement["demandeur_id"] == pole["responsable_id"]
+        demandeur_est_responsable = demandeur_en_conflit_pole(
+            engagement, pole["responsable_id"]
         )
 
         if demandeur_est_responsable:
@@ -587,7 +600,8 @@ def renvoyer_validation_pole(engagement_id):
             SELECT
                 e.*,
                 d.objet,
-                d.montant_total
+                d.montant_total,
+                d.type_engagement
             FROM engagements e
 
             LEFT JOIN engagements_depenses d
@@ -665,9 +679,7 @@ def renvoyer_validation_pole(engagement_id):
             # Même règle de conflit d'intérêt qu'à la création
             # (routes_main.py) et qu'à la validation (valider_engagement_pole
             # ci-dessus) : désactivée en DEV pour faciliter les tests.
-            est_prod = os.getenv("ENVIRONMENT", "prod").lower() != "dev"
-
-            if est_prod and engagement["demandeur_id"] == pole["responsable_id"]:
+            if demandeur_en_conflit_pole(engagement, pole["responsable_id"]):
                 destinataires = list(filter(None, [
                     (pole["suppleant1_id"], pole["supp1_email"])
                     if pole["suppleant1_id"] and pole["supp1_email"] else None,
@@ -906,7 +918,8 @@ def valider_engagement_pole_lien(engagement_id, token):
                 e.*,
                 d.montant_total,
                 d.sous_type_depense,
-                d.objet
+                d.objet,
+                d.type_engagement
             FROM engagements e
 
             LEFT JOIN engagements_depenses d
@@ -938,9 +951,7 @@ def valider_engagement_pole_lien(engagement_id, token):
 
         # Si le demandeur est le responsable, seul le suppléant 1 valide.
         # (règle désactivée en DEV pour faciliter les tests)
-        est_prod = os.getenv("ENVIRONMENT", "prod").lower() != "dev"
-
-        if est_prod and engagement["demandeur_id"] == pole["responsable_id"]:
+        if demandeur_en_conflit_pole(engagement, pole["responsable_id"]):
             ids_autorises = [pole["suppleant1_id"]]
         else:
             ids_autorises = [
@@ -1521,7 +1532,8 @@ def delete_engagement(engagement_id):
             SELECT
                 e.*,
                 d.objet,
-                d.montant_total
+                d.montant_total,
+                d.type_engagement
             FROM engagements e
             LEFT JOIN engagements_depenses d
                 ON d.engagement_id = e.id

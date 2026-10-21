@@ -22,6 +22,27 @@ import uuid
 from ba38_engagements import engagements_bp
 from ba38_engagements.utils_financement import calculer_montant_utilise
 
+
+def charger_motifs_derogation_devis(conn=None):
+    """
+    Motifs de dérogation au 2e devis, paramétrables dans la table
+    parametres (param_name = engagements_motif_derogation_devis).
+    """
+    sql = (
+        "SELECT param_value FROM parametres "
+        "WHERE param_name = 'engagements_motif_derogation_devis' "
+        "AND COALESCE(param_value, '') != '' ORDER BY id"
+    )
+    if conn is not None:
+        return [r[0] for r in conn.execute(sql).fetchall()]
+    with sqlite3.connect(get_db_path()) as c:
+        return [r[0] for r in c.execute(sql).fetchall()]
+
+
+@engagements_bp.context_processor
+def _injecter_motifs_derogation_devis():
+    return {"motifs_derogation_devis": charger_motifs_derogation_devis}
+
 # ============================================================
 # PAGE PRINCIPALE MODULE ENGAGEMENTS
 # ============================================================
@@ -374,7 +395,8 @@ def nouvelle_depense():
 
         fournisseurs = [
             dict(f) for f in conn.execute("""
-                SELECT id, nom, adresse, adresse2, cp, ville, tel, mail, iban
+                SELECT id, nom, adresse, adresse2, cp, ville, tel, mail, iban,
+                       fournisseur_reference_tresorerie
                 FROM fournisseurs
                 WHERE actif IS NULL OR actif != 'non'
                 ORDER BY nom COLLATE NOCASE
@@ -623,6 +645,14 @@ def nouvelle_depense():
                 "devis_derogation"
             ) else 0
 
+            devis_derogation_motif = (
+                request.form.get("devis_derogation_motif") or ""
+            ).strip()
+
+            devis_derogation_precision = (
+                request.form.get("devis_derogation_precision") or ""
+            ).strip()
+
             files = []
 
             devis1 = request.files.get("devis_file_1")
@@ -747,6 +777,85 @@ def nouvelle_depense():
                 un_devis_obligatoire = False
                 deux_devis_obligatoires = False
 
+            # =====================================================
+            # EXCEPTION FOURNISSEUR REFERENCE TRESORERIE
+            # (pas de mise en concurrence : 1 seul devis suffit)
+            # =====================================================
+
+            if (
+                deux_devis_obligatoires
+                and type_engagement == "fournisseur"
+                and fournisseur_id
+            ):
+
+                frs_reference = conn.execute(
+                    "SELECT fournisseur_reference_tresorerie "
+                    "FROM fournisseurs WHERE id = ?",
+                    (fournisseur_id,)
+                ).fetchone()
+
+                if (
+                    frs_reference
+                    and frs_reference[0] == "oui"
+                ):
+
+                    un_devis_obligatoire = True
+                    deux_devis_obligatoires = False
+
+            # =====================================================
+            # DEROGATION 2E DEVIS (motif obligatoire)
+            # Un devis reste exigé ; seul le 2e est levé.
+            # =====================================================
+
+            if not deux_devis_obligatoires:
+
+                # Case sans objet (palier < 2 devis ou fournisseur
+                # référencé) : on n'enregistre pas de dérogation.
+                devis_derogation = 0
+
+            if devis_derogation:
+
+                motifs_autorises = charger_motifs_derogation_devis(conn)
+
+                erreur_motif = None
+
+                if devis_derogation_motif not in motifs_autorises:
+                    erreur_motif = (
+                        "⚠️ Indiquez le motif de la dérogation "
+                        "(un seul devis)."
+                    )
+                elif (
+                    devis_derogation_motif == "Autre"
+                    and not devis_derogation_precision
+                ):
+                    erreur_motif = (
+                        "⚠️ Précisez le motif « Autre » de la dérogation."
+                    )
+
+                if erreur_motif:
+
+                    flash(erreur_motif, "warning")
+
+                    return render_template(
+                        "engagements/nouvelle_depense.html",
+                        poles=poles,
+                        paliers=paliers,
+                        benevoles=benevoles,
+                        subventions=subventions,
+                        fournisseurs=fournisseurs
+                    )
+
+                un_devis_obligatoire = True
+                deux_devis_obligatoires = False
+
+                if devis_derogation_motif != "Autre":
+                    devis_derogation_precision = ""
+
+            else:
+
+                devis_derogation_motif = ""
+                devis_derogation_precision = ""
+
             devis_necessaire = 1 if (
                 un_devis_obligatoire
                 or deux_devis_obligatoires
@@ -759,7 +868,6 @@ def nouvelle_depense():
             if (
                 un_devis_obligatoire
                 and nb_fichiers_devis < 1
-                and not devis_derogation
             ):
 
                 flash(
@@ -777,7 +885,7 @@ def nouvelle_depense():
                 )
 
 
-            if deux_devis_obligatoires and not devis_derogation:
+            if deux_devis_obligatoires:
 
                 if not devis1 or not devis1.filename \
                 or not devis2 or not devis2.filename:
@@ -1105,6 +1213,8 @@ def nouvelle_depense():
                     p.suppleant1_id,
                     p.suppleant2_id,
 
+                    p.validation_presidence_email,
+
                     u1.email AS responsable_email,
                     u2.email AS supp1_email,
                     u3.email AS supp2_email
@@ -1149,7 +1259,12 @@ def nouvelle_depense():
                 # seul le suppléant 1 valide (conflit d'intérêt).
                 # Le suppléant 1 est enregistré comme secours pour ce
                 # seul cas et n'est donc pas sollicité en temps normal.
-                if current_user.id == pole["responsable_id"]:
+                # Exception : demande pour un autre bénévole
+                # (benevole_other) -> le responsable valide lui-même.
+                if (
+                    current_user.id == pole["responsable_id"]
+                    and type_engagement != "benevole_other"
+                ):
                     destinataires_pole = list(filter(None, [
                         (pole["suppleant1_id"], pole["supp1_email"])
                         if pole["suppleant1_id"] and pole["supp1_email"] else None,
@@ -1266,6 +1381,70 @@ def nouvelle_depense():
                 )
 
             # ============================
+            # MAIL DEROGATION 2E DEVIS
+            # (information responsable de pôle + présidence)
+            # ============================
+
+            if devis_derogation:
+
+                destinataires_derog = []
+
+                if pole["responsable_email"]:
+                    destinataires_derog.append(pole["responsable_email"])
+
+                for email_pres in (
+                    pole["validation_presidence_email"] or ""
+                ).split(";"):
+                    if email_pres.strip():
+                        destinataires_derog.append(email_pres.strip())
+
+                destinataires_derog = list(dict.fromkeys(
+                    e.lower() for e in destinataires_derog
+                ))
+
+                motif_affiche = devis_derogation_motif
+                if devis_derogation_precision:
+                    motif_affiche += f" : {devis_derogation_precision}"
+
+                if destinataires_derog:
+
+                    envoyer_mail(
+                        sujet=(
+                            f"Dérogation devis - engagement "
+                            f"#{engagement_id}"
+                        ),
+                        destinataires=destinataires_derog,
+                        texte=f"""
+Bonjour,
+
+Pour information, la demande d'engagement #{engagement_id} a été
+saisie avec un seul devis au lieu des deux demandés (dérogation
+à la mise en concurrence).
+
+Pôle : {pole["nom_affiche"]}
+Demandeur : {current_user.username}
+Objet : {objet}
+Montant : {montant:.2f} €
+
+Motif de la dérogation : {motif_affiche}
+
+Accéder à la demande :
+{lien}
+
+---
+BA38
+""",
+                        sender_override="ba380@banquealimentaire.org",
+                        sender_name=current_user.username,
+                        reply_to=current_user.email
+                    )
+
+                    write_log(
+                        f"[ENGAGEMENTS] Mail dérogation devis #{engagement_id} "
+                        f"envoyé à {', '.join(destinataires_derog)}"
+                    )
+
+            # ============================
             # 2️⃣ INSERT ENGAGEMENT WORKFLOW
             # ============================
 
@@ -1320,6 +1499,8 @@ def nouvelle_depense():
                     nb_devis,
                     commentaire_devis,
                     devis_derogation,
+                    devis_derogation_motif,
+                    devis_derogation_precision,
 
                     type_engagement,
 
@@ -1345,7 +1526,7 @@ def nouvelle_depense():
 
                     ?, ?, ?, ?, ?,
 
-                    ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?,
 
                     ?, ?, ?, ?, ?, ?,
 
@@ -1376,6 +1557,8 @@ def nouvelle_depense():
                 nb_devis,
                 commentaire_devis,
                 devis_derogation,
+                devis_derogation_motif or None,
+                devis_derogation_precision or None,
 
                 type_engagement,
 
@@ -1514,9 +1697,10 @@ def api_quick_create_fournisseur():
             cur = conn.execute("""
                 INSERT INTO fournisseurs (
                     nom, adresse, adresse2, cp, ville, tel, mail, iban,
-                    actif, date_creation, user_modif
+                    type_frs, actif, date_creation, user_modif
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'oui', ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?,
+                        'Fournisseurs fonctionnement BA', 'oui', ?, ?)
             """, (
                 nom,
                 adresse or None,
@@ -1597,6 +1781,8 @@ def detail_engagement(engagement_id):
                 d.nb_devis,
                 d.commentaire_devis,
                 d.devis_derogation,
+                d.devis_derogation_motif,
+                d.devis_derogation_precision,
 
                 d.type_engagement,
                 d.sous_type_depense,
@@ -1967,7 +2153,8 @@ def modifier_depense_page(engagement_id):
 
         fournisseurs = [
             dict(f) for f in conn.execute("""
-                SELECT id, nom, adresse, adresse2, cp, ville, tel, mail, iban
+                SELECT id, nom, adresse, adresse2, cp, ville, tel, mail, iban,
+                       fournisseur_reference_tresorerie
                 FROM fournisseurs
                 WHERE actif IS NULL OR actif != 'non'
                 ORDER BY nom COLLATE NOCASE

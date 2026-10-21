@@ -427,7 +427,9 @@ def create_fournisseur():
         mail = request.form.get("mail", "").strip()
         iban = request.form.get("iban", "").strip()
         sans_coordonnees = bool(request.form.get("sans_coordonnees"))
+        reference_tresorerie = bool(request.form.get("fournisseur_reference_tresorerie"))
         adresse = request.form.get("adresse", "").strip()
+        cp = request.form.get("cp", "").strip()
         ville = request.form.get("ville", "").strip()
         notes = request.form.get("notes", "").strip()
 
@@ -461,13 +463,15 @@ def create_fournisseur():
             cursor.execute("""
                 INSERT INTO fournisseurs
                 (nom, enseigne, type_frs, famille_fournisseur, tel, mail, iban, sans_coordonnees,
-                 adresse, ville, notes, actif,
+                 fournisseur_reference_tresorerie,
+                 adresse, cp, ville, notes, actif,
                  date_creation, date_modif, user_modif)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 nom, enseigne, type_frs, famille_fournisseur, tel, mail, iban,
                 "oui" if sans_coordonnees else "non",
-                adresse, ville, notes, "oui",
+                "oui" if reference_tresorerie else "non",
+                adresse, cp, ville, notes, "oui",
                 now, now,
                 current_user.username or current_user.email
             ))

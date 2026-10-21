@@ -123,7 +123,15 @@
                 {{ dates_limite(r) }}
                 {% if r.temperature_mesuree is not none %} · {{ r.temperature_mesuree }}°C{% endif %}
               </span>
-              <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id, depuis_production=production.id) }}" class="small">Détail</a>
+              <span class="d-flex gap-2 align-items-start">
+                <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id, depuis_production=production.id) }}" class="small">Détail</a>
+                <form method="POST" action="{{ url_for('production_cuisine.retirer_utilisation', utilisation_id=r.utilisation_id) }}"
+                      onsubmit="return confirm('Retirer « {{ (r.libelle_produit or 'ce lot')|replace("'", "\\'") }} » de cette recette ?{% if production.statut == 'terminee' %} La production est terminée : le lot disparaîtra de sa traçabilité.{% endif %} Le poids reviendra dans le stock de la réception.');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="next" value="{{ request.full_path }}">
+                  <button type="submit" class="btn btn-sm btn-outline-danger py-0">🗑️ Retirer</button>
+                </form>
+              </span>
             </div>
             {% if r.forcage %}<div class="small text-danger fw-bold">⚠️ Utilisation forcée : {{ r.forcage }}</div>{% endif %}
             {% if photos_par_reception.get(r.id) %}

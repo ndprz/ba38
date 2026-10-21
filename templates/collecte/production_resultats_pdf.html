@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Tournées Production {{ org.nom }} {{ annee }}</title>
+<style>
+    @page { size: A4 landscape; margin: 1cm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 9pt; color: #222; }
+    h1 { font-size: 14pt; margin-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; table-layout: fixed; }
+    th, td { border: 1px solid #999; padding: 3px 5px; text-align: left; vertical-align: top; word-wrap: break-word; }
+    th { background: #1F4E79; color: #fff; }
+    tr.dj { background: #DDEEFF; font-weight: bold; }
+    col.c-camion { width: 7%; }
+    col.c-nom { width: 18%; }
+    col.c-dj { width: 12%; }
+    col.c-secteur { width: 16%; }
+    col.c-magasins { width: 29%; }
+    col.c-tonnage { width: 6%; }
+    col.c-type { width: 7%; }
+    col.c-km { width: 6%; }
+</style>
+</head>
+<body>
+
+<h1>Tournées Production {{ org.nom }} — {{ annee }}</h1>
+
+<table>
+    <colgroup>
+        <col class="c-camion"><col class="c-nom"><col class="c-dj"><col class="c-secteur">
+        <col class="c-magasins"><col class="c-tonnage"><col class="c-type"><col class="c-km">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>Camion</th>
+            <th>Nom camion</th>
+            <th>Demi-journée</th>
+            <th>Secteur</th>
+            <th>Magasins</th>
+            <th>Tonnage</th>
+            <th>Type camion</th>
+            <th>Km</th>
+        </tr>
+    </thead>
+    <tbody>
+        {# Un en-tête de groupe à chaque changement de camion — reflète l'ordre
+           exact reçu (filtré + trié côté Tabulator, cf. telechargerPdfFiltre()
+           dans production_resultats.html). #}
+        {% set ns = namespace(camion_courant=None) %}
+        {% for l in lignes %}
+        {% if l.camion != ns.camion_courant %}
+        {% set ns.camion_courant = l.camion %}
+        <tr class="dj"><td colspan="8">{{ l.camion }}{% if l.nom_camion %} — {{ l.nom_camion }}{% endif %}</td></tr>
+        {% endif %}
+        <tr>
+            <td>{{ l.camion }}</td>
+            <td>{{ l.nom_camion }}</td>
+            <td>{{ l.demi_journee }}</td>
+            <td>{{ l.secteur }}</td>
+            <td>{{ l.magasins }}</td>
+            <td>{{ "%.0f"|format(l.tonnage) }} kg</td>
+            <td>{{ l.type_camion }}</td>
+            <td>{{ l.km }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+</body>
+</html>

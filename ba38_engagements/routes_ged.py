@@ -204,6 +204,21 @@ def _calculer_completude(engagement, fichiers, paliers):
         # pas une anomalie de dossier.
         derogation = bool(engagement.get("devis_derogation"))
 
+        # Nouvelle dérogation (avec motif) ou fournisseur référencé
+        # trésorerie : 1 seul devis au lieu de 2. Les anciennes
+        # dérogations sans motif dispensaient de tout devis.
+        if (
+            (derogation and engagement.get("devis_derogation_motif"))
+            or (
+                engagement.get("type_engagement") == "fournisseur"
+                and engagement.get("fournisseur_reference_tresorerie") == "oui"
+            )
+        ):
+            derogation = False
+            if deux_devis_obligatoires:
+                deux_devis_obligatoires = False
+                un_devis_obligatoire = True
+
         if not derogation:
 
             if deux_devis_obligatoires and nb_devis < 2:
@@ -336,6 +351,8 @@ def _build_ged_query(filters):
             d.beneficiaire_nom,
             d.subvention_id,
             d.devis_derogation,
+            d.devis_derogation_motif,
+            f.fournisseur_reference_tresorerie,
 
             s.nom_subvention
 
@@ -349,6 +366,9 @@ def _build_ged_query(filters):
 
         LEFT JOIN engagement_subventions s
             ON s.id = d.subvention_id
+
+        LEFT JOIN fournisseurs f
+            ON f.id = d.fournisseur_id
 
         WHERE {" AND ".join(where)}
         ORDER BY e.cree_le DESC

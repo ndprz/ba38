@@ -224,13 +224,13 @@ def calculer_secteur(lat, lon, ville):
         if lat > 45.187: return 'Grenoble Centre Nord'
         if lon < 5.721:  return 'Grenoble Centre Ouest'
         return 'Grenoble Centre Est'
-    GRESIVAUDAN   = {'Biviers', 'Crolles', 'Froges', 'Saint Ismier', 'Domene', 'Le Versoud'}
+    GRESIVAUDAN   = {'Biviers', 'Crolles', 'Froges', 'Saint Ismier', 'Domene', 'Le Versoud',
+                     'La Terrasse', 'Le Touvet', 'Tencin'}
     VOIRON_GRP    = {'Voiron', 'Saint Jean De Moirans'}
     RIVES_GRP     = {'Rives', 'Renage'}
     SEYSSINET_GRP = {'Seyssinet Pariset', 'Seyssins', 'Fontaine'}
     PLATEAU_NORD  = {'Apprieu', 'Colombe', 'Le Grand Lemps'}
     SUD_VERCORS   = {'Varces Allieres Et Risset', 'Vif', 'Vizille', 'Claix'}
-    CHARTREUSE_E  = {'La Terrasse', 'Le Touvet', 'Tencin'}
     ROUSSILLON    = {'Peage De Roussillon', 'Salaise Sur Sanne'}
     SMH_GRP       = {'Poisat', 'Saint Martin Dheres', 'Saint Martin D Heres', 'Gieres', 'Gières'}
     if v in GRESIVAUDAN:   return 'Gresivaudan'
@@ -239,7 +239,6 @@ def calculer_secteur(lat, lon, ville):
     if v in SEYSSINET_GRP: return 'Seyssinet'
     if v in PLATEAU_NORD:  return 'Plateau Nord'
     if v in SUD_VERCORS:   return 'Sud Vercors'
-    if v in CHARTREUSE_E:  return 'Chartreuse Est'
     if v in ROUSSILLON:    return 'Roussillon'
     if v in SMH_GRP:       return 'Saint Martin Dheres'
     return v
@@ -658,9 +657,10 @@ P_ROW_H    = 7*mm
 
 # Document 3 — jour/véhicule/magasin/équipier
 EQ_COL_CODE = 14*mm
-EQ_COL_NOM  = 42*mm
+EQ_COL_NOM  = 36*mm
+EQ_COL_TYPE = 16*mm
 EQ_COL_EQP  = 65*mm
-EQ_COL_MAG  = PW - PML - PMR - EQ_COL_CODE - EQ_COL_NOM - EQ_COL_EQP
+EQ_COL_MAG  = PW - PML - PMR - EQ_COL_CODE - EQ_COL_NOM - EQ_COL_TYPE - EQ_COL_EQP
 EQ_LINE_H   = 4.2*mm
 
 # Document 4 — index alphabétique équipier
@@ -774,10 +774,10 @@ def _draw_box_lines(cv, x, y_top, w, lines, line_h, font='Helvetica', size=8, sp
 
 def draw_equipier_page(cv, dj_label, camions_rows, date_collecte, date_gen, page_num):
     """
-    Document 3 : Code | Nom camion | Équipiers (bloc bordé, dimensionné à son
-    contenu) | Magasins (bloc bordé, dimensionné à son contenu — hauteurs
-    indépendantes, non partagées).
-    camions_rows : liste de (code, nom_camion, [magasins], [(equipier, tel)])
+    Document 3 : Code | Nom camion | Type camion | Équipiers (bloc bordé,
+    dimensionné à son contenu) | Magasins (bloc bordé, dimensionné à son
+    contenu — hauteurs indépendantes, non partagées).
+    camions_rows : liste de (code, nom_camion, type_camion, [magasins], [(equipier, tel)])
     Retourne le numéro de la dernière page dessinée (pour la numérotation continue).
     """
     _eq_header(cv, dj_label, date_collecte, page_num)
@@ -785,11 +785,12 @@ def draw_equipier_page(cv, dj_label, camions_rows, date_collecte, date_gen, page
 
     x_code = PML
     x_nom  = x_code + EQ_COL_CODE
-    x_eqp  = x_nom + EQ_COL_NOM
+    x_type = x_nom + EQ_COL_NOM
+    x_eqp  = x_type + EQ_COL_TYPE
     x_mag  = x_eqp + EQ_COL_EQP
     ROW_GAP = 3*mm
 
-    for code, nom, magasins, equipiers in camions_rows:
+    for code, nom, type_cam, magasins, equipiers in camions_rows:
         nb_lignes = max(1, len(magasins), len(equipiers))
         row_h_estime = nb_lignes * EQ_LINE_H + ROW_GAP
 
@@ -806,6 +807,8 @@ def draw_equipier_page(cv, dj_label, camions_rows, date_collecte, date_gen, page
         cv.drawString(x_code + 1*mm, y_top - EQ_LINE_H + EQ_LINE_H*0.28, code)
         cv.drawString(x_nom + 1*mm, y_top - EQ_LINE_H + EQ_LINE_H*0.28,
                        fit_text(cv, nom, 'Helvetica', 9, EQ_COL_NOM - 2*mm))
+        cv.drawString(x_type + 1*mm, y_top - EQ_LINE_H + EQ_LINE_H*0.28,
+                       fit_text(cv, type_cam, 'Helvetica', 9, EQ_COL_TYPE - 2*mm))
 
         eq_lines = [(nomp, tel) for nomp, tel in equipiers]
         h_eq  = _draw_box_lines(cv, x_eqp, y_top, EQ_COL_EQP, eq_lines, EQ_LINE_H,
@@ -1007,12 +1010,14 @@ def construire_tournees_depuis_vehicules(args):
     col_nom_camion = (detecter_colonne(cols, ['nom', 'camion'])
                        or detecter_colonne(cols, ['nom', 'vehicule'])
                        or detecter_colonne_exacte(cols, {'vehicule', 'nom vehicule', 'nom du vehicule'}))
+    col_type_camion = detecter_colonne(cols, ['type', 'camion'])
 
     quai_par_camion = {}
     consignes_par_camion_dj = {}
     equipiers_par_camion_dj = {}   # (code, dj_key) -> [(nom, tel), ...]
     codes_veh = set()
     nom_camion_par_code = {}
+    type_camion_par_code = {}
     tournee_camion_dj = {}         # (code, dj_key) -> [(vif, nom_mag), ...] ordonné, dédupliqué
     magasins_sans_camion = {}      # vif -> nom_mag : ligne avec un magasin mais Code (camion) vide
 
@@ -1036,6 +1041,11 @@ def construire_tournees_depuis_vehicules(args):
             nom_c = str(r.get(col_nom_camion, '')).strip()
             if nom_c and nom_c != 'nan' and code not in nom_camion_par_code:
                 nom_camion_par_code[code] = nom_c
+
+        if col_type_camion:
+            type_c = str(r.get(col_type_camion, '')).strip()
+            if type_c and type_c != 'nan' and code not in type_camion_par_code:
+                type_camion_par_code[code] = type_c
 
         jour = str(r.get('Tournée', '')).strip()
         debut = str(r.get('Début', '')).strip()
@@ -1101,7 +1111,8 @@ def construire_tournees_depuis_vehicules(args):
     dim_set = set()
     for (code, dj_key), passages in tournee_camion_dj.items():
         nom_cam = nom_camion_par_code.get(code) or NOMS_CAMIONS_CONNUS.get(code, '')
-        row = {'Demi-journee': dj_key, 'Camion': code, 'Nom camion': nom_cam}
+        type_cam = type_camion_par_code.get(code, '')
+        row = {'Demi-journee': dj_key, 'Camion': code, 'Nom camion': nom_cam, 'Type camion': type_cam}
         for k in range(nb_passages_max):
             vif_k, nom_k = passages[k] if k < len(passages) else ('', '')
             row[f'Code VIF {k+1}'] = vif_k
@@ -1123,6 +1134,7 @@ def construire_tournees_depuis_vehicules(args):
         'equipiers_par_camion_dj': equipiers_par_camion_dj,
         'codes_veh': codes_veh, 'dim_set': dim_set, 'df_veh': df_veh,
         'nom_camion_par_code': nom_camion_par_code,
+        'type_camion_par_code': type_camion_par_code,
         'magasins_sans_camion': magasins_sans_camion,
         'magasins_non_collectes_exclus': magasins_non_collectes_exclus,
     }
@@ -1217,6 +1229,7 @@ def construire_lignes_tournees_secteur(df_t, mag_cols, df_ref):
             'Demi-journee': row.get('Demi-journee', ''),
             'Camion': row.get('Camion', ''),
             'Nom camion': row.get('Nom camion', ''),
+            'Type camion': row.get('Type camion', ''),
             'Tonnage': round(tonnage_total),
             'Km estimes': round(km, 1),
             'Secteur': ' | '.join(secteurs_uniq),
@@ -1247,7 +1260,7 @@ def ecrire_onglet_tournees_secteur(wb, lignes, nb_max_mag, titre='Tournees'):
     A_C = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
     ws = wb.create_sheet(titre)
-    cols = ['Demi-journee', 'Camion', 'Nom camion', 'Tonnage', 'Km estimes', 'Secteur'] \
+    cols = ['Demi-journee', 'Camion', 'Nom camion', 'Type camion', 'Tonnage', 'Km estimes', 'Secteur'] \
         + [f'Magasin {k}' for k in range(1, nb_max_mag + 1)]
     for c, col in enumerate(cols, 1):
         cell = ws.cell(row=1, column=c, value=col)
@@ -1275,7 +1288,7 @@ def ecrire_onglet_tournees_secteur(wb, lignes, nb_max_mag, titre='Tournees'):
                 elif nb_sec == 3:
                     cell.font = Font(name='Calibri', size=10, bold=True, color='C65911')
 
-    for i, w in enumerate([22, 9, 28, 10, 11, 24] + [25] * nb_max_mag, 1):
+    for i, w in enumerate([22, 9, 28, 14, 10, 11, 24] + [25] * nb_max_mag, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
     ws.freeze_panes = 'A2'
     if lignes_triees:
@@ -2333,6 +2346,7 @@ def main():
     dim_set                 = ctx['dim_set']
     df_veh                  = ctx['df_veh']
     nom_camion_par_code     = ctx['nom_camion_par_code']
+    type_camion_par_code    = ctx['type_camion_par_code']
     magasins_sans_camion    = ctx['magasins_sans_camion']
 
     if df.empty:
@@ -2986,7 +3000,8 @@ def main():
         for code, nom in camions:
             magasins = magasins_par_dj.get((dj_key, code), [])
             equipiers = equipiers_par_camion_dj.get((code, dj_key), [])
-            rows.append((code, nom, magasins, equipiers))
+            type_cam = type_camion_par_code.get(code, '')
+            rows.append((code, nom, type_cam, magasins, equipiers))
         print(f"  Équipier  — {DJ_LABELS[dj_key]} ({len(rows)} camions)")
         page_num = draw_equipier_page(cv3, DJ_LABELS[dj_key], rows, dates_par_dj.get(dj_key, ''), date_gen, page_num)
         cv3.showPage()

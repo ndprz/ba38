@@ -1811,6 +1811,11 @@ def _camions_matin_apresmidi_differents(lignes):
             mags_am = par_camion_dj.get((camion, dj_am))
             if mags_matin is None or mags_am is None:
                 continue  # absent d'une des deux demi-journées : non comparable
+            # Un seul magasin d'écart n'est pas signalé (retour utilisateur
+            # direct) : différence jugée mineure, pas la peine d'alerter pour
+            # un cas aussi proche d'être identique.
+            if len(mags_matin.symmetric_difference(mags_am)) <= 1:
+                continue
             if mags_matin != mags_am:
                 resultat.append({
                     "camion": camion,
@@ -1890,6 +1895,81 @@ def _charger_tournees(generation):
             "figee": bool(row["Camion"] in moteur.VEHICULES_FIGES),
         })
     return lignes
+
+
+def _charger_tournees_production(annee):
+    """Même principe que _charger_tournees, mais pour le classeur Production
+    (plan réel décidé dans go-on-web, pas une simulation) — onglet Tournees
+    sans décalage d'en-tête (ligne 1), et sans Durée/Commentaire/Type
+    camion/figé (champs propres au moteur de simulation, absents ici)."""
+    chemin = os.path.join(_dossier_production(annee), PRODUCTION_FICHIERS_SORTIE["excel"]["nom"].format(annee=annee))
+    if not os.path.exists(chemin):
+        return []
+
+    df = pd.read_excel(chemin, sheet_name="Tournees")
+    df = df[df["Camion"].notna() & df["Camion"].astype(str).apply(_est_camion_reel)].reset_index(drop=True)
+
+    ordre_dj = {dj: i for i, dj in enumerate(moteur.DEMI_JOURNEES)}
+    df["_ordre_dj"] = df["Demi-journee"].map(ordre_dj).fillna(99)
+    df = df.sort_values(["_ordre_dj", "Camion"]).reset_index(drop=True)
+
+    lignes = []
+    for _, row in df.iterrows():
+        magasins = [
+            str(row[c]).strip() for c in COLONNES_MAGASINS
+            if c in row and str(row[c]).strip() and str(row[c]).strip().lower() != "nan"
+        ]
+        lignes.append({
+            "demi_journee": str(row["Demi-journee"]),
+            "ordre_dj": int(row["_ordre_dj"]),
+            "camion": str(row["Camion"]),
+            "nom_camion": "" if pd.isna(row.get("Nom camion")) else str(row["Nom camion"]),
+            "type_camion": "" if pd.isna(row.get("Type camion")) else str(row.get("Type camion")),
+            "tonnage": 0.0 if pd.isna(row.get("Tonnage")) else float(row["Tonnage"]),
+            "km": "" if pd.isna(row.get("Km estimes")) else float(row["Km estimes"]),
+            "secteur": "" if pd.isna(row.get("Secteur")) else str(row["Secteur"]),
+            "magasins": ", ".join(magasins),
+        })
+    return lignes
+
+
+CONTROLES_PRODUCTION_ONGLETS = [
+    ("Magasins-DJ non couverts", "⚠️ Magasins/demi-journée attendus (créneaux) mais sans camion"),
+    ("Créneaux incomplets", "⚠️ Créneaux incomplets (jour couvert une demi-journée sur deux)"),
+    ("Camion non défini", "⚠️ Magasins sans camion (Code) renseigné"),
+    ("Doublons camion-magasin", "⚠️ Magasins affectés à plusieurs camions (même demi-journée)"),
+    ("Magasins non planifiés", "⚠️ Magasins jamais planifiés"),
+    ("Camions absents", "⚠️ Camions définis sans aucune tournée affectée"),
+    ("Camions non définis", "⚠️ Camions présents dans les tournées mais absents du fichier véhicules"),
+]
+
+
+def _controles_production(annee):
+    """Relit les onglets de contrôle déjà calculés par
+    generer_documents_production.py dans le classeur Production (Magasins-DJ
+    non couverts, Créneaux incomplets...) — aucun recalcul ici, uniquement
+    une relecture pour affichage sur la page 'Voir/filtrer'."""
+    chemin = os.path.join(_dossier_production(annee), PRODUCTION_FICHIERS_SORTIE["excel"]["nom"].format(annee=annee))
+    if not os.path.exists(chemin):
+        return []
+    try:
+        noms_onglets = set(pd.ExcelFile(chemin).sheet_names)
+    except Exception:
+        return []
+
+    controles = []
+    for nom_onglet, titre in CONTROLES_PRODUCTION_ONGLETS:
+        if nom_onglet not in noms_onglets:
+            continue
+        df_c = pd.read_excel(chemin, sheet_name=nom_onglet)
+        if df_c.empty:
+            continue
+        controles.append({
+            "titre": titre,
+            "colonnes": list(df_c.columns),
+            "lignes": df_c.fillna("").astype(str).values.tolist(),
+        })
+    return controles
 
 
 def _lire_referentiel_magasins_bai(annee, campagne):
@@ -5457,6 +5537,68 @@ def production_telecharger(cle):
 
     mimetype = "text/html" if cle == "carte" else None
     return send_file(chemin, as_attachment=(cle != "carte"), download_name=nom, mimetype=mimetype)
+
+
+@collecte_bp.route("/collecte/production/resultats")
+@login_required
+@require_access("collecte", "lecture")
+def production_resultats():
+    """Affichage filtrable/triable (Tabulator) des tournées Production —
+    même présentation que les résultats de simulation (collecte.resultats),
+    mais à partir du classeur Production (plan réel go-on-web), sans notion
+    de version ni de véhicule figé (propres au moteur de simulation)."""
+    annee = request.args.get("annee", type=int) or datetime.now().year
+    lignes = _charger_tournees_production(annee)
+    if not lignes:
+        flash("❌ Classeur Excel introuvable — lancez une génération", "danger")
+        return redirect(url_for("collecte.production", annee=annee))
+
+    return render_template(
+        "collecte/production_resultats.html",
+        annee=annee,
+        lignes=lignes,
+        camions_non_utilises=_camions_non_utilises(annee, lignes),
+        matin_apresmidi_differents=_camions_matin_apresmidi_differents(lignes),
+        controles=_controles_production(annee),
+    )
+
+
+@collecte_bp.route("/collecte/production/resultats_pdf", methods=["GET", "POST"])
+@login_required
+@require_access("collecte", "lecture")
+def production_resultats_pdf():
+    """PDF des tournées Production, respectant filtres/tri Tabulator — même
+    principe que collecte.resultats_pdf (cf. telechargerPdfFiltre())."""
+    annee = request.values.get("annee", type=int) or datetime.now().year
+    lignes = _charger_tournees_production(annee)
+    if not lignes:
+        flash("❌ Classeur Excel introuvable — lancez une génération", "danger")
+        return redirect(url_for("collecte.production", annee=annee))
+
+    cles_brutes = request.form.get("lignes_filtrees", "").strip()
+    if cles_brutes:
+        try:
+            cles = [tuple(c) for c in json.loads(cles_brutes)]
+            lignes_par_cle = {(l["camion"], l["demi_journee"]): l for l in lignes}
+            lignes = [lignes_par_cle[c] for c in cles if c in lignes_par_cle]
+        except (ValueError, TypeError, IndexError):
+            pass
+
+    html = render_template(
+        "collecte/production_resultats_pdf.html", annee=annee, lignes=lignes,
+        org=get_organisation(),
+    )
+
+    pdf_buffer = io.BytesIO()
+    HTML(string=html).write_pdf(pdf_buffer)
+    pdf_buffer.seek(0)
+
+    return send_file(
+        pdf_buffer,
+        as_attachment=True,
+        download_name=f"Tournees_production_{annee}.pdf",
+        mimetype="application/pdf",
+    )
 
 
 # ============================================================================

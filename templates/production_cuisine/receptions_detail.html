@@ -71,14 +71,12 @@
         <td class="text-end">{{ u.poids_kg|kg }}</td>
         <td>{{ u.user_creation or "—" }}</td>
         <td>
-          {% if u.statut != 'terminee' %}
           <form method="POST" action="{{ url_for('production_cuisine.retirer_utilisation', utilisation_id=u.id) }}"
-                onsubmit="return confirm('Retirer ce poids de la recette ? Il reviendra dans le stock de la réception.');">
+                onsubmit="return confirm('Retirer ce poids de la recette ?{% if u.statut == 'terminee' %} La production est terminée : elle n\'aura plus ce lot dans sa traçabilité.{% endif %} Il reviendra dans le stock de la réception.');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="next" value="{{ request.full_path }}">
             <button type="submit" class="btn btn-sm btn-outline-secondary">Retirer</button>
           </form>
-          {% endif %}
         </td>
       </tr>
       {% endfor %}

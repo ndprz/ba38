@@ -22,17 +22,6 @@
         <input type="text" class="form-control" id="nom" name="nom" required>
       </div>
     </div>
-    <div class="row mb-2">
-      <div class="col-md-4 fw-bold text-end">Type fournisseur</div>
-      <div class="col-md-8">
-        <select name="type_frs" id="type_frs" class="form-select">
-          <option value="">-- Choisir --</option>
-          {% for val in parametres.get('type_frs', []) %}
-            <option value="{{ val }}">{{ val }}</option>
-          {% endfor %}
-        </select>
-      </div>
-    </div>
     <div class="row mb-3">
       <label for="enseigne" class="col-md-3 col-form-label text-end">Enseigne</label>
       <div class="col-md-6">
@@ -46,24 +35,12 @@
     </div>
 
     <div class="row mb-3">
-      <label for="type_frs" class="col-md-3 col-form-label text-end">Type</label>
+      <label for="type_frs" class="col-md-3 col-form-label text-end">Type fournisseur</label>
       <div class="col-md-6">
         <select name="type_frs" id="type_frs" class="form-select">
           <option value="">-- Choisir un type --</option>
           {% for val in parametres.get('type_frs', []) %}
           <option value="{{ val }}">{{ val }}</option>
-          {% endfor %}
-        </select>
-      </div>
-    </div>
-
-    <div class="row mb-3">
-      <label for="famille_fournisseur" class="col-md-3 col-form-label text-end">Famille fournisseur</label>
-      <div class="col-md-6">
-        <select name="famille_fournisseur" id="famille_fournisseur" class="form-select">
-          <option value="">-- Choisir --</option>
-          {% for val in parametres.get('famille_fournisseur', []) %}
-            <option value="{{ val }}">{{ val }}</option>
           {% endfor %}
         </select>
       </div>
@@ -99,6 +76,12 @@
             Fournisseur interne : email inconnu (ex. Orange, EDF...)
           </label>
         </div>
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" id="fournisseur_reference_tresorerie" name="fournisseur_reference_tresorerie">
+          <label class="form-check-label" for="fournisseur_reference_tresorerie">
+            Fournisseur référencé trésorerie : un seul devis demandé dans les engagements
+          </label>
+        </div>
       </div>
     </div>
 
@@ -106,6 +89,13 @@
       <label for="adresse" class="col-md-3 col-form-label text-end">Adresse</label>
       <div class="col-md-6">
         <input type="text" class="form-control" id="adresse" name="adresse">
+      </div>
+    </div>
+
+    <div class="row mb-3">
+      <label for="cp" class="col-md-3 col-form-label text-end">Code postal</label>
+      <div class="col-md-2">
+        <input type="text" class="form-control" id="cp" name="cp" maxlength="5" inputmode="numeric">
       </div>
     </div>
 

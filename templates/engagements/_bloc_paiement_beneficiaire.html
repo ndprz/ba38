@@ -1274,6 +1274,8 @@ function initFournisseurSelect() {
         document.getElementById("fournisseur_id_input").value = data.id;
         document.getElementById("fournisseur_nom_input").value = data.text;
 
+        if (typeof updateDevis === "function") updateDevis();
+
         if (info) {
 
             const champAdresse = document.getElementById("fournisseur_adresse");
@@ -1293,6 +1295,8 @@ function initFournisseurSelect() {
     $select.on("select2:clear", function () {
         document.getElementById("fournisseur_id_input").value = "";
         document.getElementById("fournisseur_nom_input").value = "";
+
+        if (typeof updateDevis === "function") updateDevis();
     });
 
 }
@@ -1440,6 +1444,7 @@ document.addEventListener(
                 function() {
                     updateTypeEngagement();
                     verifierAchatDenrees();
+                    if (typeof updateDevis === "function") updateDevis();
                 }
             );
 
