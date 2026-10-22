@@ -78,11 +78,16 @@ def build_menu():
             ORDER BY ordre_groupe, ordre
         """).fetchall()
     else:
+        # Tuile « appli:suffixe » (ex. cuisine_hygiene:nettoyage) : 2e
+        # entrée de menu d'une même appli, visible avec les droits de
+        # l'appli avant le « : » — pas de droit propre à attribuer.
         rows = cursor.execute("""
             SELECT a.*
             FROM applications a
             JOIN roles_utilisateurs r
-                ON r.appli = a.appli
+                ON r.appli = CASE WHEN instr(a.appli, ':') > 0
+                                  THEN substr(a.appli, 1, instr(a.appli, ':') - 1)
+                                  ELSE a.appli END
             WHERE r.user_email = ?
               AND r.droit IN ('lecture', 'ecriture', 'admin')
               and a.menu_visible = 1

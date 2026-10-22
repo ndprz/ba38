@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Cuisine — Autres{% endblock %}
+
+{% macro carte(endpoint, icone, titre, texte) %}
+  <div class="col-12 col-sm-6 col-lg-4">
+    <a href="{{ url_for(endpoint) }}" class="card h-100 text-decoration-none shadow-sm">
+      <div class="card-body">
+        <div class="fs-2 mb-1">{{ icone }}</div>
+        <h5 class="card-title mb-1">{{ titre }}</h5>
+        <p class="card-text text-muted small mb-0">{{ texte }}</p>
+      </div>
+    </a>
+  </div>
+{% endmacro %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <h2 class="mb-4">🔧 Cuisine — Autres</h2>
+
+  <h5 class="text-muted">Hygiène</h5>
+  <div class="row g-3 mb-4">
+    {% if has_access('cuisine_hygiene', 'ecriture') %}
+      {{ carte('cuisine_hygiene.etalonnage', '🌡️🔧', 'Étalonnage des thermomètres', 'Test glace / ébullition') }}
+      {{ carte('cuisine_hygiene.referentiels', '📋', 'Référentiels hygiène', 'Zones de température (et leur groupe), thermomètres') }}
+    {% endif %}
+    {{ carte('cuisine_hygiene.etalonnage_historique', '📜', 'Historique des étalonnages', '200 derniers tests') }}
+    {{ carte('cuisine_hygiene.temperatures_historique', '📜', 'Historique des températures', '200 derniers relevés') }}
+    {{ carte('cuisine_hygiene.nettoyage_historique', '📜', 'Historique des nettoyages', '200 derniers nettoyages') }}
+  </div>
+
+  {% if has_access('production_cuisine', 'ecriture') %}
+  <h5 class="text-muted">Production</h5>
+  <div class="row g-3 mb-4">
+    {{ carte('production_cuisine.liste_recettes_referentiel', '📖', 'Référentiel recettes', 'Recettes, familles, mode de cuisson') }}
+    {{ carte('production_cuisine.liste_ingredients_carnes', '🥩', 'Ingrédients carnés', 'Groupes et produits proposés en réception') }}
+    {{ carte('production_cuisine.parametres', '⚙️', 'Paramètres cuisine', 'Utilisateurs, familles, modes de cuisson, sauteuses, DLC') }}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

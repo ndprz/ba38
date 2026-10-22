@@ -15,12 +15,13 @@
   <div class="table-responsive">
     <table class="table table-striped">
       <thead>
-        <tr><th>Date</th><th>Zone</th><th>Température</th><th>Conformité</th><th>Bénévole</th><th>Commentaire</th></tr>
+        <tr><th>Date</th><th>Moment</th><th>Zone</th><th>Température</th><th>Conformité</th><th>Bénévole</th><th>Commentaire</th></tr>
       </thead>
       <tbody>
         {% for r in releves %}
         <tr>
           <td>{{ r.date_releve }}</td>
+          <td>{{ moments.get(r.moment_releve, "") }}</td>
           <td>{{ r.zone_libelle }}</td>
           <td>{{ r.temperature }} °C</td>
           <td>

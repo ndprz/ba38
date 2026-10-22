@@ -91,6 +91,7 @@ def api_production_active():
                 "nom_recette": prod["nom_recette"],
                 "espece": prod["espece"],
                 "mode_cuisson": prod["mode_cuisson"],
+                "numero_sauteuse": prod["numero_sauteuse"],
                 "statut": prod["statut"],
                 "etapes": etapes,
                 "conformite_globale": conformite_globale,

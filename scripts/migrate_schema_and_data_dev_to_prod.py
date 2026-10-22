@@ -71,6 +71,11 @@ EXCLUDE_TABLES = {
     "esope_fermetures",
     "esope_periodes",
     "esope_liens",  # jetons des liens bénévoles + référence benevoles.id
+    # Cuisine : saisies terrain / référentiel édité en PROD, ids divergents
+    # (scripts/migrate_cuisine_sauteuses_temperatures.py pour les colonnes)
+    "cuisine_productions",
+    "cuisine_hygiene_zones_temperature",
+    "cuisine_hygiene_releves_temperature",
 }
 
 # -------------------------------------------------------------------

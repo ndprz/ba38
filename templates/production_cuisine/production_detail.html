@@ -37,6 +37,7 @@
         {{ production.date_production }}
         {% if production.espece %} · {{ production.espece }}{% endif %}
         {% if production.mode_cuisson %} · {{ production.mode_cuisson }}{% endif %}
+        {% if production.numero_sauteuse %} · 🍳 {{ production.numero_sauteuse }}{% endif %}
         {% if production.categorie_produit == 'carne' %} · 🥩 Carné
         {% elif production.categorie_produit == 'legumes' %} · 🥬 Légumes{% endif %}
         · <span class="badge
@@ -54,6 +55,8 @@
     </div>
     <div class="d-flex gap-2">
       <a href="{{ retour_url }}" class="btn btn-outline-secondary">← Retour</a>
+      <a href="{{ url_for('production_cuisine.recap_production_pdf', production_id=production.id) }}" target="_blank" rel="noopener"
+         class="btn btn-outline-primary">🖨️ Récap PDF</a>
       <form method="POST" action="{{ url_for('production_cuisine.supprimer_production', production_id=production.id) }}"
             onsubmit="return confirm('Supprimer cette production ? Les réceptions liées redeviendront disponibles.');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -399,21 +402,35 @@
                 {% if production.mode_cuisson %}
                   <span class="badge bg-danger text-white ms-1" style="font-size: .9rem;">🔥 {{ production.mode_cuisson }}</span>
                 {% endif %}
+                {% if production.numero_sauteuse %}
+                  <span class="badge bg-danger text-white ms-1" style="font-size: .9rem;">🍳 {{ production.numero_sauteuse }}</span>
+                {% endif %}
+                {% set sauteuse_manquante = production.mode_cuisson and production.mode_cuisson.strip().lower() in ('cuisson de nuit', 'sauteuse') and not production.numero_sauteuse %}
                 {% if production.statut != 'terminee' %}
-                <details class="d-inline-block ms-1" {% if not production.mode_cuisson %}open{% endif %}>
-                  <summary class="text-muted small" style="cursor:pointer;">
-                    {{ "✏️ Modifier le mode de cuisson" if production.mode_cuisson else "⚠️ Mode de cuisson non renseigné" }}
+                <details class="d-inline-block ms-1" {% if not production.mode_cuisson or sauteuse_manquante %}open{% endif %}>
+                  <summary class="{{ 'text-danger fw-bold' if sauteuse_manquante else 'text-muted' }} small" style="cursor:pointer;">
+                    {% if sauteuse_manquante %}⚠️ N° de sauteuse non renseigné
+                    {% else %}{{ "✏️ Modifier le mode de cuisson" if production.mode_cuisson else "⚠️ Mode de cuisson non renseigné" }}{% endif %}
                   </summary>
                   <form method="POST" action="{{ url_for('production_cuisine.mode_cuisson_production', production_id=production.id) }}"
                         class="d-flex gap-2 align-items-center mt-1">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <select name="mode_cuisson" class="form-select form-select-sm" style="width:auto;">
+                    <select name="mode_cuisson" class="form-select form-select-sm js-mode-cuisson" style="width:auto;">
                       <option value="">—</option>
                       {% for t in types_cuisson %}
                         <option value="{{ t }}" {% if production.mode_cuisson == t %}selected{% endif %}>{{ t }}</option>
                       {% endfor %}
                       {% if production.mode_cuisson and production.mode_cuisson not in types_cuisson %}
                         <option value="{{ production.mode_cuisson }}" selected>{{ production.mode_cuisson }}</option>
+                      {% endif %}
+                    </select>
+                    <select name="numero_sauteuse" class="form-select form-select-sm js-numero-sauteuse" style="width:auto;">
+                      <option value="">🍳 N° sauteuse</option>
+                      {% for s in sauteuses %}
+                        <option value="{{ s }}" {% if production.numero_sauteuse == s %}selected{% endif %}>{{ s }}</option>
+                      {% endfor %}
+                      {% if production.numero_sauteuse and production.numero_sauteuse not in sauteuses %}
+                        <option value="{{ production.numero_sauteuse }}" selected>{{ production.numero_sauteuse }}</option>
                       {% endif %}
                     </select>
                     <button type="submit" class="btn btn-outline-primary btn-sm">💾</button>
@@ -776,4 +793,18 @@
 {% include "production_cuisine/_camera_capture_js.html" %}
 {% include "production_cuisine/_temp_toggle_js.html" %}
 {% include "production_cuisine/_scroll_restore.html" %}
+{% include "production_cuisine/_sauteuse_js.html" %}
+<script>
+  // N° de sauteuse visible et obligatoire seulement pour cuisson de nuit / sauteuse
+  document.querySelectorAll(".js-mode-cuisson").forEach(function (select) {
+    var sauteuse = select.form.querySelector(".js-numero-sauteuse");
+    function maj() {
+      var actif = modeExigeSauteuse(select.value);
+      sauteuse.style.display = actif ? "" : "none";
+      sauteuse.required = actif;
+    }
+    select.addEventListener("change", maj);
+    maj();
+  });
+</script>
 {% endblock %}

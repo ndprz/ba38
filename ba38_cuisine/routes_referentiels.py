@@ -13,7 +13,7 @@ from flask_login import login_required
 
 from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_cuisine import cuisine_hygiene_bp
-from ba38_cuisine.utils import _connect
+from ba38_cuisine.utils import _connect, GROUPES_ZONES
 
 
 def _slugify(libelle: str) -> str:
@@ -43,7 +43,19 @@ def referentiels():
         zones_temperature=zones_temperature,
         zones_nettoyage=zones_nettoyage,
         thermometres=thermometres,
+        groupes_zones=GROUPES_ZONES,
     )
+
+
+# ------------------------------------------------------------
+# 🔧 « Autres » : page d'accueil de la tuile Cuisine du même nom
+#     (étalonnage, référentiels, historiques, paramètres).
+# ------------------------------------------------------------
+@cuisine_hygiene_bp.route("/autres")
+@login_required
+@require_access("cuisine_hygiene", "lecture")
+def autres():
+    return render_template("cuisine_hygiene/autres.html")
 
 
 # ------------------------------------------------------------
@@ -54,14 +66,17 @@ def referentiels():
 @require_access("cuisine_hygiene", "ecriture")
 def ajouter_zone_temperature():
     libelle = (request.form.get("libelle") or "").strip()
+    groupe = request.form.get("groupe")
+    if groupe not in GROUPES_ZONES:
+        groupe = "positive"
     if libelle:
         with _connect() as conn:
             ordre = conn.execute(
                 "SELECT COALESCE(MAX(ordre), 0) + 1 AS n FROM cuisine_hygiene_zones_temperature"
             ).fetchone()[0]
             conn.execute(
-                "INSERT INTO cuisine_hygiene_zones_temperature (code, libelle, ordre) VALUES (?, ?, ?)",
-                (_slugify(libelle), libelle, ordre),
+                "INSERT INTO cuisine_hygiene_zones_temperature (code, libelle, ordre, groupe) VALUES (?, ?, ?, ?)",
+                (_slugify(libelle), libelle, ordre, groupe),
             )
             conn.commit()
         upload_database()
@@ -81,6 +96,24 @@ def toggle_zone_temperature(zone_id):
         conn.commit()
     upload_database()
     flash("🔁 Statut de la zone mis à jour.", "info")
+    return redirect(url_for("cuisine_hygiene.referentiels"))
+
+
+@cuisine_hygiene_bp.route("/referentiels/zones-temperature/<int:zone_id>/groupe", methods=["POST"])
+@login_required
+@require_access("cuisine_hygiene", "ecriture")
+def groupe_zone_temperature(zone_id):
+    """Groupe d'affichage de la page Températures (chambres positives /
+    négatives / pièces à température dirigée)."""
+    groupe = request.form.get("groupe")
+    if groupe in GROUPES_ZONES:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE cuisine_hygiene_zones_temperature SET groupe = ? WHERE id = ?", (groupe, zone_id),
+            )
+            conn.commit()
+        upload_database()
+        flash("✅ Groupe de la zone mis à jour.", "success")
     return redirect(url_for("cuisine_hygiene.referentiels"))
 
 

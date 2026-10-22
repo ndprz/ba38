@@ -12,6 +12,8 @@ from ba38_utilitaires.core import require_access, write_log, upload_database
 from ba38_cuisine import cuisine_hygiene_bp
 from ba38_cuisine.utils import (
     _connect, parse_temperature, now_paris_str, utilisateur_saisi, enregistrer_utilisateur_cuisine,
+    GROUPES_ZONES, MOMENTS_RELEVE, SQL_MOMENT_RELEVE, moment_par_defaut, releves_temperature_du_jour,
+    moments_en_retard, today_paris,
 )
 
 CONFORMITE_CHOICES = ("conforme", "non_conforme")
@@ -33,6 +35,9 @@ def temperatures():
         temperature = parse_temperature(request.form.get("temperature"))
         benevole = utilisateur_saisi(request.form)
         commentaire = (request.form.get("commentaire") or "").strip() or None
+        moment = request.form.get("moment")
+        if moment not in MOMENTS_RELEVE:
+            moment = moment_par_defaut()
 
         if not zone_id or temperature in (None, ""):
             flash("⚠️ Merci de choisir une zone et de saisir une température.", "warning")
@@ -51,9 +56,9 @@ def temperatures():
         with _connect() as conn:
             conn.execute(
                 """INSERT INTO cuisine_hygiene_releves_temperature
-                   (zone_id, temperature, conforme, user_creation, commentaire, date_releve)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (zone_id, temperature_f, conforme, benevole or None, commentaire, now_paris_str()),
+                   (zone_id, temperature, conforme, user_creation, commentaire, date_releve, moment)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (zone_id, temperature_f, conforme, benevole or None, commentaire, now_paris_str(), moment),
             )
             enregistrer_utilisateur_cuisine(conn, benevole)
             conn.commit()
@@ -66,8 +71,24 @@ def temperatures():
         zones = conn.execute(
             "SELECT * FROM cuisine_hygiene_zones_temperature WHERE actif = 1 ORDER BY ordre"
         ).fetchall()
+        releves = releves_temperature_du_jour(conn)
 
-    return render_template("cuisine_hygiene/temperatures.html", zones=zones)
+    # Cartouches regroupés : chambres positives / négatives / pièces à
+    # température dirigée (groupe choisi dans le référentiel).
+    groupes = {g: [] for g in GROUPES_ZONES}
+    for z in zones:
+        groupes.get(z["groupe"], groupes["positive"]).append(z)
+    en_retard = moments_en_retard()
+    nb_manquants = sum(
+        1 for z in zones for m in en_retard if m not in releves.get(z["id"], {})
+    )
+
+    return render_template(
+        "cuisine_hygiene/temperatures.html",
+        groupes=groupes, libelles_groupes=GROUPES_ZONES, releves=releves,
+        moments=MOMENTS_RELEVE, moment_defaut=moment_par_defaut(),
+        en_retard=en_retard, nb_manquants=nb_manquants, aujourdhui=today_paris(),
+    )
 
 
 @cuisine_hygiene_bp.route("/temperatures/historique")
@@ -77,8 +98,8 @@ def temperatures_historique():
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
         releves = conn.execute(
-            """
-            SELECT r.*, z.libelle AS zone_libelle
+            f"""
+            SELECT r.*, z.libelle AS zone_libelle, {SQL_MOMENT_RELEVE} AS moment_releve
             FROM cuisine_hygiene_releves_temperature r
             JOIN cuisine_hygiene_zones_temperature z ON z.id = r.zone_id
             ORDER BY r.date_releve DESC
@@ -86,7 +107,9 @@ def temperatures_historique():
             """
         ).fetchall()
 
-    return render_template("cuisine_hygiene/temperatures_historique.html", releves=releves)
+    return render_template(
+        "cuisine_hygiene/temperatures_historique.html", releves=releves, moments=MOMENTS_RELEVE,
+    )
 
 
 # ------------------------------------------------------------

@@ -123,7 +123,7 @@
             <a href="{{ url_for('production_cuisine.detail_production', production_id=p.id) }}">{{ p.nom_recette }}</a>
             {% if p.statut == 'en_cours' %}<span class="badge bg-warning text-dark">en cours</span>{% endif %}
           </td>
-          <td>{{ p.mode_cuisson or "—" }}</td>
+          <td>{{ p.mode_cuisson or "—" }}{% if p.numero_sauteuse %}<br><small>🍳 {{ p.numero_sauteuse }}</small>{% endif %}</td>
           <td class="text-nowrap">{{ horaire(l.debut, p.date_production) }}</td>
           <td class="text-nowrap">{{ horaire(l.fin, p.date_production) }}</td>
           <td class="text-end text-nowrap">{{ temperature(l.t_cuisson) }}</td>

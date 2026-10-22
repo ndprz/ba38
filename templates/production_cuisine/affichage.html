@@ -406,7 +406,7 @@
 
       tranche.forEach(function (p) {
         const nonConf = p.etapes.some(function (e) { return e.statut === "terminee" && e.conforme === "non_conforme"; });
-        const sousTitre = [p.espece, p.mode_cuisson].filter(Boolean).join(" · ");
+        const sousTitre = [p.espece, p.mode_cuisson, p.numero_sauteuse].filter(Boolean).join(" · ");
         const classes = [nonConf ? "non-conforme" : "", p.statut === "terminee" ? "terminee" : ""].join(" ");
         html += '<tr class="' + classes + '" style="height:' + mp.hauteur + "px;font-size:" + taille + 'px">';
         html += '<td><div class="nom">' + esc(p.nom_recette)

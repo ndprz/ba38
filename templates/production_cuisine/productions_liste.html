@@ -7,7 +7,7 @@
 
   <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h2 class="mb-0">🍲 Productions du jour</h2>
-    <div class="d-flex gap-2">
+    <div class="d-flex flex-wrap gap-2">
       <a href="{{ url_for('production_cuisine.liste_receptions', date=date_filtre) }}" class="btn btn-outline-primary btn-lg">
         📥 Réceptions du jour
         {% if nb_receptions_attente %}<span class="badge bg-danger">{{ nb_receptions_attente }} en attente</span>{% endif %}
@@ -17,7 +17,7 @@
         {% if nb_en_cours_total %}<span class="badge bg-warning text-dark">{{ nb_en_cours_total }}</span>{% endif %}
       </a>
       <a href="{{ url_for('production_cuisine.etat_journalier_productions', date=date_filtre) }}" class="btn btn-outline-secondary btn-lg">
-        📊 État journalier
+        📊 État journalier productions
       </a>
       <a href="{{ url_for('production_cuisine.affichage_production', plein_ecran=1) }}" target="_blank" rel="noopener"
          class="btn btn-outline-dark btn-lg" onclick="return ouvrirAffichageTV(this.href)">
@@ -46,6 +46,15 @@
       </a>
     </div>
   </div>
+
+  {% if temperatures_manquantes and has_access('cuisine_hygiene', 'ecriture') %}
+  <a href="{{ url_for('cuisine_hygiene.temperatures') }}" class="alert alert-danger d-block text-decoration-none mb-3">
+    <strong>🌡️ Relevés de température manquants aujourd'hui</strong>
+    {% for moment, zones in temperatures_manquantes.items() %}
+      <div class="small">{{ moments_releve[moment] }} : {{ zones | length }} zone{{ 's' if zones | length > 1 }} ({{ zones | join(', ') }})</div>
+    {% endfor %}
+  </a>
+  {% endif %}
 
   <form method="GET" class="row g-2 align-items-end mb-3">
     <div class="col-auto">
@@ -81,7 +90,7 @@
             {% if p.date_production != date_filtre %}
               <span class="badge bg-info text-dark mb-1">⏮️ Démarrée le {{ p.date_production | format_date_fr }}</span>
             {% endif %}
-            <p class="card-text text-muted mb-1">{{ p.espece or "" }} {{ p.mode_cuisson or "" }}</p>
+            <p class="card-text text-muted mb-1">{{ p.espece or "" }} {{ p.mode_cuisson or "" }}{% if p.numero_sauteuse %} · 🍳 {{ p.numero_sauteuse }}{% endif %}</p>
             <span class="badge
               {% if p.statut == 'terminee' %}bg-success text-white
               {% elif p.statut == 'annulee' %}bg-secondary text-white
@@ -106,6 +115,15 @@
   {% endif %}
 
 </div>
+
+{# Bouton flottant : sur tablette, « Nouvelle production » passe souvent
+   hors écran à droite de la barre de boutons. #}
+<a href="{{ url_for('production_cuisine.creer_production') }}" class="btn btn-primary btn-lg rounded-pill shadow bouton-flottant"
+   title="Nouvelle production">➕ Nouvelle production</a>
+<style>
+  .bouton-flottant { position: fixed; right: 20px; bottom: 20px; z-index: 1030; padding: .9rem 1.4rem; font-size: 1.25rem; }
+  .container { padding-bottom: 90px; }
+</style>
 
 <script>
   // Écran TV dans une nouvelle fenêtre à la taille de l'écran ; le passage

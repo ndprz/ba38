@@ -1,3 +1,3 @@
-VERSION=1.7.137
-MESSAGE=Collecte : fix critere envoi mail Pas de collecte le vendredi - envoie desormais a tout magasin coche n'ayant pas encore recu le mail (et non plus seulement aux nouvellement coches), couvre les marquages anterieurs a l'existence de cette fonction d'envoi
-DATE=2026-10-21 15:11
+VERSION=1.7.138
+MESSAGE=Cuisine : n° sauteuse (cuisson de nuit/sauteuse), bouton flottant Nouvelle production, recap PDF production A4, 4 tuiles accueil (Production/Temperatures/Hygiene nettoyage/Autres), temperatures groupees positives/negatives/dirigees avec releves matin/fin de journee et alertes
+DATE=2026-10-22 10:15

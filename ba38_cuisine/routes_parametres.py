@@ -17,7 +17,7 @@ from ba38_utilitaires.core import require_access, upload_database
 from ba38_cuisine import production_cuisine_bp
 from ba38_cuisine.utils import (
     _connect, dlc_jours, calculer_dlc, today_paris, PARAM_DLC_JOURS,
-    PARAM_UTILISATEURS, normaliser_prenom, utilisateurs_cuisine,
+    PARAM_UTILISATEURS, normaliser_prenom, utilisateurs_cuisine, PARAM_SAUTEUSES,
 )
 
 PARAM_NAMES = {
@@ -26,6 +26,7 @@ PARAM_NAMES = {
     "cuisine_sous_famille_1": "Sous-famille 1",
     "cuisine_sous_famille_2": "Sous-famille 2",
     "cuisine_type_cuisson": "Type / mode de cuisson",
+    PARAM_SAUTEUSES: "🍳 Sauteuses (n° demandé en cuisson de nuit / sauteuse)",
 }
 
 

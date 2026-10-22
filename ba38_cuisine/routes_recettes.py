@@ -15,6 +15,7 @@ from ba38_cuisine.utils import (
     categorie_depuis_famille, motifs_non_conformite, heure_dr,
     duree_refroidissement, format_duree, DUREE_REFROIDISSEMENT_MAX,
     receptions_en_stock, ajouter_utilisation, parse_poids, suivi_cellule_en_cours,
+    sauteuses, mode_exige_sauteuse, releves_temperature_manquants, MOMENTS_RELEVE,
 )
 from ba38_cuisine.routes_receptions import PERIODES_ETAT, _bornes_periode
 
@@ -156,6 +157,7 @@ def liste_productions():
         nb_receptions_attente = sum(
             1 for r in receptions_en_stock(conn, date_filtre) if not r["blocage"]
         )
+        temperatures_manquantes = releves_temperature_manquants(conn)
 
     return render_template(
         "production_cuisine/productions_liste.html",
@@ -167,6 +169,8 @@ def liste_productions():
         nb_en_cours_total=nb_en_cours_total,
         etapes_actuelles=etapes_actuelles,
         suivis_cellule=suivis_cellule,
+        temperatures_manquantes=temperatures_manquantes,
+        moments_releve=MOMENTS_RELEVE,
     )
 
 
@@ -374,6 +378,7 @@ def creer_production():
         conn.row_factory = sqlite3.Row
         recettes_referentiel = _recettes_referentiel_json(conn)
         types_cuisson = _types_cuisson(conn)
+        liste_sauteuses = sauteuses(conn)
         receptions_disponibles = receptions_en_stock(conn, date_defaut)
 
     if request.method == "POST":
@@ -382,6 +387,9 @@ def creer_production():
         nom_recette = (request.form.get("nom_recette") or "").strip()
         espece = (request.form.get("espece") or "").strip() or None
         mode_cuisson = (request.form.get("mode_cuisson") or "").strip() or None
+        numero_sauteuse = (request.form.get("numero_sauteuse") or "").strip() or None
+        if not mode_exige_sauteuse(mode_cuisson):
+            numero_sauteuse = None
         categorie_produit = request.form.get("categorie_produit") or None
         recette_referentiel_id = request.form.get("recette_referentiel_id") or None
         reception_ids = [int(v) for v in request.form.getlist("reception_ids") if v.isdigit()]
@@ -393,12 +401,15 @@ def creer_production():
             erreur = "⚠️ Merci de saisir le nom de la recette."
         elif categorie_produit not in CATEGORIES_PRODUIT:
             erreur = "⚠️ Merci d'indiquer la catégorie du produit (Carné ou Légumes)."
+        elif mode_exige_sauteuse(mode_cuisson) and not numero_sauteuse:
+            erreur = f"⚠️ Merci d'indiquer le n° de sauteuse ({mode_cuisson})."
 
         def _rendu_erreur(message):
             flash(message, "warning")
             return render_template(
                 "production_cuisine/productions_creer.html",
                 recettes_referentiel=recettes_referentiel, types_cuisson=types_cuisson,
+                sauteuses=liste_sauteuses,
                 date_defaut=date_production, form=request.form,
                 receptions_disponibles=receptions_disponibles, preselection=set(reception_ids),
             )
@@ -415,11 +426,12 @@ def creer_production():
                     """
                     INSERT INTO cuisine_productions
                     (date_production, recette_id, recette_referentiel_id, nom_recette,
-                     nom_recette_initial, espece, mode_cuisson, categorie_produit, statut, user_creation)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'en_cours', ?)
+                     nom_recette_initial, espece, mode_cuisson, numero_sauteuse, categorie_produit,
+                     statut, user_creation)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'en_cours', ?)
                     """,
                     (date_production, recette_id, recette_referentiel_id, nom_normalise, nom_normalise,
-                     espece, mode_cuisson, categorie_produit, benevole or None),
+                     espece, mode_cuisson, numero_sauteuse, categorie_produit, benevole or None),
                 )
                 production_id = cur.lastrowid
 
@@ -469,6 +481,7 @@ def creer_production():
     return render_template(
         "production_cuisine/productions_creer.html",
         recettes_referentiel=recettes_referentiel, types_cuisson=types_cuisson,
+        sauteuses=liste_sauteuses,
         date_defaut=date_defaut, form={},
         receptions_disponibles=receptions_disponibles, preselection=preselection,
     )
@@ -625,6 +638,7 @@ def detail_production(production_id):
         }
 
         types_cuisson = _types_cuisson(conn)
+        liste_sauteuses = sauteuses(conn)
 
     # Bouton "← Retour" contextuel : si on arrive depuis le stock barquettes
     # (lien recette du détail de stock), on y revient plutôt que sur la
@@ -661,6 +675,7 @@ def detail_production(production_id):
         retour_url=retour_url,
         libelles_barquettes=libelles_barquettes,
         types_cuisson=types_cuisson,
+        sauteuses=liste_sauteuses,
     )
 
 
@@ -668,13 +683,20 @@ def detail_production(production_id):
 @login_required
 @require_access("production_cuisine", "ecriture")
 def mode_cuisson_production(production_id):
-    """Mode de cuisson saisi/corrigé depuis l'étape Cuisson de la fiche."""
+    """Mode de cuisson (et n° de sauteuse) saisi/corrigé depuis l'étape
+    Cuisson de la fiche."""
     mode_cuisson = (request.form.get("mode_cuisson") or "").strip() or None
+    numero_sauteuse = (request.form.get("numero_sauteuse") or "").strip() or None
     benevole = (request.form.get("benevole") or "").strip() or None
+    if not mode_exige_sauteuse(mode_cuisson):
+        numero_sauteuse = None
+    elif not numero_sauteuse:
+        flash(f"⚠️ Merci d'indiquer le n° de sauteuse ({mode_cuisson}).", "warning")
+        return redirect(url_for("production_cuisine.detail_production", production_id=production_id))
     with _connect() as conn:
         conn.execute(
-            "UPDATE cuisine_productions SET mode_cuisson = ?, user_modif = ? WHERE id = ?",
-            (mode_cuisson, benevole, production_id),
+            "UPDATE cuisine_productions SET mode_cuisson = ?, numero_sauteuse = ?, user_modif = ? WHERE id = ?",
+            (mode_cuisson, numero_sauteuse, benevole, production_id),
         )
         conn.commit()
     upload_database()

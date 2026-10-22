@@ -3,61 +3,139 @@
 
 {% block title %}Relevés de température{% endblock %}
 
+{% macro case_releve(r, moment) %}
+  {% set icone = "☀️" if moment == "matin" else "🌙" %}
+  <div class="releve-ligne {% if not r and moment in en_retard %}releve-manquant{% endif %}">
+    <span class="releve-moment">{{ icone }} {{ moments[moment] }}</span>
+    {% if r %}
+      <span class="releve-valeur">{{ "%g" | format(r.temperature) }} °C</span>
+      <span class="releve-heure">{{ r.date_releve[8:10] }}/{{ r.date_releve[5:7] }} {{ r.date_releve[11:16] }}{% if r.user_creation %} · {{ r.user_creation }}{% endif %}</span>
+    {% elif moment in en_retard %}
+      <span class="releve-valeur text-danger">⚠️ À faire</span>
+    {% else %}
+      <span class="releve-valeur text-muted">—</span>
+    {% endif %}
+  </div>
+{% endmacro %}
+
 {% block content %}
-<div class="container mt-4" style="max-width: 720px;">
+<div class="container mt-4">
 
   {% include "cuisine_hygiene/_nav.html" %}
 
   <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h2 class="mb-0">🌡️ Relevés de température</h2>
+    <h2 class="mb-0">🌡️ Relevés de température <small class="text-muted fs-6">{{ aujourdhui[8:10] }}/{{ aujourdhui[5:7] }}/{{ aujourdhui[0:4] }}</small></h2>
     <a href="{{ url_for('cuisine_hygiene.temperatures_historique') }}" class="btn btn-outline-secondary">
       📜 Historique
     </a>
   </div>
 
-  {% set champ_label = "👤 Bénévole" %}
-  {% set champ_requis = false %}
-  {% set champ_global = true %}
-  {% include "production_cuisine/_champ_utilisateur.html" %}
+  {% if nb_manquants %}
+    <div class="alert alert-danger">
+      ⚠️ <strong>{{ nb_manquants }} relevé{{ 's' if nb_manquants > 1 }} manquant{{ 's' if nb_manquants > 1 }}</strong>
+      ({% for m in en_retard %}{{ moments[m] | lower }}{{ ", " if not loop.last }}{% endfor %}) —
+      touchez une chambre encadrée en rouge pour saisir sa température.
+    </div>
+  {% else %}
+    <p class="text-muted small">Un relevé le matin et un en fin de journée pour chaque chambre. Touchez une chambre pour saisir sa température.</p>
+  {% endif %}
 
-  <form method="POST" id="form-temperature">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="benevole" id="benevole-hidden">
-    <input type="hidden" name="zone_id" id="zone-id-hidden">
+  <div style="max-width: 420px;">
+    {% set champ_label = "👤 Bénévole" %}
+    {% set champ_requis = false %}
+    {% set champ_global = true %}
+    {% include "production_cuisine/_champ_utilisateur.html" %}
+  </div>
 
-    <label class="form-label fw-bold">Zone</label>
-    <div class="d-flex flex-wrap gap-2 mb-3">
+  {% for code, zones in groupes.items() if zones %}
+    <h4 class="mt-4 mb-2">{{ libelles_groupes[code] }}</h4>
+    <div class="row g-3">
       {% for z in zones %}
-        <button type="button" class="btn btn-outline-primary btn-lg zone-btn" data-zone-id="{{ z.id }}">
-          {{ z.libelle }}
-        </button>
+        {% set rz = releves.get(z.id, {}) %}
+        {% set manquant = en_retard | reject("in", rz) | list %}
+        <div class="col-12 col-sm-6 col-lg-4">
+          <button type="button"
+                  class="card h-100 w-100 text-start zone-carte {% if manquant %}border-danger border-2{% elif rz.matin and rz.soir %}border-success{% endif %}"
+                  data-zone-id="{{ z.id }}" data-zone-libelle="{{ z.libelle }}" data-groupe="{{ code }}">
+            <div class="card-body">
+              <h5 class="card-title mb-2">{{ z.libelle }}</h5>
+              {{ case_releve(rz.matin, "matin") }}
+              {{ case_releve(rz.soir, "soir") }}
+            </div>
+          </button>
+        </div>
       {% endfor %}
     </div>
-
-    <div class="mb-3">
-      <label class="form-label">Température mesurée (°C) *</label>
-      {{ champ_temperature("temperature", required=true, size='lg') }}
-    </div>
-
-    <div class="mb-3">
-      <label class="form-label">Commentaire</label>
-      <input type="text" name="commentaire" class="form-control">
-    </div>
-
-    <button type="submit" class="btn btn-primary btn-lg" id="btn-enregistrer" disabled>💾 Enregistrer</button>
-  </form>
+  {% endfor %}
 
 </div>
 
+<!-- Saisie d'un relevé -->
+<div class="modal fade" id="modal-releve" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="POST" id="form-temperature" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="benevole" id="benevole-hidden">
+      <input type="hidden" name="zone_id" id="zone-id-hidden">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modal-releve-titre">Relevé</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label fw-bold">Moment du relevé</label>
+        <div class="d-flex gap-2 mb-3">
+          {% for code, libelle in moments.items() %}
+            <input type="radio" class="btn-check" name="moment" id="moment-{{ code }}" value="{{ code }}"
+                   {% if code == moment_defaut %}checked{% endif %}>
+            <label class="btn btn-outline-primary btn-lg" for="moment-{{ code }}">{{ "☀️" if code == "matin" else "🌙" }} {{ libelle }}</label>
+          {% endfor %}
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Température mesurée (°C) *</label>
+          {{ champ_temperature("temperature", required=true, size='lg') }}
+        </div>
+
+        <div class="mb-1">
+          <label class="form-label">Commentaire</label>
+          <input type="text" name="commentaire" class="form-control">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button type="submit" class="btn btn-primary btn-lg">💾 Enregistrer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<style>
+  .zone-carte { background: var(--bs-body-bg); cursor: pointer; padding: 0; text-align: left; }
+  /* le thème BA38 ne masque pas .btn-check (règle Bootstrap reprise ici) */
+  .btn-check { position: absolute; clip: rect(0, 0, 0, 0); pointer-events: none; }
+  .zone-carte:active { transform: scale(.99); }
+  .releve-ligne { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .6rem; padding: .3rem .5rem; border-radius: .35rem; }
+  .releve-ligne + .releve-ligne { margin-top: .25rem; }
+  .releve-manquant { background: #fde2e2; }
+  .releve-moment { min-width: 8.5rem; font-weight: 600; }
+  .releve-valeur { font-size: 1.25rem; font-weight: 700; }
+  .releve-heure { color: #6c757d; font-size: .85rem; }
+</style>
+
 <script>
-  const zoneBtns = document.querySelectorAll('.zone-btn');
-  zoneBtns.forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      zoneBtns.forEach(function (b) { b.classList.remove('active'); });
-      btn.classList.add('active');
-      document.getElementById('zone-id-hidden').value = btn.dataset.zoneId;
-      document.getElementById('btn-enregistrer').disabled = false;
+  document.querySelectorAll('.zone-carte').forEach(function (carte) {
+    carte.addEventListener('click', function () {
+      document.getElementById('zone-id-hidden').value = carte.dataset.zoneId;
+      document.getElementById('modal-releve-titre').textContent = '🌡️ ' + carte.dataset.zoneLibelle;
+      var champ = document.querySelector('#form-temperature .temp-input');
+      // Chambre négative : signe « - » déjà posé (clavier tablette)
+      champ.value = carte.dataset.groupe === 'negative' ? '-' : '';
+      var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-releve'));
+      modal.show();
     });
+  });
+  document.getElementById('modal-releve').addEventListener('shown.bs.modal', function () {
+    document.querySelector('#form-temperature .temp-input').focus();
   });
 
   document.getElementById('form-temperature').addEventListener('submit', function () {

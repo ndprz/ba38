@@ -52,6 +52,7 @@ def gestion_roles_matrice(email):
         cur.execute("""
             SELECT appli, label
             FROM applications
+            WHERE instr(appli, ':') = 0  -- tuiles secondaires : droits de l'appli parente
             ORDER BY label
         """)
         applications_rows = cur.fetchall()
@@ -1193,6 +1194,7 @@ def gestion_roles_par_appli():
         cur.execute("""
             SELECT appli, label
             FROM applications
+            WHERE instr(appli, ':') = 0  -- tuiles secondaires : droits de l'appli parente
             ORDER BY label
         """)
         applications = [dict(r) for r in cur.fetchall()]

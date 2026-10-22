@@ -772,3 +772,91 @@ def enregistrer_utilisateur_cuisine(conn, nom):
         (PARAM_UTILISATEURS, nom),
     )
     return nom
+
+
+# ------------------------------------------------------------
+# 🍳 Sauteuses : n° demandé pour les cuissons de nuit / en sauteuse.
+#     Liste dans `parametres` (param_name cuisine_sauteuse), gérée depuis
+#     Paramètres cuisine.
+# ------------------------------------------------------------
+PARAM_SAUTEUSES = "cuisine_sauteuse"
+MODES_AVEC_SAUTEUSE = ("cuisson de nuit", "sauteuse")
+
+
+def sauteuses(conn):
+    return [r[0] for r in conn.execute(
+        "SELECT param_value FROM parametres WHERE param_name = ? ORDER BY param_value COLLATE NOCASE",
+        (PARAM_SAUTEUSES,),
+    ).fetchall()]
+
+
+def mode_exige_sauteuse(mode_cuisson):
+    return (mode_cuisson or "").strip().casefold() in MODES_AVEC_SAUTEUSE
+
+
+# ------------------------------------------------------------
+# 🌡️ Relevés de température : un le matin, un en fin de journée par
+#     chambre. Le moment est choisi à la saisie (pré-sélectionné selon
+#     l'heure) ; pour les relevés antérieurs à la colonne `moment`, il est
+#     déduit de l'heure.
+# ------------------------------------------------------------
+GROUPES_ZONES = {
+    "positive": "❄️ Chambres positives",
+    "negative": "🧊 Chambres négatives",
+    "dirigee": "🌡️ Pièces à température dirigée",
+}
+MOMENTS_RELEVE = {"matin": "Matin", "soir": "Fin de journée"}
+HEURE_BASCULE_SOIR = 12        # avant midi → « Matin » proposé par défaut
+HEURE_ALERTE_MATIN = 10        # relevé du matin manquant à partir de 10 h
+HEURE_ALERTE_SOIR = 16         # relevé de fin de journée manquant à partir de 16 h
+
+SQL_MOMENT_RELEVE = (
+    f"COALESCE(r.moment, CASE WHEN CAST(substr(r.date_releve, 12, 2) AS INTEGER) < {HEURE_BASCULE_SOIR} "
+    "THEN 'matin' ELSE 'soir' END)"
+)
+
+
+def moment_par_defaut():
+    return "matin" if datetime.now(PARIS_TZ).hour < HEURE_BASCULE_SOIR else "soir"
+
+
+def releves_temperature_du_jour(conn, jour=None):
+    """{zone_id: {"matin": relevé, "soir": relevé}} — dernier relevé de
+    chaque moment pour le jour donné (aujourd'hui par défaut)."""
+    jour = jour or today_paris()
+    rows = conn.execute(
+        f"""SELECT r.zone_id, r.temperature, r.date_releve, r.user_creation, r.commentaire,
+                   {SQL_MOMENT_RELEVE} AS moment
+            FROM cuisine_hygiene_releves_temperature r
+            WHERE substr(r.date_releve, 1, 10) = ?
+            ORDER BY r.date_releve""",
+        (jour,),
+    ).fetchall()
+    releves = {}
+    for r in rows:
+        releves.setdefault(r["zone_id"], {})[r["moment"]] = r  # le plus récent écrase
+    return releves
+
+
+def moments_en_retard(maintenant=None):
+    """Moments dont l'heure limite est passée aujourd'hui."""
+    heure = (maintenant or datetime.now(PARIS_TZ)).hour
+    return [m for m, limite in (("matin", HEURE_ALERTE_MATIN), ("soir", HEURE_ALERTE_SOIR)) if heure >= limite]
+
+
+def releves_temperature_manquants(conn):
+    """{"matin": [libellés], "soir": [libellés]} des zones actives sans
+    relevé aujourd'hui pour les moments dont l'heure limite est passée."""
+    en_retard = moments_en_retard()
+    if not en_retard:
+        return {}
+    releves = releves_temperature_du_jour(conn)
+    zones = conn.execute(
+        "SELECT id, libelle FROM cuisine_hygiene_zones_temperature WHERE actif = 1 ORDER BY ordre"
+    ).fetchall()
+    manquants = {}
+    for moment in en_retard:
+        libelles = [z["libelle"] for z in zones if moment not in releves.get(z["id"], {})]
+        if libelles:
+            manquants[moment] = libelles
+    return manquants

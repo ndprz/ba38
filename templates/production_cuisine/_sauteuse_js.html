@@ -1,0 +1,6 @@
+<script>
+  // Même liste que MODES_AVEC_SAUTEUSE (ba38_cuisine/utils.py)
+  function modeExigeSauteuse(mode) {
+    return ["cuisson de nuit", "sauteuse"].indexOf((mode || "").trim().toLowerCase()) !== -1;
+  }
+</script>
