@@ -664,6 +664,25 @@ def split_emails(raw: str) -> list:
     return [e.strip() for e in str(raw).split(";") if is_valid_email(e.strip())]
 
 
+# Adresse de réponse des mails indicateurs état (Mailjet et renvoi Gmail)
+REPLY_TO_INDICATEURS = "ba380.informatique2@banquealimentaire.org"
+
+
+def emails_indicateurs(association) -> list:
+    """Destinataires des mails indicateurs : courriels resp. IE1/IE2,
+    à défaut la boîte mail générale de l'association (courriel_association)."""
+    def champ(nom):
+        try:
+            return association[nom]
+        except (KeyError, IndexError):
+            return None
+
+    emails = split_emails(champ("courriel_resp_IE1")) + split_emails(champ("courriel_resp_IE2"))
+    if not emails:
+        emails = split_emails(champ("courriel_association"))
+    return list(dict.fromkeys(emails))
+
+
 def prefixer_sujet_association(sujet: str, nom_association: str, longueur: int = 30) -> str:
     """Préfixe l'objet d'un mail par les `longueur` premiers caractères du
     nom de l'association (repérage rapide dans la messagerie, ex. relances)."""

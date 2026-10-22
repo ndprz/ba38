@@ -1377,6 +1377,7 @@ PARAMS_DEFAUT = {
     "optimiser_anciens": True,
     "fusionner_legeres": False,
     "corriger_mal_places": True,
+    "plus1_dimanche": True,
 }
 
 COLONNES_MAGASINS = [f"Magasin {i}" for i in range(1, 7)]
@@ -1457,6 +1458,7 @@ def _generer_tournees(campagne, params, mapping_camions=None, avec_type_camion=F
         corriger_mal_places=params["corriger_mal_places"],
         fusionner_legeres=params["fusionner_legeres"],
         optimiser_anciens=params["optimiser_anciens"],
+        plus1_dimanche=params.get("plus1_dimanche", True),
         output=None,
         pdf=pdf_path,
         magasins=magasins_path,
@@ -1912,6 +1914,13 @@ def _charger_tournees_production(annee):
 
     df = pd.read_excel(chemin, sheet_name="Tournees")
     df = df[df["Camion"].notna() & df["Camion"].astype(str).apply(_est_camion_reel)].reset_index(drop=True)
+    # .upper() : certains codes sont saisis en minuscules dans
+    # liste-vehicule.xlsx (ex. 'v039') et peuvent donc atterrir tels quels
+    # dans le classeur Production — normalisé ici pour matcher la
+    # convention partout ailleurs (toujours en majuscules), sinon 'v039'
+    # ressortait signalé à tort comme camion non utilisé (comparaison
+    # 'V039' vs 'v039' jamais égale, retour utilisateur direct 2026-10-22).
+    df["Camion"] = df["Camion"].astype(str).str.strip().str.upper()
 
     ordre_dj = {dj: i for i, dj in enumerate(moteur.DEMI_JOURNEES)}
     df["_ordre_dj"] = df["Demi-journee"].map(ordre_dj).fillna(99)
@@ -4394,6 +4403,7 @@ def simulation_capacite_generer(annee):
         "optimiser_anciens": bool(request.form.get("optimiser_anciens")),
         "fusionner_legeres": bool(request.form.get("fusionner_legeres")),
         "corriger_mal_places": bool(request.form.get("corriger_mal_places")),
+        "plus1_dimanche": bool(request.form.get("plus1_dimanche")),
     }
 
     mapping = _mapping_camions(annee)
@@ -4462,6 +4472,7 @@ def simulation_vehicule_generer(annee):
         "optimiser_anciens": bool(request.form.get("optimiser_anciens")),
         "fusionner_legeres": bool(request.form.get("fusionner_legeres")),
         "corriger_mal_places": bool(request.form.get("corriger_mal_places")),
+        "plus1_dimanche": bool(request.form.get("plus1_dimanche")),
     }
 
     mapping = _mapping_camions(annee)
@@ -4811,6 +4822,7 @@ def generer():
         "optimiser_anciens": bool(request.form.get("optimiser_anciens")),
         "fusionner_legeres": bool(request.form.get("fusionner_legeres")),
         "corriger_mal_places": bool(request.form.get("corriger_mal_places")),
+        "plus1_dimanche": bool(request.form.get("plus1_dimanche")),
     }
 
     try:

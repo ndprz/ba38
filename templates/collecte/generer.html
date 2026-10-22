@@ -40,7 +40,11 @@
             <div class="col-sm-4">
                 <label class="form-label">Max magasins/tournée</label>
                 <input type="number" name="max_magasins" class="form-control" min="1" value="{{ params.max_magasins }}">
-                <div class="form-text">+1 automatique le dimanche</div>
+                <div class="form-check mt-1">
+                    <input type="checkbox" name="plus1_dimanche" id="plus1_dimanche" class="form-check-input"
+                           {% if params.plus1_dimanche %}checked{% endif %}>
+                    <label class="form-check-label small" for="plus1_dimanche">+1 automatique le dimanche</label>
+                </div>
             </div>
         </div>
 

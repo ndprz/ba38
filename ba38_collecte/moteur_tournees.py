@@ -704,7 +704,7 @@ def optimiser_tournees(fiches, df_mag, args):
     annee_precedente = annee - 1
 
     max_norm = args.max_magasins
-    max_dim  = max_norm + 1
+    max_dim  = max_norm + (1 if getattr(args, 'plus1_dimanche', True) else 0)
 
     # Calculer le nombre de passages par VIF (nb de demi-journées distinctes où il apparaît)
     from collections import Counter as _Counter
@@ -2612,6 +2612,75 @@ def optimiser_tournees(fiches, df_mag, args):
     nb_elimines_3e = _eliminer_tournees_1mag()
     if nb_elimines_3e:
         print(f"  → {nb_elimines_3e} tournée(s) à 1 magasin éliminée(s) (3e passage)")
+
+    # ── Plafonnement final : aucune tournée ne doit dépasser son plafond du
+    # jour (max_dim le dimanche, max_norm sinon) — un camion repris tel quel
+    # depuis liste-vehicule.xlsx (mode depuis_liste_vehicule) ne passe par
+    # AUCUNE des passes d'injection/équilibrage ci-dessus, qui sont les
+    # seules à vérifier ce plafond : un camion déjà à 6 magasins le dimanche
+    # dans la source restait donc à 6 même en décochant « +1 automatique le
+    # dimanche » (retour utilisateur direct, 2026-10-22). On retire les
+    # magasins les plus excentrés par rapport au reste de la tournée et on
+    # les replace sur la tournée compatible la plus proche avec de la
+    # place, sinon un camion supplémentaire libre, sinon on les garde
+    # plutôt que de les perdre.
+    nb_plafonnes = 0
+    for dj_p in DEMI_JOURNEES:
+        max_c_dj_p = max_dim if dj_p in DJ_DIMANCHE else max_norm
+        for (d_p, veh_p), vifs_p in list(dj_veh.items()):
+            if d_p != dj_p or len(vifs_p) <= max_c_dj_p:
+                continue
+            if veh_p in VEHICULES_FIGES_EFF or (veh_p, dj_p) in TOURNEES_GELEES_EFF:
+                continue
+            excedent = len(vifs_p) - max_c_dj_p
+            candidats_excedent = [v for v in vifs_p if VIFS_ANCRES.get(v) != veh_p]
+            if len(candidats_excedent) < excedent:
+                continue
+            centre_lat_p, centre_lon_p = _centre_vifs(vifs_p)
+            candidats_tries = sorted(candidats_excedent, key=lambda v: -haversine(
+                float(vif2row.get(v, {}).get('Latitude', BAI_LAT)),
+                float(vif2row.get(v, {}).get('Longitude', BAI_LON)),
+                centre_lat_p, centre_lon_p))
+            a_replacer = candidats_tries[:excedent]
+            dj_veh[(dj_p, veh_p)] = [v for v in vifs_p if v not in a_replacer]
+            for vif_o in a_replacer:
+                r_o = vif2row.get(vif_o)
+                if r_o is None:
+                    continue
+                lat_o = float(r_o.get('Latitude', BAI_LAT))
+                lon_o = float(r_o.get('Longitude', BAI_LON))
+                sec_o = _secteur_vif_calc2(vif_o)
+                best_key = None; best_score = float('inf')
+                for (d2, veh2), vifs2 in dj_veh.items():
+                    if d2 != dj_p or veh2 == veh_p:
+                        continue
+                    if veh2 in VEHICULES_FIGES_EFF or (veh2, dj_p) in TOURNEES_GELEES_EFF:
+                        continue
+                    if len(vifs2) >= max_c_dj_p:
+                        continue
+                    secs_apres = {_secteur_vif_calc2(v) for v in vifs2 if _secteur_vif_calc2(v)} | {sec_o}
+                    if not _secteurs_compatibles_dir(secs_apres):
+                        continue
+                    clat_o, clon_o = _centre_vifs(vifs2) if vifs2 else (BAI_LAT, BAI_LON)
+                    d_km = haversine(lat_o, lon_o, clat_o, clon_o)
+                    if d_km < best_score:
+                        best_score = d_km; best_key = (d2, veh2)
+                nom_o = str(r_o.get('Nom', vif_o))
+                if best_key:
+                    dj_veh.setdefault(best_key, []).append(vif_o)
+                    print(f"  Plafonnement {veh_p} ({dj_p}, max {max_c_dj_p}) : '{nom_o}' replacé sur {best_key[1]}")
+                else:
+                    veh_new = next((vx for vx in sorted(v2 for (d2, v2) in dj_veh.keys() if v2.startswith('VX'))
+                                     if (dj_p, vx) not in dj_veh), None)
+                    if veh_new:
+                        dj_veh[(dj_p, veh_new)] = [vif_o]
+                        print(f"  Plafonnement {veh_p} ({dj_p}, max {max_c_dj_p}) : '{nom_o}' sur nouveau camion {veh_new}")
+                    else:
+                        dj_veh[(dj_p, veh_p)].append(vif_o)
+                        print(f"  Plafonnement {veh_p} ({dj_p}) : '{nom_o}' gardé (aucune place ailleurs)")
+                nb_plafonnes += 1
+    if nb_plafonnes:
+        print(f"  → {nb_plafonnes} magasin(s) replacé(s) pour respecter le plafond du jour")
 
     # Coefficients trafic TomTom 2025 Grenoble
     SECTEURS_METRO_XL = {

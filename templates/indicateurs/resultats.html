@@ -2,6 +2,19 @@
 
 {% from "macros/buttons.html" import action_button, action_buttons %}
 
+{% block extra_styles %}
+<style>
+    /* Colonnes AMS : fond légèrement teinté, motifs tronqués (texte complet au survol) */
+    .indicateurs-table .col-ams { background-color: rgba(13, 110, 253, 0.04); }
+    .indicateurs-table .col-ams-motif { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+    .indicateurs-table.ams-masque .col-ams { display: none; }
+    .pastille-coherence { display: inline-block; width: 14px; height: 14px; border-radius: 50%; cursor: help; }
+    .pastille-vert { background-color: #198754; }
+    .pastille-orange { background-color: #fd7e14; }
+    .pastille-rouge { background-color: #dc3545; }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="page-sticky-header d-flex justify-content-between align-items-center">
@@ -34,6 +47,18 @@
                 📦 Importer tonnage
             </button>
         </form>
+
+        <a href="{{ url_for('indicateurs.proposition_non_repondus_pdf', campagne_id=campagne.id) }}"
+           target="_blank" class="btn btn-outline-primary btn-sm"
+           title="Indicateurs proposés (tonnage VIF ÷ 11,75) pour les non répondus, à saisir dans AMS avant la clôture">
+            📄 Proposition non répondus
+        </a>
+
+        <a href="{{ url_for('indicateurs.incoherences_pdf', campagne_id=campagne.id) }}"
+           target="_blank" class="btn btn-outline-danger btn-sm"
+           title="État PDF des associations dont la pastille de cohérence est orange ou rouge">
+            📄 Incohérences
+        </a>
 
         <button class="btn btn-outline-info btn-sm"
                 type="button"
@@ -153,19 +178,38 @@
 
 </div>
 
-<div class="table-container-fixe">
+<div class="d-flex justify-content-end mb-1">
+    <button type="button" id="btn-toggle-ams" class="btn btn-sm btn-outline-primary"
+            title="Afficher / masquer les valeurs remontées de l'export AMS">
+        📈 <span id="btn-toggle-ams-libelle">Masquer infos AMS</span>
+    </button>
+</div>
+
+<div class="table-container-fixe" id="table-container-indicateurs">
 
     <table class="table table-striped indicateurs-table table-auto-width">
 
         <thead>
             <tr>
-                <th>Association</th>
+                <th>
+                    <input type="search" id="recherche-association" class="form-control form-control-sm mb-1"
+                           placeholder="🔍 Rechercher…" autocomplete="off" autofocus
+                           title="Nom ou code VIF — Échap pour effacer">
+                    Association
+                </th>
                 <th>Code VIF</th>
                 <th>Email IE 1</th>
                 <th>Email IE 2</th>
                 <th>Statut</th>
                 <th>Répondu</th>
                 <th title="Import export VIF (Kg Net)">VIF kgn Trimestre</th>
+                <th class="col-ams text-center" title="Cohérence des valeurs AMS (détail au survol de la pastille)">Cohér.</th>
+                <th class="col-ams" title="AMS : Volumes distribués en T net (valeur retenue BA)">AMS T net</th>
+                <th class="col-ams" title="AMS : Nb foyers inscrits avec droit en cours sur la période (valeur retenue BA)">AMS foyers</th>
+                <th class="col-ams" title="AMS : Nb personnes inscrites avec droits en cours sur la période (valeur retenue BA)">AMS personnes</th>
+                <th class="col-ams" title="AMS : Nb passages des bénéficiaires (cumul de personnes servies sur la période, valeur retenue BA)">AMS passages</th>
+                <th class="col-ams">Motif écart Asso</th>
+                <th class="col-ams">Motif écart BA</th>
                 <th title="Exclure de l'envoi mail">✉️ Exclu</th>
                 <th>PDF</th>
                 <th>Mail envoyé</th>
@@ -180,7 +224,7 @@
 
                 <td>{{ l.nom_association }}</td>
                 <td>{{ l.code_vif }}</td>
-                <td class="small">{{ l.courriel_resp_IE1 or '—' }}</td>
+                <td class="small">{% if l.courriel_resp_IE1 or l.courriel_resp_IE2 %}{{ l.courriel_resp_IE1 or '—' }}{% elif l.courriel_association %}<span class="text-muted fst-italic" title="Aucun courriel indicateurs : la boîte mail générale de l'association sera utilisée">{{ l.courriel_association }} (générale)</span>{% else %}—{% endif %}</td>
                 <td class="small">{{ l.courriel_resp_IE2 or '—' }}</td>
                 <td>
                     {% if l.present_csv == 0 %}
@@ -220,6 +264,27 @@
                     <span class="text-muted">—</span>
                     {% endif %}
                 </td>
+                {# Valeurs AMS : un 0 n'est affiché que si l'association a validé (0 par défaut dans l'export sinon) #}
+                {% set ams_valide = statut == "validé" %}
+                <td class="text-center align-middle col-ams">
+                    {% if l.coherence %}
+                    <span class="pastille-coherence pastille-{{ l.coherence }}"
+                          title="{{ l.coherence_messages | join('\n') }}"></span>
+                    {% else %}
+                    <span class="text-muted" title="Pas de valeurs AMS à contrôler">—</span>
+                    {% endif %}
+                </td>
+                <td class="small text-end align-middle col-ams">
+                    {% if l.ams_volume_kg is not none and (l.ams_volume_kg or ams_valide) %}{{ "{:,.2f}".format(l.ams_volume_kg / 1000).replace(",", " ").replace(".", ",") }}{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                {% for v in [l.ams_nb_foyers, l.ams_nb_personnes, l.ams_nb_passages] %}
+                <td class="small text-end align-middle col-ams">
+                    {% if v is not none and (v or ams_valide) %}{{ "{:,}".format(v).replace(",", " ") }}{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                {% endfor %}
+                {% for m in [l.ams_motif_ecart_asso, l.ams_motif_ecart_ba] %}
+                <td class="small align-middle col-ams col-ams-motif" {% if m %}title="{{ m }}"{% endif %}>{{ m or '' }}</td>
+                {% endfor %}
                 <td class="text-center align-middle">
                     {% if l.suivi_id %}
                     <button
@@ -275,7 +340,7 @@
                     {% if l.mail_renvoi_gmail_le %}
                     <div class="text-muted" style="font-size: 0.75em;">{{ l.mail_renvoi_gmail_le }}</div>
                     {% endif %}
-                    {% elif l.suivi_id and (l.courriel_resp_IE1 or l.courriel_resp_IE2) %}
+                    {% elif l.suivi_id and (l.courriel_resp_IE1 or l.courriel_resp_IE2 or l.courriel_association) %}
                     <form method="POST" action="{{ url_for('indicateurs.renvoyer_gmail', suivi_id=l.suivi_id) }}"
                           class="d-flex gap-1 justify-content-center"
                           onsubmit="return confirm('Envoyer le mail à {{ l.nom_association }} via Gmail (ba380@banquealimentaire.org) ?');">
@@ -304,6 +369,38 @@
 </div>
 
 <script>
+    // Hauteur du tableau = espace visible restant (au-dessus du pied de page fixe),
+    // pour que la barre de défilement horizontale reste à l'écran.
+    function ajusterHauteurTableau() {
+        const conteneur = document.getElementById("table-container-indicateurs");
+        const footer = document.getElementById("main-footer");
+        const basDispo = footer ? footer.getBoundingClientRect().top : window.innerHeight;
+        const haut = conteneur.getBoundingClientRect().top + window.scrollY;
+        conteneur.style.maxHeight = Math.max(250, basDispo - haut - 8) + "px";
+    }
+    window.addEventListener("load", ajusterHauteurTableau);
+    window.addEventListener("resize", ajusterHauteurTableau);
+    ajusterHauteurTableau();
+
+    // Afficher / masquer les colonnes AMS (choix mémorisé dans le navigateur)
+    (function () {
+        const table = document.querySelector(".indicateurs-table");
+        const libelle = document.getElementById("btn-toggle-ams-libelle");
+        const CLE = "indicateurs_ams_masque";
+        function appliquer(masque) {
+            table.classList.toggle("ams-masque", masque);
+            libelle.textContent = masque ? "Afficher infos AMS" : "Masquer infos AMS";
+        }
+        let masque = false;
+        try { masque = localStorage.getItem(CLE) === "1"; } catch (e) {}
+        appliquer(masque);
+        document.getElementById("btn-toggle-ams").addEventListener("click", function () {
+            masque = !table.classList.contains("ams-masque");
+            appliquer(masque);
+            try { localStorage.setItem(CLE, masque ? "1" : "0"); } catch (e) {}
+        });
+    })();
+
     document.querySelectorAll(".btn-exclu").forEach(btn => {
         btn.addEventListener("click", function () {
             const suiviId = this.dataset.suiviId;
@@ -353,8 +450,37 @@
         });
     }
 
+    // Recherche association (nom ou code VIF, sans tenir compte des accents/majuscules),
+    // combinée avec le filtre statut des KPI
+    let filtreStatutCourant = "all";
+    const champRecherche = document.getElementById("recherche-association");
+
+    function normaliser(texte) {
+        return (texte || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    }
+
+    function correspondRecherche(row) {
+        const terme = normaliser(champRecherche.value);
+        if (!terme) return true;
+        const cellules = row.querySelectorAll("td");
+        return normaliser((cellules[0] ? cellules[0].textContent : "") + " " +
+                          (cellules[1] ? cellules[1].textContent : "")).includes(terme);
+    }
+
+    champRecherche.addEventListener("input", () => filterStatut(filtreStatutCourant));
+
+    document.addEventListener("keydown", e => {
+        if (e.key !== "Escape" || document.querySelector(".modal.show")) return;
+        champRecherche.value = "";
+        filterStatut(filtreStatutCourant);
+        champRecherche.focus();
+    });
+
+    window.addEventListener("load", () => champRecherche.focus());
+
     function filterStatut(type) {
 
+        filtreStatutCourant = type;
         const rows = document.querySelectorAll("tbody tr");
 
         rows.forEach(row => {
@@ -388,7 +514,7 @@
                 show = (statut === "a revoir");
             }
 
-            row.style.display = show ? "" : "none";
+            row.style.display = (show && correspondRecherche(row)) ? "" : "none";
 
         });
     }

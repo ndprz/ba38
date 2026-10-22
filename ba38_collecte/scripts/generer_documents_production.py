@@ -1022,8 +1022,15 @@ def construire_tournees_depuis_vehicules(args):
     magasins_sans_camion = {}      # vif -> nom_mag : ligne avec un magasin mais Code (camion) vide
 
     for _, r in df_veh.iterrows():
-        code = str(r.get('Code', '')).strip()
-        if not code or code == 'nan':
+        # .upper() : certains codes sont saisis en minuscules dans
+        # liste-vehicule.xlsx (ex. 'v039') — normalisé pour matcher la
+        # convention utilisée partout ailleurs (toujours en majuscules,
+        # cf. _camions_liste_vehicule/_creneaux_camions_depuis_liste_vehicule
+        # dans routes.py) ; sans ça, 'v039' se retrouvait signalé à tort
+        # comme non utilisé (comparaison 'V039' vs 'v039' jamais égale,
+        # retour utilisateur direct 2026-10-22).
+        code = str(r.get('Code', '')).strip().upper()
+        if not code or code == 'NAN':
             nom_mag_sc = str(r.get('Magasin', '')).strip()
             if nom_mag_sc and nom_mag_sc != 'nan':
                 vif_sc = vif_fmt(r.get('Code VIF', ''))

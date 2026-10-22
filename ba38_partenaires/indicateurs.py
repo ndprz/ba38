@@ -5,6 +5,10 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_login import login_required
 from ba38_utilitaires.core import get_db_connection, write_log, require_access, get_db_path
+from ba38_partenaires.indicateurs_coherence import (
+    controle_coherence, calculer_propositions, generer_pdf_propositions,
+    lignes_incoherentes, generer_pdf_incoherences,
+)
 import os
 import pandas as pd
 import sqlite3
@@ -170,6 +174,75 @@ def build_csv_index(df, colonne_statut):
 
 
 # =========================================
+# 📈 Valeurs AMS de la période (retenues BA)
+# =========================================
+# indicateur AMS → colonne indicateurs_suivi ; on prend la valeur
+# « retenue BA » (valeur définitive : les valeurs calculées/retenues Asso
+# restent à 0 quand c'est la BA qui saisit pour l'association).
+AMS_INDICATEURS = [
+    ("volumes distribué en kg net", "ams_volume_kg", float),
+    ("nb foyers", "ams_nb_foyers", int),
+    ("nb bénéficiaires", "ams_nb_personnes", int),
+    ("nb passages", "ams_nb_passages", int),
+]
+AMS_MOTIFS = [
+    ("motif écart asso", "ams_motif_ecart_asso"),
+    ("motif écart ba", "ams_motif_ecart_ba"),
+]
+
+
+def _norm_col(col):
+    return " ".join(str(col).replace("-", " - ").split()).lower()
+
+
+def _nombre_ams(valeur, conv):
+    if valeur is None or pd.isna(valeur):
+        return None
+    texte = str(valeur).replace("\xa0", "").replace(" ", "").replace(",", ".").strip()
+    if not texte:
+        return None
+    try:
+        return conv(float(texte))
+    except ValueError:
+        return None
+
+
+def build_valeurs_ams(df, periode):
+    """code VIF normalisé → {colonne indicateurs_suivi: valeur} pour la période."""
+    prefixe = _norm_col(periode) + " - "
+    colonnes = {}
+    for col in df.columns:
+        n = _norm_col(col)
+        if not n.startswith(prefixe):
+            continue
+        reste = n[len(prefixe):]
+        for libelle, cible, _ in AMS_INDICATEURS:
+            if reste.startswith(libelle + " - ") and reste.endswith("valeurs retenues ba"):
+                colonnes[cible] = col
+        for libelle, cible in AMS_MOTIFS:
+            if reste == libelle:
+                colonnes[cible] = col
+
+    write_log(f"📊 Colonnes AMS retenues pour {periode} : {colonnes}")
+
+    conversions = {cible: conv for _, cible, conv in AMS_INDICATEURS}
+    index = {}
+    for _, row in df.iterrows():
+        code = normalize_code(row.get("Code Association", "")).lstrip("0")
+        if not code:
+            continue
+        valeurs = {}
+        for cible, col in colonnes.items():
+            v = row.get(col)
+            if cible in conversions:
+                valeurs[cible] = _nombre_ams(v, conversions[cible])
+            else:
+                valeurs[cible] = None if v is None or pd.isna(v) or not str(v).strip() else str(v).strip()
+        index[code] = valeurs
+    return index
+
+
+# =========================================
 # 📌 Écran 1 : Création campagne
 # =========================================
 @indicateurs_bp.route("/indicateurs", methods=["GET", "POST"])
@@ -317,6 +390,7 @@ def index():
             return redirect(url_for("indicateurs.index"))
 
         index_csv = build_csv_index(df, col_statut)
+        valeurs_ams = build_valeurs_ams(df, periode)
 
         associations = cur.execute("""
             SELECT id, code_VIF, exclusion_mails_indicateurs
@@ -344,6 +418,7 @@ def index():
             # partenaire (associations.exclusion_mails_indicateurs), utilisé
             # uniquement à la création de la ligne de suivi (nouvelle campagne).
             exclu_par_defaut = 1 if assoc["exclusion_mails_indicateurs"] == "oui" else 0
+            ams = valeurs_ams.get(code_vif, {})
 
             # UPSERT : si une ligne existe déjà pour cette campagne+association
             # (rechargement d'un CSV plus récent), on ne touche qu'au statut/
@@ -352,19 +427,33 @@ def index():
             # Gmail...), qui ne doivent jamais être perdus par un rechargement.
             cur.execute("""
                 INSERT INTO indicateurs_suivi
-                (campagne_id, association_id, statut_csv, present_csv, date_import, exclure_envoi_mail)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (campagne_id, association_id, statut_csv, present_csv, date_import, exclure_envoi_mail,
+                 ams_volume_kg, ams_nb_foyers, ams_nb_personnes, ams_nb_passages,
+                 ams_motif_ecart_asso, ams_motif_ecart_ba)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(campagne_id, association_id) DO UPDATE SET
                     statut_csv = excluded.statut_csv,
                     present_csv = excluded.present_csv,
-                    date_import = excluded.date_import
+                    date_import = excluded.date_import,
+                    ams_volume_kg = excluded.ams_volume_kg,
+                    ams_nb_foyers = excluded.ams_nb_foyers,
+                    ams_nb_personnes = excluded.ams_nb_personnes,
+                    ams_nb_passages = excluded.ams_nb_passages,
+                    ams_motif_ecart_asso = excluded.ams_motif_ecart_asso,
+                    ams_motif_ecart_ba = excluded.ams_motif_ecart_ba
             """, (
                 campagne_id,
                 assoc["id"],
                 statut,
                 present,
                 datetime.now(),
-                exclu_par_defaut
+                exclu_par_defaut,
+                ams.get("ams_volume_kg"),
+                ams.get("ams_nb_foyers"),
+                ams.get("ams_nb_personnes"),
+                ams.get("ams_nb_passages"),
+                ams.get("ams_motif_ecart_asso"),
+                ams.get("ams_motif_ecart_ba"),
             ))
 
             count_insert += 1
@@ -430,6 +519,7 @@ def resultats(campagne_id):
             a.code_VIF,
             a.courriel_resp_IE1,
             a.courriel_resp_IE2,
+            a.courriel_association,
             s.id AS suivi_id,
             s.statut_csv,
             s.present_csv,
@@ -441,7 +531,13 @@ def resultats(campagne_id):
             s.mail_statut_verifie_le,
             s.mail_modele_id,
             s.mail_renvoi_gmail_le,
-            s.tonnage_kg_net
+            s.tonnage_kg_net,
+            s.ams_volume_kg,
+            s.ams_nb_foyers,
+            s.ams_nb_personnes,
+            s.ams_nb_passages,
+            s.ams_motif_ecart_asso,
+            s.ams_motif_ecart_ba
         FROM associations a
         LEFT JOIN indicateurs_suivi s
             ON s.association_id = a.id
@@ -449,6 +545,14 @@ def resultats(campagne_id):
         WHERE a.validite = 'oui'
         ORDER BY a.nom_association
     """, (campagne_id,)).fetchall()
+
+    # Pastille de cohérence des valeurs AMS (vert/orange/rouge + détail au survol)
+    lignes_dicts = []
+    for l in lignes:
+        d = dict(l)
+        d["coherence"], d["coherence_messages"] = controle_coherence(d, campagne["periode"])
+        lignes_dicts.append(d)
+    lignes = lignes_dicts
 
     total = len(lignes)
 
@@ -481,6 +585,45 @@ def resultats(campagne_id):
         non_repondu=non_repondu,
         modeles=modeles
     )
+
+
+@indicateurs_bp.route("/indicateurs/proposition_non_repondus/<int:campagne_id>.pdf")
+@login_required
+@require_access("indicateurs", "lecture")
+def proposition_non_repondus_pdf(campagne_id):
+    """État PDF des indicateurs proposés (calculés depuis le tonnage VIF) pour
+    les associations n'ayant pas répondu, à saisir manuellement dans AMS."""
+    with get_db_connection() as conn:
+        campagne = conn.execute(
+            "SELECT * FROM indicateurs_campagnes WHERE id = ?", (campagne_id,)
+        ).fetchone()
+        if not campagne:
+            flash("❌ Campagne introuvable", "danger")
+            return redirect(url_for("indicateurs.index"))
+        propositions, ratio_defaut = calculer_propositions(conn, campagne_id, campagne["periode"])
+
+    pdf = generer_pdf_propositions(campagne, propositions, ratio_defaut)
+    nom = f"Proposition_indicateurs_{campagne['periode'].replace(' ', '_')}_non_repondus.pdf"
+    return send_file(pdf, mimetype="application/pdf", download_name=nom, as_attachment=False)
+
+
+@indicateurs_bp.route("/indicateurs/incoherences/<int:campagne_id>.pdf")
+@login_required
+@require_access("indicateurs", "lecture")
+def incoherences_pdf(campagne_id):
+    """État PDF des associations dont les indicateurs AMS sont incohérents (pastille orange ou rouge)."""
+    with get_db_connection() as conn:
+        campagne = conn.execute(
+            "SELECT * FROM indicateurs_campagnes WHERE id = ?", (campagne_id,)
+        ).fetchone()
+        if not campagne:
+            flash("❌ Campagne introuvable", "danger")
+            return redirect(url_for("indicateurs.index"))
+        lignes = lignes_incoherentes(conn, campagne_id, campagne["periode"])
+
+    pdf = generer_pdf_incoherences(campagne, lignes)
+    nom = f"Incoherences_indicateurs_{campagne['periode'].replace(' ', '_')}.pdf"
+    return send_file(pdf, mimetype="application/pdf", download_name=nom, as_attachment=False)
 
 
 @indicateurs_bp.route("/indicateurs/importer_tonnage/<int:campagne_id>", methods=["POST"])
@@ -706,7 +849,7 @@ def renvoyer_gmail(suivi_id):
     with get_db_connection() as conn:
         suivi = conn.execute("""
             SELECT s.*, a.nom_association, a.code_VIF AS code_vif,
-                   a.courriel_resp_IE1, a.courriel_resp_IE2,
+                   a.courriel_resp_IE1, a.courriel_resp_IE2, a.courriel_association,
                    a.responsable_IE, a.tel_resp_IE, a.CAR
             FROM indicateurs_suivi s
             JOIN associations a ON s.association_id = a.id
@@ -739,9 +882,10 @@ def renvoyer_gmail(suivi_id):
             flash("❌ Modèle introuvable", "danger")
             return redirect(url_for("indicateurs.resultats", campagne_id=suivi["campagne_id"]))
 
-        emails = list({e for e in [suivi["courriel_resp_IE1"], suivi["courriel_resp_IE2"]] if e})
+        from ba38_utilitaires.core import emails_indicateurs, REPLY_TO_INDICATEURS
+        emails = emails_indicateurs(suivi)
         if not emails:
-            flash(f"❌ Aucune adresse email pour {suivi['nom_association']}", "danger")
+            flash(f"AUCUN MAIL ENVOYÉ — aucune adresse email (ni resp. IE1/IE2, ni boîte générale) pour {suivi['nom_association']}", "danger")
             return redirect(url_for("indicateurs.resultats", campagne_id=suivi["campagne_id"]))
 
         periode = campagne["periode"]
@@ -767,7 +911,8 @@ def renvoyer_gmail(suivi_id):
         corps = render_modele_email(modele["corps"], contexte)
 
         try:
-            envoyer_mail_gmail(sujet=sujet, destinataires=emails, texte=corps, attachment_path=pdf_path)
+            envoyer_mail_gmail(sujet=sujet, destinataires=emails, texte=corps, attachment_path=pdf_path,
+                               reply_to=REPLY_TO_INDICATEURS)
 
             now_iso = datetime.now().isoformat(timespec="seconds")
 

@@ -4,8 +4,9 @@ import sqlite3
 import os
 from datetime import datetime
 from functools import wraps
+from markupsafe import Markup
 from ba38_utilitaires.taches_fond import lancer_tache_fond
-from ba38_utilitaires.core import get_db_path, require_access, has_access, write_log, envoyer_mail, render_modele_email, get_templates_pdf_dir, copier_modele_email_vers_prod
+from ba38_utilitaires.core import get_db_path, require_access, has_access, write_log, envoyer_mail, render_modele_email, get_templates_pdf_dir, copier_modele_email_vers_prod, emails_indicateurs, REPLY_TO_INDICATEURS
 from ba38_utilitaires.pdf_form import remplir_pdf_indicateurs
 
 emails_bp = Blueprint("emails", __name__)
@@ -90,15 +91,8 @@ def envoyer_indicateurs_background(app, db_path, campagne_id, campagne, lignes,
             # ============================================================================
             # 📬 DESTINATAIRES
             # ============================================================================
-            emails = []
-
-            if association["courriel_resp_IE1"]:
-                emails.append(association["courriel_resp_IE1"])
-
-            if association["courriel_resp_IE2"]:
-                emails.append(association["courriel_resp_IE2"])
-
-            emails = list(set(emails))
+            # IE1/IE2, à défaut boîte mail générale de l'association
+            emails = emails_indicateurs(association)
 
             # ============================================================================
             # 🧪 MODE TEST
@@ -121,6 +115,7 @@ def envoyer_indicateurs_background(app, db_path, campagne_id, campagne, lignes,
                     destinataires=emails,
                     texte=corps,
                     sender_override=sender,
+                    reply_to=REPLY_TO_INDICATEURS,
                     attachment_path=pdf_path,
                     current_user_email=current_user_email
                 )
@@ -329,6 +324,7 @@ def envoyer_mails(campagne_id):
                 a.code_VIF AS code_vif,
                 a.courriel_resp_IE1,
                 a.courriel_resp_IE2,
+                a.courriel_association,
                 a.responsable_IE,
                 a.tel_resp_IE,
                 a.CAR
@@ -377,11 +373,14 @@ def envoyer_mails(campagne_id):
         erreurs = []
 
         for l in lignes:
-            if not (l["courriel_resp_IE1"] or l["courriel_resp_IE2"]):
+            if not emails_indicateurs(l):
                 erreurs.append(l["nom_association"])
 
         if erreurs:
-            msg = "❌ Aucune adresse email pour :<br>" + "<br>".join(erreurs)
+            msg = (Markup("<strong>AUCUN MAIL ENVOYÉ</strong> — l'envoi est bloqué car aucune adresse email "
+                          "(ni resp. IE1/IE2, ni boîte générale) n'est renseignée pour :<br>")
+                   + Markup("<br>").join(erreurs)
+                   + Markup("<br>Renseignez une adresse ou cochez « exclure de l'envoi », puis relancez."))
             flash(msg, "danger")
             return redirect(url_for("emails.envoyer_mails", campagne_id=campagne_id))
 
