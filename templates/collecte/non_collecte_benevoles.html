@@ -10,9 +10,10 @@
     <p class="text-muted small">
         Magasins déjà passés « Non collecté » dans le fichier magasins (État) et qui avaient donné leur accord
         auparavant (colonne « Accord ») — la collecte n'aura finalement pas lieu cette année, faute de
-        bénévoles disponibles pour l'organiser. On les marque ici et on leur envoie un mail pour les prévenir.
-        Les magasins sans email sont inclus mais signalés : le mail ne peut pas leur être envoyé, il faut les
-        contacter autrement (téléphone).
+        bénévoles disponibles pour l'organiser. On les marque ici et on leur envoie un mail pour les prévenir —
+        seuls les magasins cochés n'ayant pas encore reçu ce mail (colonne « Mail envoyé ») sont réellement
+        notifiés, jamais un magasin déjà notifié. Les magasins sans email sont inclus mais signalés : le mail
+        ne peut pas leur être envoyé, il faut les contacter autrement (téléphone).
     </p>
 
     {% call action_buttons() %}
@@ -67,7 +68,7 @@
                 <tbody>
                 {% for m in magasins %}
                 <tr>
-                    <td><input class="case-magasin" type="checkbox" name="magasins" value="{{ m.code_vif }}" checked></td>
+                    <td><input class="case-magasin" type="checkbox" name="magasins" value="{{ m.code_vif }}" {% if not m.mail_deja_envoye %}checked{% endif %}></td>
                     <td>{{ m.code_vif }}</td>
                     <td>{{ m.nom }}</td>
                     <td>{{ m.etat }}</td>
@@ -156,7 +157,7 @@ document.getElementById("btn-envoyer-mails").addEventListener("click", function 
     } else if (modeTest) {
         message = "Envoyer un mail de TEST (pour les " + nbSelectionnes + " magasin(s) cochés, mais tous à votre propre adresse), sans rien marquer ?";
     } else {
-        message = "⚠️ ENVOI RÉEL : marquer " + nbSelectionnes + " magasin(s) « pas de collecte » et leur envoyer le mail, à leurs vraies adresses ?";
+        message = "⚠️ ENVOI RÉEL : marquer " + nbSelectionnes + " magasin(s) « pas de collecte » et envoyer le mail à ceux pas encore notifiés, à leurs vraies adresses ?";
     }
 
     if (!confirm(message)) {

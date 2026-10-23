@@ -2983,11 +2983,29 @@ def non_collecte_benevoles(annee):
         texte_mail_modele = (campagne_mail["non_collecte_texte_mail"] if campagne_mail else None) or NON_COLLECTE_TEXTE_MAIL_DEFAUT
         texte_mail_modele = texte_mail_modele.replace("<<Annee>>", str(annee))
 
+        with get_db_connection() as conn:
+            _ensure_table_non_collectes_benevoles(conn)
+            conn.commit()
+            deja_mail_envoye = {
+                r["code_vif"] for r in conn.execute(
+                    "SELECT code_vif FROM collecte_magasins_non_collectes WHERE annee = ? AND mail_envoye = 1",
+                    (annee,)
+                ).fetchall()
+            }
+
         maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         marques = 0
         envoyes = 0
         sans_email = []
+        deja_notifies = []
         for magasin in magasins_a_traiter:
+            # Hors test : jamais de second mail à un magasin déjà notifié
+            # (sinon un simple réenregistrement/reclic renvoie à tout le
+            # monde à chaque fois — retour utilisateur direct, 2026-10-23,
+            # même bug déjà corrigé côté sans_vendredi).
+            if not mode_test and magasin["code_vif"] in deja_mail_envoye:
+                deja_notifies.append(magasin["nom"])
+                continue
             a_un_email = bool(magasin["emails"])
             if a_un_email:
                 destinataires = [current_user.email] if mode_test else magasin["emails"]
@@ -3023,7 +3041,9 @@ def non_collecte_benevoles(annee):
         )
         if sans_email:
             message += f" — ⚠️ sans email, à contacter autrement : {', '.join(sans_email)}"
-        flash(message, "warning" if sans_email else "success")
+        if deja_notifies:
+            message += f" — déjà notifié(s) précédemment, non renvoyé(s) : {', '.join(deja_notifies)}"
+        flash(message, "warning" if (sans_email or deja_notifies) else "success")
         write_log(f"📭 Marquage non-collecté (faute de bénévoles) {annee} : {marques} magasin(s), {envoyes} mail(s) par {current_user.email}")
         return redirect(url_for("collecte.non_collecte_benevoles", annee=annee))
 
