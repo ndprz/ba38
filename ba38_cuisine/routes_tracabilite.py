@@ -7,7 +7,7 @@ import os
 import sqlite3
 from datetime import datetime
 
-from flask import request, redirect, url_for, flash, send_file, abort
+from flask import request, redirect, url_for, flash, send_file, abort, jsonify
 from flask_login import login_required
 
 from ba38_utilitaires.core import require_access, write_log, upload_database
@@ -15,7 +15,7 @@ from ba38_cuisine import production_cuisine_bp
 from ba38_cuisine.utils import (
     _connect, now_paris_str, upload_dir_traca_lot, save_uploaded_files,
     etape_bloquante, heure_fin_max_precedentes, calculer_conformite_production, parse_temperature,
-    motifs_non_conformite,
+    motifs_non_conformite, mode_exige_sauteuse,
 )
 
 CONFORMITE_CHOICES = ("conforme", "non_conforme")
@@ -149,6 +149,21 @@ def etape_production(production_id):
 
         elif action == "demarrer":
             temperature_debut = parse_temperature(request.form.get("temperature_debut"))
+            if etape_code == "cuisson":
+                # N° de sauteuse demandé au démarrage de la cuisson (cuisson
+                # de nuit / sauteuse), plus à la création de la production.
+                production = conn.execute(
+                    "SELECT mode_cuisson, numero_sauteuse FROM cuisine_productions WHERE id = ?", (production_id,)
+                ).fetchone()
+                if production and mode_exige_sauteuse(production["mode_cuisson"]):
+                    numero_sauteuse = (request.form.get("numero_sauteuse") or "").strip() or production["numero_sauteuse"]
+                    if not numero_sauteuse:
+                        flash(f"⚠️ Merci d'indiquer le n° de sauteuse ({production['mode_cuisson']}).", "warning")
+                        return _redirect_run(production_id)
+                    cur.execute(
+                        "UPDATE cuisine_productions SET numero_sauteuse = ?, user_modif = ? WHERE id = ?",
+                        (numero_sauteuse, benevole or None, production_id),
+                    )
             cur.execute(
                 """INSERT INTO cuisine_production_etapes
                    (production_id, etape_code, heure_debut, temperature_debut, user_creation)
@@ -472,3 +487,37 @@ def validation_production(production_id):
     # Pas de problème : retour à la liste des productions du jour.
     flash("✅ Production validée.", "success")
     return redirect(url_for("production_cuisine.liste_productions", date=date_production))
+
+
+# ------------------------------------------------------------
+# 📝 Commentaires enregistrés à la frappe (fetch depuis la fiche) :
+#     traçabilité (sur la production) et validation finale (ligne de
+#     validation créée sans date si besoin, comme pour le plat témoin).
+#     Pas d'upload_database à chaque frappe : la base part sur Drive à la
+#     prochaine action enregistrée (étape, validation...).
+# ------------------------------------------------------------
+@production_cuisine_bp.route("/<int:production_id>/commentaire/<champ>", methods=["POST"])
+@login_required
+@require_access("production_cuisine", "ecriture")
+def commentaire_production(production_id, champ):
+    if champ not in ("tracabilite", "validation"):
+        abort(404)
+    texte = (request.form.get("commentaire") or "").strip() or None
+    with _connect() as conn:
+        if not conn.execute(
+            "SELECT 1 FROM cuisine_productions WHERE id = ? AND actif = 1", (production_id,)
+        ).fetchone():
+            return jsonify({"ok": False, "error": "Production introuvable."}), 404
+        if champ == "tracabilite":
+            conn.execute(
+                "UPDATE cuisine_productions SET commentaire_tracabilite = ? WHERE id = ?", (texte, production_id),
+            )
+        else:
+            conn.execute(
+                """INSERT INTO cuisine_production_validations (production_id, commentaire, date_validation)
+                   VALUES (?, ?, NULL)
+                   ON CONFLICT(production_id) DO UPDATE SET commentaire = excluded.commentaire""",
+                (production_id, texte),
+            )
+        conn.commit()
+    return jsonify({"ok": True})

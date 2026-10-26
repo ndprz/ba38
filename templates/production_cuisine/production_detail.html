@@ -6,6 +6,16 @@
 {% block extra_css %}
 <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_bootstrap5.min.css" rel="stylesheet">
 <style>
+  /* le thème BA38 ne masque pas .btn-check (règle Bootstrap reprise ici) */
+  .choix-sauteuse .btn-check { position: absolute; clip: rect(0, 0, 0, 0); pointer-events: none; }
+  .statut-autosave { font-size: .85rem; }
+  /* Bouton coché : le thème BA38 (Bootstrap 4) n'a pas les règles .btn-check de Bootstrap 5 */
+  .btn-check:checked + .btn { color: #fff; font-weight: 700; box-shadow: 0 0 0 .2rem rgba(0, 0, 0, .15); }
+  .btn-check:checked + .btn::before { content: "✓ "; }
+  .btn-check:checked + .btn-outline-danger { background-color: #E04620; border-color: #E04620; }
+  .btn-check:checked + .btn-outline-primary { background-color: #f27830; border-color: #f27830; }
+  .btn-check:checked + .btn-outline-success { background-color: #69984F; border-color: #69984F; }
+  .btn-check:checked + .btn-outline-secondary { background-color: #948994; border-color: #948994; }
   /* En-tête figé : recette + date/statut + Retour/Supprimer restent visibles au défilement */
   .entete-production-fige {
     position: sticky;
@@ -112,6 +122,14 @@
   <div class="card mb-3 border-primary">
     <div class="card-header">🔎 Traçabilité — lots</div>
     <div class="card-body">
+
+      <div class="mb-3">
+        <label class="form-label fw-bold" for="commentaire-tracabilite">📝 Commentaire traçabilité</label>
+        <textarea id="commentaire-tracabilite" class="form-control js-autosave" rows="2"
+                  data-url="{{ url_for('production_cuisine.commentaire_production', production_id=production.id, champ='tracabilite') }}"
+                  placeholder="N° de lot, origine, remarque...">{{ production.commentaire_tracabilite or '' }}</textarea>
+        <div class="statut-autosave text-muted mt-1">Enregistré automatiquement pendant la frappe.</div>
+      </div>
 
       {% if receptions %}
         <h6 class="text-muted">📥 Lots issus des réceptions</h6>
@@ -255,8 +273,9 @@
         {{ camera_capture("photos", "📷 Photos (étiquette / produit)") }}
 
         <div class="mb-3">
-          <label class="form-label">Commentaire</label>
-          <input type="text" name="commentaire" class="form-control">
+          <label class="form-label">Commentaire du lot</label>
+          <input type="text" name="commentaire" class="form-control" id="lot-manuel-commentaire">
+          <div class="form-text">Enregistré avec le lot (bouton « Ajouter le lot », fournisseur obligatoire). Pour une simple remarque, utiliser « 📝 Commentaire traçabilité » ci-dessus.</div>
         </div>
 
         <button type="submit" class="btn btn-primary btn-lg">➕ Ajouter le lot</button>
@@ -306,10 +325,18 @@
   <!-- 🔢 Quantités conditionnées -->
   <!-- ============================================================ -->
   <div class="card mb-3 border-primary">
-    <div class="card-header">🔢 Quantités conditionnées</div>
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span>🔢 Quantités conditionnées</span>
+      {# Voyant : vert dès que barquettes + plat témoin ont été enregistrés,
+         orange si une valeur a été modifiée depuis (pas encore enregistrée). #}
+      <span id="voyant-quantites" class="badge text-white {{ 'bg-success' if quantites_enregistrees else 'bg-secondary' }}"
+            data-enregistre="{{ 1 if quantites_enregistrees else 0 }}" style="font-size: .95rem;">
+        {{ "🟢 Barquettes et plat témoin enregistrés" if quantites_enregistrees else "⚪ Pas encore enregistré" }}
+      </span>
+    </div>
     <div class="card-body">
       <form method="POST" action="{{ url_for('production_cuisine.quantites_production', production_id=production.id) }}"
-            class="row g-3 align-items-end">
+            class="row g-3 align-items-end" id="form-quantites">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="col-auto">
           <label class="form-label">{{ libelles_barquettes.get('1/2', '1/2') }}</label>
@@ -405,7 +432,9 @@
                 {% if production.numero_sauteuse %}
                   <span class="badge bg-danger text-white ms-1" style="font-size: .9rem;">🍳 {{ production.numero_sauteuse }}</span>
                 {% endif %}
-                {% set sauteuse_manquante = production.mode_cuisson and production.mode_cuisson.strip().lower() in ('cuisson de nuit', 'sauteuse') and not production.numero_sauteuse %}
+                {% set exige_sauteuse = production.mode_cuisson and production.mode_cuisson.strip().lower() in ('cuisson de nuit', 'sauteuse') %}
+                {# N° demandé au démarrage de la cuisson : signalé manquant seulement une fois la cuisson démarrée #}
+                {% set sauteuse_manquante = exige_sauteuse and ligne and not production.numero_sauteuse %}
                 {% if production.statut != 'terminee' %}
                 <details class="d-inline-block ms-1" {% if not production.mode_cuisson or sauteuse_manquante %}open{% endif %}>
                   <summary class="{{ 'text-danger fw-bold' if sauteuse_manquante else 'text-muted' }} small" style="cursor:pointer;">
@@ -483,6 +512,20 @@
               <div>
                 <label class="form-label small">Température début (°C)</label>
                 {{ champ_temperature("temperature_debut", required=true) }}
+              </div>
+              {% endif %}
+              {% if ref.code == 'cuisson' and exige_sauteuse %}
+              <div class="choix-sauteuse">
+                <label class="form-label small fw-bold d-block">🍳 N° de sauteuse *</label>
+                <div class="d-flex flex-wrap gap-2">
+                  {% for s in sauteuses %}
+                    <input type="radio" class="btn-check" name="numero_sauteuse" id="demarrer-sauteuse-{{ loop.index }}" value="{{ s }}"
+                           {% if loop.first %}required{% endif %} {% if production.numero_sauteuse == s %}checked{% endif %}>
+                    <label class="btn btn-outline-danger btn-lg" for="demarrer-sauteuse-{{ loop.index }}">{{ s }}</label>
+                  {% else %}
+                    <span class="text-danger small">Aucune sauteuse paramétrée (⚙️ Paramètres cuisine).</span>
+                  {% endfor %}
+                </div>
               </div>
               {% endif %}
               <button type="submit" class="btn btn-success btn-lg">▶️ Démarrer</button>
@@ -652,8 +695,11 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="mb-3">
-          <label class="form-label">Commentaire</label>
-          <input type="text" name="commentaire" class="form-control">
+          <label class="form-label" for="commentaire-validation">Commentaire</label>
+          <input type="text" name="commentaire" id="commentaire-validation" class="form-control js-autosave"
+                 data-url="{{ url_for('production_cuisine.commentaire_production', production_id=production.id, champ='validation') }}"
+                 value="{{ validation.commentaire if validation and validation.commentaire else '' }}">
+          <div class="statut-autosave text-muted mt-1">Enregistré automatiquement pendant la frappe.</div>
         </div>
 
         {# Date de fin : « maintenant » par défaut ; une autre date/heure pour
@@ -806,5 +852,86 @@
     select.addEventListener("change", maj);
     maj();
   });
+</script>
+<script>
+  // 📝 Commentaires enregistrés à la frappe (1 s après la dernière touche,
+  // et à la sortie du champ) : rien n'est perdu si l'on clique ensuite sur
+  // un autre bouton de la fiche (Démarrer, Terminer...).
+  (function () {
+    var csrf = "{{ csrf_token() }}";
+    document.querySelectorAll(".js-autosave").forEach(function (champ) {
+      var statut = champ.parentElement.querySelector(".statut-autosave");
+      var dernier = champ.value, minuterie = null, enCours = null;
+      function afficher(texte, classe) { statut.textContent = texte; statut.className = "statut-autosave mt-1 " + classe; }
+      function enregistrer() {
+        clearTimeout(minuterie);
+        if (champ.value === dernier) return enCours || Promise.resolve();
+        var valeur = champ.value;
+        var corps = new FormData();
+        corps.append("commentaire", valeur);
+        afficher("⏳ Enregistrement…", "text-muted");
+        enCours = fetch(champ.dataset.url, { method: "POST", body: corps, headers: { "X-CSRFToken": csrf }, keepalive: true })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (!d.ok) throw new Error(d.error || "erreur");
+            dernier = valeur;
+            afficher("✅ Enregistré", "text-success");
+          })
+          .catch(function () { afficher("❌ Non enregistré — vérifiez la connexion", "text-danger fw-bold"); });
+        return enCours;
+      }
+      champ.addEventListener("input", function () {
+        clearTimeout(minuterie);
+        afficher("✏️ Modification en cours…", "text-muted");
+        minuterie = setTimeout(enregistrer, 1000);
+      });
+      champ.addEventListener("blur", enregistrer);
+      champ._enregistrer = enregistrer;
+      champ._aEnregistrer = function () { return champ.value !== dernier; };
+    });
+    // Envoi d'un autre formulaire avant la fin du délai : on enregistre d'abord.
+    document.querySelectorAll("form").forEach(function (form) {
+      form.addEventListener("submit", function (e) {
+        var enAttente = Array.prototype.filter.call(document.querySelectorAll(".js-autosave"), function (c) {
+          return !form.contains(c) && c._aEnregistrer && c._aEnregistrer();
+        });
+        if (!enAttente.length || e.defaultPrevented) return;
+        e.preventDefault();
+        // form.submit() natif : ne redéclenche ni onsubmit (confirmations) ni ce gestionnaire
+        if (e.submitter && e.submitter.name) {
+          var cache = document.createElement("input");
+          cache.type = "hidden"; cache.name = e.submitter.name; cache.value = e.submitter.value;
+          form.appendChild(cache);
+        }
+        Promise.all(enAttente.map(function (c) { return c._enregistrer(); })).then(function () { form.submit(); });
+      });
+    });
+    // Commentaire d'un lot manuel tapé mais lot pas ajouté : prévenir.
+    var lotCommentaire = document.getElementById("lot-manuel-commentaire");
+    if (lotCommentaire) {
+      document.querySelectorAll("form").forEach(function (form) {
+        if (form.contains(lotCommentaire)) return;
+        form.addEventListener("submit", function (e) {
+          if (lotCommentaire.value.trim() &&
+              !confirm("Le commentaire du lot manuel n'est pas enregistré (il faut cliquer sur « Ajouter le lot »). Continuer quand même ?")) {
+            e.preventDefault(); e.stopImmediatePropagation();
+          }
+        }, true);
+      });
+    }
+  })();
+
+  // 🔢 Voyant des quantités : orange dès qu'une valeur change sans être enregistrée
+  (function () {
+    var form = document.getElementById("form-quantites");
+    var voyant = document.getElementById("voyant-quantites");
+    if (!form || !voyant) return;
+    form.addEventListener("input", modifie);
+    form.addEventListener("change", modifie);
+    function modifie() {
+      voyant.className = "badge text-dark bg-warning";
+      voyant.textContent = "🟠 Modifié — cliquez sur 💾 Enregistrer";
+    }
+  })();
 </script>
 {% endblock %}

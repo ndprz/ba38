@@ -41,16 +41,19 @@
       <div class="row g-3 mb-1">
         <div class="col-6">
           <label class="form-label fw-bold">DLC</label>
-          <input type="date" name="dlc_ddm_IDXTOKEN" class="form-control form-control-lg champ-dlc" required>
+          <input type="text" inputmode="numeric" autocomplete="off" placeholder="jj/mm" maxlength="10"
+                 name="dlc_ddm_IDXTOKEN" class="form-control form-control-lg champ-dlc champ-date-courte" required>
         </div>
         <div class="col-6">
           <label class="form-label fw-bold">DDM</label>
-          <input type="date" name="ddm_IDXTOKEN" class="form-control form-control-lg champ-ddm" required>
+          <input type="text" inputmode="numeric" autocomplete="off" placeholder="jj/mm" maxlength="10"
+                 name="ddm_IDXTOKEN" class="form-control form-control-lg champ-ddm champ-date-courte" required>
         </div>
       </div>
       <div class="form-text mb-3">
         * Au moins une des deux dates lue sur l'étiquette : DLC (date limite de consommation) ou
         DDM (date de durabilité minimale, « à consommer de préférence avant »).
+        Taper « 2810 » ou « 28/10 » : l'année est ajoutée automatiquement.
         Date dépassée : avertissement à la recette, utilisation possible en forçant (groupe Surgelé : non contrôlé).
       </div>
       {% for champ, label in (('aspect_conforme', 'Aspect'), ('emballage_conforme', 'Emballage'), ('etiquetage_conforme', 'Étiquetage')) %}
@@ -88,6 +91,55 @@
 <script>
 (function () {
   var lignesSoumises = {{ lignes_soumises | tojson }};
+
+  // 📅 DLC / DDM tapées « 2810 » ou « 28/10 » : les « / » s'ajoutent pendant
+  // la frappe (clavier numérique de la tablette), l'année est complétée en
+  // sortie de champ : année en cours, ou suivante si la date tomberait plus
+  // de 60 jours dans le passé (même règle que _parse_dlc côté serveur).
+  var JOURS_PASSE_ANNEE_AUTO = 60;
+  function deuxChiffres(n) { return (n < 10 ? '0' : '') + n; }
+  function dateAffichee(valeur) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(valeur || '');
+    return m ? m[3] + '/' + m[2] + '/' + m[1] : (valeur || '');
+  }
+  function completerDate(valeur) {
+    var m = /^(\d{1,2})[\/.\-](\d{1,2})(?:[\/.\-](\d{2}|\d{4}))?$/.exec(valeur.trim());
+    if (!m) return null;
+    var jour = +m[1], mois = +m[2], annee;
+    var aujourdhui = new Date(); aujourdhui.setHours(0, 0, 0, 0);
+    if (m[3]) {
+      annee = +m[3] + (m[3].length === 2 ? 2000 : 0);
+    } else {
+      annee = aujourdhui.getFullYear();
+      var limite = new Date(aujourdhui); limite.setDate(limite.getDate() - JOURS_PASSE_ANNEE_AUTO);
+      if (new Date(annee, mois - 1, jour) < limite) annee += 1;
+    }
+    var d = new Date(annee, mois - 1, jour);
+    if (d.getFullYear() !== annee || d.getMonth() !== mois - 1 || d.getDate() !== jour) return null;
+    return deuxChiffres(jour) + '/' + deuxChiffres(mois) + '/' + annee;
+  }
+  function initDateCourte(champ) {
+    champ.addEventListener('input', function () {
+      if (/[^0-9]/.test(champ.value.replace(/\//g, ''))) return;  // saisie avec séparateurs : laissée telle quelle
+      var c = champ.value.replace(/\D/g, '').slice(0, 8);
+      champ.value = c.slice(0, 2) + (c.length > 2 ? '/' + c.slice(2, 4) : '') + (c.length > 4 ? '/' + c.slice(4) : '');
+      champ.setCustomValidity('');
+      champ.classList.remove('is-invalid');
+    });
+    champ.addEventListener('blur', function () {
+      if (!champ.value.trim()) { champ.setCustomValidity(''); champ.classList.remove('is-invalid'); return; }
+      var complete = completerDate(champ.value);
+      if (complete) {
+        champ.value = complete;
+        champ.setCustomValidity('');
+        champ.classList.remove('is-invalid');
+      } else {
+        champ.setCustomValidity('Date invalide (jj/mm ou jj/mm/aaaa)');
+        champ.classList.add('is-invalid');
+      }
+      champ.dispatchEvent(new Event('change'));
+    });
+  }
   var ingredientsParGroupe = {{ ingredients_par_groupe | tojson }};
   var container = document.getElementById('lignes-produits');
   var template = document.getElementById('template-ligne-produit');
@@ -161,10 +213,10 @@
         ligne.querySelector('[name="poids_kg_' + idx + '"]').value = valeurs.poids_kg;
       }
       if (valeurs.dlc_ddm) {
-        ligne.querySelector('[name="dlc_ddm_' + idx + '"]').value = valeurs.dlc_ddm;
+        ligne.querySelector('[name="dlc_ddm_' + idx + '"]').value = dateAffichee(valeurs.dlc_valide || valeurs.dlc_ddm);
       }
       if (valeurs.ddm) {
-        ligne.querySelector('[name="ddm_' + idx + '"]').value = valeurs.ddm;
+        ligne.querySelector('[name="ddm_' + idx + '"]').value = dateAffichee(valeurs.ddm_valide || valeurs.ddm);
       }
       if (valeurs.commentaire) {
         ligne.querySelector('[name="commentaire_' + idx + '"]').value = valeurs.commentaire;
@@ -192,6 +244,7 @@
     champDdm.addEventListener('input', majDates);
     champDlc.addEventListener('change', majDates);
     champDdm.addEventListener('change', majDates);
+    [champDlc, champDdm].forEach(initDateCourte);
     majDates();
 
     container.appendChild(ligne);

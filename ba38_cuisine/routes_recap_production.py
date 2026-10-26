@@ -198,6 +198,10 @@ def generer_pdf_recap_production(d):
         elements.append(t)
     else:
         elements.append(Paragraph("Aucune matière première rattachée.", petit))
+    if p["commentaire_tracabilite"]:
+        from xml.sax.saxutils import escape
+        texte = escape(p["commentaire_tracabilite"]).replace("\n", "<br/>")
+        elements += [Spacer(1, 2 * mm), Paragraph(f"<b>Commentaire traçabilité :</b> {texte}", petit)]
     elements.append(Spacer(1, 4 * mm))
 
     # Étapes

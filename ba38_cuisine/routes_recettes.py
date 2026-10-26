@@ -401,8 +401,6 @@ def creer_production():
             erreur = "⚠️ Merci de saisir le nom de la recette."
         elif categorie_produit not in CATEGORIES_PRODUIT:
             erreur = "⚠️ Merci d'indiquer la catégorie du produit (Carné ou Légumes)."
-        elif mode_exige_sauteuse(mode_cuisson) and not numero_sauteuse:
-            erreur = f"⚠️ Merci d'indiquer le n° de sauteuse ({mode_cuisson})."
 
         def _rendu_erreur(message):
             flash(message, "warning")
@@ -610,6 +608,9 @@ def detail_production(production_id):
             (production_id,),
         ).fetchall()
         quantites = {"1/2": 0, "1/4": 0, "1/8": 0}
+        # Le formulaire « Quantités conditionnées » enregistre toujours les 3
+        # tailles avec le plat témoin : des lignes = saisie faite (voyant vert).
+        quantites_enregistrees = bool(quantites_rows)
         for q in quantites_rows:
             quantites[q["taille"]] = q["quantite"]
 
@@ -661,6 +662,7 @@ def detail_production(production_id):
         receptions_disponibles=receptions_disponibles,
         fournisseurs=fournisseurs,
         quantites=quantites,
+        quantites_enregistrees=quantites_enregistrees,
         validation=validation,
         renommages=renommages,
         today=today_paris(),

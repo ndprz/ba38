@@ -33,11 +33,33 @@ def _filtre_kg(valeur):
     return format_kg(valeur)
 
 
+# Saisie « 28/10 » sans année : année en cours, ou suivante si la date
+# tomberait plus de JOURS_PASSE_ANNEE_AUTO jours dans le passé (ex. « 05/01 »
+# saisi fin décembre = janvier prochain). Même règle côté navigateur
+# (_reception_lignes_produit.html).
+JOURS_PASSE_ANNEE_AUTO = 60
+
+
 def _parse_dlc(valeur):
-    """DLC saisie (AAAA-MM-JJ, champ date) → texte ISO, sinon None."""
+    """DLC/DDM saisie → texte ISO (AAAA-MM-JJ), sinon None. Accepte l'ISO
+    et jj/mm/aaaa, jj/mm/aa ou jj/mm (année complétée)."""
     valeur = (valeur or "").strip()
     try:
         return date.fromisoformat(valeur).isoformat()
+    except ValueError:
+        pass
+    m = re.fullmatch(r"(\d{1,2})[/.\-](\d{1,2})(?:[/.\-](\d{2}|\d{4}))?", valeur)
+    if not m:
+        return None
+    jour, mois, annee = int(m.group(1)), int(m.group(2)), m.group(3)
+    aujourdhui = date.fromisoformat(today_paris())
+    try:
+        if annee:
+            return date(int(annee) + (2000 if len(annee) == 2 else 0), mois, jour).isoformat()
+        resultat = date(aujourdhui.year, mois, jour)
+        if resultat < aujourdhui - timedelta(days=JOURS_PASSE_ANNEE_AUTO):
+            resultat = date(aujourdhui.year + 1, mois, jour)
+        return resultat.isoformat()
     except ValueError:
         return None
 

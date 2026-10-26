@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros/buttons.html" import action_button, action_buttons %}
 {% from "production_cuisine/_macros.html" import champ_temperature %}
 
 {% block title %}Relevés de température{% endblock %}
@@ -23,12 +24,12 @@
 
   {% include "cuisine_hygiene/_nav.html" %}
 
-  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h2 class="mb-0">🌡️ Relevés de température <small class="text-muted fs-6">{{ aujourdhui[8:10] }}/{{ aujourdhui[5:7] }}/{{ aujourdhui[0:4] }}</small></h2>
-    <a href="{{ url_for('cuisine_hygiene.temperatures_historique') }}" class="btn btn-outline-secondary">
-      📜 Historique
-    </a>
-  </div>
+  <h2 class="mb-3">🌡️ Relevés de température <small class="text-muted fs-6">{{ aujourdhui[8:10] }}/{{ aujourdhui[5:7] }}/{{ aujourdhui[0:4] }}</small></h2>
+
+  {% call action_buttons() %}
+    {{ action_button("📜 Historique", href=url_for('cuisine_hygiene.temperatures_historique'), color="outline-secondary") }}
+    {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
+  {% endcall %}
 
   {% if nb_manquants %}
     <div class="alert alert-danger">
@@ -113,6 +114,13 @@
   .zone-carte { background: var(--bs-body-bg); cursor: pointer; padding: 0; text-align: left; }
   /* le thème BA38 ne masque pas .btn-check (règle Bootstrap reprise ici) */
   .btn-check { position: absolute; clip: rect(0, 0, 0, 0); pointer-events: none; }
+  /* Bouton coché : le thème BA38 (Bootstrap 4) n'a pas les règles .btn-check de Bootstrap 5 */
+  .btn-check:checked + .btn { color: #fff; font-weight: 700; box-shadow: 0 0 0 .2rem rgba(0, 0, 0, .15); }
+  .btn-check:checked + .btn::before { content: "✓ "; }
+  .btn-check:checked + .btn-outline-danger { background-color: #E04620; border-color: #E04620; }
+  .btn-check:checked + .btn-outline-primary { background-color: #f27830; border-color: #f27830; }
+  .btn-check:checked + .btn-outline-success { background-color: #69984F; border-color: #69984F; }
+  .btn-check:checked + .btn-outline-secondary { background-color: #948994; border-color: #948994; }
   .zone-carte:active { transform: scale(.99); }
   .releve-ligne { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .6rem; padding: .3rem .5rem; border-radius: .35rem; }
   .releve-ligne + .releve-ligne { margin-top: .25rem; }

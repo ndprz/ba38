@@ -127,21 +127,6 @@
       <div class="form-text">Repris automatiquement de la recette choisie ci-dessus — modifiable si besoin.</div>
     </div>
 
-    <style>#bloc-sauteuse .btn-check { position: absolute; clip: rect(0, 0, 0, 0); pointer-events: none; }</style>
-    <div class="mb-3" id="bloc-sauteuse" style="display:none;">
-      <label class="form-label fw-bold">🍳 N° de sauteuse *</label>
-      <div class="d-flex flex-wrap gap-2">
-        {% for s in sauteuses %}
-          <input type="radio" class="btn-check" name="numero_sauteuse" id="sauteuse-{{ loop.index }}" value="{{ s }}"
-                 {% if form.numero_sauteuse == s %}checked{% endif %}>
-          <label class="btn btn-outline-danger btn-lg" for="sauteuse-{{ loop.index }}">{{ s }}</label>
-        {% else %}
-          <span class="text-danger">Aucune sauteuse paramétrée (⚙️ Paramètres cuisine).</span>
-        {% endfor %}
-      </div>
-      <div class="form-text">Obligatoire pour une cuisson de nuit ou en sauteuse.</div>
-    </div>
-
     <div class="mb-3">
       <label class="form-label fw-bold">Catégorie *</label>
       <select name="categorie_produit" id="categorie-produit-select" class="form-select" required>
@@ -220,7 +205,6 @@
         return o.value === recette.type_cuisson;
       });
       if (optionExiste) modeCuissonSelect.value = recette.type_cuisson;
-      majBlocSauteuse();
     }
     if (recette.categorie) {
       document.getElementById("categorie-produit-select").value = recette.categorie;
@@ -274,18 +258,5 @@
     check.addEventListener('change', maj);
     maj();
   });
-</script>
-{% include "production_cuisine/_sauteuse_js.html" %}
-<script>
-  // N° de sauteuse demandé (et obligatoire) seulement pour les modes concernés
-  function majBlocSauteuse() {
-    var actif = modeExigeSauteuse(document.getElementById("mode-cuisson-select").value);
-    document.getElementById("bloc-sauteuse").style.display = actif ? "" : "none";
-    document.querySelectorAll('#bloc-sauteuse input[name="numero_sauteuse"]').forEach(function (r, i) {
-      r.required = actif && i === 0;
-    });
-  }
-  document.getElementById("mode-cuisson-select").addEventListener("change", majBlocSauteuse);
-  majBlocSauteuse();
 </script>
 {% endblock %}
