@@ -1,3 +1,3 @@
-VERSION=1.7.167
-MESSAGE=Cuisine envoi receptions BAI : sous-total par code VIF dans chaque fournisseur (PDF et mail)
-DATE=2026-10-29 11:58
+VERSION=1.7.170
+MESSAGE=Route publique /health (supervision UptimeRobot)
+DATE=2026-10-29 15:32

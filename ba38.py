@@ -39,7 +39,7 @@ from ba38_securite.core import (
     appareil_de_confiance, telephones_du_compte, CONFIANCE_JOURS, envoyer_code, verifier_code, masquer_numero, masquer_email,
 )
 from ba38_utilitaires.organisation import get_organisation
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, g, current_app, send_from_directory, abort
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, g, current_app, send_from_directory, abort, make_response
 from flask_login import current_user, LoginManager, UserMixin, login_user, logout_user, login_required
 from flask_session import Session
 from flask_wtf.csrf import CSRFProtect
@@ -813,6 +813,25 @@ def set_user_roles():
     # 🔐 MODE NORMAL
     # =====================================================
     session["roles_utilisateurs"] = get_user_roles(current_user.email)
+
+@app.route('/health')
+def health():
+    """
+    Sonde de supervision publique (UptimeRobot) : SELECT 1 sur la base, aucune donnée renvoyée.
+    Ouverture en lecture seule (mode=ro) pour qu'une base absente donne KO au lieu d'être créée vide.
+    """
+    try:
+        conn = sqlite3.connect(f"file:{get_db_path()}?mode=ro", uri=True, timeout=5)
+        try:
+            conn.execute("SELECT 1").fetchone()
+        finally:
+            conn.close()
+        resp = make_response("OK", 200)
+    except Exception:
+        resp = make_response("KO", 503)
+    resp.headers["Content-Type"] = "text/plain; charset=utf-8"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 @app.route('/check_login_status')
 def check_login_status():
