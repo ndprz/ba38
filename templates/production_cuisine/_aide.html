@@ -1,0 +1,74 @@
+{# ============================================================
+   ❓ Aide utilisateur du module cuisine (didacticiel avec captures)
+   ============================================================
+   Bouton « ❓ Aide » + modale qui inclut l'un des 5 documents
+   templates/docsHtml/Documentation_Utilisateur_Module_Cuisine<doc>_BA38.html
+   (source Word dans documentation_utilisateur/docs/, conversion par
+   scripts/convert_doc_to_html.py <nom>.docx ; images dans
+   static/docsHtml_media/).
+   - doc     : Production | Receptions | Hygiene | Livraisons | Referentiels
+   - section : titre (h2/h3) du document sur lequel ouvrir l'aide — repéré
+               par son texte, pas par un id, pour résister aux retouches du
+               Word (pandoc recalcule les id à partir du titre).
+   Une seule modale par document et par page (id « modalAideCuisine<doc> »).
+   La modale est déplacée sous <body> à l'ouverture : certaines pages ont
+   un en-tête sticky dont le z-index ferait passer la modale sous le voile. #}
+{% macro aide_cuisine(doc, section=None, classe="btn-outline-info", taille="") %}
+{% set _id = "modalAideCuisine" ~ doc %}
+<button type="button" class="btn {{ classe }} {{ taille }}"
+        onclick="ouvrirAideCuisine('{{ _id }}', {{ section | tojson | forceescape }})">❓ Aide</button>
+
+<div class="modal fade aide-cuisine" id="{{ _id }}" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📄 Aide – Cuisine</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="font-size: 0.95rem; line-height: 1.45;">
+        {% include "docsHtml/Documentation_Utilisateur_Module_Cuisine" ~ doc ~ "_BA38.html" %}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('{{ _id }}')">🖨️ Imprimer</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  /* Captures à leur taille réelle, sans dépasser la largeur de la modale
+     (pandoc fixe largeur et hauteur en pouces d'après le Word). */
+  .aide-cuisine .modal-body img { width: auto !important; height: auto !important; max-width: 100%;
+    border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  /* Légende = paragraphe qui suit l'image */
+  .aide-cuisine .modal-body p:has(> img) { margin-bottom: .25rem; }
+  .aide-cuisine .modal-body p:has(> img) + p { font-size: .85rem; font-style: italic; color: #6c757d; }
+  .aide-cuisine .modal-body h2 { margin-top: 1.6rem; padding-top: .6rem; border-top: 1px solid #eee; }
+  .aide-cuisine .modal-body h3 { margin-top: 1.2rem; font-size: 1.15rem; }
+</style>
+<script>
+  function ouvrirAideCuisine(modalId, section) {
+    var el = document.getElementById(modalId);
+    if (el.parentElement !== document.body) document.body.appendChild(el);
+    var modal = bootstrap.Modal.getOrCreateInstance(el);
+    if (section) {
+      el.addEventListener('shown.bs.modal', function () {
+        var cible = section.trim().toLowerCase();
+        var titres = el.querySelectorAll('.modal-body h2, .modal-body h3');
+        for (var i = 0; i < titres.length; i++) {
+          var texte = titres[i].textContent.replace(/\s+/g, ' ').trim().toLowerCase();
+          if (texte.indexOf(cible) === 0) {
+            var corps = el.querySelector('.modal-body');
+            corps.scrollTop += titres[i].getBoundingClientRect().top - corps.getBoundingClientRect().top - 10;
+            break;
+          }
+        }
+      }, { once: true });
+    } else {
+      el.addEventListener('shown.bs.modal', function () { el.querySelector('.modal-body').scrollTop = 0; }, { once: true });
+    }
+    modal.show();
+  }
+</script>
+{% endmacro %}

@@ -137,11 +137,20 @@ document.getElementById("btn-enregistrer").addEventListener("click", function ()
     .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
 });
 
+// Échappe pour insertion sûre dans de l'innerHTML — le libellé est modifiable
+// par un compte "collecte écriture" et réinjecté tel quel à l'impression,
+// vue ensuite par tout utilisateur qui imprime les tares (audit 2026-10-28).
+function echapperHtmlTares(valeur) {
+    const div = document.createElement("div");
+    div.textContent = String(valeur);
+    return div.innerHTML;
+}
+
 document.getElementById("btn-imprimer").addEventListener("click", function () {
     const corps = document.getElementById("tares-impression-corps");
     corps.innerHTML = Array.from(document.querySelectorAll("#table-tares tbody tr")).map(function (tr) {
-        const libelle = tr.querySelector(".champ-libelle").value;
-        const poids = tr.querySelector(".champ-poids").value;
+        const libelle = echapperHtmlTares(tr.querySelector(".champ-libelle").value);
+        const poids = echapperHtmlTares(tr.querySelector(".champ-poids").value);
         return `<tr><td>${libelle}</td><td>${poids} kg</td></tr>`;
     }).join("\n");
     window.print();

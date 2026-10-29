@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "production_cuisine/_aide.html" import aide_cuisine %}
 {% from "macros/buttons.html" import action_button, action_buttons %}
 
 {% block title %}Référentiel ingrédients carnés{% endblock %}
@@ -13,6 +14,7 @@
   <h2 class="mb-3">🥩 Référentiel des ingrédients carnés</h2>
 
   {% call action_buttons() %}
+    {{ aide_cuisine("Referentiels", "Ingrédients carnés") }}
     {{ action_button("📊 Export Excel", href=url_for('production_cuisine.export_ingredients_carnes'), color="outline-success") }}
     {{ action_button("➕ Nouvel ingrédient", href=url_for('production_cuisine.creer_ingredient_carne'), color="success") }}
     {{ action_button("← Retour", href=url_for('production_cuisine.liste_productions'), color="outline-dark") }}

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "production_cuisine/_aide.html" import aide_cuisine %}
 
 {% block title %}Cuisine — Autres{% endblock %}
 
@@ -21,6 +22,7 @@
   <h2 class="mb-3">🔧 Cuisine — Autres</h2>
 
   {% call action_buttons() %}
+    {{ aide_cuisine("Hygiene", "Page Autres") }}
     {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
   {% endcall %}
 

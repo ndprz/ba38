@@ -84,6 +84,14 @@
 
     <form method="post" id="form-sans-vendredi">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <!-- Marqueur présent dès que CETTE version du formulaire (avec
+             magasins_affiches) est utilisée — y compris si 0 magasin est
+             affiché (vue filtrée vide) : sans lui, le serveur ne pourrait
+             pas distinguer "0 ligne affichée" de "champ magasins_affiches
+             absent" (vieux navigateur/page jamais rechargée), et retomberait
+             à tort sur TOUS les magasins comme éligibles au retrait
+             (audit 2026-10-28). -->
+        <input type="hidden" name="magasins_affiches_actif" value="1">
 
         <h5>
             Magasins ({{ magasins|length }}{% if nb_magasins_total != magasins|length %} / {{ nb_magasins_total }}{% endif %})
@@ -117,7 +125,10 @@
                 <tbody>
                 {% for m in magasins %}
                 <tr{% if m.detecte_nouveau %} class="table-warning"{% endif %}>
-                    <td><input class="case-magasin" type="checkbox" name="magasins" value="{{ m.code_vif }}" {% if m.coche %}checked{% endif %}></td>
+                    <td>
+                        <input type="hidden" name="magasins_affiches" value="{{ m.code_vif }}">
+                        <input class="case-magasin" type="checkbox" name="magasins" value="{{ m.code_vif }}" {% if m.coche %}checked{% endif %}>
+                    </td>
                     <td>{{ m.code_vif }}</td>
                     <td>{{ m.nom }}{% if m.detecte_nouveau %} <span class="badge bg-warning text-dark">détecté par image</span>{% endif %}</td>
                     <td>{{ m.etat }}</td>

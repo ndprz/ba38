@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "production_cuisine/_aide.html" import aide_cuisine %}
 {% from "production_cuisine/_macros.html" import dates_limite %}
 
 {% block title %}Nouvelle production{% endblock %}
@@ -24,7 +25,10 @@
 <div class="container mt-4" style="max-width: 720px;">
 
   <div class="entete-production-fige mb-3">
-    <h2 class="mb-0">🍲 Nouvelle production</h2>
+    <div class="d-flex justify-content-between align-items-center mb-0 flex-wrap gap-2">
+      <h2 class="mb-0">🍲 Nouvelle production</h2>
+      {{ aide_cuisine("Production", "Nouvelle production") }}
+    </div>
   </div>
 
   <form method="POST" id="form-production">

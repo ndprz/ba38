@@ -620,14 +620,26 @@ def lire_magasins(path_mag, vifs_pdf_2025, poids_nouveaux, annee=None):
         nb = nb_par_ville.get(ville, 0)
         if nb <= SEUIL_GROS:
             return ville
-        lat = float(row['Latitude']) if row['Latitude'] else 0
-        lon = float(row['Longitude']) if row['Longitude'] else 0
+        # float(row['Latitude']) non protégé plantait tout lire_magasins() sur
+        # une cellule GPS mal saisie (texte, virgule française...) — repli sur
+        # 0 comme pour une valeur manquante (audit 2026-10-28).
+        try:
+            lat = float(row['Latitude']) if row['Latitude'] else 0
+        except (TypeError, ValueError):
+            lat = 0
+        try:
+            lon = float(row['Longitude']) if row['Longitude'] else 0
+        except (TypeError, ValueError):
+            lon = 0
         if 'grenoble' in ville.lower():
             return _secteur_grenoble(lat, lon)
-        # Autres grosses villes (ex: Saint Martin d'Hères) : Nord/Sud
-        lat_moy = df[df['Ville_norm']==ville]['Latitude'].astype(float).mean()
-        sub = 'Nord' if lat > lat_moy else 'Sud'
-        return f'{ville} {sub}'
+        # Autres grosses villes (ex: Saint Martin d'Hères) : pas de split
+        # Nord/Sud — aligné sur _calc_secteur_local (celle réellement utilisée
+        # par l'optimiseur pour ses décisions), qui renvoie la ville telle
+        # quelle ; l'ancien split ici-seulement rendait secteur affiché (Excel/
+        # onglets) différent du secteur réellement utilisé pour les décisions
+        # anti-mélange de l'optimiseur sur ces mêmes magasins (audit 2026-10-28).
+        return ville
 
     df['Secteur'] = df.apply(_attribuer_secteur, axis=1)
     df = df.reset_index(drop=True)
@@ -2786,10 +2798,14 @@ def optimiser_tournees(fiches, df_mag, args):
     df_t = pd.DataFrame(rows)
     df_t['_ord'] = df_t['Demi-journee'].map(dj_order).fillna(99)
     df_t = df_t.sort_values(['_ord','Camion']).drop(columns=['_ord']).reset_index(drop=True)
-    # Stocker les magasins hors secteur pour l'onglet Tournées
-    global non_affectes_global
-    non_affectes_global = [(nom, msg) for _, nom, msg in non_affectes if 'hors secteur' in msg]
-    return df_t
+    # Magasins hors secteur pour l'onglet Tournées — renvoyé (pas une variable
+    # module globale comme avant) : l'analyse comparative 8 scénarios tourne
+    # dans un thread d'arrière-plan qui peut appeler cette fonction pendant
+    # qu'une génération normale tourne dans le même process, les deux
+    # écrasant silencieusement le résultat de l'autre via la même variable
+    # partagée (audit 2026-10-28).
+    hors_secteur = [(nom, msg) for _, nom, msg in non_affectes if 'hors secteur' in msg]
+    return df_t, hors_secteur
 
 # ─── GÉNÉRATION EXCEL ─────────────────────────────────────────────────────────
 def _ordonner_magasins_nn(mags, nom2coords, bai_lat, bai_lon):
@@ -3258,11 +3274,15 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
     # ── SECTION 0 : Magasins sans coordonnées GPS ───────────────────────────
     sans_gps_df = df_mag[df_mag.get('Sans_GPS', False)] if 'Sans_GPS' in df_mag.columns else df_mag[df_mag['Latitude'] == BAI_LAT]
     # Recalculer proprement depuis la colonne Sans_GPS
-    # Magasins sans GPS : ceux du référentiel (Sans_GPS) + ceux dans les tournées sans coords
     sans_gps_noms = set()
     if 'Sans_GPS' in df_mag.columns:
         sans_gps_noms.update(df_mag[df_mag['Sans_GPS'] == True]['Nom'].astype(str).tolist())
-    sans_gps_noms.update(noms_sans_gps if 'noms_sans_gps' in dir() else set())
+    # L'ancien complément "+ ceux dans les tournées sans coords" (variable
+    # noms_sans_gps) était en réalité toujours vide : cette variable n'est
+    # calculée que ~170 lignes plus bas dans cette même fonction (section
+    # "magasins mal placés"), donc 'noms_sans_gps' in dir() valait toujours
+    # False ici — retiré (code mort, aucun changement de comportement réel ;
+    # audit 2026-10-29).
 
     if sans_gps_noms:
         ws_a.cell(row=row_a, column=1, value='0. MAGASINS SANS COORDONNÉES GPS').font = Font(name='Calibri', bold=True, size=11, color='C00000')
@@ -3788,7 +3808,6 @@ def generer_excel(df_t, df_mag, args, output_path, fiches_2025=None, hors_secteu
     print(f"  → Sauvegardé : {output_path}")
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
-non_affectes_global = []
 
 class _TeeOutput:
     """Duplique stdout vers un buffer pour capturer le compte rendu."""
@@ -3837,6 +3856,13 @@ def generer_carte_tournees(df_t, df_mag, args, dossier_resultat):
         points = []
         for mag in mags:
             pt = {'nom': mag, 'adresse': nom2adresse_ct.get(mag, ''), 'secteur': sec}
+            # Pas de coordonnées GPS valides : placé au siège faute de mieux,
+            # mais signalé (gps_manquant) pour que la carte l'affiche en
+            # alerte et l'exclue du lien Google Maps — sinon le chauffeur
+            # serait silencieusement envoyé au siège BAI au lieu du vrai
+            # magasin (même correctif que generer_documents_production.py,
+            # oublié ici lors du fix du 2026-10-27 — audit 2026-10-28, #17).
+            pt['gps_manquant'] = mag not in nom2coords_ct
             pt['lat'] = nom2coords_ct[mag][0] if mag in nom2coords_ct else BAI_LAT_CT
             pt['lon'] = nom2coords_ct[mag][1] if mag in nom2coords_ct else BAI_LON_CT
             points.append(pt)
@@ -3979,10 +4005,12 @@ function clearMap() {
   document.getElementById('btn-gmaps').disabled = true;
 }
 
-function makeIcon(num, color) {
+function makeIcon(num, color, alerte) {
+  var fond = alerte ? '#c0392b' : color;
+  var contenu = alerte ? '&#9888;' : num;
   return L.divIcon({
     className:'',
-    html:'<div style="background:'+color+';color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.35)">'+num+'</div>',
+    html:'<div style="background:'+fond+';color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.35)">'+contenu+'</div>',
     iconSize:[28,28],iconAnchor:[14,14],popupAnchor:[0,-14]
   });
 }
@@ -4033,11 +4061,12 @@ function afficherTournee(dj, veh) {
   // Marqueurs numérotés
   var markers = [];
   mags.forEach(function(mag, i) {
-    var marker = L.marker([mag.lat, mag.lon], {icon: makeIcon(i+1, color)})
+    var marker = L.marker([mag.lat, mag.lon], {icon: makeIcon(i+1, color, mag.gps_manquant)})
       .bindPopup(
         '<div class="popup-title">'+(i+1)+'. '+mag.nom+'</div>'+
         '<div class="popup-addr">'+(mag.adresse||'')+'</div>'+
-        '<div class="popup-sec">'+(mag.secteur||'')+'</div>'
+        '<div class="popup-sec">'+(mag.secteur||'')+'</div>'+
+        (mag.gps_manquant ? '<div class="popup-sec" style="color:#c0392b;font-weight:700">&#9888; Pas de coordonn&eacute;es GPS — position approximative (si&egrave;ge BAI), v&eacute;rifier l\'adresse</div>' : '')
       ).addTo(layerGroup);
     markers.push(marker);
     marker.on('click', function() { highlightMag(i); });
@@ -4055,11 +4084,12 @@ function afficherTournee(dj, veh) {
     item.className = 'mag-item';
     item.id = 'mag-'+i;
     item.innerHTML =
-      '<div class="mag-num" style="background:'+color+'">'+(i+1)+'</div>'+
+      '<div class="mag-num" style="background:'+(mag.gps_manquant?'#c0392b':color)+'">'+(mag.gps_manquant?'&#9888;':(i+1))+'</div>'+
       '<div class="mag-info">'+
         '<div class="mag-name">'+mag.nom+'</div>'+
         '<div class="mag-addr">'+(mag.adresse||'&mdash;')+'</div>'+
         '<div class="mag-sec">'+(mag.secteur||'')+'</div>'+
+        (mag.gps_manquant ? '<div class="mag-sec" style="color:#c0392b;font-weight:700">&#9888; GPS manquant</div>' : '')+
       '</div>';
     (function(idx, m) {
       item.onclick = function() { markers[idx].openPopup(); highlightMag(idx); map.panTo([m.lat, m.lon]); };
@@ -4087,9 +4117,16 @@ function highlightMag(idx) {
 function openGmaps() {
   if (!currentTournee) return;
   var mags = currentTournee.mags;
+  var magsValides = mags.filter(function(m) { return !m.gps_manquant; });
+  var magsExclus = mags.filter(function(m) { return m.gps_manquant; });
+  if (magsExclus.length) {
+    alert('⚠️ ' + magsExclus.length + ' magasin(s) sans coordonnées GPS exclu(s) de l\'itinéraire (sinon le GPS enverrait au siège BAI) : '
+      + magsExclus.map(function(m) { return m.nom; }).join(', ')
+      + '. Pensez à vérifier leur adresse séparément.');
+  }
   var bai = '45.18867,5.68456';
   var pts = [bai];
-  mags.forEach(function(m) { pts.push(m.lat+','+m.lon); });
+  magsValides.forEach(function(m) { pts.push(m.lat+','+m.lon); });
   pts.push(bai);
   window.open('https://www.google.com/maps/dir/'+pts.join('/')+'/data=!4m2!4m1!3e0', '_blank');
 }
@@ -4388,7 +4425,7 @@ def main():
     df_mag = lire_magasins(args.magasins, vifs_pdf_2025, args.poids_nouveaux, args.annee)
 
     print("\nÉTAPE 3 — Optimisation des tournées...")
-    df_t = optimiser_tournees(fiches, df_mag, args)
+    df_t, hors_secteur = optimiser_tournees(fiches, df_mag, args)
     print(f"  → {len(df_t)} tournées, {df_t['Camion'].nunique()} camions")
     from collections import Counter
     for dj, n in sorted(Counter(df_t['Demi-journee']).items()):
@@ -4398,7 +4435,7 @@ def main():
     # Restaurer stdout et récupérer le log
     _sys.stdout = _tee._orig
     log_contenu = _log_buffer.getvalue()
-    generer_excel(df_t, df_mag, args, args.output, fiches, non_affectes_global, log_contenu)
+    generer_excel(df_t, df_mag, args, args.output, fiches, hors_secteur, log_contenu)
 
 
 

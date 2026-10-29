@@ -1,0 +1,225 @@
+<h1 id="aide-livraisons-et-facturation-cuisine">Aide – Livraisons et
+facturation cuisine</h1>
+<p>Des barquettes en stock jusqu’à la facture : chaque client reçoit des
+barquettes selon sa consigne. On prépare sa livraison avec un
+<strong>bon de préparation</strong>, qui devient un <strong>bon de
+livraison</strong>. Tous les bons de livraison du mois sont regroupés
+sur une seule <strong>facture</strong>.</p>
+<p>Version du 29/10/2026. Les pastilles rouges numérotées sur les images
+renvoient aux étapes du texte.</p>
+<h2 id="le-circuit-dans-lordre">Le circuit, dans l’ordre</h2>
+<ol type="1">
+<li><strong>📊 Stock barquettes</strong> : alimenté automatiquement par
+les productions (bouton « Ajouter au stock barquettes » de la fiche
+production).</li>
+<li><strong>🚚 Consignes clients</strong> : pour chaque client, les
+tailles de barquettes, les jours de livraison et les portions
+voulues.</li>
+<li><strong>🧮 Simulation de répartition</strong> : chaque jour de
+livraison, Basilic propose la répartition du stock entre les
+clients.</li>
+<li><strong>📋 Bon de préparation</strong>, puis <strong>🧾 bon de
+livraison</strong> : un par client et par livraison.</li>
+<li><strong>💶 Facturation</strong> : une facture par client et par
+mois, envoyée par mail, avec le suivi des règlements.</li>
+</ol>
+<h2 id="stock-barquettes">Stock barquettes</h2>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Documentation_Utilisateur_Module_CuisineLivraisons_BA38/media/rId21.png"
+style="width:5.83333in;height:3.64583in" alt="Stock barquettes" /></p>
+<p>Stock barquettes</p>
+<ul>
+<li>En haut, une carte par taille (1/2, 1/4, 1/8) : barquettes
+disponibles, barquettes déjà livrées, portions, et répartition carné /
+légumes.</li>
+<li>En dessous, le détail des entrées en stock, recette par recette,
+avec la <strong>DLC</strong>. Une ligne en rouge a une DLC dépassée :
+ces barquettes ne sont plus proposées dans la simulation ni sur les
+bons.</li>
+<li>Il n’y a <strong>pas de saisie manuelle</strong> : le stock vient
+des productions, et diminue avec les bons de livraison.</li>
+</ul>
+<h2 id="articles-barquettes">Articles barquettes</h2>
+<p>Le bouton <strong>📦 Référentiel articles</strong> liste les tailles
+de barquettes et leur nombre de portions (1/2 = 10 portions, 1/4 = 4
+portions, 1/8 = 1 portion).</p>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Documentation_Utilisateur_Module_CuisineLivraisons_BA38/media/rId25.png"
+style="width:5.83333in;height:3.64583in"
+alt="Référentiel des articles barquettes" /></p>
+<p>Référentiel des articles barquettes</p>
+<h2 id="consignes-clients">Consignes clients</h2>
+<p>Les clients sont les associations dont la fiche indique
+<strong>Partenaire cuisine = oui</strong> (famille « Planification »).
+Pour ajouter un client, cochez ce champ dans sa fiche association.</p>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Documentation_Utilisateur_Module_CuisineLivraisons_BA38/media/rId29.png"
+style="width:5.83333in;height:3.64583in"
+alt="Liste des consignes clients" /></p>
+<p>Liste des consignes clients</p>
+<p>Touchez <strong>✏️ Modifier</strong> pour régler la consigne d’un
+client :</p>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Documentation_Utilisateur_Module_CuisineLivraisons_BA38/media/rId32.png"
+style="width:5.83333in;height:4.5345in"
+alt="Consigne de livraison d’un client" /></p>
+<p>Consigne de livraison d’un client</p>
+<ul>
+<li><strong>Tailles de barquettes</strong> livrées. S’il y en a
+plusieurs, indiquez la part de chacune en % des portions (panachage,
+total 100 %).</li>
+<li><strong>Périodicité</strong> et <strong>jours de
+livraison</strong>.</li>
+<li><strong>Reçoit le reliquat</strong> : ce client reçoit tout ce qui
+reste en stock après les autres (par exemple le dépôt BAI Pinéa, qui
+redistribue aux associations). Un seul client à la fois.</li>
+<li><strong>Portions carnées par livraison</strong>, part de
+<strong>légumes</strong> (100 % = autant de portions de légumes que de
+carné), <strong>prix de la portion carnée</strong> (les légumes sont
+inclus gratuitement).</li>
+</ul>
+<h2 id="simulation-de-répartition">Simulation de répartition</h2>
+<p>Le bouton <strong>🧮 Simulation de répartition</strong> calcule, pour
+un jour de livraison, ce que chaque client recevrait avec le stock
+disponible. <strong>Rien n’est retiré du stock</strong> tant qu’on ne
+crée pas de bon.</p>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Documentation_Utilisateur_Module_CuisineLivraisons_BA38/media/rId36.png"
+style="width:5.83333in;height:5.01278in"
+alt="Simulation de répartition" /></p>
+<p>Simulation de répartition</p>
+<ol type="1">
+<li>Choisissez le <strong>jour de livraison</strong>. Les clients prévus
+ce jour-là sont pré-cochés.</li>
+<li>Dans <strong>Recettes du jour</strong>, cochez les recettes à
+livrer. Par défaut, elles le sont toutes.</li>
+<li>Dans <strong>Clients</strong>, ajoutez ou retirez un client, ou
+modifiez ses portions, puis touchez <strong>🔄 Recalculer</strong>.</li>
+</ol>
+<p>Règles de calcul :</p>
+<ul>
+<li>Les barquettes dont la DLC est dépassée au jour de livraison sont
+écartées. À répartition égale, les DLC les plus courtes partent en
+premier.</li>
+<li>Les grosses barquettes partent d’abord, puis une plus petite
+complète la commande (arrondi au-dessus).</li>
+<li>Chaque client reçoit un <strong>panachage équilibré</strong> des
+recettes cochées.</li>
+<li>Les clients sont servis dans l’ordre du tableau. Le client «
+reliquat » reçoit le reste à la fin.</li>
+</ul>
+<p>Quand la répartition convient, touchez <strong>📋 Créer le bon de
+préparation</strong> sur la ligne du client :</p>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Documentation_Utilisateur_Module_CuisineLivraisons_BA38/media/rId39.png"
+style="width:5.83333in;height:0.63759in"
+alt="Créer le bon de préparation d’un client" /></p>
+<p>Créer le bon de préparation d’un client</p>
+<h2 id="bons-de-préparation-et-de-livraison">Bons de préparation et de
+livraison</h2>
+<h3 id="le-bon-de-préparation-bp">Le bon de préparation (BP)</h3>
+<p>Les barquettes du bon sont <strong>réservées</strong> dans le stock.
+On peut encore ajuster le bon pendant la préparation.</p>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Documentation_Utilisateur_Module_CuisineLivraisons_BA38/media/rId43.png"
+style="width:5.83333in;height:3.56222in" alt="Bon de préparation" /></p>
+<p>Bon de préparation</p>
+<ul>
+<li>Modifiez une <strong>quantité</strong> (0 retire la ligne), ou
+<strong>➕ ajoutez d’autres barquettes</strong> du stock.</li>
+<li><strong>📄 PDF préparation</strong> imprime la feuille de
+préparation.</li>
+</ul>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Documentation_Utilisateur_Module_CuisineLivraisons_BA38/media/rId46.png"
+style="width:5.15748in;height:1.82534in"
+alt="Température puis validation" /></p>
+<p>Température puis validation</p>
+<ol type="1">
+<li>Saisissez la <strong>température de livraison</strong>. Elle est
+obligatoire ; une alerte s’affiche au-delà de 3 °C.</li>
+<li><strong>💾 Enregistrer</strong> garde les modifications sans
+valider.</li>
+<li><strong>✅ Valider la préparation → générer le BL</strong>
+transforme le bon en bon de livraison.</li>
+</ol>
+<p><strong>Annuler ce bon de préparation</strong> remet les barquettes
+en stock. Le numéro n’est pas réutilisé.</p>
+<h3 id="le-bon-de-livraison-bl">Le bon de livraison (BL)</h3>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Documentation_Utilisateur_Module_CuisineLivraisons_BA38/media/rId50.png"
+style="width:5.83333in;height:3.5in"
+alt="Bon de livraison validé" /></p>
+<p>Bon de livraison validé</p>
+<ul>
+<li><strong>📄 PDF</strong> imprime le bon de livraison à remettre au
+client.</li>
+<li>Un BL <strong>pas encore facturé</strong> peut être annulé : ses
+barquettes reviennent en stock. Une fois facturé, il ne peut plus
+l’être.</li>
+</ul>
+<h3 id="liste-des-bons">Liste des bons</h3>
+<p>Le bouton <strong>🧾 Bons de livraison</strong> liste tous les bons
+avec leur statut (en préparation, validé, facturé, annulé), le nombre de
+barquettes et de portions, et le montant.</p>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Documentation_Utilisateur_Module_CuisineLivraisons_BA38/media/rId54.png"
+style="width:5.83333in;height:3.64583in"
+alt="Liste des bons de livraison" /></p>
+<p>Liste des bons de livraison</p>
+<h2 id="facturation">Facturation</h2>
+<p>Le bouton <strong>💶 Facturation</strong> fait <strong>une facture
+par client et par mois</strong>. Elle regroupe tous ses bons de
+livraison validés et pas encore facturés. Les numéros suivent la forme
+FC-AAAA-NNNN.</p>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Documentation_Utilisateur_Module_CuisineLivraisons_BA38/media/rId59.png"
+style="width:5.83333in;height:3.64583in"
+alt="Choisir le mois et générer les factures" /></p>
+<p>Choisir le mois et générer les factures</p>
+<ol type="1">
+<li>Choisissez le <strong>mois</strong>. Le cadre indique les bons
+validés qui ne sont pas encore facturés.</li>
+<li>Touchez <strong>💶 Générer les factures du mois</strong>. Vous
+pouvez relancer la génération plus tard dans le mois : seuls les bons
+validés depuis sont ajoutés.</li>
+</ol>
+<h3 id="les-factures-du-mois">Les factures du mois</h3>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Documentation_Utilisateur_Module_CuisineLivraisons_BA38/media/rId62.png"
+style="width:5.83333in;height:3.64583in" alt="Factures du mois" /></p>
+<p>Factures du mois</p>
+<ul>
+<li><strong>Mode TEST / PROD</strong> : en mode TEST, « Envoyer »
+n’adresse les mails qu’à l’adresse de test. Passez en PROD pour envoyer
+réellement aux clients.</li>
+<li>Cochez les factures, choisissez le <strong>modèle de mail</strong>,
+puis <strong>📧 Envoyer les factures cochées</strong>. La colonne
+<strong>Statut Mailjet</strong> montre si le mail est arrivé (<strong>🔄
+Vérifier statut Mailjet</strong> pour la mettre à jour).
+<strong>🔁</strong> renvoie une facture par Gmail quand le mail est
+bloqué chez le client.</li>
+<li><strong>👁️ Voir</strong> ouvre le PDF de la facture. <strong>📊
+Export Excel</strong> exporte le mois.</li>
+<li>Une facture peut être <strong>annulée</strong> tant qu’elle n’a pas
+été réellement envoyée et qu’aucun règlement n’est saisi. Son numéro est
+conservé et ses bons redeviennent facturables.</li>
+</ul>
+<h3 id="règlements">Règlements</h3>
+<p>Le bouton <strong>💳</strong> d’une facture ouvre ses règlements
+:</p>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Documentation_Utilisateur_Module_CuisineLivraisons_BA38/media/rId66.png"
+style="width:5.83333in;height:3.64583in"
+alt="Saisie d’un règlement" /></p>
+<p>Saisie d’un règlement</p>
+<p>Saisissez la date, le montant, le mode (virement, chèque…) et une
+référence, puis <strong>💳 Enregistrer le règlement</strong>. Les
+paiements partiels sont possibles. La facture est
+<strong>soldée</strong>, et ne fait plus l’objet de relances, quand le
+total réglé atteint son montant.</p>
+<h3 id="relances">Relances</h3>
+<p><strong>🔔 Relancer les impayés</strong> ouvre la page des relances
+du mois. Elle propose plusieurs niveaux de relance, un modèle de mail
+par niveau (bouton <strong>✉️ Textes mails</strong>), et le même mode
+TEST / PROD que l’envoi des factures.</p>

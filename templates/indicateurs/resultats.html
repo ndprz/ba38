@@ -6,12 +6,16 @@
 <style>
     /* Colonnes AMS : fond légèrement teinté, motifs tronqués (texte complet au survol) */
     .indicateurs-table .col-ams { background-color: rgba(13, 110, 253, 0.04); }
+    /* En-tête figé : fond opaque (sinon les lignes défilent visiblement derrière) */
+    .indicateurs-table thead th.col-ams { background-color: #f6f9ff; }
     .indicateurs-table .col-ams-motif { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
     .indicateurs-table.ams-masque .col-ams { display: none; }
     .pastille-coherence { display: inline-block; width: 14px; height: 14px; border-radius: 50%; cursor: help; }
     .pastille-vert { background-color: #198754; }
     .pastille-orange { background-color: #fd7e14; }
     .pastille-rouge { background-color: #dc3545; }
+    /* Ligne de totaux sous l'en-tête (son "top" figé est calculé en JS) */
+    .indicateurs-table thead tr.ligne-totaux th { font-weight: 600; font-size: 0.85rem; white-space: nowrap; background-color: #f1f5fb; }
 </style>
 {% endblock %}
 
@@ -43,7 +47,7 @@
               enctype="multipart/form-data" class="d-flex align-items-center gap-1">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="file" name="tonnage_file" class="form-control form-control-sm" style="max-width: 220px;" required>
-            <button type="submit" class="btn btn-outline-primary btn-sm" title="Import export VIF (Client / Kg Net / Kg Brut)">
+            <button type="submit" class="btn btn-outline-primary btn-sm" title="Import export VIF (Client / Kg Net / Kg Brut) — le Kg Brut est retenu">
                 📦 Importer tonnage
             </button>
         </form>
@@ -72,14 +76,19 @@
 
 </div>
 
-<!-- Date limite (modifiable) -->
+<!-- Dates limites (modifiables) : retour des associations / saisie AMS par la BA -->
 <form method="POST" action="{{ url_for('indicateurs.modifier_date_limite', campagne_id=campagne.id) }}"
       class="d-flex align-items-center gap-2 my-2">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label for="date_limite" class="mb-0">📅 Date limite :</label>
+    <label for="date_limite" class="mb-0">📅 Date limite retour Assos :</label>
     <input type="text" name="date_limite" id="date_limite" class="form-control date-fr"
            style="max-width: 150px;" placeholder="jj/mm ou jjmmaaaa" autocomplete="off"
            value="{{ campagne.date_limite or '' }}">
+    <label for="date_limite_ams" class="mb-0 ms-3"
+           title="Date limite de saisie dans AMS par la Banque Alimentaire (usage interne)">🗓️ Date limite saisie AMS :</label>
+    <input type="text" name="date_limite_ams" id="date_limite_ams" class="form-control date-fr"
+           style="max-width: 150px;" placeholder="jj/mm ou jjmmaaaa" autocomplete="off"
+           value="{{ campagne.date_limite_ams or '' }}">
     <button type="submit" class="btn btn-outline-secondary btn-sm">💾 Enregistrer</button>
 </form>
 
@@ -171,7 +180,7 @@
 
     <!-- 🔄 RESET -->
     <div class="text-center mt-2">
-        <button class="btn btn-sm btn-outline-secondary" onclick="filterStatut('all')">
+        <button class="btn btn-sm btn-outline-secondary" onclick="reinitialiserFiltres()">
             🔄 Réinitialiser
         </button>
     </div>
@@ -202,12 +211,25 @@
                 <th>Email IE 2</th>
                 <th>Statut</th>
                 <th>Répondu</th>
-                <th title="Import export VIF (Kg Net)">VIF kgn Trimestre</th>
+                <th title="Import export VIF (Kg Brut)">VIF kg brut Trimestre</th>
                 <th class="col-ams text-center" title="Cohérence des valeurs AMS (détail au survol de la pastille)">Cohér.</th>
-                <th class="col-ams" title="AMS : Volumes distribués en T net (valeur retenue BA)">AMS T net</th>
-                <th class="col-ams" title="AMS : Nb foyers inscrits avec droit en cours sur la période (valeur retenue BA)">AMS foyers</th>
-                <th class="col-ams" title="AMS : Nb personnes inscrites avec droits en cours sur la période (valeur retenue BA)">AMS personnes</th>
-                <th class="col-ams" title="AMS : Nb passages des bénéficiaires (cumul de personnes servies sur la période, valeur retenue BA)">AMS passages</th>
+                <th class="col-ams" title="Nombre de bénéficiaires VIF (fiche association)">Benef Vif</th>
+                <th class="col-ams" title="AMS : Volumes distribués en T net (valeur retenue BA)">
+                    <select class="form-select form-select-sm mb-1 filtre-ams" data-col="tnet" title="Filtrer : valeurs à zéro ou vides (oubli de saisie AMS ?)"><option value="">Tous</option><option value="zero">0 ou vide</option><option value="positif">&gt; 0</option></select>
+                    AMS T net
+                </th>
+                <th class="col-ams" title="AMS : Nb foyers inscrits avec droit en cours sur la période (valeur retenue BA)">
+                    <select class="form-select form-select-sm mb-1 filtre-ams" data-col="foyers" title="Filtrer : valeurs à zéro ou vides (oubli de saisie AMS ?)"><option value="">Tous</option><option value="zero">0 ou vide</option><option value="positif">&gt; 0</option></select>
+                    AMS foyers
+                </th>
+                <th class="col-ams" title="AMS : Nb personnes inscrites avec droits en cours sur la période (valeur retenue BA)">
+                    <select class="form-select form-select-sm mb-1 filtre-ams" data-col="personnes" title="Filtrer : valeurs à zéro ou vides (oubli de saisie AMS ?)"><option value="">Tous</option><option value="zero">0 ou vide</option><option value="positif">&gt; 0</option></select>
+                    AMS personnes
+                </th>
+                <th class="col-ams" title="AMS : Nb passages des bénéficiaires (cumul de personnes servies sur la période, valeur retenue BA)">
+                    <select class="form-select form-select-sm mb-1 filtre-ams" data-col="passages" title="Filtrer : valeurs à zéro ou vides (oubli de saisie AMS ?)"><option value="">Tous</option><option value="zero">0 ou vide</option><option value="positif">&gt; 0</option></select>
+                    AMS passages
+                </th>
                 <th class="col-ams">Motif écart Asso</th>
                 <th class="col-ams">Motif écart BA</th>
                 <th title="Exclure de l'envoi mail">✉️ Exclu</th>
@@ -215,6 +237,18 @@
                 <th>Mail envoyé</th>
                 <th>Statut Mailjet</th>
                 <th title="Renvoyer via Gmail (ba380@) en cas de rebond Mailjet">🔁 Gmail</th>
+            </tr>
+            <tr class="ligne-totaux">
+                <th colspan="6" class="text-end" id="totaux-libelle">Total</th>
+                <th class="text-end" id="total-vif"></th>
+                <th class="col-ams"></th>
+                <th class="col-ams text-end" id="total-benef"></th>
+                <th class="col-ams text-end" id="total-tnet"></th>
+                <th class="col-ams text-end" id="total-foyers"></th>
+                <th class="col-ams text-end" id="total-personnes"></th>
+                <th class="col-ams text-end" id="total-passages"></th>
+                <th class="col-ams" colspan="2"></th>
+                <th colspan="5"></th>
             </tr>
         </thead>
 
@@ -257,7 +291,7 @@
                     <span class="badge bg-secondary statut-badge">—</span>
                     {% endif %}
                 </td>
-                <td class="small text-end align-middle">
+                <td class="small text-end align-middle" {% if l.tonnage_kg_net is not none %}data-total="vif" data-val="{{ l.tonnage_kg_net }}"{% endif %}>
                     {% if l.tonnage_kg_net is not none %}
                     {{ "{:,.0f}".format(l.tonnage_kg_net).replace(",", " ") }} kg
                     {% else %}
@@ -274,11 +308,14 @@
                     <span class="text-muted" title="Pas de valeurs AMS à contrôler">—</span>
                     {% endif %}
                 </td>
-                <td class="small text-end align-middle col-ams">
+                <td class="small text-end align-middle col-ams" {% if l.nbre_beneficiaires_vif %}data-total="benef" data-val="{{ l.nbre_beneficiaires_vif }}"{% endif %}>
+                    {% if l.nbre_beneficiaires_vif %}{{ "{:,}".format(l.nbre_beneficiaires_vif).replace(",", " ") }}{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="small text-end align-middle col-ams" data-filtre="tnet" data-raw="{{ l.ams_volume_kg if l.ams_volume_kg is not none else '' }}" {% if l.ams_volume_kg is not none and (l.ams_volume_kg or ams_valide) %}data-total="tnet" data-val="{{ l.ams_volume_kg / 1000 }}"{% endif %}>
                     {% if l.ams_volume_kg is not none and (l.ams_volume_kg or ams_valide) %}{{ "{:,.2f}".format(l.ams_volume_kg / 1000).replace(",", " ").replace(".", ",") }}{% else %}<span class="text-muted">—</span>{% endif %}
                 </td>
-                {% for v in [l.ams_nb_foyers, l.ams_nb_personnes, l.ams_nb_passages] %}
-                <td class="small text-end align-middle col-ams">
+                {% for v, cle in [(l.ams_nb_foyers, "foyers"), (l.ams_nb_personnes, "personnes"), (l.ams_nb_passages, "passages")] %}
+                <td class="small text-end align-middle col-ams" data-filtre="{{ cle }}" data-raw="{{ v if v is not none else '' }}" {% if v is not none and (v or ams_valide) %}data-total="{{ cle }}" data-val="{{ v }}"{% endif %}>
                     {% if v is not none and (v or ams_valide) %}{{ "{:,}".format(v).replace(",", " ") }}{% else %}<span class="text-muted">—</span>{% endif %}
                 </td>
                 {% endfor %}
@@ -379,6 +416,38 @@
         conteneur.style.maxHeight = Math.max(250, basDispo - haut - 8) + "px";
     }
     window.addEventListener("load", ajusterHauteurTableau);
+
+    // Ligne de totaux : figée juste sous la 1re ligne d'en-tête
+    function positionnerLigneTotaux() {
+        const premiere = document.querySelector(".indicateurs-table thead tr");
+        const h = premiere.getBoundingClientRect().height;
+        document.querySelectorAll(".indicateurs-table tr.ligne-totaux th").forEach(th => th.style.top = h + "px");
+    }
+    window.addEventListener("load", positionnerLigneTotaux);
+    window.addEventListener("resize", positionnerLigneTotaux);
+    positionnerLigneTotaux();
+
+    // Totaux des colonnes AMS sur les lignes affichées (filtre statut + recherche)
+    function majTotaux() {
+        const totaux = { vif: 0, benef: 0, tnet: 0, foyers: 0, personnes: 0, passages: 0 };
+        let nbLignes = 0;
+        document.querySelectorAll(".indicateurs-table tbody tr").forEach(row => {
+            if (row.style.display === "none") return;
+            nbLignes++;
+            row.querySelectorAll("td[data-total]").forEach(td => {
+                totaux[td.dataset.total] += parseFloat(td.dataset.val) || 0;
+            });
+        });
+        const fmt = (v, dec) => v.toLocaleString("fr-FR", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+        document.getElementById("total-vif").textContent = fmt(totaux.vif, 0) + " kg";
+        document.getElementById("total-benef").textContent = fmt(totaux.benef, 0);
+        document.getElementById("total-tnet").textContent = fmt(totaux.tnet, 2);
+        document.getElementById("total-foyers").textContent = fmt(totaux.foyers, 0);
+        document.getElementById("total-personnes").textContent = fmt(totaux.personnes, 0);
+        document.getElementById("total-passages").textContent = fmt(totaux.passages, 0);
+        document.getElementById("totaux-libelle").textContent =
+            "Total (" + nbLignes + " association" + (nbLignes > 1 ? "s" : "") + " affichée" + (nbLignes > 1 ? "s" : "") + ")";
+    }
     window.addEventListener("resize", ajusterHauteurTableau);
     ajusterHauteurTableau();
 
@@ -397,6 +466,8 @@
         document.getElementById("btn-toggle-ams").addEventListener("click", function () {
             masque = !table.classList.contains("ams-masque");
             appliquer(masque);
+            if (masque) { viderFiltresAms(); filterStatut(filtreStatutCourant); }
+            positionnerLigneTotaux();
             try { localStorage.setItem(CLE, masque ? "1" : "0"); } catch (e) {}
         });
     })();
@@ -469,6 +540,37 @@
 
     champRecherche.addEventListener("input", () => filterStatut(filtreStatutCourant));
 
+    // Filtres des colonnes AMS : "0 ou vide" (oubli de saisie AMS ?) / "> 0"
+    const filtresAms = document.querySelectorAll(".filtre-ams");
+
+    function correspondFiltresAms(row) {
+        for (const sel of filtresAms) {
+            if (!sel.value) continue;
+            const td = row.querySelector('td[data-filtre="' + sel.dataset.col + '"]');
+            const v = td ? parseFloat(td.dataset.raw) || 0 : 0;
+            if (sel.value === "zero" && v !== 0) return false;
+            if (sel.value === "positif" && !(v > 0)) return false;
+        }
+        return true;
+    }
+
+    function viderFiltresAms() {
+        filtresAms.forEach(sel => { sel.value = ""; sel.classList.remove("border-primary"); });
+    }
+
+    function reinitialiserFiltres() {
+        viderFiltresAms();
+        filterStatut("all");
+    }
+
+    filtresAms.forEach(sel => {
+        sel.addEventListener("click", e => e.stopPropagation());
+        sel.addEventListener("change", () => {
+            sel.classList.toggle("border-primary", !!sel.value);
+            filterStatut(filtreStatutCourant);
+        });
+    });
+
     document.addEventListener("keydown", e => {
         if (e.key !== "Escape" || document.querySelector(".modal.show")) return;
         champRecherche.value = "";
@@ -514,10 +616,13 @@
                 show = (statut === "a revoir");
             }
 
-            row.style.display = (show && correspondRecherche(row)) ? "" : "none";
+            row.style.display = (show && correspondRecherche(row) && correspondFiltresAms(row)) ? "" : "none";
 
         });
+        majTotaux();
     }
+
+    majTotaux();
 
 </script>
 

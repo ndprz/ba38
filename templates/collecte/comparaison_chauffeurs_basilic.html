@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Comparaison chauffeurs/équipiers Basilic {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 1100px;">
+    <h2>🔄 Comparaison chauffeurs/équipiers — camions / Basilic {{ annee }}</h2>
+    <p class="text-muted small">
+        Rapproche, par adresse email, les chauffeurs/équipiers de camion réellement nommés dans
+        liste-vehicule.xlsx {{ annee }} et la base bénévoles de Basilic (tous types confondus). Les deux
+        listes ci-dessous montrent les écarts dans chaque sens — rien n'est corrigé automatiquement. Les
+        chauffeurs/équipiers sans adresse email ne peuvent pas être comparés et n'apparaissent pas ici.
+    </p>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+        {{ action_button("📥 Export Excel", href=url_for('collecte.comparaison_chauffeurs_basilic_export', annee=annee), color="success") }}
+    {% endcall %}
+
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <h5>Chauffeurs/équipiers sans Basilic ({{ dans_chauffeurs_pas_basilic|length }})</h5>
+            <p class="text-muted small">
+                Chauffeur/équipier de camion {{ annee }}, introuvable (par email) dans la base bénévoles
+                de Basilic.
+            </p>
+            <div class="table-responsive" style="max-height: 70vh; overflow-y: auto;">
+                <table class="table table-sm table-striped">
+                    <thead class="table-light" style="position: sticky; top: 0;">
+                        <tr><th>Nom</th><th>Email</th></tr>
+                    </thead>
+                    <tbody>
+                    {% for p in dans_chauffeurs_pas_basilic %}
+                        <tr><td>{{ p.nom }}</td><td>{{ p.email }}</td></tr>
+                    {% else %}
+                        <tr><td colspan="2" class="text-muted">Aucun écart</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <h5>Dans Basilic mais pas chauffeur/équipier ({{ dans_basilic_pas_chauffeurs|length }})</h5>
+            <p class="text-muted small">
+                Bénévole connu de Basilic, introuvable (par email) parmi les chauffeurs/équipiers de camion
+                {{ annee }}.
+            </p>
+            <div class="table-responsive" style="max-height: 70vh; overflow-y: auto;">
+                <table class="table table-sm table-striped">
+                    <thead class="table-light" style="position: sticky; top: 0;">
+                        <tr><th>Nom</th><th>Email</th></tr>
+                    </thead>
+                    <tbody>
+                    {% for p in dans_basilic_pas_chauffeurs %}
+                        <tr><td>{{ p.nom }}</td><td>{{ p.email }}</td></tr>
+                    {% else %}
+                        <tr><td colspan="2" class="text-muted">Aucun écart</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

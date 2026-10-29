@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "production_cuisine/_aide.html" import aide_cuisine %}
 
 {% block title %}Consignes clients cuisine{% endblock %}
 
@@ -8,6 +9,7 @@
   <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h2 class="mb-0">🚚 Consignes clients</h2>
     <div class="d-flex gap-2">
+      {{ aide_cuisine("Livraisons", "Consignes clients") }}
       <a href="{{ url_for('production_cuisine.simulation_repartition') }}" class="btn btn-primary">
         🧮 Simulation de répartition
       </a>

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import re
 import shutil
 import pypandoc
 
@@ -16,7 +17,10 @@ MEDIA_STATIC_DIR = os.path.join(BASE_APP, "static", "docsHtml_media")
 MEDIA_URL_PREFIX = "/static/docsHtml_media"
 
 
-def convert_all_docs():
+def convert_all_docs(seulement=None):
+    """seulement : liste de noms de .docx à convertir (sinon tous les
+    documents du dossier — ce qui met aussi à jour les aides des autres
+    modules si leur Word a été retouché sans reconversion)."""
 
     os.makedirs(HTML_DIR, exist_ok=True)
     os.makedirs(TEMPLATE_TARGET, exist_ok=True)
@@ -24,9 +28,12 @@ def convert_all_docs():
 
     converted = 0
 
-    for filename in os.listdir(DOCS_DIR):
+    for filename in sorted(seulement or os.listdir(DOCS_DIR)):
 
         if not filename.lower().endswith(".docx"):
+            continue
+        if not os.path.isfile(os.path.join(DOCS_DIR, filename)):
+            print(f"❌ Introuvable dans {DOCS_DIR} : {filename}")
             continue
 
         docx_path = os.path.join(DOCS_DIR, filename)
@@ -64,6 +71,9 @@ def convert_all_docs():
             chemin_media_reel = os.path.join(dossier_media_doc, "media") + os.sep
             url_media = f"{MEDIA_URL_PREFIX}/{nom_base}/media/"
             contenu = contenu.replace(f'src="{chemin_media_reel}', f'src="{url_media}')
+            # Images chargées seulement quand la modale d'aide est ouverte
+            # (pandoc coupe souvent la balise : "<img\nsrc=...")
+            contenu = re.sub(r"<img(?![^>]*\bloading=)(\s)", r'<img loading="lazy"\1', contenu)
             with open(html_path, "w", encoding="utf-8") as f:
                 f.write(contenu)
 
@@ -81,4 +91,6 @@ def convert_all_docs():
 
 
 if __name__ == "__main__":
-    convert_all_docs()
+    import sys
+    # python3 scripts/convert_doc_to_html.py [Doc1.docx Doc2.docx ...]
+    convert_all_docs(sys.argv[1:] or None)

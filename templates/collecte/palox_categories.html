@@ -134,10 +134,16 @@ const urlEnregistrer = "{{ url_for('collecte.palox_categories_enregistrer') }}";
 const urlEnregistrerGabarit = "{{ url_for('collecte.palox_gabarit_etiquette_enregistrer') }}";
 const gabaritDefaut = {{ gabarit_defaut|tojson }};
 
+function echapperAttribut(valeur) {
+    const div = document.createElement("div");
+    div.textContent = String(valeur);
+    return div.innerHTML.replace(/"/g, "&quot;");
+}
+
 function ligneGabaritHtml(ligne) {
     return `<tr>
-        <td><input type="text" class="form-control form-control-sm champ-ligne-texte" value="${ligne.texte}"></td>
-        <td><input type="number" class="form-control form-control-sm champ-ligne-taille" value="${ligne.taille}"></td>
+        <td><input type="text" class="form-control form-control-sm champ-ligne-texte" value="${echapperAttribut(ligne.texte)}"></td>
+        <td><input type="number" class="form-control form-control-sm champ-ligne-taille" value="${echapperAttribut(ligne.taille)}"></td>
         <td class="text-center"><input type="checkbox" class="form-check-input champ-ligne-gras" ${ligne.gras ? "checked" : ""}></td>
         <td>
             <button type="button" class="btn btn-sm btn-outline-secondary btn-monter-ligne">⬆️</button>
@@ -184,14 +190,34 @@ function lireLignesGabarit() {
     });
 }
 
+// Échappe pour insertion sûre dans de l'innerHTML — voir palox_saisie.html
+// (même fonction, même raison, audit 2026-10-28).
+function echapperHtmlEtiquette(valeur) {
+    const div = document.createElement("div");
+    div.textContent = String(valeur);
+    return div.innerHTML;
+}
+
 // Remplace >>variable<< par sa valeur, ou >>variable:taille<< pour donner à
 // CETTE valeur une taille de police différente du reste de la ligne (ex.
-// "Poids >>poids:150<< kg").
+// "Poids >>poids:150<< kg"). Échappe le texte statique ET les valeurs
+// substituées (seul le <span> de taille, généré avec un nombre, reste du
+// vrai HTML).
 function remplacerTokensGabarit(texte, valeurs) {
-    return texte.replace(/>>(\w+)(?::(\d+))?<</g, function (correspondance, nom, taille) {
-        const valeur = valeurs[nom] !== undefined ? valeurs[nom] : correspondance;
-        return taille ? "<span style=\"font-size:" + taille + "pt;\">" + valeur + "</span>" : valeur;
-    });
+    const regex = />>(\w+)(?::(\d+))?<</g;
+    let resultat = "";
+    let dernierIndex = 0;
+    let correspondance;
+    while ((correspondance = regex.exec(texte)) !== null) {
+        resultat += echapperHtmlEtiquette(texte.slice(dernierIndex, correspondance.index));
+        const nom = correspondance[1], taille = correspondance[2];
+        const brut = valeurs[nom] !== undefined ? valeurs[nom] : correspondance[0];
+        const valeurEchappee = echapperHtmlEtiquette(brut);
+        resultat += taille ? "<span style=\"font-size:" + taille + "pt;\">" + valeurEchappee + "</span>" : valeurEchappee;
+        dernierIndex = regex.lastIndex;
+    }
+    resultat += echapperHtmlEtiquette(texte.slice(dernierIndex));
+    return resultat;
 }
 
 document.getElementById("btn-apercu-gabarit").addEventListener("click", function () {
@@ -202,7 +228,8 @@ document.getElementById("btn-apercu-gabarit").addEventListener("click", function
     };
     const html = lireLignesGabarit().map(function (ligne) {
         const texte = remplacerTokensGabarit(ligne.texte, valeurs);
-        const style = "font-size:" + ligne.taille + "pt;" + (ligne.gras ? " font-weight:bold;" : "");
+        const taillePolice = Number(ligne.taille) || 12;
+        const style = "font-size:" + taillePolice + "pt;" + (ligne.gras ? " font-weight:bold;" : "");
         return "<div style=\"" + style + "\">" + texte + "</div>";
     }).join("\n");
     document.getElementById("etiquette-contenu").innerHTML = html;

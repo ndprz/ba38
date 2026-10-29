@@ -1,0 +1,377 @@
+<!--
+    Mode hors-ligne de la pesée palox (solution 4.3, voir
+    documentation_interne/Securisation_Saisie_Pesee_Palox.docx) — inclus à
+    l'identique dans palox_saisie.html et palox_synthese.html (les deux
+    points d'entrée confirmés utilisés à l'entrepôt). Suppose qu'une
+    variable Jinja `annee` est disponible dans le gabarit appelant.
+-->
+<div id="palox-offline-banner" class="alert alert-warning d-none mb-3" role="button" tabindex="0"></div>
+<div id="palox-log-local" class="small text-muted mb-3"></div>
+
+<div class="modal fade" id="paloxOfflineModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Pesées hors-ligne en attente / en conflit</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted">
+                    Une pesée en <strong>conflit</strong> veut dire que son n° de palox a été pris
+                    par un autre poste pendant la panne — l'étiquette déjà imprimée porte ce numéro,
+                    donc rien n'est renvoyé automatiquement. Vérifier sur place (le palox physique
+                    et son étiquette), puis retirer la ligne une fois le poids réellement enregistré
+                    (au besoin en le ressaisissant normalement sous un autre numéro).
+                </p>
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th>Catégorie</th><th>N° palox</th><th>Poids</th><th>Date/heure</th><th>Statut</th><th></th></tr>
+                    </thead>
+                    <tbody id="palox-offline-modal-corps">
+                        <tr><td colspan="6" class="text-muted">Chargement…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Appelée par le script propre à chaque page (palox_saisie.html,
+// palox_synthese.html) juste après CHAQUE pesée réussie, en ligne ou
+// hors-ligne — voir le commentaire sur 'maj-compteur' dans sw_palox.js.
+window.paloxOfflineMajCompteur = function (categorieId, prochainNumero) {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.ready.then(function (reg) {
+        if (reg.active) reg.active.postMessage({ type: 'maj-compteur', categorie_id: categorieId, prochain_numero: prochainNumero });
+    }).catch(function () {});
+};
+
+// Appelée juste après avoir rempli le champ "N° palox" depuis la réponse
+// GET /donnees (qui peut être servie depuis le cache, donc périmée) — ne
+// remonte la valeur affichée que si le compteur interne est PLUS GRAND
+// (jamais plus petit, pour ne pas écraser un vrai "réinitialiser la
+// numérotation" fait entre-temps).
+window.paloxOfflineVerifierCompteur = function (categorieId, champNumero) {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.ready.then(function (reg) {
+        if (!reg.active) return;
+        const channel = new MessageChannel();
+        channel.port1.onmessage = function (event) {
+            const prochain = event.data && event.data.prochain_numero;
+            const affiche = parseInt(champNumero.value, 10);
+            if (prochain && (!affiche || prochain > affiche)) {
+                champNumero.value = prochain;
+            }
+        };
+        reg.active.postMessage({ type: 'lire-compteur', categorie_id: categorieId }, [channel.port2]);
+    }).catch(function () {});
+};
+
+// ----------------------------------------------------------------------
+// Journal local de secours (sur le PC, hors Basilic) : un fichier texte
+// tenu à jour sur le disque du poste, réécrit à CHAQUE étiquette créée
+// (en ligne ou hors-ligne), pour garder une trace lisible même en cas de
+// problème grave côté serveur (perte de données Basilic, pas seulement
+// une coupure réseau — voir aussi le mode hors-ligne ci-dessus qui lui
+// couvre la coupure réseau/serveur temporaire). Nécessite Chrome/Edge
+// (File System Access API) ; ne bloque jamais la pesée si indisponible.
+(function () {
+    const zoneEtat = document.getElementById('palox-log-local');
+    if (!zoneEtat) return;
+    if (!('showDirectoryPicker' in window)) { zoneEtat.remove(); return; }
+
+    const NOM_DB = 'palox_log_local';
+    const NOM_STORE = 'config';
+    const CLE_DOSSIER = 'dossier';
+    let dbPromise = null;
+
+    function ouvrirDB() {
+        if (dbPromise) return dbPromise;
+        dbPromise = new Promise(function (resolve, reject) {
+            const req = indexedDB.open(NOM_DB, 1);
+            req.onupgradeneeded = function () { req.result.createObjectStore(NOM_STORE); };
+            req.onsuccess = function () { resolve(req.result); };
+            req.onerror = function () { reject(req.error); };
+        });
+        return dbPromise;
+    }
+
+    function lireHandleDossier() {
+        return ouvrirDB().then(function (db) {
+            return new Promise(function (resolve) {
+                const tx = db.transaction(NOM_STORE, 'readonly');
+                const req = tx.objectStore(NOM_STORE).get(CLE_DOSSIER);
+                req.onsuccess = function () { resolve(req.result || null); };
+                req.onerror = function () { resolve(null); };
+            });
+        });
+    }
+
+    function ecrireHandleDossier(handle) {
+        return ouvrirDB().then(function (db) {
+            return new Promise(function (resolve) {
+                const tx = db.transaction(NOM_STORE, 'readwrite');
+                tx.objectStore(NOM_STORE).put(handle, CLE_DOSSIER);
+                tx.oncomplete = function () { resolve(); };
+                tx.onerror = function () { resolve(); };
+            });
+        });
+    }
+
+    function nettoyerChamp(valeur) {
+        return String(valeur === undefined || valeur === null ? '' : valeur).replace(/[;\r\n]/g, ' ').trim();
+    }
+
+    // Un code VIF ("0110041") est numérique en apparence : Excel le reformate
+    // en nombre et avale le zéro de tête dès l'ouverture du CSV. Le préfixe
+    // ="..." est une formule Excel (texte littéral) qui force l'affichage
+    // intégral — fonctionne aussi bien à l'ouverture directe du .txt que
+    // dans un éditeur de texte brut (où elle reste simplement visible telle quelle).
+    function formaterCodeVifExcel(valeur) {
+        const nettoye = nettoyerChamp(valeur);
+        return nettoye ? '="' + nettoye + '"' : '';
+    }
+
+    function nomFichierDuJour() {
+        const d = new Date();
+        const pad = function (n) { return String(n).padStart(2, '0'); };
+        return 'palox_log_' + d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + '.txt';
+    }
+
+    function ecrireLigne(handleDossier, ligne) {
+        return handleDossier.getFileHandle(nomFichierDuJour(), { create: true }).then(function (handleFichier) {
+            return handleFichier.getFile().then(function (fichier) {
+                const taille = fichier.size;
+                const entete = 'horodatage;annee;categorie_id;categorie;code_vif;numero_palox;poids_kg;origine;page\n';
+                const donnees = (taille === 0 ? entete : '') + ligne + '\n';
+                return handleFichier.createWritable({ keepExistingData: true }).then(function (writable) {
+                    return writable.write({ type: 'write', position: taille, data: donnees }).then(function () {
+                        return writable.close();
+                    });
+                });
+            });
+        });
+    }
+
+    let handleDossierCourant = null;
+
+    // Choisit (ou re-choisit) le dossier du journal — utilisé aussi bien pour
+    // la première activation que pour en changer depuis l'état "actif"
+    // (dossier plein, PC changé, dossier déplacé…).
+    function choisirDossier(libelleMarqueur) {
+        window.showDirectoryPicker({ id: 'palox-log' }).then(function (handle) {
+            // La persistance IndexedDB (pour retrouver le dossier aux
+            // prochains chargements) est une suite non bloquante : si elle
+            // échoue, le journal reste fonctionnel pour la session en cours,
+            // seul le choix du dossier sera à refaire au prochain chargement
+            // de page.
+            ecrireHandleDossier(handle).catch(function () {});
+            afficherEtat('actif', handle);
+            ecrireLigne(handle, [nettoyerChamp(new Date().toLocaleString('fr-FR')), '', '', libelleMarqueur, '', '', '', '', ''].join(';')).catch(function () {});
+        }).catch(function () {});
+    }
+
+    function afficherEtat(etat, handle) {
+        if (etat === 'actif') {
+            handleDossierCourant = handle;
+            zoneEtat.innerHTML = '📝 Journal local (sécurité) actif ✅ ' +
+                '<button type="button" class="btn btn-sm btn-outline-secondary ms-1" id="palox-log-changer">Changer de dossier</button>';
+            document.getElementById('palox-log-changer').addEventListener('click', function () {
+                choisirDossier('— journal redirigé vers un nouveau dossier —');
+            });
+        } else if (etat === 'a-autoriser') {
+            zoneEtat.innerHTML = '📝 Journal local (sécurité) : accès à redonner ' +
+                '<button type="button" class="btn btn-sm btn-outline-warning ms-1" id="palox-log-autoriser">🔓 Autoriser</button>';
+            document.getElementById('palox-log-autoriser').addEventListener('click', function () {
+                handle.requestPermission({ mode: 'readwrite' }).then(function (perm) {
+                    if (perm === 'granted') {
+                        afficherEtat('actif', handle);
+                        ecrireLigne(handle, [nettoyerChamp(new Date().toLocaleString('fr-FR')), '', '', '— journal réactivé —', '', '', '', '', ''].join(';')).catch(function () {});
+                    }
+                }).catch(function () {});
+            });
+        } else {
+            zoneEtat.innerHTML = '📝 Journal local (sécurité) de chaque étiquette créée, en plus de Basilic : non configuré ' +
+                '<button type="button" class="btn btn-sm btn-outline-secondary ms-1" id="palox-log-activer">Activer</button>';
+            document.getElementById('palox-log-activer').addEventListener('click', function () {
+                choisirDossier('— journal activé —');
+            });
+        }
+    }
+
+    lireHandleDossier().then(function (handle) {
+        if (!handle) { afficherEtat('absent'); return; }
+        handleDossierCourant = handle;
+        handle.queryPermission({ mode: 'readwrite' }).then(function (perm) {
+            afficherEtat(perm === 'granted' ? 'actif' : 'a-autoriser', handle);
+        }).catch(function () { afficherEtat('a-autoriser', handle); });
+    });
+
+    // Appelée par chaque page juste après une pesée réussie (même endroit
+    // que paloxOfflineMajCompteur) — best-effort, ne doit jamais faire
+    // échouer ni ralentir la pesée : si le dossier n'est pas configuré ou
+    // la permission a expiré, on n'écrit simplement rien.
+    window.paloxLogLocal = function (entree) {
+        if (!handleDossierCourant) return;
+        handleDossierCourant.queryPermission({ mode: 'readwrite' }).then(function (perm) {
+            if (perm !== 'granted') return;
+            const ligne = [
+                nettoyerChamp(entree.date_heure || new Date().toLocaleString('fr-FR')),
+                nettoyerChamp(entree.annee),
+                nettoyerChamp(entree.categorie_id),
+                nettoyerChamp(entree.categorie),
+                formaterCodeVifExcel(entree.code_vif),
+                nettoyerChamp(entree.numero_palox),
+                nettoyerChamp(entree.poids_kg),
+                entree.hors_ligne ? 'hors_ligne' : 'en_ligne',
+                nettoyerChamp(entree.page || ''),
+            ].join(';');
+            ecrireLigne(handleDossierCourant, ligne).catch(function () {});
+        }).catch(function () {});
+    };
+})();
+
+(function () {
+    if (!('serviceWorker' in navigator)) return;
+
+    const anneePalox = {{ annee|tojson }};
+    const banniereOffline = document.getElementById('palox-offline-banner');
+    const modalCorps = document.getElementById('palox-offline-modal-corps');
+    let registration = null;
+    let categoriesParId = {};
+
+    function modalOfflineInstance() {
+        return bootstrap.Modal.getOrCreateInstance(document.getElementById('paloxOfflineModal'));
+    }
+
+    function afficherBanniereOffline(enAttente, conflits) {
+        if (!enAttente && !conflits) { banniereOffline.classList.add('d-none'); return; }
+        let texte = '';
+        if (enAttente) texte += '🔌 ' + enAttente + ' pesée(s) hors-ligne en attente de synchronisation. ';
+        if (conflits) texte += '⚠️ ' + conflits + ' pesée(s) en conflit de numéro — à vérifier manuellement. ';
+        texte += '(cliquer pour le détail)';
+        banniereOffline.textContent = texte;
+        banniereOffline.classList.remove('d-none');
+        banniereOffline.className = 'alert ' + (conflits ? 'alert-danger' : 'alert-warning') + ' mb-3';
+        banniereOffline.setAttribute('role', 'button');
+    }
+
+    function demanderListe() {
+        if (registration && registration.active) {
+            registration.active.postMessage({ type: 'lister-attente' });
+        }
+    }
+
+    // Échappe pour insertion sûre dans de l'innerHTML — libellé de catégorie
+    // (modifiable par un compte "collecte écriture") et message d'erreur
+    // serveur réinjectés tels quels auparavant (audit 2026-10-28).
+    function echapperHtmlOffline(valeur) {
+        const div = document.createElement('div');
+        div.textContent = String(valeur);
+        return div.innerHTML;
+    }
+
+    function construireLigneAttente(entree) {
+        const tr = document.createElement('tr');
+        const estConflit = entree.statut === 'conflit';
+        if (estConflit) tr.classList.add('table-danger');
+        const libelle = echapperHtmlOffline(categoriesParId[entree.categorie_id] || ('Catégorie n°' + entree.categorie_id));
+        const statutTexte = estConflit
+            ? ('⚠️ Conflit — ' + echapperHtmlOffline(entree.erreur || 'numéro déjà utilisé'))
+            : '⏳ En attente de synchronisation';
+        tr.innerHTML =
+            '<td>' + libelle + '</td>' +
+            '<td>' + echapperHtmlOffline(entree.numero_palox) + '</td>' +
+            '<td>' + echapperHtmlOffline(entree.poids_kg) + ' kg</td>' +
+            '<td>' + echapperHtmlOffline(entree.date_heure) + '</td>' +
+            '<td>' + statutTexte + '</td>' +
+            '<td></td>';
+        if (estConflit) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-sm btn-outline-danger';
+            btn.textContent = 'Retirer (vérifié)';
+            btn.addEventListener('click', function () {
+                if (!confirm('Confirmer que ce conflit a été vérifié manuellement (palox n°' + entree.numero_palox + ') et peut être retiré de la file ?')) return;
+                if (registration && registration.active) {
+                    registration.active.postMessage({ type: 'supprimer-attente', id: entree.id });
+                }
+                setTimeout(demanderListe, 300);
+            });
+            tr.lastElementChild.appendChild(btn);
+        }
+        return tr;
+    }
+
+    function afficherListeAttente(attente) {
+        modalCorps.innerHTML = '';
+        if (!attente.length) {
+            modalCorps.innerHTML = '<tr><td colspan="6" class="text-muted">Aucune pesée en attente ni en conflit.</td></tr>';
+            return;
+        }
+        attente
+            .slice()
+            .sort(function (a, b) { return (a.statut === 'conflit' ? 0 : 1) - (b.statut === 'conflit' ? 0 : 1); })
+            .forEach(function (entree) { modalCorps.appendChild(construireLigneAttente(entree)); });
+    }
+
+    banniereOffline.addEventListener('click', function () {
+        demanderListe();
+        modalOfflineInstance().show();
+    });
+    banniereOffline.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); banniereOffline.click(); }
+    });
+
+    navigator.serviceWorker.addEventListener('message', function (event) {
+        if (!event.data) return;
+        if (event.data.type === 'palox-etat') {
+            afficherBanniereOffline(event.data.enAttente, event.data.conflits);
+        } else if (event.data.type === 'palox-liste-attente') {
+            afficherListeAttente(event.data.attente || []);
+        }
+    });
+
+    navigator.serviceWorker.register('{{ url_for("sw_palox") }}', { scope: '/collecte/' }).catch(function () {});
+
+    navigator.serviceWorker.ready.then(function (reg) {
+        if (!reg.active) return;
+        registration = reg;
+
+        // Si la page se charge justement pendant une panne (ex. redirection
+        // automatique vers la synthèse juste après une pesée hors-ligne),
+        // cette requête échoue et categoriesParId reste vide pour cette
+        // page — on la retente donc aussi à chaque retour de connexion,
+        // pas seulement une fois au chargement.
+        function rafraichirCategories() {
+            fetch('{{ url_for("collecte.palox_categories_actives", annee=annee) }}')
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data && data.success) {
+                        data.categories.forEach(function (c) { categoriesParId[c.id] = c.libelle; });
+                        if (reg.active) reg.active.postMessage({ type: 'precacher', annee: anneePalox, categories: data.categories });
+                    }
+                })
+                .catch(function () {});
+        }
+
+        reg.active.postMessage({ type: 'etat' });
+        rafraichirCategories();
+
+        function tenterSyncOffline() {
+            if (reg.active) reg.active.postMessage({ type: 'tenter-sync' });
+            rafraichirCategories();
+        }
+
+        window.addEventListener('online', tenterSyncOffline);
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') {
+                tenterSyncOffline();
+                if (reg.active) reg.active.postMessage({ type: 'etat' });
+            }
+        });
+        setInterval(tenterSyncOffline, 45000);
+    });
+})();
+</script>

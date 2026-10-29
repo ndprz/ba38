@@ -4,6 +4,15 @@
 
 {% block title %}Envoi associations gardant {{ annee }}{% endblock %}
 
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
+<style>
+#texte_mail_quill .ql-editor {
+    min-height: 320px;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4" style="max-width: 1000px;">
     <h2>📧 Envoi aux associations gardant {{ annee }}</h2>
@@ -40,7 +49,8 @@
             <input type="hidden" name="annee" value="{{ annee }}">
             <div class="mb-3">
                 <label for="texte_mail" class="form-label"><strong>Texte du mail</strong></label>
-                <textarea name="texte_mail" id="texte_mail" class="form-control" rows="18">{{ texte_mail }}</textarea>
+                <textarea name="texte_mail" id="texte_mail" class="d-none">{{ texte_mail }}</textarea>
+                <div id="texte_mail_quill" class="bg-white"></div>
                 <small class="text-muted">
                     Repères disponibles : <code>&lt;&lt;association&gt;&gt;</code>, <code>&lt;&lt;code&gt;&gt;</code>
                     (code VIF), <code>&lt;&lt;datecollecte&gt;&gt;</code>, <code>&lt;&lt;magasins&gt;&gt;</code>
@@ -54,19 +64,27 @@
     </div>
 
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <form method="post" action="{{ url_for('collecte.gardee_relancer') }}" class="m-0">
+        <form method="post" action="{{ url_for('collecte.gardee_relancer') }}" class="d-flex align-items-center gap-1 m-0">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="annee" value="{{ annee }}">
             <input type="hidden" name="groupe" value="repondu">
+            <div class="form-check m-0">
+                <input class="form-check-input" type="checkbox" name="confirmation_envoi" value="oui" id="confirmation_envoi_repondu">
+                <label class="form-check-label small" for="confirmation_envoi_repondu">confirmer</label>
+            </div>
             <button type="submit" class="btn btn-sm btn-outline-warning"
                     onclick="return confirm('Relancer toutes les associations dont la case « Répondu » n\'est pas cochée ?');">
                 🔁 Relancer les non-répondants
             </button>
         </form>
-        <form method="post" action="{{ url_for('collecte.gardee_relancer') }}" class="m-0">
+        <form method="post" action="{{ url_for('collecte.gardee_relancer') }}" class="d-flex align-items-center gap-1 m-0">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="annee" value="{{ annee }}">
             <input type="hidden" name="groupe" value="resultat_envoye">
+            <div class="form-check m-0">
+                <input class="form-check-input" type="checkbox" name="confirmation_envoi" value="oui" id="confirmation_envoi_resultat">
+                <label class="form-check-label small" for="confirmation_envoi_resultat">confirmer</label>
+            </div>
             <button type="submit" class="btn btn-sm btn-outline-warning"
                     onclick="return confirm('Relancer toutes les associations dont la case « Résultat envoyé » n\'est pas cochée ?');">
                 🔁 Relancer ceux sans résultat
@@ -175,7 +193,27 @@
     </form>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 <script>
+const texteMailTextarea = document.getElementById("texte_mail");
+const quillTexteMail = new Quill(document.getElementById("texte_mail_quill"), {
+    theme: "snow",
+    modules: {
+        toolbar: [
+            [{ size: ["small", false, "large", "huge"] }],
+            ["bold", "italic", "underline"],
+            [{ color: [] }],
+            [{ list: "ordered" }, { list: "bullet" }],
+            ["link"],
+            ["clean"],
+        ],
+    },
+});
+quillTexteMail.root.innerHTML = texteMailTextarea.value;
+document.querySelector('#sectionParametresGardeeEnvoi form').addEventListener("submit", function () {
+    texteMailTextarea.value = quillTexteMail.root.innerHTML;
+});
+
 document.querySelectorAll(".case-suivi").forEach(function (case_) {
     case_.addEventListener("change", function () {
         fetch("{{ url_for('collecte.gardee_marquer_suivi') }}", {

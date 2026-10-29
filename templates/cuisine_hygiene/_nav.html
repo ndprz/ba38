@@ -1,3 +1,4 @@
+{% from "production_cuisine/_aide.html" import aide_cuisine %}
 {% set _hygiene_nav_active = request.endpoint %}
 <ul class="nav nav-pills mb-4 flex-wrap gap-2">
   <li class="nav-item">
@@ -15,5 +16,16 @@
   <li class="nav-item">
     <a class="nav-link {% if _hygiene_nav_active == 'cuisine_hygiene.referentiels' %}active{% else %}border{% endif %}"
        href="{{ url_for('cuisine_hygiene.referentiels') }}">📋 Référentiels</a>
+  </li>
+  {# ❓ Aide hygiène : ouverte sur la section de la page affichée #}
+  {% set _aide_sections = {
+       'cuisine_hygiene.temperatures': 'Températures', 'cuisine_hygiene.temperatures_historique': 'Historique des températures',
+       'cuisine_hygiene.nettoyage': 'Nettoyage', 'cuisine_hygiene.zone_nettoyage': 'Nettoyage',
+       'cuisine_hygiene.nettoyage_historique': 'Historique des nettoyages',
+       'cuisine_hygiene.etalonnage': 'Étalonnage', 'cuisine_hygiene.etalonnage_historique': 'Historique des étalonnages',
+       'cuisine_hygiene.referentiels': 'Référentiels hygiène',
+     } %}
+  <li class="nav-item" style="margin-left: auto;">
+    {{ aide_cuisine("Hygiene", _aide_sections.get(request.endpoint)) }}
   </li>
 </ul>

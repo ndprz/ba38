@@ -211,9 +211,11 @@ def _normaliser_ville_secteur(s):
 def calculer_secteur(lat, lon, ville):
     """
     Découpage géographique en secteurs — copie conforme de la fonction
-    _calc_secteur_local de generer_tournees_bai_v2.py, pour que les deux
-    classeurs de tournées (calcul d'optimisation vs Go on the Web) utilisent
-    exactement le même référentiel de secteurs.
+    _calc_secteur_local de moteur_tournees.py, pour que les deux classeurs de
+    tournées (calcul d'optimisation vs Go on the Web) utilisent exactement le
+    même référentiel de secteurs. Avait divergé (Rives/Renage sans Moirans/
+    Voreppe, Vif/Vizille fusionnés dans Sud Vercors, groupes Pontcharra et
+    Uriage absents) — réalignée lors de l'audit du 2026-10-29.
     """
     v = _normaliser_ville_secteur(ville)
     if 'grenoble' in v.lower():
@@ -224,23 +226,29 @@ def calculer_secteur(lat, lon, ville):
         if lat > 45.187: return 'Grenoble Centre Nord'
         if lon < 5.721:  return 'Grenoble Centre Ouest'
         return 'Grenoble Centre Est'
-    GRESIVAUDAN   = {'Biviers', 'Crolles', 'Froges', 'Saint Ismier', 'Domene', 'Le Versoud',
-                     'La Terrasse', 'Le Touvet', 'Tencin'}
-    VOIRON_GRP    = {'Voiron', 'Saint Jean De Moirans'}
-    RIVES_GRP     = {'Rives', 'Renage'}
-    SEYSSINET_GRP = {'Seyssinet Pariset', 'Seyssins', 'Fontaine'}
-    PLATEAU_NORD  = {'Apprieu', 'Colombe', 'Le Grand Lemps'}
-    SUD_VERCORS   = {'Varces Allieres Et Risset', 'Vif', 'Vizille', 'Claix'}
-    ROUSSILLON    = {'Peage De Roussillon', 'Salaise Sur Sanne'}
-    SMH_GRP       = {'Poisat', 'Saint Martin Dheres', 'Saint Martin D Heres', 'Gieres', 'Gières'}
-    if v in GRESIVAUDAN:   return 'Gresivaudan'
-    if v in VOIRON_GRP:    return 'Voiron'
-    if v in RIVES_GRP:     return 'Rives'
-    if v in SEYSSINET_GRP: return 'Seyssinet'
-    if v in PLATEAU_NORD:  return 'Plateau Nord'
-    if v in SUD_VERCORS:   return 'Sud Vercors'
-    if v in ROUSSILLON:    return 'Roussillon'
-    if v in SMH_GRP:       return 'Saint Martin Dheres'
+    GRESIVAUDAN    = {'Biviers', 'Crolles', 'Froges', 'Saint Ismier', 'Domene', 'Le Versoud',
+                      'La Terrasse', 'Le Touvet', 'Tencin'}
+    VOIRON_GRP     = {'Voiron', 'Saint Jean De Moirans'}
+    RIVES_GRP      = {'Rives', 'Renage', 'Moirans', 'Voreppe'}
+    SEYSSINET_GRP  = {'Seyssinet Pariset', 'Seyssins', 'Fontaine'}
+    PLATEAU_NORD   = {'Apprieu', 'Colombe', 'Le Grand Lemps'}
+    SUD_VERCORS    = {'Varces Allieres Et Risset', 'Claix'}
+    ROUSSILLON     = {'Peage De Roussillon', 'Salaise Sur Sanne'}
+    PONTCHARRA_GRP = {'Chapareillan', 'Pontcharra'}
+    SMH_GRP        = {'Poisat', 'Saint Martin Dheres', 'Saint Martin D Heres', 'Gieres', 'Gières'}
+    URIAGE_GRP     = {'Bresson', 'Saint Martin D Uriage'}
+    if v in GRESIVAUDAN:    return 'Gresivaudan'
+    if v in VOIRON_GRP:     return 'Voiron'
+    if v in RIVES_GRP:      return 'Rives Moirans Voreppe'
+    if v in SEYSSINET_GRP:  return 'Seyssinet'
+    if v in PLATEAU_NORD:   return 'Plateau Nord'
+    if v in SUD_VERCORS:    return 'Sud Vercors'
+    if v == 'Vizille':      return 'Vizille'
+    if v == 'Vif':          return 'Vif'
+    if v in ROUSSILLON:     return 'Roussillon'
+    if v in PONTCHARRA_GRP: return 'Pontcharra'
+    if v in SMH_GRP:        return 'Saint Martin Dheres'
+    if v in URIAGE_GRP:     return 'Saint Martin D Uriage'
     return v
 
 
@@ -979,6 +987,8 @@ def construire_tournees_depuis_vehicules(args):
     Retourne un dict avec toutes ces clés, plus 'df_veh' (le DataFrame brut,
     utile pour le contrôle « magasins non planifiés »).
     """
+    if not os.path.exists(args.vehicules):
+        raise ValueError(f"Fichier véhicules introuvable : {args.vehicules}")
     df_veh = pd.read_excel(args.vehicules)
     df_veh.columns = [str(c).strip() for c in df_veh.columns]
     cols = list(df_veh.columns)
@@ -993,6 +1003,8 @@ def construire_tournees_depuis_vehicules(args):
     # ne doit pas faire exclure à tort un magasin réellement actif ; et si le
     # VIF est totalement absent du référentiel (ni actif ni inactif connu),
     # on ne bloque pas sur une donnée qu'on ne peut pas vérifier.
+    if not os.path.exists(args.magasins):
+        raise ValueError(f"Fichier magasins introuvable : {args.magasins}")
     df_ref_filtre = pd.read_excel(args.magasins)
     df_ref_filtre.columns = [str(c).strip() for c in df_ref_filtre.columns]
     df_actifs_filtre = magasins_actifs(df_ref_filtre)
@@ -1020,6 +1032,7 @@ def construire_tournees_depuis_vehicules(args):
     type_camion_par_code = {}
     tournee_camion_dj = {}         # (code, dj_key) -> [(vif, nom_mag), ...] ordonné, dédupliqué
     magasins_sans_camion = {}      # vif -> nom_mag : ligne avec un magasin mais Code (camion) vide
+    lignes_jour_non_reconnu = {}   # vif -> (nom_mag, jour brut) : 'Tournée'/'Début' non reconnus par normaliser_dj
 
     for _, r in df_veh.iterrows():
         # .upper() : certains codes sont saisis en minuscules dans
@@ -1063,6 +1076,10 @@ def construire_tournees_depuis_vehicules(args):
         periode = 'Matin' if heure < 13 else 'Apres Midi'
         dj_key = normaliser_dj(f'{jour} {periode}')
         if not dj_key:
+            vif_jnr = vif_fmt(r.get('Code VIF', ''))
+            nom_mag_jnr = str(r.get('Magasin', '')).strip()
+            if nom_mag_jnr and nom_mag_jnr != 'nan':
+                lignes_jour_non_reconnu[vif_jnr or nom_mag_jnr] = (nom_mag_jnr, jour)
             continue
 
         entry = consignes_par_camion_dj.setdefault((code, dj_key), {'c1': '', 'c2': ''})
@@ -1108,6 +1125,10 @@ def construire_tournees_depuis_vehicules(args):
     if not col_nom_camion:
         print("  INFO : aucune colonne 'Nom camion' détectée dans liste-vehicule.xlsx "
               "→ noms de secours utilisés pour les véhicules connus, vide sinon.")
+    if lignes_jour_non_reconnu:
+        print(f"  ATTENTION : {len(lignes_jour_non_reconnu)} magasin(s) présent(s) dans "
+              f"{args.vehicules} avec un jour ('Tournée') non reconnu, exclu(s) de toutes les "
+              f"tournées : {', '.join(f'{nom} ({jour})' for nom, jour in sorted(lignes_jour_non_reconnu.values()))}")
 
     nb_passages_max = max((len(v) for v in tournee_camion_dj.values()), default=0)
     mag_cols = [f'Magasin {k}' for k in range(1, nb_passages_max + 1)]
@@ -1143,6 +1164,7 @@ def construire_tournees_depuis_vehicules(args):
         'nom_camion_par_code': nom_camion_par_code,
         'type_camion_par_code': type_camion_par_code,
         'magasins_sans_camion': magasins_sans_camion,
+        'lignes_jour_non_reconnu': lignes_jour_non_reconnu,
         'magasins_non_collectes_exclus': magasins_non_collectes_exclus,
     }
 
@@ -1450,7 +1472,7 @@ def generer_carte_tournees(df_t, df_mag, mag_cols, dossier_resultat, annee=None)
         try:
             lat, lon = float(r.get('Latitude', 0)), float(r.get('Longitude', 0))
             if lat and lon: nom2coords_ct[nom] = [lat, lon]
-        except: pass
+        except (ValueError, TypeError): pass
         adr = str(r.get('Adresse', '')).strip()
         vil = str(r.get('Ville', '')).strip()
         cp  = str(r.get('C.P.', '')).strip()
@@ -1472,6 +1494,12 @@ def generer_carte_tournees(df_t, df_mag, mag_cols, dossier_resultat, annee=None)
         points = []
         for mag in mags:
             pt = {'nom': mag, 'adresse': nom2adresse_ct.get(mag, ''), 'secteur': sec}
+            # Pas de coordonnées GPS valides pour ce magasin : on le place quand
+            # même sur la carte (au siège, faute de mieux) mais on le signale
+            # (gps_manquant) pour que la carte l'affiche en alerte et l'exclue
+            # du lien Google Maps — sinon le chauffeur serait silencieusement
+            # envoyé au siège BAI au lieu du vrai magasin (audit 2026-10-23, #17).
+            pt['gps_manquant'] = mag not in nom2coords_ct
             pt['lat'] = nom2coords_ct[mag][0] if mag in nom2coords_ct else BAI_LAT_CT
             pt['lon'] = nom2coords_ct[mag][1] if mag in nom2coords_ct else BAI_LON_CT
             points.append(pt)
@@ -1614,10 +1642,12 @@ function clearMap() {
   document.getElementById('btn-gmaps').disabled = true;
 }
 
-function makeIcon(num, color) {
+function makeIcon(num, color, alerte) {
+  var fond = alerte ? '#c0392b' : color;
+  var contenu = alerte ? '&#9888;' : num;
   return L.divIcon({
     className:'',
-    html:'<div style="background:'+color+';color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.35)">'+num+'</div>',
+    html:'<div style="background:'+fond+';color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.35)">'+contenu+'</div>',
     iconSize:[28,28],iconAnchor:[14,14],popupAnchor:[0,-14]
   });
 }
@@ -1668,11 +1698,12 @@ function afficherTournee(dj, veh) {
   // Marqueurs numérotés
   var markers = [];
   mags.forEach(function(mag, i) {
-    var marker = L.marker([mag.lat, mag.lon], {icon: makeIcon(i+1, color)})
+    var marker = L.marker([mag.lat, mag.lon], {icon: makeIcon(i+1, color, mag.gps_manquant)})
       .bindPopup(
         '<div class="popup-title">'+(i+1)+'. '+mag.nom+'</div>'+
         '<div class="popup-addr">'+(mag.adresse||'')+'</div>'+
-        '<div class="popup-sec">'+(mag.secteur||'')+'</div>'
+        '<div class="popup-sec">'+(mag.secteur||'')+'</div>'+
+        (mag.gps_manquant ? '<div class="popup-sec" style="color:#c0392b;font-weight:700">&#9888; Pas de coordonn&eacute;es GPS — position approximative (si&egrave;ge BAI), v&eacute;rifier l\'adresse</div>' : '')
       ).addTo(layerGroup);
     markers.push(marker);
     marker.on('click', function() { highlightMag(i); });
@@ -1690,11 +1721,12 @@ function afficherTournee(dj, veh) {
     item.className = 'mag-item';
     item.id = 'mag-'+i;
     item.innerHTML =
-      '<div class="mag-num" style="background:'+color+'">'+(i+1)+'</div>'+
+      '<div class="mag-num" style="background:'+(mag.gps_manquant?'#c0392b':color)+'">'+(mag.gps_manquant?'&#9888;':(i+1))+'</div>'+
       '<div class="mag-info">'+
         '<div class="mag-name">'+mag.nom+'</div>'+
         '<div class="mag-addr">'+(mag.adresse||'&mdash;')+'</div>'+
         '<div class="mag-sec">'+(mag.secteur||'')+'</div>'+
+        (mag.gps_manquant ? '<div class="mag-sec" style="color:#c0392b;font-weight:700">&#9888; GPS manquant</div>' : '')+
       '</div>';
     (function(idx, m) {
       item.onclick = function() { markers[idx].openPopup(); highlightMag(idx); map.panTo([m.lat, m.lon]); };
@@ -1722,9 +1754,16 @@ function highlightMag(idx) {
 function openGmaps() {
   if (!currentTournee) return;
   var mags = currentTournee.mags;
+  var magsValides = mags.filter(function(m) { return !m.gps_manquant; });
+  var magsExclus = mags.filter(function(m) { return m.gps_manquant; });
+  if (magsExclus.length) {
+    alert('⚠️ ' + magsExclus.length + ' magasin(s) sans coordonnées GPS exclu(s) de l\'itinéraire (sinon le GPS enverrait au siège BAI) : '
+      + magsExclus.map(function(m) { return m.nom; }).join(', ')
+      + '. Pensez à vérifier leur adresse séparément.');
+  }
   var bai = '45.18867,5.68456';
   var pts = [bai];
-  mags.forEach(function(m) { pts.push(m.lat+','+m.lon); });
+  magsValides.forEach(function(m) { pts.push(m.lat+','+m.lon); });
   pts.push(bai);
   window.open('https://www.google.com/maps/dir/'+pts.join('/')+'/data=!4m2!4m1!3e0', '_blank');
 }
@@ -2121,6 +2160,13 @@ def construire_vehicule_consignes(df_veh, caisses_premier_jour=None):
     df_veh[col_code] = df_veh[col_code].apply(valeur_propre)
     df_veh = df_veh[df_veh[col_code].notna()]
     df_veh = df_veh[df_veh[col_code].apply(_est_camion_reel)]
+    # Normalisé en majuscules AVANT le regroupement (pas seulement pour les
+    # lookups ci-dessous) : sinon un même camion saisi avec une casse
+    # incohérente entre 2 lignes de liste-vehicule.xlsx (ex. 'v039' puis
+    # 'V039') était compté comme 2 camions distincts par le groupby — même
+    # convention que construire_tournees_depuis_vehicules/_est_camion_reel
+    # (signalé 2026-10-28, complété lors de l'audit du lendemain).
+    df_veh[col_code] = df_veh[col_code].str.upper()
 
     lignes = []
     a_completer = []
@@ -2355,6 +2401,7 @@ def main():
     nom_camion_par_code     = ctx['nom_camion_par_code']
     type_camion_par_code    = ctx['type_camion_par_code']
     magasins_sans_camion    = ctx['magasins_sans_camion']
+    lignes_jour_non_reconnu = ctx['lignes_jour_non_reconnu']
 
     if df.empty:
         print("ERREUR : aucune tournée reconstruite — vérifiez les colonnes de "
@@ -2832,6 +2879,13 @@ def main():
             vif_sc = '' if cle_sc == nom_sc else cle_sc
             ws_msc.append([vif_sc, nom_sc])
 
+    if lignes_jour_non_reconnu:
+        ws_jnr = wb.create_sheet('Jour non reconnu')
+        ws_jnr.append(['Code VIF', 'Nom', 'Jour (brut)'])
+        for cle_jnr, (nom_jnr, jour_jnr) in sorted(lignes_jour_non_reconnu.items(), key=lambda kv: kv[1][0]):
+            vif_jnr_cell = '' if cle_jnr == nom_jnr else cle_jnr
+            ws_jnr.append([vif_jnr_cell, nom_jnr, jour_jnr])
+
     if manquants_quai:
         ws_q = wb.create_sheet('Quai manquant')
         ws_q.append(['Code', 'Nom camion', 'Quai'])
@@ -2916,6 +2970,7 @@ def main():
 
     args.output_excel = sauver_xlsx_avec_repli(wb, args.output_excel)
     if (manquants_quai or camions_non_definis or camions_absents or magasins_sans_camion
+            or lignes_jour_non_reconnu
             or manquants_cag or non_planifies or creneaux_incomplets or magasins_dj_non_couverts
             or doublons_camion_magasin or manquants_colis or manquants_stockage or adresses_invalides_prod):
         print(f"\nManquants : {len(manquants_quai)} camion(s) sans Quai, "
@@ -2926,6 +2981,8 @@ def main():
               f"même demi-journée, "
               f"{len(magasins_sans_camion)} magasin(s) présent(s) dans {args.vehicules} sans "
               f"camion (Code) renseigné, "
+              f"{len(lignes_jour_non_reconnu)} magasin(s) présent(s) dans {args.vehicules} avec "
+              f"un jour ('Tournée') non reconnu, exclu(s) de toutes les tournées, "
               f"{len(manquants_cag)} entrée(s) magasin/demi-journée sans nb de cagettes, "
               f"{len(non_planifies)} magasin(s) jamais planifié(s), "
               f"{len(creneaux_incomplets)} créneau(x) incomplet(s) (jour couvert sur une seule "
@@ -2936,10 +2993,10 @@ def main():
               f"{len(manquants_stockage)} magasin(s) actif(s) sans stockage renseigné, "
               f"{len(adresses_invalides_prod)} magasin(s) actif(s) avec adresse manquante/invraisemblable")
         print(f"  (Quai/Camions non définis/Camions absents/Doublons camion-magasin/Camion non "
-              f"défini/Cagettes/Magasins non planifiés/Créneaux incomplets/Magasins-DJ non "
-              f"couverts/Colis manquants/Magasins sans stockage/Adresses invalides → à compléter "
-              f"puis réinjecter dans {args.vehicules} / {args.cagettes} / {args.colis} ou "
-              f"corriger le référentiel magasins, avant régénération)")
+              f"défini/Jour non reconnu/Cagettes/Magasins non planifiés/Créneaux incomplets/"
+              f"Magasins-DJ non couverts/Colis manquants/Magasins sans stockage/Adresses invalides "
+              f"→ à compléter puis réinjecter dans {args.vehicules} / {args.cagettes} / "
+              f"{args.colis} ou corriger le référentiel magasins, avant régénération)")
     else:
         print("\nAucun manquant : Quai, cagettes, colis, stockage, adresses et planification sont complets.")
     print(f"→ Classeur Excel (tous onglets) : {args.output_excel}")

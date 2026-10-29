@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "production_cuisine/_aide.html" import aide_cuisine %}
 
 {% block title %}Réception #{{ reception.id }}{% endblock %}
 
@@ -8,6 +9,7 @@
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h2 class="mb-0">📥 Réception #{{ reception.id }} — {{ reception.libelle_produit or "produit non renseigné" }}</h2>
     <div class="d-flex gap-2">
+      {{ aide_cuisine("Receptions", "Fiche réception") }}
       {% if not reception.nb_utilisations and not reception.date_purge and reception.actif %}
       <a href="{{ url_for('production_cuisine.modifier_reception', reception_id=reception.id) }}" class="btn btn-outline-primary">✏️ Modifier</a>
       {% endif %}

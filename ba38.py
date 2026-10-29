@@ -192,6 +192,11 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
 
     SESSION_USE_SIGNER=True,
+
+    # Jeton CSRF valable toute la session (24 h) au lieu d'1 h par défaut :
+    # les formulaires longs (fiches de visite...) étaient rejetés à l'envoi
+    # et la saisie perdue.
+    WTF_CSRF_TIME_LIMIT=None,
 )
 Session(app)
 
@@ -256,6 +261,14 @@ def sw_photo_benevole():
     return send_from_directory(
         os.path.join(app.root_path, 'static/pwa'),
         'sw_photo_benevole.js',
+        mimetype='application/javascript'
+    )
+
+@app.route('/sw_palox.js')
+def sw_palox():
+    return send_from_directory(
+        os.path.join(app.root_path, 'static/pwa'),
+        'sw_palox.js',
         mimetype='application/javascript'
     )
 

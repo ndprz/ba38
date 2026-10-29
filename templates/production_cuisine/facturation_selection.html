@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "production_cuisine/_aide.html" import aide_cuisine %}
 
 {% block title %}Facturation cuisine{% endblock %}
 
@@ -8,6 +9,7 @@
   <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h2 class="mb-0">💶 Facturation cuisine (repas livrés)</h2>
     <div class="d-flex gap-2 flex-wrap">
+      {{ aide_cuisine("Livraisons", "Facturation") }}
       <a href="{{ url_for('production_cuisine.liste_bons_livraison') }}" class="btn btn-outline-secondary">🧾 Bons de livraison</a>
       <a href="{{ url_for('production_cuisine.liste_productions') }}" class="btn btn-outline-secondary">🍲 Cuisine</a>
       <a href="{{ url_for('tresorerie.tresorerie') }}" class="btn btn-outline-secondary">💰 Trésorerie</a>

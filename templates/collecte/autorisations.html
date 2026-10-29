@@ -10,6 +10,8 @@
     <p class="text-muted small">
         Magasins ayant un email renseigné et n'ayant pas encore donné leur accord (colonne « Accord » vide
         dans le fichier magasins) — une lettre personnalisée (modèle Word) est générée et jointe à chaque mail.
+        Seuls les magasins cochés pas encore notifiés (colonne « Déjà envoyée ») reçoivent réellement un mail,
+        sauf via « Test sur un seul magasin » qui permet de forcer un renvoi ciblé.
     </p>
 
     {% call action_buttons() %}
@@ -118,7 +120,7 @@
                 <tbody>
                 {% for m in magasins %}
                 <tr>
-                    <td><input class="case-magasin" type="checkbox" name="magasins" value="{{ m.code_vif }}" checked></td>
+                    <td><input class="case-magasin" type="checkbox" name="magasins" value="{{ m.code_vif }}" {% if not m.deja_envoye %}checked{% endif %}></td>
                     <td>{{ m.code_vif }}</td>
                     <td>{{ m.nom }}</td>
                     <td>{{ m.etat }}</td>
@@ -214,7 +216,7 @@ document.getElementById("btn-envoyer-mails").addEventListener("click", function 
     } else if (modeTest) {
         message = "Envoyer un mail de TEST (pour les " + nbSelectionnes + " magasin(s) cochés, mais tous à votre propre adresse) ?";
     } else {
-        message = "⚠️ ENVOI RÉEL : envoyer la demande d'autorisation à " + nbSelectionnes + " magasin(s), à leurs vraies adresses ?";
+        message = "⚠️ ENVOI RÉEL : envoyer la demande d'autorisation aux magasins cochés pas encore notifiés (sur " + nbSelectionnes + " coché(s)), à leurs vraies adresses ?";
     }
 
     if (!confirm(message)) {

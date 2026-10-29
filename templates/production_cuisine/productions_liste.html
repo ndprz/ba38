@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "production_cuisine/_aide.html" import aide_cuisine %}
 
 {% block title %}Productions cuisine{% endblock %}
 
@@ -8,6 +9,7 @@
   <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h2 class="mb-0">🍲 Productions du jour</h2>
     <div class="d-flex flex-wrap gap-2">
+      {{ aide_cuisine("Production", "Productions du jour", taille="btn-lg") }}
       <a href="{{ url_for('production_cuisine.liste_receptions', date=date_filtre) }}" class="btn btn-outline-primary btn-lg">
         📥 Réceptions du jour
         {% if nb_receptions_attente %}<span class="badge bg-danger">{{ nb_receptions_attente }} en attente</span>{% endif %}

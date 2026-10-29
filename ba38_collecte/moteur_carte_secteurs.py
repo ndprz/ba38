@@ -28,11 +28,30 @@ from ba38_utilitaires.organisation import get_organisation
 
 def calculer_polygones(data, margin=0.008):
     groupes = defaultdict(list)
+    magasins_gps_invalide = []
     for m in data:
-        groupes[m['Secteur']].append([m['Latitude'], m['Longitude']])
+        lat, lon = m['Latitude'], m['Longitude']
+        # Un seul magasin avec une latitude/longitude NaN (cellule GPS vide
+        # ou invalide dans le référentiel) contaminait tout le calcul du
+        # polygone de son secteur (moyenne/ConvexHull en NaN), rendant le
+        # secteur entier cassé/invisible sur la carte, sans aucune trace —
+        # on l'exclut maintenant du calcul du polygone, pas tout le secteur
+        # (audit 2026-10-28).
+        try:
+            if not (np.isfinite(lat) and np.isfinite(lon)):
+                raise ValueError
+        except (TypeError, ValueError):
+            magasins_gps_invalide.append(m.get('Nom', '?'))
+            continue
+        groupes[m['Secteur']].append([lat, lon])
+    if magasins_gps_invalide:
+        print(f"  ATTENTION carte secteurs : {len(magasins_gps_invalide)} magasin(s) avec GPS "
+              f"invalide, exclu(s) du calcul des polygones : {', '.join(magasins_gps_invalide)}")
 
     polygones = {}
     for sec, pts in groupes.items():
+        if not pts:
+            continue
         arr = np.array(pts)
         if len(pts) == 1:
             lat, lon = pts[0]
@@ -200,9 +219,13 @@ Object.entries(POLYGONES).forEach(([sec, pts]) => {{
   }}).addTo(polygonLayer);
 }});
 
-// Labels secteurs
+// Labels secteurs — isFinite() exclut les magasins à GPS invalide (NaN/Infinity
+// JSON-sérialisé en littéral JS "Infinity"/"NaN" par Python), sinon un seul
+// magasin de ce genre dans le secteur suffisait à envoyer toute l'étiquette
+// "à l'infini" alors que le polygone lui-même reste correct (calculer_polygones
+// les exclut déjà de son côté) — audit 2026-10-29.
 secteurs.forEach(s => {{
-  const pts = MAGASINS.filter(m => m.Secteur === s);
+  const pts = MAGASINS.filter(m => m.Secteur === s && isFinite(m.Latitude) && isFinite(m.Longitude));
   if (!pts.length) return;
   const lat = pts.reduce((a,b) => a+b.Latitude, 0)/pts.length;
   const lon = pts.reduce((a,b) => a+b.Longitude, 0)/pts.length;
@@ -215,10 +238,12 @@ secteurs.forEach(s => {{
   }}).addTo(map);
 }});
 
-// Marqueurs
+// Marqueurs — même exclusion que les étiquettes de secteur ci-dessus : un
+// magasin à GPS invalide (Infinity/NaN) créerait un cercle à une position
+// absurde, sans jamais s'afficher correctement ni prévenir (audit 2026-10-29).
 const markers = [];
 const markerLayer = L.layerGroup().addTo(map);
-MAGASINS.forEach(m => {{
+MAGASINS.filter(m => isFinite(m.Latitude) && isFinite(m.Longitude)).forEach(m => {{
   const color = secColor[m.Secteur] || '#888';
   const mk = L.circleMarker([m.Latitude,m.Longitude], {{
     radius:7, color:'#fff', weight:1.5, fillColor:color, fillOpacity:0.9

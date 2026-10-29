@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "production_cuisine/_aide.html" import aide_cuisine %}
 
 {% block title %}Stock barquettes{% endblock %}
 
@@ -19,6 +20,7 @@
   <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h2 class="mb-0">📊 Stock barquettes</h2>
     <div class="d-flex gap-2">
+      {{ aide_cuisine("Livraisons", "Stock barquettes") }}
       <a href="{{ url_for('production_cuisine.liste_bons_livraison') }}" class="btn btn-outline-secondary">
         🧾 Bons de livraison
       </a>

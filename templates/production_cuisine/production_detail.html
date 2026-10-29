@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "production_cuisine/_aide.html" import aide_cuisine %}
 {% from "production_cuisine/_macros.html" import camera_capture, champ_temperature, dates_limite %}
 
 {% block title %}{{ production.nom_recette }}{% endblock %}
@@ -64,6 +65,7 @@
       </div>
     </div>
     <div class="d-flex gap-2">
+      {{ aide_cuisine("Production", "Fiche production") }}
       <a href="{{ retour_url }}" class="btn btn-outline-secondary">← Retour</a>
       <a href="{{ url_for('production_cuisine.recap_production_pdf', production_id=production.id) }}" target="_blank" rel="noopener"
          class="btn btn-outline-primary">🖨️ Récap PDF</a>

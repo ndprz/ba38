@@ -1,11 +1,15 @@
 {% extends "base.html" %}
+{% from "production_cuisine/_aide.html" import aide_cuisine %}
 
 {% block title %}{{ "Modifier" if article else "Nouvel" }} article barquette{% endblock %}
 
 {% block content %}
 <div class="container mt-4" style="max-width: 640px;">
 
-  <h2 class="mb-3">📦 {{ "Modifier l'article" if article else "Nouvel article" }}</h2>
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">📦 {{ "Modifier l'article" if article else "Nouvel article" }}</h2>
+    {{ aide_cuisine("Livraisons", "Articles barquettes") }}
+  </div>
 
   <form method="POST">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

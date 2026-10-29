@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "production_cuisine/_aide.html" import aide_cuisine %}
 {% from "production_cuisine/_macros.html" import champ_temperature %}
 
 {% block title %}Modifier la réception #{{ reception.id }}{% endblock %}
@@ -8,7 +9,10 @@
 
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h2 class="mb-0">✏️ Modifier la réception #{{ reception.id }}</h2>
-    <a href="{{ url_for('production_cuisine.detail_reception', reception_id=reception.id) }}" class="btn btn-outline-secondary">← Retour</a>
+    <div class="d-flex gap-2">
+      {{ aide_cuisine("Receptions", "Modifier une réception") }}
+      <a href="{{ url_for('production_cuisine.detail_reception', reception_id=reception.id) }}" class="btn btn-outline-secondary">← Retour</a>
+    </div>
   </div>
 
   <div class="alert alert-info">

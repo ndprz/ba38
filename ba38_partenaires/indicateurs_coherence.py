@@ -20,7 +20,7 @@ from ba38_utilitaires.organisation import get_organisation
 # ---------------------------------------------------------------------------
 # Référence nationale FFBA : 47 kg par bénéficiaire et par an, soit 11,75 kg par trimestre
 KG_PAR_BENEFICIAIRE_AN = 47
-PASSAGES_PAR_BENEFICIAIRE = 4            # proposition PDF : passages = bénéficiaires × 4
+PASSAGES_PAR_BENEFICIAIRE_TRIMESTRE = 12  # proposition PDF : 1 passage par semaine environ (×4 sur l'année)
 PERSONNES_PAR_FOYER_DEFAUT = 2.0         # si aucun ratio connu (ni asso, ni campagne)
 
 # Écart relatif tonnage AMS / VIF : ≤ ORANGE → vert, ≤ ROUGE → orange, au-delà → rouge
@@ -41,6 +41,13 @@ def kg_par_beneficiaire(periode):
     if str(periode or "").strip().lower().startswith("année"):
         return KG_PAR_BENEFICIAIRE_AN
     return KG_PAR_BENEFICIAIRE_AN / 4
+
+
+def passages_par_beneficiaire(periode):
+    """12 passages par trimestre (≈ 1 par semaine), 48 pour une campagne annuelle."""
+    if str(periode or "").strip().lower().startswith("année"):
+        return PASSAGES_PAR_BENEFICIAIRE_TRIMESTRE * 4
+    return PASSAGES_PAR_BENEFICIAIRE_TRIMESTRE
 
 
 def _fmt(n, dec=0):
@@ -167,9 +174,10 @@ def _ratio_personnes_par_foyer(conn, campagne_id):
 def calculer_propositions(conn, campagne_id, periode):
     """Lignes de proposition pour les associations « Non reçu » de la campagne."""
     coef = kg_par_beneficiaire(periode)
+    nb_passages = passages_par_beneficiaire(periode)
     par_asso, defaut = _ratio_personnes_par_foyer(conn, campagne_id)
     lignes = conn.execute("""
-        SELECT s.association_id, s.tonnage_kg_net, a.nom_association, a.code_VIF
+        SELECT s.association_id, s.tonnage_kg_net, a.nom_association, a.code_VIF, a.nbre_beneficiaires_vif
         FROM indicateurs_suivi s
         JOIN associations a ON a.id = s.association_id
         WHERE s.campagne_id = ? AND s.present_csv = 1
@@ -180,7 +188,8 @@ def calculer_propositions(conn, campagne_id, periode):
     propositions = []
     for l in lignes:
         vif = l["tonnage_kg_net"]
-        p = {"nom": l["nom_association"], "code_vif": l["code_VIF"], "vif_kg": vif}
+        p = {"nom": l["nom_association"], "code_vif": l["code_VIF"], "vif_kg": vif,
+             "benef_vif": l["nbre_beneficiaires_vif"]}
         if vif:
             benef = round(vif / coef)
             ratio = par_asso.get(l["association_id"])
@@ -190,7 +199,7 @@ def calculer_propositions(conn, campagne_id, periode):
                 tonne_net=vif / 1000,
                 beneficiaires=benef,
                 foyers=max(1, round(benef / ratio)) if benef else 0,
-                passages=benef * PASSAGES_PAR_BENEFICIAIRE,
+                passages=benef * nb_passages,
                 ratio=ratio,
             )
         propositions.append(p)
@@ -239,39 +248,41 @@ def generer_pdf_propositions(campagne, propositions, ratio_defaut):
     elements += [entete, Spacer(1, 3 * mm)]
 
     elements.append(Paragraph(
-        f"Calcul à partir du tonnage VIF du trimestre (kg net) : "
+        f"Calcul à partir du tonnage VIF du trimestre (kg brut) : "
         f"<b>bénéficiaires</b> = tonnage ÷ {_fmt(kg_par_beneficiaire(campagne['periode']), 2)} "
         f"(référence FFBA {KG_PAR_BENEFICIAIRE_AN} kg par bénéficiaire et par an) ; "
-        f"<b>passages</b> = bénéficiaires × {PASSAGES_PAR_BENEFICIAIRE} ; "
+        f"<b>passages</b> = bénéficiaires × {passages_par_beneficiaire(campagne['periode'])} (environ 1 passage par semaine) ; "
         f"<b>foyers</b> = bénéficiaires ÷ nombre de personnes par foyer de l'association lors de sa dernière "
         f"déclaration AMS (à défaut, médiane des associations validées de la campagne : {_fmt(ratio_defaut, 2)}, "
         f"marquée *). Valeurs à saisir manuellement dans AMS avant la clôture.", petit))
     elements.append(Spacer(1, 3 * mm))
 
-    entetes = ["Association", "Code VIF", "Tonnage VIF\n(kg net)", "Volume à saisir\n(T net)",
-               "Bénéficiaires", "Pers./foyer", "Foyers", "Passages", "Saisi\nAMS"]
+    entetes = ["Association", "Code VIF", "Tonnage VIF\n(kg brut)", "Volume à saisir\n(T net)",
+               "Benef Vif", "Bénéficiaires", "Pers./foyer", "Foyers", "Passages", "Saisi\nAMS"]
     donnees = [entetes]
     for p in propositions:
         if p.get("vif_kg"):
             donnees.append([
                 Paragraph(escape(p["nom"] or ""), petit), p["code_vif"] or "",
-                _fmt(p["vif_kg"]), _fmt(p["tonne_net"], 3), _fmt(p["beneficiaires"]),
+                _fmt(p["vif_kg"]), _fmt(p["tonne_net"], 3),
+                _fmt(p["benef_vif"]) if p.get("benef_vif") else "—", _fmt(p["beneficiaires"]),
                 _fmt(p["ratio"], 2) + ("" if p["ratio_source"] == "asso" else " *"),
                 _fmt(p["foyers"]), _fmt(p["passages"]), "",
             ])
         else:
             donnees.append([Paragraph(escape(p["nom"] or ""), petit), p["code_vif"] or "",
                             "—", Paragraph("<i>Pas de tonnage VIF importé : pas de proposition</i>", petit),
-                            "", "", "", "", ""])
+                            _fmt(p["benef_vif"]) if p.get("benef_vif") else "—", "", "", "", "", ""])
 
     avec = [p for p in propositions if p.get("vif_kg")]
     if avec:
         donnees.append([Paragraph("<b>Total</b>", petit), "",
                         _fmt(sum(p["vif_kg"] for p in avec)), _fmt(sum(p["tonne_net"] for p in avec), 3),
+                        _fmt(sum(p.get("benef_vif") or 0 for p in avec)),
                         _fmt(sum(p["beneficiaires"] for p in avec)), "",
                         _fmt(sum(p["foyers"] for p in avec)), _fmt(sum(p["passages"] for p in avec)), ""])
 
-    largeurs = [78 * mm, 22 * mm, 26 * mm, 28 * mm, 24 * mm, 20 * mm, 20 * mm, 22 * mm, 20 * mm]
+    largeurs = [66 * mm, 22 * mm, 26 * mm, 28 * mm, 18 * mm, 24 * mm, 20 * mm, 20 * mm, 22 * mm, 20 * mm]
     t = Table(donnees, colWidths=largeurs, repeatRows=1)
     style = [
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
@@ -299,7 +310,7 @@ def generer_pdf_propositions(campagne, propositions, ratio_defaut):
 def lignes_incoherentes(conn, campagne_id, periode):
     """Associations dont la pastille est orange ou rouge, rouges d'abord."""
     lignes = conn.execute("""
-        SELECT s.*, a.nom_association, a.code_VIF
+        SELECT s.*, a.nom_association, a.code_VIF, a.nbre_beneficiaires_vif
         FROM indicateurs_suivi s
         JOIN associations a ON a.id = s.association_id
         WHERE s.campagne_id = ?
@@ -378,7 +389,7 @@ def generer_pdf_incoherences(campagne, lignes):
     def nombre(v, dec=0):
         return _fmt(v, dec) if v else "—"
 
-    donnees = [["", "Association", "Code VIF", "Statut", "VIF\n(kg net)", "AMS\n(T net)", "Foyers",
+    donnees = [["", "Association", "Code VIF", "Statut", "VIF\n(kg brut)", "Benef\nVif", "AMS\n(T net)", "Foyers",
                 "Personnes", "Passages", "Anomalies", "Motifs d'écart (Asso / BA)"]]
     for l in lignes:
         anomalies = "<br/>".join(
@@ -388,12 +399,13 @@ def generer_pdf_incoherences(campagne, lignes):
             "", Paragraph(escape(l["nom_association"] or ""), petit), l["code_VIF"] or "",
             Paragraph(escape(l.get("statut_csv") or ""), petit),
             _fmt(l["tonnage_kg_net"]) if l.get("tonnage_kg_net") is not None else "—",
+            nombre(l.get("nbre_beneficiaires_vif")),
             nombre((l.get("ams_volume_kg") or 0) / 1000, 2),
             nombre(l.get("ams_nb_foyers")), nombre(l.get("ams_nb_personnes")), nombre(l.get("ams_nb_passages")),
             Paragraph(anomalies, petit), Paragraph(motifs, petit),
         ])
 
-    largeurs = [5 * mm, 46 * mm, 18 * mm, 17 * mm, 17 * mm, 15 * mm, 14 * mm, 17 * mm, 16 * mm, 70 * mm, None]
+    largeurs = [5 * mm, 44 * mm, 18 * mm, 17 * mm, 17 * mm, 13 * mm, 15 * mm, 14 * mm, 17 * mm, 16 * mm, 64 * mm, None]
     largeurs[-1] = page[0] - 2 * marge - sum(largeurs[:-1])
     t = Table(donnees, colWidths=largeurs, repeatRows=1)
     style = [
@@ -402,7 +414,7 @@ def generer_pdf_incoherences(campagne, lignes):
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 8),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (4, 1), (8, -1), "RIGHT"),
+        ("ALIGN", (4, 1), (9, -1), "RIGHT"),
         ("ALIGN", (0, 0), (-1, 0), "CENTER"),
     ]
     for i, l in enumerate(lignes, start=1):

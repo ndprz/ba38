@@ -187,6 +187,14 @@ function recalculerTotal(row) {
 // chaque valeur saisie est envoyée dès la sortie de la case.
 const messageDiv = document.getElementById("message-enregistrement");
 
+// Cases réellement modifiées par CET utilisateur dans CETTE session —
+// seules celles-là seront renvoyées par le bouton « Enregistrer » global
+// (voir plus bas) : renvoyer tout table.getData() enverrait aussi les
+// valeurs chargées au départ pour les cases jamais touchées ici, et
+// écraserait silencieusement une saisie plus récente d'un collègue sur
+// ces cases-là (audit 2026-10-23, #18).
+const cellulesModifieesParMoi = new Set();
+
 function afficherMessage(texte, classe) {
     messageDiv.textContent = texte;
     messageDiv.className = "alert alert-" + classe + " mb-2";
@@ -225,6 +233,7 @@ function sauvegarderCellule(cell) {
     const data = row.getData();
     recalculerTotal(row);
     row.getElement().classList.remove("ligne-erreur");
+    cellulesModifieesParMoi.add(data.code_vif + "|" + dj);
 
     fetch(urlEnregistrer, {
         method: "POST",
@@ -385,17 +394,30 @@ if (selectDemiJournee && selectCamion) {
 }
 
 // ── Bouton « Enregistrer » en haut : filet de sécurité en plus de
-// l'autosave par cellule — renvoie toutes les cases applicables en une
-// seule requête groupée (l'endpoint accepte un tableau de lignes).
+// l'autosave par cellule (utile si une case a échoué au réseau par ex.) —
+// ne renvoie QUE les cases que CET utilisateur a réellement modifiées
+// cette session (cellulesModifieesParMoi), jamais table.getData() en
+// entier : sinon une case jamais touchée ici mais mise à jour entre-temps
+// par un collègue serait écrasée par sa valeur chargée au départ.
 document.getElementById("btn-enregistrer-tout").addEventListener("click", function () {
+    const donneesParCodeVif = {};
+    table.getData().forEach(function (data) { donneesParCodeVif[data.code_vif] = data; });
+
     const lignesAEnvoyer = [];
-    table.getData().forEach(function (data) {
-        demiJournees.forEach(function (dj) {
-            if (data["_appl_" + dj]) {
-                lignesAEnvoyer.push({ code_vif: data.code_vif, demi_journee: dj, nb_cagettes: data[dj] });
-            }
-        });
+    cellulesModifieesParMoi.forEach(function (cle) {
+        const sep = cle.lastIndexOf("|");
+        const codeVif = cle.slice(0, sep);
+        const dj = cle.slice(sep + 1);
+        const data = donneesParCodeVif[codeVif];
+        if (data && data["_appl_" + dj]) {
+            lignesAEnvoyer.push({ code_vif: codeVif, demi_journee: dj, nb_cagettes: data[dj] });
+        }
     });
+
+    if (!lignesAEnvoyer.length) {
+        afficherMessage("ℹ️ Aucune case modifiée par vous à renvoyer — l'autosave a déjà tout enregistré.", "info");
+        return;
+    }
     afficherMessage("💾 Enregistrement de " + lignesAEnvoyer.length + " case(s) en cours…", "info");
     fetch(urlEnregistrer, {
         method: "POST",

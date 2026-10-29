@@ -1,11 +1,15 @@
 {% extends "base.html" %}
+{% from "production_cuisine/_aide.html" import aide_cuisine %}
 
 {% block title %}Consigne {{ association.nom_association }}{% endblock %}
 
 {% block content %}
 <div class="container mt-4" style="max-width: 720px;">
 
-  <h2 class="mb-1">🚚 Consigne de livraison</h2>
+  <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-2">
+    <h2 class="mb-0">🚚 Consigne de livraison</h2>
+    {{ aide_cuisine("Livraisons", "Consignes clients") }}
+  </div>
   <p class="lead mb-1">{{ association.nom_association }}</p>
   {% if association.jour_de_passage_a_la_BAI %}
     <p class="text-muted small">Jour de passage indiqué dans la fiche association : {{ association.jour_de_passage_a_la_BAI }}</p>

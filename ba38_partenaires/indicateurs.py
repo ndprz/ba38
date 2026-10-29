@@ -59,7 +59,7 @@ def normalize_code(code):
 
 
 # =========================================
-# 📦 Import tonnage VIF (Kg Net par association)
+# 📦 Import tonnage VIF (Kg Brut par association)
 # =========================================
 def parser_tonnage_vif(contenu):
     """
@@ -70,10 +70,14 @@ def parser_tonnage_vif(contenu):
     au format exact de associations.code_VIF (zéros de tête inclus) — pas de
     lstrip("0"). Si plusieurs sections "Etat du BL" contiennent le même
     code (ex. "A facturer" + "Facturé"), les montants sont additionnés.
-    Retourne {code_vif_normalisé: kg_net (float)}.
+    On retient le Kg BRUT (choix BA, 2026-10-29) : colonne repérée par son
+    titre dans l'en-tête, 4e colonne à défaut. Stocké dans tonnage_kg_net
+    (nom de colonne historique, conservé pour éviter une migration).
+    Retourne {code_vif_normalisé: kg_brut (float)}.
     """
     tonnages = {}
     dans_section = False
+    idx_kg = 3
 
     for ligne in contenu.splitlines():
         cols = ligne.split("\t")
@@ -81,6 +85,8 @@ def parser_tonnage_vif(contenu):
 
         if premiere_col == "Client":
             dans_section = True
+            titres = [c.strip().lower() for c in cols]
+            idx_kg = titres.index("kg brut") if "kg brut" in titres else 3
             continue
 
         if not dans_section:
@@ -90,18 +96,18 @@ def parser_tonnage_vif(contenu):
             dans_section = False
             continue
 
-        if len(cols) < 3:
+        if len(cols) <= idx_kg:
             continue
 
         code_vif = normalize_code(premiere_col)
-        kg_net_str = cols[2].strip().replace(" ", "").replace(",", ".")
+        kg_str = cols[idx_kg].strip().replace(" ", "").replace(",", ".")
 
         try:
-            kg_net = float(kg_net_str)
+            kg = float(kg_str)
         except ValueError:
             continue
 
-        tonnages[code_vif] = tonnages.get(code_vif, 0) + kg_net
+        tonnages[code_vif] = tonnages.get(code_vif, 0) + kg
 
     return tonnages
 
@@ -516,10 +522,11 @@ def resultats(campagne_id):
     lignes = cur.execute("""
         SELECT
             a.nom_association,
-            a.code_VIF,
+            a.code_VIF AS code_vif,
             a.courriel_resp_IE1,
             a.courriel_resp_IE2,
             a.courriel_association,
+            a.nbre_beneficiaires_vif,
             s.id AS suivi_id,
             s.statut_csv,
             s.present_csv,
@@ -631,7 +638,7 @@ def incoherences_pdf(campagne_id):
 @require_access("indicateurs", "ecriture")
 def importer_tonnage(campagne_id):
     """
-    Importe un export VIF de tonnages (Kg Net par association) pour cette
+    Importe un export VIF de tonnages (Kg Brut par association) pour cette
     campagne — colonne "Tonnage Trimestre" du tableau Résultats. N'écrase
     que tonnage_kg_net, préserve tout le reste (statut, historique d'envoi).
     """
@@ -750,16 +757,17 @@ def get_mois_trimestre(trimestre):
 @require_access("indicateurs", "ecriture")
 def modifier_date_limite(campagne_id):
     date_limite = request.form.get("date_limite", "").strip()
+    date_limite_ams = request.form.get("date_limite_ams", "").strip()
 
     with get_db_connection() as conn:
         conn.execute("""
             UPDATE indicateurs_campagnes
-            SET date_limite = ?
+            SET date_limite = ?, date_limite_ams = ?
             WHERE id = ?
-        """, (date_limite, campagne_id))
+        """, (date_limite, date_limite_ams or None, campagne_id))
         conn.commit()
 
-    flash(f"📅 Date limite mise à jour : {date_limite or '—'}", "success")
+    flash(f"📅 Dates limites mises à jour : retour assos {date_limite or '—'}, saisie AMS {date_limite_ams or '—'}", "success")
     return redirect(url_for("indicateurs.resultats", campagne_id=campagne_id))
 
 

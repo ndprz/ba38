@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "production_cuisine/_aide.html" import aide_cuisine %}
 
 {% block title %}{{ "Bon de préparation" if bon.statut == 'preparation' else "Bon de livraison" }} {{ bon.numero }}{% endblock %}
 
@@ -13,6 +14,7 @@
       </span>
     </h2>
     <div class="d-flex gap-2 flex-wrap">
+      {{ aide_cuisine("Livraisons", "Bons de préparation et de livraison") }}
       <a href="{{ url_for('production_cuisine.pdf_bon_livraison', bon_id=bon.id) }}" target="_blank" class="btn btn-primary">
         📄 {{ "PDF préparation" if preparation else "PDF" }}
       </a>

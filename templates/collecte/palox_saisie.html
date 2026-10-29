@@ -53,6 +53,8 @@
 
     <div id="message-palox" class="alert d-none mb-3" role="alert"></div>
 
+    {% include "collecte/_palox_offline.html" %}
+
     <form id="formPesee" class="card p-4 mb-4">
         <div class="d-flex align-items-end gap-3 mb-3">
             <div>
@@ -104,6 +106,44 @@ const urlReinitialiser = "{{ url_for('collecte.palox_reinitialiser', annee=annee
 const urlAccueil = "{{ url_for('collecte.palox_synthese', annee=annee) }}";
 
 const gabaritLignes = {{ gabarit_lignes|tojson }};
+
+// Échappe pour insertion sûre dans de l'innerHTML — le gabarit (texte de
+// chaque ligne) et les catégories sont modifiables par un compte "collecte
+// écriture" ; sans échappement, un caractère '<' saisi par erreur ou avec
+// intention casserait/compromettrait l'affichage pour TOUS les postes de
+// pesée qui impriment ensuite une étiquette (audit 2026-10-28).
+function echapperHtmlEtiquette(valeur) {
+    const div = document.createElement("div");
+    div.textContent = String(valeur);
+    return div.innerHTML;
+}
+
+// Repère >>cle<< ou >>cle:taille<< (taille de police en pt, pour un mot mis
+// en valeur au sein d'une ligne) — même syntaxe et même moteur que
+// palox_synthese.html (remplacerTokensGabarit) : la version précédente de
+// cette fonction ne gérait que >>cle<< sans suffixe, donc imprimait
+// littéralement ">>poids:150<<" au lieu du poids, puisque le gabarit par
+// défaut (LIGNES_ETIQUETTE_PALOX_DEFAUT côté serveur) utilise justement
+// cette syntaxe sur la ligne "Poids" (signalé 2026-10-28). Échappe le texte
+// statique du gabarit ET les valeurs substituées (seul le <span> de taille,
+// qu'on génère nous-mêmes avec un nombre, reste du vrai HTML).
+function remplacerTokensGabarit(texte, valeurs) {
+    const regex = />>(\w+)(?::(\d+))?<</g;
+    let resultat = "";
+    let dernierIndex = 0;
+    let correspondance;
+    while ((correspondance = regex.exec(texte)) !== null) {
+        resultat += echapperHtmlEtiquette(texte.slice(dernierIndex, correspondance.index));
+        const nom = correspondance[1], taille = correspondance[2];
+        const brut = valeurs[nom] !== undefined ? valeurs[nom] : correspondance[0];
+        const valeurEchappee = echapperHtmlEtiquette(brut);
+        resultat += taille ? "<span style=\"font-size:" + taille + "pt;\">" + valeurEchappee + "</span>" : valeurEchappee;
+        dernierIndex = regex.lastIndex;
+    }
+    resultat += echapperHtmlEtiquette(texte.slice(dernierIndex));
+    return resultat;
+}
+
 function remplirEtiquette(numero, poids, dateHeure) {
     const valeurs = {
         annee: {{ annee|tojson }},
@@ -115,9 +155,9 @@ function remplirEtiquette(numero, poids, dateHeure) {
         date: dateHeure.split(" ")[0],
     };
     const html = gabaritLignes.map(function (ligne) {
-        let texte = ligne.texte;
-        for (const cle in valeurs) { texte = texte.split(">>" + cle + "<<").join(valeurs[cle]); }
-        const style = "font-size:" + ligne.taille + "pt;" + (ligne.gras ? " font-weight:bold;" : "");
+        const texte = remplacerTokensGabarit(ligne.texte, valeurs);
+        const taillePolice = Number(ligne.taille) || 12;
+        const style = "font-size:" + taillePolice + "pt;" + (ligne.gras ? " font-weight:bold;" : "");
         return "<div style=\"" + style + "\">" + texte + "</div>";
     }).join("\n");
     document.getElementById("etiquette-contenu").innerHTML = html;
@@ -126,6 +166,7 @@ function remplirEtiquette(numero, poids, dateHeure) {
 
 const champPoids = document.getElementById("champ-poids");
 const champNumero = document.getElementById("champ-numero");
+if (window.paloxOfflineVerifierCompteur) window.paloxOfflineVerifierCompteur({{ categorie.id }}, champNumero);
 const messageDiv = document.getElementById("message-palox");
 function afficherMessage(texte, classe) {
     messageDiv.textContent = texte;
@@ -159,6 +200,18 @@ document.getElementById("formPesee").addEventListener("submit", function (evt) {
             return;
         }
         remplirEtiquette(data.numero_palox, data.poids_kg, data.date_heure);
+        if (window.paloxOfflineMajCompteur) window.paloxOfflineMajCompteur({{ categorie.id }}, data.prochain_numero);
+        if (window.paloxLogLocal) window.paloxLogLocal({
+            annee: {{ annee|tojson }},
+            categorie_id: {{ categorie.id }},
+            categorie: {{ (categorie.libelle_vif or categorie.libelle)|tojson }},
+            code_vif: {{ (categorie.code_vif or "")|tojson }},
+            numero_palox: data.numero_palox,
+            poids_kg: data.poids_kg,
+            date_heure: data.date_heure,
+            hors_ligne: data.hors_ligne === true,
+            page: 'saisie',
+        });
 
         // Retour automatique sur la liste des catégories une fois
         // l'impression déclenchée (imprime immédiatement sur l'imprimante
@@ -195,7 +248,12 @@ function attacherActions(tr) {
             }
             tr.querySelector(".cellule-poids-corrige").textContent = valeur;
             tr.classList.add("ligne-corrigee");
-            afficherMessage("✅ Palox n° " + numero + " corrigé.", "success");
+            afficherMessage("✅ Palox n° " + numero + " corrigé — réimpression de l'étiquette…", "success");
+
+            // Réimprime l'étiquette avec le poids corrigé — sinon l'étiquette
+            // déjà collée sur le palox reste fausse (signalé 2026-10-28).
+            remplirEtiquette(data.numero_palox, data.poids_kg, data.date_heure);
+            window.print();
         })
         .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
     });
