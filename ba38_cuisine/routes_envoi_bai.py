@@ -102,7 +102,20 @@ def _totaux_par_code_vif(receptions):
     for r in receptions:
         nb, poids = totaux.get(r["code_vif"] or "", (0, 0.0))
         totaux[r["code_vif"] or ""] = (nb + 1, poids + (r["poids_kg"] or 0))
-    return dict(sorted(totaux.items(), key=lambda t: (t[0] == "", t[0])))
+    return dict(sorted(totaux.items(), key=lambda t: _cle_code_vif(t[0])))
+
+
+def _cle_code_vif(code):
+    """Tri : codes VIF croissants, « sans code » en dernier."""
+    return (not code, code or "")
+
+
+def _par_code_vif(receptions_fournisseur):
+    """{code VIF ou "": [réceptions]} pour un fournisseur, codes triés."""
+    groupes = {}
+    for r in receptions_fournisseur:
+        groupes.setdefault(r["code_vif"] or "", []).append(r)
+    return dict(sorted(groupes.items(), key=lambda t: _cle_code_vif(t[0])))
 
 
 def _kg(valeur):
@@ -111,12 +124,12 @@ def _kg(valeur):
 
 def generer_pdf_envoi_bai(receptions, envoye_le=None):
     """Bordereau A4 portrait : une ligne par produit réceptionné, groupé par
-    fournisseur avec sous-total de poids."""
+    fournisseur puis par code VIF (sous-total par code, total fournisseur)."""
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib.units import mm
-    from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     from xml.sax.saxutils import escape
 
     org = get_organisation()
@@ -163,25 +176,35 @@ def generer_pdf_envoi_bai(receptions, envoye_le=None):
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (7, 1), (8, -1), "RIGHT"),
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#f7f7f7")),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#e6e6e6")),
     ]
     largeurs = [17 * mm, 11 * mm, 17 * mm, None, 23 * mm, 17 * mm, 17 * mm, 16 * mm, 12 * mm]
     totaux = _totaux_par_fournisseur(receptions)
     for fournisseur, (nb, poids_total) in totaux.items():
         lignes = [["Date", "Heure", "Code VIF", "Produit", "N° lot", "DLC", "DDM", "Poids (kg)", "T°"]]
-        for r in (x for x in receptions if x["fournisseur_nom"] == fournisseur):
-            produit = r["ingredient_produit"] or r["libelle_produit"] or "-"
-            if r["ingredient_groupe"]:
-                produit = f"{r['ingredient_groupe']} - {produit}"
-            lignes.append([
-                _date_fr(r["date_reception"]), (r["heure_arrivee"] or "")[:5], r["code_vif"] or "",
-                Paragraph(escape(produit), petit), Paragraph(escape(r["numero_lot"] or ""), petit),
-                _date_fr(r["dlc_ddm"]), _date_fr(r["ddm"]), _kg(r["poids_kg"]),
-                "" if r["temperature_mesuree"] is None else f"{r['temperature_mesuree']:g} °C",
-            ])
+        styles_sous_totaux = []
+        for code, lignes_code in _par_code_vif([x for x in receptions if x["fournisseur_nom"] == fournisseur]).items():
+            for r in lignes_code:
+                produit = r["ingredient_produit"] or r["libelle_produit"] or "-"
+                if r["ingredient_groupe"]:
+                    produit = f"{r['ingredient_groupe']} - {produit}"
+                lignes.append([
+                    _date_fr(r["date_reception"]), (r["heure_arrivee"] or "")[:5], r["code_vif"] or "",
+                    Paragraph(escape(produit), petit), Paragraph(escape(r["numero_lot"] or ""), petit),
+                    _date_fr(r["dlc_ddm"]), _date_fr(r["ddm"]), _kg(r["poids_kg"]),
+                    "" if r["temperature_mesuree"] is None else f"{r['temperature_mesuree']:g} °C",
+                ])
+            # Sous-total du code VIF dans ce fournisseur
+            n = len(lignes)
+            lignes.append(["", "", code or "Sans code", f"Sous-total code VIF {code or '(sans code)'}", "", "", "",
+                           _kg(sum(r["poids_kg"] or 0 for r in lignes_code)), ""])
+            styles_sous_totaux += [
+                ("FONTNAME", (0, n), (-1, n), "Helvetica-BoldOblique"),
+                ("BACKGROUND", (0, n), (-1, n), colors.HexColor("#f7f7f7")),
+            ]
         lignes.append(["", "", "", f"Total {fournisseur}", "", "", "", _kg(poids_total), ""])
         t = Table(lignes, colWidths=largeurs, repeatRows=1)
-        t.setStyle(TableStyle(style_tableau))
+        t.setStyle(TableStyle(style_tableau + styles_sous_totaux))
         elements += [Paragraph(f"{escape(fournisseur)} ({nb} réception{'s' if nb > 1 else ''})", titre_section),
                      Spacer(1, 1.5 * mm), t, Spacer(1, 5 * mm)]
 
@@ -197,7 +220,7 @@ def generer_pdf_envoi_bai(receptions, envoye_le=None):
         ("FONTSIZE", (0, 0), (-1, -1), 8.5),
         ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
     ]))
-    elements += [Paragraph("Récapitulatif par fournisseur", titre_section), Spacer(1, 1.5 * mm), t, Spacer(1, 5 * mm)]
+    elements += [KeepTogether([Paragraph("Récapitulatif par fournisseur", titre_section), Spacer(1, 1.5 * mm), t]), Spacer(1, 5 * mm)]
 
     par_code = [["Code VIF", "Réceptions", "Poids (kg)"]]
     par_code += [[c or "Sans code VIF", str(nb), _kg(p)] for c, (nb, p) in _totaux_par_code_vif(receptions).items()]
@@ -209,7 +232,7 @@ def generer_pdf_envoi_bai(receptions, envoye_le=None):
         ("FONTSIZE", (0, 0), (-1, -1), 8.5),
         ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
     ]))
-    elements += [Paragraph("Récapitulatif par code VIF", titre_section), Spacer(1, 1.5 * mm), t]
+    elements.append(KeepTogether([Paragraph("Récapitulatif par code VIF", titre_section), Spacer(1, 1.5 * mm), t]))
 
     doc.build(elements, onFirstPage=pied, onLaterPages=pied)
     buffer.seek(0)
@@ -306,7 +329,14 @@ def envoyer_receptions_bai():
         texte = (
             "Bonjour,\n\n"
             f"Veuillez trouver ci-joint les réceptions livrées directement à la cuisine {periode} :\n\n"
-            + "\n".join(f"- {f} : {nb} réception{'s' if nb > 1 else ''}, {_kg(p)} kg" for f, (nb, p) in totaux.items())
+            + "\n\n".join(
+                f"- {f} : {nb} réception{'s' if nb > 1 else ''}, {_kg(p)} kg\n"
+                + "\n".join(
+                    f"    · code VIF {c or '(sans code)'} : {_kg(sum(r['poids_kg'] or 0 for r in lc))} kg"
+                    for c, lc in _par_code_vif([r for r in receptions if r["fournisseur_nom"] == f]).items()
+                )
+                for f, (nb, p) in totaux.items()
+            )
             + "\n\nPar code VIF :\n"
             + "\n".join(f"- {c or 'sans code VIF'} : {_kg(p)} kg" for c, (nb, p) in _totaux_par_code_vif(receptions).items())
             + f"\n\nTotal : {len(receptions)} réceptions, {_kg(sum(p for _, p in totaux.values()))} kg.\n\n"
