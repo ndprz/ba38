@@ -14,6 +14,10 @@
       <a href="{{ url_for('production_cuisine.etat_journalier_receptions', date=date_filtre) }}" class="btn btn-outline-secondary">
         📊 État journalier
       </a>
+      <a href="{{ url_for('production_cuisine.envoi_receptions_bai', date=date_filtre) }}" class="btn btn-outline-primary">
+        📤 Envoi réceptions à la BAI
+        {% if nb_envoi_bai %}<span class="badge bg-danger text-white">{{ nb_envoi_bai }} à envoyer</span>{% endif %}
+      </a>
       <a href="{{ url_for('production_cuisine.creer_reception') }}" class="btn btn-primary btn-lg">
         ➕ Nouvelle réception
       </a>

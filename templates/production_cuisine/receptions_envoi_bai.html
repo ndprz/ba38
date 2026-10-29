@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Envoi réceptions à la BAI{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <h2 class="mb-3">📤 Envoi réceptions à la BAI</h2>
+
+  {% call action_buttons() %}
+    {{ action_button("📥 Réceptions", href=url_for('production_cuisine.liste_receptions', date=jour), color="outline-secondary") }}
+    {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
+  {% endcall %}
+
+  <form method="GET" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+      <label class="form-label">Réceptions du</label>
+      <input type="date" name="date" value="{{ jour }}" class="form-control" onchange="this.form.submit()">
+    </div>
+  </form>
+
+  <p class="text-muted mb-2">
+    Réceptions de ce jour des fournisseurs livrant directement la cuisine
+    ({{ fournisseurs | join(', ') if fournisseurs else 'aucun' }} — case « Livraison Directe Cuisine » de la fiche fournisseur),
+    pas encore envoyées. Chaque réception n'est envoyée qu'une fois.
+  </p>
+  <p class="mb-3">
+    📧 Destinataire{{ 's' if destinataires | length > 1 }} :
+    {% if destinataires %}<strong>{{ destinataires | join(', ') }}</strong>
+    {% else %}<span class="text-danger fw-bold">aucun — à renseigner dans
+      <a href="{{ url_for('production_cuisine.parametres') }}">⚙️ Paramètres cuisine</a></span>{% endif %}
+  </p>
+
+  {% if not receptions %}
+    <div class="alert alert-success">✅ Aucune réception de ce jour en attente d'envoi.</div>
+  {% else %}
+  {% set sans_code = receptions | rejectattr("code_vif") | list %}
+  {% if sans_code %}
+  <div class="alert alert-warning">
+    ⚠️ {{ sans_code | length }} réception{{ 's' if sans_code | length > 1 }} sans code VIF (produit hors référentiel ou code non renseigné).
+    Complétez le code dans <a href="{{ url_for('production_cuisine.liste_ingredients_carnes') }}">🥩 Ingrédients carnés</a>
+    avant l'envoi, ou envoyez quand même (« Sans code VIF » sur le bordereau).
+  </div>
+  {% endif %}
+  <form method="POST" action="{{ url_for('production_cuisine.envoyer_receptions_bai') }}" id="form-envoi-bai">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="date" value="{{ jour }}">
+
+    <div class="d-flex flex-wrap gap-3 align-items-center mb-2">
+      <label class="d-flex align-items-center gap-2 mb-0 fw-bold">
+        <input type="checkbox" class="form-check-input mt-0" id="tout-cocher" checked> Tout cocher
+      </label>
+      <span id="resume-selection" class="text-muted"></span>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle">
+        <thead>
+          <tr><th></th><th>Date</th><th>Fournisseur</th><th>Code VIF</th><th>Produit</th><th>N° lot</th><th>DLC</th><th>DDM</th>
+              <th class="text-end">Poids (kg)</th><th class="text-end">T°</th></tr>
+        </thead>
+        <tbody>
+          {% for r in receptions %}
+          <tr>
+            <td><input type="checkbox" class="form-check-input case-reception" name="reception_id" value="{{ r.id }}"
+                       data-poids="{{ r.poids_kg or 0 }}" checked></td>
+            <td class="text-nowrap">{{ r.date_reception | format_date_fr }}{% if r.heure_arrivee %} {{ r.heure_arrivee[:5] }}{% endif %}</td>
+            <td>{{ r.fournisseur_nom }}</td>
+            <td>{% if r.code_vif %}{{ r.code_vif }}{% else %}<span class="badge bg-warning text-dark" title="Code VIF à renseigner dans le référentiel ingrédients carnés">à renseigner</span>{% endif %}</td>
+            <td>
+              <a href="{{ url_for('production_cuisine.detail_reception', reception_id=r.id) }}">
+                {{ r.ingredient_produit or r.libelle_produit or "—" }}</a>
+              {% if r.ingredient_groupe %}<span class="text-muted small">({{ r.ingredient_groupe }})</span>{% endif %}
+            </td>
+            <td>{{ r.numero_lot or "" }}</td>
+            <td class="text-nowrap">{{ r.dlc_ddm | format_date_fr if r.dlc_ddm else "" }}</td>
+            <td class="text-nowrap">{{ r.ddm | format_date_fr if r.ddm else "" }}</td>
+            <td class="text-end">{{ kg(r.poids_kg) }}</td>
+            <td class="text-end text-nowrap">{% if r.temperature_mesuree is not none %}{{ "%g" | format(r.temperature_mesuree) }} °C{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% call action_buttons() %}
+      <button type="button" class="btn btn-outline-secondary" id="btn-apercu">📄 Aperçu PDF</button>
+      <button type="submit" class="btn btn-success btn-lg" id="btn-envoyer"
+              {% if not destinataires %}disabled{% endif %}
+              onclick="return confirm('Envoyer les réceptions cochées à {{ destinataires | join(', ') }} ?');">
+        📧 Envoyer à la BAI</button>
+    {% endcall %}
+  </form>
+  {% endif %}
+
+  {% if historique %}
+  <h5 class="mt-4">📜 Derniers envois</h5>
+  <div class="table-responsive">
+    <table class="table table-sm">
+      <thead><tr><th>Envoyé le</th><th>Par</th><th>Réceptions du</th><th class="text-end">Nb</th><th class="text-end">Poids (kg)</th><th></th></tr></thead>
+      <tbody>
+        {% for h in historique %}
+        <tr>
+          <td class="text-nowrap">{{ h.envoi_bai_le[8:10] }}/{{ h.envoi_bai_le[5:7] }}/{{ h.envoi_bai_le[0:4] }} {{ h.envoi_bai_le[11:16] }}</td>
+          <td>{{ h.envoi_bai_par or "" }}</td>
+          <td class="text-nowrap">{{ h.du | format_date_fr }}{% if h.au != h.du %} → {{ h.au | format_date_fr }}{% endif %}</td>
+          <td class="text-end">{{ h.nb }}</td>
+          <td class="text-end">{{ kg(h.poids) }}</td>
+          <td><a href="{{ url_for('production_cuisine.pdf_envoi_bai', envoi_le=h.envoi_bai_le) }}" target="_blank" rel="noopener">📄 PDF</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+</div>
+
+{% if receptions %}
+<script>
+  (function () {
+    var cases = Array.prototype.slice.call(document.querySelectorAll(".case-reception"));
+    var tout = document.getElementById("tout-cocher");
+    var resume = document.getElementById("resume-selection");
+    function maj() {
+      var cochees = cases.filter(function (c) { return c.checked; });
+      var poids = cochees.reduce(function (s, c) { return s + parseFloat(c.dataset.poids || 0); }, 0);
+      resume.textContent = cochees.length + " réception(s) cochée(s) — " +
+        poids.toLocaleString("fr-FR", { maximumFractionDigits: 3 }) + " kg";
+      tout.checked = cochees.length === cases.length;
+      document.getElementById("btn-apercu").disabled = !cochees.length;
+      document.getElementById("btn-envoyer").disabled = !cochees.length || {{ 'false' if destinataires else 'true' }};
+    }
+    tout.addEventListener("change", function () { cases.forEach(function (c) { c.checked = tout.checked; }); maj(); });
+    cases.forEach(function (c) { c.addEventListener("change", maj); });
+    document.getElementById("btn-apercu").addEventListener("click", function () {
+      var params = cases.filter(function (c) { return c.checked; }).map(function (c) { return "reception_id=" + c.value; });
+      params.push("date={{ jour }}");
+      window.open("{{ url_for('production_cuisine.apercu_envoi_bai_pdf') }}?" + params.join("&"), "_blank");
+    });
+    maj();
+  })();
+</script>
+{% endif %}
+{% endblock %}

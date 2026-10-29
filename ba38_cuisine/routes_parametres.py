@@ -27,6 +27,7 @@ PARAM_NAMES = {
     "cuisine_sous_famille_2": "Sous-famille 2",
     "cuisine_type_cuisson": "Type / mode de cuisson",
     PARAM_SAUTEUSES: "🍳 Sauteuses (n° demandé en cuisson de nuit / sauteuse)",
+    "cuisine_mail_envoi_bai": "📧 Destinataires « Envoi réceptions à la BAI » (une adresse par ligne)",
 }
 
 

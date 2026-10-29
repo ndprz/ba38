@@ -6,8 +6,9 @@
 # ============================================================
 
 import sqlite3
+from io import BytesIO
 
-from flask import render_template, request, redirect, url_for, flash
+from flask import render_template, request, redirect, url_for, flash, send_file
 from flask_login import login_required
 
 from ba38_utilitaires.core import require_access, write_log, upload_database
@@ -22,7 +23,7 @@ def liste_ingredients_carnes():
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
         ingredients = conn.execute(
-            """SELECT id, groupe, produit FROM cuisine_ingredients_carnes
+            """SELECT id, groupe, produit, code_vif FROM cuisine_ingredients_carnes
                WHERE actif = 1 ORDER BY groupe COLLATE NOCASE, produit COLLATE NOCASE"""
         ).fetchall()
         groupes_existants = sorted({r["groupe"] for r in ingredients}, key=str.lower)
@@ -33,6 +34,44 @@ def liste_ingredients_carnes():
         nb_ingredients=len(ingredients_json),
         ingredients_json=ingredients_json,
         groupes_existants=groupes_existants,
+    )
+
+
+@production_cuisine_bp.route("/ingredients-carnes/export")
+@login_required
+@require_access("production_cuisine", "lecture")
+def export_ingredients_carnes():
+    """Export Excel du référentiel (ingrédients actifs : groupe, produit, code VIF)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    with _connect() as conn:
+        ingredients = conn.execute(
+            """SELECT groupe, produit, code_vif FROM cuisine_ingredients_carnes
+               WHERE actif = 1 ORDER BY groupe COLLATE NOCASE, produit COLLATE NOCASE"""
+        ).fetchall()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Ingrédients carnés"
+    ws.append(["Groupe", "Produit", "Code VIF"])
+    for cellule in ws[1]:
+        cellule.font = Font(bold=True)
+        cellule.fill = PatternFill("solid", fgColor="EEEEEE")
+    for groupe, produit, code_vif in ingredients:
+        ws.append([groupe, produit, code_vif or ""])
+    for i, largeur in enumerate((22, 40, 14), start=1):
+        ws.column_dimensions[get_column_letter(i)].width = largeur
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return send_file(
+        output, as_attachment=True, download_name="referentiel_ingredients_carnes.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 
@@ -51,6 +90,8 @@ def creer_ingredient_carne():
     if request.method == "POST":
         groupe = (request.form.get("groupe") or "").strip()
         produit = (request.form.get("produit") or "").strip()
+        # Code article VIF de la BAI (bordereau « Envoi réceptions à la BAI »)
+        code_vif = (request.form.get("code_vif") or "").strip() or None
 
         if not groupe or not produit:
             flash("⚠️ Le groupe et le produit sont obligatoires.", "warning")
@@ -84,8 +125,8 @@ def creer_ingredient_carne():
                         ingredient=None, form=request.form, groupes_existants=groupes_existants,
                     )
                 conn.execute(
-                    "INSERT INTO cuisine_ingredients_carnes (groupe, produit) VALUES (?, ?)",
-                    (groupe, produit),
+                    "INSERT INTO cuisine_ingredients_carnes (groupe, produit, code_vif) VALUES (?, ?, ?)",
+                    (groupe, produit, code_vif),
                 )
                 conn.commit()
             upload_database()
@@ -124,6 +165,8 @@ def modifier_ingredient_carne(ingredient_id):
     if request.method == "POST":
         groupe = (request.form.get("groupe") or "").strip()
         produit = (request.form.get("produit") or "").strip()
+        # Code article VIF de la BAI (bordereau « Envoi réceptions à la BAI »)
+        code_vif = (request.form.get("code_vif") or "").strip() or None
 
         if not groupe or not produit:
             flash("⚠️ Le groupe et le produit sont obligatoires.", "warning")
@@ -153,8 +196,8 @@ def modifier_ingredient_carne(ingredient_id):
                         ingredient=ingredient, form=request.form, groupes_existants=groupes_existants,
                     )
                 conn.execute(
-                    "UPDATE cuisine_ingredients_carnes SET groupe = ?, produit = ? WHERE id = ?",
-                    (groupe, produit, ingredient_id),
+                    "UPDATE cuisine_ingredients_carnes SET groupe = ?, produit = ?, code_vif = ? WHERE id = ?",
+                    (groupe, produit, code_vif, ingredient_id),
                 )
                 conn.commit()
             upload_database()

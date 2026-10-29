@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros/buttons.html" import action_button, action_buttons %}
 
 {% block title %}Référentiel ingrédients carnés{% endblock %}
 
@@ -9,15 +10,13 @@
 {% block content %}
 <div class="container mt-4">
 
-  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h2 class="mb-0">🥩 Référentiel des ingrédients carnés</h2>
-    <div class="d-flex gap-2">
-      <a href="{{ url_for('production_cuisine.liste_productions') }}" class="btn btn-outline-secondary">← Retour</a>
-      <a href="{{ url_for('production_cuisine.creer_ingredient_carne') }}" class="btn btn-primary">
-        ➕ Nouvel ingrédient
-      </a>
-    </div>
-  </div>
+  <h2 class="mb-3">🥩 Référentiel des ingrédients carnés</h2>
+
+  {% call action_buttons() %}
+    {{ action_button("📊 Export Excel", href=url_for('production_cuisine.export_ingredients_carnes'), color="outline-success") }}
+    {{ action_button("➕ Nouvel ingrédient", href=url_for('production_cuisine.creer_ingredient_carne'), color="success") }}
+    {{ action_button("← Retour", href=url_for('production_cuisine.liste_productions'), color="outline-dark") }}
+  {% endcall %}
 
   <p class="text-muted">
     {{ nb_ingredients }} ingrédient(s) — utilisés dans le sélecteur "Produit réceptionné" de l'écran de réception
@@ -41,6 +40,8 @@
     columns: [
       { title: "Groupe", field: "groupe", widthGrow: 1, headerFilter: "input" },
       { title: "Produit", field: "produit", widthGrow: 2, headerFilter: "input" },
+      { title: "Code VIF", field: "code_vif", width: 120, headerFilter: "input",
+        formatter: function (cell) { return cell.getValue() || '<span class="text-danger">à renseigner</span>'; } },
       {
         title: "", field: "id", headerSort: false, width: 110,
         formatter: function (cell) {

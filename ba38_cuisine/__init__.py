@@ -21,6 +21,7 @@ production_cuisine_bp = Blueprint("production_cuisine", __name__)
 cuisine_hygiene_bp = Blueprint("cuisine_hygiene", __name__)
 
 from ba38_cuisine import routes_receptions
+from ba38_cuisine import routes_envoi_bai
 from ba38_cuisine import routes_recettes
 from ba38_cuisine import routes_recap_production
 from ba38_cuisine import routes_recettes_referentiel

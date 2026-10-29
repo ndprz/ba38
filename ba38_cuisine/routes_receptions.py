@@ -212,8 +212,13 @@ def liste_receptions():
     for u in utilisations:
         utilisations_par_reception.setdefault(u["reception_id"], []).append(u)
 
+    with _connect() as conn:
+        from ba38_cuisine.routes_envoi_bai import nb_receptions_a_envoyer  # import local : routes_envoi_bai est importé après ce module
+        nb_envoi_bai = nb_receptions_a_envoyer(conn, date_filtre)
+
     return render_template(
         "production_cuisine/receptions_liste.html",
+        nb_envoi_bai=nb_envoi_bai,
         stock=stock,
         livraisons=_livraisons(receptions_jour),
         utilisations_par_reception=utilisations_par_reception,
