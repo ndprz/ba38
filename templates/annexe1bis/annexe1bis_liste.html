@@ -20,6 +20,8 @@
     {% else %}
     <a href="{{ url_for('annexe1bis.nouvelle', partner_id=partner_id) }}" class="btn btn-primary">➕ Nouvelle annexe</a>
     {% endif %}
+    <a href="{{ url_for('annexe1bis.nouvelle_pdf', partner_id=partner_id) }}" class="btn btn-outline-primary"
+      title="Pour une association qui a rempli l'annexe en PDF plutôt que le formulaire en ligne">📎 Utiliser une annexe PDF existante</a>
   </div>
 
   {% if annexes %}
@@ -38,7 +40,9 @@
       <tr>
         <td>{{ annexe.get('date_creation') | datetimeformat }}</td>
         <td>
-          {% if annexe['statut_signature'] == 'signee' %}
+          {% if annexe['lien_pdf_drive'] %}
+          <span class="badge bg-info text-dark">📎 PDF (Drive)</span>
+          {% elif annexe['statut_signature'] == 'signee' %}
           <span class="badge bg-success">🔒 Signée</span>
           {% elif annexe['statut_signature'] == 'envoyee' %}
           <span class="badge bg-warning text-dark">✉️ Envoyée pour signature</span>
@@ -53,15 +57,22 @@
         <td>{{ annexe.get('date_envoi_signature') | datetimeformat if annexe.get('date_envoi_signature') else "—" }}</td>
         <td>{{ annexe.get('date_signature') | datetimeformat if annexe.get('date_signature') else "—" }}</td>
         <td>
+          {% if annexe['lien_pdf_drive'] %}
+          <a href="{{ annexe['lien_pdf_drive'] }}" class="btn btn-sm btn-outline-danger" target="_blank"
+            rel="noopener noreferrer">📎 Ouvrir le PDF (Drive)</a>
+          {% else %}
           <a href="{{ url_for('annexe1bis.view', annexe_id=annexe['id']) }}" class="btn btn-sm btn-outline-info">👁️ Voir</a>
+          {% endif %}
 
-          {% if annexe['statut_signature'] != 'signee' %}
+          {% if annexe['statut_signature'] != 'signee' or annexe['lien_pdf_drive'] %}
           <a href="{{ url_for('annexe1bis.modifier', annexe_id=annexe['id']) }}" class="btn btn-sm btn-warning">✏️ Modifier</a>
           {% endif %}
 
+          {% if not annexe['lien_pdf_drive'] %}
           <a href="{{ url_for('annexe1bis.pdf', annexe_id=annexe['id']) }}" class="btn btn-outline-danger btn-sm" target="_blank">
             📄 PDF
           </a>
+          {% endif %}
 
           <form method="POST" action="{{ url_for('annexe1bis.supprimer', annexe_id=annexe['id']) }}"
             style="display:inline;" onsubmit="return confirmDelete();">

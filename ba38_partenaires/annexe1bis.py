@@ -30,6 +30,7 @@ from ba38_utilitaires.core import (
     upload_file_to_drive
 )
 from ba38_utilitaires.organisation import get_organisation
+from ba38_partenaires.fiches_visite import _lien_drive_valide
 
 
 annexe1bis_bp = Blueprint("annexe1bis", __name__)
@@ -76,7 +77,7 @@ def get_latest_annexe(cursor, partner_id):
     row = cursor.execute(
         """
         SELECT * FROM annexe1bis
-        WHERE partenaire_id = ?
+        WHERE partenaire_id = ? AND lien_pdf_drive IS NULL
         ORDER BY date_creation DESC, id DESC
         LIMIT 1
         """,
@@ -260,6 +261,91 @@ def nouvelle(partner_id):
 
 
 # ========================================
+# 📎 Annexe 1 bis PDF déjà remplie (lien Drive)
+# ========================================
+def _rendu_form_pdf(partenaire, partner_id, annexe, date_annexe, lien):
+    return render_template(
+        "annexe1bis/annexe1bis_pdf_drive_form.html",
+        partenaire=clean_row(partenaire), partner_id=partner_id, annexe=annexe,
+        date_annexe=date_annexe, lien=lien,
+    )
+
+
+def _erreur_saisie_pdf(date_annexe, lien):
+    if not date_annexe:
+        return "La date de l'annexe est obligatoire."
+    if not _lien_drive_valide(lien):
+        return "Le lien doit être un lien de partage Google Drive (https://drive.google.com/…)."
+    return None
+
+
+@annexe1bis_bp.route("/annexe1bis/<int:partner_id>/nouvelle_pdf", methods=["GET", "POST"])
+@login_required
+@require_access("associations", "ecriture")
+def nouvelle_pdf(partner_id):
+    """Ajoute une ligne (date + lien Drive) pour une association qui a rempli
+    l'annexe en PDF au lieu du formulaire en ligne. Le PDF n'est pas
+    téléchargé sur le serveur : seul le lien de partage est conservé."""
+    conn = get_db_connection()
+    partenaire = conn.execute("SELECT * FROM associations WHERE id = ?", (partner_id,)).fetchone()
+    if not partenaire:
+        conn.close()
+        flash("⛔ Partenaire introuvable.", "danger")
+        return redirect(url_for("partenaires.partenaires"))
+
+    if request.method == "POST":
+        date_annexe = (request.form.get("date_creation") or "").strip()
+        lien = (request.form.get("lien_pdf_drive") or "").strip()
+        erreur = _erreur_saisie_pdf(date_annexe, lien)
+        if erreur:
+            conn.close()
+            flash(f"⛔ {erreur}", "danger")
+            return _rendu_form_pdf(partenaire, partner_id, {}, date_annexe, lien)
+
+        conn.execute(
+            "INSERT INTO annexe1bis (partenaire_id, date_creation, user_creation, statut_signature, lien_pdf_drive) "
+            "VALUES (?, ?, ?, 'brouillon', ?)",
+            (partner_id, date_annexe, current_user.username, lien),
+        )
+        conn.commit()
+        conn.close()
+        upload_database()
+        write_log(f"📎 Annexe 1 bis PDF (Drive) ajoutée pour l'association {partner_id}, datée du {date_annexe}")
+        flash("✅ Annexe 1 bis PDF ajoutée.", "success")
+        return redirect(url_for("annexe1bis.liste", partner_id=partner_id))
+
+    conn.close()
+    return _rendu_form_pdf(partenaire, partner_id, {}, date.today().isoformat(), "")
+
+
+def _modifier_pdf(annexe_id, annexe):
+    partner_id = annexe["partenaire_id"]
+    conn = get_db_connection()
+    partenaire = conn.execute("SELECT * FROM associations WHERE id = ?", (partner_id,)).fetchone()
+
+    if request.method == "POST":
+        date_annexe = (request.form.get("date_creation") or "").strip()
+        lien = (request.form.get("lien_pdf_drive") or "").strip()
+        erreur = _erreur_saisie_pdf(date_annexe, lien)
+        if erreur:
+            conn.close()
+            flash(f"⛔ {erreur}", "danger")
+            return _rendu_form_pdf(partenaire, partner_id, annexe, date_annexe, lien)
+        conn.execute(
+            "UPDATE annexe1bis SET date_creation = ?, lien_pdf_drive = ? WHERE id = ?",
+            (date_annexe, lien, annexe_id),
+        )
+        conn.commit()
+        conn.close()
+        upload_database()
+        flash("✅ Annexe 1 bis PDF mise à jour.", "success")
+        return redirect(url_for("annexe1bis.liste", partner_id=partner_id))
+
+    conn.close()
+    return _rendu_form_pdf(partenaire, partner_id, annexe, annexe["date_creation"], annexe["lien_pdf_drive"])
+
+
+# ========================================
 # 👁️ Consulter une annexe
 # ========================================
 @annexe1bis_bp.route("/annexe1bis/view/<int:annexe_id>")
@@ -275,6 +361,10 @@ def view(annexe_id):
         conn.close()
         flash("❌ Annexe introuvable.", "danger")
         return redirect(url_for("partenaires.partenaires"))
+
+    if annexe["lien_pdf_drive"]:
+        conn.close()
+        return redirect(annexe["lien_pdf_drive"])
 
     partenaire = cur.execute(
         "SELECT * FROM associations WHERE id = ?", (annexe["partenaire_id"],)
@@ -312,6 +402,10 @@ def modifier(annexe_id):
         conn.close()
         flash("❌ Annexe introuvable.", "danger")
         return redirect(url_for("partenaires.partenaires"))
+
+    if annexe["lien_pdf_drive"]:
+        conn.close()
+        return _modifier_pdf(annexe_id, clean_row(annexe))
 
     if annexe["statut_signature"] == "signee":
         conn.close()
@@ -396,9 +490,12 @@ def pdf(annexe_id):
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
     annexe = conn.execute(
-        "SELECT document_signe_path FROM annexe1bis WHERE id = ?", (annexe_id,)
+        "SELECT document_signe_path, lien_pdf_drive FROM annexe1bis WHERE id = ?", (annexe_id,)
     ).fetchone()
     conn.close()
+
+    if annexe and annexe["lien_pdf_drive"]:
+        return redirect(annexe["lien_pdf_drive"])
 
     chemin_signe = annexe["document_signe_path"] if annexe else None
     if chemin_signe and os.path.exists(chemin_signe):
