@@ -147,7 +147,8 @@
         {% set fkey = 'filter_' ~ field.field_name %}
         {% set current_value = request.form.get(fkey, filters.get(fkey, '')) %}
         {% set current_nonnull = request.form.get('nonnull_' ~ field.field_name) or filters.get('nonnull_' ~ field.field_name) %}
-        {% set has_filter = current_value or current_nonnull %}
+        {% set current_op = request.form.get('operator_' ~ field.field_name) or filters.get('operator_' ~ field.field_name, 'contains') %}
+        {% set has_filter = current_value or current_nonnull or current_op == 'empty' %}
         <div class="mb-2 field-entry">
           <div class="d-flex justify-content-between align-items-center">
             <label class="mb-0">
@@ -188,10 +189,9 @@
             </div>
             <div class="mt-1">
               <select name="operator_{{ field.field_name }}" class="form-select form-select-sm" {{ field_disabled }}>
-                <option value="contains" {% if request.form.get('operator_' ~ field.field_name, 'contains' )
-                  !='startswith' %}selected{% endif %}>contient</option>
-                <option value="startswith" {% if request.form.get('operator_' ~ field.field_name)=='startswith'
-                  %}selected{% endif %}>commence par</option>
+                <option value="contains" {% if current_op not in ('startswith','empty') %}selected{% endif %}>contient</option>
+                <option value="startswith" {% if current_op=='startswith' %}selected{% endif %}>commence par</option>
+                <option value="empty" {% if current_op=='empty' %}selected{% endif %}>est vide (non renseigné)</option>
               </select>
             </div>
             {% endif %}

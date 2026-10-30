@@ -178,6 +178,15 @@ def generateur_excel():
             if value.lower() == "contains":
                 value = ""
 
+        # 🔹 Filtres "vide / non vide" : ne dépendent pas d'une valeur saisie
+        operator = request.form.get(f"operator_{f}") or filters.get(f"operator_{f}", "contains")
+        nonnull = request.form.get(f"nonnull_{f}") or filters.get(f"nonnull_{f}")
+        if operator == "empty" and t != "oui_non":
+            where_clauses.append(f"({f} IS NULL OR TRIM({f})='')")
+            continue
+        if nonnull:
+            where_clauses.append(f"({f} IS NOT NULL AND TRIM({f})<>'')")
+
         # 🔸 Ignorer les valeurs techniques ou vides
         if not value or str(value).lower() == "contains":
             continue
@@ -191,7 +200,6 @@ def generateur_excel():
             clause = f"LOWER(TRIM({f}))=?"
             oui_non_clauses.append((clause, value.lower()))
         else:
-            operator = request.form.get(f"operator_{f}", "contains")
             if operator == "startswith":
                 clause = f"LOWER({f}) LIKE ?"
                 params.append(value.lower() + "%")
@@ -262,6 +270,9 @@ def generateur_excel():
             else:
                 filters = {}
                 for k, v in request.form.items():
+                    if k.startswith("nonnull_") or (k.startswith("operator_") and v == "empty"):
+                        filters[k] = v.strip() or "on"
+                        continue
                     if not k.startswith("filter_"):
                         continue
                     # ⛔ ignorer les filtres vides ou contenant juste "contains"

@@ -1,3 +1,3 @@
-VERSION=1.7.180
-MESSAGE=Cuisine : portions + plats témoins (état journalier productions), couleurs par taille (stock barquettes)
-DATE=2026-10-30 12:30
+VERSION=1.7.181
+MESSAGE=Générateur Excel : filtre « est vide » + case « Exclure les vides » fonctionnelle
+DATE=2026-10-30 12:54
