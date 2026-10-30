@@ -16,7 +16,7 @@ import calendar
 import os
 import secrets
 import sqlite3
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from flask import current_app, session
 
@@ -132,17 +132,24 @@ def libelle_mois(mois):
 # Créneaux d'un bénévole
 # ─────────────────────────────────────────────────────────────
 
-def creneaux_benevole(conn, benevole_id, mois=None, jour=None):
-    """Affectations d'un bénévole sur un mois (ou un jour), avec le détail du créneau."""
+def libelle_semaine(lundi):
+    samedi = lundi + timedelta(days=5)
+    return f"la semaine du {lundi.day} {D.MOIS[lundi.month - 1]} au {samedi.day} {D.MOIS[samedi.month - 1]} {samedi.year}"
+
+
+def creneaux_benevole(conn, benevole_id, mois=None, jour=None, lundi=None):
+    """Affectations d'un bénévole sur un mois, une semaine (lundi → dimanche) ou un jour, avec le détail du créneau."""
     if jour:
         debut = fin = jour.isoformat()
+    elif lundi:
+        debut, fin = lundi.isoformat(), (lundi + timedelta(days=6)).isoformat()
     else:
         a, m = D.parse_mois(mois)
         debut = date(a, m, 1).isoformat()
         fin = date(a, m, calendar.monthrange(a, m)[1]).isoformat()
-    rows = conn.execute("""
+    rows = conn.execute(f"""
         SELECT a.*, c.date, c.heure_debut AS c_debut, c.heure_fin AS c_fin, c.ferme, c.libelle AS c_libelle,
-               c.lieu, c.poste, c.creneau_type_id, f.nom AS fonction
+               c.lieu, c.poste, c.creneau_type_id, f.nom AS fonction, {D.absent_sql()} AS absent_saisie
         FROM esope_affectations a
         JOIN esope_creneaux c ON c.id = a.creneau_id
         LEFT JOIN esope_fonctions f ON f.id = c.fonction_id
@@ -151,7 +158,7 @@ def creneaux_benevole(conn, benevole_id, mois=None, jour=None):
     """, (benevole_id, debut, fin)).fetchall()
     res = []
     for r in rows:
-        d = dict(r)
+        d = D.appliquer_absence(dict(r))
         jd = date.fromisoformat(d["date"])
         d["date_txt"] = D.fmt_date_courte(jd).capitalize()
         d["passe"] = jd < date.today()
@@ -180,11 +187,11 @@ def html_creneaux(creneaux):
     return f"<ul>{lignes}</ul>"
 
 
-def contexte_mail(benevole, mois, creneaux, token):
+def contexte_mail(benevole, mois, creneaux, token, lundi=None):
     return {
         "prenom": benevole["prenom"] or "",
         "nom": benevole["nom"] or "",
-        "mois": libelle_mois(mois),
+        "mois": libelle_semaine(lundi) if lundi else libelle_mois(mois),
         "creneaux": html_creneaux(creneaux),
         "lien": url_lien(token),
     }

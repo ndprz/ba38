@@ -62,5 +62,35 @@
             </div>
         </div>
     </div>
+
+    <h5>Tous les participants go-on-web {{ annee }} ({{ participants_gow|length }})</h5>
+    <p class="text-muted small">
+        Liste complète des participants go-on-web {{ annee }} (dédoublonnée par email), avec leur statut
+        BAI tel quel dans go-on-web — pour vérifier visuellement la couverture de ce marquage.
+    </p>
+    <div class="table-responsive mb-4" style="max-height: 70vh; overflow-y: auto;">
+        <table class="table table-sm table-striped">
+            <thead class="table-light" style="position: sticky; top: 0;">
+                <tr><th>Nom</th><th>Email</th><th>BAI</th></tr>
+            </thead>
+            <tbody>
+            {% for p in participants_gow %}
+                <tr>
+                    <td>{{ p.nom }}</td>
+                    <td>{{ p.email }}</td>
+                    <td>
+                        {% if p.bai %}
+                            <span class="badge bg-success">{{ p.bai }}</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Non</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="3" class="text-muted">Aucun participant</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% endblock %}

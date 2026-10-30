@@ -81,6 +81,17 @@
                             génération complète (tous camions, tous documents).
                         </div>
                     </div>
+                    <div class="col-sm-6">
+                        <label class="form-label">Camions déjà imprimés (à exclure des fiches)</label>
+                        <input type="text" name="camions_exclus" id="champCamionsExclus" class="form-control" placeholder="ex : V003, V017">
+                        <div class="form-text">
+                            Optionnel, génération complète uniquement — codes séparés par des
+                            virgules. Ces camions sont exclus uniquement du PDF « Fiches de
+                            collecte », pour ne pas réimprimer celles déjà distribuées ; les autres
+                            documents (classeur Excel, pointage, équipier, index, carte) couvrent
+                            toujours tous les camions.
+                        </div>
+                    </div>
                 </div>
 
                 {% call action_buttons() %}

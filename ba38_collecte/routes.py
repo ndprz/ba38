@@ -1707,10 +1707,13 @@ def comparaison_bai_basilic(annee):
 @login_required
 @require_access("collecte", "lecture")
 def comparaison_bai_basilic_export(annee):
-    """Export Excel (2 onglets, même format que la liste d'appel
-    chauffeurs/équipiers) de la comparaison BAI Basilic / go-on-web — voir
-    _comparer_bai_basilic."""
+    """Export Excel (3 onglets) de la comparaison BAI Basilic / go-on-web —
+    voir _comparer_bai_basilic et _lister_participants_gow. Les 2 premiers
+    onglets utilisent le même format que la liste d'appel chauffeurs/
+    équipiers, le 3e (liste complète des participants go-on-web) une version
+    réduite à 3 colonnes (Nom, Email, BAI)."""
     dans_basilic_pas_gow, dans_gow_pas_basilic = _comparer_bai_basilic(annee)
+    participants_gow = _lister_participants_gow(annee)
 
     wb_export = Workbook()
     ws1 = wb_export.active
@@ -1719,6 +1722,16 @@ def comparaison_bai_basilic_export(annee):
 
     ws2 = wb_export.create_sheet("GOW sans Basilic")
     _ecrire_feuille_appel(ws2, _enrichir_avec_appel_chauffeurs(dans_gow_pas_basilic, annee))
+
+    ws3 = wb_export.create_sheet("Participants GOW")
+    ws3.append(["Nom", "Email", "BAI"])
+    for p in participants_gow:
+        ws3.append([p["nom"], p["email"], p["bai"]])
+    ws3.column_dimensions["A"].width = 32
+    ws3.column_dimensions["B"].width = 38
+    ws3.column_dimensions["C"].width = 10
+    ws3.freeze_panes = "A2"
+    ws3.auto_filter.ref = ws3.dimensions
 
     tampon = io.BytesIO()
     wb_export.save(tampon)
@@ -6403,6 +6416,19 @@ def production_generer():
     ]
     if date_jeudi:
         cmd += ["--date-jeudi", date_jeudi]
+
+    # Camions déjà imprimés : exclus seulement du document 1 (fiches de
+    # collecte), pour une régénération partielle sans réimprimer les fiches
+    # déjà distribuées — mêmes caractères autorisés que --camion (sécurité
+    # nom de fichier / injection de commande).
+    camions_exclus_bruts = request.form.get("camions_exclus", "")
+    codes_exclus = [
+        re.sub(r"[^A-Z0-9]", "", c.strip().upper())
+        for c in camions_exclus_bruts.split(",")
+    ]
+    codes_exclus = [c for c in codes_exclus if c]
+    if codes_exclus:
+        cmd += ["--camions-exclus-fiches", ",".join(codes_exclus)]
 
     try:
         resultat = subprocess.run(

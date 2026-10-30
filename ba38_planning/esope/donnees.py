@@ -233,20 +233,37 @@ def enregistrer_profil(conn, benevole_id, fonction_ids, jours, commentaire):
 # Planning réel : lecture d'une semaine
 # ─────────────────────────────────────────────────────────────
 
+def absent_sql(aff="a", cre="c"):
+    """Condition SQL : le bénévole de l'affectation a une absence (table commune `absences`, dates jj/mm/aaaa) ce jour-là."""
+    iso = lambda col: (f"(substr(trim(ab.{col}),7,4) || '-' || substr(trim(ab.{col}),4,2) || '-' || substr(trim(ab.{col}),1,2))")
+    return (f"EXISTS (SELECT 1 FROM absences ab WHERE ab.benevole_id = {aff}.benevole_id "
+            f"AND length(trim(ab.date_debut)) = 10 AND length(trim(ab.date_fin)) = 10 "
+            f"AND {iso('date_debut')} <= {cre}.date AND {iso('date_fin')} >= {cre}.date)")
+
+
+def appliquer_absence(d):
+    """Une absence saisie vaut « annulé » à l'affichage (sans toucher à la base : supprimer l'absence rend le créneau)."""
+    if d.get("absent_saisie") and d["statut"] != "annule":
+        d["statut"] = "annule"
+        d["absence"] = 1
+    return d
+
+
 def _affectations_par_creneau(conn, creneau_ids):
     if not creneau_ids:
         return {}
     ph = ",".join("?" * len(creneau_ids))
     rows = conn.execute(f"""
-        SELECT a.*, b.nom, b.prenom, b.telephone_portable, b.email
+        SELECT a.*, b.nom, b.prenom, b.telephone_portable, b.email, {absent_sql()} AS absent_saisie
         FROM esope_affectations a
+        JOIN esope_creneaux c ON c.id = a.creneau_id
         LEFT JOIN benevoles b ON b.id = a.benevole_id
         WHERE a.creneau_id IN ({ph})
-        ORDER BY (a.statut = 'annule'), b.nom COLLATE NOCASE, b.prenom COLLATE NOCASE
+        ORDER BY b.nom COLLATE NOCASE, b.prenom COLLATE NOCASE
     """, list(creneau_ids)).fetchall()
     res = {}
-    for r in rows:
-        d = dict(r)
+    for r in sorted((appliquer_absence(dict(r)) for r in rows), key=lambda d: d["statut"] == "annule"):
+        d = r
         d["libelle"] = f"{d['nom'] or '?'} {d['prenom'] or ''}".strip()
         d["partiel"] = fmt_plage(d["heure_debut"], d["heure_fin"]) if d["heure_debut"] and d["heure_fin"] else (
             f"dès {fmt_heure(d['heure_debut'])}" if d["heure_debut"] else (

@@ -79,7 +79,7 @@
     <span>{{ c.plage }}{% if c.libelle and c.creneau_type_id is not none %} · {{ c.libelle }}{% endif %}</span>
     <span class="esope-outils text-nowrap">
       {% set mails = c.affectations | rejectattr('statut', 'equalto', 'annule') | map(attribute='email') | select | join(',') %}
-      {% if mails %}<a href="mailto:?bcc={{ mails }}" target="_blank" rel="noopener" title="Écrire aux bénévoles du créneau (nouvel onglet)">✉️</a>{% endif %}
+      {% if mails %}<a href="https://mail.google.com/mail/?view=cm&fs=1&bcc={{ mails|urlencode }}" target="_blank" rel="noopener" title="Écrire aux bénévoles du créneau (ouvre Gmail dans un nouvel onglet)">✉️</a>{% endif %}
       {% if peut_ecrire %}<button type="button" title="Modifier ce créneau (ce jour seulement)" onclick="ouvrirCreneau({{ c.id }})">⚙️</button>{% endif %}
     </span>
   </div>
@@ -87,8 +87,8 @@
   {% for a in c.affectations %}
     <span class="esope-nom st-{{ a.statut }} {{ 'cliquable' if peut_ecrire }} {{ 'alerte' if a.alerte }}"
           {% if peut_ecrire %}onclick="ouvrirAffectation({{ a.id }})"{% endif %}
-          title="{{ a.libelle }}{% if a.telephone_portable %} – {{ a.telephone_portable }}{% endif %}{% if a.commentaire %} – {{ a.commentaire }}{% endif %}">
-      {% if a.alerte %}⚠ {% endif %}{{ a.libelle }}{% if a.partiel %} <span class="esope-partiel">({{ a.partiel }})</span>{% endif %}{% if a.commentaire %} 💬{% endif %}
+          title="{{ a.libelle }}{% if a.telephone_portable %} – {{ a.telephone_portable }}{% endif %}{% if a.commentaire %} – {{ a.commentaire }}{% endif %}{% if a.absence %} – absent (voir Absences){% endif %}">
+      {% if a.alerte %}⚠ {% endif %}{% if a.absence %}🏖️ {% endif %}{{ a.libelle }}{% if a.partiel %} <span class="esope-partiel">({{ a.partiel }})</span>{% endif %}{% if a.commentaire %} 💬{% endif %}
     </span>
   {% endfor %}
   {% if not c.ferme %}

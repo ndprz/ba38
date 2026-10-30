@@ -2,14 +2,15 @@
 {% from "macros/buttons.html" import action_button, action_buttons %}
 {% call action_buttons() %}
     {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAideEsope')).show()", color="outline-info") }}
-    {% if actif != 'index' %}{{ action_button("🛒 Accueil ESOPE", href=url_for('esope.index'), color="outline-secondary") }}{% endif %}
     {% if actif != 'semaine' %}{{ action_button("📅 Planning", href=url_for('esope.semaine'), color="outline-primary") }}{% endif %}
     {% if actif != 'envoi' %}{{ action_button("📨 Envoi aux bénévoles", href=url_for('esope.envoi'), color="outline-success") }}{% endif %}
     {% if actif != 'modele' %}{{ action_button("🔁 Planning modèle", href=url_for('esope.modele'), color="outline-secondary") }}{% endif %}
+    {% if actif != 'absences' %}{{ action_button("🏖️ Absences", href=url_for('esope.absences'), color="outline-secondary") }}{% endif %}
     {% if actif != 'evenements' %}{{ action_button("🎉 Événements", href=url_for('esope.evenements'), color="outline-secondary") }}{% endif %}
     {% if actif != 'benevoles' %}{{ action_button("👥 Bénévoles ESOPE", href=url_for('esope.benevoles'), color="outline-secondary") }}{% endif %}
     {% if has_access('planning_esope', 'ecriture') and actif != 'parametrage' %}{{ action_button("⚙️ Paramétrage", href=url_for('esope.parametrage'), color="outline-secondary") }}{% endif %}
-    {% if has_access('planning', 'lecture') %}{{ action_button("↩️ Retour Plannings", href=url_for('planning_dist.planning_main'), color="outline-dark") }}{% endif %}
+    {% if actif != 'index' %}{{ action_button("↩️ Retour ESOPE", href=url_for('esope.index'), color="outline-dark") }}
+    {% elif has_access('planning', 'lecture') %}{{ action_button("↩️ Retour Plannings", href=url_for('planning_dist.planning_main'), color="outline-dark") }}{% endif %}
     {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
 {% endcall %}
 

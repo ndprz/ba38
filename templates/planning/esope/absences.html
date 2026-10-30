@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Planning ESOPE – absences{% endblock %}
+{% block content %}
+<div class="container-fluid mt-3">
+<h2>🏖️ Planning ESOPE – absences des bénévoles</h2>
+{% set actif = 'absences' %}{% include "planning/esope/_nav.html" %}
+
+<div class="alert alert-light border small">
+  Une absence (un jour, une période, un mois…) met automatiquement le bénévole en <b>« absent »</b> sur tous ses créneaux ESOPE de la période :
+  il reste visible barré à l'écran (🏖️), n'apparaît plus à l'impression, ne reçoit plus les mails du planning pour ces dates et sa place est signalée libre.
+  Supprimer l'absence rend les créneaux. Seuls les bénévoles ESOPE sont listés ; les absences sont <b>communes à tous les plannings</b>
+  (même liste que « Gérer les absences des bénévoles » dans Plannings).
+</div>
+
+{% if peut_ecrire %}
+<form method="POST" action="{{ url_for('esope.absence_ajouter') }}" class="row g-2 align-items-end mb-4">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="col-md-4">
+    <label class="form-label">Bénévole ESOPE</label>
+    <select name="benevole_id" class="form-select" required>
+      <option value="">— Choisir —</option>
+      {% for b in benevoles %}<option value="{{ b.id }}">{{ b.nom }} {{ b.prenom }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2"><label class="form-label">Du</label><input type="date" name="date_debut" class="form-control" required></div>
+  <div class="col-md-2"><label class="form-label">Au <small class="text-muted">(inclus)</small></label><input type="date" name="date_fin" class="form-control"><div class="form-text">Vide = un seul jour</div></div>
+  <div class="col-md-2"><button class="btn btn-success w-100">➕ Ajouter</button></div>
+</form>
+{% endif %}
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+  <h5 class="mb-0">Absences {{ 'enregistrées (toutes)' if voir_toutes else 'en cours ou à venir' }}</h5>
+  {% if voir_toutes %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('esope.absences') }}">👁️ Voir les absences en cours</a>
+  {% else %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('esope.absences', voir_toutes=1) }}">👁️ Voir toutes les absences</a>{% endif %}
+  <input type="search" id="filtre" class="form-control form-control-sm ms-auto" style="max-width:240px" placeholder="🔍 Rechercher…" oninput="filtrer()">
+</div>
+
+<table class="table table-bordered table-sm align-middle" id="tb">
+  <thead class="table-light"><tr><th>Bénévole</th><th>Du</th><th>Au</th><th>Créneaux ESOPE concernés</th>{% if peut_ecrire %}<th></th>{% endif %}</tr></thead>
+  <tbody>
+  {% for a in absences %}
+    <tr data-nom="{{ (a.nom ~ ' ' ~ a.prenom)|lower }}">
+      {% if peut_ecrire %}
+      <form method="POST" action="{{ url_for('esope.absence_modifier', absence_id=a.id) }}" id="f{{ a.id }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      </form>
+      {% endif %}
+      <td>{{ a.nom }} {{ a.prenom }}</td>
+      {% if peut_ecrire %}
+      <td><input type="date" name="date_debut" form="f{{ a.id }}" class="form-control form-control-sm" value="{{ a.debut_iso }}" required></td>
+      <td><input type="date" name="date_fin" form="f{{ a.id }}" class="form-control form-control-sm" value="{{ a.fin_iso }}" required></td>
+      {% else %}<td>{{ a.date_debut }}</td><td>{{ a.date_fin }}</td>{% endif %}
+      <td>{{ a.nb_creneaux if a.nb_creneaux else '—' }}</td>
+      {% if peut_ecrire %}
+      <td class="text-nowrap">
+        <button class="btn btn-warning btn-sm" form="f{{ a.id }}">💾 Enregistrer</button>
+        <form method="POST" action="{{ url_for('esope.absence_supprimer', absence_id=a.id) }}" class="d-inline" onsubmit="return confirm('Supprimer cette absence ?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-danger btn-sm">🗑 Supprimer</button>
+        </form>
+      </td>
+      {% endif %}
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="text-muted text-center">Aucune absence.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<script>
+function filtrer() {
+  const q = document.getElementById('filtre').value.trim().toLowerCase();
+  document.querySelectorAll('#tb tbody tr[data-nom]').forEach(tr => tr.style.display = tr.dataset.nom.includes(q) ? '' : 'none');
+}
+</script>
+{% endblock %}

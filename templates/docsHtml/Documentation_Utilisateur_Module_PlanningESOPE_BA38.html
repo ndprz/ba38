@@ -2,7 +2,7 @@
 <p>Le planning ESOPE remplace le fichier Excel de l’épicerie sociale. On
 décrit une fois la semaine type, puis Basilic construit le planning de
 chaque mois ; il ne reste qu’à le retoucher et l’imprimer.</p>
-<p>Version du 14/10/2026. Les bénévoles reçoivent leurs créneaux par
+<p>Version du 30/10/2026. Les bénévoles reçoivent leurs créneaux par
 mail et répondent en ligne avec un lien personnel, sans compte
 Basilic.</p>
 <h2 id="mise-en-route-dans-lordre">Mise en route, dans l’ordre</h2>
@@ -70,6 +70,8 @@ n’interdisent rien : on peut toujours choisir un autre bénévole.</p>
 <h2 id="planning-modèle">Planning modèle</h2>
 <p>C’est la semaine type : qui vient sur quel poste, chaque semaine ou
 une semaine sur deux.</p>
+<p>La page s’affiche sur fond violet, avec un bandeau « SEMAINE TYPE »,
+pour ne pas la confondre avec le planning réel.</p>
 <ul>
 <li>Cliquer sur <strong>➕ ajouter</strong> dans une case, choisir le
 bénévole et la fréquence.</li>
@@ -112,7 +114,8 @@ semaine.</p>
 <li><strong>jaune</strong> : plus de bénévoles que prévu ;</li>
 <li><strong>gris</strong> : créneau ou jour fermé ;</li>
 <li><strong>✔</strong> devant un nom : présence confirmée ;</li>
-<li>nom <strong>barré</strong> : absence (statut Annulé) ;</li>
+<li>nom <strong>barré</strong> : absence (statut Annulé, ou absence
+saisie dans « Absences », signalée par 🏖️) ;</li>
 <li>horaires <strong>entre parenthèses</strong>, en violet : présence
 sur une partie du créneau seulement.</li>
 </ul>
@@ -130,14 +133,37 @@ nom. On peut changer :</p>
 </ul>
 <p>Pour une absence, choisir le statut <strong>Annulé</strong> plutôt
 que de retirer le bénévole : son nom reste visible barré et la place se
-libère.</p>
+libère. Pour une absence qui dure (congés, maladie…), utiliser plutôt la
+page Absences (voir plus bas).</p>
 <p><strong>Modifier le créneau d’un jour</strong> : cliquer sur ⚙️ en
 haut de la case. On peut changer les horaires, le nombre de bénévoles,
 ajouter un commentaire ou <strong>fermer le créneau</strong> ce jour-là.
 Cela ne touche que ce jour.</p>
-<p><strong>Écrire aux bénévoles</strong> : ✉️ ouvre un mail à tous les
-bénévoles du créneau. Le bouton <strong>📱 SMS bénévoles ESOPE</strong>
-ouvre l’envoi de SMS déjà filtré sur l’ESOPE.</p>
+<p><strong>Écrire aux bénévoles</strong> : ✉️ ouvre Gmail dans un nouvel
+onglet, avec tous les bénévoles du créneau en copie cachée. Le bouton
+<strong>📱 SMS bénévoles ESOPE</strong> ouvre l’envoi de SMS déjà filtré
+sur l’ESOPE.</p>
+<h2 id="absences">Absences</h2>
+<p>Bouton <strong>🏖️ Absences</strong> : signaler qu’un bénévole est
+absent un jour, une période ou un mois (congés, maladie, absence
+annoncée par mail ou par téléphone).</p>
+<ul>
+<li>Choisir le bénévole (seuls les bénévoles ESOPE sont listés), puis
+les dates Du… Au… (inclus). Si « Au » est vide, c’est un seul jour.</li>
+<li>Dès l’enregistrement, le bénévole est mis en absent sur tous ses
+créneaux ESOPE de la période : nom barré avec 🏖️ à l’écran, absent de
+l’impression et du PDF, place signalée libre, plus de créneaux dans les
+mails ni de rappel de la veille pour ces dates.</li>
+<li>Le tableau montre les absences en cours ou à venir (👁️ pour voir
+toutes) et le nombre de créneaux concernés. On peut modifier les dates
+(💾) ou supprimer l’absence (🗑) : les créneaux redeviennent alors
+actifs.</li>
+</ul>
+<p>Ces absences sont communes à tous les plannings de Basilic (même
+liste que « Gérer les absences des bénévoles » dans Plannings) : une
+absence saisie ici vaut aussi pour la distribution et la cuisine. Si un
+mois est généré alors qu’une absence est déjà saisie, le bénévole est
+placé comme d’habitude mais apparaît directement absent.</p>
 <h2 id="événements">Événements</h2>
 <p>Pour une action ponctuelle (collecte, fête, formation…) : bouton
 <strong>🎉 Événements</strong>, puis remplir le libellé, la date, le
@@ -154,7 +180,9 @@ un nom, ⚙️).</p>
 <p>Dans la fenêtre d’impression du navigateur, choisir le format
 <strong>paysage</strong> et décocher les en-têtes et pieds de page. Sur
 papier, ⚠ signale un poste non couvert et les pointillés une place
-libre.</p>
+libre. Les bénévoles absents (statut Annulé ou absence saisie)
+n’apparaissent pas sur l’impression ni dans le PDF joint aux mails ; ils
+restent visibles à l’écran.</p>
 <h2 id="envoi-aux-bénévoles">Envoi aux bénévoles</h2>
 <p>Bouton <strong>📨 Envoi aux bénévoles</strong>, puis choisir le mois
 avec les flèches ou le calendrier. Le mois doit déjà être généré.</p>
@@ -178,6 +206,12 @@ chaque créneau.</li>
 <p>La case « aussi aux bénévoles sans créneau » leur envoie le mail pour
 qu’ils proposent leurs disponibilités. Un bénévole qui a déjà reçu le
 mail n’est pas relancé par ce bouton.</p>
+<p><strong>Mois entier ou une semaine</strong> : au-dessus du bouton,
+choisir « Le mois entier » ou « Une semaine seulement » (et la semaine).
+Pour une semaine, chaque bénévole qui a un créneau cette semaine-là
+reçoit un mail avec seulement ses créneaux de la semaine et le planning
+de la semaine en PDF, même s’il a déjà reçu le mois. Le suivi des
+réponses du mois n’est pas modifié.</p>
 <p><strong>🔔 Relancer les sans réponse</strong> : renvoie un mail à
 ceux qui ont des créneaux et n’ont pas encore répondu.</p>
 <p><strong>Tableau de suivi</strong> : une ligne par bénévole, avec son

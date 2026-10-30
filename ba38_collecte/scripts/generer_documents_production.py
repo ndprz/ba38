@@ -2302,6 +2302,13 @@ def main():
     parser.add_argument('--camion', default=None,
                         help="Limite le document 1 (fiches de collecte) à ce seul camion "
                              "(ex: V003). N'affecte pas les documents 2/3/4.")
+    parser.add_argument('--camions-exclus-fiches', default=None,
+                        help="Liste de codes camion séparés par des virgules (ex: V003,V017) à "
+                             "exclure du document 1 (fiches de collecte) uniquement — pour ne pas "
+                             "réimprimer les fiches de camions déjà imprimées lors d'une "
+                             "régénération partielle. N'affecte pas les documents 2/3/4/5 (le "
+                             "classeur Excel, le pointage, l'équipier, l'index et la carte "
+                             "couvrent toujours tous les camions).")
     parser.add_argument('--fiche-seule', action='store_true',
                         help="Ne génère que le document 1 (fiches de collecte) et s'arrête là — "
                              "n'écrit ni le classeur Excel ni les documents 2/3/4/5. Utile avec "
@@ -2728,6 +2735,14 @@ def main():
             print(f"ERREUR : camion '{args.camion}' non trouvé")
             print("Disponibles :", sorted(df['Camion'].unique()))
             return
+
+    if args.camions_exclus_fiches:
+        codes_exclus = {c.strip().upper() for c in args.camions_exclus_fiches.split(',') if c.strip()}
+        if codes_exclus:
+            avant = df_work['Camion'].nunique()
+            df_work = df_work[~df_work['Camion'].str.upper().isin(codes_exclus)]
+            print(f"Camions exclus des fiches de collecte (déjà imprimées) : {sorted(codes_exclus)} "
+                  f"({avant} camion(s) avant exclusion, {df_work['Camion'].nunique()} après)")
 
     dj_ord = {dj: i for i, dj in enumerate(DJ_ORDER)}
     df_work = df_work.copy()

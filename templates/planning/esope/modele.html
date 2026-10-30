@@ -13,11 +13,20 @@
   .esope-nom.cliquable { cursor: pointer; } .esope-nom.cliquable:hover { text-decoration: underline; }
   .esope-rec { font-size: .72rem; color: #0d6efd; }
   .esope-partiel { font-style: italic; color: #6f42c1; font-size: .75rem; }
+  /* semaine type : fond violet + cadre pour ne pas la confondre avec le planning réel */
+  .esope-modele { background: #ede7f6; border: 3px dashed #7e57c2; border-radius: 8px; padding: 12px 16px 16px; }
+  .esope-modele .esope-grille td { background: #f6f2fc; }
+  .esope-modele .esope-grille td.manque { background: #fde2e4; }
+  .esope-modele .esope-grille td.vide { background: repeating-linear-gradient(45deg, #ede7f6, #ede7f6 6px, #e1d8f3 6px, #e1d8f3 12px); }
+  .esope-modele .esope-grille thead th { background: #d1c4e9; }
+  .esope-bandeau { background: #7e57c2; color: #fff; font-weight: 600; padding: 6px 12px; border-radius: 6px; margin-bottom: 10px; }
 </style>
 <div class="container-fluid mt-3">
 <h2>🔁 Planning ESOPE – semaine type</h2>
 {% set actif = 'modele' %}{% include "planning/esope/_nav.html" %}
 
+<div class="esope-modele">
+<div class="esope-bandeau">🔁 SEMAINE TYPE (modèle) – ce n'est pas le planning réel : modifier ici ne change pas les mois déjà générés.</div>
 <div class="alert alert-light border small">
   Le modèle sert à <b>générer</b> chaque mois (page d'accueil ESOPE). Une personne qui vient
   <b>une semaine sur deux</b> est enregistrée avec la date d'une de ses semaines de venue ; l'alternance
@@ -58,6 +67,7 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 </div>
 
 {% if peut_ecrire %}

@@ -70,7 +70,7 @@
           {% elif c %}
             <td class="{{ c.couverture }}">
               <div class="plage">{{ c.plage }}{% if c.libelle %} · {{ c.libelle }}{% endif %}</div>
-              {% for a in c.affectations %}
+              {% for a in c.affectations if a.statut != 'annule' %}
                 <span class="nom {{ a.statut }}">{{ a.libelle }}{% if a.partiel %} <span class="partiel">({{ a.partiel }})</span>{% endif %}</span>
               {% endfor %}
               {% if c.places_vides > 2 %}<span class="libre">+ {{ c.places_vides }} places</span>
@@ -101,7 +101,7 @@
     </table>
   </div>
   {% endif %}
-  <div class="pied">⚠ = poste non couvert · (horaires) = présence partielle · nom barré = absence signalée</div>
+  <div class="pied">⚠ = poste non couvert · (horaires) = présence partielle</div>
 </div>
 {% endfor %}
 </body>

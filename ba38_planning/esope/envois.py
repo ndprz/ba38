@@ -46,7 +46,7 @@ def _mode():
 def _suivi(conn, mois):
     """Une ligne par bénévole ESOPE (ou affecté ce mois-ci)."""
     a, m = D.parse_mois(mois)
-    rows = conn.execute("""
+    rows = conn.execute(f"""
         SELECT b.id, b.nom, b.prenom, b.email, b.telephone_portable, LOWER(TRIM(COALESCE(b.esope,''))) = 'oui' AS esope,
                COUNT(CASE WHEN aff.statut != 'annule' THEN 1 END) AS nb_actifs,
                COUNT(CASE WHEN aff.statut = 'confirme' THEN 1 END) AS nb_confirmes,
@@ -54,7 +54,9 @@ def _suivi(conn, mois):
                COUNT(CASE WHEN aff.statut = 'prevu' THEN 1 END) AS nb_prevus,
                COUNT(CASE WHEN aff.alerte = 1 THEN 1 END) AS nb_alertes
         FROM benevoles b
-        LEFT JOIN (SELECT a.* FROM esope_affectations a JOIN esope_creneaux c ON c.id = a.creneau_id
+        LEFT JOIN (SELECT a.id, a.benevole_id, a.alerte,
+                          CASE WHEN a.statut != 'annule' AND {D.absent_sql()} THEN 'annule' ELSE a.statut END AS statut
+                   FROM esope_affectations a JOIN esope_creneaux c ON c.id = a.creneau_id
                    WHERE substr(c.date, 1, 7) = ?) aff ON aff.benevole_id = b.id
         WHERE LOWER(TRIM(COALESCE(b.esope,''))) = 'oui' OR aff.id IS NOT NULL
         GROUP BY b.id
@@ -126,11 +128,13 @@ def envoi():
     compte = {k: sum(1 for l in lignes if l["etat"] == k) for k in
               ("a_envoyer", "envoye", "ouvert", "repondu", "erreur", "sans_mail")}
     a, m = D.parse_mois(mois)
+    semaines_mois = [{"lundi": l.isoformat(), "libelle": L.libelle_semaine(l).replace("la semaine", "Semaine", 1)}
+                     for l in D.lundis_du_mois(a, m)]
     precedent = f"{a - 1}-12" if m == 1 else f"{a}-{m - 1:02d}"
     suivant = f"{a + 1}-01" if m == 12 else f"{a}-{m + 1:02d}"
     return render_template(
         "planning/esope/envoi.html", mois=mois, mois_txt=L.libelle_mois(mois).capitalize(),
-        precedent=precedent, suivant=suivant, lignes=lignes, alertes=alertes, dispos=dispos, periode=p,
+        precedent=precedent, suivant=suivant, semaines_mois=semaines_mois, lignes=lignes, alertes=alertes, dispos=dispos, periode=p,
         toutes=toutes, nb_a_voir=nb_a_voir,
         statuts_periode=L.STATUTS_PERIODE, etat=etat, compte=compte, mail_mode=_mode(),
         adresse_test=adresse_test_utilisateur(), max_test=L.MAX_ENVOIS_TEST,
@@ -156,31 +160,33 @@ def envoi_toggle_mode():
 # Envoi / relance
 # ─────────────────────────────────────────────────────────────
 
-def _pdf_planning(mois):
-    """PDF du planning complet du mois (même rendu que l'impression)."""
+def _pdf_planning(mois, lundi_seul=None):
+    """PDF du planning du mois, ou d'une seule semaine (même rendu que l'impression)."""
     from weasyprint import HTML
     conn = get_db_connection()
     a, m = D.parse_mois(mois)
     lignes = D.lignes_planning(conn)
     semaines = []
-    for lundi in D.lundis_du_mois(a, m):
+    for lundi in ([lundi_seul] if lundi_seul else D.lundis_du_mois(a, m)):
         s = D.semaine(conn, lundi)
         samedi = lundi + timedelta(days=5)
         s["titre"] = (f"Semaine du {lundi.day} {D.MOIS[lundi.month - 1]} "
                       f"au {samedi.day} {D.MOIS[samedi.month - 1]} {samedi.year}")
         for j in s["jours"]:
-            j["hors_mois"] = j["date"].month != m
+            j["hors_mois"] = False if lundi_seul else j["date"].month != m
         semaines.append(s)
     conn.close()
     html = render_template("planning/esope/imprimer.html", semaines=semaines, lignes=lignes,
-                           titre=L.libelle_mois(mois).capitalize(), imprime_le=date.today(), pour_pdf=True)
+                           titre=None if lundi_seul else L.libelle_mois(mois).capitalize(),
+                           imprime_le=date.today(), pour_pdf=True)
     fd, chemin = tempfile.mkstemp(prefix=f"planning_esope_{mois}_", suffix=".pdf")
     os.close(fd)
     HTML(string=html).write_pdf(chemin)
     return chemin
 
 
-def envoyer_lot_background(app, db_path, mois, type_envoi, items, mail_mode, adresse_test, user_email, pdf_path):
+def envoyer_lot_background(app, db_path, mois, type_envoi, items, mail_mode, adresse_test, user_email, pdf_path,
+                           semaine_lundi=None):
     with app.app_context():
         test = mail_mode == "TEST"
         ok = ko = 0
@@ -196,7 +202,7 @@ def envoyer_lot_background(app, db_path, mois, type_envoi, items, mail_mode, adr
                         [adresse_test] if test else [item["email"]], item["corps"],
                         sender_override=L.EXPEDITEUR, sender_name=L.NOM_EXPEDITEUR, reply_to=L.RESPONSABLE,
                         is_html=True, attachment_path=pdf_path,
-                        attachment_filename=f"Planning_ESOPE_{mois}.pdf" if pdf_path else None,
+                        attachment_filename=(f"Planning_ESOPE_{semaine_lundi}.pdf" if semaine_lundi else f"Planning_ESOPE_{mois}.pdf") if pdf_path else None,
                         current_user_email=user_email)
                     if res and res.get("Messages"):
                         msg = res["Messages"][0]
@@ -207,7 +213,11 @@ def envoyer_lot_background(app, db_path, mois, type_envoi, items, mail_mode, adr
                         erreur = "Aucun destinataire valide"
                 except Exception as e:
                     erreur = str(e)[:300]
-                if type_envoi == "relance":
+                if type_envoi == "semaine":
+                    # envoi d'une semaine : le suivi mensuel (envoyé / répondu) n'est pas modifié, on garde seulement l'erreur
+                    if erreur:
+                        conn.execute("UPDATE esope_liens SET envoi_erreur = ? WHERE id = ?", (erreur, item["lien_id"]))
+                elif type_envoi == "relance":
                     conn.execute("UPDATE esope_liens SET relance_le = ?, nb_relances = COALESCE(nb_relances,0) + 1, "
                                  "envoi_erreur = ?, mailjet_ids = COALESCE(?, mailjet_ids) WHERE id = ?",
                                  (maintenant, erreur, ids, item["lien_id"]))
@@ -221,7 +231,7 @@ def envoyer_lot_background(app, db_path, mois, type_envoi, items, mail_mode, adr
             conn.close()
             if pdf_path and os.path.exists(pdf_path):
                 os.remove(pdf_path)
-        write_log(f"📤 ESOPE {type_envoi} {mois} ({mail_mode}) : {ok} envoyé(s), {ko} erreur(s)")
+        write_log(f"📤 ESOPE {type_envoi} {semaine_lundi or mois} ({mail_mode}) : {ok} envoyé(s), {ko} erreur(s)")
 
 
 @esope_bp.route("/envoi/envoyer", methods=["POST"])
@@ -233,9 +243,20 @@ def envoi_envoyer():
     cible = request.form.get("benevole_id", type=int)
     sans_creneau = bool(request.form.get("sans_creneau"))
     mail_mode = _mode()
+    lundi = None
+    if type_envoi == "preplanning" and request.form.get("periode") == "semaine":
+        lundi = D.parse_date(request.form.get("semaine"))
+        if not lundi or lundi not in D.lundis_du_mois(*D.parse_mois(mois)):
+            flash("❌ Semaine invalide.", "danger")
+            return redirect(url_for("esope.envoi", mois=mois))
+        type_envoi = "semaine"
     conn = get_db_connection()
     lignes = _suivi(conn, mois)
-    if cible:
+    if type_envoi == "semaine":
+        # tous les bénévoles ayant au moins un créneau actif cette semaine-là, qu'ils aient déjà reçu le mois ou non
+        selection = [l for l in lignes if any(c["statut"] != "annule" and not c["ferme"]
+                                              for c in L.creneaux_benevole(conn, l["id"], lundi=lundi))]
+    elif cible:
         selection = [l for l in lignes if l["id"] == cible]
     elif type_envoi == "relance":
         selection = [l for l in lignes if l["etat"] in ("envoye", "ouvert") and l["nb_prevus"] > 0]
@@ -250,7 +271,7 @@ def envoi_envoyer():
         selection.sort(key=lambda l: l["nb_actifs"] == 0)
     if not selection:
         conn.close()
-        flash("ℹ️ Personne à qui envoyer ce mail.", "info")
+        flash("ℹ️ Personne à qui envoyer ce mail" + (f" pour {L.libelle_semaine(lundi)}." if lundi else "."), "info")
         return redirect(url_for("esope.envoi", mois=mois))
 
     code = "esope_relance" if type_envoi == "relance" else "esope_preplanning"
@@ -258,11 +279,13 @@ def envoi_envoyer():
     items = []
     for l in selection:
         lien = L.lien_benevole(conn, l["id"], mois)
-        creneaux = L.creneaux_benevole(conn, l["id"], mois)
-        ctx = L.contexte_mail(l, mois, creneaux, lien["token"])
+        creneaux = L.creneaux_benevole(conn, l["id"], mois, lundi=lundi)
+        ctx = L.contexte_mail(l, mois, creneaux, lien["token"], lundi=lundi)
         items.append({"lien_id": lien["id"], "email": l["email"],
                       "sujet": L.rendre(sujet_m, ctx).strip(), "corps": L.rendre(corps_m, ctx)})
-    if mail_mode != "TEST":
+    if type_envoi == "semaine":
+        pass  # l'envoi d'une semaine ne change pas le statut du mois
+    elif mail_mode != "TEST":
         L.changer_statut_periode(conn, mois, "envoye", current_user.email)
     else:
         conn.execute("INSERT OR IGNORE INTO esope_periodes (mois) VALUES (?)", (mois,))
@@ -275,7 +298,7 @@ def envoi_envoyer():
     pdf = None
     if type_envoi != "relance":
         try:
-            pdf = _pdf_planning(mois)
+            pdf = _pdf_planning(mois, lundi)
         except Exception as e:
             write_log(f"❌ ESOPE PDF planning {mois} : {e}")
             flash("⚠️ Le PDF du planning n'a pas pu être créé : les mails partent sans pièce jointe.", "warning")
@@ -283,9 +306,9 @@ def envoi_envoyer():
     lancer_tache_fond(
         target=envoyer_lot_background,
         args=(current_app._get_current_object(), get_db_path(), mois, type_envoi, items, mail_mode,
-              adresse_test_utilisateur(), current_user.email, pdf),
-        nom=f"Envoi ESOPE {type_envoi} {mois}", utilisateur=current_user.email)
-    write_log(f"📤 ESOPE {type_envoi} {mois} lancé : {len(items)} mail(s), mode {mail_mode}, par {current_user.email}")
+              adresse_test_utilisateur(), current_user.email, pdf, lundi.isoformat() if lundi else None),
+        nom=f"Envoi ESOPE {type_envoi} {lundi.isoformat() if lundi else mois}", utilisateur=current_user.email)
+    write_log(f"📤 ESOPE {type_envoi} {lundi or mois} lancé : {len(items)} mail(s), mode {mail_mode}, par {current_user.email}")
     if mail_mode == "TEST":
         flash(f"🧪 Envoi TEST lancé : {min(len(items), L.MAX_ENVOIS_TEST)} mail(s) vers {adresse_test_utilisateur()} "
               f"(sur {len(items)} prévus en réel).", "warning")

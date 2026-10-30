@@ -1,5 +1,7 @@
 """Planning ESOPE : paramétrage, planning modèle, bénévoles ESOPE."""
 
+from datetime import date, datetime
+
 from flask import render_template, request, redirect, url_for, flash, jsonify, abort
 from flask_login import login_required
 
@@ -266,3 +268,121 @@ def benevole_profil(benevole_id):
     upload_database()
     flash("✅ Profil ESOPE enregistré.", "success")
     return redirect(url_for("benevoles.update_benevole", benevole_id=benevole_id))
+
+
+# ─────────────────────────────────────────────────────────────
+# Absences des bénévoles ESOPE (table `absences` commune à tous les plannings)
+# ─────────────────────────────────────────────────────────────
+
+def _fr_vers_iso(txt):
+    try:
+        return datetime.strptime((txt or "").strip(), "%d/%m/%Y").date()
+    except ValueError:
+        return None
+
+
+def _absence_form():
+    """(date_debut, date_fin) du formulaire (champs <input type=date>) → textes jj/mm/aaaa, ou None."""
+    debut = D.parse_date(request.form.get("date_debut"))
+    fin = D.parse_date(request.form.get("date_fin")) or debut
+    if not debut or not fin or fin < debut:
+        return None
+    return debut.strftime("%d/%m/%Y"), fin.strftime("%d/%m/%Y")
+
+
+def _nb_creneaux_touches(conn, benevole_id, debut_txt, fin_txt):
+    d, f = _fr_vers_iso(debut_txt), _fr_vers_iso(fin_txt)
+    if not d or not f:
+        return 0
+    return conn.execute("""SELECT COUNT(*) FROM esope_affectations a JOIN esope_creneaux c ON c.id = a.creneau_id
+                           WHERE a.benevole_id = ? AND a.statut != 'annule' AND c.ferme = 0 AND c.date BETWEEN ? AND ?""",
+                        (benevole_id, d.isoformat(), f.isoformat())).fetchone()[0]
+
+
+@esope_bp.route("/absences")
+@login_required
+@require_access("planning_esope", "lecture")
+def absences():
+    voir_toutes = request.args.get("voir_toutes") == "1"
+    conn = get_db_connection()
+    aujourdhui = date.today()
+    lignes = []
+    for r in conn.execute("""
+            SELECT ab.id, ab.benevole_id, ab.date_debut, ab.date_fin, b.nom, b.prenom
+            FROM absences ab JOIN benevoles b ON b.id = ab.benevole_id
+            WHERE LOWER(TRIM(COALESCE(b.esope,''))) = 'oui'
+            ORDER BY b.nom COLLATE NOCASE, b.prenom COLLATE NOCASE"""):
+        d, f = _fr_vers_iso(r["date_debut"]), _fr_vers_iso(r["date_fin"])
+        if not voir_toutes and f and f < aujourdhui:
+            continue
+        x = dict(r)
+        x["debut_iso"] = d.isoformat() if d else ""
+        x["fin_iso"] = f.isoformat() if f else ""
+        x["nb_creneaux"] = _nb_creneaux_touches(conn, r["benevole_id"], r["date_debut"], r["date_fin"])
+        lignes.append(x)
+    lignes.sort(key=lambda x: (x["debut_iso"], x["nom"] or ""))
+    benevoles = conn.execute("""SELECT id, nom, prenom FROM benevoles
+                                WHERE LOWER(TRIM(COALESCE(esope,''))) = 'oui'
+                                ORDER BY nom COLLATE NOCASE, prenom COLLATE NOCASE""").fetchall()
+    conn.close()
+    return render_template("planning/esope/absences.html", absences=lignes, benevoles=benevoles,
+                           voir_toutes=voir_toutes, peut_ecrire=has_access("planning_esope", "ecriture"))
+
+
+@esope_bp.route("/absences/ajouter", methods=["POST"])
+@login_required
+@require_access("planning_esope", "ecriture")
+def absence_ajouter():
+    bid = _int(request.form.get("benevole_id"))
+    dates = _absence_form()
+    conn = get_db_connection()
+    ok = bid and conn.execute("SELECT 1 FROM benevoles WHERE id = ?", (bid,)).fetchone()
+    if not ok or not dates:
+        conn.close()
+        flash("❌ Choisissez un bénévole et des dates valides (la fin ne peut pas précéder le début).", "danger")
+        return redirect(url_for("esope.absences"))
+    conn.execute("INSERT INTO absences (benevole_id, date_debut, date_fin) VALUES (?, ?, ?)", (bid, *dates))
+    nb = _nb_creneaux_touches(conn, bid, *dates)
+    D.journaliser(conn, "absence", benevole_id=bid, commentaire=f"du {dates[0]} au {dates[1]} ({nb} créneau(x) ESOPE)")
+    conn.commit()
+    conn.close()
+    upload_database()
+    flash(f"✅ Absence enregistrée : {nb} créneau(x) ESOPE passent en absent." if nb else "✅ Absence enregistrée (aucun créneau ESOPE concerné).", "success")
+    return redirect(url_for("esope.absences"))
+
+
+@esope_bp.route("/absences/<int:absence_id>/modifier", methods=["POST"])
+@login_required
+@require_access("planning_esope", "ecriture")
+def absence_modifier(absence_id):
+    dates = _absence_form()
+    if not dates:
+        flash("❌ Dates invalides (la fin ne peut pas précéder le début).", "danger")
+        return redirect(url_for("esope.absences"))
+    conn = get_db_connection()
+    a = conn.execute("SELECT benevole_id FROM absences WHERE id = ?", (absence_id,)).fetchone()
+    if a:
+        conn.execute("UPDATE absences SET date_debut = ?, date_fin = ? WHERE id = ?", (*dates, absence_id))
+        D.journaliser(conn, "absence", benevole_id=a["benevole_id"], commentaire=f"modifiée : du {dates[0]} au {dates[1]}")
+        conn.commit()
+        upload_database()
+        flash("✅ Absence modifiée.", "success")
+    conn.close()
+    return redirect(url_for("esope.absences"))
+
+
+@esope_bp.route("/absences/<int:absence_id>/supprimer", methods=["POST"])
+@login_required
+@require_access("planning_esope", "ecriture")
+def absence_supprimer(absence_id):
+    conn = get_db_connection()
+    a = conn.execute("SELECT * FROM absences WHERE id = ?", (absence_id,)).fetchone()
+    if a:
+        conn.execute("DELETE FROM absences WHERE id = ?", (absence_id,))
+        D.journaliser(conn, "absence", benevole_id=a["benevole_id"],
+                      commentaire=f"supprimée : du {a['date_debut']} au {a['date_fin']}")
+        conn.commit()
+        upload_database()
+        flash("🗑️ Absence supprimée : les créneaux concernés redeviennent actifs.", "warning")
+    conn.close()
+    return redirect(url_for("esope.absences"))
