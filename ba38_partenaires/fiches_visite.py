@@ -2,6 +2,7 @@
 import sqlite3
 import os
 import io
+from urllib.parse import urlparse
 from markupsafe import Markup, escape
 
 
@@ -117,7 +118,8 @@ def nouvelle(partner_id):
 
     # 🔁 Pré-remplissage avec la dernière fiche
     last_fiche = cur.execute(
-        "SELECT * FROM fiches_visite WHERE partenaire_id = ? ORDER BY date_visite DESC LIMIT 1",
+        "SELECT * FROM fiches_visite WHERE partenaire_id = ? AND lien_pdf_drive IS NULL "
+        "ORDER BY date_visite DESC LIMIT 1",
         (partner_id,)
     ).fetchone()
 
@@ -151,6 +153,73 @@ def nouvelle(partner_id):
 
 
 # ========================================
+# 📎 Fiche de visite PDF déjà remplie (lien Drive)
+# ========================================
+_HOTES_DRIVE = ("drive.google.com", "docs.google.com", "drive.usercontent.google.com")
+
+
+def _lien_drive_valide(lien):
+    """Accepte uniquement un lien https Google Drive : le lien est affiché
+    comme href, un javascript: ou un site tiers n'a rien à faire là."""
+    try:
+        u = urlparse(lien)
+    except ValueError:
+        return False
+    return u.scheme == "https" and (u.hostname or "").lower() in _HOTES_DRIVE
+
+
+@fiches_visite_bp.route("/fiches_visite/<int:partner_id>/nouvelle_pdf", methods=["GET", "POST"])
+@login_required
+@require_access("associations", "ecriture")
+def nouvelle_pdf(partner_id):
+    """Ajoute une ligne (date de visite + lien Drive) pour une association
+    qui a rempli la fiche en PDF au lieu du formulaire en ligne. Le PDF n'est
+    pas téléchargé sur le serveur : seul le lien de partage est conservé."""
+    conn = get_db_connection()
+    partenaire = conn.execute("SELECT * FROM associations WHERE id = ?", (partner_id,)).fetchone()
+    if not partenaire:
+        conn.close()
+        flash("⛔ Partenaire introuvable.", "danger")
+        return redirect(url_for("partenaires.partenaires"))
+    partenaire_dict = clean_row(partenaire)
+
+    if request.method == "POST":
+        date_visite = (request.form.get("date_visite") or "").strip()
+        lien = (request.form.get("lien_pdf_drive") or "").strip()
+        erreur = None
+        if not date_visite:
+            erreur = "La date de visite est obligatoire."
+        elif not _lien_drive_valide(lien):
+            erreur = "Le lien doit être un lien de partage Google Drive (https://drive.google.com/…)."
+        if erreur:
+            conn.close()
+            flash(f"⛔ {erreur}", "danger")
+            return render_template(
+                "fiches_visite/fiche_visite_pdf_drive_form.html",
+                partenaire=partenaire_dict, partner_id=partner_id, fiche={},
+                date_visite=date_visite, lien=lien,
+            )
+
+        conn.execute(
+            "INSERT INTO fiches_visite (partenaire_id, date_visite, car, lien_pdf_drive) VALUES (?, ?, ?, ?)",
+            (partner_id, date_visite, partenaire_dict.get("CAR", ""), lien),
+        )
+        conn.commit()
+        conn.close()
+        upload_database()
+        write_log(f"📎 Fiche de visite PDF (Drive) ajoutée pour l'association {partner_id}, visite du {date_visite}")
+        flash("✅ Fiche de visite PDF ajoutée.", "success")
+        return redirect(url_for("fiches_visite.liste", partner_id=partner_id))
+
+    conn.close()
+    return render_template(
+        "fiches_visite/fiche_visite_pdf_drive_form.html",
+        partenaire=partenaire_dict, partner_id=partner_id, fiche={},
+        date_visite=date.today().isoformat(), lien="",
+    )
+
+
+# ========================================
 # 👁️ Visualiser fiche de visite
 # ========================================
 @fiches_visite_bp.route("/fiches_visite/view/<int:fiche_id>")
@@ -162,6 +231,9 @@ def view(fiche_id):
     cur = conn.cursor()
 
     fiche = cur.execute("SELECT * FROM fiches_visite WHERE id = ?", (fiche_id,)).fetchone()
+    if fiche and fiche["lien_pdf_drive"]:
+        conn.close()
+        return redirect(fiche["lien_pdf_drive"])
     partenaire = cur.execute("SELECT * FROM associations WHERE id = ?", (fiche["partenaire_id"],)).fetchone()
 
     cars = [row["param_value"] for row in cur.execute(
@@ -200,6 +272,11 @@ def modifier(fiche_id):
         conn.close()
         flash("❌ Fiche introuvable.", "danger")
         return redirect(url_for("partenaires.partenaires"))
+
+    if fiche["lien_pdf_drive"]:
+        # Fiche PDF : le formulaire en ligne écraserait tous les champs par du vide
+        conn.close()
+        return _modifier_pdf(fiche_id, clean_row(fiche))
 
     if request.method == "POST":
         # 🔎 Récupération dynamique des colonnes de la table
@@ -242,6 +319,46 @@ def modifier(fiche_id):
 
 
 
+def _modifier_pdf(fiche_id, fiche):
+    partner_id = fiche["partenaire_id"]
+    conn = get_db_connection()
+    partenaire = conn.execute("SELECT * FROM associations WHERE id = ?", (partner_id,)).fetchone()
+    partenaire_dict = clean_row(partenaire)
+
+    if request.method == "POST":
+        date_visite = (request.form.get("date_visite") or "").strip()
+        lien = (request.form.get("lien_pdf_drive") or "").strip()
+        erreur = None
+        if not date_visite:
+            erreur = "La date de visite est obligatoire."
+        elif not _lien_drive_valide(lien):
+            erreur = "Le lien doit être un lien de partage Google Drive (https://drive.google.com/…)."
+        if erreur:
+            conn.close()
+            flash(f"⛔ {erreur}", "danger")
+            return render_template(
+                "fiches_visite/fiche_visite_pdf_drive_form.html",
+                partenaire=partenaire_dict, partner_id=partner_id, fiche=fiche,
+                date_visite=date_visite, lien=lien,
+            )
+        conn.execute(
+            "UPDATE fiches_visite SET date_visite = ?, lien_pdf_drive = ? WHERE id = ?",
+            (date_visite, lien, fiche_id),
+        )
+        conn.commit()
+        conn.close()
+        upload_database()
+        flash("✅ Fiche de visite PDF mise à jour.", "success")
+        return redirect(url_for("fiches_visite.liste", partner_id=partner_id))
+
+    conn.close()
+    return render_template(
+        "fiches_visite/fiche_visite_pdf_drive_form.html",
+        partenaire=partenaire_dict, partner_id=partner_id, fiche=fiche,
+        date_visite=fiche["date_visite"], lien=fiche["lien_pdf_drive"],
+    )
+
+
 @fiches_visite_bp.route("/fiches_visite/pdf/<int:fiche_id>")
 @login_required
 @require_access("associations", "lecture")
@@ -265,6 +382,8 @@ def pdf(fiche_id):
 
         if not fiche:
             return "❌ Fiche non trouvée", 404
+        if fiche.get("lien_pdf_drive"):
+            return redirect(fiche["lien_pdf_drive"])
 
         org = get_organisation()
         logo_path = os.path.join(os.getcwd(), org["logo_path"])
@@ -331,6 +450,8 @@ def fiche_visite_html(fiche_id):
 
         if not fiche:
             return "❌ Fiche non trouvée", 404
+        if fiche["lien_pdf_drive"]:
+            return redirect(fiche["lien_pdf_drive"])
 
         org = get_organisation()
         logo_path = os.path.join(os.getcwd(), org["logo_path"])

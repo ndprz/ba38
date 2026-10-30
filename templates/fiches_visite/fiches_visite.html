@@ -12,6 +12,9 @@
     {{ action_button("⬅️ Retour partenaire", href=url_for('partenaires.update_partner', partner_id=partner_id), color="outline-dark") }}
     <a href="{{ url_for('fiches_visite.nouvelle', partner_id=partner_id) }}" class="btn btn-primary">➕ Nouvelle fiche de
       visite</a>
+    <a href="{{ url_for('fiches_visite.nouvelle_pdf', partner_id=partner_id) }}" class="btn btn-outline-primary"
+      title="Pour une association qui a rempli la fiche en PDF plutôt que le formulaire en ligne">📎 Utiliser une fiche
+      PDF existante</a>
   </div>
 
 
@@ -32,16 +35,23 @@
         <td>{{ fiche['car'] or "—" }}</td>
         <td>{{ fiche['recu_par'] or "—" }}</td>
         <td>
+          {% if fiche['lien_pdf_drive'] %}
+          <a href="{{ fiche['lien_pdf_drive'] }}" class="btn btn-sm btn-outline-danger" target="_blank"
+            rel="noopener noreferrer">📎 Ouvrir le PDF (Drive)</a>
+          {% else %}
           <a href="{{ url_for('fiches_visite.view', fiche_id=fiche['id']) }}" class="btn btn-sm btn-outline-info">👁️
             Voir</a>
+          {% endif %}
 
           <a href="{{ url_for('fiches_visite.modifier', fiche_id=fiche['id']) }}" class="btn btn-sm btn-warning">✏️
             Modifier</a>
 
+          {% if not fiche['lien_pdf_drive'] %}
           <a href="{{ url_for('fiches_visite.pdf', fiche_id=fiche['id']) }}" class="btn btn-outline-danger btn-sm"
             target="_blank">
             📄 PDF
           </a>
+          {% endif %}
 
           <!-- 🗑️ SUPPRESSION -->
           <form method="POST" action="{{ url_for('fiches_visite.supprimer', fiche_id=fiche['id']) }}"

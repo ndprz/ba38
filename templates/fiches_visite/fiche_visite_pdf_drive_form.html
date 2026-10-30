@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Fiche de visite PDF{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 760px;">
+  <h2 class="mb-3">📎 Fiche de visite PDF – {{ partenaire.get("nom_association", "") }}</h2>
+
+  <div class="alert alert-info">
+    Pour une association qui a rempli la fiche en PDF au lieu du formulaire en ligne.<br>
+    <ol class="mb-0 mt-2">
+      <li>Indiquez la date de la visite.</li>
+      <li>Ouvrez le Drive (ou le drive partagé), retrouvez le PDF, clic droit
+        → <strong>Partager → Copier le lien</strong>.</li>
+      <li>Collez le lien ci-dessous. Le PDF reste sur le Drive : il n'est pas copié sur le serveur.</li>
+    </ol>
+  </div>
+
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="mb-3">
+      <label for="date_visite" class="form-label fw-bold">Date de visite</label>
+      <input type="date" class="form-control" id="date_visite" name="date_visite" value="{{ date_visite }}" required>
+    </div>
+
+    <div class="mb-3">
+      <label for="lien_pdf_drive" class="form-label fw-bold">Lien de partage du PDF</label>
+      <div class="input-group">
+        <input type="url" class="form-control" id="lien_pdf_drive" name="lien_pdf_drive" value="{{ lien }}"
+          placeholder="https://drive.google.com/file/d/…/view?usp=sharing" required>
+        <a href="https://drive.google.com/" target="_blank" rel="noopener noreferrer"
+          class="btn btn-outline-secondary">Ouvrir le Drive ↗</a>
+      </div>
+      <div class="form-text">Lien Google Drive uniquement (drive.google.com ou docs.google.com).</div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+    <a href="{{ url_for('fiches_visite.liste', partner_id=partner_id) }}" class="btn btn-secondary">⬅️ Annuler</a>
+  </form>
+</div>
+{% endblock %}
