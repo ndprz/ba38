@@ -290,11 +290,18 @@ def etat_journalier_productions():
             })
 
     tailles = ("1/2", "1/4", "1/8")
+    with _connect() as conn:
+        portions_par_taille = {
+            r[0]: r[1] for r in conn.execute(
+                "SELECT taille, nb_portions FROM cuisine_articles_barquettes WHERE actif = 1"
+            ).fetchall()
+        }
     groupes = {}
-    totaux = {"barquettes": {t: 0 for t in tailles}, "matieres_kg": 0.0}
+    totaux = {"barquettes": {t: 0 for t in tailles}, "matieres_kg": 0.0, "temoins": 0, "temoins_g": 0.0}
     for ligne in lignes:
         libelle = LIBELLES_CATEGORIE.get(ligne["p"]["categorie_produit"], "Catégorie non renseignée")
-        entree = groupes.setdefault(libelle, {"lignes": [], "barquettes": {t: 0 for t in tailles}, "matieres_kg": 0.0})
+        entree = groupes.setdefault(libelle, {"lignes": [], "barquettes": {t: 0 for t in tailles}, "matieres_kg": 0.0,
+                                              "temoins": 0, "temoins_g": 0.0})
         entree["lignes"].append(ligne)
         for t in tailles:
             n = ligne["quantites"].get(t, 0) or 0
@@ -303,6 +310,14 @@ def etat_journalier_productions():
         kg = ligne["p"]["matieres_kg"] or 0
         entree["matieres_kg"] += kg
         totaux["matieres_kg"] += kg
+        if ligne["p"]["plat_temoin"] == "oui":
+            g = ligne["p"]["plat_temoin_poids_g"] or 0
+            for cible in (entree, totaux):
+                cible["temoins"] += 1
+                cible["temoins_g"] += g
+
+    for cible in [totaux, *groupes.values()]:
+        cible["portions"] = sum(cible["barquettes"][t] * (portions_par_taille.get(t) or 0) for t in tailles)
 
     return render_template(
         "production_cuisine/productions_etat_journalier.html",
@@ -316,6 +331,7 @@ def etat_journalier_productions():
         groupes=sorted(groupes.items(), key=lambda kv: (kv[0] not in LIBELLES_CATEGORIE.values(), kv[0])),
         totaux=totaux,
         tailles=tailles,
+        portions_par_taille=portions_par_taille,
         format_duree=format_duree,
         duree_refroid_max=DUREE_REFROIDISSEMENT_MAX,
         nb_productions=len(lignes),

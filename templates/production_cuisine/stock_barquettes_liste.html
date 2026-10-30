@@ -11,6 +11,14 @@
     white-space: normal;
     line-height: 1.1;
   }
+  /* Une couleur par taille de barquette (cartes, pastilles du tableau) */
+  .taille-1-2 { --c: #0d6efd; --c-bg: #e7f0ff; }
+  .taille-1-4 { --c: #198754; --c-bg: #e3f4ea; }
+  .taille-1-8 { --c: #fd7e14; --c-bg: #fff0e0; }
+  .carte-taille { border-left: 8px solid var(--c); background: var(--c-bg); }
+  .pastille-taille { display: inline-block; padding: .15rem .55rem; border-radius: 1rem;
+                     background: var(--c); color: #fff; font-weight: 600; font-size: .8rem; }
+  .pastille-taille.taille-1-8 { color: #212529; }
 </style>
 {% endblock %}
 
@@ -45,9 +53,9 @@
   <div class="row g-3 mb-4">
     {% for a in stock_total %}
     <div class="col-md-4">
-      <div class="card h-100">
+      <div class="card h-100 carte-taille taille-{{ a.taille|replace('/', '-') }}">
         <div class="card-body">
-          <h5 class="card-title">{{ a.libelle }}</h5>
+          <h5 class="card-title"><span class="pastille-taille taille-{{ a.taille|replace('/', '-') }}">{{ a.taille }}</span> {{ a.libelle }}</h5>
           <p class="display-6 mb-0">{{ a.quantite_stock }}</p>
           <p class="text-muted mb-0">barquette(s) disponible(s){% if a.quantite_livree %} · {{ a.quantite_livree }} livrée(s){% endif %}</p>
           <p class="text-muted small mb-2">{{ a.nb_portions }} portion(s)/barquette · {{ a.quantite_stock * a.nb_portions }} portion(s) au total</p>
@@ -109,7 +117,15 @@
           return a;
         },
       },
-      { title: "Taille", field: "article_libelle", width: 140, minWidth: 130, headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
+      {
+        title: "Taille", field: "article_libelle", width: 140, minWidth: 130, headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true },
+        formatter: function (cell) {
+          var span = document.createElement("span");
+          span.className = "pastille-taille taille-" + String(cell.getData().taille || "").replace("/", "-");
+          span.textContent = cell.getValue();
+          return span;
+        },
+      },
       { title: "Catégorie", field: "categorie_label", width: 130, minWidth: 120, headerFilter: "list", headerFilterParams: { valuesLookup: true, clearable: true } },
       { title: "Entrée", field: "quantite", width: 95, minWidth: 95, hozAlign: "right" },
       { title: "Livré", field: "quantite_livree", width: 95, minWidth: 95, hozAlign: "right" },

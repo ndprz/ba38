@@ -29,6 +29,15 @@
   {%- endif -%}
 {%- endmacro %}
 
+{# Portions d'un nombre de barquettes d'une taille (nb_portions du référentiel) #}
+{% macro portions(n, t) -%}
+  {{ n * (portions_par_taille.get(t) or 0) }}
+{%- endmacro %}
+
+{% macro temoins(nb, g) -%}
+  {{ nb }}{% if g %} ({{ g|int }} g){% endif %}
+{%- endmacro %}
+
 {% macro temperature(valeur) -%}
   {%- if valeur is not none -%}{{ valeur|string|replace(".", ",") }} °C{%- else -%}—{%- endif -%}
 {%- endmacro %}
@@ -80,8 +89,9 @@
     — {{ nb_productions }} production(s)
     {% if nb_en_cours %}<span class="badge bg-warning text-dark">{{ nb_en_cours }} encore en cours</span>{% endif %}
     {% if nb_non_conformes %}<span class="badge bg-danger text-white">{{ nb_non_conformes }} non conforme(s)</span>{% endif %}
-    — Barquettes : {% for t in tailles %}{{ t }} × {{ totaux.barquettes[t] }}{% if not loop.last %}, {% endif %}{% endfor %}
-    — Matières utilisées : {{ "%.1f"|format(totaux.matieres_kg) }} kg
+    — Barquettes : {% for t in tailles %}{{ t }} × {{ totaux.barquettes[t] }} ({{ portions(totaux.barquettes[t], t) }} p){% if not loop.last %}, {% endif %}{% endfor %}
+    — {{ totaux.portions }} portion(s)
+    — Plats témoins : {{ temoins(totaux.temoins, totaux.temoins_g) }}
   </p>
 
   {% if not groupes %}
@@ -93,7 +103,9 @@
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
       <strong>{{ groupe }}</strong>
       <span>
-        {% for t in tailles %}<span class="badge bg-secondary text-white">{{ t }} × {{ data.barquettes[t] }}</span> {% endfor %}
+        {% for t in tailles %}<span class="badge bg-secondary text-white">{{ t }} × {{ data.barquettes[t] }} ({{ portions(data.barquettes[t], t) }} p)</span> {% endfor %}
+        <span class="badge bg-info text-dark">{{ data.portions }} portions</span>
+        <span class="badge bg-light text-dark border">Plats témoins {{ temoins(data.temoins, data.temoins_g) }}</span>
         <span class="badge bg-dark text-white">Matières {{ "%.1f"|format(data.matieres_kg) }} kg</span>
       </span>
     </div>
@@ -134,7 +146,7 @@
             {{ format_duree(l.duree_refroidissement) if l.duree_refroidissement is not none else "—" }}
           </td>
           <td class="text-end text-nowrap">{{ temperature(l.t_cellule) }}</td>
-          {% for t in tailles %}<td class="text-end">{{ l.quantites.get(t) or "—" }}</td>{% endfor %}
+          {% for t in tailles %}<td class="text-end">{% set n = l.quantites.get(t) %}{% if n %}{{ n }} <small class="text-muted">({{ portions(n, t) }} p)</small>{% else %}—{% endif %}</td>{% endfor %}
           <td class="text-nowrap">
             {% if p.plat_temoin == 'oui' %}oui{% if p.plat_temoin_poids_g %} ({{ p.plat_temoin_poids_g|int }} g){% endif %}{% else %}non{% endif %}
           </td>
