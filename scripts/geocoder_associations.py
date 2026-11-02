@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Géocode les associations actives (colonnes latitude/longitude vides) via
 Nominatim (OpenStreetMap, gratuit, pas de clé API — même service déjà utilisé
-ponctuellement dans ba38_collecte/moteur_tournees.py). Adresse utilisée :
-adresse_association_1/2 + CP + COMMUNE (la mieux renseignée : 129/129
-associations actives, contre 88/129 pour adresse_siege). Résultat persisté
-en base pour ne plus jamais avoir à regéocoder à chaque affichage de la
-carte « Localisation magasins et associations ».
+ponctuellement dans ba38_collecte/moteur_tournees.py). Adresse utilisée en
+priorité : adresse_distribution_1/2 + CP2 + COMMUNE2 (le point réel où
+l'association distribue, donc le plus pertinent sur une carte de
+localisation — demande utilisateur 2026-10-31, suite à plusieurs
+associations géographiquement distinctes empilées au même point car
+partageant une adresse de siège commune, ex. Trièves Mens/Monestier) ; à
+défaut (absente ou hors zone plausible), repli sur adresse_association_1/2 +
+CP + COMMUNE (la mieux renseignée des deux : 129/129 associations actives,
+contre 88/129 pour adresse_siege). Résultat persisté en base pour ne plus
+jamais avoir à regéocoder à chaque affichage de la carte « Localisation
+magasins et associations ».
 
 Respecte la limite d'usage Nominatim (1 requête/seconde max) : bien plus
 lent qu'un géocodage par lot classique, mais c'est un service gratuit sans
@@ -39,12 +45,15 @@ _CACHE_CP_COMMUNE = {}
 
 def _commune_via_cp(cp):
     """Résout le nom officiel de la commune à partir du code postal, via
-    l'API gouvernementale geo.api.gouv.fr (gratuite, sans clé) — plus fiable
-    que le champ libre COMMUNE, qui contient parfois 'Cedex'/'BP...' collé au
-    nom (ex. 'MEYLAN CEDEX', 'GRENOBLE Cedex 2') et fait échouer Nominatim.
-    Retourne None si le CP est absent/invalide/inconnu (ex. CP de Cedex,
-    souvent différent du vrai code postal de la commune) — pas une erreur,
-    juste un cas où le repli sur COMMUNE nettoyée prend le relais."""
+    l'API gouvernementale geo.api.gouv.fr (gratuite, sans clé). Utilisé en
+    repli uniquement (cf. _resoudre_commune) quand le champ libre COMMUNE est
+    vide : un code postal peut couvrir plusieurs petites communes rurales
+    (confirmé en zone Trièves — ex. 38650 renvoyait 'Avignonet' au lieu de
+    'Monestier-de-Clermont', 38710 'Cornillon-en-Trièves' au lieu de 'Mens'),
+    l'API retourne alors la première sans qu'on puisse savoir si c'est la
+    bonne — moins fiable que le champ COMMUNE nettoyé quand il est renseigné
+    (audit 2026-10-31). Retourne None si le CP est absent/invalide/inconnu —
+    pas une erreur, juste un cas où il n'y a de toute façon rien à résoudre."""
     cp = (cp or '').strip()
     if not cp or not cp.isdigit():
         return None
@@ -72,15 +81,19 @@ def _nettoyer_commune(commune):
 
 
 def _resoudre_commune(cp, commune_brute):
-    return _commune_via_cp(cp) or _nettoyer_commune(commune_brute or '')
+    """Priorité au champ COMMUNE saisi (nettoyé de 'Cedex'/'BP...'), repli sur
+    la résolution par CP seulement s'il est vide — voir _commune_via_cp pour
+    pourquoi l'ordre inverse (utilisé avant 2026-10-31) s'est révélé moins
+    fiable sur certains codes postaux ruraux."""
+    commune_nettoyee = _nettoyer_commune(commune_brute or '')
+    return commune_nettoyee or _commune_via_cp(cp)
 
 
 # Boîte englobante large autour de l'Isère (+ départements limitrophes) — même
 # zone que celle utilisée à l'affichage de la carte (ba38_collecte/routes.py,
-# _coords_plausibles) : un siège national (Paris, Montpellier...) hors de
-# cette zone n'est pas géographiquement utile sur une carte de localisation
-# BAI 38, même si l'adresse est exacte — dans ce cas on préfère l'adresse de
-# distribution locale (adresse_distribution_1/2 + CP2 + COMMUNE2) si connue.
+# _coords_plausibles) : sert à valider l'adresse de distribution (prioritaire)
+# et, si elle est absente ou géocode hors de cette zone (ex. siège national à
+# Paris, Montpellier...), à valider le repli sur l'adresse de l'association.
 ZONE_LAT_MIN, ZONE_LAT_MAX = 44.0, 46.3
 ZONE_LON_MIN, ZONE_LON_MAX = 4.2, 6.3
 
@@ -185,24 +198,28 @@ def main():
     maintenant = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     for i, r in enumerate(rows, 1):
-        adresse = ' '.join(p for p in [r["adresse_association_1"], r["adresse_association_2"]] if p and p.strip())
-        try:
-            coords, methode = geocoder_adresse(adresse, r["CP"], r["COMMUNE"])
-        except Exception as e:
-            coords, methode = None, None
-            print(f"  [{i}/{len(rows)}] ⚠️ {r['nom_association']} : erreur réseau ({e})")
+        coords, methode = None, None
+        adresse_distrib = ' '.join(p for p in [r["adresse_distribution_1"], r["adresse_distribution_2"]] if p and p.strip())
+        if adresse_distrib or r["CP2"] or r["COMMUNE2"]:
+            try:
+                coords, methode = geocoder_adresse(adresse_distrib, r["CP2"], r["COMMUNE2"])
+            except Exception as e:
+                coords, methode = None, None
+                print(f"  [{i}/{len(rows)}] ⚠️ {r['nom_association']} : erreur réseau distribution ({e})")
+            if _coords_plausibles(coords):
+                methode = f"distribution : {methode}"
 
-        # Adresse de siège hors zone (probable siège national) : la
-        # distribution locale est géographiquement plus pertinente ici.
+        # Adresse de distribution absente ou hors zone (donnée manquante,
+        # ou valeur aberrante) : repli sur l'adresse de l'association.
+        adresse = ' '.join(p for p in [r["adresse_association_1"], r["adresse_association_2"]] if p and p.strip())
         if not _coords_plausibles(coords):
-            adresse_distrib = ' '.join(p for p in [r["adresse_distribution_1"], r["adresse_distribution_2"]] if p and p.strip())
-            if adresse_distrib or r["CP2"] or r["COMMUNE2"]:
-                try:
-                    coords_d, methode_d = geocoder_adresse(adresse_distrib, r["CP2"], r["COMMUNE2"])
-                except Exception:
-                    coords_d, methode_d = None, None
-                if _coords_plausibles(coords_d):
-                    coords, methode = coords_d, f"distribution : {methode_d}"
+            try:
+                coords_a, methode_a = geocoder_adresse(adresse, r["CP"], r["COMMUNE"])
+            except Exception as e:
+                coords_a, methode_a = None, None
+                print(f"  [{i}/{len(rows)}] ⚠️ {r['nom_association']} : erreur réseau association ({e})")
+            if _coords_plausibles(coords_a):
+                coords, methode = coords_a, methode_a
 
         if coords:
             lat, lon = coords

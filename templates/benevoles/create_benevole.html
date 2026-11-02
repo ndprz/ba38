@@ -54,6 +54,11 @@
                         <option value="non" {% if field.value=='non' %}selected{% endif %}>Non</option>
                     </select>
 
+                    {% elif field.type_champ == "date" %}
+                    <input type="date"
+                        class="form-control {% if champs_invalides and field.field_name in champs_invalides %}is-invalid{% endif %}"
+                        id="{{ field.field_name }}" name="{{ field.field_name }}" value="{{ field.value or '' }}">
+
                     {% else %}
                     <input type="text"
                         class="form-control {% if champs_invalides and field.field_name in champs_invalides %}is-invalid{% endif %}"

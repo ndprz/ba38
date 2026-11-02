@@ -396,6 +396,24 @@
 }
 
 
+  // clic en dehors des groupes : tous les groupes se replient
+  document.addEventListener("click", function (e) {
+
+    if (e.target.closest(".field-group")) return;
+
+    document.querySelectorAll(".group-content.expanded").forEach(c => {
+
+        c.classList.remove("expanded");
+
+        localStorage.setItem("group_" + c.id, "closed");
+
+        const i = c.previousElementSibling.querySelector("span[id^='icon-']");
+
+        if (i) i.textContent = "➕";
+    });
+  });
+
+
   // 🔎 Active/désactive le filtre d'un champ, indépendamment de la case "colonne"
   function toggleFilterField(name) {
     const block = document.getElementById(`filter-block-${name}`);

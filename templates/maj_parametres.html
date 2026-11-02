@@ -226,14 +226,24 @@
             form.method = "POST";
             form.action = "{{ url_for('maj_parametres') }}";
 
-            form.innerHTML = `
-            <input type="hidden" name="id" value="${id}">
-            <input type="hidden" name="param_name" value="${param_name}">
-            <input type="hidden" name="param_value" value="${param_value}">
-            <input type="hidden" name="phone" value="${phone}">
-            <input type="hidden" name="mail" value="${mail}">
-            <input type="hidden" name="action" value="modifier">
-        `;
+            // valeurs posées via le DOM (pas d'injection HTML : guillemets OK)
+            const champs = {
+                csrf_token: "{{ csrf_token() }}",
+                id: id,
+                param_name: param_name,
+                param_value: param_value,
+                phone: phone,
+                mail: mail,
+                action: "modifier"
+            };
+
+            for (const [nom, valeur] of Object.entries(champs)) {
+                const input = document.createElement("input");
+                input.type = "hidden";
+                input.name = nom;
+                input.value = valeur;
+                form.appendChild(input);
+            }
 
             document.body.appendChild(form);
             form.submit();

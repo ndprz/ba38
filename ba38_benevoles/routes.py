@@ -653,6 +653,8 @@ def benevoles_tabulator():
 
             col["formatter"] = "dateFormatter"
 
+            col["sorter"] = "dateSorter"
+
         columns.append(col)
 
 
@@ -790,6 +792,14 @@ def edition_tableau_benevoles():
 
 
 
+def normaliser_date_iso(value):
+    """JJ/MM/AAAA -> AAAA-MM-JJ ; toute autre valeur est renvoyée telle quelle."""
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", value or "")
+    if m:
+        return f"{m.group(3)}-{m.group(2).zfill(2)}-{m.group(1).zfill(2)}"
+    return value
+
+
 @benevoles_bp.route("/create_benevole", methods=["GET", "POST"])
 @login_required
 @require_access("benevoles", "ecriture")
@@ -852,6 +862,9 @@ def create_benevole():
             # Pour les oui/non, valeur par défaut
             if field["type_champ"] == "oui_non" and value == "":
                 value = "non"
+
+            if field["type_champ"] == "date":
+                value = normaliser_date_iso(value)
 
             if field_name == "civilite":
                 coerced = coerce_civilite(value)
@@ -1139,6 +1152,9 @@ def update_benevole(benevole_id):
                     if value and coerced is None:
                         flash("Civilité invalide", "danger")
                     value = coerced
+
+                if field["type_champ"] == "date":
+                    value = normaliser_date_iso(value)
 
                 updates[field_name] = None if value == "" else value
 

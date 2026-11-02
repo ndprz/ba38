@@ -181,6 +181,12 @@ document.getElementById('filtre-recherche').addEventListener('input', function (
     tousMarqueurs.forEach(function (marker) {
         const visible = !q || marker._texteRecherche.includes(q);
         marker.setOpacity(visible ? 1 : 0.15);
+        // Plusieurs lieux peuvent partager exactement les mêmes coordonnées
+        // (ex. plusieurs associations à la même adresse) : sans ceci, seul le
+        // dernier marqueur ajouté à ce point reste visible au-dessus des
+        // autres, qu'il corresponde ou non à la recherche — on fait donc
+        // remonter au premier plan les marqueurs trouvés.
+        marker.setZIndexOffset(q && visible ? 1000 : 0);
         if (q && visible) { trouves.push(marker); }
     });
     // Recentrer/zoomer la carte sur les résultats trouvés, sinon la recherche

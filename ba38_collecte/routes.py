@@ -6591,8 +6591,15 @@ def _normaliser_gardee_par(s):
 
 
 def _lire_magasins_gardes(annee):
-    """Magasins État='Collecte gardée' du référentiel de l'année (DataFrame
-    vide si introuvable dans le drive)."""
+    """Magasins État='Collecte gardée' du référentiel de l'année, plus les
+    magasins État='Collecté par la BAI' dont la colonne 'Stockage' révèle
+    quand même une association de stockage (ex. 'BAI+CCAS DOMENE' pour
+    Intermarché Domène) — la BAI collecte, mais cette association doit
+    recevoir la même réponse que les associations gardant officiellement un
+    magasin (demande utilisateur 2026-11-02). Le rattachement à l'association
+    se fait ensuite via _associations_secondaires_stockage, comme pour les
+    magasins 'Collecte gardée' à stockage partagé. DataFrame vide si
+    introuvable dans le drive."""
     chemin = _fichier_drive(annee, "magasins")
     if not chemin:
         return pd.DataFrame()
@@ -6600,7 +6607,13 @@ def _lire_magasins_gardes(annee):
     df.columns = [str(c).strip() for c in df.columns]
     if "État" not in df.columns:
         return pd.DataFrame()
-    return df[df["État"].astype(str).str.strip() == "Collecte gardée"].reset_index(drop=True)
+    etat = df["État"].astype(str).str.strip()
+    stockage = df.get("Stockage", pd.Series(dtype=str)).astype(str)
+    mask_gardee = etat == "Collecte gardée"
+    mask_bai_avec_association = (etat == "Collecté par la BAI") & stockage.map(
+        lambda s: bool(_associations_secondaires_stockage(s, ""))
+    )
+    return df[mask_gardee | mask_bai_avec_association].reset_index(drop=True)
 
 
 def _lire_groupes(annee):
@@ -6932,6 +6945,22 @@ def _associations_secondaires_stockage(stockage, primaire):
     primaire_cle = cle(primaire)
     tokens = [t.strip() for t in stockage.split("+") if t.strip()]
     return [t for t in tokens if cle(t) not in ("bai", primaire_cle)]
+
+
+def _association_effective(row):
+    """Association à laquelle rattacher ce magasin : 'Gardée par' en
+    priorité, sinon l'association révélée par 'Stockage' (cf.
+    _associations_secondaires_stockage) — cas des magasins 'Collecté par la
+    BAI' dont le stockage est partagé avec une association (ex. Intermarché
+    Domène, Stockage='BAI+CCAS DOMENE', 'Gardée par' vide)."""
+    gardee_par = row.get("Gardée par", "")
+    primaire = _normaliser_gardee_par(gardee_par) if pd.notna(gardee_par) else ""
+    if primaire:
+        return primaire
+    stockage = row.get("Stockage", "")
+    stockage = stockage if pd.notna(stockage) else ""
+    secondaires = _associations_secondaires_stockage(stockage, "")
+    return " + ".join(secondaires) if secondaires else ""
 
 
 def _modele_gardee(nom):
@@ -7604,7 +7633,10 @@ def _construire_associations(df_mag, df_groupes):
             lignes_par_asso.setdefault(primaire, []).append(idx)
         for secondaire in _associations_secondaires_stockage(row.get("Stockage", ""), primaire):
             grp_sec = groupes_par_nom_lower.get(secondaire.lower())
-            nom_cle = str(grp_sec.get("Nom")).strip() if grp_sec is not None else secondaire
+            # Nom normalisé (sans préfixe 'BAI+'), pas le nom brut de
+            # liste_groupes.xlsx qui le porte parfois lui aussi (ex. 'BAI+CCAS
+            # DOMENE') — sinon l'association apparaît sous ce nom préfixé.
+            nom_cle = _normaliser_gardee_par(grp_sec.get("Nom")) if grp_sec is not None else secondaire
             lignes_par_asso.setdefault(nom_cle, []).append(idx)
 
     associations = []
@@ -7624,7 +7656,9 @@ def _construire_associations(df_mag, df_groupes):
             "magasins": magasins_grp[["Code VIF", "Nom", "Ville", "Stockage", "Contact", "Email"]].to_dict("records"),
         })
 
-    sans_association = df_mag[gardee_par == ""][["Code VIF", "Nom", "Ville", "Stockage"]].to_dict("records")
+    idx_attribues = {idx for indices in lignes_par_asso.values() for idx in indices}
+    mask_sans_association = (gardee_par == "") & ~df_mag.index.isin(idx_attribues)
+    sans_association = df_mag[mask_sans_association][["Code VIF", "Nom", "Ville", "Stockage"]].to_dict("records")
     return associations, sans_association
 
 
@@ -8035,8 +8069,8 @@ def _generer_fichier_excel_gardee(annee):
         "Fiche groupe": a["fiche_groupe"],
     } for a in associations])
 
-    df_mag_flat = df_mag.copy()
-    df_mag_flat["Association"] = df_mag_flat.get("Gardée par", "").map(_normaliser_gardee_par)
+    df_mag_flat = df_mag.fillna("")
+    df_mag_flat["Association"] = df_mag_flat.apply(_association_effective, axis=1)
     colonnes_mag = ["Association", "Gardée par", "Code VIF", "Nom", "Ville", "Stockage",
                     "Contact", "Email", "Accord", "Commentaire", "Fiche magasin"]
     colonnes_mag = [c for c in colonnes_mag if c in df_mag_flat.columns]
@@ -8187,7 +8221,7 @@ def poids_magasins_gardee(annee):
         code_vif = str(row.get("Code VIF", "")).strip()
         if not code_vif or code_vif.lower() == "nan":
             continue
-        nom_association = _normaliser_gardee_par(row.get("Gardée par", ""))
+        nom_association = _association_effective(row)
         if nom_association not in code_vif_par_association:
             code_vif_asso, _, _ = _code_vif_association(nom_association, index_code_vif)
             code_vif_par_association[nom_association] = code_vif_asso

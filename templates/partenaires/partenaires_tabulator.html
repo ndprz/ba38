@@ -456,6 +456,8 @@ fieldset legend{
         Liste des Associations
     </h1>
 
+    <div id="associations-count" class="text-muted small mb-2"></div>
+
     {% if voir_non_valides %}
 
     <div class="alert alert-danger py-2 px-3 mb-2 fw-bold">
@@ -961,6 +963,31 @@ requestAnimationFrame(() => {
     document.getElementById("filtre-association").focus();
 });
 
+// ======================================================
+// COMPTEUR D'ASSOCIATIONS AFFICHEES
+// ======================================================
+
+function updateAssociationsCount(n){
+
+    if (typeof n !== "number"){
+        n = table.getDataCount("active");
+    }
+
+    document.getElementById("associations-count").textContent =
+        n + (n > 1 ? " associations affichées" : " association affichée");
+}
+
+// dataFiltered fournit directement les lignes filtrées
+table.on("dataFiltered", function(filters, rows){
+    updateAssociationsCount(rows.length);
+});
+table.on("dataLoaded", function(){
+    setTimeout(updateAssociationsCount, 0);
+});
+table.on("tableBuilt", function(){
+    updateAssociationsCount();
+});
+
 
 // ======================================================
 // COLONNES VISIBLES
@@ -1022,6 +1049,32 @@ function toggleGroup(groupName, el){
         ? "▼"
         : "▶";
 }
+
+
+// clic en dehors des groupes : tous les groupes se replient
+document.addEventListener("click", function(e){
+
+    if (e.target.closest(".fields-group")){
+
+        return;
+    }
+
+    document
+    .querySelectorAll(".fields-container.expanded")
+    .forEach(c => {
+
+        c.classList.remove("expanded");
+
+        const chev =
+            c.closest(".fields-group")
+            .querySelector(".chevron");
+
+        if (chev){
+
+            chev.textContent = "▶";
+        }
+    });
+});
 
 
 // ======================================================

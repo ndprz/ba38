@@ -329,6 +329,16 @@
             }
         }
 
+        // clic en dehors des groupes : tous les groupes se replient
+        document.addEventListener('click', function (e) {
+            if (e.target.closest('.fields-group')) return;
+            document.querySelectorAll('.fields-container.expanded').forEach(c => {
+                c.classList.remove('expanded');
+                const chevron = c.closest('.fields-group').querySelector('.chevron');
+                if (chevron) chevron.textContent = '➤';
+            });
+        });
+
         function toggleAll(group, checked) {
             document.querySelectorAll('.field-' + group).forEach(cb => cb.checked = checked);
 

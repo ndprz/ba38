@@ -469,6 +469,8 @@ body{
 
         <div id="fonction-filter-pastilles" class="d-flex flex-wrap gap-1"></div>
 
+        <span id="benevoles-count" class="text-muted small ms-2"></span>
+
     </div>
 
     <div style="flex:1 1 auto;">
@@ -760,6 +762,36 @@ function dateFormatter(cell){
     return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
+// tri chronologique : accepte AAAA-MM-JJ et JJ/MM/AAAA (formats mélangés en base)
+function dateToKey(value){
+
+    const v = String(value || "").trim();
+
+    let m = v.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+    if (m){
+
+        return m[1] + m[2] + m[3];
+    }
+
+    m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+
+    if (m){
+
+        return m[3] + m[2].padStart(2, "0") + m[1].padStart(2, "0");
+    }
+
+    return "";
+}
+
+function dateSorter(a, b){
+
+    const ka = dateToKey(a);
+    const kb = dateToKey(b);
+
+    return ka < kb ? -1 : (ka > kb ? 1 : 0);
+}
+
 // ======================================================
 // MODIFIER
 // ======================================================
@@ -826,6 +858,11 @@ function resolveColumns(cols){
         if (col.formatter === "dateFormatter"){
 
             col.formatter = dateFormatter;
+        }
+
+        if (col.sorter === "dateSorter"){
+
+            col.sorter = dateSorter;
         }
         // ======================================================
         // FORCE FILTRE LISTE TYPE EXCEL
@@ -1165,7 +1202,28 @@ document
 
 renderFonctionPastilles();
 
+function updateBenevolesCount(n){
+
+    if (typeof n !== "number"){
+        n = table.getDataCount("active");
+    }
+
+    document.getElementById("benevoles-count").textContent =
+        n + (n > 1 ? " bénévoles affichés" : " bénévole affiché");
+}
+
+// dataFiltered fournit directement les lignes filtrées (getDataCount
+// peut encore renvoyer l'ancien décompte à ce moment-là)
+table.on("dataFiltered", function(filters, rows){
+    updateBenevolesCount(rows.length);
+});
+table.on("dataLoaded", function(){
+    updateBenevolesCount();
+});
+
 table.on("tableBuilt", function(){
+
+    updateBenevolesCount();
 
     if (fonctionFilterSelected.size > 0){
 
@@ -1293,6 +1351,31 @@ function toggleGroup(groupName, el){
         ? "▼"
         : "▶";
 }
+
+// clic en dehors des groupes : tous les groupes se replient
+document.addEventListener("click", function(e){
+
+    if (e.target.closest(".fields-group")){
+
+        return;
+    }
+
+    document
+    .querySelectorAll(".fields-container.expanded")
+    .forEach(c => {
+
+        c.classList.remove("expanded");
+
+        const chev =
+            c.closest(".fields-group")
+            .querySelector(".chevron");
+
+        if (chev){
+
+            chev.textContent = "▶";
+        }
+    });
+});
 
 function toggleAll(group, checked){
 
