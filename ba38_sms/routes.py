@@ -9,7 +9,7 @@ from flask_login import login_required, current_user
 
 from ba38_sms import sms_bp
 from ba38_sms.smsfactor_client import (
-    normalize_phone_fr, envoyer_sms_reel, is_dev_environment, get_dev_test_number
+    normalize_phone_fr, envoyer_sms_reel, is_dev_environment, get_dev_test_number, get_credits_sms
 )
 from ba38_utilitaires.core import (
     get_db_connection, get_db_path, write_log, require_access, has_access, upload_database,
@@ -368,6 +368,7 @@ def envoi_sms_benevoles():
         destinataires=destinataires,
         nb_reponses_non_lues=get_nb_sms_reponses_non_lues(),
         textes=textes,
+        credits_sms=get_credits_sms(),
     )
 
 

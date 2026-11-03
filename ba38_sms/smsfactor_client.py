@@ -6,6 +6,7 @@ import requests
 from ba38_utilitaires.core import write_log
 
 SMSFACTOR_SEND_URL = "https://api.smsfactor.com/send"
+SMSFACTOR_CREDITS_URL = "https://api.smsfactor.com/credits"
 
 
 def normalize_phone_fr(raw):
@@ -58,3 +59,25 @@ def is_dev_environment():
 
 def get_dev_test_number():
     return os.getenv("SMS_DEV_TEST_NUMBER")
+
+
+def get_credits_sms():
+    """
+    Solde de crédits SMS du compte SmsFactor (entier), ou None si indisponible.
+    Appel court (timeout 4 s) : ne doit jamais bloquer l'affichage de la page.
+    """
+    try:
+        token = os.environ["SMSFACTOR_API_TOKEN"]
+        resp = requests.get(
+            SMSFACTOR_CREDITS_URL,
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            timeout=4,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("status") != 1:
+            return None
+        return int(float(data.get("credits")))
+    except Exception as e:
+        write_log(f"[SMS] Lecture crédits SmsFactor impossible : {e}")
+        return None

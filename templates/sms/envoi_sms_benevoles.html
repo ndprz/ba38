@@ -8,6 +8,15 @@
 
   <h2>📱 Envoi de SMS (bénévoles)</h2>
 
+  <p class="mb-2">
+    Crédits SMS disponibles (SmsFactor) :
+    {% if credits_sms is none %}
+      <span class="badge bg-secondary">indisponible</span>
+    {% else %}
+      <span class="badge {% if credits_sms < 200 %}bg-danger{% elif credits_sms < 500 %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ "{:,}".format(credits_sms).replace(",", " ") }}</span>
+    {% endif %}
+  </p>
+
   {% include "sms/_banner_alerte.html" %}
 
   {% call action_buttons() %}
