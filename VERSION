@@ -1,3 +1,3 @@
-VERSION=1.7.194
-MESSAGE=Signature electronique : en DEV ou compte test, signataire redirige vers l'utilisateur connecte
-DATE=2026-11-03 10:32
+VERSION=1.7.196
+MESSAGE=Gestion événements : ON/OFF conserve la position de page
+DATE=2026-11-03 11:18

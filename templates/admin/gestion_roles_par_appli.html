@@ -285,7 +285,7 @@ tr.row-hidden { display: none; }
                     {% if u.role == "admin" %}
                     <span class="tag-admin-global">admin global</span>
                     {% endif %}
-                    {% if not u.actif %}
+                    {% if (u.actif|string|lower) not in ['1', 'oui', 'true'] %}
                     <span class="badge bg-secondary ms-1"
                           style="font-size:.65rem;">inactif</span>
                     {% endif %}

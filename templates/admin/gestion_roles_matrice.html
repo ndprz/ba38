@@ -176,7 +176,7 @@
             &nbsp;·&nbsp; {{ user.username }}
             {% endif %}
             &nbsp;·&nbsp;
-            {% if user.actif %}
+            {% if (user.actif|string|lower) in ['1', 'oui', 'true'] %}
                 <span class="badge bg-success">actif</span>
             {% else %}
                 <span class="badge bg-secondary">inactif</span>

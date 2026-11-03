@@ -99,8 +99,9 @@
             <!-- Actif -->
             <td>
               <select class="form-select" name="users[{{ loop.index0 }}][actif]">
-                <option value="Oui" {% if user.actif %}selected{% endif %}>Oui</option>
-                <option value="Non" {% if not user.actif %}selected{% endif %}>Non</option>
+                {% set est_actif = (user.actif|string|lower) in ['1', 'oui', 'true'] %}
+                <option value="Oui" {% if est_actif %}selected{% endif %}>Oui</option>
+                <option value="Non" {% if not est_actif %}selected{% endif %}>Non</option>
               </select>
             </td>
 

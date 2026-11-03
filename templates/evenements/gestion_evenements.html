@@ -198,7 +198,7 @@
 
           <!-- ✅ bouton ON/OFF -->
           <td>
-            <form method="post" class="d-inline">
+            <form method="post" class="d-inline form-basculer-actif">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="id" value="{{ e.id }}">
               <input type="hidden" name="action" value="basculer_actif">
@@ -750,4 +750,21 @@
 
 
 
+<script>
+// ON/OFF : rester à la même position de page après rechargement
+document.querySelectorAll('.form-basculer-actif').forEach(f => {
+  f.addEventListener('submit', () => {
+    try { sessionStorage.setItem('evt_scroll_y', String(window.scrollY)); } catch (e) {}
+  });
+});
+(function () {
+  try {
+    const y = sessionStorage.getItem('evt_scroll_y');
+    if (y !== null) {
+      sessionStorage.removeItem('evt_scroll_y');
+      window.scrollTo(0, parseInt(y, 10));
+    }
+  } catch (e) {}
+})();
+</script>
 {% endblock %}
