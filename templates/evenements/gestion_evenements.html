@@ -751,11 +751,10 @@
 
 
 <script>
-// ON/OFF : rester à la même position de page après rechargement
-document.querySelectorAll('.form-basculer-actif').forEach(f => {
-  f.addEventListener('submit', () => {
-    try { sessionStorage.setItem('evt_scroll_y', String(window.scrollY)); } catch (e) {}
-  });
+// ON/OFF, modifier, supprimer… : rester à la même position de page après rechargement
+document.addEventListener('submit', ev => {
+  if (ev.defaultPrevented) return;  // suppression annulée dans confirm()
+  try { sessionStorage.setItem('evt_scroll_y', String(window.scrollY)); } catch (e) {}
 });
 (function () {
   try {
