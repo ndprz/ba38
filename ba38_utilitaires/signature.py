@@ -16,7 +16,7 @@ import requests
 import sqlite3
 from datetime import date, datetime
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, session
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
@@ -332,13 +332,27 @@ def envoyer():
     prenom, *reste = destinataire_nom.split(" ", 1)
     nom = reste[0] if reste else ""
 
+    # 🔒 Garde-fou DEV / session test : DEV et PROD partagent la même instance
+    # LibreSign, qui envoie elle-même le mail au signataire. Le signataire est
+    # donc remplacé par l'utilisateur connecté (le destinataire prévu reste
+    # tracé dans le nom du document et en base).
+    email_envoi = destinataire_email
+    redirige = os.getenv("ENVIRONMENT", "").upper() == "DEV" or bool(session.get("test_user"))
+    if redirige:
+        email_envoi = current_user.email
+        prenom, nom = (current_user.username or current_user.email), ""
+        nom_document_envoi = f"[TEST] {nom_document} (destinataire prévu : {destinataire_email})"
+        write_log(f"🔒 Signature {signature_id} : signataire {destinataire_email} redirigé vers {email_envoi} (DEV/test)")
+    else:
+        nom_document_envoi = nom_document
+
     try:
         resultat = envoyer_signature_request(
             pdf_bytes=pdf_bytes,
-            nom_document=nom_document,
+            nom_document=nom_document_envoi,
             signataire_prenom=prenom,
             signataire_nom=nom,
-            signataire_email=destinataire_email,
+            signataire_email=email_envoi,
             coordonnees=coordonnees,
         )
     except LibreSignError as e:
@@ -362,7 +376,10 @@ def envoyer():
     conn.close()
 
     upload_database()
-    flash(f"📤 Document envoyé pour signature à {destinataire_email}.", "success")
+    if redirige:
+        flash(f"🧪 TEST : demande de signature envoyée à {email_envoi} (au lieu de {destinataire_email}).", "warning")
+    else:
+        flash(f"📤 Document envoyé pour signature à {destinataire_email}.", "success")
     return redirect(url_for("signature.index"))
 
 
