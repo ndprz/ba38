@@ -966,77 +966,53 @@ def adresse_test_utilisateur():
 
 
 def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None, is_html=False, bcc=None, cc=None, attachment_paths=None, sender_name=None, reply_to=None, current_user_email=None,
-                 attachment_filename=None):
+                 attachment_filename=None, mode_test=False):
 
     api_key = os.getenv("MAILJET_API_KEY")
     api_secret = os.getenv("MAILJET_API_SECRET")
-    sender = sender_override or os.getenv("MAILJET_SENDER")
+    sender = sender_override
 
     mail_mode = os.getenv("MAIL_MODE", "PROD").upper()
     mail_test_to = os.getenv("MAIL_TEST_TO")
 
     # -----------------------------
-    # 🔒 Garde-fou DEV : quel que soit le mode TEST/PROD applicatif
-    # (session, compte test_only...), l'instance DEV ne doit jamais faire
-    # partir un mail vers un vrai destinataire ni vers une copie (bcc)
-    # comptabilité — tout est redirigé vers l'utilisateur actuellement
-    # connecté (pour qu'il retrouve ses propres tests dans sa boîte),
-    # avec repli sur une adresse de test fixe hors contexte de requête
-    # (scripts planifiés) ou si personne n'est authentifié.
-    # Priment sur toute autre logique de redirection ci-dessous.
+    # 🔒 Mode test / DEV : l'expéditeur ET le destinataire deviennent
+    # l'utilisateur connecté (il retrouve ses propres tests dans sa boîte,
+    # jamais un vrai destinataire, jamais de copie bcc/cc). Déclencheurs :
+    #  - instance DEV (ENVIRONMENT=DEV), quel que soit le mode applicatif ;
+    #  - session en mode test (compte test_only) ;
+    #  - MAIL_MODE=TEST dans le .env (scripts planifiés) ;
+    #  - mode_test=True passé par l'appelant (case « mode TEST » des écrans
+    #    d'envoi, y compris en Thread d'arrière-plan).
+    # Utilisateur : current_user en contexte de requête, sinon
+    # current_user_email capturé AVANT le Thread, sinon (mode_test) le
+    # premier destinataire déjà calculé par l'appelant, sinon adresse fixe.
     # -----------------------------
     is_dev = os.getenv("ENVIRONMENT", "").upper() == "DEV"
 
-    # -----------------------------
-    # Mode TEST (session utilisateur) → priorité sur MAIL_MODE
-    # Redirige vers l'email de l'utilisateur connecté plutôt qu'une
-    # adresse fixe, pour permettre de tester en toute sécurité
-    # (comptes "test_only" notamment) sans jamais écrire à un vrai
-    # destinataire.
-    # -----------------------------
     session_test_mode = False
     if has_request_context():
         session_test_mode = bool(session.get("test_user"))
 
-    if is_dev:
-        sujet = f"🧪 [DEV] {sujet}"
-
-        destinataire_dev = None
+    if is_dev or session_test_mode or mail_mode == "TEST" or mode_test:
+        utilisateur = None
         if has_request_context() and current_user and current_user.is_authenticated:
-            destinataire_dev = current_user.email
-
-        # Hors contexte de requête (envoi en Thread arrière-plan avec
-        # app.app_context() seul) : current_user est inaccessible, donc
-        # l'appelant doit avoir capturé current_user.email AVANT de
-        # lancer le Thread et le repasser ici explicitement.
-        if not destinataire_dev:
-            destinataire_dev = current_user_email
-
-        destinataires = [
-            destinataire_dev
+            utilisateur = current_user.email
+        utilisateur = (
+            utilisateur
+            or current_user_email
+            or (destinataires[0] if mode_test and destinataires else None)
             or mail_test_to
             or "ba380.informatique2@banquealimentaire.org"
-        ]
+        )
+        if is_dev:
+            sujet = f"🧪 [DEV] {sujet}"
+        elif "[TEST]" not in sujet:
+            sujet = f"[TEST] {sujet}"
+        sender = utilisateur
+        destinataires = [utilisateur]
         bcc = None
         cc = None
-
-    elif session_test_mode:
-        sujet = f"[TEST] {sujet}"
-        repli = current_user.email if (current_user and current_user.is_authenticated) else mail_test_to
-        destinataires = [repli] if repli else []
-        bcc = None
-        cc = None
-
-    # -----------------------------
-    # Mode TEST (global, MAIL_MODE=TEST dans .env) → utilisé hors
-    # contexte de requête (scripts planifiés) ou si aucun utilisateur
-    # n'est disponible pour la redirection ci-dessus.
-    # -----------------------------
-    elif mail_mode == "TEST":
-        sujet = f"[TEST] {sujet}"
-
-        # on redirige seulement les destinataires
-        destinataires = [mail_test_to]
 
     # -----------------------------
     # LOG DEBUG
@@ -1077,7 +1053,7 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
         return
 
     if not sender:
-        raise ValueError("MAILJET_SENDER non défini")
+        raise ValueError("Expéditeur (sender_override) non précisé : chaque appelant doit choisir son expéditeur")
 
     write_log(
         f"📧 Mailjet : FROM={sender} TO={destinataires} "
@@ -1165,7 +1141,7 @@ def send_reset_email(email, token):
     """
     api_key = os.getenv("MAILJET_API_KEY")
     api_secret = os.getenv("MAILJET_API_SECRET")
-    sender = os.getenv("MAILJET_SENDER")
+    sender = "ba380.informatique2@banquealimentaire.org"
 
     if not all([api_key, api_secret, sender]):
         write_log("❌ Mailjet mal configuré (clé/secret/sender manquant)")
@@ -1214,7 +1190,7 @@ def send_verification_email(email, token):
     from flask import url_for
     api_key = os.getenv("MAILJET_API_KEY")
     api_secret = os.getenv("MAILJET_API_SECRET")
-    sender = os.getenv("MAILJET_SENDER")
+    sender = "ba380.informatique2@banquealimentaire.org"
 
     if not all([api_key, api_secret, sender]):
         write_log("❌ Mailjet mal configuré (clé/secret/sender manquant)")

@@ -52,7 +52,6 @@ vars_to_check = [
     "FLASK_SECRET_KEY",
     "MAILJET_API_KEY",
     "MAILJET_API_SECRET",
-    "MAILJET_SENDER",
 ]
 
 env = os.getenv("ENVIRONMENT", "NON DÉFINI")

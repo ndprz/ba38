@@ -75,7 +75,7 @@ BAREME_SOURCE_DEFAUT = "Barème kilométrique fiscal (revenus 2024) — à véri
 
 PRIX_TICKET_TAG_DEFAUT = 1.80
 
-EXPEDITEUR_DEFAUT = None  # None = MAILJET_SENDER (expéditeur validé Mailjet)
+EXPEDITEUR_DEFAUT = "ba380.fraistrajets@banquealimentaire.org"  # expéditeur validé Mailjet
 REPLY_TO_DEFAUT = "ba380.fraistrajets@banquealimentaire.org"
 SIGNATAIRE_QUALITE_DEFAUT = "La Présidente"
 

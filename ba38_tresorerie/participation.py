@@ -438,6 +438,7 @@ def envoyer_participation_background(app, db_path, campagne_id, items, mail_mode
                 write_log(f"📧 Envoi facture participation à {email_envoi} | facture_id={item['facture_id']}")
 
                 resultat = envoyer_mail(
+                    mode_test=mail_mode == "TEST",
                     sujet=sujet_envoi,
                     destinataires=destinataires,
                     texte=item["corps"],
@@ -1307,6 +1308,7 @@ def envoyer_relances_participation_background(app, db_path, items, sujet_modele,
                 generer_facture_participation_pdf(data_pdf, pdf_path)
 
                 resultat = envoyer_mail(
+                    mode_test=mail_mode == "TEST",
                     sujet=sujet_envoi,
                     destinataires=destinataire,
                     texte=texte_mail,
@@ -1914,6 +1916,7 @@ def ebp_prevenir_tresorier(campagne_id):
             f.write(_telecharger_corrige(ebp))
 
         envoyer_mail(
+            mode_test=mode_test,
             sujet=sujet,
             destinataires=destinataires,
             texte=texte,

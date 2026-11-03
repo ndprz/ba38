@@ -262,6 +262,7 @@ def envoyer_cotisations_v2_background(app, db_path, campagne_id, items, mail_mod
                 write_log(f"📧 Envoi facture cotisation V2 à {email_envoi} | facture_id={item['facture_id']}")
 
                 resultat = envoyer_mail(
+                    mode_test=mail_mode == "TEST",
                     sujet=sujet_envoi,
                     destinataires=destinataires,
                     texte=item["corps"],

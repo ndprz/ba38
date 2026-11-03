@@ -1271,6 +1271,7 @@ def mail_utilisateurs():
 
             try:
                 envoyer_mail(
+                    sender_override="ba380.informatique2@banquealimentaire.org",
                     sujet=sujet,
                     destinataires=[email],
                     texte=corps,

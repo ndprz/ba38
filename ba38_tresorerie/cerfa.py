@@ -158,6 +158,7 @@ def cerfa():
                 )
 
                 envoyer_mail(
+                    mode_test=mail_mode == "TEST",
                     sujet="Votre reçu fiscal CERFA",
                     destinataires=[p["email"]],
                     texte="""Bonjour,

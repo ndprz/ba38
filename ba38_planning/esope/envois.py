@@ -3,7 +3,7 @@ réponses, verrouillage du mois et textes des mails (côté gestionnaire).
 
 Mode TEST (bascule de session MAIL_MODE, commune aux autres envois) :
 2 mails au maximum, vers l'utilisateur connecté. En DEV, le garde-fou
-d'envoyer_mail() redirige de toute façon tout vers l'utilisateur connecté.
+d'envoyer_mail redirige de toute façon tout vers l'utilisateur connecté.
 """
 
 import os
@@ -203,7 +203,7 @@ def envoyer_lot_background(app, db_path, mois, type_envoi, items, mail_mode, adr
                         sender_override=L.EXPEDITEUR, sender_name=L.NOM_EXPEDITEUR, reply_to=L.RESPONSABLE,
                         is_html=True, attachment_path=pdf_path,
                         attachment_filename=(f"Planning_ESOPE_{semaine_lundi}.pdf" if semaine_lundi else f"Planning_ESOPE_{mois}.pdf") if pdf_path else None,
-                        current_user_email=user_email)
+                        current_user_email=user_email, mode_test=test)
                     if res and res.get("Messages"):
                         msg = res["Messages"][0]
                         ids = ",".join(str(t["MessageID"]) for t in msg.get("To", []) if "MessageID" in t) or None

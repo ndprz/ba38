@@ -891,6 +891,7 @@ def reset_2fa_user(user_id):
     # 📧 Envoi mail
     try:
         envoyer_mail(
+            sender_override="ba380.informatique2@banquealimentaire.org",
             sujet="Réinitialisation de votre authentification 2FA",
             destinataires=[user["email"]],
             texte=f"""

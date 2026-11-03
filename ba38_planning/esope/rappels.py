@@ -60,7 +60,7 @@ def envoyer_rappels(jour=None, test_db=False, simulation=False, journal=print):
             try:
                 envoyer_mail(("[TEST] " if test_db else "") + sujet, [destinataire], L.rendre(corps_m, ctx),
                              sender_override=L.EXPEDITEUR, sender_name=L.NOM_EXPEDITEUR, reply_to=L.RESPONSABLE,
-                             is_html=True, current_user_email=p["envoye_par"])
+                             is_html=True, current_user_email=p["envoye_par"], mode_test=test_db)
                 maintenant = datetime.now().isoformat(sep=" ", timespec="seconds")
                 conn.executemany("UPDATE esope_affectations SET rappel_envoye_le = ? WHERE id = ?",
                                  [(maintenant, c["id"]) for c in creneaux])

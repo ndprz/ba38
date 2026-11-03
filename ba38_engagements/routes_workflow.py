@@ -635,6 +635,7 @@ def renvoyer_validation_pole(engagement_id):
             ))
 
         sujet = f"Nouvelle demande d'engagement #{engagement_id}"
+        emails_renvoyes = []
 
         lien = url_for(
             "engagements.detail_engagement",
@@ -704,6 +705,8 @@ def renvoyer_validation_pole(engagement_id):
                 ))
 
             for user_id, user_email in destinataires:
+
+                emails_renvoyes.append(user_email)
 
                 token = generer_token_validation_pole(engagement_id, user_id)
 
@@ -776,6 +779,8 @@ Ou en vous connectant à l'application :
 
             for destinataire in emails_presidence:
 
+                emails_renvoyes.append(destinataire)
+
                 token = generer_token_validation_presidence(
                     engagement_id,
                     destinataire
@@ -847,6 +852,8 @@ Ou en vous connectant à l'application :
                     engagement_id=engagement_id
                 ))
 
+            emails_renvoyes.append(tresorier["tresorier_email"])
+
             texte = f"""
 Bonjour,
 
@@ -872,6 +879,27 @@ Lien :
                 sender_name=engagement["demandeur_nom"],
                 reply_to=engagement["demandeur_email"]
             )
+
+        conn.execute("""
+            INSERT INTO engagements_workflow (
+                engagement_id,
+                action,
+                ancien_statut,
+                nouveau_statut,
+                commentaire,
+                user_id,
+                user_email
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            engagement_id,
+            "renvoi_notification",
+            engagement["statut"],
+            engagement["statut"],
+            "Notification renvoyée à " + ", ".join(emails_renvoyes),
+            current_user.id,
+            current_user.email
+        ))
 
         write_log(
             f"[ENGAGEMENTS] Renvoi notification #{engagement_id} "

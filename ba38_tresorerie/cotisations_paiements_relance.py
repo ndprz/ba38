@@ -427,6 +427,7 @@ def envoyer_relances_background(app, db_path, items, sujet_modele, corps_modele,
                     sujet_envoi = sujet
 
                 resultat = envoyer_mail(
+                    mode_test=mail_mode == "TEST",
                     sujet=sujet_envoi,
                     destinataires=destinataire,
                     texte=texte_mail,

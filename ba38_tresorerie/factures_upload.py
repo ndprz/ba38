@@ -160,6 +160,7 @@ def envoyer_factures_background(app, db_path, lot_id, items, pdf_path,
                 write_log(f"📧 Envoi facture à {email_envoi} | envoi_id={envoi_id}")
 
                 resultat = envoyer_mail(
+                    mode_test=mail_mode == "TEST",
                     sujet=sujet,
                     destinataires=[email_envoi],
                     texte=corps,

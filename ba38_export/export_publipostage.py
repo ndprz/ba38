@@ -491,6 +491,7 @@ def export_all_publipostage_job():
                 corps += "\n"
 
             envoyer_mail(
+                sender_override="ba380.informatique2@banquealimentaire.org",
                 sujet=f"❌ {nb_erreurs} Emails invalides – Publipostage 🚨 [PROD]",
                 destinataires=[
                     "ba380.informatique2@banquealimentaire.org",

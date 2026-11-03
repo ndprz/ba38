@@ -103,6 +103,7 @@ def envoyer_relances_cotisations_v2_background(app, db_path, items, sujet_modele
                 generer_facture_cotisation_v2_pdf(data_pdf, pdf_path)
 
                 resultat = envoyer_mail(
+                    mode_test=mail_mode == "TEST",
                     sujet=sujet_envoi,
                     destinataires=destinataire,
                     texte=texte_mail,

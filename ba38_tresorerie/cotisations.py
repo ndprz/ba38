@@ -752,6 +752,7 @@ def cotisations_envoyer_mails():
             )
 
             envoyer_mail(
+                mode_test=mail_mode == "TEST",
                 sujet=sujet,
                 destinataires=destinataires,
                 texte=texte_mail,

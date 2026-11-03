@@ -252,6 +252,7 @@ Origine  : {nom_pays(pays_ip(ip))} (adresse {ip})
 """
         try:
             envoyer_mail(
+                sender_override="ba380.informatique2@banquealimentaire.org",
                 sujet=f"🆘 Problème de connexion — {champs['nom'][:60]}",
                 destinataires=[CONTACT_SECURITE],
                 texte=texte,

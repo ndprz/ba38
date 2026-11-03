@@ -263,6 +263,7 @@ def envoyer_sms_lot_background(app, db_path, lot_id, destinataires, texte, curre
             conn.commit()
             try:
                 envoyer_mail(
+                    sender_override="ba380.informatique2@banquealimentaire.org",
                     sujet="🚨 Crédit SmsFactor épuisé",
                     destinataires=[ALERTE_MAIL_DESTINATAIRE],
                     texte=message,

@@ -100,13 +100,14 @@ def main(dry_run):
         lignes += [f"  - {u['username'] or ''} <{u['email']}> — dernière connexion {u['derniere_connexion'][:10]}" for u in desactives] or ["  (aucun)"]
         lignes += ["", "Réactivation : gestion des utilisateurs, colonne Actif = Oui.",
                    "Bénévole saisonnier : cocher « Jamais désactivé si inactif »."]
-        envoyer_mail(sujet=f"Comptes inactifs — {len(avertis)} avertis, {len(desactives)} désactivés",
+        envoyer_mail(sender_override="ba380.informatique2@banquealimentaire.org", sujet=f"Comptes inactifs — {len(avertis)} avertis, {len(desactives)} désactivés",
                      destinataires=[CONTACT_SECURITE], texte="\n".join(lignes), sender_name="BA38 Sécurité")
         write_log(f"🕒 Comptes inactifs : {len(avertis)} avertis, {len(desactives)} désactivés")
 
 
 def _mail_avertissement(u, date_limite):
     envoyer_mail(
+        sender_override="ba380.informatique2@banquealimentaire.org",
         sujet="Votre compte BA38 va être désactivé",
         destinataires=[u["email"]],
         sender_name="BA38 Sécurité",
@@ -130,6 +131,7 @@ L'équipe informatique BA38
 
 def _mail_desactivation(u):
     envoyer_mail(
+        sender_override="ba380.informatique2@banquealimentaire.org",
         sujet="Votre compte BA38 a été désactivé",
         destinataires=[u["email"]],
         sender_name="BA38 Sécurité",

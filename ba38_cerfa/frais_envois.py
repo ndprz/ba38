@@ -18,7 +18,7 @@ from ba38_utilitaires.core import (
 from ba38_utilitaires.taches_fond import lancer_tache_fond
 
 from ba38_cerfa import cerfa_bp
-from ba38_cerfa.constants import MAX_ENVOIS_TEST
+from ba38_cerfa.constants import EXPEDITEUR_DEFAUT, MAX_ENVOIS_TEST
 from ba38_cerfa.frais_commun import (
     construire_document, contexte_variables, lien_questionnaire, nom_fichier_document, rendre,
 )
@@ -68,10 +68,11 @@ def envoyer_cerfa_frais_background(app, db_path, campagne_id, type_envoi, items,
 
                 write_log(f"📧 CERFA frais {type_envoi} → {destinataires} | declaration={item['declaration_id']}")
                 resultat = envoyer_mail(
+                    mode_test=test,
                     sujet=sujet,
                     destinataires=destinataires,
                     texte=item["corps"],
-                    sender_override=campagne["expediteur_email"] or None,
+                    sender_override=campagne["expediteur_email"] or EXPEDITEUR_DEFAUT,
                     sender_name=SENDER_NAME,
                     reply_to=campagne["reply_to_email"] or None,
                     current_user_email=current_user_email,

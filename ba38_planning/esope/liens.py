@@ -28,10 +28,10 @@ PREFIXE_TEST = "t-"
 PREFIXE_REEL = "p-"
 MAX_ENVOIS_TEST = 2
 
-RESPONSABLE = os.getenv("ESOPE_MAIL_RESPONSABLE", "ba380.esoperesponsable@banquealimentaire.org")
+RESPONSABLE = os.getenv("ESOPE_MAIL_RESPONSABLE", "ba380.esope.responsable@banquealimentaire.org")
 # Expéditeur : adresse de service validée chez Mailjet (une adresse non validée
 # est rejetée silencieusement) ; les réponses partent vers la responsable.
-EXPEDITEUR = os.getenv("ESOPE_MAIL_EXPEDITEUR", "ba380@banquealimentaire.org")
+EXPEDITEUR = os.getenv("ESOPE_MAIL_EXPEDITEUR", "ba380.esope.responsable@banquealimentaire.org")
 NOM_EXPEDITEUR = "ESOPE – Banque Alimentaire de l'Isère"
 
 STATUTS_PERIODE = {

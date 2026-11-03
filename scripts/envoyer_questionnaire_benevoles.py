@@ -139,11 +139,11 @@ def main():
 
         if args.test:
             print(f"[TEST] {nom_prenom} <{b['email']}> -> envoi à {TEST_EMAIL}")
-            envoyer_mail(SUJET, [TEST_EMAIL], texte)
+            envoyer_mail(SUJET, [TEST_EMAIL], texte, sender_override="ba380.informatique2@banquealimentaire.org")
             envoyes += 1
             break  # un seul email de test suffit
 
-        envoyer_mail(SUJET, [b["email"]], texte)
+        envoyer_mail(SUJET, [b["email"]], texte, sender_override="ba380.informatique2@banquealimentaire.org")
         write_log(f"[QUESTIONNAIRE BENEVOLES] envoyé à id={b['id']} {nom_prenom} <{b['email']}>")
         envoyes += 1
 

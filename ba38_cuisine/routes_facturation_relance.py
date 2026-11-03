@@ -76,6 +76,7 @@ def envoyer_relances_cuisine_background(app, db_path, items, sujet_modele, corps
                         raise ValueError(f"Aucune adresse email valide pour {item['nom_association']}")
                 pdf_facture_vers_fichier(conn, item["facture_id"], pdf_path)
                 resultat = envoyer_mail(
+                    mode_test=mail_mode == "TEST",
                     sujet=sujet, destinataires=destinataires, texte=texte, sender_override=MAIL_SENDER,
                     attachment_path=pdf_path, bcc=[MAIL_SENDER], current_user_email=current_user_email,
                 )

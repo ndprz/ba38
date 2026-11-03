@@ -347,6 +347,7 @@ def envoyer_receptions_bai():
             with open(chemin, "wb") as fichier:
                 fichier.write(generer_pdf_envoi_bai(receptions, envoye_le=horodatage).getvalue())
             resultat = envoyer_mail(
+                sender_override="ba380.cuisine@banquealimentaire.org",
                 sujet=sujet, destinataires=destinataires, texte=texte, attachment_path=chemin,
                 attachment_filename=f"receptions_cuisine_{horodatage[:10]}.pdf",
                 sender_name="Cuisine BA38", reply_to=utilisateur, current_user_email=utilisateur,

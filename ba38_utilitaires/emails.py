@@ -111,6 +111,7 @@ def envoyer_indicateurs_background(app, db_path, campagne_id, campagne, lignes,
                 write_log(f"📧 Envoi à {emails} | {association['nom_association']}")
 
                 resultat = envoyer_mail(
+                    mode_test=mode_test_local,
                     sujet=sujet,
                     destinataires=emails,
                     texte=corps,
@@ -144,6 +145,7 @@ def envoyer_indicateurs_background(app, db_path, campagne_id, campagne, lignes,
                 # ============================================================================
                 try:
                     envoyer_mail(
+                        mode_test=mode_test_local,
                         sujet=f"[ARCHIVE BASILIC] Indicateurs état – {association['nom_association']} – {periode}",
                         destinataires=[sender],
                         texte=f"Copie d'archive automatique — destinataire(s) réel(s) : {', '.join(emails)}\n\n---\n\n{corps}",
@@ -341,7 +343,7 @@ def envoyer_mails(campagne_id):
     if request.method == "POST":
 
         modele_id = request.form.get("modele_id")
-        sender = request.form.get("sender") or "ba380@banquealimentaire.org"
+        sender = request.form.get("sender") or "ba380.informatique2@banquealimentaire.org"
         mode_test_local = request.form.get("mode_test") == "on"
 
         with sqlite3.connect(db_path) as conn:

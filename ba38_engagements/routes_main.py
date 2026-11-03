@@ -82,6 +82,17 @@ def engagements_main():
         False
     )
 
+    if "show_modeles" in request.args:
+
+        session["engagements_show_modeles"] = (
+            request.args.get("show_modeles") == "1"
+        )
+
+    show_modeles = session.get(
+        "engagements_show_modeles",
+        False
+    )
+
     # =========================================================
     # DROIT DE VOIR TOUS LES ENGAGEMENTS
     # =========================================================
@@ -147,6 +158,16 @@ def engagements_main():
 
             where_clauses.append(
                 "COALESCE(e.deleted, 0) = 0"
+            )
+
+        # =====================================================
+        # FILTRE ABONNEMENTS D'ORIGINE (MODELES)
+        # =====================================================
+
+        if not show_modeles:
+
+            where_clauses.append(
+                "COALESCE(e.est_modele_abonnement, 0) = 0"
             )
 
         # =====================================================
@@ -350,6 +371,7 @@ def engagements_main():
         "engagements/main.html",
         demandes=demandes,
         show_deleted=show_deleted,
+        show_modeles=show_modeles,
         stats=stats
     )
 

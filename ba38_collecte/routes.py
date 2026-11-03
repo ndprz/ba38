@@ -2884,7 +2884,7 @@ def autorisations(annee):
                 sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — Demande d'autorisation — {magasin['nom']}",
                 destinataires=destinataires,
                 texte=texte_mail_modele.replace("<<Nom>>", magasin["nom"]),
-                sender_override=os.getenv("MAILJET_SENDER"),
+                sender_override="ba380.collecte@banquealimentaire.org",
                 cc=None if mode_test else ["ba380.collecte@banquealimentaire.org"],
                 attachment_path=fichier_lettre,
             )
@@ -3424,7 +3424,7 @@ def non_collecte_benevoles(annee):
                     sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — Pas de collecte cette année — {magasin['nom']}",
                     destinataires=destinataires,
                     texte=texte_mail_modele.replace("<<Nom>>", magasin["nom"]),
-                    sender_override=os.getenv("MAILJET_SENDER"),
+                    sender_override="ba380.collecte@banquealimentaire.org",
                     cc=None if mode_test else ["ba380.collecte@banquealimentaire.org"],
                 )
                 envoyes += 1
@@ -3724,7 +3724,7 @@ def sans_vendredi(annee):
                 sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — Pas de collecte le vendredi — {magasin['nom']}",
                 destinataires=destinataires,
                 texte=texte_mail_modele.replace("<<Nom>>", magasin["nom"]),
-                sender_override=os.getenv("MAILJET_SENDER"),
+                sender_override="ba380.collecte@banquealimentaire.org",
                 cc=None if mode_test else ["ba380.collecte@banquealimentaire.org"],
             )
             envoyes += 1
@@ -5639,7 +5639,8 @@ CAGETTES_EXPORT_SOCIETE = "01"
 CAGETTES_EXPORT_ETAB = "38"
 CAGETTES_EXPORT_LIEU = "01"
 CAGETTES_EXPORT_DEPOT = "05"
-CAGETTES_EXPORT_ARTICLE = "5010000"
+CAGETTES_EXPORT_ARTICLE = "5010000"  # collecte directe (camions BAI)
+CAGETTES_EXPORT_ARTICLE_GARDEE = "5010010"  # collecte gardée (associations)
 CAGETTES_EXPORT_UNITE = "kg"
 CAGETTES_EXPORT_ORIGINE = "co"
 
@@ -8294,7 +8295,11 @@ def poids_magasins_gardee_reinitialiser(annee):
 def exporter_poids_magasins_gardee(annee):
     """Export CSV « Saisie des poids par magasin gardé » pour import VIF —
     même format que exporter_cagettes (une ligne par magasin), quantité =
-    poids en kg brut saisi pour ce magasin."""
+    poids en kg brut saisi pour ce magasin, mais article 5010010 (collecte
+    gardée) au lieu de 5010000 (collecte directe) — ces magasins peuvent
+    aussi être suivis côté cagettes (camions BAI, cf. magasins Collecte BAI
+    à stockage partagé avec une association), l'article différent évite que
+    les deux exports comptent le même tonnage en double dans VIF."""
     df_mag = _lire_magasins_gardes(annee)
     if df_mag.empty:
         flash(f"⛔ Liste des magasins gardés {annee} indisponible", "danger")
@@ -8349,7 +8354,7 @@ def exporter_poids_magasins_gardee(annee):
             code_vif,
             CAGETTES_EXPORT_LIEU,
             CAGETTES_EXPORT_DEPOT,
-            CAGETTES_EXPORT_ARTICLE,
+            CAGETTES_EXPORT_ARTICLE_GARDEE,
             round(poids_kg),
             CAGETTES_EXPORT_UNITE,
             "", "", "", "",
@@ -9900,7 +9905,7 @@ def _envoyer_mail_association(asso, annee, dossier, destinataires, mode_test):
         destinataires=destinataires,
         texte=_texte_modele_gardee(asso, annee, lien_saisie=lien_saisie),
         is_html=True,
-        sender_override=os.getenv("MAILJET_SENDER"),
+        sender_override="ba380.collecte@banquealimentaire.org",
         cc=None if mode_test else ["ba380.collecte@banquealimentaire.org"],
         attachment_path=fichier_association,
         attachment_paths=[fichier_pdf],

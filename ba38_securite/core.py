@@ -450,6 +450,7 @@ def envoyer_code(user, telephone=None):
         else:
             from ba38_utilitaires.core import envoyer_mail
             envoyer_mail(
+                sender_override="ba380.informatique2@banquealimentaire.org",
                 sujet=f"Votre code de connexion BA38 : {code}",
                 destinataires=[user["email"]],
                 sender_name="BA38 Sécurité",
@@ -555,7 +556,7 @@ def _envoyer_en_arriere_plan(sujet, destinataires, texte):
     def _envoi():
         with app.app_context():
             try:
-                envoyer_mail(sujet=sujet, destinataires=destinataires, texte=texte, sender_name="BA38 Sécurité")
+                envoyer_mail(sender_override="ba380.informatique2@banquealimentaire.org", sujet=sujet, destinataires=destinataires, texte=texte, sender_name="BA38 Sécurité")
             except Exception as e:
                 write_log(f"❌ Envoi alerte sécurité '{sujet}' à {destinataires} : {e}")
 

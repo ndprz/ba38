@@ -692,6 +692,7 @@ def envoyer_factures_cuisine_background(app, db_path, campagne_id, items, mail_m
                 pdf_facture_vers_fichier(conn, item["facture_id"], pdf_path)
                 write_log(f"📧 Envoi facture cuisine {item['numero']} à {', '.join(destinataires)}")
                 resultat = envoyer_mail(
+                    mode_test=mail_mode == "TEST",
                     sujet=sujet_envoi, destinataires=destinataires, texte=item["corps"],
                     sender_override=MAIL_SENDER, attachment_path=pdf_path, bcc=[MAIL_SENDER],
                     current_user_email=current_user_email,

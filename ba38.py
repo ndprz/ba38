@@ -1942,11 +1942,11 @@ def test_email_api():
 
     api_key = os.getenv("MAILJET_API_KEY")
     api_secret = os.getenv("MAILJET_API_SECRET")
-    sender = os.getenv("MAILJET_SENDER")
+    sender = "ba380.informatique2@banquealimentaire.org"
     destinataire = os.getenv("MAIL_TEST_TO") or sender
 
     write_log("📤 Test API Mailjet — Début")
-    write_log(f"MAILJET_SENDER = {sender}")
+    write_log(f"Expéditeur = {sender}")
     write_log(f"MAILJET_API_KEY = {repr(api_key)[:8]}... ({'✔️' if api_key else '❌'})")
     write_log(f"MAILJET_API_SECRET = {repr(api_secret)[:8]}... ({'✔️' if api_secret else '❌'})")
 
