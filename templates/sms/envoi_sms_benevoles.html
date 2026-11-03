@@ -154,10 +154,11 @@
       <label for="message" class="form-label">Message :</label>
       <textarea name="message" id="message" rows="4" class="form-control" required></textarea>
     </div>
-    <p class="text-muted small mb-3">
+    <p class="text-muted small mb-2">
       <span id="charCount">0</span> caractère(s) — <span id="segCount">1</span> SMS
       (au-delà de 160 caractères, le message est facturé en plusieurs SMS).
     </p>
+    <div id="alerteSms" class="alert alert-warning py-2 small d-none" role="alert"></div>
 
     {% call action_buttons() %}
       {{ action_button("📤 Envoyer", type="submit", color="primary") }}
@@ -183,11 +184,47 @@ document.addEventListener("DOMContentLoaded", function () {
     updateCounter();
   });
 
-  function updateCounter() {
-    const len = textarea.value.length;
-    charCount.textContent = len;
-    segCount.textContent = Math.max(1, Math.ceil(len / 160));
+  // Alphabet GSM 7 bits : 160 car. par SMS, 153 si message en plusieurs parties.
+  // Un seul caractère hors alphabet (ê, â, ô, œ, emoji…) bascule en Unicode : 70 / 67.
+  const GSM = "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
+  const GSM_EXT = "^{}\\[~]|€\f";
+
+  function calculerSms(texte) {
+    let longueur = 0, unicode = false;
+    for (const c of texte) {
+      if (GSM.includes(c)) longueur += 1;
+      else if (GSM_EXT.includes(c)) longueur += 2;
+      else { unicode = true; longueur += c.length; }
+    }
+    if (unicode) longueur = texte.length;
+    const simple = unicode ? 70 : 160, multi = unicode ? 67 : 153;
+    const nb = longueur <= simple ? 1 : Math.ceil(longueur / multi);
+    return { nb, unicode, longueur };
   }
+
+  function updateCounter() {
+    const r = calculerSms(textarea.value);
+    charCount.textContent = r.longueur;
+    segCount.textContent = Math.max(1, r.nb);
+    const alerte = document.getElementById("alerteSms");
+    if (r.nb > 1) {
+      const dest = document.querySelectorAll('input[name="destinataires"]:checked').length;
+      alerte.innerHTML = "⚠️ Ce message dépasse " + (r.unicode ? 70 : 160) + " caractères : il sera facturé <strong>" +
+        r.nb + " SMS</strong> par destinataire." +
+        (dest ? " Pour " + dest + " destinataire(s) : <strong>" + (dest * r.nb) + " crédits</strong>." : "") +
+        (r.unicode ? " (Un caractère spécial — ê, â, ô, œ, emoji… — limite chaque SMS à 70 caractères.)" : "");
+      alerte.classList.remove("d-none");
+    } else if (r.unicode) {
+      alerte.innerHTML = "ℹ️ Ce message contient un caractère spécial (ê, â, ô, œ, emoji…) : chaque SMS est limité à 70 caractères.";
+      alerte.classList.remove("d-none");
+    } else {
+      alerte.classList.add("d-none");
+    }
+  }
+
+  document.addEventListener("change", function (e) {
+    if (e.target.name === "destinataires" || e.target.matches("input[type=checkbox]")) updateCounter();
+  });
 
   textarea.addEventListener("input", updateCounter);
   updateCounter();
@@ -197,7 +234,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (checked === 0) {
       e.preventDefault();
       alert("❌ Merci de sélectionner au moins un destinataire.");
-    } else if (!confirm(`Envoyer ce SMS à ${checked} bénévole(s) ?`)) {
+    } else if (!confirm(`Envoyer ce SMS à ${checked} bénévole(s) ?` + (calculerSms(textarea.value).nb > 1 ? `\n\n⚠️ ${calculerSms(textarea.value).nb} SMS facturés par destinataire, soit ${checked * calculerSms(textarea.value).nb} crédits.` : ""))) {
       e.preventDefault();
     }
   });
