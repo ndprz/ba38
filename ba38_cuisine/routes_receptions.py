@@ -122,11 +122,10 @@ def _erreur_ligne_produit(num, ligne):
 
 
 def _enregistrer_photos(cur, reception_id, idx):
-    """📸 Photos produit / étiquette (capture tablette) de la ligne `idx`."""
+    """📸 Photos (capture tablette) de la ligne `idx` — stockées en type « produit »."""
     dossier = upload_dir_reception(reception_id)
     for type_photo, champ in (
         ("produit", f"photos_produit_{idx}"),
-        ("etiquette", f"photos_etiquette_{idx}"),
     ):
         fichiers = request.files.getlist(champ)
         chemins = save_uploaded_files(fichiers, dossier, prefix=type_photo)

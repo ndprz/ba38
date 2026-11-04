@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+  <meta charset="utf-8">
+  <title>Pesée palox {{ annee }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!--
+    Écran kiosk pesée palox (TV / navigateur plein écran, sans login) — même
+    principe que l'écran kiosk cuisine (ba38_cuisine/routes_kiosk.py +
+    production_cuisine/affichage.html) côté polling JSON, mais en une seule
+    page SANS défilement ni pagination (demande utilisateur 2026-11-04) :
+    cartouche du total tout en haut, puis toutes les catégories réparties en
+    colonnes sur le reste de l'écran, nombre de colonnes et hauteur de ligne
+    recalculés pour toujours tout faire tenir.
+  -->
+
+  <style>
+    /* border-box partout : la hauteur fixée en JS sur .ligne-categorie doit
+       inclure sa bordure, sinon chaque ligne déborde de 2px (1px haut +
+       1px bas) et le bas de chaque colonne finit par être coupé (bug
+       constaté 2026-11-04). */
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #f2f2f0;
+      color: #222;
+      font-family: system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    body {
+      cursor: none;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 0.6vh 1.5vw 0.2vh;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: clamp(1.4rem, 2.2vw, 3rem);
+      color: #d9600a;
+    }
+
+    header .infos {
+      color: #777;
+      font-size: clamp(0.9rem, 1.1vw, 1.6rem);
+      text-align: right;
+    }
+
+    #alerte {
+      display: none;
+      margin-left: 1rem;
+      padding: 0.1rem 0.6rem;
+      border-radius: 6px;
+      background: #e74c3c;
+      color: #fff;
+      font-weight: bold;
+    }
+
+    /* Cartouche du total : rectangle 15x5 (ratio 3:1), centré en haut —
+       agrandi (demande utilisateur 2026-11-04). */
+    #cartouche-total {
+      flex: 0 0 auto;
+      margin: 0.6vh auto 1vh;
+      height: 24vh;
+      aspect-ratio: 3 / 1;
+      border: 3px solid #d9600a;
+      border-radius: 1.2vh;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 0 1vw;
+    }
+
+    #cartouche-total .poids {
+      font-weight: 800;
+      color: #d9600a;
+      font-size: clamp(2.4rem, 11vh, 7rem);
+      line-height: 1.1;
+    }
+
+    #zone {
+      flex: 1 1 auto;
+      display: flex;
+      gap: 1vw;
+      padding: 0 1.5vw 1.2vh;
+      overflow: hidden;
+    }
+
+    .colonne {
+      flex: 1 1 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3vh;
+      min-width: 0;
+    }
+
+    .ligne-categorie {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 0.6vw;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 0 0.7vw;
+    }
+
+    .ligne-categorie.vide {
+      background: #e8e8e6;
+    }
+
+    .ligne-categorie.vide > * {
+      opacity: 0.55;
+    }
+
+    .ligne-categorie .nom {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .ligne-categorie .poids {
+      flex: 0 0 auto;
+      text-align: right;
+      white-space: nowrap;
+      min-width: 2.5em;
+    }
+
+    .ligne-categorie .pct {
+      flex: 0 0 auto;
+      text-align: right;
+      white-space: nowrap;
+      min-width: 3.2em;
+      color: #1565c0;
+      font-weight: 800;
+    }
+
+    /* Invite plein écran (fenêtre ouverte depuis « Pesée palox — synthèse ») */
+    #invite-plein-ecran {
+      display: none;
+      position: fixed;
+      left: 50%;
+      bottom: 4vh;
+      transform: translateX(-50%);
+      z-index: 10;
+      padding: 0.5em 1.2em;
+      border-radius: 1em;
+      background: #ff7a00;
+      color: #000;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .vide-tout {
+      margin: auto;
+      text-align: center;
+      color: #999;
+      font-size: clamp(1.4rem, 3vw, 4rem);
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="invite-plein-ecran">Cliquer n'importe où pour passer en plein écran</div>
+
+  <header>
+    <h1>⚖️ Pesée palox {{ annee }}</h1>
+    <div class="infos">
+      mis à jour <span id="heure-maj">–</span>
+      <span id="alerte">⚠️ Connexion perdue</span>
+    </div>
+  </header>
+
+  <div id="cartouche-total">
+    <div class="poids" id="total-poids">–</div>
+  </div>
+
+  <div id="zone"></div>
+
+  <script>
+    const REFRESH_SECONDES = 15;
+    const ALERTE_APRES_MS = 90 * 1000;
+    const RECHARGEMENT_PAGE_MS = 3 * 3600 * 1000; // recharge complète (nouvelle version de la page)
+    const LARGEUR_COLONNE_MIN = 300;   // px : en dessous, une colonne de plus la rendrait illisible
+    const HAUTEUR_LIGNE_CONFORT = 56;  // px : hauteur visée si la place le permet
+    const HAUTEUR_LIGNE_MIN = 26;      // px : plancher quand il faut vraiment tout faire tenir
+    const urlDonnees = "{{ url_for('collecte.palox_affichage_donnees', annee=annee) }}";
+
+    let donnees = null;
+    let derniereMajOk = Date.now();
+    const debut = Date.now();
+
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    // Répartit les catégories en colonnes pour que tout tienne sur une seule
+    // page, sans défilement ni pagination — nombre de colonnes et hauteur de
+    // ligne recalculés à chaque rafraîchissement/redimensionnement.
+    function calculerMiseEnPage(nb) {
+      const zone = document.getElementById("zone");
+      const largeur = zone.clientWidth;
+      // clientHeight inclut le padding vertical de #zone — à retirer, sinon
+      // la hauteur réellement disponible pour les .colonne (en-dessous de ce
+      // padding) est surestimée d'autant (bug constaté 2026-11-04).
+      const styleZone = getComputedStyle(zone);
+      const paddingVertical = parseFloat(styleZone.paddingTop) + parseFloat(styleZone.paddingBottom);
+      const hauteur = zone.clientHeight - paddingVertical;
+      // Espace vertical entre lignes (CSS .colonne { gap: 0.3vh }) — à
+      // déduire du budget de hauteur, sinon (lignesParColonne - 1) x gap
+      // dépasse systématiquement le bas de l'écran (bug constaté 2026-11-04 :
+      // les dernières lignes de chaque colonne étaient coupées).
+      const gapPx = window.innerHeight * 0.003;
+      function hauteurPourLignes(lignesParColonne) {
+        return Math.floor((hauteur - (lignesParColonne - 1) * gapPx) / lignesParColonne);
+      }
+      const maxColonnesLargeur = Math.max(1, Math.floor(largeur / LARGEUR_COLONNE_MIN));
+      const lignesParColonneConfort = Math.max(1, Math.floor(hauteur / HAUTEUR_LIGNE_CONFORT));
+      let nbColonnes = Math.min(maxColonnesLargeur, Math.max(1, Math.ceil(nb / lignesParColonneConfort)));
+      let lignesParColonne = Math.ceil(nb / nbColonnes);
+      let hauteurLigne = hauteurPourLignes(lignesParColonne);
+      if (hauteurLigne < HAUTEUR_LIGNE_MIN && nbColonnes < maxColonnesLargeur) {
+        nbColonnes = maxColonnesLargeur;
+        lignesParColonne = Math.ceil(nb / nbColonnes);
+        hauteurLigne = hauteurPourLignes(lignesParColonne);
+      }
+      return { nbColonnes, lignesParColonne, hauteurLigne: Math.max(HAUTEUR_LIGNE_MIN, hauteurLigne) };
+    }
+
+    function ligneHtml(l, hauteurLigne, taille) {
+      const classe = l.nb_palox ? "" : "vide";
+      return '<div class="ligne-categorie ' + classe + '" style="height:' + hauteurLigne + "px;font-size:" + taille + 'px">'
+        + '<span class="nom">' + esc(l.libelle) + '</span>'
+        + '<span class="poids">' + esc(Math.round(l.poids_kg)) + ' kg</span>'
+        + '<span class="pct">' + esc(Math.round(l.pct_poids)) + ' %</span>'
+        + '</div>';
+    }
+
+    function afficher() {
+      const zone = document.getElementById("zone");
+
+      if (!donnees || !donnees.lignes || !donnees.lignes.length) {
+        zone.innerHTML = '<div class="vide-tout">Aucune pesée enregistrée</div>';
+        return;
+      }
+
+      const lignes = donnees.lignes;
+      const mp = calculerMiseEnPage(lignes.length);
+      const taille = Math.max(11, Math.min(24, Math.round(mp.hauteurLigne * 0.4)));
+
+      let html = "";
+      for (let c = 0; c < mp.nbColonnes; c++) {
+        const tranche = lignes.slice(c * mp.lignesParColonne, (c + 1) * mp.lignesParColonne);
+        html += '<div class="colonne">' + tranche.map(function (l) { return ligneHtml(l, mp.hauteurLigne, taille); }).join("") + '</div>';
+      }
+      zone.innerHTML = html;
+
+      document.getElementById("total-poids").textContent = Math.round(donnees.poids_total) + " kg";
+    }
+
+    async function refresh() {
+      try {
+        const r = await fetch(urlDonnees, { cache: "no-store" });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        donnees = await r.json();
+        derniereMajOk = Date.now();
+        document.getElementById("heure-maj").textContent =
+          new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+        afficher();
+
+        // Recharge complète de temps en temps, uniquement si le serveur répond
+        // (pas en plein écran : le rechargement en ferait sortir)
+        if (Date.now() - debut > RECHARGEMENT_PAGE_MS && !document.fullscreenElement) location.reload();
+      } catch (e) {
+        console.error("refresh error", e);
+      }
+      document.getElementById("alerte").style.display =
+        (Date.now() - derniereMajOk > ALERTE_APRES_MS) ? "inline-block" : "none";
+    }
+
+    window.addEventListener("resize", afficher);
+
+    // Ouverte avec ?plein_ecran=1 (bouton « Affichage TV ») : plein écran au
+    // premier clic — un navigateur refuse de le faire sans geste utilisateur.
+    // Un écran TV dédié (URL sans paramètre) n'est pas concerné.
+    if (new URLSearchParams(location.search).get("plein_ecran") === "1"
+        && document.documentElement.requestFullscreen) {
+      const invite = document.getElementById("invite-plein-ecran");
+      const majInvite = function () {
+        invite.style.display = document.fullscreenElement ? "none" : "block";
+      };
+      document.addEventListener("click", function () {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(function () {});
+        }
+      });
+      document.addEventListener("fullscreenchange", majInvite);
+      majInvite();
+    }
+
+    refresh();
+    setInterval(refresh, REFRESH_SECONDES * 1000);
+  </script>
+
+</body>
+</html>

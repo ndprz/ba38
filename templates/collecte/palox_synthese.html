@@ -54,6 +54,10 @@
             {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
             {{ action_button("⚙️ Catégories", href=url_for('collecte.palox_categories'), color="outline-secondary") }}
             {{ action_button("📤 Télécharger (Excel)", href=url_for('collecte.palox_synthese_export', annee=annee), color="outline-secondary") }}
+            <a href="{{ url_for('collecte.palox_affichage', annee=annee, plein_ecran=1) }}" target="_blank" rel="noopener"
+               class="btn btn-outline-dark btn-sm" onclick="return ouvrirAffichageTV(this.href)">
+                📺 Affichage TV
+            </a>
             <button type="button" id="btnPleinEcran" class="btn btn-outline-primary btn-sm">⛶ Plein écran</button>
         </div>
     </div>
@@ -485,5 +489,16 @@ document.addEventListener("fullscreenchange", function () {
     btnPleinEcran.textContent = enPlein ? "⛶ Quitter le plein écran" : "⛶ Plein écran";
     table.redraw(true);
 });
+
+// Écran TV (2e écran) dans une nouvelle fenêtre à la taille de l'écran ; le
+// passage en vrai plein écran se fait au premier clic dans cette fenêtre
+// (les navigateurs l'exigent) — même principe que l'affichage cuisine.
+function ouvrirAffichageTV(url) {
+    const fenetre = window.open(url, "ba38_affichage_tv_palox",
+        "popup,left=0,top=0,width=" + screen.availWidth + ",height=" + screen.availHeight);
+    if (!fenetre) return true;  // popup bloquée : lien normal (nouvel onglet)
+    fenetre.focus();
+    return false;
+}
 </script>
 {% endblock %}

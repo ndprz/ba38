@@ -72,14 +72,9 @@
         <label class="form-label">Commentaire</label>
         <textarea name="commentaire_IDXTOKEN" class="form-control" rows="2"></textarea>
       </div>
-      <div class="row g-3">
-        <div class="col-6">
-          {{ camera_capture("photos_produit_IDXTOKEN", "📷 Photo(s) produit") }}
-        </div>
-        <div class="col-6">
-          {{ camera_capture("photos_etiquette_IDXTOKEN", "📷 Photo(s) étiquette") }}
-          <div class="form-text">La photo de l'étiquette fait foi pour le n° de lot — inutile de le ressaisir.</div>
-        </div>
+      <div>
+        {{ camera_capture("photos_produit_IDXTOKEN", "📷 Photo(s) produit / étiquette") }}
+        <div class="form-text">Si l'étiquette est lisible sur la photo, elle fait foi pour le n° de lot — inutile de le ressaisir.</div>
       </div>
     </div>
   </div>

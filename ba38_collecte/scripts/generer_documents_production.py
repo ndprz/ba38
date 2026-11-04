@@ -531,12 +531,24 @@ def draw_fiche(cv, dj, camion, nom_camion, magasins, annee=None, quai='', consig
     y -= HDR_H
 
     # ── LIGNES MAGASINS ───────────────────────────────────────────────────────
-    FOOTER_CLEARANCE = 28 * mm
+    # Réduit (28mm -> 18mm) en déplaçant le pied de page plus bas (cf.
+    # _draw_footer) pour regagner de la hauteur sur les lignes magasin
+    # (demande utilisateur 2026-11-04) — 2mm de marge gardée entre le haut du
+    # pied de page et la zone du tableau.
+    FOOTER_CLEARANCE = 18 * mm
     ZONE_TABLEAU = H - MT - MB - (22 * mm) - FOOTER_CLEARANCE
     HDR_ROW_H = 7 * mm
     ZONE_MAG = ZONE_TABLEAU - HDR_ROW_H
-    nb = len(magasins)
-    ROW_H = min(55 * mm, max(20 * mm, ZONE_MAG / nb if nb > 0 else 50 * mm))
+    # Hauteur de ligne FIXE, calculée pour 5 magasins (plutôt que recalculée
+    # selon le nombre réel de magasins de CETTE fiche) — une fiche à 2
+    # magasins avait sinon des lignes bien plus hautes qu'une fiche à 6
+    # magasins, incohérent d'une fiche à l'autre (demande utilisateur
+    # 2026-11-04, réduit de 6 à 5 le même jour car la hauteur gagnée à 6
+    # restait trop faible). Une fiche avec plus de 5 magasins déborde
+    # simplement sur une page supplémentaire (cf. saut de page plus bas),
+    # comme avant.
+    MAGASINS_LIGNE_REFERENCE = 5
+    ROW_H = min(55 * mm, max(20 * mm, ZONE_MAG / MAGASINS_LIGNE_REFERENCE))
 
     for idx_mag, mag in enumerate(magasins):
         nom      = mag.get('nom', '')
@@ -618,8 +630,10 @@ def draw_fiche(cv, dj, camion, nom_camion, magasins, annee=None, quai='', consig
 
 
 def _draw_footer(cv, dj, consigne1='', consigne2=''):
-    """Pied de page identique au PDF 2025."""
-    y_base = MB + 18*mm
+    """Pied de page — rapproché du bas de page (MB + 8mm au lieu de MB +
+    18mm) pour regagner de la hauteur sur les lignes magasin du tableau
+    au-dessus (cf. FOOTER_CLEARANCE, demande utilisateur 2026-11-04)."""
+    y_base = MB + 8*mm
 
     cv.setFont('Helvetica-Bold', 9)
     cv.setFillColor(C_RED)
@@ -639,7 +653,7 @@ def _draw_footer(cv, dj, consigne1='', consigne2=''):
     cv.setFont('Helvetica-Bold', 10)
     cv.setFillColor(C_RED)
     for idx, ligne in enumerate(lignes_consignes):
-        y_ligne = MB + 5*mm + (len(lignes_consignes) - 1 - idx) * 6*mm
+        y_ligne = MB + 3*mm + (len(lignes_consignes) - 1 - idx) * 6*mm
         cv.drawString(ML, y_ligne, ligne)
 
     cv.setFillColor(C_BLACK)

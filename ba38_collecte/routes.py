@@ -6763,6 +6763,11 @@ def _ensure_table_suivi_gardee(conn):
             UNIQUE(annee, nom_association)
         )
     """)
+    # Migration paresseuse : colonne ajoutée après coup pour la notification
+    # mail « saisie en ligne » (cf. _notifier_saisie_association).
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_gardee_suivi)").fetchall()}
+    if "dernier_mail_saisie_le" not in colonnes:
+        conn.execute("ALTER TABLE collecte_gardee_suivi ADD COLUMN dernier_mail_saisie_le TEXT")
 
 
 def _lire_suivi_gardee(annee):
@@ -6791,6 +6796,47 @@ def _marquer_suivi_gardee(annee, nom_association, champ, valeur, utilisateur):
             DO UPDATE SET {champ} = excluded.{champ}, {champ}_le = excluded.{champ}_le, {champ}_par = excluded.{champ}_par
         """, (annee, nom_association, 1 if valeur else 0, maintenant, utilisateur if valeur else None))
         conn.commit()
+
+
+def _notifier_saisie_association(annee, nom_association):
+    """Prévient l'équipe collecte (ba380.collecte) qu'une association a
+    saisi ou modifié ses résultats via le formulaire public saisie_association
+    — au plus UN mail par association et par jour d'activité (pas un mail par
+    case enregistrée, l'autosave écrivant une case à la fois), grâce à
+    collecte_gardee_suivi.dernier_mail_saisie_le (demande utilisateur
+    2026-11-03). N'affecte jamais les cases 'repondu'/'resultat_envoye',
+    cochées à la main uniquement (cf. _ensure_table_suivi_gardee)."""
+    aujourdhui = datetime.now().strftime("%Y-%m-%d")
+    with get_db_connection() as conn:
+        _ensure_table_suivi_gardee(conn)
+        ligne = conn.execute(
+            "SELECT dernier_mail_saisie_le FROM collecte_gardee_suivi WHERE annee = ? AND nom_association = ?",
+            (annee, nom_association),
+        ).fetchone()
+        if ligne and ligne["dernier_mail_saisie_le"] == aujourdhui:
+            return  # déjà notifié aujourd'hui pour cette association
+        conn.execute("""
+            INSERT INTO collecte_gardee_suivi (annee, nom_association, dernier_mail_saisie_le)
+            VALUES (?, ?, ?)
+            ON CONFLICT(annee, nom_association) DO UPDATE SET dernier_mail_saisie_le = excluded.dernier_mail_saisie_le
+        """, (annee, nom_association, aujourdhui))
+        conn.commit()
+
+    try:
+        envoyer_mail(
+            sujet=f"Collecte {annee} — saisie de « {nom_association} »",
+            destinataires=["ba380.collecte@banquealimentaire.org"],
+            texte=(
+                f"L'association « {nom_association} » vient de saisir ou modifier ses résultats "
+                f"de collecte gardée {annee} (poids par magasin et/ou quantités par produit).<br><br>"
+                f"<a href=\"{url_for('collecte.gardee', annee=annee, _external=True)}\">"
+                f"Voir le suivi des associations gardant</a>"
+            ),
+            sender_override="ba380.collecte@banquealimentaire.org",
+            is_html=True,
+        )
+    except Exception as e:
+        write_log(f"⚠️ Échec notification saisie association « {nom_association} » {annee} : {e}")
 
 
 def _saisie_association_avancement(annee, nom_association, magasins, produits, poids_magasins, poids_produits):
@@ -9586,6 +9632,24 @@ def palox_synthese_donnees(annee):
     return jsonify(_synthese_palox(annee))
 
 
+@collecte_bp.route("/collecte/<int:annee>/palox/affichage")
+def palox_affichage(annee):
+    """Écran kiosk (2e écran, sans connexion) affichant en direct la
+    synthèse de la pesée palox — même principe que l'affichage cuisine
+    (ba38_cuisine/routes_kiosk.py + production_cuisine/affichage.html) :
+    polling JSON, passage en plein écran au premier clic si ouvert avec
+    ?plein_ecran=1 (bouton « Affichage TV » de palox_synthese.html)."""
+    return render_template("collecte/palox_affichage.html", annee=annee)
+
+
+@collecte_bp.route("/collecte/<int:annee>/palox/affichage/donnees")
+def palox_affichage_donnees(annee):
+    """Version publique (sans connexion) de _synthese_palox, pour l'écran
+    kiosk ci-dessus — pas de données plus sensibles que ce que montre déjà
+    l'écran cuisine équivalent."""
+    return jsonify(_synthese_palox(annee))
+
+
 @collecte_bp.route("/collecte/<int:annee>/palox/synthese/export")
 @login_required
 @require_access("collecte", "lecture")
@@ -9738,6 +9802,7 @@ def saisie_association(annee, token):
             return valeur
 
         champs_invalides = []
+        une_saisie = False
         maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with get_db_connection() as conn:
             for magasin in association["magasins"]:
@@ -9746,6 +9811,7 @@ def saisie_association(annee, token):
                 poids_kg = _poids_valide_ou_ignore(brut, magasin.get("Nom", code_vif), champs_invalides)
                 if poids_kg == "IGNORER":
                     continue
+                une_saisie = True
                 conn.execute("""
                     INSERT INTO collecte_poids_magasins_gardee (annee, code_vif, poids_kg, saisi_le, saisi_par)
                     VALUES (?, ?, ?, ?, ?)
@@ -9757,6 +9823,7 @@ def saisie_association(annee, token):
                 poids_kg = _poids_valide_ou_ignore(brut, produit.get("libelle", produit["code"]), champs_invalides)
                 if poids_kg == "IGNORER":
                     continue
+                une_saisie = True
                 conn.execute("""
                     INSERT INTO collecte_quantites_produits (annee, association, code_produit, poids_kg, saisi_le, saisi_par)
                     VALUES (?, ?, ?, ?, ?, ?)
@@ -9765,6 +9832,8 @@ def saisie_association(annee, token):
                 """, (annee, nom_association, produit["code"], poids_kg, maintenant, f"association:{nom_association}"))
             conn.commit()
         write_log(f"⚖️ Saisie en ligne association « {nom_association} » {annee} enregistrée")
+        if une_saisie:
+            _notifier_saisie_association(annee, nom_association)
         if champs_invalides:
             flash(
                 "⚠️ Enregistré, sauf " + str(len(champs_invalides)) + " valeur(s) invalide(s) ignorée(s) : "
@@ -9885,6 +9954,7 @@ def saisie_association_enregistrer_champ(annee, token):
             """, (annee, nom_association, code, poids_kg, maintenant, saisi_par))
         conn.commit()
 
+    _notifier_saisie_association(annee, nom_association)
     return jsonify({"success": True})
 
 
