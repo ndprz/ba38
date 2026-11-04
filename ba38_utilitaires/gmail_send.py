@@ -56,7 +56,7 @@ def _get_gmail_service():
 
 def envoyer_mail_gmail(sujet, destinataires, texte, attachment_path=None,
                         sender="ba380@banquealimentaire.org", attachment_filename=None,
-                        reply_to=None):
+                        reply_to=None, is_html=False):
     """
     Envoie un mail via l'API Gmail (compte ba380@banquealimentaire.org),
     avec pièce jointe optionnelle. Lève GmailSendError en cas d'échec.
@@ -86,7 +86,7 @@ def envoyer_mail_gmail(sujet, destinataires, texte, attachment_path=None,
     message["Subject"] = sujet
     if reply_to and "@" in reply_to:
         message["Reply-To"] = reply_to
-    message.attach(MIMEText(texte, "plain"))
+    message.attach(MIMEText(texte, "html" if is_html else "plain", "utf-8"))
 
     if attachment_path and os.path.exists(attachment_path):
         with open(attachment_path, "rb") as f:

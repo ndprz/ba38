@@ -1,0 +1,153 @@
+<h1
+id="emailing-envoyer-un-message-aux-associations-ou-aux-bénévoles">Emailing
+: envoyer un message aux associations ou aux bénévoles</h1>
+<h2 id="à-quoi-ça-sert">À quoi ça sert</h2>
+<p>Cet écran permet d’envoyer <strong>le même message à plusieurs
+destinataires</strong> (toutes les associations, ou des bénévoles
+choisis par fonction), de <strong>suivre ce qui a été délivré</strong>,
+de <strong>renvoyer par Gmail</strong> les mails en échec et, si besoin,
+de <strong>joindre un formulaire de réponse</strong> (oui/non, texte
+court).</p>
+<p>On y accède par le bouton <strong>« 📣 Emailing associations
+»</strong> (page Partenaires) ou <strong>« 📣 Emailing bénévoles
+»</strong> (page Bénévoles). Les deux écrans sont identiques ; seule la
+façon de choisir les destinataires change.</p>
+<h2 id="les-4-étapes-dune-campagne">Les 4 étapes d’une campagne</h2>
+<p><strong>1. Créer la campagne.</strong> Sur la liste des campagnes,
+saisissez le sujet puis « ➕ Créer une campagne ». Une campagne = un
+message + une liste de destinataires + son suivi.</p>
+<p><strong>2. Rédiger le message.</strong> Carte « Message et expéditeur
+» :</p>
+<ul>
+<li>choisissez un modèle existant (catégorie « Emailing associations »)
+ou écrivez directement le texte ;</li>
+<li>les images se collent dans le texte (ou bouton image de la barre
+d’outils) ;</li>
+<li>choisissez l’<strong>expéditeur</strong> (liste des adresses
+validées chez Mailjet), éventuellement un nom affiché et une adresse de
+réponse ;</li>
+<li>vous pouvez enregistrer le texte comme <strong>nouveau
+modèle</strong> pour le réutiliser.</li>
+</ul>
+<p><strong>3. Choisir les destinataires.</strong></p>
+<ul>
+<li><em>Associations</em> : cochez les types d’adresses voulus
+(association, président, resp. IE1, trésorerie, accueil, collecte…) ou «
+Tous les types ». Option « Seulement les associations valides ».</li>
+<li><em>Bénévoles</em> : « Tous les bénévoles », « Sans aucune fonction
+», ou une ou plusieurs <strong>fonctions</strong> (un bénévole est
+retenu s’il a « oui » dans au moins une des fonctions cochées). On peut
+restreindre par <strong>type</strong> (bénévole, salarié,
+stagiaire…).</li>
+</ul>
+<p>Cliquez ensuite sur <strong>« 📋 Construire la liste »</strong>. Une
+même adresse n’apparaît qu’une seule fois.</p>
+<p><strong>4. Vérifier, décocher, envoyer.</strong> La liste d’envoi est
+triée par nom. <strong>Décochez</strong> les lignes à ne pas servir (la
+coche est enregistrée tout de suite). Vous pouvez trier (clic sur un
+en-tête) et filtrer par texte, par statut et, pour les bénévoles, par
+fonction.</p>
+<h2 id="les-variables-du-message">Les variables du message</h2>
+<p>Un clic sur une variable la <strong>copie</strong> ; collez-la
+ensuite (Ctrl+V) dans le texte, à l’endroit voulu.</p>
+<ul>
+<li><code>&lt;&lt;nom_association&gt;&gt;</code> (associations) ou
+<code>&lt;&lt;prenom&gt;&gt;</code> / <code>&lt;&lt;nom&gt;&gt;</code>
+(bénévoles) ;</li>
+<li><code>&lt;&lt;fonction&gt;&gt;</code> : le type d’adresse ou les
+fonctions du destinataire ;</li>
+<li><code>&lt;&lt;lien_formulaire&gt;&gt;</code> : le lien personnel du
+formulaire de réponse (voir plus bas).</li>
+</ul>
+<h2 id="envoyer">Envoyer</h2>
+<p>La case <strong>« Mode TEST »</strong> est cochée par défaut :
+l’envoi est alors limité à <strong>2 mails, adressés à vous</strong>, et
+le sujet porte « [TEST] ». Faites toujours un test avant le premier
+envoi réel : vous contrôlez le texte, les images et le lien du
+formulaire.</p>
+<p>Pour un <strong>envoi réel</strong>, décochez « Mode TEST » : une
+confirmation indique le nombre d’adresses. L’envoi se fait <strong>en
+arrière-plan</strong> ; actualisez la page pour voir l’avancement.</p>
+<p><strong>Important :</strong> un envoi réel ne repart <strong>jamais
+deux fois</strong> vers une adresse déjà servie avec succès. Les
+adresses en erreur sont reprises au prochain envoi.</p>
+<h2 id="suivre-la-campagne">Suivre la campagne</h2>
+<p>Le tableau de suivi indique, pour chaque adresse, la date d’envoi et
+le <strong>statut Mailjet</strong>. Cliquez sur <strong>« 🔄 Vérifier
+statut Mailjet »</strong> : la vérification se fait en arrière-plan
+(actualisez la page ensuite), et la date de dernière vérification
+s’affiche.</p>
+<ul>
+<li><strong>Délivré (ouverture non détectée)</strong> : le mail est
+arrivé. Cela ne veut pas dire « non lu » : certaines messageries
+bloquent le suivi des ouvertures.</li>
+<li><strong>Lu / Cliqué</strong> : une ouverture ou un clic a été
+détecté (chiffre minimum).</li>
+<li><strong>Rebond, Bloqué, Classé spam, Remise différée</strong> :
+échec de remise.</li>
+<li><strong>Erreur d’envoi</strong> : Mailjet a refusé le mail (adresse
+invalide…).</li>
+</ul>
+<p>Vous pouvez <strong>trier et filtrer</strong> le suivi par statut
+(délivrés, lus, erreurs, tests, à envoyer, décochés).</p>
+<h2 id="en-cas-déchec-renvoi-par-gmail">En cas d’échec : renvoi par
+Gmail</h2>
+<p>Le bouton <strong>🔁</strong> d’une ligne (ou <strong>« Renvoyer les
+échecs par Gmail »</strong> pour toutes) renvoie le mail depuis la boîte
+Gmail générale. Utile pour les rebonds de certaines messageries
+(Microsoft, mail.ru). Le mail part toujours de l’adresse Gmail de la BA
+; l’adresse choisie comme expéditeur est mise en « Répondre à ».</p>
+<h2 id="renvoyer-la-campagne">Renvoyer la campagne</h2>
+<p>Une fois la campagne envoyée, le bouton <strong>« 🔁 Renvoyer la
+campagne »</strong> envoie de nouveau le message à <strong>toutes les
+lignes cochées, même celles qui l’ont déjà reçu</strong> (par exemple
+après correction du texte ou ajout d’un formulaire). Vous pouvez ajouter
+« Rappel : » ou « Mise à jour : » devant le sujet. Les destinataires
+déjà servis plusieurs fois portent un badge « 2 envois ».
+<strong>Décochez les lignes à ne pas déranger avant de
+renvoyer.</strong></p>
+<h2 id="joindre-un-formulaire-de-réponse">Joindre un formulaire de
+réponse</h2>
+<p>Dans la carte « Formulaire de réponse » :</p>
+<ol type="1">
+<li>cochez <strong>« Joindre un formulaire »</strong> ;</li>
+<li>saisissez un titre, un texte d’introduction et un message de
+remerciement (facultatifs) ;</li>
+<li>ajoutez vos <strong>questions</strong> : <em>Oui/Non</em> ou
+<em>Texte court</em>, chacune facultative ou obligatoire ;</li>
+<li>cliquez sur <strong>« Enregistrer le formulaire »</strong> ;</li>
+<li><strong>placez</strong> <code>&lt;&lt;lien_formulaire&gt;&gt;</code>
+<strong>dans le texte du mail</strong> (copier-coller de la variable, ou
+bouton « Insérer le lien au curseur ») puis enregistrez le message.</li>
+</ol>
+<p>Chaque adresse reçoit un <strong>lien personnel</strong> : la réponse
+est rattachée automatiquement à la bonne association ou au bon bénévole,
+sans connexion. <strong>Une réponse par adresse</strong>, modifiable à
+tout moment avec le même lien.</p>
+<p>Une alerte orange s’affiche si le formulaire est activé mais que le
+texte ne contient pas le lien : sans lui, les destinataires ne
+recevraient aucun lien.</p>
+<h2 id="exploiter-les-réponses">Exploiter les réponses</h2>
+<ul>
+<li>La colonne <strong>« Réponse »</strong> du suivi indique qui a
+répondu et quand ; le badge « Répondus N / N » donne l’avancement.</li>
+<li>Le tableau <strong>« Réponses »</strong> liste toutes les réponses ;
+le bouton <strong>« 📊 Export Excel »</strong> les exporte (les
+non-répondants figurent avec des cases vides).</li>
+<li><strong>« 🔔 Relancer les non-répondants »</strong> renvoie le
+message (sujet « Relance : … ») aux adresses servies, cochées, qui n’ont
+pas répondu. Case « Test » cochée par défaut.</li>
+</ul>
+<h2 id="bon-à-savoir">Bon à savoir</h2>
+<ul>
+<li>En mode TEST, le lien du formulaire est celui de l’adresse concernée
+: une réponse faite depuis un test est enregistrée pour cette
+adresse.</li>
+<li>Supprimer une question efface ses réponses.</li>
+<li>Une campagne déjà envoyée en réel ne peut pas être supprimée
+(traçabilité).</li>
+<li>Les adresses multiples ou invalides sont ignorées ; les champs «
+Sans » ne sont pas des adresses.</li>
+<li>Il n’y a pas de lien de désinscription : réservez l’outil aux
+messages d’information à vos partenaires et bénévoles.</li>
+</ul>

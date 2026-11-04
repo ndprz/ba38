@@ -40,6 +40,7 @@
         <option value="trimestriel" {% if modele and modele.type_periode == 'trimestriel' %}selected{% endif %}>Indicateurs trimestriels</option>
         <option value="annuel" {% if modele and modele.type_periode == 'annuel' %}selected{% endif %}>Indicateurs annuels</option>
         <option value="facture" {% if modele and modele.type_periode == 'facture' %}selected{% endif %}>Facturation</option>
+        <option value="emailing" {% if modele and modele.type_periode == 'emailing' %}selected{% endif %}>Emailing associations</option>
       </select>
       <small class="form-text text-muted">
         Détermine sur quel écran d'envoi ce modèle apparaît dans la liste déroulante.

@@ -1,0 +1,616 @@
+{% extends "base.html" %}
+{% block title %}Campagne — {{ c.sujet }}{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
+<style>
+/* Utilitaires d'espacement (thème Bootstrap 4 : pas de gap-* ni g-*) */
+.gap-1{gap:.25rem}.gap-2{gap:.5rem}.gap-3{gap:1rem}
+.row.g-2{margin-left:-.25rem;margin-right:-.25rem}.row.g-2>*{padding:.25rem}
+.row.g-3{margin-left:-.5rem;margin-right:-.5rem}.row.g-3>*{padding:.5rem}
+.badge{margin:0}
+.tri-col{cursor:pointer;white-space:nowrap;user-select:none}.tri-col:hover{text-decoration:underline}
+#corps_quill_container .ql-editor { min-height: 260px; }
+.liste-scroll { max-height: 60vh; overflow: auto; }
+.liste-scroll thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 1; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">📣 {{ c.sujet }}</h2>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-outline-info btn-sm" onclick="new bootstrap.Modal(document.getElementById('modalAideEmailing')).show()">❓ Aide</button>
+      <a href="{{ url_for('emailing.liste', cible=cible) }}" class="btn btn-outline-secondary btn-sm">⬅️ Campagnes</a>
+      {% if peut_ecrire and not deja_envoye_reel %}
+      <form method="POST" action="{{ url_for('emailing.supprimer', campagne_id=c.id) }}"
+            onsubmit="return confirm('Supprimer cette campagne ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-outline-danger btn-sm">🗑️ Supprimer</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ============ 1-3 MESSAGE + EXPÉDITEUR ============ -->
+  <div class="card mb-4" id="message">
+    <div class="card-header fw-bold">1️⃣ Message et expéditeur</div>
+    <div class="card-body">
+    <form method="POST" action="{{ url_for('emailing.enregistrer_message', campagne_id=c.id) }}" id="form-message">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="is_html" value="{{ 1 if c.is_html else 0 }}" id="is_html">
+      <input type="hidden" name="modele_id" id="modele_id" value="{{ c.modele_id or '' }}">
+
+      <div class="row g-3 mb-3">
+        <div class="col-md-6">
+          <label class="form-label">Sujet</label>
+          <input type="text" name="sujet" class="form-control" value="{{ c.sujet }}" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Modèle de message existant</label>
+          <select class="form-select" id="choix-modele">
+            <option value="">— Partir d'un texte vierge / garder mon texte —</option>
+            {% for m in modeles %}<option value="{{ m.id }}" {% if c.modele_id == m.id %}selected{% endif %}>{{ m.code_modele }}</option>{% endfor %}
+          </select>
+          <small class="text-muted">Modèles de catégorie « Emailing associations ».</small>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Texte du message</label>
+        <textarea name="corps" id="corps_textarea" style="display:none">{{ c.corps or '' }}</textarea>
+        <div id="corps_quill_container" style="background:white;"></div>
+        <div class="mb-2 d-flex flex-wrap align-items-center gap-2" id="pastilles-variables">
+          <span class="small text-muted">Cliquez sur une variable pour la copier, puis collez-la (Ctrl+V) dans le texte à l'endroit voulu :</span>
+          <button type="button" class="btn btn-outline-primary btn-sm var-copy" data-var="&lt;&lt;lien_formulaire&gt;&gt;"
+                  title="Lien personnel du formulaire de réponse (le formulaire doit être activé plus bas)">📋 &lt;&lt;lien_formulaire&gt;&gt;</button>
+          {% if cible == 'benevoles' %}
+          <button type="button" class="btn btn-outline-secondary btn-sm var-copy" data-var="&lt;&lt;prenom&gt;&gt;">📋 &lt;&lt;prenom&gt;&gt;</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm var-copy" data-var="&lt;&lt;nom&gt;&gt;">📋 &lt;&lt;nom&gt;&gt;</button>
+          {% else %}
+          <button type="button" class="btn btn-outline-secondary btn-sm var-copy" data-var="&lt;&lt;nom_association&gt;&gt;">📋 &lt;&lt;nom_association&gt;&gt;</button>
+          {% endif %}
+          <button type="button" class="btn btn-outline-secondary btn-sm var-copy" data-var="&lt;&lt;fonction&gt;&gt;">📋 &lt;&lt;fonction&gt;&gt;</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="insererVariable('<<lien_formulaire>>')"
+                  title="Insère directement le lien à l'emplacement du curseur">↳ Insérer le lien au curseur</button>
+        </div>
+        <small class="text-muted">Variables : {% if cible == 'benevoles' %}<code>&lt;&lt;prenom&gt;&gt;</code>, <code>&lt;&lt;nom&gt;&gt;</code>, <code>&lt;&lt;fonction&gt;&gt;</code>{% else %}<code>&lt;&lt;nom_association&gt;&gt;</code>, <code>&lt;&lt;fonction&gt;&gt;</code>{% endif %}.
+          Images : collez-les ou utilisez le bouton image de la barre d'outils.</small>
+      </div>
+
+      <div class="row g-3 mb-3">
+        <div class="col-md-4">
+          <label class="form-label">Expéditeur (validé Mailjet)</label>
+          <select name="expediteur" class="form-select" required>
+            <option value="">— choisir —</option>
+            {% for e in expediteurs %}<option value="{{ e }}" {% if c.expediteur == e %}selected{% endif %}>{{ e }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Nom affiché (optionnel)</label>
+          <input type="text" name="expediteur_nom" class="form-control" value="{{ c.expediteur_nom or nom_org }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Adresse de réponse (optionnel)</label>
+          <input type="email" name="reply_to" class="form-control" value="{{ c.reply_to or '' }}">
+        </div>
+      </div>
+
+      <div class="row g-2 align-items-end">
+        <div class="col-md-5">
+          <label class="form-label">Enregistrer aussi comme modèle (code, optionnel)</label>
+          <input type="text" name="enregistrer_modele" class="form-control" placeholder="ex. EMAILING Info assos novembre">
+        </div>
+        <div class="col-auto">
+          {% if peut_ecrire %}<button class="btn btn-primary">💾 Enregistrer le message</button>{% endif %}
+        </div>
+      </div>
+    </form>
+    </div>
+  </div>
+
+
+  <!-- ============ FORMULAIRE DE RÉPONSE ============ -->
+  <div class="card mb-4" id="formulaire">
+    <div class="card-header fw-bold">📝 Formulaire de réponse (optionnel)</div>
+    <div class="card-body">
+    {% if lien_manquant %}
+    <div class="alert alert-warning py-2">⚠️ Le formulaire est activé, mais le texte du message ne contient pas <code>&lt;&lt;lien_formulaire&gt;&gt;</code> :
+      les destinataires ne recevront <b>aucun lien</b>. Utilisez le bouton « 🔗 Insérer le lien du formulaire » dans le message ci-dessus, puis enregistrez le message.</div>
+    {% endif %}
+    <form method="POST" action="{{ url_for('emailing.enregistrer_formulaire', campagne_id=c.id) }}" id="form-formulaire">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" name="form_actif" value="1" id="form_actif" {% if c.form_actif %}checked{% endif %}>
+        <label class="form-check-label" for="form_actif">Joindre un formulaire : chaque adresse reçoit un lien personnel (une réponse par adresse, modifiable)</label>
+      </div>
+      <div class="row g-3 mb-3">
+        <div class="col-md-6"><label class="form-label">Titre de la page</label>
+          <input type="text" name="form_titre" class="form-control" value="{{ c.form_titre or '' }}" placeholder="(par défaut : le sujet)"></div>
+        <div class="col-md-6"><label class="form-label">Message de remerciement</label>
+          <input type="text" name="form_merci" class="form-control" value="{{ c.form_merci or '' }}" placeholder="Merci, votre réponse est enregistrée."></div>
+        <div class="col-12"><label class="form-label">Texte d'introduction</label>
+          <textarea name="form_intro" rows="2" class="form-control">{{ c.form_intro or '' }}</textarea></div>
+      </div>
+      <div id="questions">
+        {% for q in questions %}
+        <div class="row g-2 mb-2 align-items-center question">
+          <input type="hidden" name="q_id" value="{{ q.id }}">
+          <div class="col-md-6"><input type="text" name="q_libelle" class="form-control" value="{{ q.libelle }}" placeholder="Question"></div>
+          <div class="col-md-2"><select name="q_type" class="form-select"><option value="oui_non" {% if q.type == 'oui_non' %}selected{% endif %}>Oui / Non</option><option value="texte" {% if q.type == 'texte' %}selected{% endif %}>Texte court</option></select></div>
+          <div class="col-md-2"><select name="q_obl" class="form-select"><option value="0" {% if not q.obligatoire %}selected{% endif %}>Facultative</option><option value="1" {% if q.obligatoire %}selected{% endif %}>Obligatoire</option></select></div>
+          <div class="col-auto"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.question').remove()">🗑️</button></div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="d-flex gap-2 mt-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="ajouterQuestion()">➕ Ajouter une question</button>
+        {% if peut_ecrire %}<button class="btn btn-primary btn-sm">💾 Enregistrer le formulaire</button>{% endif %}
+      </div>
+      <small class="text-muted d-block mt-2">Pour insérer le lien dans le mail, écrivez <code>&lt;&lt;lien_formulaire&gt;&gt;</code> dans le texte du message : il devient un lien personnel cliquable. En mode TEST, le lien est celui de l'adresse concernée : une réponse faite depuis un test est enregistrée pour cette adresse.
+      Supprimer une question efface ses réponses.</small>
+    </form>
+    </div>
+  </div>
+
+{% if cible == 'benevoles' %}
+  <!-- ============ 4 DESTINATAIRES ============ -->
+  <div class="card mb-4" id="destinataires">
+    <div class="card-header fw-bold">2️⃣ Bénévoles visés</div>
+    <div class="card-body">
+    <form method="POST" action="{{ url_for('emailing.definir_destinataires', campagne_id=c.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" name="tous_benevoles" value="1" id="tous_benevoles" {% if cfg.tous %}checked{% endif %}>
+        <label class="form-check-label fw-bold" for="tous_benevoles">Tous les bénévoles</label>
+      </div>
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" name="aucune_fonction" value="1" id="aucune_fonction" {% if cfg.aucune %}checked{% endif %}>
+        <label class="form-check-label" for="aucune_fonction">Bénévoles sans aucune fonction</label>
+      </div>
+      <div class="mb-1 fw-bold small">…ou ayant au moins une de ces fonctions :</div>
+      <div class="row">
+        {% for code, lib in fonctions %}
+        <div class="col-lg-3 col-md-4 col-sm-6">
+          <div class="form-check">
+            <input class="form-check-input fonction-cb" type="checkbox" name="fonctions" value="{{ code }}" id="fn_{{ code }}" {% if code in cfg.fonctions %}checked{% endif %}>
+            <label class="form-check-label" for="fn_{{ code }}">{{ lib }}</label>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="mt-3 mb-1 fw-bold small">Types de bénévoles (aucun coché = tous les types) :</div>
+      <div class="row">
+        {% for t in types_benevoles %}
+        <div class="col-lg-3 col-md-4 col-sm-6">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="types" value="{{ t }}" id="ty_{{ loop.index }}" {% if t in cfg.types %}checked{% endif %}>
+            <label class="form-check-label" for="ty_{{ loop.index }}">{{ t }}</label>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="mt-3 d-flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-outline-secondary btn-sm"
+                onclick="document.querySelectorAll('.fonction-cb').forEach(e=>e.checked=true)">☑️ Toutes les fonctions</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm"
+                onclick="document.querySelectorAll('.fonction-cb').forEach(e=>e.checked=false)">⬜ Aucune</button>
+        {% if peut_ecrire %}<button class="btn btn-primary btn-sm">📋 Construire la liste</button>{% endif %}
+      </div>
+      <small class="text-muted d-block mt-2">Un bénévole est retenu s'il a « oui » dans au moins une des fonctions cochées (logique OU). Une même adresse n'apparaît qu'une fois. Reconstruire la liste conserve les cases décochées et les envois déjà faits.</small>
+    </form>
+    </div>
+  </div>
+
+{% else %}
+  <!-- ============ 4 DESTINATAIRES ============ -->
+  <div class="card mb-4" id="destinataires">
+    <div class="card-header fw-bold">2️⃣ Adresses visées</div>
+    <div class="card-body">
+    <form method="POST" action="{{ url_for('emailing.definir_destinataires', campagne_id=c.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="row">
+        {% for champ, libelle in champs %}
+        <div class="col-md-3 col-sm-6">
+          <div class="form-check">
+            <input class="form-check-input champ-email" type="checkbox" name="champs" value="{{ champ }}"
+                   id="ch_{{ champ }}" {% if champ in cfg_champs %}checked{% endif %}>
+            <label class="form-check-label" for="ch_{{ champ }}">{{ libelle }}</label>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="form-check mt-2">
+        <input class="form-check-input" type="checkbox" name="valides" value="1" id="valides" {% if cfg_valides %}checked{% endif %}>
+        <label class="form-check-label" for="valides">Seulement les associations valides</label>
+      </div>
+      <div class="mt-3 d-flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-outline-secondary btn-sm"
+                onclick="document.querySelectorAll('.champ-email').forEach(e=>e.checked=true)">☑️ Tous les types</button>
+        {% if peut_ecrire %}<button class="btn btn-primary btn-sm">📋 Construire la liste</button>{% endif %}
+      </div>
+      <small class="text-muted d-block mt-2">Une même adresse présente plusieurs fois n'apparaît qu'une fois. Reconstruire la liste conserve les cases décochées et les envois déjà faits.</small>
+    </form>
+    </div>
+  </div>
+
+{% endif %}
+  <!-- ============ 5-6 LISTE ============ -->
+  <div class="card mb-4" id="liste">
+    <div class="card-header fw-bold d-flex justify-content-between flex-wrap gap-2">
+      <span>3️⃣ Liste d'envoi — <span id="nb-coches">{{ nb.coches }}</span> / {{ nb.total }} adresse(s) cochée(s)</span>
+      {% if peut_ecrire and lignes %}
+      <span class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toutCocher(true)">☑️ Tout cocher</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toutCocher(false)">⬜ Tout décocher</button>
+      </span>
+      {% endif %}
+    </div>
+    <div class="card-body">
+    {% if lignes %}
+      <div class="row g-2 mb-2">
+        <div class="{{ 'col-md-5' if cible == 'benevoles' else 'col-md-8' }}"><input type="text" id="filtre-liste" class="form-control form-control-sm" placeholder="🔎 Filtrer ({{ lib_cible|lower }}, email, fonction)…"></div>
+        {% if cible == 'benevoles' %}<div class="col-md-3"><select id="fonction-liste" class="form-select form-select-sm custom-select custom-select-sm">
+          <option value="">Toutes les fonctions</option>
+          <option value="__aucune__">Sans fonction</option>
+          {% for code, lib in fonctions %}<option value="{{ code }}">{{ lib }}</option>{% endfor %}</select></div>{% endif %}
+        <div class="col-md-4"><select id="statut-liste" class="form-select form-select-sm custom-select custom-select-sm"><option value="">Tous les statuts</option>
+<option value="ok,envoye">Délivrés</option>
+<option value="lu">Lus / cliqués</option>
+<option value="gmail">Renvoyés par Gmail</option>
+<option value="erreur,echec">Erreurs / échecs</option>
+<option value="test">Envois test</option>
+<option value="attente">À envoyer</option>
+<option value="decoche">Décochés</option></select></div>
+      </div>
+      <div class="liste-scroll">
+      <table class="table table-sm table-striped align-middle tri" id="table-liste">
+        <thead><tr><th style="width:40px"></th><th class="tri-col">{{ lib_cible }}</th><th class="tri-col">Email</th><th class="tri-col">Fonction(s)</th><th class="tri-col">Statut</th></tr></thead>
+        <tbody>
+        {% for l in lignes %}{% set d = l.d %}
+          <tr data-code="{{ l.code }}" data-fonctions=",{{ d.fonctions_codes or '' }},">
+            <td><input type="checkbox" class="coche" data-id="{{ d.id }}" {% if d.selected %}checked{% endif %}
+                       {% if not peut_ecrire %}disabled{% endif %}></td>
+            <td>{{ d.nom_association }}</td><td>{{ d.email }}</td><td class="small">{{ d.fonctions }}</td>
+            <td><span class="badge bg-{{ l.couleur }}">{{ l.libelle }}</span></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% else %}
+      <p class="text-muted mb-0">Aucune adresse : choisissez les types d'adresses ci-dessus puis « Construire la liste ».</p>
+    {% endif %}
+    </div>
+  </div>
+
+  <!-- ============ 7 ENVOI + SUIVI ============ -->
+  <div class="card mb-5" id="suivi">
+    <div class="card-header fw-bold">4️⃣ Envoi et suivi</div>
+    <div class="card-body">
+
+      {% if c.dernier_envoi_le %}
+      <div class="alert {% if c.dernier_envoi_mode_test %}alert-warning{% else %}alert-info{% endif %} py-2">
+        {% if c.dernier_envoi_mode_test %}🧪 Dernier envoi : <b>TEST</b>{% else %}Dernier envoi réel{% endif %}
+        le {{ c.dernier_envoi_le[:16].replace('T',' ') }} par {{ c.dernier_envoi_par }} —
+        {{ c.dernier_envoi_nb_ok }} envoyé(s), {{ c.dernier_envoi_nb_erreur }} erreur(s).
+      </div>
+      {% else %}
+      <div class="alert alert-secondary py-2">Aucun envoi pour cette campagne.</div>
+      {% endif %}
+
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        <span class="badge bg-success">Délivrés {{ nb.ok + nb.envoye }}</span>
+        <span class="badge bg-primary" title="Ouvertures détectées par Mailjet : minimum, certaines messageries bloquent le suivi">Lus {{ nb.lu }}</span>
+        <span class="badge bg-info">Gmail {{ nb.gmail }}</span>
+        {% if c.form_actif %}<span class="badge bg-dark">Répondus {{ nb.repondus }} / {{ nb.envoyes_reels }}</span>{% endif %}
+        <span class="badge bg-danger">Erreurs {{ nb.erreur + nb.echec }}</span>
+        <span class="badge bg-warning text-dark">Tests {{ nb.test }}</span>
+        <span class="badge bg-light text-dark border">À envoyer {{ nb.attente }}</span>
+        <span class="badge bg-secondary">Décochées {{ nb.decoche }}</span>
+      </div>
+
+      {% if peut_ecrire %}
+      <div class="d-flex flex-wrap gap-3 align-items-center mb-3">
+        <form method="POST" action="{{ url_for('emailing.envoyer', campagne_id=c.id) }}" id="form-envoi" class="d-flex gap-2 align-items-center">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" name="mode_test" value="1" id="mode_test" checked>
+            <label class="form-check-label" for="mode_test">Mode TEST (2 mails max vers moi)</label>
+          </div>
+          <button class="btn btn-success">🚀 Envoyer</button>
+        </form>
+        {% if deja_envoye_reel %}
+        <form method="POST" action="{{ url_for('emailing.renvoyer_campagne', campagne_id=c.id) }}" id="form-renvoi-campagne" class="d-flex gap-2 align-items-center">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="mode_test" id="renvoi_mode_test" value="0">
+          <select name="prefixe" class="form-select form-select-sm custom-select custom-select-sm" style="width:auto" title="Préfixe ajouté au sujet">
+            <option value="">Sujet inchangé</option><option value="rappel">Préfixe « Rappel : »</option><option value="maj">Préfixe « Mise à jour : »</option>
+          </select>
+          <button class="btn btn-outline-danger" title="Renvoie le message à tous les cochés, même ceux qui l'ont déjà reçu">🔁 Renvoyer la campagne</button>
+        </form>
+        {% endif %}
+        <form method="POST" action="{{ url_for('emailing.verifier_statut', campagne_id=c.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-outline-primary">🔄 Vérifier statut Mailjet</button>
+        </form>
+        {% if derniere_verif %}<small class="text-muted">Dernière vérification : {{ derniere_verif[:16].replace('T',' ') }}</small>{% endif %}
+        <form method="POST" action="{{ url_for('emailing.renvoyer_gmail', campagne_id=c.id) }}"
+              onsubmit="return confirm('Renvoyer par Gmail ({{ gmail_sender }}) toutes les lignes en échec ?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-outline-warning">🔁 Renvoyer les échecs par Gmail</button>
+        </form>
+        {% if c.form_actif %}
+        <form method="POST" action="{{ url_for('emailing.relancer', campagne_id=c.id) }}" id="form-relance" class="d-flex gap-2 align-items-center">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="form-check mb-0"><input class="form-check-input" type="checkbox" name="mode_test" value="1" id="relance_test" checked>
+            <label class="form-check-label" for="relance_test">Test</label></div>
+          <button class="btn btn-outline-dark">🔔 Relancer les non-répondants</button>
+        </form>
+        {% endif %}
+      </div>
+      <small class="text-muted d-block mb-3">Le renvoi Gmail part toujours de {{ gmail_sender }} (l'adresse choisie est mise en « Répondre à » si différente).</small>
+      {% endif %}
+
+      <div class="row g-2 mb-2">
+        <div class="col-md-8"><input type="text" id="filtre-suivi" class="form-control form-control-sm" placeholder="🔎 Filtrer le suivi (association, email, erreur)…"></div>
+        <div class="col-md-4"><select id="statut-suivi" class="form-select form-select-sm custom-select custom-select-sm"><option value="">Tous les statuts</option>
+<option value="ok,envoye">Délivrés</option>
+<option value="lu">Lus / cliqués</option>
+<option value="gmail">Renvoyés par Gmail</option>
+<option value="erreur,echec">Erreurs / échecs</option>
+<option value="test">Envois test</option>
+<option value="attente">À envoyer</option>
+<option value="decoche">Décochés</option></select></div>
+      </div>
+      <div class="liste-scroll">
+      <table class="table table-sm align-middle tri" id="table-suivi">
+        <thead><tr><th class="tri-col">{{ lib_cible }}</th><th class="tri-col">Email</th><th class="tri-col">Envoyé le</th><th class="tri-col">Statut</th>{% if c.form_actif %}<th class="tri-col">Réponse</th>{% endif %}<th>Détail</th><th></th></tr></thead>
+        <tbody>
+        {% for l in lignes if l.d.mail_envoye_le %}{% set d = l.d %}
+          <tr data-code="{{ l.code }}">
+            <td>{{ d.nom_association }}</td><td>{{ d.email }}</td>
+            <td class="small">{{ d.mail_envoye_le[:16].replace('T',' ') }}{% if d.mail_mode_test %} 🧪{% endif %}{% if d.nb_envois and d.nb_envois > 1 %} <span class="badge bg-secondary" title="Premier envoi : {{ (d.premier_envoi_le or '')[:16].replace('T',' ') }}">{{ d.nb_envois }} envois</span>{% endif %}</td>
+            <td><span class="badge bg-{{ l.couleur }}">{{ l.libelle }}</span></td>
+            {% if c.form_actif %}<td class="small">{% if d.repondu_le %}✅ {{ d.repondu_le[:16].replace('T',' ') }}{% elif d.mail_mode_test %}—{% else %}<span class="text-muted">en attente</span>{% endif %}{% if d.nb_relances %}<br><span class="text-muted">relancé {{ d.nb_relances }}×</span>{% endif %}</td>{% endif %}
+            <td class="small">
+              {% if d.mail_erreur %}<span class="text-danger">{{ d.mail_erreur }}</span><br>{% endif %}
+              {% if d.mail_renvoi_gmail_erreur %}<span class="text-danger">Gmail : {{ d.mail_renvoi_gmail_erreur }}</span><br>{% endif %}
+              {% if d.mail_renvoi_gmail_le and not d.mail_renvoi_gmail_erreur %}Gmail le {{ d.mail_renvoi_gmail_le[:16].replace('T',' ') }}{% endif %}
+            </td>
+            <td>
+              {% if peut_ecrire and l.code in ('erreur','echec','gmail') %}
+              <form method="POST" action="{{ url_for('emailing.renvoyer_gmail', campagne_id=c.id) }}"
+                    onsubmit="return confirm('Renvoyer par Gmail à {{ d.email }} ?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="dest_id" value="{{ d.id }}">
+                <button class="btn btn-sm btn-outline-warning" title="Renvoyer par Gmail">🔁</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="text-muted text-center">Aucun envoi pour le moment.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  {% if c.form_actif and questions %}
+  <div class="card mb-5" id="reponses">
+    <div class="card-header fw-bold d-flex justify-content-between flex-wrap gap-2">
+      <span>5️⃣ Réponses — {{ nb.repondus }} reçue(s)</span>
+      <a class="btn btn-sm btn-outline-success" href="{{ url_for('emailing.export_reponses', campagne_id=c.id) }}">📊 Export Excel</a>
+    </div>
+    <div class="card-body">
+      <div class="liste-scroll">
+      <table class="table table-sm table-striped align-middle tri" id="table-reponses">
+        <thead><tr><th class="tri-col">{{ lib_cible }}</th><th class="tri-col">Email</th><th class="tri-col">Répondu le</th>{% for q in questions %}<th class="tri-col">{{ q.libelle }}</th>{% endfor %}</tr></thead>
+        <tbody>
+        {% for l in lignes if l.d.repondu_le %}{% set d = l.d %}
+          <tr data-code="reponse"><td>{{ d.nom_association }}</td><td>{{ d.email }}</td><td class="small">{{ d.repondu_le[:16].replace('T',' ') }}</td>
+            {% for q in questions %}{% set v = reponses.get((d.id, q.id), '') %}
+            <td>{% if v == 'oui' %}<span class="badge bg-success">Oui</span>{% elif v == 'non' %}<span class="badge bg-danger">Non</span>{% else %}{{ v }}{% endif %}</td>{% endfor %}
+          </tr>
+        {% else %}
+          <tr><td colspan="{{ 3 + questions|length }}" class="text-muted text-center">Aucune réponse pour le moment.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ===== AIDE EMAILING ===== -->
+<div class="modal fade" id="modalAideEmailing" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📄 Aide – Emailing</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="max-height: 70vh; overflow:auto; font-size: 0.9rem; line-height: 1.4;">
+        {% include "docsHtml/Documentation_Utilisateur_Module_Emailing_BA38.html" %}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAideEmailing')">🖨️ Imprimer</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+<script>
+const CSRF = "{{ csrf_token() }}";
+const MODELES = {{ modeles|map(attribute='id')|list|tojson }};
+const MODELES_DATA = {
+  {% for m in modeles %}{{ m.id }}: {{ {'sujet': m.sujet, 'corps': m.corps, 'is_html': m.is_html}|tojson }},{% endfor %}
+};
+
+// ---- Éditeur riche (toujours HTML) ----
+const quill = new Quill("#corps_quill_container", {
+  theme: "snow",
+  modules: { toolbar: [["bold","italic","underline"], [{list:"ordered"},{list:"bullet"}], ["link","image"], ["clean"]] }
+});
+const textarea = document.getElementById("corps_textarea");
+function chargerCorps(texte, isHtml) {
+  if (isHtml) quill.root.innerHTML = texte || "";
+  else quill.root.innerHTML = (texte || "").split("\n").map(l => "<p>" + (l.replace(/&/g,"&amp;").replace(/</g,"&lt;") || "<br>") + "</p>").join("");
+}
+chargerCorps(textarea.value, {{ 1 if c.is_html else 0 }});
+
+document.getElementById("choix-modele").addEventListener("change", function () {
+  const m = MODELES_DATA[this.value];
+  document.getElementById("modele_id").value = this.value;
+  if (!m) return;
+  if (quill.getText().trim() && !confirm("Remplacer le texte actuel par ce modèle ?")) { this.value = ""; return; }
+  document.querySelector("[name=sujet]").value = m.sujet;
+  chargerCorps(m.corps, m.is_html);
+});
+
+// Images collées : base64 → image hébergée
+quill.on("text-change", () => {
+  quill.root.querySelectorAll('img[src^="data:"]:not([data-uploading])').forEach(img => {
+    img.setAttribute("data-uploading", "1");
+    fetch(img.src).then(r => r.blob()).then(blob => {
+      const fd = new FormData(); fd.append("image", blob, "collee.png");
+      return fetch("{{ url_for('emailing.upload_image') }}", { method: "POST", headers: {"X-CSRFToken": CSRF}, body: fd });
+    }).then(r => r.json()).then(data => {
+      if (data.url) img.src = data.url; else alert("❌ Erreur image : " + (data.error || "inconnue"));
+      img.removeAttribute("data-uploading");
+    }).catch(() => { alert("❌ Erreur réseau lors de l'import de l'image."); img.removeAttribute("data-uploading"); });
+  });
+});
+
+document.getElementById("form-message").addEventListener("submit", function (e) {
+  if (quill.root.querySelector("img[data-uploading]")) { e.preventDefault(); alert("Import d'image en cours, réessayez dans un instant."); return; }
+  textarea.value = quill.root.innerHTML;
+  document.getElementById("is_html").value = 1;
+});
+
+// ---- Copie d'une variable dans le presse-papier ----
+function copierTexte(txt) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(txt);
+  return new Promise((ok, ko) => {
+    const t = document.createElement("textarea");
+    t.value = txt; t.style.position = "fixed"; t.style.opacity = "0";
+    document.body.appendChild(t); t.select();
+    try { document.execCommand("copy") ? ok() : ko(); } catch (e) { ko(e); } finally { t.remove(); }
+  });
+}
+document.querySelectorAll(".var-copy").forEach(btn => btn.addEventListener("click", () => {
+  const v = btn.dataset.var, ancien = btn.innerHTML;
+  copierTexte(v).then(() => { btn.innerHTML = "✅ Copié ! Collez-le dans le texte"; })
+    .catch(() => { btn.innerHTML = "⚠️ Copie impossible : sélectionnez et copiez à la main"; })
+    .finally(() => setTimeout(() => { btn.innerHTML = ancien; }, 2200));
+}));
+
+function insererVariable(txt) {
+  quill.focus();
+  const r = quill.getSelection(true);
+  quill.insertText(r ? r.index : quill.getLength() - 1, txt, "user");
+}
+const LIEN_MANQUANT = {{ 'true' if lien_manquant else 'false' }};
+
+// ---- Coches (autosave) ----
+function majCompteur(n) { document.getElementById("nb-coches").textContent = n; }
+function postSelection(payload) {
+  return fetch("{{ url_for('emailing.selection', campagne_id=c.id) }}", {
+    method: "POST", headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF}, body: JSON.stringify(payload)
+  }).then(r => r.json()).then(d => { if (d.ok) majCompteur(d.coches); else throw new Error(); })
+    .catch(() => alert("❌ Enregistrement de la coche impossible, rechargez la page."));
+}
+document.querySelectorAll(".coche").forEach(cb => cb.addEventListener("change", () =>
+  postSelection({ids: [cb.dataset.id], selected: cb.checked})));
+function toutCocher(etat) {
+  const visibles = [...document.querySelectorAll("#table-liste tbody tr")].filter(tr => tr.style.display !== "none");
+  const ids = [];
+  visibles.forEach(tr => { const cb = tr.querySelector(".coche"); cb.checked = etat; ids.push(cb.dataset.id); });
+  postSelection({ids, selected: etat});
+}
+// ---- Filtres (texte + statut) et tri des colonnes ----
+function brancherFiltre(tableId, inputId, selectId, fonctionId) {
+  const input = document.getElementById(inputId), sel = document.getElementById(selectId);
+  const fsel = fonctionId ? document.getElementById(fonctionId) : null;
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  const appliquer = () => {
+    const q = (input?.value || "").toLowerCase();
+    const codes = sel && sel.value ? sel.value.split(",") : null;
+    table.querySelectorAll("tbody tr[data-code]").forEach(tr => {
+      const okTexte = !q || tr.textContent.toLowerCase().includes(q);
+      const okStatut = !codes || codes.includes(tr.dataset.code);
+      let okFonction = true;
+      if (fsel && fsel.value) {
+        const f = tr.dataset.fonctions || ",,";
+        okFonction = fsel.value === "__aucune__" ? f === ",," || f === ",," : f.includes("," + fsel.value + ",");
+      }
+      tr.style.display = okTexte && okStatut && okFonction ? "" : "none";
+    });
+  };
+  input?.addEventListener("input", appliquer);
+  sel?.addEventListener("change", appliquer);
+  fsel?.addEventListener("change", appliquer);
+}
+brancherFiltre("table-liste", "filtre-liste", "statut-liste", "fonction-liste");
+brancherFiltre("table-suivi", "filtre-suivi", "statut-suivi");
+
+document.querySelectorAll("table.tri").forEach(table => {
+  table.querySelectorAll("th.tri-col").forEach(th => th.addEventListener("click", () => {
+    const idx = [...th.parentNode.children].indexOf(th);
+    const asc = th.dataset.ordre !== "asc";
+    th.parentNode.querySelectorAll("th").forEach(h => { delete h.dataset.ordre; h.textContent = h.textContent.replace(/ [▲▼]$/, ""); });
+    th.dataset.ordre = asc ? "asc" : "desc";
+    th.textContent += asc ? " ▲" : " ▼";
+    const tbody = table.tBodies[0];
+    const rows = [...tbody.querySelectorAll("tr[data-code]")];
+    const val = tr => tr.children[idx].textContent.trim().toLowerCase();
+    rows.sort((a, b) => val(a).localeCompare(val(b), "fr", {numeric: true}) * (asc ? 1 : -1));
+    rows.forEach(r => tbody.appendChild(r));
+  }));
+});
+
+// ---- Questions du formulaire ----
+function ajouterQuestion() {
+  const div = document.createElement("div");
+  div.className = "row g-2 mb-2 align-items-center question";
+  div.innerHTML = `<input type="hidden" name="q_id" value="">
+    <div class="col-md-6"><input type="text" name="q_libelle" class="form-control" placeholder="Question"></div>
+    <div class="col-md-2"><select name="q_type" class="form-select"><option value="oui_non">Oui / Non</option><option value="texte">Texte court</option></select></div>
+    <div class="col-md-2"><select name="q_obl" class="form-select"><option value="0">Facultative</option><option value="1">Obligatoire</option></select></div>
+    <div class="col-auto"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.question').remove()">🗑️</button></div>`;
+  document.getElementById("questions").appendChild(div);
+}
+document.getElementById("form-relance")?.addEventListener("submit", function (e) {
+  if (!document.getElementById("relance_test").checked && !confirm("⚠️ RELANCE RÉELLE des associations n'ayant pas répondu. Confirmer ?")) e.preventDefault();
+});
+
+// ---- Renvoi de la campagne (même aux déjà servis) ----
+document.getElementById("form-renvoi-campagne")?.addEventListener("submit", function (e) {
+  const n = document.getElementById("nb-coches").textContent;
+  const test = document.getElementById("mode_test").checked;
+  document.getElementById("renvoi_mode_test").value = test ? "1" : "0";
+  const msg = test
+    ? "Renvoi TEST (2 mails maximum vers vous) ?"
+    : "⚠️ RENVOI RÉEL à " + n + " adresse(s) cochée(s), y compris celles qui ont DÉJÀ reçu ce message. Confirmer ?";
+  if (!confirm(msg)) e.preventDefault();
+});
+
+// ---- Envoi réel : confirmation ----
+document.getElementById("form-envoi")?.addEventListener("submit", function (e) {
+  const test = document.getElementById("mode_test").checked;
+  const n = document.getElementById("nb-coches").textContent;
+  if (LIEN_MANQUANT && !confirm("⚠️ Le formulaire est activé mais le message ne contient PAS de lien (<<lien_formulaire>>). Envoyer quand même ?")) { e.preventDefault(); return; }
+  if (!test && !confirm("⚠️ ENVOI RÉEL à " + n + " adresse(s) cochée(s) (hors déjà envoyées). Confirmer ?")) e.preventDefault();
+});
+</script>
+{% endblock %}

@@ -494,6 +494,12 @@ fieldset legend{
     ) }}
 
     {{ action_button(
+        "📣 Emailing associations",
+        href=url_for('emailing.liste'),
+        color="primary"
+    ) }}
+
+    {{ action_button(
         "💾 Sauvegarde manuelle",
         onclick="lancerSauvegardeManuelle(this)",
         color="outline-primary"

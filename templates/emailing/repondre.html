@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ c.form_titre or c.sujet }}{% endblock %}
+{% block content %}
+<div class="container mt-4 mb-5" style="max-width: 760px;">
+  <h2>{{ c.form_titre or c.sujet }}</h2>
+  <p class="text-muted mb-3">{{ d.nom_association }} — {{ d.email }}</p>
+
+  {% if ok %}
+  <div class="alert alert-success">✅ {{ c.form_merci or "Merci, votre réponse est enregistrée." }}
+    <br><small>Vous pouvez la modifier à tout moment avec ce même lien.</small></div>
+  {% endif %}
+  {% if erreurs %}
+  <div class="alert alert-danger">Merci de répondre aux questions obligatoires :
+    <ul class="mb-0">{% for e in erreurs %}<li>{{ e }}</li>{% endfor %}</ul></div>
+  {% endif %}
+  {% if c.form_intro %}<p style="white-space: pre-line;">{{ c.form_intro }}</p>{% endif %}
+
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for q in questions %}
+    <div class="card mb-3"><div class="card-body">
+      <label class="form-label fw-bold">{{ q.libelle }}{% if q.obligatoire %} <span class="text-danger">*</span>{% endif %}</label>
+      {% set v = reponses.get(q.id, '') %}
+      {% if q.type == 'oui_non' %}
+        <div>
+          <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="q_{{ q.id }}" id="q{{ q.id }}o" value="oui" {% if v == 'oui' %}checked{% endif %}><label class="form-check-label" for="q{{ q.id }}o">Oui</label></div>
+          <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="q_{{ q.id }}" id="q{{ q.id }}n" value="non" {% if v == 'non' %}checked{% endif %}><label class="form-check-label" for="q{{ q.id }}n">Non</label></div>
+        </div>
+      {% else %}
+        <input type="text" class="form-control" name="q_{{ q.id }}" maxlength="300" value="{{ v }}">
+      {% endif %}
+    </div></div>
+    {% endfor %}
+    <button class="btn btn-primary btn-lg">{% if d.repondu_le %}💾 Modifier ma réponse{% else %}✅ Envoyer ma réponse{% endif %}</button>
+    {% if d.repondu_le %}<div class="text-muted small mt-2">Dernière réponse le {{ d.repondu_le[8:10] }}/{{ d.repondu_le[5:7] }}/{{ d.repondu_le[:4] }} à {{ d.repondu_le[11:16] }}.</div>{% endif %}
+  </form>
+</div>
+{% endblock %}

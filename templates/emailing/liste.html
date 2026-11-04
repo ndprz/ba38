@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Emailing associations{% endblock %}
+{% block extra_css %}
+<style>
+/* Utilitaires d'espacement (thème Bootstrap 4 : pas de gap-* ni g-*) */
+.gap-1{gap:.25rem}.gap-2{gap:.5rem}.gap-3{gap:1rem}
+.row.g-2{margin-left:-.25rem;margin-right:-.25rem}.row.g-2>*{padding:.25rem}
+.row.g-3{margin-left:-.5rem;margin-right:-.5rem}.row.g-3>*{padding:.5rem}
+.badge{margin:0}
+</style>
+{% endblock %}
+{% block content %}
+<div class="container-fluid mt-3">
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">📣 Emailing {{ libelles_cible[cible]|lower }}</h2>
+    <div class="d-flex gap-2"><button type="button" class="btn btn-outline-info btn-sm" onclick="new bootstrap.Modal(document.getElementById('modalAideEmailing')).show()">❓ Aide</button>
+    {% if cible == 'benevoles' %}<a href="{{ url_for('benevoles.benevoles_tabulator') }}" class="btn btn-outline-secondary btn-sm">⬅️ Bénévoles</a>
+    {% else %}<a href="{{ url_for('partenaires.partenaires_tabulator') }}" class="btn btn-outline-secondary btn-sm">⬅️ Partenaires</a>{% endif %}
+    </div>
+  </div>
+
+  <ul class="nav nav-tabs mb-3">
+    {% for k in ('associations', 'benevoles') if peut[k] %}
+    <li class="nav-item"><a class="nav-link {% if cible == k %}active{% endif %}" href="{{ url_for('emailing.liste', cible=k) }}">{{ libelles_cible[k] }}</a></li>
+    {% endfor %}
+  </ul>
+
+  {% if peut_ecr[cible] %}
+  <form method="POST" action="{{ url_for('emailing.nouvelle') }}" class="row g-2 mb-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="cible" value="{{ cible }}">
+    <div class="col-md-6">
+      <input type="text" name="sujet" class="form-control" placeholder="Sujet de la nouvelle campagne" required>
+    </div>
+    <div class="col-auto"><button class="btn btn-success">➕ Créer une campagne</button></div>
+  </form>
+  {% endif %}
+
+  <table class="table table-striped table-sm align-middle">
+    <thead><tr>
+      <th>Créée le</th><th>Cible</th><th>Sujet</th><th>Par</th><th class="text-end">Destinataires</th>
+      <th class="text-end">Envoyés</th><th class="text-end">Erreurs</th><th>Dernier envoi</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for c in campagnes %}
+      <tr>
+        <td>{{ (c.cree_le or '')[:16].replace('T',' ') }}</td>
+        <td><span class="badge bg-secondary">{{ libelles_cible[c.cible or 'associations'] }}</span></td>
+        <td>{{ c.sujet }}</td>
+        <td class="small">{{ c.cree_par }}</td>
+        <td class="text-end">{{ c.nb_dest }}</td>
+        <td class="text-end">{{ c.nb_envoyes }}</td>
+        <td class="text-end">{% if c.nb_erreurs %}<span class="badge bg-danger">{{ c.nb_erreurs }}</span>{% else %}0{% endif %}</td>
+        <td class="small">{% if c.dernier_envoi_le %}{{ c.dernier_envoi_le[:16].replace('T',' ') }}{% if c.dernier_envoi_mode_test %} <span class="badge bg-warning text-dark">test</span>{% endif %}{% else %}—{% endif %}</td>
+        <td><a class="btn btn-sm btn-primary" href="{{ url_for('emailing.campagne', campagne_id=c.id) }}">Ouvrir</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="text-muted text-center">Aucune campagne pour le moment.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+<!-- ===== AIDE EMAILING ===== -->
+<div class="modal fade" id="modalAideEmailing" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📄 Aide – Emailing</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="max-height: 70vh; overflow:auto; font-size: 0.9rem; line-height: 1.4;">
+        {% include "docsHtml/Documentation_Utilisateur_Module_Emailing_BA38.html" %}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAideEmailing')">🖨️ Imprimer</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}

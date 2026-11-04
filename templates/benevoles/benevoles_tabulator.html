@@ -477,6 +477,14 @@ body{
 
     {% call action_buttons() %}
 
+    {% if has_access("benevoles", "lecture") %}
+    {{ action_button(
+        "📣 Emailing bénévoles",
+        href=url_for('emailing.liste', cible='benevoles'),
+        color="primary"
+    ) }}
+    {% endif %}
+
     {{ action_button(
         "❓ Aide",
         onclick="new bootstrap.Modal(document.getElementById('modalAideBenevoles')).show()",
