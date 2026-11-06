@@ -112,6 +112,7 @@
                     <th>Prénom</th>
                     <th>Acceptation</th>
                     <th>Lien PDF</th>
+                    <th>Signature</th>
                 </tr>
 
             </thead>
@@ -156,6 +157,13 @@
                         <input type="text" class="form-control" name="lien_{{p.id}}" value="{{p.lien_drive or ''}}" {%
                             if lecture_seule %}readonly{% endif %}>
 
+                    </td>
+
+                    <td class="text-nowrap">
+                        {% if p.signature_fichier %}
+                        <a href="{{ url_for('droit_image.voir_signature_droit_image', benevole_id=p.id) }}" target="_blank">✍️ Voir</a>
+                        <small class="text-muted d-block">{{ p.date_signature }}</small>
+                        {% endif %}
                     </td>
 
                 </tr>

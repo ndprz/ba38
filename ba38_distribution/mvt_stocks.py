@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from . import distribution_bp
 
 import sqlite3
+from ba38_vif.generation import AucunMouvement, generer_mouvements
 
 
 
@@ -532,10 +533,6 @@ def export_mvt_vif_v2(num_mvt):
 
         ids = []
 
-        # =====================================================
-        # LECTURE MOUVEMENTS
-        # =====================================================
-
         if mode == "selected":
 
             ids = request.args.getlist("ids", type=int)
@@ -549,273 +546,18 @@ def export_mvt_vif_v2(num_mvt):
 
             placeholders = ",".join("?" * len(ids))
 
-            cur.execute(f"""
-                SELECT *
-                FROM mvt_stocks_v2
-                WHERE num_mvt = ?
-                AND id IN ({placeholders})
-                ORDER BY article, lot
-            """, (num_mvt, *ids))
+        # =====================================================
+        # GENERATION (package ba38_vif : lecture + texte CSV)
+        # =====================================================
 
-        elif mode == "all":
-
-            cur.execute("""
-                SELECT *
-                FROM mvt_stocks_v2
-                WHERE num_mvt = ?
-                ORDER BY article, lot
-            """, (num_mvt,))
-
-        else:
-
-            cur.execute("""
-                SELECT *
-                FROM mvt_stocks_v2
-                WHERE num_mvt = ?
-                AND statut = 'BROUILLON'
-                ORDER BY article, lot
-            """, (num_mvt,))
-
-        lignes = cur.fetchall()
-
-        if not lignes:
+        try:
+            output = generer_mouvements(conn, num_mvt, mode, ids)
+        except AucunMouvement:
             flash("ℹ️ Aucun mouvement à exporter.", "info")
             return redirect(url_for(
                 "distribution.confirm_export_mvt_v2",
                 num_mvt=num_mvt
             ))
-
-        # =====================================================
-        # EMPLACEMENTS REELS (table stocks)
-        # =====================================================
-
-        cur.execute("""
-            SELECT article, lot, depot, emplacement
-            FROM stocks
-        """)
-
-        emplacements_stock = {
-            (
-                str(r["article"]),
-                r["lot"] or "",
-                str(r["depot"]).zfill(2)
-            ): (r["emplacement"] or "")
-            for r in cur.fetchall()
-        }
-
-        # =====================================================
-        # ENTETE CSV VIF
-        # =====================================================
-
-        header = [
-
-            "Ste",
-            "Etab",
-            "Prechro",
-            "Chrono",
-            "ligne",
-
-            "Nature mouvement de stock",
-
-            "Date",
-            "Heure",
-            "Libellé du mouvement",
-
-            "Motif",
-            "Nature Tiers",
-            "Tiers",
-            "Transporteur",
-
-            "Article entrant",
-            "Lot entrant",
-            "Dépôt",
-            "Emplacement entrant",
-
-            "Quantité 1 entrant",
-            "Unité 1 entrant",
-
-            "Qte2",
-            "UN2",
-
-            "Qte3",
-            "UN3",
-
-            "Article sortant",
-            "Lot sortant",
-            "Dépôt sortant",
-            "Emplacement sortant",
-
-            "Quantité 1 sortant",
-            "Unité 1 sortant",
-
-            "Quantité 2 sortant",
-            "Unité 2 sortant",
-
-            "Quantité 3 sortant",
-            "Unité 3 sortant",
-
-            "Utilisateur",
-
-            "Evolutions futures",
-            "Evolutions futures",
-            "Evolutions futures",
-            "Evolutions futures",
-            "Evolutions futures",
-            "Evolutions futures",
-            "Evolutions futures",
-
-            "Critère 1 du lot entrant",
-            "Valeur du critère 1",
-
-            "Critère 2 du lot entrant",
-            "Valeur du critère 2",
-
-            "Critère 3 du lot entrant",
-            "Valeur du critère 3"
-        ]
-
-        # header conservé ci-dessus comme documentation des colonnes,
-        # mais pas inclus dans le CSV : VIF n'attend pas de ligne d'entête
-        rows = []
-
-        # =====================================================
-        # DATE
-        # =====================================================
-
-        now = datetime.now()
-
-        date_vif = now.strftime("%d/%m/%Y")
-
-        # =====================================================
-        # LIGNES CSV
-        # =====================================================
-
-        for i, l in enumerate(lignes, start=1):
-
-            qte = float(l["qte_kgn"] or 0)
-
-            depot_to = str(l["depot_to"]).zfill(2)
-            depot_from = str(l["depot_from"]).zfill(2)
-
-            article = str(l["article"])
-
-            lot = l["lot"] or ""
-
-            # =================================================
-            # EMPLACEMENTS
-            # =================================================
-
-            emplacement_entree = emplacements_stock.get(
-                (article, lot, depot_to), ""
-            )
-
-            emplacement_sortie = emplacements_stock.get(
-                (article, lot, depot_from), ""
-            )
-
-            # =================================================
-            # LIGNE
-            # =================================================
-
-            rows.append([
-
-                # =============================================
-                # ENTETE
-                # =============================================
-
-                "01",
-                "38",
-                "1OD",
-                "0",
-                str(i - 1),
-
-                "TRANSCO",
-
-                date_vif,
-                "",
-
-                "Transfert",
-
-                "",
-                "",
-                "",
-                "",
-
-                # =============================================
-                # ENTREE
-                # =============================================
-
-                article,
-                lot,
-
-                depot_to,
-
-                emplacement_entree,
-
-                str(qte).replace(".", ","),
-
-                "KG",
-
-                "",
-                "",
-
-                "",
-                "",
-
-                # =============================================
-                # SORTIE
-                # =============================================
-
-                article,
-                lot,
-
-                depot_from,
-
-                emplacement_sortie,
-
-                str(qte).replace(".", ","),
-
-                "KG",
-
-                "",
-                "",
-
-                "",
-                "",
-
-                # =============================================
-                # UTILISATEUR
-                # (champ conservé pour le format VIF, valeur vidée)
-                # =============================================
-
-                "",
-
-                # =============================================
-                # EVOLUTIONS FUTURES
-                # =============================================
-
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-
-                # =============================================
-                # CRITERES LOT
-                # =============================================
-
-                "",
-                "",
-
-                "",
-                "",
-
-                "",
-                ""
-
-            ])
 
         # =====================================================
         # MARQUAGE EXPORTE
@@ -841,15 +583,6 @@ def export_mvt_vif_v2(num_mvt):
             """, (num_mvt,))
 
         conn.commit()
-
-    # =========================================================
-    # GENERATION CSV
-    # =========================================================
-
-    output = "\n".join([
-        ";".join(map(str, r))
-        for r in rows
-    ])
 
     return Response(
         output,

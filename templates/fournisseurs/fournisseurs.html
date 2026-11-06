@@ -772,6 +772,29 @@ function toggleGroup(groupName, el){
         : "▶";
 }
 
+// clic en dehors des groupes : tous les groupes se replient
+document.addEventListener("click", function(e){
+
+    if (e.target.closest(".fields-group")){
+        return;
+    }
+
+    document
+    .querySelectorAll(".fields-container.expanded")
+    .forEach(c => {
+
+        c.classList.remove("expanded");
+
+        const chev =
+            c.closest(".fields-group")
+            .querySelector(".chevron");
+
+        if (chev){
+            chev.textContent = "▶";
+        }
+    });
+});
+
 function toggleAll(group, checked){
 
     document

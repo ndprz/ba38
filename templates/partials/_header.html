@@ -11,8 +11,8 @@
 
         <img src="{{ url_for('static', filename='images/basilic_logo.png') }}" class="header-logo">
 
-        {% if env_name == "dev" %}
-        <span class="badge bg-danger ms-2">DEV</span>
+        {% if env_name|upper == "DEV" %}
+        <span class="badge bg-danger ms-2 fs-6">DEV – ne pas saisir de données réelles</span>
         {% endif %}
 
     </div>

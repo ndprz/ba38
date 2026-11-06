@@ -27,8 +27,16 @@
 
     {% call action_buttons() %}
         {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+        {{ action_button("📄 Générer BL VIF", href=url_for('collecte.quantites_produits_bl_vif', annee=annee), color="outline-primary") }}
+        {{ action_button("📋 Transferts à saisir dans VIF", href=url_for('collecte.quantites_produits_transferts', annee=annee), color="outline-primary") }}
         <button type="button" id="btn-reinitialiser" class="btn btn-outline-danger btn-sm">🗑️ Repartir à zéro</button>
     {% endcall %}
+
+    <div class="alert {% if total_transfere|round(0) == total_stock_gardee|round(0) %}alert-success{% else %}alert-warning{% endif %} small py-1 mb-2">
+        Total quantités par produit : <strong>{{ total_transfere|round(0)|int }} kg</strong> —
+        stock entré sur l'article 5010010 (poids par magasin gardé) : <strong>{{ total_stock_gardee|round(0)|int }} kg</strong>
+        {% if total_transfere|round(0) != total_stock_gardee|round(0) %}(écart {{ (total_stock_gardee - total_transfere)|round(0)|int }} kg){% endif %}
+    </div>
 
     {% if not mercuriale_importee %}
     <div class="alert alert-warning small py-1 mb-2">
@@ -75,6 +83,7 @@ function sauvegarderCellule(cell) {
     const data = row.getData();
     const association = cell.getColumn().getField();
     row.getElement().classList.remove("ligne-erreur");
+    row.update(calculerTotauxLigne(data));
 
     fetch(urlEnregistrer, {
         method: "POST",
@@ -114,12 +123,12 @@ const colonnesAssociations = associations.map(function (nom) {
         hozAlign: "right",
         headerWordWrap: true,
         editor: "number",
-        editorParams: { min: 0, step: 0.1 },
+        editorParams: { min: 0, step: 1 },
         topCalc: "sum",
-        topCalcParams: { precision: 1 },
+        topCalcParams: { precision: 0 },
         formatter: function (cell) {
             const v = cell.getValue();
-            return (v === null || v === undefined) ? "" : v;
+            return (v === null || v === undefined) ? "" : Math.round(v);
         },
         cellEdited: sauvegarderCellule,
     };
@@ -131,27 +140,24 @@ function poidsTotalLigne(data) {
     return total;
 }
 
+// Champs calculés réels (et non de simples formatters) pour que les totaux
+// en haut de colonne se calculent et se mettent à jour à chaque saisie.
+function calculerTotauxLigne(data) {
+    const poids = poidsTotalLigne(data);
+    return { total_poids: poids, valeur: data.prix_kg == null ? null : poids * data.prix_kg };
+}
+lignes.forEach(function (l) { Object.assign(l, calculerTotauxLigne(l)); });
+
 const colonnesValorisation = [
-    { title: "Total poids (kg)", width: 130, hozAlign: "right",
-      formatter: function (cell) { return poidsTotalLigne(cell.getData()).toFixed(1); },
-      topCalc: function (values, data) {
-          let total = 0;
-          data.forEach(function (row) { total += poidsTotalLigne(row); });
-          return total.toFixed(1);
-      } },
-    { title: "Valeur (€)", width: 130, hozAlign: "right",
+    { title: "Total poids (kg)", field: "total_poids", width: 130, hozAlign: "right",
+      formatter: function (cell) { return Math.round(cell.getValue() || 0); },
+      topCalc: "sum", topCalcFormatter: function (cell) { return "<strong>" + Math.round(cell.getValue() || 0) + "</strong>"; } },
+    { title: "Valeur (€)", field: "valeur", width: 130, hozAlign: "right",
       formatter: function (cell) {
-          const data = cell.getData();
-          if (data.prix_kg == null) return "—";
-          return (poidsTotalLigne(data) * data.prix_kg).toFixed(2);
+          const v = cell.getValue();
+          return v == null ? "—" : v.toFixed(2);
       },
-      topCalc: function (values, data) {
-          let total = 0;
-          data.forEach(function (row) {
-              if (row.prix_kg != null) { total += poidsTotalLigne(row) * row.prix_kg; }
-          });
-          return total.toFixed(2);
-      } },
+      topCalc: "sum", topCalcFormatter: function (cell) { return "<strong>" + (cell.getValue() || 0).toFixed(2) + "</strong>"; } },
 ];
 
 const table = new Tabulator("#tabulator-table", {

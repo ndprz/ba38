@@ -85,6 +85,7 @@ from ba38_fournisseurs import fournisseurs_bp
 from ba38_cuisine import production_cuisine_bp, cuisine_hygiene_bp
 from ba38_tresorerie import tresorerie_bp
 from ba38_cerfa import cerfa_bp
+from ba38_intervenants import intervenants_bp
 from ba38_emailing import emailing_bp
 from ba38_partenaires import fiches_visite_bp
 from ba38_partenaires import annexe1bis_bp, webhook_yousign
@@ -265,6 +266,14 @@ def sw_photo_benevole():
         mimetype='application/javascript'
     )
 
+@app.route('/sw_intervenants.js')
+def sw_intervenants():
+    return send_from_directory(
+        os.path.join(app.root_path, 'static/pwa'),
+        'sw_intervenants.js',
+        mimetype='application/javascript'
+    )
+
 @app.route('/sw_palox.js')
 def sw_palox():
     return send_from_directory(
@@ -442,6 +451,7 @@ app.register_blueprint(production_cuisine_bp, url_prefix="/production-cuisine")
 app.register_blueprint(cuisine_hygiene_bp, url_prefix="/hygiene-cuisine")
 app.register_blueprint(tresorerie_bp)
 app.register_blueprint(cerfa_bp)
+app.register_blueprint(intervenants_bp)
 app.register_blueprint(emailing_bp)
 app.register_blueprint(fiches_visite_bp)
 app.register_blueprint(annexe1bis_bp)

@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% from "macros/buttons.html" import action_button, action_buttons %}
+{% block title %}{{ it.prenom }} {{ it.nom }}{% endblock %}
+
+{% block extra_css %}
+<link rel="manifest" href="{{ url_for('static', filename='pwa/manifest_intervenants.json') }}">
+<meta name="theme-color" content="#f27830">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='images/icon-192.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Intervenants">
+{% endblock %}
+
+{% block content %}
+<div class="container mt-3 mb-5" style="max-width: 720px;">
+  <h2>🧑‍🤝‍🧑 {{ it.prenom }} {{ it.nom }}</h2>
+
+  {% call action_buttons() %}
+    {{ action_button("↩️ Liste des intervenants", href=url_for('intervenants.liste'), color="outline-dark") }}
+  {% endcall %}
+
+  <!-- ===== Photo ===== -->
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="card-title">📷 Photo</h6>
+    {% if photo %}
+      <img src="{{ url_for('intervenants.voir_photo', iid=it.id, v=range(1000000)|random) }}" alt="Photo"
+           class="img-fluid rounded mb-2" style="max-height:220px;">
+    {% else %}
+      <p class="text-muted">Pas encore de photo.</p>
+    {% endif %}
+    {% if peut_ecrire %}
+    <form method="POST" action="{{ url_for('intervenants.envoyer_photo', iid=it.id) }}" enctype="multipart/form-data" id="formPhoto">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="file" id="cameraInput" accept="image/*" capture="environment" class="d-none">
+      <input type="file" id="galerieInput" name="photo" accept="image/*" class="d-none">
+      <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-primary flex-fill" onclick="document.getElementById('cameraInput').click()">📷 Prendre une photo</button>
+        <button type="button" class="btn btn-outline-secondary flex-fill" onclick="document.getElementById('galerieInput').click()">🖼️ Galerie</button>
+      </div>
+      <img id="apercu" class="img-fluid rounded d-none mt-2" style="border:1px solid #ccc; max-height:200px;" alt="Aperçu">
+      <button type="submit" id="btnPhoto" class="btn btn-success w-100 mt-2 d-none">✅ Valider et enregistrer la photo</button>
+    </form>
+    {% endif %}
+  </div></div>
+
+  <!-- ===== Droit à l'image ===== -->
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="card-title">📸 Droit à l'image</h6>
+    <p class="mb-2">
+      {% if it.acceptation == 'Accord Total' %}<span class="badge bg-success">🟢 Accord total</span>
+      {% elif it.acceptation == 'Refus' %}<span class="badge bg-danger">🔴 Refus</span>
+      {% else %}<span class="badge bg-secondary">⚪ Non renseigné</span>{% endif %}
+      {% if it.date_signature %}<br><small class="text-muted">Saisi le {{ it.date_signature }}</small>{% endif %}
+    </p>
+    {% if it.signature_fichier %}
+      <img src="{{ url_for('intervenants.voir_signature', iid=it.id) }}" alt="Signature"
+           style="max-width:100%;max-height:120px;border:1px solid #ccc;border-radius:6px;background:#fff;">
+    {% endif %}
+
+    {% if peut_ecrire %}
+    <div class="d-flex gap-2 mt-2" id="choixDroit">
+      <button type="button" class="btn btn-success flex-fill" id="btnAccord">✅ Accord total</button>
+      <button type="button" class="btn btn-danger flex-fill" id="btnRefus">⛔ Refus</button>
+    </div>
+
+    <form method="POST" action="{{ url_for('intervenants.droit_image', iid=it.id) }}" id="formAccord" class="d-none mt-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="choix" value="accord_total">
+      <input type="hidden" name="signature" id="signatureData">
+      <p style="font-size:0.9em;">
+        Je soussigné(e) <strong>{{ it.prenom }} {{ it.nom }}</strong> autorise la Banque Alimentaire à utiliser mon
+        image (photos, vidéos) dans le cadre de ses activités et de sa communication.
+        <strong>Signez avec le doigt :</strong>
+      </p>
+      <canvas id="pad" style="width:100%;height:200px;border:2px dashed #888;border-radius:6px;background:#fff;touch-action:none;"></canvas>
+      <div class="d-flex gap-2 mt-2">
+        <button type="button" class="btn btn-outline-secondary flex-fill" id="btnEffacer">🧹 Effacer</button>
+        <button type="button" class="btn btn-outline-dark flex-fill" id="btnAnnuler">↩️ Annuler</button>
+      </div>
+      <button type="submit" class="btn btn-success w-100 mt-2">✅ Valider la signature</button>
+    </form>
+
+    <form method="POST" action="{{ url_for('intervenants.droit_image', iid=it.id) }}" id="formRefus" class="d-none mt-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="choix" value="refus">
+      <p class="text-danger mb-2" style="font-size:0.9em;">Confirmer le refus du droit à l'image ?</p>
+      <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-dark flex-fill" id="btnAnnulerRefus">↩️ Annuler</button>
+        <button type="submit" class="btn btn-danger flex-fill">Confirmer le refus</button>
+      </div>
+    </form>
+    {% endif %}
+  </div></div>
+
+  <!-- ===== Coordonnées ===== -->
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="card-title">📇 Coordonnées</h6>
+    {% if peut_ecrire %}
+    <form method="POST" action="{{ url_for('intervenants.modifier_infos', iid=it.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="row g-2">
+        <div class="col-6"><input class="form-control" name="nom" value="{{ it.nom }}" placeholder="Nom *" required maxlength="200"></div>
+        <div class="col-6"><input class="form-control" name="prenom" value="{{ it.prenom }}" placeholder="Prénom *" required maxlength="200"></div>
+        <div class="col-12"><input class="form-control" name="telephone" type="tel" value="{{ it.telephone or '' }}" placeholder="Téléphone (facultatif)" maxlength="40"></div>
+        <div class="col-12"><input class="form-control" name="email" type="email" value="{{ it.email or '' }}" placeholder="Mail (facultatif)" maxlength="200"></div>
+        <div class="col-12"><input class="form-control" name="organisme" value="{{ it.organisme or '' }}" placeholder="Entreprise / association (facultatif)" maxlength="200"></div>
+      </div>
+      <button class="btn btn-primary w-100 mt-2" type="submit">💾 Enregistrer</button>
+    </form>
+    {% else %}
+      <p class="mb-0">{{ it.telephone or '—' }} · {{ it.email or '—' }} · {{ it.organisme or '—' }}</p>
+    {% endif %}
+  </div></div>
+
+  {% if peut_ecrire %}
+  <form method="POST" action="{{ url_for('intervenants.supprimer', iid=it.id) }}"
+        onsubmit="return confirm('Supprimer définitivement {{ it.prenom|e }} {{ it.nom|e }} (fiche, photo et signature) ?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-outline-danger w-100" type="submit">🗑️ Supprimer cet intervenant</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if peut_ecrire %}
+<script src="{{ url_for('static', filename='js/signature_pad.js') }}"></script>
+<script>
+  // Photo : l'appareil photo (capture) est transféré vers le champ envoyé au serveur
+  const cam = document.getElementById('cameraInput'), gal = document.getElementById('galerieInput');
+  function apercu(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const r = new FileReader();
+    r.onload = e => { const a = document.getElementById('apercu'); a.src = e.target.result; a.classList.remove('d-none'); };
+    r.readAsDataURL(file);
+    document.getElementById('btnPhoto').classList.remove('d-none');
+  }
+  cam.addEventListener('change', () => { if (cam.files.length) { gal.files = cam.files; apercu(gal.files[0]); } });
+  gal.addEventListener('change', () => apercu(gal.files[0]));
+
+  // Droit à l'image
+  const pad = initSignaturePad(document.getElementById('pad'));
+  const choix = document.getElementById('choixDroit'), fA = document.getElementById('formAccord'), fR = document.getElementById('formRefus');
+  const retour = () => { fA.classList.add('d-none'); fR.classList.add('d-none'); choix.classList.remove('d-none'); };
+  document.getElementById('btnAccord').onclick = () => { choix.classList.add('d-none'); fA.classList.remove('d-none'); pad.reset(); };
+  document.getElementById('btnRefus').onclick = () => { choix.classList.add('d-none'); fR.classList.remove('d-none'); };
+  document.getElementById('btnAnnuler').onclick = retour;
+  document.getElementById('btnAnnulerRefus').onclick = retour;
+  document.getElementById('btnEffacer').onclick = () => pad.reset();
+  fA.addEventListener('submit', e => {
+    if (pad.estVide()) { e.preventDefault(); alert("La personne doit signer dans le cadre avant de valider."); return; }
+    document.getElementById('signatureData').value = pad.toDataURL();
+  });
+</script>
+{% endif %}
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register("{{ url_for('sw_intervenants') }}");
+  }
+</script>
+{% endblock %}

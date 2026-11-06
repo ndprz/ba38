@@ -13,6 +13,7 @@ from collections import defaultdict
 from . import distribution_bp
 
 import sqlite3
+from ba38_vif.generation import ErreursVif, generer_bl_ramasses, generer_receptions_ramasses
 
 
 
@@ -794,81 +795,14 @@ def export_ramasses_vif_mensuel():
         conn.close()
         return redirect(url_for("distribution.controle_ramasses_get", mois=mois, confirm_reception=1))
 
-    # ================= DATA =================
-    rows = cur.execute("""
-        SELECT
-            r.id_fournisseur,
-            f.code_vif,
-            f.nom,
-            l.code_vif AS article_code_vif,
-            ar.libelle,
-            SUM(l.quantite_kg) AS total_kg
-        FROM ramasses_partenaire r
-        JOIN ramasses_partenaire_lignes l
-            ON l.id_ramasse = r.id
-        LEFT JOIN fournisseurs f
-            ON f.id = r.id_fournisseur
-        LEFT JOIN articles ar
-            ON ar.article = l.code_vif
-        WHERE strftime('%Y-%m', r.date_ramasse) = ?
-        GROUP BY r.id_fournisseur, l.code_vif
-        ORDER BY f.nom, l.code_vif
-    """, (mois,)).fetchall()
-    
-
-    # 🔴 contrôle VIF
-    erreurs = [f"Fournisseur sans code VIF : {r['nom']}" for r in rows if not r["code_vif"]]
-
-    if erreurs:
-        for e in erreurs:
-            flash(f"❌ {e}", "danger")
+    # ================= GÉNÉRATION (package ba38_vif) =================
+    try:
+        output = generer_receptions_ramasses(conn, mois, date_du_jour_plus_2)
+    except ErreursVif as e:
+        for msg in e.messages:
+            flash(f"❌ {msg}", "danger")
         conn.close()
         return redirect(url_for("distribution.liste_ramasses"))
-
-    if not mois:
-        flash("❌ Aucun mois de travail sélectionné", "danger")
-        return redirect(url_for("distribution.liste_ramasses"))
-
-    if "-" not in mois:
-        flash(f"❌ Format de mois invalide : {mois}", "danger")
-        return redirect(url_for("distribution.liste_ramasses"))
-    # 🔹 date réception
-
-    annee, m = mois.split("-")
-    dernier_jour = monthrange(int(annee), int(m))[1]
-    date_recep = f"{dernier_jour}/{m}/{annee}"
-
-    lignes_csv = []
-
-    for r in rows:
-        article = (r["article_code_vif"] or "").strip()
-        libelle = (r["libelle"] or "").lower()
-
-        if "non loti" in libelle:
-            lot = ""
-        else:
-            lot = f"RP{annee[-2:]}{m}{article}"
-
-        ligne = [
-            "01",
-            "38",
-            date_recep,
-            r["code_vif"],
-            "01",
-            "03",
-            r["article_code_vif"],
-            f"{float(r['total_kg'] or 0):.3f}",
-            "KG",
-            lot,
-            date_du_jour_plus_2,
-            date_du_jour_plus_2,
-            "",
-            "RA"
-        ]
-
-        lignes_csv.append(";".join(map(str, ligne)))
-
-    output = "\n".join(lignes_csv) + "\n" if lignes_csv else ""
 
     # 🔹 trace
     cur.execute("""
@@ -1004,90 +938,15 @@ def export_bl_vif():
         return redirect(url_for("distribution.controle_ramasses_get", mois=mois, confirm_commande=1))
 
     # ==============================
-    # 🔹 DATA
+    # 🔹 GÉNÉRATION (package ba38_vif)
     # ==============================
-    rows = cur.execute("""
-        SELECT
-            r.id_association,
-            a.code_vif,
-            a.nom_association,
-            l.code_vif AS article,
-            SUM(l.quantite_kg) AS total_kg
-        FROM ramasses_partenaire r
-        JOIN ramasses_partenaire_lignes l ON l.id_ramasse = r.id
-        LEFT JOIN associations a ON a.id = r.id_association
-        WHERE strftime('%Y-%m', r.date_ramasse) = ?
-        GROUP BY r.id_association, l.code_vif
-        ORDER BY a.code_vif, l.code_vif
-    """, (mois,)).fetchall()
-
-    rows = sorted(rows, key=lambda x: (x["code_vif"], x["article"]))
-
-    # 🔴 contrôle VIF
-    erreurs = []
-    for r in rows:
-        if not r["code_vif"]:
-            erreurs.append(f"Association sans code VIF : {r['nom_association']}")
-
-    if erreurs:
-        for e in erreurs:
-            flash(f"❌ {e}", "danger")
+    try:
+        output = generer_bl_ramasses(conn, mois)
+    except ErreursVif as e:
+        for msg in e.messages:
+            flash(f"❌ {msg}", "danger")
         conn.close()
         return redirect(url_for("distribution.liste_ramasses"))
-
-    # 🔹 date BL = dernier jour du mois
-    annee, mois_num = mois.split("-")
-    dernier_jour = monthrange(int(annee), int(mois_num))[1]
-    date_bl = f"{dernier_jour:02d}/{mois_num}/{annee[-2:]}"
-
-    lignes_csv = []
-
-
-    # 🔹 génération lignes
-    for r in rows:
-
-        article = (r["article"] or "").strip()
-
-        # =====================================================
-        # Détermination du lot
-        # Si le libellé contient "non loti" alors pas de lot
-        # =====================================================
-        row_article = cur.execute("""
-            SELECT libelle
-            FROM articles
-            WHERE article = ?
-        """, (article,)).fetchone()
-
-        libelle = (row_article["libelle"] or "").lower() if row_article else ""
-
-        if "non loti" in libelle:
-            lot = ""
-        else:
-            lot = f"RP{annee[-2:]}{mois_num}{article}"
-
-        ligne = [
-            "01",                                                   # 1 Société
-            "38",                                                   # 2 BA
-            "01",                                                   # 3 Société
-            "38",                                                   # 4 BA
-            "NORM",                                                 # 5 Type BL
-            r["code_vif"],                                          # 6 Association
-            f"Ramasse partenaire {mois}",                           # 7 ref cde client
-            f"Ramasse partenaire {mois}",                           # 8 commentaire ENTETE
-            date_bl,                                                # 9 Date BL
-            date_bl,                                                # 10 date livraison
-            article,                                                # 11 Article
-            lot,                                                    # 12 NO LOT
-            f"{float(r['total_kg'] or 0):.3f}".replace(".", ","),   # 13 Qte
-            "KG",                                                   # 14 Unité
-            "03",                                                   # 15 Dépôt de sortie
-            "1",                                                    # 16 Gratuit
-            "0"                                                     # 17 Prix
-        ]
-
-        lignes_csv.append(";".join(ligne))
-
-    output = "\r\n".join(lignes_csv) + "\r\n"
 
     # 🔹 trace export
     cur.execute("""

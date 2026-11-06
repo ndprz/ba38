@@ -8,7 +8,13 @@
      ====================================================== -->
      <meta charset="UTF-8">
      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-     <title>{% block title %}Gestion BA38{% endblock %}</title>
+     <title>{% if env_name|upper == 'DEV' %}[DEV] {% endif %}{% block title %}Gestion BA38{% endblock %}</title>
+     {% if env_name|upper == 'DEV' %}
+     <style>
+          .main-header { background: #fd7e14 !important; border-bottom: 4px solid #dc3545 !important; }
+          .main-header .main-nav a { color: #212529 !important; }
+     </style>
+     {% endif %}
 
      <!-- =====================================================
          FAVICON

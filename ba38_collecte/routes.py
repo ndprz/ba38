@@ -6741,6 +6741,31 @@ def _email_overrides():
     return {r["nom_normalise"]: r["email"] for r in rows}
 
 
+def _ensure_table_gratuit_gardee(conn):
+    """Statut Gratuit (O/N) par association gardant — sert à la colonne
+    « Gratuit » du BL VIF. Pas de ligne = Gratuit (valeur par défaut).
+    Clé = nom normalisé, sans année (même principe que les overrides)."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_gardee_gratuit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom_normalise TEXT NOT NULL UNIQUE,
+            nom_association TEXT NOT NULL,
+            gratuit INTEGER NOT NULL DEFAULT 1,
+            defini_par TEXT,
+            defini_le TEXT
+        )
+    """)
+
+
+def _gratuit_associations():
+    """Dict {nom normalisé: True/False} ; absent = Gratuit (défaut)."""
+    with get_db_connection() as conn:
+        _ensure_table_gratuit_gardee(conn)
+        conn.commit()
+        rows = conn.execute("SELECT nom_normalise, gratuit FROM collecte_gardee_gratuit").fetchall()
+    return {r["nom_normalise"]: bool(r["gratuit"]) for r in rows}
+
+
 def _ensure_table_suivi_gardee(conn):
     """Table de suivi manuel des réponses des associations gardant leur
     collecte — deux cases indépendantes (réponse au 1er message, résultat
@@ -7947,10 +7972,12 @@ def gardee():
         df_participants = _lire_participants(annee)
         index_code_vif = _table_code_vif_associations()
         email_overrides = _email_overrides()
+        gratuit_assos = _gratuit_associations()
         for asso in associations:
             asso["referents"] = _referents_association(asso["nom"], df_participants)
             asso["code_vif"], asso["ecart_code_vif"], asso["code_vif_force"] = _code_vif_association(asso["nom"], index_code_vif)
             asso["email_force"] = email_overrides.get(_cle_recherche_association(asso["nom"]), "")
+            asso["gratuit"] = gratuit_assos.get(_cle_recherche_association(asso["nom"]), True)
 
     return render_template(
         "collecte/gardee.html",
@@ -8063,6 +8090,35 @@ def gardee_email_override():
     if os.path.exists(os.path.join(_dossier_annee(annee), f"associations_gardant_{annee}.xlsx")):
         _generer_fichier_excel_gardee(annee)
 
+    return redirect(url_for("collecte.gardee", annee=annee))
+
+
+@collecte_bp.route("/collecte/gardee/gratuit", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def gardee_gratuit():
+    """Enregistre le statut Gratuit (O/N) d'une association gardant."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    nom_association = (request.form.get("nom_association") or "").strip()
+    gratuit = 0 if request.form.get("gratuit") == "N" else 1
+    if not nom_association:
+        flash("❌ Association manquante", "danger")
+        return redirect(url_for("collecte.gardee", annee=annee))
+    with get_db_connection() as conn:
+        _ensure_table_gratuit_gardee(conn)
+        conn.execute("""
+            INSERT INTO collecte_gardee_gratuit (nom_normalise, nom_association, gratuit, defini_par, defini_le)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(nom_normalise) DO UPDATE SET
+                gratuit = excluded.gratuit,
+                nom_association = excluded.nom_association,
+                defini_par = excluded.defini_par,
+                defini_le = excluded.defini_le
+        """, (_cle_recherche_association(nom_association), nom_association, gratuit,
+              current_user.email, datetime.now().strftime("%Y-%m-%d %H:%M")))
+        conn.commit()
+    flash(f"✅ « {nom_association} » : Gratuit = {'Oui' if gratuit else 'Non'}", "success")
+    write_log(f"✏️ Gratuit gardant : {nom_association!r} -> {'O' if gratuit else 'N'} par {current_user.email}")
     return redirect(url_for("collecte.gardee", annee=annee))
 
 
@@ -8301,7 +8357,7 @@ def enregistrer_poids_magasins_gardee():
         return jsonify({"success": False, "erreur": "Paramètres manquants"}), 400
 
     try:
-        poids_kg = float(poids_brut) if poids_brut not in (None, "") else None
+        poids_kg = round(float(poids_brut)) if poids_brut not in (None, "") else None
     except (TypeError, ValueError):
         return jsonify({"success": False, "erreur": "Poids invalide"}), 400
 
@@ -8455,6 +8511,12 @@ def quantites_produits(annee):
             ).fetchall()
         }
 
+    total_transfere = sum(v or 0 for v in saisies.values())
+    with get_db_connection() as conn:
+        total_stock_gardee = conn.execute(
+            "SELECT COALESCE(SUM(poids_kg), 0) FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
+        ).fetchone()[0]
+
     lignes = []
     for produit in produits:
         ligne = {
@@ -8473,6 +8535,114 @@ def quantites_produits(annee):
         associations=noms_associations,
         code_vif_associations=code_vif_associations,
         mercuriale_importee=bool(prix_mercuriale),
+        total_transfere=total_transfere,
+        total_stock_gardee=total_stock_gardee,
+    )
+
+
+def _date_vif_lundi_jeudi():
+    """Date des documents VIF de la collecte gardée : lundi au jeudi
+    uniquement ; du vendredi au dimanche, le jeudi précédent."""
+    d = datetime.now()
+    if d.weekday() > 3:
+        d -= timedelta(days=d.weekday() - 3)
+    return d
+
+
+@collecte_bp.route("/collecte/<int:annee>/quantites-produits/transferts")
+@login_required
+@require_access("collecte", "lecture")
+def quantites_produits_transferts(annee):
+    """Liste des mouvements de transfert à saisir à la main dans VIF :
+    pour chaque article de la page Quantités par produit, sortie du stock
+    « collecte gardée » (5010010) et entrée de l'article (total de la ligne)."""
+    with get_db_connection() as conn:
+        lignes = [dict(r) for r in conn.execute("""
+            SELECT q.code_produit AS article, a.libelle, SUM(q.poids_kg) AS total_kg
+            FROM collecte_quantites_produits q
+            LEFT JOIN articles a ON a.article = q.code_produit
+            WHERE q.annee = ? AND q.poids_kg > 0
+            GROUP BY q.code_produit HAVING SUM(q.poids_kg) > 0
+            ORDER BY q.code_produit
+        """, (annee,)).fetchall()]
+    return render_template(
+        "collecte/quantites_produits_transferts.html",
+        annee=annee, lignes=lignes,
+        total=sum(l["total_kg"] for l in lignes),
+        article_source=CAGETTES_EXPORT_ARTICLE_GARDEE,
+        depot_source=CAGETTES_EXPORT_DEPOT,
+        depot_dest="03",
+        date_mvt=_date_vif_lundi_jeudi(),
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/quantites-produits/bl-vif")
+@login_required
+@require_access("collecte", "lecture")
+def quantites_produits_bl_vif(annee):
+    """BL VIF de la collecte gardée : une ligne par association × article
+    dont la quantité saisie est > 0, même format que le BL des ramasses
+    partenaires (ba38_vif.generation). Colonne Gratuit d'après le statut
+    de l'association (Associations gardant) ; si non gratuit, prix = mercuriale."""
+    df_mag = _lire_magasins_gardes(annee)
+    df_groupes = _lire_groupes(annee)
+    if df_mag.empty:
+        flash(f"⛔ Liste des magasins gardés {annee} indisponible", "danger")
+        return redirect(url_for("collecte.quantites_produits", annee=annee))
+    associations, _ = _construire_associations(df_mag, df_groupes)
+    noms = sorted({a["nom"] for a in associations}, key=str.lower)
+    index_code_vif = _table_code_vif_associations()
+    gratuit_assos = _gratuit_associations()
+
+    with get_db_connection() as conn:
+        _ensure_tables_palox(conn)
+        saisies = conn.execute(
+            "SELECT association, code_produit, poids_kg FROM collecte_quantites_produits "
+            "WHERE annee = ? AND poids_kg > 0", (annee,)
+        ).fetchall()
+        prix = {r["code_vif"]: r["prix_kg"] for r in conn.execute(
+            "SELECT code_vif, prix_kg FROM collecte_palox_mercuriale WHERE annee = ?", (annee,)
+        ).fetchall()}
+
+        par_asso = {}
+        for r in saisies:
+            par_asso.setdefault(r["association"], []).append(r)
+
+        lignes, erreurs = [], []
+        for nom in noms:
+            if nom not in par_asso:
+                continue
+            code_asso, _, _ = _code_vif_association(nom, index_code_vif)
+            if not code_asso:
+                erreurs.append(f"Association sans code VIF : {nom}")
+                continue
+            gratuit = gratuit_assos.get(_cle_recherche_association(nom), True)
+            for r in sorted(par_asso[nom], key=lambda x: x["code_produit"]):
+                p = prix.get(r["code_produit"])
+                if not gratuit and not p:
+                    erreurs.append(f"Prix mercuriale manquant pour {nom} / article {r['code_produit']} (association non gratuite)")
+                    continue
+                lignes.append({
+                    "code_vif": str(code_asso), "article": r["code_produit"],
+                    "total_kg": r["poids_kg"], "gratuit": gratuit, "prix_kg": p or 0,
+                })
+
+        if erreurs:
+            for e in erreurs:
+                flash(f"❌ {e}", "danger")
+            return redirect(url_for("collecte.quantites_produits", annee=annee))
+        if not lignes:
+            flash("⚠️ Aucune quantité saisie : rien à exporter", "warning")
+            return redirect(url_for("collecte.quantites_produits", annee=annee))
+
+        from ba38_vif.generation import generer_bl_collecte_gardee
+        date_bl = _date_vif_lundi_jeudi()
+        contenu = generer_bl_collecte_gardee(conn, lignes, date_bl)
+
+    write_log(f"📤 BL VIF collecte gardée {annee} ({len(lignes)} ligne(s)) par {current_user.email}")
+    return Response(
+        contenu, mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=BL_collecte_gardee_{annee}.CSV"},
     )
 
 
@@ -8490,7 +8660,7 @@ def enregistrer_quantites_produits():
         return jsonify({"success": False, "erreur": "Paramètres manquants"}), 400
 
     try:
-        poids_kg = float(poids_brut) if poids_brut not in (None, "") else None
+        poids_kg = round(float(poids_brut)) if poids_brut not in (None, "") else None
     except (TypeError, ValueError):
         return jsonify({"success": False, "erreur": "Poids invalide"}), 400
 
@@ -9799,7 +9969,7 @@ def saisie_association(annee, token):
             if valeur < 0:
                 champs_invalides.append(libelle_erreur)
                 return "IGNORER"
-            return valeur
+            return round(valeur)
 
         champs_invalides = []
         une_saisie = False
@@ -9900,7 +10070,7 @@ def saisie_association_enregistrer_champ(annee, token):
         return jsonify({"success": False, "erreur": "Paramètres manquants"}), 400
 
     try:
-        poids_kg = float(poids_brut) if poids_brut not in (None, "") else None
+        poids_kg = round(float(poids_brut)) if poids_brut not in (None, "") else None
     except (TypeError, ValueError):
         return jsonify({"success": False, "erreur": "Poids invalide"}), 400
 

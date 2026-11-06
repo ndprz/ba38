@@ -118,7 +118,9 @@
     <form method="POST" class="mb-4">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label for="benevole_id" class="form-label">Choisir un bénévole :</label>
-      <select name="benevole_id" class="form-select" required>
+      <input type="search" id="rechercheBenevole" class="form-control mb-2"
+             placeholder="🔎 Rechercher un nom ou prénom…" autocomplete="off">
+      <select name="benevole_id" id="benevoleSelect" class="form-select" required>
         <option value="">-- Sélectionnez un bénévole --</option>
         {% for b in benevoles %}
         <option value="{{ b.id }}" {% if selected_id and selected_id|int==b.id %}selected{% endif %}>
@@ -140,6 +142,65 @@
     <img src="{{ url_for('benevoles.serve_photo_benevole', filename=benevole.id ~ '.jpg', v=range(1000000)|random) }}"
       onerror="this.style.display='none'" alt="Photo actuelle">
 
+    <!-- Droit à l'image -->
+    <div class="card mt-4 mb-3" id="blocDroitImage">
+      <div class="card-body">
+        <h6 class="card-title">📸 Droit à l'image</h6>
+        <p class="mb-2" style="font-size:0.9em;">
+          Statut actuel :
+          {% if droit_image and droit_image['acceptation'] == 'Accord Total' %}
+            <span class="badge bg-success">🟢 Accord total</span>
+          {% elif droit_image and droit_image['acceptation'] == 'Accord Entrepot' %}
+            <span class="badge bg-warning text-dark">🟠 Accord entrepôt uniquement</span>
+          {% elif droit_image and droit_image['acceptation'] == 'Refus' %}
+            <span class="badge bg-danger">🔴 Refus</span>
+          {% else %}
+            <span class="badge bg-secondary">⚪ Non renseigné</span>
+          {% endif %}
+          {% if droit_image and droit_image['date_signature'] %}
+            <br><small class="text-muted">Dernière saisie : {{ droit_image['date_signature'] }}</small>
+          {% endif %}
+        </p>
+
+        <div class="d-flex gap-2" id="choixDroitImage">
+          <button type="button" class="btn btn-success flex-fill" id="btnAccord">✅ Accord total</button>
+          <button type="button" class="btn btn-danger flex-fill" id="btnRefus">⛔ Refus</button>
+        </div>
+
+        <!-- Zone de signature (accord total) -->
+        <form method="POST" action="{{ url_for('droit_image.signer_droit_image', benevole_id=benevole.id) }}"
+              id="formAccord" class="d-none mt-3">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="choix" value="accord_total">
+          <input type="hidden" name="signature" id="signatureData">
+          <p style="font-size:0.9em;">
+            Je soussigné(e) <strong>{{ benevole.prenom }} {{ benevole.nom }}</strong> autorise la Banque
+            Alimentaire à utiliser mon image (photos, vidéos) dans le cadre de ses activités et de sa
+            communication. <strong>Signez avec le doigt :</strong>
+          </p>
+          <canvas id="padSignature" style="width:100%; height:200px; border:2px dashed #888; border-radius:6px; background:#fff; touch-action:none;"></canvas>
+          <div class="d-flex gap-2 mt-2">
+            <button type="button" class="btn btn-outline-secondary flex-fill" id="btnEffacer">🧹 Effacer</button>
+            <button type="button" class="btn btn-outline-dark flex-fill" id="btnAnnuler">↩️ Annuler</button>
+          </div>
+          <button type="submit" class="btn btn-success w-100 mt-2">✅ Valider la signature</button>
+        </form>
+
+        <!-- Refus -->
+        <form method="POST" action="{{ url_for('droit_image.signer_droit_image', benevole_id=benevole.id) }}"
+              id="formRefus" class="d-none mt-3">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="choix" value="refus">
+          <p class="text-danger mb-2" style="font-size:0.9em;">
+            Confirmer que <strong>{{ benevole.prenom }} {{ benevole.nom }}</strong> refuse le droit à l'image ?
+          </p>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-dark flex-fill" id="btnAnnulerRefus">↩️ Annuler</button>
+            <button type="submit" class="btn btn-danger flex-fill">Confirmer le refus</button>
+          </div>
+        </form>
+      </div>
+    </div>
     <!-- Formulaire d'import de photo -->
     <form method="POST" action="{{ url_for('benevoles.upload_photo_benevole', benevole_id=benevole.id) }}"
       enctype="multipart/form-data">
@@ -148,16 +209,21 @@
       <div class="mt-3">
         <label for="photo" class="form-label">📸 Ajouter une photo :</label>
         <p class="text-muted mb-2" style="font-size: 0.9em;">
-          Sur iPhone ou Android, cliquez ci-dessous puis choisissez <strong>“Prendre une photo”</strong>.
+          Prenez une photo avec l’appareil photo, ou choisissez-en une dans la galerie.
         </p>
 
-        <!-- Champ invisible -->
+        <!-- Champ invisible : appareil photo (capture force la caméra sur Android/iOS) -->
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" class="d-none">
+        <!-- Champ invisible : galerie. Seul champ envoyé au serveur -->
         <input type="file" id="hiddenInput" name="photo" accept="image/*" class="d-none" required>
 
-        <!-- Bouton déclencheur -->
         <button type="button" class="btn btn-outline-primary w-100 mb-2"
+          onclick="document.getElementById('cameraInput').click();">
+          📷 Prendre une photo
+        </button>
+        <button type="button" class="btn btn-outline-secondary w-100 mb-2"
           onclick="document.getElementById('hiddenInput').click();">
-          📷 Prendre ou choisir une photo
+          🖼️ Choisir dans la galerie
         </button>
 
         <!-- Aperçu local -->
@@ -165,7 +231,7 @@
           alt="Aperçu">
       </div>
 
-      <button type="submit" class="btn btn-success w-100">📥 Importer la photo</button>
+      <button type="submit" class="btn btn-success w-100">✅ Valider et enregistrer</button>
     </form>
     {% endif %}
   </div>
@@ -248,10 +314,114 @@
     }
   </script>
 
+  <!-- Recherche de bénévole (filtre la liste déroulante) -->
+  <script>
+    (function () {
+      const sel = document.getElementById('benevoleSelect');
+      const input = document.getElementById('rechercheBenevole');
+      if (!sel || !input) return;
+      const norm = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      // Copie des options (le masquage d'<option> est peu fiable sur mobile : on reconstruit)
+      const all = Array.from(sel.options).map(o => ({
+        value: o.value, text: o.textContent.trim(), key: norm(o.textContent), selected: o.defaultSelected
+      }));
+      function render() {
+        const mots = norm(input.value).split(/\s+/).filter(Boolean);
+        const current = sel.value;
+        sel.innerHTML = '';
+        let n = 0;
+        all.forEach((o, i) => {
+          if (i > 0 && !mots.every(m => o.key.includes(m))) return;
+          const opt = new Option(o.text, o.value);
+          if (i > 0) n++;
+          sel.add(opt);
+        });
+        if (mots.length && n === 0) {
+          sel.options[0].text = 'Aucun résultat';
+        }
+        if (current && Array.from(sel.options).some(o => o.value === current)) {
+          sel.value = current;
+        } else if (mots.length && n === 1) {
+          sel.selectedIndex = 1;  // un seul résultat : présélectionné
+        }
+      }
+      input.addEventListener('input', render);
+    })();
+  </script>
+
+  <!-- Signature tactile -->
+  <script>
+    (function () {
+      const canvas = document.getElementById('padSignature');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const fAccord = document.getElementById('formAccord');
+      const fRefus = document.getElementById('formRefus');
+      const choix = document.getElementById('choixDroitImage');
+      let dessine = false, aSigne = false;
+
+      function ajuster() {
+        // Résolution réelle du canvas = taille affichée (évite une signature déformée)
+        const r = canvas.getBoundingClientRect();
+        if (!r.width) return;
+        canvas.width = r.width * 2; canvas.height = r.height * 2;
+        ctx.scale(2, 2);
+        ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#000';
+        aSigne = false;
+      }
+      function pos(e) {
+        const r = canvas.getBoundingClientRect();
+        return { x: e.clientX - r.left, y: e.clientY - r.top };
+      }
+      canvas.addEventListener('pointerdown', e => {
+        dessine = true; canvas.setPointerCapture(e.pointerId);
+        const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + 0.1, p.y + 0.1); ctx.stroke(); aSigne = true;
+      });
+      canvas.addEventListener('pointermove', e => {
+        if (!dessine) return;
+        const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); aSigne = true;
+      });
+      ['pointerup', 'pointercancel'].forEach(ev => canvas.addEventListener(ev, () => { dessine = false; }));
+
+      document.getElementById('btnAccord').onclick = () => {
+        choix.classList.add('d-none'); fRefus.classList.add('d-none'); fAccord.classList.remove('d-none');
+        ajuster();
+      };
+      document.getElementById('btnRefus').onclick = () => {
+        choix.classList.add('d-none'); fAccord.classList.add('d-none'); fRefus.classList.remove('d-none');
+      };
+      function retour() {
+        fAccord.classList.add('d-none'); fRefus.classList.add('d-none'); choix.classList.remove('d-none');
+      }
+      document.getElementById('btnAnnuler').onclick = retour;
+      document.getElementById('btnAnnulerRefus').onclick = retour;
+      document.getElementById('btnEffacer').onclick = ajuster;
+
+      fAccord.addEventListener('submit', e => {
+        if (!aSigne) {
+          e.preventDefault();
+          alert("Le bénévole doit signer dans le cadre avant de valider.");
+          return;
+        }
+        document.getElementById('signatureData').value = canvas.toDataURL('image/png');
+      });
+    })();
+  </script>
+
   <!-- Script d’aperçu -->
   <script>
     const fileInput = document.getElementById('hiddenInput');
     const previewImg = document.getElementById('preview');
+    const cameraInput = document.getElementById('cameraInput');
+
+    // La photo prise est transférée vers le champ réellement envoyé
+    cameraInput?.addEventListener('change', () => {
+      if (cameraInput.files.length) {
+        fileInput.files = cameraInput.files;
+        fileInput.dispatchEvent(new Event('change'));
+      }
+    });
 
     fileInput?.addEventListener('change', () => {
       const file = fileInput.files[0];

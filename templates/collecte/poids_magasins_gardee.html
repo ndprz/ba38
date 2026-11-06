@@ -114,11 +114,11 @@ const table = new Tabulator("#tabulator-table", {
         { title: "Magasin", field: "nom_magasin", widthGrow: 2, headerFilter: "input" },
         {
             title: "Poids (kg)", field: "poids_kg", width: 140, hozAlign: "right",
-            editor: "number", editorParams: { min: 0, step: 0.1 },
-            topCalc: "sum", topCalcParams: { precision: 1 },
+            editor: "number", editorParams: { min: 0, step: 1 },
+            topCalc: "sum", topCalcParams: { precision: 0 },
             formatter: function (cell) {
                 const v = cell.getValue();
-                return (v === null || v === undefined) ? "" : v;
+                return (v === null || v === undefined) ? "" : Math.round(v);
             },
             cellEdited: sauvegarderCellule,
         },

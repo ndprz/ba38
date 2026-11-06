@@ -1466,8 +1466,9 @@ def photo_benevole_mobile():
     benevole = None
     selected_id = None
 
-    if request.method == "POST":
-        selected_id = request.form.get("benevole_id")
+    # POST (formulaire) ou GET ?benevole_id= (retour après enregistrement)
+    selected_id = request.form.get("benevole_id") or request.args.get("benevole_id")
+    if request.method in ("POST", "GET"):
         if selected_id:
             row = cursor.execute("""
                 SELECT id, nom, prenom FROM benevoles WHERE id = ?
@@ -1476,6 +1477,13 @@ def photo_benevole_mobile():
                 benevole = dict(row)
             else:
                 flash("❌ Bénévole introuvable", "danger")
+
+    droit_image = None
+    if benevole:
+        droit_image = cursor.execute(
+            "SELECT acceptation, date_signature, signature_fichier FROM droit_image WHERE id = ?",
+            (benevole["id"],)
+        ).fetchone()
 
     conn.close()
 
@@ -1497,6 +1505,7 @@ def photo_benevole_mobile():
         benevole=benevole,
         benevoles=tous_les_benevoles,
         selected_id=selected_id,
+        droit_image=droit_image,
         qr_code_b64=qr_code_b64,
     )
 

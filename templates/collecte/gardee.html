@@ -179,6 +179,18 @@
                         {% endif %}
                     </form>
 
+                    <form method="POST" action="{{ url_for('collecte.gardee_gratuit') }}"
+                          class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="annee" value="{{ annee }}">
+                        <input type="hidden" name="nom_association" value="{{ asso.nom }}">
+                        <label class="small text-muted mb-0">Gratuit (BL VIF) :</label>
+                        <select name="gratuit" class="form-select form-select-sm" style="max-width:100px;" onchange="this.form.submit()">
+                            <option value="O" {% if asso.gratuit %}selected{% endif %}>Oui</option>
+                            <option value="N" {% if not asso.gratuit %}selected{% endif %}>Non</option>
+                        </select>
+                    </form>
+
                     <form method="POST" action="{{ url_for('collecte.gardee_email_override') }}"
                           class="d-flex align-items-center gap-2 mb-3 flex-wrap">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

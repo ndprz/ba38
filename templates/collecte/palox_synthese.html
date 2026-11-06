@@ -150,12 +150,32 @@ const urlReinitialiserBase = "{{ url_for('collecte.palox_reinitialiser', annee=a
 const urlSyntheseDonnees = "{{ url_for('collecte.palox_synthese_donnees', annee=annee) }}";
 const annee = {{ annee|tojson }};
 
-const table = new Tabulator("#tabulator-table", {
-    data: lignes,
-    layout: "fitColumns",
-    height: "calc(100vh - 230px)",
-    placeholder: "Aucune pesée enregistrée",
-    columns: [
+// Hauteur de ligne recalculée pour que l'en-tête + les N catégories (31
+// aujourd'hui) remplissent exactement la hauteur disponible, SANS ascenseur
+// interne à faire défiler (demande utilisateur 2026-11-06 : toutes les
+// catégories doivent être visibles d'un coup sur la page pesée). La hauteur
+// réelle de l'en-tête n'est connue qu'une fois le tableau construit — on
+// part d'une estimation, puis on corrige une seule fois une fois sa hauteur
+// réelle mesurée (stable, indépendante de la hauteur de ligne elle-même).
+const HAUTEUR_ENTETE_ESTIMEE = 34;
+const HAUTEUR_LIGNE_MIN = 20;
+
+function hauteurDisponibleTable() {
+    const conteneur = document.getElementById("tabulator-table");
+    const haut = conteneur.getBoundingClientRect().top;
+    // #main-footer (base.html) est en position:fixed en bas de TOUTES les
+    // pages — sa hauteur n'est pas retirée de window.innerHeight, donc sans
+    // ce calcul le tableau se croit plus de place qu'il n'en a réellement et
+    // ses dernières lignes passent sous le pied de page (constaté 2026-11-06,
+    // capture d'écran : "Pdts. Entretien/Lessive" et "Autres" invisibles).
+    const pied = document.getElementById("main-footer");
+    const hauteurPied = pied ? pied.offsetHeight : 0;
+    return Math.max(200, window.innerHeight - haut - hauteurPied - 8);
+}
+
+function construireColonnes() {
+    const mercurialeVisible = document.getElementById("toggle-colonnes-mercuriale").checked;
+    return [
         { title: "Catégorie", field: "libelle", widthGrow: 2, minWidth: 220,
           topCalcFormatter: function () { return "Total"; } },
         { title: "Code VIF", field: "code_vif", width: 100 },
@@ -165,18 +185,59 @@ const table = new Tabulator("#tabulator-table", {
         { title: "% du total", field: "pct_poids", width: 110, hozAlign: "right",
           formatter: function (cell) { return cell.getValue().toFixed(1) + " %"; },
           topCalcFormatter: function () { return "100 %"; } },
-        { title: "Valeur (€)", field: "valeur", width: 130, hozAlign: "right", visible: false,
+        { title: "Valeur (€)", field: "valeur", width: 130, hozAlign: "right", visible: mercurialeVisible,
           formatter: function (cell) { const v = cell.getValue(); return v == null ? "—" : v.toFixed(2); },
           topCalc: "sum", topCalcParams: { precision: 2 } },
-        { title: "Poids année précédente (kg)", field: "poids_annee_precedente", width: 170, hozAlign: "right", visible: false,
+        { title: "Poids année précédente (kg)", field: "poids_annee_precedente", width: 170, hozAlign: "right", visible: mercurialeVisible,
           formatter: function (cell) { const v = cell.getValue(); return v == null ? "—" : v.toFixed(1); },
           topCalc: "sum", topCalcParams: { precision: 1 } },
-    ],
-});
+    ];
+}
 
-table.on("rowClick", function (e, row) {
-    ouvrirModalPesee(row.getData().id);
-});
+function reappliquerFiltreRecherche() {
+    const texte = document.getElementById("filtre-recherche").value.trim();
+    if (!texte) { table.clearFilter(); return; }
+    table.setFilter([[
+        { field: "libelle", type: "like", value: texte },
+        { field: "code_vif", type: "like", value: texte },
+    ]], "or");
+}
+
+let table = null;
+
+function construireTable(hauteurEntete) {
+    const donneesActuelles = table ? table.getData() : lignes;
+    if (table) { table.destroy(); table = null; }
+    const hauteurDispo = hauteurDisponibleTable();
+    // +1 : la ligne de total (topCalc, "Total"/"100 %") occupe elle aussi une
+    // .tabulator-row à l'intérieur du conteneur défilant — l'oublier dans le
+    // diviseur fait systématiquement déborder d'une ligne (bug constaté par
+    // test Playwright 2026-11-06 : dernière catégorie coupée, voire 5
+    // catégories manquantes sur petit écran).
+    const hauteurLigne = Math.max(HAUTEUR_LIGNE_MIN, Math.floor((hauteurDispo - hauteurEntete) / Math.max(1, donneesActuelles.length + 1)));
+
+    table = new Tabulator("#tabulator-table", {
+        data: donneesActuelles,
+        layout: "fitColumns",
+        height: hauteurDispo + "px",
+        rowHeight: hauteurLigne,
+        placeholder: "Aucune pesée enregistrée",
+        columns: construireColonnes(),
+    });
+    table.on("rowClick", function (e, row) {
+        ouvrirModalPesee(row.getData().id);
+    });
+    table.on("tableBuilt", function () {
+        reappliquerFiltreRecherche();
+        const enteteEl = table.element.querySelector(".tabulator-header");
+        const hauteurEnteteReelle = enteteEl ? enteteEl.offsetHeight : hauteurEntete;
+        if (Math.abs(hauteurEnteteReelle - hauteurEntete) > 1) {
+            setTimeout(function () { construireTable(hauteurEnteteReelle); }, 0);
+        }
+    });
+}
+
+construireTable(HAUTEUR_ENTETE_ESTIMEE);
 
 document.getElementById("toggle-colonnes-mercuriale").addEventListener("change", function () {
     const visible = this.checked;
@@ -186,13 +247,15 @@ document.getElementById("toggle-colonnes-mercuriale").addEventListener("change",
     table.redraw(true);
 });
 
-document.getElementById("filtre-recherche").addEventListener("input", function () {
-    const texte = this.value.trim();
-    if (!texte) { table.clearFilter(); return; }
-    table.setFilter([[
-        { field: "libelle", type: "like", value: texte },
-        { field: "code_vif", type: "like", value: texte },
-    ]], "or");
+document.getElementById("filtre-recherche").addEventListener("input", reappliquerFiltreRecherche);
+
+// Recalcule hauteur de ligne / hauteur de tableau si la fenêtre change de
+// taille (redimensionnement, barre d'adresse qui apparaît/disparaît…) — pour
+// garder "toutes les catégories visibles sans ascenseur" dans tous les cas.
+let minuteurRedimensionnement = null;
+window.addEventListener("resize", function () {
+    clearTimeout(minuteurRedimensionnement);
+    minuteurRedimensionnement = setTimeout(function () { construireTable(HAUTEUR_ENTETE_ESTIMEE); }, 200);
 });
 
 function rafraichirSynthese() {
@@ -487,7 +550,7 @@ btnPleinEcran.addEventListener("click", function () {
 document.addEventListener("fullscreenchange", function () {
     const enPlein = document.fullscreenElement === conteneurEl;
     btnPleinEcran.textContent = enPlein ? "⛶ Quitter le plein écran" : "⛶ Plein écran";
-    table.redraw(true);
+    construireTable(HAUTEUR_ENTETE_ESTIMEE);
 });
 
 // Écran TV (2e écran) dans une nouvelle fenêtre à la taille de l'écran ; le

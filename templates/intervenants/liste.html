@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% from "macros/buttons.html" import action_button, action_buttons %}
+{% block title %}Intervenants temporaires{% endblock %}
+
+{% block extra_css %}
+<link rel="manifest" href="{{ url_for('static', filename='pwa/manifest_intervenants.json') }}">
+<meta name="theme-color" content="#f27830">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='images/icon-192.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Intervenants">
+{% endblock %}
+
+{% block content %}
+<div class="container mt-3" style="max-width: 720px;">
+  <h2>🧑‍🤝‍🧑 Intervenants temporaires</h2>
+  <p class="text-muted" style="font-size:0.9em;">
+    Bénévoles d'entreprises ou d'associations accueillis ponctuellement. Ils ne sont pas créés comme bénévoles.
+  </p>
+
+  {% call action_buttons() %}
+    {{ action_button("📲 Installer sur mon téléphone", onclick="new bootstrap.Modal(document.getElementById('modalInstallerIntervenants')).show()", color="outline-secondary") }}
+    {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
+  {% endcall %}
+
+  <div class="modal fade" id="modalInstallerIntervenants" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📲 Installer l'application</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center" style="font-size:0.9rem;line-height:1.4;">
+        <p>Scannez ce QR code avec l'appareil photo de votre téléphone pour ouvrir cette page :</p>
+        <img src="data:image/png;base64,{{ qr_code_b64 }}" alt="QR code" style="max-width:220px;">
+        <div class="text-start mt-3">
+          <p class="mb-1"><strong>📱 Android (Chrome) :</strong> après connexion, appuyez sur le menu ⋮ puis
+            <em>« Installer l'application »</em> (ou suivez le bandeau proposé automatiquement).</p>
+          <p class="mb-0"><strong>🍎 iPhone (Safari) :</strong> après connexion, appuyez sur le bouton
+            <em>Partager</em> (carré avec flèche), puis <em>« Sur l'écran d'accueil »</em>.</p>
+        </div>
+        <p class="text-muted mt-3 mb-0" style="font-size:0.85em;">
+          Une connexion avec un compte autorisé reste nécessaire : l'installation crée juste un raccourci.
+        </p>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button></div>
+    </div></div>
+  </div>
+
+  {% if peut_ecrire %}
+  <div class="card mb-3">
+    <div class="card-body">
+      <button class="btn btn-primary w-100" type="button" data-bs-toggle="collapse" data-bs-target="#formNouveau">
+        ➕ Nouvel intervenant
+      </button>
+      <form method="POST" action="{{ url_for('intervenants.creer') }}" id="formNouveau" class="collapse mt-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-2">
+          <div class="col-6"><input class="form-control" name="nom" placeholder="Nom *" required maxlength="200"></div>
+          <div class="col-6"><input class="form-control" name="prenom" placeholder="Prénom *" required maxlength="200"></div>
+          <div class="col-12"><input class="form-control" name="telephone" type="tel" placeholder="Téléphone (facultatif)" maxlength="40"></div>
+          <div class="col-12"><input class="form-control" name="email" type="email" placeholder="Mail (facultatif)" maxlength="200"></div>
+          <div class="col-12"><input class="form-control" name="organisme" placeholder="Entreprise / association (facultatif)" maxlength="200"></div>
+        </div>
+        <button class="btn btn-success w-100 mt-2" type="submit">✅ Créer et continuer (photo, droit à l'image)</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  <input type="search" id="recherche" class="form-control mb-2" placeholder="🔎 Rechercher un nom, prénom, organisme…" autocomplete="off">
+
+  <div class="list-group" id="liste">
+    {% for i in intervenants %}
+    <a href="{{ url_for('intervenants.fiche', iid=i.id) }}"
+       class="list-group-item list-group-item-action d-flex align-items-center gap-3"
+       data-cle="{{ (i.nom ~ ' ' ~ i.prenom ~ ' ' ~ (i.organisme or ''))|lower }}">
+      {% if i.photo %}
+        <img src="{{ url_for('intervenants.voir_photo', iid=i.id) }}" alt="" width="48" height="48" style="object-fit:cover;border-radius:50%;">
+      {% else %}
+        <span style="width:48px;height:48px;border-radius:50%;background:#e9ecef;display:inline-flex;align-items:center;justify-content:center;">👤</span>
+      {% endif %}
+      <span class="flex-grow-1">
+        <strong>{{ i.prenom }} {{ i.nom }}</strong>
+        {% if i.organisme %}<br><small class="text-muted">{{ i.organisme }}</small>{% endif %}
+        <br><small class="text-muted">Créé le {{ i.cree_le[:10] }}</small>
+      </span>
+      <span>
+        {% if i.acceptation == 'Accord Total' %}🟢{% elif i.acceptation == 'Refus' %}🔴{% else %}⚪{% endif %}
+      </span>
+    </a>
+    {% else %}
+    <div class="text-muted text-center p-3">Aucun intervenant temporaire pour l'instant.</div>
+    {% endfor %}
+  </div>
+  <p class="text-muted mt-2" style="font-size:0.85em;">🟢 accord total · 🔴 refus · ⚪ droit à l'image non renseigné</p>
+</div>
+
+<script>
+  const norm = t => (t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  document.getElementById('recherche').addEventListener('input', function () {
+    const mots = norm(this.value).split(/\s+/).filter(Boolean);
+    document.querySelectorAll('#liste [data-cle]').forEach(el => {
+      const cle = norm(el.dataset.cle);
+      el.style.setProperty('display', mots.every(m => cle.includes(m)) ? '' : 'none', 'important');
+    });
+  });
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register("{{ url_for('sw_intervenants') }}");
+  }
+</script>
+{% endblock %}

@@ -1,5 +1,5 @@
 <p><strong>Application BA38 – Module Collecte</strong> Version de la
-documentation : 14/10/2026</p>
+documentation : 06/11/2026</p>
 <p>Le module « Collecte » gère la préparation et le suivi de la collecte
 annuelle en magasins, organisé en six sections indépendantes :</p>
 <ul>
@@ -502,7 +502,11 @@ adresse e-mail.</p>
 <h1 id="associations-gardant">4. Associations gardant</h1>
 <p>La section « 📁 Associations gardant » concerne les associations qui
 assurent elles-mêmes la collecte d’un ou plusieurs magasins au lieu de
-remettre les produits à la BAI.</p>
+remettre les produits à la BAI. Elle inclut aussi les magasins «
+Collecté par la BAI » dont le Stockage révèle une association (« BAI+Nom
+de l’association », ex. Intermarché Domène) : ces magasins sont
+rattachés à cette association au même titre qu’un magasin en collecte
+gardée.</p>
 <h2 id="créer-et-contrôler-la-liste">4.1 Créer et contrôler la
 liste</h2>
 <p>Le bouton « 🏠 Créer la liste » (toujours actif — la disponibilité
@@ -572,6 +576,10 @@ n’a aucun effet automatique sur elles.</p>
 haut du tableau, « 🔁 Relancer les non-répondants » et « 🔁 Relancer
 ceux sans résultat », renvoient le mail en une fois à toutes les
 associations où la case correspondante n’est pas cochée.</p>
+<p>Une notification mail informe automatiquement l’équipe collecte
+(ba380.collecte@banquealimentaire.org) dès qu’une association saisit ou
+modifie des données via son lien de saisie en ligne — au maximum un mail
+par association et par jour d’activité.</p>
 <h1 id="résultat-collecte">5. Résultat collecte</h1>
 <h2 id="initialiser-la-liste-des-magasins">5.1 Initialiser la liste des
 magasins</h2>
@@ -688,7 +696,8 @@ test).</p>
 <p>Un bouton « 🗑️ Repartir à zéro » permet d’effacer en un clic toutes
 les saisies de poids de l’année (utilisable aussi bien en test qu’en
 production, avec confirmation avant suppression), pour repartir d’une
-page vierge après des essais.</p>
+page vierge après des essais. Les poids se saisissent en nombres entiers
+(kg), sans décimale.</p>
 <h2 id="résultat-collecte-gardée-quantités-par-produit">5.6 Résultat
 collecte gardée — Quantités par produit</h2>
 <p>Le bouton « 📦 Saisir » (Quantités par produit) ouvre un tableau avec
@@ -701,7 +710,9 @@ affichent le poids total (toutes associations confondues) et la valeur
 en euros de chaque produit, dès que la mercuriale de l’année a été
 importée.</p>
 <p>Un bouton « 🗑️ Repartir à zéro » permet, de la même façon, d’effacer
-en un clic toutes les saisies de quantités de l’année.</p>
+en un clic toutes les saisies de quantités de l’année. Comme pour les
+poids par magasin, la saisie se fait en nombres entiers, sans
+décimale.</p>
 <h2 id="pesée-palox-synthèse">5.7 Pesée palox — synthèse</h2>
 <p>Accessible depuis Résultat collecte, cet écran liste les catégories
 de produit avec, pour chacune, le nombre de palox déjà pesés, le poids
@@ -709,6 +720,12 @@ total, le % du total et la valeur en euros (si la mercuriale a été
 importée) — total général affiché en haut. Un clic sur une catégorie
 ouvre directement la pesée, sans changer de page (le mode plein écran,
 s’il est activé, n’est donc jamais interrompu).</p>
+<p>Le bouton « 📺 Affichage TV » ouvre, dans une fenêtre séparée (idéale
+pour un second écran), une synthèse dynamique en lecture seule : poids
+total dans un cartouche en haut, catégories réparties en colonnes en
+dessous pour tout tenir sur une seule page sans défilement, quel que
+soit le nombre de catégories. Se met à jour automatiquement toutes les
+15 secondes.</p>
 <h2 id="poste-de-pesée">5.8 Poste de pesée</h2>
 <p>Dans la fenêtre qui s’ouvre : le numéro de palox proposé peut être
 modifié si besoin, le poids doit respecter les bornes définies pour
@@ -719,6 +736,12 @@ kiosque d’impression (voir Bonnes pratiques). Les derniers palox saisis
 restent visibles en dessous, avec la possibilité de corriger un poids ou
 de supprimer une pesée erronée, et un bouton pour réinitialiser la
 numérotation en début de collecte.</p>
+<p>En cas de coupure réseau, la pesée continue de fonctionner : les
+palox pesés hors-ligne sont mis en file d’attente et synchronisés
+automatiquement au retour de connexion (bandeau d’alerte si des pesées
+sont en attente ou en conflit). Un bandeau « 📝 Journal local (sécurité)
+», sur Chrome/Edge uniquement, permet en plus de tenir à jour un fichier
+de secours sur le disque du poste à chaque étiquette créée.</p>
 <h2 id="catégories-et-mise-en-page-de-létiquette">5.9 Catégories et mise
 en page de l’étiquette</h2>
 <p>Le bouton ⚙️ Catégories permet d’ajuster, pour chaque catégorie de

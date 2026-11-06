@@ -1,7 +1,7 @@
 <h1 class="TOC-Heading" id="table-des-matières">Table des matières</h1>
 <p><strong>Application BA38 — Manuel d’utilisation détaillé du module
 Collecte</strong> Destiné au/à la responsable de la collecte annuelle.
-Version : 14/10/2026.</p>
+Version : 06/11/2026.</p>
 <h1 id="introduction">Introduction</h1>
 <h2 id="objet-de-ce-manuel">Objet de ce manuel</h2>
 <p>Ce manuel décrit, étape par étape, l’utilisation du module « Collecte
@@ -58,7 +58,7 @@ Associations gardant », « Résultat collecte » et « Participants ».
 Sélectionner l’année de collecte en haut de page — une campagne est
 créée automatiquement au premier import de fichier pour une année
 donnée.</p>
-<p><img
+<p><img loading="lazy"
 src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId23.png"
 style="width:5.83333in;height:11.54167in"
 alt="Page d’accueil du module Collecte, sections dépliées" /></p>
@@ -226,7 +226,7 @@ et associations</h2>
 <p>Le bouton « 🗺️ Voir la carte » ouvre une carte interactive de tous
 les magasins collectés par la BAI et des associations partenaires
 actives de l’année en cours.</p>
-<p><img
+<p><img loading="lazy"
 src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId35.png"
 style="width:5.83333in;height:3.75in"
 alt="Carte de localisation des magasins et associations" /></p>
@@ -312,7 +312,7 @@ par cette page : c'est un simple marquage interne.</p>
 <h2 id="lancer-une-simulation">3.1 Lancer une simulation</h2>
 <p>Une fois les deux fichiers de la section 1.3 importés, le bouton « 🚀
 Générer les tournées » ouvre le formulaire de paramètres :</p>
-<p><img
+<p><img loading="lazy"
 src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId41.png"
 style="width:5.83333in;height:3.75in"
 alt="Formulaire de génération d’une simulation de tournées" /></p>
@@ -385,7 +385,7 @@ associé, donc toujours écartées.</p></li>
 <h2 id="consulter-un-résultat">3.2 Consulter un résultat</h2>
 <p>Le bouton « 📊 Voir le résultat » (ou l’historique des générations)
 ouvre le détail d’une version :</p>
-<p><img
+<p><img loading="lazy"
 src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId45.png"
 style="width:5.83333in;height:3.80833in"
 alt="Page de résultat d’une génération de tournées" /></p>
@@ -447,7 +447,7 @@ quatre jours.</p>
 documents réels (Production)</h2>
 <p>Le bouton « 🚛 Générer documents » ouvre la page Production,
 indépendante de la simulation.</p>
-<p><img
+<p><img loading="lazy"
 src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId50.png"
 style="width:5.83333in;height:6.83333in"
 alt="Page Production : lancement, documents générés et journal" /></p>
@@ -563,7 +563,7 @@ aux chauffeurs et équipiers</h2>
 <p>Ouvrir « Envoi mail tournées aux chauffeurs/équipiers de la nouvelle
 collecte ». La page récupère les affectations du fichier
 véhicules/planning et regroupe les informations par adresse e-mail.</p>
-<p><img
+<p><img loading="lazy"
 src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId54.png"
 style="width:5.83333in;height:3.75in"
 alt="Page d’envoi des mails aux chauffeurs et équipiers" /></p>
@@ -619,13 +619,21 @@ adresse e-mail.</p>
 <h1 id="associations-gardant">4. Associations gardant</h1>
 <p>La section « 📁 Associations gardant » concerne les associations qui
 assurent elles-mêmes la collecte d’un ou plusieurs magasins au lieu de
-remettre les produits à la BAI.</p>
-<p><img
+remettre les produits à la BAI. Elle inclut aussi les magasins «
+Collecté par la BAI » dont le Stockage révèle une association (« BAI+Nom
+de l’association », ex. Intermarché Domène) : ces magasins sont
+rattachés à cette association au même titre qu’un magasin en collecte
+gardée (détail complet en §10.4).</p>
+<p><img loading="lazy"
 src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId60.png"
 style="width:5.83333in;height:3.75in"
 alt="Liste des associations gardant leur propre collecte" /></p>
 <p>Liste des associations gardant leur propre collecte</p>
 <p>Liste des associations gardant leur propre collecte</p>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/image1.png"
+style="width:5.8in;height:1.6675in" /></p>
+<p>Page Associations gardant — texte expliquant le rattachement BAI+</p>
 <h2 id="créer-et-contrôler-la-liste">4.1 Créer et contrôler la
 liste</h2>
 <p>Le bouton « 🏠 Créer la liste » (toujours actif — la disponibilité
@@ -722,6 +730,10 @@ seule association. Pour relancer plusieurs associations d’un coup, deux
 boutons en haut du tableau, « 🔁 Relancer les non-répondants » et « 🔁
 Relancer ceux sans résultat », renvoient le mail à toutes les
 associations où la case correspondante n’est pas encore cochée.</p>
+<p>Une notification mail informe automatiquement l’équipe collecte
+(ba380.collecte@banquealimentaire.org) dès qu’une association saisit ou
+modifie des données via son lien de saisie en ligne — au maximum un mail
+par association et par jour d’activité (détail en §10.4).</p>
 <h1 id="résultat-collecte">5. Résultat collecte</h1>
 <h2 id="initialiser-la-liste-des-magasins">5.1 Initialiser la liste des
 magasins</h2>
@@ -744,7 +756,7 @@ n’apparaîtra plus).</p>
 <p>Le tableau affiche une ligne par magasin et une colonne par
 demi-journée. Chaque case est enregistrée automatiquement dès qu’elle
 est quittée, sans bouton à cliquer.</p>
-<p><img
+<p><img loading="lazy"
 src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/rId68.png"
 style="width:5.83333in;height:3.75in"
 alt="Page de saisie des cagettes, avec poids et filtres" /></p>
@@ -840,7 +852,8 @@ option de forçage réservée à l’environnement de test.</p>
 <p>Un bouton « 🗑️ Repartir à zéro » permet d'effacer en un clic toutes
 les saisies de poids de l'année (utilisable aussi bien en test qu'en
 production, avec confirmation avant suppression), pour repartir d'une
-page vierge après des essais.</p>
+page vierge après des essais. Les poids se saisissent en nombres entiers
+(kg), sans décimale.</p>
 <h2 id="résultat-collecte-gardée-quantités-par-produit">5.6 Résultat
 collecte gardée — Quantités par produit</h2>
 <p>Le bouton « 📦 Saisir » (Quantités par produit) ouvre un tableau avec
@@ -856,7 +869,9 @@ secours.</p>
 associations confondues) et la valeur en euros de chaque produit, dès
 que la mercuriale de l’année a été importée (voir Paramètres).</p>
 <p>Un bouton « 🗑️ Repartir à zéro » permet, de la même façon, d'effacer
-en un clic toutes les saisies de quantités de l'année.</p>
+en un clic toutes les saisies de quantités de l'année. Comme pour les
+poids par magasin, la saisie se fait en nombres entiers, sans
+décimale.</p>
 <h2 id="pesée-palox">5.7 Pesée palox</h2>
 <p>Une fois les cagettes saisies, la pesée des palox à l’entrepôt se
 fait depuis un écran de synthèse qui liste chaque catégorie de produit
@@ -877,6 +892,42 @@ palox Europe, palox noir, palox rouge, 1/2 palox rouge, caisses CV6413…)
 est accessible depuis l’écran des catégories — modifiable et imprimable
 sur une feuille de référence à garder près de la balance. Aucun calcul
 automatique : la soustraction du poids net reste manuelle.</p>
+<p>Le bouton « 📺 Affichage TV », sur l’écran de synthèse, ouvre dans
+une fenêtre séparée (idéale pour un second écran) une synthèse dynamique
+en lecture seule, sans connexion requise : poids total dans un cartouche
+en haut (ratio 3:1), puis chaque catégorie avec son poids arrondi et son
+pourcentage du total, réparties automatiquement en colonnes pour tout
+tenir sur une seule page sans défilement, quel que soit le nombre de
+catégories. La page se rafraîchit toutes les 15 secondes et passe en
+plein écran dès le premier clic (contrainte des navigateurs). Cette page
+étant accessible sans connexion, son lien ne doit être communiqué qu’en
+interne (voir Bonnes pratiques).</p>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/image2.png"
+style="width:5.8in;height:3.19725in" /></p>
+<p>Bouton « Affichage TV » et bandeau « Journal local (sécurité) »,
+écran de synthèse</p>
+<p><img loading="lazy"
+src="/static/docsHtml_media/Manuel_Utilisation_Collecte_BA38/media/image3.png"
+style="width:5.8in;height:3.625in" /></p>
+<p>Page Affichage TV (second écran)</p>
+<p>En cas de coupure réseau ou d’indisponibilité temporaire du serveur
+pendant la pesée, le poste continue de fonctionner normalement : chaque
+pesée est mise en file d’attente locale puis synchronisée
+automatiquement au retour de connexion, sans action de l’opérateur. Un
+bandeau d’alerte signale le nombre de pesées en attente ou, plus
+rarement, en conflit (numéro de palox déjà attribué entre-temps à une
+autre pesée) — un conflit doit être vérifié manuellement (confronter le
+palox physique et son étiquette) avant d’être retiré de la file, aucune
+pesée en conflit n’étant jamais écrasée automatiquement (détail en
+§10.5).</p>
+<p>Indépendamment du mode hors-ligne ci-dessus, le bandeau « 📝 Journal
+local (sécurité) », visible uniquement sur Chrome ou Edge (API d’accès
+au système de fichiers non disponible sur les autres navigateurs),
+permet d’activer un fichier texte tenu à jour sur le disque du poste à
+chaque étiquette créée (en ligne ou hors-ligne) — une trace de secours
+lisible même en cas de problème grave côté serveur, au-delà d’une simple
+coupure réseau temporaire.</p>
 <h1 id="participants">6. Participants</h1>
 <h2 id="mail-aux-trieurs-année-précédente">6.1 Mail aux trieurs (année
 précédente)</h2>
@@ -963,6 +1014,9 @@ n'est requise sur le poste.</p>
 <p>Tenir à jour les cases « Répondu » / « Résultat envoyé »
 (Associations gardant) au fil de l'eau plutôt qu'en fin de campagne,
 pour que les boutons de relance groupée restent utiles.</p>
+<p>Le lien « 📺 Affichage TV » de la pesée palox ne nécessite pas de
+connexion : ne le communiquer qu’en interne (second écran ou TV du poste
+de pesée).</p>
 <h1 id="glossaire">9. Glossaire</h1>
 <dl>
 <dt>BAI</dt>
@@ -1714,6 +1768,31 @@ aucune personne n'est taguée GR pour ce groupe (information pas encore
 renseignée côté go-on-web), repli sur la liste complète des participants
 du groupe, comme avant l'introduction de ce tag ; ceux dont le nom porte
 la mention « (Ref) » sont alors mis en tête de liste.</p>
+<h3 id="magasins-collecté-par-la-bai-à-stockage-partagé-bai">Magasins «
+Collecté par la BAI » à stockage partagé (BAI+)</h3>
+<p>Un magasin dont l’État reste « Collecté par la BAI » (pas « Collecte
+gardée ») mais dont la colonne Stockage contient malgré tout un texte «
+BAI+NomAssociation » (ex. Intermarché Domène → BAI+CCAS Domène) est
+ajouté à la liste des associations gardant, rattaché à cette association
+au même titre qu’un magasin réellement en collecte gardée — bien que son
+État dans le référentiel magasins reste « Collecté par la BAI » (seul le
+stockage physique des denrées est partagé). Il apparaît dans la fiche
+Excel/PDF de l’association, dans son lien de saisie en ligne, et dans
+l’export VIF sous l’article 5010010 (collecte gardée), jamais sous
+l’article 5010000 (collecte directe) utilisé par ailleurs pour ce même
+magasin dans l’export cagettes — ce qui évite tout double comptage du
+tonnage entre les deux circuits.</p>
+<h3 id="notification-de-saisie-en-ligne-à-léquipe-collecte">Notification
+de saisie en ligne à l’équipe collecte</h3>
+<p>Dès qu’une case est enregistrée (autosave) ou que le formulaire est
+soumis depuis le lien de saisie en ligne, un mail est envoyé à
+ba380.collecte@banquealimentaire.org pour signaler l’activité de
+l’association, avec un lien direct vers la page de suivi. Pour éviter un
+mail par case saisie, au maximum un mail est envoyé par association et
+par jour d’activité (mémorisé dans le suivi de l’association) ; les
+cases « Répondu » / « Résultat envoyé », elles, restent exclusivement
+cochées à la main et ne sont jamais affectées par cette
+notification.</p>
 <h2 id="résultat-collecte-1">10.5 Résultat collecte</h2>
 <h3 id="saisie-des-cagettes-collecte-directe-bai">Saisie des cagettes
 (collecte directe BAI)</h3>
@@ -1784,6 +1863,15 @@ effacé, non numérique → refusé).</p>
 euros, selon le même référentiel de prix mercuriale que la pesée palox
 (correspondance par Code VIF) — disponibles uniquement si la mercuriale
 de l'année a été importée.</p>
+<h3
+id="arrondi-des-saisies-poids-par-magasin-gardé-et-quantités-par-produit">Arrondi
+des saisies (poids par magasin gardé et quantités par produit)</h3>
+<p>Depuis le 6 novembre 2026, les poids saisis sur ces deux grilles —
+ainsi que sur le formulaire de saisie en ligne rempli par l’association
+elle-même — sont arrondis à l’entier le plus proche dès l’enregistrement
+(plus de décimale), à la fois pour la cohérence avec l’affichage et pour
+éviter des écarts de quelques grammes sans utilité pratique à ce niveau
+de pesée.</p>
 <h3 id="pesée-palox-catégories-et-validation-du-poids">Pesée palox —
 catégories et validation du poids</h3>
 <p>Les catégories de produit pesées à l'entrepôt reprennent les codes
@@ -1840,3 +1928,34 @@ conditionnement avec son poids à vide en kg, modifiable (ajout, édition,
 suppression) et imprimable en une page depuis un bouton dédié — pour
 garder une feuille de référence près de la balance, l'opérateur
 effectuant lui-même la soustraction du poids net.</p>
+<h3 id="affichage-tv-second-écran">Affichage TV (second écran)</h3>
+<p>Page publique (sans connexion requise) construite à partir des mêmes
+données que l’écran de synthèse, pensée pour un second écran ou une TV
+connectée au poste de pesée. Elle répartit automatiquement les
+catégories en colonnes (calcul du nombre de colonnes et de la hauteur de
+ligne selon la taille d’écran disponible) pour que tout tienne sur une
+seule page, sans pagination ni défilement, quel que soit le nombre de
+catégories actives. Rafraîchissement automatique toutes les 15 secondes
+; passage en plein écran au premier clic (les navigateurs l’exigent,
+impossible de le déclencher sans geste utilisateur).</p>
+<h3 id="mode-hors-ligne-continuité-de-service">Mode hors-ligne
+(continuité de service)</h3>
+<p>Repose sur un service worker (voir
+documentation_interne/Securisation_Saisie_Pesee_Palox.docx pour le
+détail technique) : en cas de coupure réseau ou serveur, chaque pesée
+est enregistrée localement puis synchronisée automatiquement dès le
+retour de connexion, sans action de l’opérateur ni perte de données. Un
+numéro de palox attribué hors-ligne peut entrer en conflit avec un
+numéro attribué entre-temps par un autre poste resté en ligne ; un tel
+conflit est signalé explicitement (jamais résolu automatiquement) et
+doit être vérifié manuellement — en pratique rare, un seul poste de
+pesée physique étant utilisé à la fois.</p>
+<h3 id="journal-local-de-sécurité">Journal local de sécurité</h3>
+<p>Fonctionnalité indépendante du mode hors-ligne ci-dessus : un fichier
+texte (un par jour, format CSV point-virgule) est tenu à jour sur le
+disque du poste à chaque étiquette créée, via l’API navigateur d’accès
+au système de fichiers (disponible sur Chrome et Edge uniquement).
+Objectif : garder une trace lisible même en cas de problème grave côté
+serveur (perte de données), pas seulement une coupure réseau temporaire.
+Le dossier de destination est choisi une fois par l’opérateur et
+mémorisé pour les prochaines sessions sur ce poste.</p>
