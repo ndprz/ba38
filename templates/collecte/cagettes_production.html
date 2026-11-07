@@ -10,6 +10,7 @@
     .tabulator-row.ligne-erreur { background-color: #f8d7da !important; }
     .tabulator-row.ligne-cag1-manquant { background-color: #fff3cd !important; }
     .tabulator-row.ligne-auto-defaut { background-color: #d4edda !important; }
+    .tabulator-cell.cellule-ecart-important { background-color: #f8d7da; color: #721c24; font-weight: 700; }
 </style>
 {% endblock %}
 
@@ -40,10 +41,12 @@
                 <input type="file" id="fichier_cagettes" name="fichier_cagettes" accept=".xlsx" required
                        class="d-none"
                        onchange="document.getElementById('nom_fichier_cagettes').textContent = this.files[0] ? this.files[0].name : 'Choisir un fichier'">
-                <button type="submit" class="btn btn-outline-success btn-sm text-nowrap">📥 Importer</button>
+                <button type="submit" class="btn btn-outline-success btn-sm text-nowrap">📥 Charger en référence</button>
                 <span class="text-muted small ms-2">
-                    Même format que l'ancien fichier (colonnes Code VIF, jour, cag1..cag4) — reprend
-                    un historique existant, modifiable ensuite cellule par cellule ci-dessous.
+                    Format détaillé (Code VIF, jour, cag1..cag4) ou synthétique (Code VIF + une colonne par
+                    demi-journée, ex. « cagettes bai.xlsx ») — affiché en comparaison « (réf: …) » à côté
+                    de chaque case et de la colonne Total, n'écrase jamais les valeurs déjà saisies : à vous
+                    de reporter la bonne valeur cellule par cellule.
                 </span>
             </form>
         </div>
@@ -123,6 +126,37 @@ function sauvegarderCellule(cell) {
     });
 }
 
+const SEUIL_ECART_TOTAL = 0.30;
+function formatterTotalAvecRef(cell) {
+    const v = cell.getValue();
+    const data = cell.getRow().getData();
+    const ref = data.ref_total_jour;
+    const el = cell.getElement();
+    el.classList.remove("cellule-ecart-important");
+    if (ref === null || ref === undefined || ref === "") return v;
+    const refNum = parseFloat(ref);
+    if (isNaN(refNum)) return v;
+    if (refNum === 0) {
+        return v + " <span style='font-size:10px;color:#999'>(réf jour: " + ref + ")</span>";
+    }
+    const ecartPct = Math.round((data.total_jour - refNum) / refNum * 100);
+    const grosEcart = Math.abs(ecartPct) >= SEUIL_ECART_TOTAL * 100;
+    if (grosEcart) el.classList.add("cellule-ecart-important");
+    const signe = ecartPct >= 0 ? "+" : "";
+    const pourcentage = grosEcart ? ", " + signe + ecartPct + "%" : "";
+    return v + " <span style='font-size:10px" + (grosEcart ? "" : ";color:#999") + "' title='Journée complète : " + data.total_jour + "'>(réf jour: " + ref + pourcentage + ")</span>";
+}
+
+function formatterAvecRef(refField) {
+    return function (cell) {
+        const v = cell.getValue();
+        const ref = cell.getRow().getData()[refField];
+        const base = (v === null || v === undefined || v === "") ? "" : v;
+        if (ref === null || ref === undefined || ref === "") return base;
+        return base + " <span style='font-size:10px;color:#999' title='Valeur de référence chargée'>(réf: " + ref + ")</span>";
+    };
+}
+
 const ORDRE_JOUR = [
     "Jeudi Matin", "Jeudi Apres Midi", "Jeudi Après Midi",
     "Vendredi Matin", "Vendredi Apres Midi", "Vendredi Après Midi",
@@ -144,6 +178,36 @@ lignes.sort(function (a, b) {
     return cmpMagasin !== 0 ? cmpMagasin : trierJour(a.jour, b.jour);
 });
 
+function jourBase(jour) {
+    return String(jour).split(" ")[0];
+}
+
+lignes.forEach(function (ligne) {
+    ligne.total = ["cag1", "cag2", "cag3", "cag4"].reduce(function (somme, champ) {
+        const v = parseInt(ligne[champ], 10);
+        return somme + (isNaN(v) ? 0 : v);
+    }, 0);
+});
+
+// L'écart significatif se juge sur la journée entière (matin + après-midi
+// cumulés pour un même magasin), pas demi-journée par demi-journée — une
+// répartition différente entre les deux créneaux d'un même jour n'est pas
+// une anomalie en soi.
+const groupesJour = {};
+lignes.forEach(function (ligne) {
+    const cle = ligne.code_vif + "|" + jourBase(ligne.jour);
+    if (!groupesJour[cle]) groupesJour[cle] = { total: 0, refTotal: 0, aRef: false };
+    const g = groupesJour[cle];
+    g.total += ligne.total;
+    const ref = parseFloat(ligne.ref_total);
+    if (!isNaN(ref)) { g.refTotal += ref; g.aRef = true; }
+});
+lignes.forEach(function (ligne) {
+    const g = groupesJour[ligne.code_vif + "|" + jourBase(ligne.jour)];
+    ligne.total_jour = g.total;
+    ligne.ref_total_jour = g.aRef ? g.refTotal : "";
+});
+
 const table = new Tabulator("#tabulator-table", {
     data: lignes,
     layout: "fitColumns",
@@ -159,7 +223,8 @@ const table = new Tabulator("#tabulator-table", {
         { title: "Code VIF", field: "code_vif", width: 110, headerFilter: "input", frozen: true },
         { title: "Magasin", field: "nom_magasin", widthGrow: 2, minWidth: 220, headerFilter: "input", frozen: true },
         { title: "Demi-journée", field: "jour", width: 150, headerFilter: "input", sorter: trierJour },
-        { title: "Cagette 1", field: "cag1", width: 100, hozAlign: "right", cellEdited: sauvegarderCellule,
+        { title: "Cagette 1", field: "cag1", width: 130, hozAlign: "right", cellEdited: sauvegarderCellule,
+          formatter: formatterAvecRef("ref1"),
           editor: function (cell, onRendered, success, cancel) {
               const input = document.createElement("input");
               input.type = "text";
@@ -174,9 +239,10 @@ const table = new Tabulator("#tabulator-table", {
               });
               return input;
           } },
-        { title: "Cagette 2", field: "cag2", width: 100, hozAlign: "right", editor: "input", cellEdited: sauvegarderCellule },
-        { title: "Cagette 3", field: "cag3", width: 100, hozAlign: "right", editor: "input", cellEdited: sauvegarderCellule },
-        { title: "Cagette 4", field: "cag4", width: 100, hozAlign: "right", editor: "input", cellEdited: sauvegarderCellule },
+        { title: "Cagette 2", field: "cag2", width: 130, hozAlign: "right", editor: "input", cellEdited: sauvegarderCellule, formatter: formatterAvecRef("ref2") },
+        { title: "Cagette 3", field: "cag3", width: 130, hozAlign: "right", editor: "input", cellEdited: sauvegarderCellule, formatter: formatterAvecRef("ref3") },
+        { title: "Cagette 4", field: "cag4", width: 130, hozAlign: "right", editor: "input", cellEdited: sauvegarderCellule, formatter: formatterAvecRef("ref4") },
+        { title: "Total", field: "total", width: 160, hozAlign: "right", formatter: formatterTotalAvecRef },
     ],
 });
 

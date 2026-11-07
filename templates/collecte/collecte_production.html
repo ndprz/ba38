@@ -94,6 +94,17 @@
                     </div>
                 </div>
 
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" value="1" name="avec_itineraires" id="champAvecItineraires">
+                    <label class="form-check-label" for="champAvecItineraires">
+                        📍 Générer aussi les itinéraires des tournées (carte)
+                    </label>
+                    <div class="form-text">
+                        Document le plus long à produire — à cocher seulement si besoin de ce PDF
+                        (sinon il n'est pas régénéré, les autres documents ne sont pas affectés).
+                    </div>
+                </div>
+
                 {% call action_buttons() %}
                     {{ action_button("🚀 Lancer la génération", type="submit", color="outline-secondary" if liens_manquants|length > 0 else "warning", disabled=(liens_manquants|length > 0)) }}
                 {% endcall %}

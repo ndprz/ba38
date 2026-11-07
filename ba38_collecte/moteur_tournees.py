@@ -4066,7 +4066,7 @@ function afficherTournee(dj, veh) {
         '<div class="popup-title">'+(i+1)+'. '+mag.nom+'</div>'+
         '<div class="popup-addr">'+(mag.adresse||'')+'</div>'+
         '<div class="popup-sec">'+(mag.secteur||'')+'</div>'+
-        (mag.gps_manquant ? '<div class="popup-sec" style="color:#c0392b;font-weight:700">&#9888; Pas de coordonn&eacute;es GPS — position approximative (si&egrave;ge BAI), v&eacute;rifier l\'adresse</div>' : '')
+        (mag.gps_manquant ? '<div class="popup-sec" style="color:#c0392b;font-weight:700">&#9888; Pas de coordonn&eacute;es GPS — position approximative (si&egrave;ge BAI), v&eacute;rifier l&apos;adresse</div>' : '')
       ).addTo(layerGroup);
     markers.push(marker);
     marker.on('click', function() { highlightMag(i); });
@@ -4120,7 +4120,7 @@ function openGmaps() {
   var magsValides = mags.filter(function(m) { return !m.gps_manquant; });
   var magsExclus = mags.filter(function(m) { return m.gps_manquant; });
   if (magsExclus.length) {
-    alert('⚠️ ' + magsExclus.length + ' magasin(s) sans coordonnées GPS exclu(s) de l\'itinéraire (sinon le GPS enverrait au siège BAI) : '
+    alert('⚠️ ' + magsExclus.length + ' magasin(s) sans coordonnées GPS exclu(s) de l\\'itinéraire (sinon le GPS enverrait au siège BAI) : '
       + magsExclus.map(function(m) { return m.nom; }).join(', ')
       + '. Pensez à vérifier leur adresse séparément.');
   }

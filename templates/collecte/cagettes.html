@@ -68,6 +68,32 @@
         </form>
     </div>
 
+    <button class="btn btn-outline-secondary btn-sm mb-3" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionImportN1"
+            aria-expanded="false" aria-controls="sectionImportN1">
+        📁 Charger les résultats {{ annee - 1 }} (comparaison)
+    </button>
+    <div id="sectionImportN1" class="collapse mb-3">
+        <form method="POST" action="{{ url_for('collecte.cagettes_importer_annee_precedente', annee=annee) }}"
+              enctype="multipart/form-data" class="d-flex gap-2 align-items-end flex-wrap border rounded p-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="annee_cible" value="{{ annee - 1 }}">
+            <div>
+                <label class="form-label small mb-0" for="fichier_n1">
+                    Fichier « Résultat cagettes magasins {{ annee - 1 }} » (.xlsx, feuille « résultats »)
+                </label>
+                <input type="file" name="fichier" id="fichier_n1" accept=".xlsx"
+                       class="form-control form-control-sm" style="max-width:420px;" required>
+            </div>
+            <button type="submit" class="btn btn-outline-primary btn-sm">📥 Importer</button>
+        </form>
+        <p class="text-muted small mt-1 mb-0">
+            Remplace entièrement les données {{ annee - 1 }} déjà chargées — utilisé uniquement pour afficher
+            un repère « ({{ annee - 1 }} : N) » à côté de chaque case saisie ci-dessous, n'affecte pas la
+            saisie {{ annee }}.
+        </p>
+    </div>
+
     <div id="alerte-magasins-zero" class="alert alert-warning d-none mb-3"></div>
 
     <form method="POST" action="{{ url_for('collecte.enregistrer_poids_cagette', annee=annee) }}"
@@ -182,6 +208,19 @@ function recalculerTotal(row) {
     row.update({ total: total, poids_magasin: total * poidsCagetteEstime, poids_magasin_pese: total * poidsCagettePese });
 }
 
+function totalN1(data) {
+    let somme = 0;
+    let aN1 = false;
+    demiJournees.forEach(function (dj) {
+        const n1 = data["_n1_" + dj];
+        if (n1 !== null && n1 !== undefined) {
+            somme += n1;
+            aN1 = true;
+        }
+    });
+    return aN1 ? somme : null;
+}
+
 // ── Enregistrement automatique cellule par cellule ─────────────────
 // Évite de dépendre d'un clic sur un bouton avant de quitter la page —
 // chaque valeur saisie est envoyée dès la sortie de la case.
@@ -267,7 +306,7 @@ const colonnesDemiJournees = demiJournees.map(function (dj) {
     return {
         title: dj.replace("Apres Midi", "Après-midi"),
         field: dj,
-        width: 110,
+        width: 140,
         hozAlign: "right",
         headerWordWrap: true,
         headerFilter: "input",
@@ -287,6 +326,9 @@ const colonnesDemiJournees = demiJournees.map(function (dj) {
         editable: function (cell) { return estSaisissable(cell.getRow().getData(), dj); },
         formatter: function (cell) {
             const v = cell.getValue();
+            const n1 = cell.getRow().getData()["_n1_" + dj];
+            const indiceN1 = (n1 === null || n1 === undefined) ? ""
+                : " <span style='font-size:10px;color:#999' title='Nombre de cagettes " + (annee - 1) + "'>(" + (annee - 1) + ": " + n1 + ")</span>";
             // Une valeur déjà saisie reste toujours visible, même si le camion
             // ne dessert plus ce magasin sur cette demi-journée dans le planning
             // actuel (le planning peut évoluer après la saisie réelle) — seule
@@ -295,7 +337,7 @@ const colonnesDemiJournees = demiJournees.map(function (dj) {
                 cell.getElement().classList.add("cellule-non-applicable");
                 return "—";
             }
-            return (v === null || v === undefined) ? "" : v;
+            return ((v === null || v === undefined) ? "" : v) + indiceN1;
         },
         editor: "input",
         cellEdited: sauvegarderCellule,
@@ -305,6 +347,7 @@ const colonnesDemiJournees = demiJournees.map(function (dj) {
 lignesCagettes.forEach(function (ligne) {
     ligne.poids_magasin = (ligne.total || 0) * poidsCagetteEstime;
     ligne.poids_magasin_pese = (ligne.total || 0) * poidsCagettePese;
+    ligne.total_n1 = totalN1(ligne);
 });
 
 const table = new Tabulator("#tabulator-table", {
@@ -317,9 +360,45 @@ const table = new Tabulator("#tabulator-table", {
         { title: "Code VIF", field: "code_vif", width: 100, headerFilter: "input" },
         { title: "Magasin", field: "nom_magasin", widthGrow: 3, minWidth: 220, headerFilter: "input", frozen: true, formatter: "textarea", topCalcFormatter: function () { return "Total"; } },
     ].concat(colonnesDemiJournees.map(function (col) {
-        return Object.assign({}, col, { topCalc: "sum", topCalcParams: { precision: 0 } });
+        const dj = col.field;
+        return Object.assign({}, col, {
+            topCalc: "sum", topCalcParams: { precision: 0 },
+            topCalcFormatter: function (cell) {
+                const v = cell.getValue();
+                let sommeN1 = 0, aN1 = false;
+                cell.getTable().getData().forEach(function (d) {
+                    const n1 = d["_n1_" + dj];
+                    if (n1 !== null && n1 !== undefined) { sommeN1 += n1; aN1 = true; }
+                });
+                const indiceN1 = aN1
+                    ? " <span style='font-size:10px;color:#999' title='Total cagettes " + (annee - 1) + "'>(" + (annee - 1) + ": " + sommeN1 + ")</span>"
+                    : "";
+                return v + indiceN1;
+            },
+        });
     })).concat([
-        { title: "Total cagettes", field: "total", width: 100, hozAlign: "right", headerWordWrap: true, topCalc: "sum", topCalcParams: { precision: 0 } },
+        {
+            title: "Total cagettes", field: "total", width: 160, hozAlign: "right", headerWordWrap: true,
+            topCalc: "sum", topCalcParams: { precision: 0 },
+            formatter: function (cell) {
+                const v = cell.getValue();
+                const n1 = cell.getRow().getData().total_n1;
+                const indiceN1 = (n1 === null || n1 === undefined) ? ""
+                    : " <span style='font-size:10px;color:#999' title='Total cagettes " + (annee - 1) + "'>(" + (annee - 1) + ": " + n1 + ")</span>";
+                return ((v === null || v === undefined) ? "" : v) + indiceN1;
+            },
+            topCalcFormatter: function (cell) {
+                const v = cell.getValue();
+                let sommeN1 = 0, aN1 = false;
+                cell.getTable().getData().forEach(function (d) {
+                    if (d.total_n1 !== null && d.total_n1 !== undefined) { sommeN1 += d.total_n1; aN1 = true; }
+                });
+                const indiceN1 = aN1
+                    ? " <span style='font-size:10px;color:#999' title='Total cagettes " + (annee - 1) + "'>(" + (annee - 1) + ": " + sommeN1 + ")</span>"
+                    : "";
+                return v + indiceN1;
+            },
+        },
         {
             title: "Total poids magasin (kg)", field: "poids_magasin", width: 140, hozAlign: "right", headerWordWrap: true,
             topCalc: "sum", topCalcParams: { precision: 2 },

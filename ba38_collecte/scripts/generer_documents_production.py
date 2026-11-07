@@ -60,12 +60,24 @@ Usage :
 import argparse, glob, os, re, datetime
 from math import radians, cos, sin, asin, sqrt
 from collections import Counter
+from io import BytesIO
 import pandas as pd
 import openpyxl
+import requests
+from PIL import Image, ImageDraw, ImageFont
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
 from reportlab.lib import colors
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas as rl_canvas
+
+# Carte statique des itinéraires (document 7) : dépendance optionnelle, comme
+# l'import organisation ci-dessous — le script reste utilisable sans elle
+# (le document est alors simplement sauté, cf generer_pdf_itineraires_tournees).
+try:
+    from staticmap import StaticMap, Line, IconMarker
+except ImportError:
+    StaticMap = None
 
 # Adresse du siège affichée sur la carte des tournées : tirée de la config
 # organisation quand ce script tourne dans l'environnement applicatif
@@ -1717,7 +1729,7 @@ function afficherTournee(dj, veh) {
         '<div class="popup-title">'+(i+1)+'. '+mag.nom+'</div>'+
         '<div class="popup-addr">'+(mag.adresse||'')+'</div>'+
         '<div class="popup-sec">'+(mag.secteur||'')+'</div>'+
-        (mag.gps_manquant ? '<div class="popup-sec" style="color:#c0392b;font-weight:700">&#9888; Pas de coordonn&eacute;es GPS — position approximative (si&egrave;ge BAI), v&eacute;rifier l\'adresse</div>' : '')
+        (mag.gps_manquant ? '<div class="popup-sec" style="color:#c0392b;font-weight:700">&#9888; Pas de coordonn&eacute;es GPS — position approximative (si&egrave;ge BAI), v&eacute;rifier l&apos;adresse</div>' : '')
       ).addTo(layerGroup);
     markers.push(marker);
     marker.on('click', function() { highlightMag(i); });
@@ -1771,7 +1783,7 @@ function openGmaps() {
   var magsValides = mags.filter(function(m) { return !m.gps_manquant; });
   var magsExclus = mags.filter(function(m) { return m.gps_manquant; });
   if (magsExclus.length) {
-    alert('⚠️ ' + magsExclus.length + ' magasin(s) sans coordonnées GPS exclu(s) de l\'itinéraire (sinon le GPS enverrait au siège BAI) : '
+    alert('⚠️ ' + magsExclus.length + ' magasin(s) sans coordonnées GPS exclu(s) de l\\'itinéraire (sinon le GPS enverrait au siège BAI) : '
       + magsExclus.map(function(m) { return m.nom; }).join(', ')
       + '. Pensez à vérifier leur adresse séparément.');
   }
@@ -1794,6 +1806,249 @@ function openGmaps() {
         f.write(html_out)
     print(f"  Carte HTML générée : {html_path}")
     return html_path
+
+
+def _construire_data_tournees_pdf(df_t, df_mag, mag_cols):
+    """Même construction que data_ct dans generer_carte_tournees (dupliquée
+    exprès plutôt que factorisée, pour ne pas risquer de casser la carte HTML
+    déjà en prod) — une tournée par (demi-journée, camion), magasins dans
+    l'ordre de passage réel."""
+    nom2coords, nom2adresse = {}, {}
+    for _, r in df_mag.iterrows():
+        nom = str(r['Nom']).strip()
+        try:
+            lat, lon = float(r.get('Latitude', 0)), float(r.get('Longitude', 0))
+            if lat and lon:
+                nom2coords[nom] = (lat, lon)
+        except (ValueError, TypeError):
+            pass
+        adr = str(r.get('Adresse', '')).strip()
+        vil = str(r.get('Ville', '')).strip()
+        cp = str(r.get('C.P.', '')).strip()
+        if adr and vil:
+            nom2adresse[nom] = f'{adr}, {cp} {vil}'
+
+    figees = set(VEHICULES_FIGES)
+    tournees = []
+    for _, row in df_t[df_t['Demi-journee'].isin(DJ_ORDER)].iterrows():
+        veh = str(row['Camion']).strip()
+        if veh in figees:
+            continue
+        dj = str(row['Demi-journee']).strip()
+        nom_cam = str(row.get('Nom camion', '')).strip()
+        if nom_cam == 'nan':
+            nom_cam = ''
+        mags = [str(row.get(mc, '')).strip() for mc in mag_cols
+                if str(row.get(mc, '')).strip() not in ('', 'nan')]
+        if not mags:
+            continue
+        points = []
+        for mag in mags:
+            gps_manquant = mag not in nom2coords
+            lat, lon = nom2coords.get(mag, (BAI_LAT, BAI_LON))
+            points.append({'nom': mag, 'adresse': nom2adresse.get(mag, ''),
+                            'lat': lat, 'lon': lon, 'gps_manquant': gps_manquant})
+        tournees.append({'dj': dj, 'camion': veh, 'nom_cam': nom_cam, 'magasins': points})
+
+    tournees.sort(key=lambda t: (DJ_ORDER.index(t['dj']), camion_sort_key(t['camion'])))
+    return tournees
+
+
+def _itineraire_osrm(points_latlon):
+    """Appelle l'API OSRM publique (même service que la carte HTML, côté
+    serveur ici) pour le tracé routier réel. Renvoie (None, None, None) au
+    moindre souci réseau — jamais d'exception remontée à l'appelant."""
+    coords = ';'.join(f'{lon},{lat}' for lat, lon in points_latlon)
+    url = f'https://router.project-osrm.org/route/v1/driving/{coords}?overview=full&geometries=geojson'
+    try:
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        routes = r.json().get('routes') or []
+        if not routes:
+            return None, None, None
+        route = routes[0]
+        return route['geometry']['coordinates'], route['distance'], route['duration']
+    except Exception:
+        return None, None, None
+
+
+def _icone_marqueur_pdf(texte, couleur, taille=26):
+    img = Image.new('RGBA', (taille, taille), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse((1, 1, taille - 2, taille - 2), fill=couleur, outline='white', width=2)
+    try:
+        police = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+                                     11 if len(texte) < 3 else 9)
+    except OSError:
+        police = ImageFont.load_default()
+    bbox = draw.textbbox((0, 0), texte, font=police)
+    draw.text(((taille - (bbox[2] - bbox[0])) / 2 - bbox[0], (taille - (bbox[3] - bbox[1])) / 2 - bbox[1]),
+               texte, fill='white', font=police)
+    buf = BytesIO()
+    img.save(buf, format='PNG')
+    buf.seek(0)
+    return buf
+
+
+def _schema_secours_tournee(trace_lonlat, points, largeur_px, hauteur_px):
+    """Repli si staticmap n'arrive pas à télécharger les tuiles (réseau
+    indisponible) : schéma vectoriel simple, sans fond de carte."""
+    lons = [c[0] for c in trace_lonlat]
+    lats = [c[1] for c in trace_lonlat]
+    lon_min, lon_max = min(lons), max(lons)
+    lat_min, lat_max = min(lats), max(lats)
+    span_lon = max(lon_max - lon_min, 0.001)
+    span_lat = max(lat_max - lat_min, 0.001)
+    lon_min, lon_max = lon_min - span_lon * 0.1, lon_max + span_lon * 0.1
+    lat_min, lat_max = lat_min - span_lat * 0.1, lat_max + span_lat * 0.1
+
+    def proj(lon, lat):
+        x = (lon - lon_min) / (lon_max - lon_min) * largeur_px
+        y = hauteur_px - (lat - lat_min) / (lat_max - lat_min) * hauteur_px
+        return x, y
+
+    img = Image.new('RGB', (largeur_px, hauteur_px), '#eef1f5')
+    draw = ImageDraw.Draw(img)
+    draw.line([proj(lon, lat) for lon, lat in trace_lonlat], fill='#1F4E79', width=3)
+    bx, by = proj(BAI_LON, BAI_LAT)
+    draw.ellipse((bx - 9, by - 9, bx + 9, by + 9), fill='#E8A020', outline='white', width=2)
+    for i, p in enumerate(points, start=1):
+        x, y = proj(p['lon'], p['lat'])
+        couleur = '#c0392b' if p['gps_manquant'] else '#1F4E79'
+        draw.ellipse((x - 9, y - 9, x + 9, y + 9), fill=couleur, outline='white', width=2)
+    return img
+
+
+def _rendre_carte_tournee(points, largeur_px, hauteur_px):
+    bai = (BAI_LON, BAI_LAT)
+    trace_direct = [bai] + [(p['lon'], p['lat']) for p in points] + [bai]
+    coords_osrm, distance_m, duree_s = _itineraire_osrm(
+        [(BAI_LAT, BAI_LON)] + [(p['lat'], p['lon']) for p in points] + [(BAI_LAT, BAI_LON)]
+    )
+    trace = coords_osrm or trace_direct
+
+    if StaticMap is None:
+        return _schema_secours_tournee(trace, points, largeur_px, hauteur_px), None, None
+
+    try:
+        m = StaticMap(
+            largeur_px, hauteur_px, padding_x=30, padding_y=30,
+            url_template='https://server.arcgisonline.com/ArcGIS/rest/services/'
+                          'World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+            tile_request_timeout=8,
+        )
+        m.add_line(Line(trace, '#1F4E79', 4))
+        m.add_marker(IconMarker(bai, _icone_marqueur_pdf('B', '#E8A020', 30), 15, 15))
+        for i, p in enumerate(points, start=1):
+            couleur = '#c0392b' if p['gps_manquant'] else '#1F4E79'
+            m.add_marker(IconMarker((p['lon'], p['lat']), _icone_marqueur_pdf(str(i), couleur), 13, 13))
+        image = m.render()
+    except Exception as exc:
+        print(f"    ⚠️ Carte statique indisponible ({exc}) — repli schéma simplifié.")
+        image = _schema_secours_tournee(trace, points, largeur_px, hauteur_px)
+        distance_m = duree_s = None
+
+    return image, distance_m, duree_s
+
+
+def _orientation_tournee(points):
+    lats = [BAI_LAT] + [p['lat'] for p in points]
+    lons = [BAI_LON] + [p['lon'] for p in points]
+    lat_moy = sum(lats) / len(lats)
+    dx = (max(lons) - min(lons)) * 111320 * cos(radians(lat_moy))
+    dy = (max(lats) - min(lats)) * 110540
+    return 'paysage' if dx >= dy else 'portrait'
+
+
+def generer_pdf_itineraires_tournees(df_t, df_mag, mag_cols, dossier_resultat, annee=None, chemin_sortie=None):
+    """Document 7 : un PDF multi-pages, une page par tournée (demi-journée ×
+    camion), carte avec fond de rues + itinéraire routier (OSRM) + liste des
+    magasins dans l'ordre de passage. Orientation A4 choisie par tournée
+    selon que son étendue géographique est plus large que haute ou non."""
+    annee = annee or datetime.datetime.now().year
+    if chemin_sortie is None:
+        chemin_sortie = os.path.join(dossier_resultat, f'itineraires_tournees_{annee}_GOTW.pdf')
+    os.makedirs(dossier_resultat, exist_ok=True)
+
+    if StaticMap is None:
+        print("  ⚠️ Module 'staticmap' absent (pip install staticmap) — schéma simplifié sans fond de carte.")
+
+    tournees = _construire_data_tournees_pdf(df_t, df_mag, mag_cols)
+    MARGE = 12 * mm
+    PX_PAR_MM = 3.2
+
+    cv = rl_canvas.Canvas(chemin_sortie)
+    for t in tournees:
+        orientation = _orientation_tournee(t['magasins'])
+        page_w, page_h = landscape(A4) if orientation == 'paysage' else A4
+        cv.setPageSize((page_w, page_h))
+
+        titre_cam = f"{t['camion']} — {t['nom_cam']}" if t['nom_cam'] else t['camion']
+        titre = f"Itinéraire — {titre_cam} — {DJ_LABELS.get(t['dj'], t['dj'])} {annee}"
+        txt(cv, MARGE, page_h - MARGE - 4 * mm, titre, font='Helvetica-Bold', size=13, color=C_HDR_TXT)
+
+        if orientation == 'paysage':
+            largeur_carte = (page_w - 3 * MARGE) * 0.62
+            hauteur_carte = page_h - 2 * MARGE - 10 * mm
+            x_carte, y_carte = MARGE, MARGE
+            x_liste = MARGE + largeur_carte + MARGE
+            largeur_liste = page_w - x_liste - MARGE
+            y_liste_haut = page_h - MARGE - 10 * mm
+        else:
+            largeur_carte = page_w - 2 * MARGE
+            hauteur_carte = (page_h - 3 * MARGE - 10 * mm) * 0.55
+            x_carte = MARGE
+            y_carte = page_h - MARGE - 10 * mm - hauteur_carte
+            x_liste = MARGE
+            largeur_liste = page_w - 2 * MARGE
+            y_liste_haut = y_carte - 6 * mm
+
+        largeur_px = max(300, int(largeur_carte / mm * PX_PAR_MM))
+        hauteur_px = max(220, int(hauteur_carte / mm * PX_PAR_MM))
+        image, distance_m, duree_s = _rendre_carte_tournee(t['magasins'], largeur_px, hauteur_px)
+
+        buf_img = BytesIO()
+        image.save(buf_img, format='PNG')
+        buf_img.seek(0)
+        cv.drawImage(ImageReader(buf_img), x_carte, y_carte, width=largeur_carte, height=hauteur_carte,
+                     preserveAspectRatio=True, anchor='c')
+        rect_border(cv, x_carte, y_carte, largeur_carte, hauteur_carte)
+
+        if distance_m is not None:
+            sous_titre = f"{distance_m / 1000:.1f} km — {round(duree_s / 60)} min (estimation routière)"
+        else:
+            sous_titre = "Tracé approximatif (itinéraire routier indisponible)"
+        txt(cv, MARGE, page_h - MARGE - 9 * mm, sous_titre, font='Helvetica', size=9, color=colors.HexColor('#666666'))
+
+        y = y_liste_haut
+        txt(cv, x_liste, y, f"{len(t['magasins'])} magasin(s), dans l'ordre de passage :",
+            font='Helvetica-Bold', size=9, color=C_HDR_TXT)
+        y -= 6 * mm
+        for i, p in enumerate(t['magasins'], start=1):
+            if y < MARGE:
+                break
+            ligne = f"{i}. {p['nom']}" + ('  (GPS manquant)' if p['gps_manquant'] else '')
+            txt(cv, x_liste, y, ligne, font='Helvetica-Bold', size=8.5,
+                color=C_RED if p['gps_manquant'] else C_BLACK, maxw=largeur_liste, shrink=True, min_size=6)
+            y -= 4 * mm
+            if p['adresse']:
+                txt(cv, x_liste + 3 * mm, y, p['adresse'], font='Helvetica', size=7.5,
+                    color=colors.HexColor('#555555'), maxw=largeur_liste - 3 * mm, shrink=True, min_size=6)
+                y -= 4.5 * mm
+            else:
+                y -= 0.5 * mm
+
+        print(f"  {t['camion']} — {t['dj']} ({len(t['magasins'])} magasins, {orientation})")
+        cv.showPage()
+
+    if not tournees:
+        cv.setPageSize(A4)
+        txt(cv, 20 * mm, A4[1] / 2, "Aucune tournée à afficher.", font='Helvetica', size=12)
+        cv.showPage()
+
+    chemin_sortie = sauver_pdf_avec_repli(cv, chemin_sortie)
+    print(f"  PDF itinéraires généré : {chemin_sortie} ({len(tournees)} tournée(s))")
+    return chemin_sortie
 
 
 def _ajouter_onglets_secteurs(wb, df_ref):
@@ -2355,6 +2610,14 @@ def main():
                         help="Chemin du PDF des numéros de camion — une page par camion, "
                              "2 étiquettes identiques (grand code + nom) — défaut : "
                              "Tournées definitives <année>/numeros_camions_{annee}.pdf")
+    parser.add_argument('--output-itineraires', default=None,
+                        help="Chemin du PDF des itinéraires de tournées — une page par "
+                             "demi-journée/camion, carte avec fond de rues + liste des "
+                             "magasins dans l'ordre de passage — défaut : "
+                             "Tournées definitives <année>/itineraires_tournees_{annee}_GOTW.pdf")
+    parser.add_argument('--skip-itineraires', action='store_true',
+                        help="Ne pas générer le PDF des itinéraires de tournées (carte+liste) — "
+                             "document le plus long à produire, pas nécessaire à chaque génération.")
 
     # Rétro-compatibilité : anciens noms d'arguments des scripts d'origine
     parser.add_argument('--output', default=None, help=argparse.SUPPRESS)
@@ -2404,6 +2667,8 @@ def main():
         args.output_vehicule_consignes = os.path.join(out_dir, 'vehicule_consignes.xlsx')
     if args.output_numeros_camions is None:
         args.output_numeros_camions = os.path.join(out_dir, f'numeros_camions_{args.annee}.pdf')
+    if args.output_itineraires is None:
+        args.output_itineraires = os.path.join(out_dir, f'itineraires_tournees_{args.annee}_{ORIGINE}.pdf')
 
     print(f"Vehicules : {args.vehicules}")
     print(f"Ref       : {args.magasins}")
@@ -3138,7 +3403,19 @@ def main():
     df_carte = pd.DataFrame(lignes_carte)
     generer_carte_tournees(df_carte, df_ref, mag_cols, out_dir, args.annee)
 
-    print(f"\nLes 4 documents, la carte HTML et vehicule_consignes.xlsx ont été générés dans : {out_dir}")
+    if args.skip_itineraires:
+        print()
+        print('  PDF des itinéraires de tournées : ignoré (--skip-itineraires).')
+        print(f"\nLes 4 documents, la carte HTML et vehicule_consignes.xlsx "
+              f"ont été générés dans : {out_dir}")
+    else:
+        print()
+        print('  Génération du PDF des itinéraires de tournées...')
+        generer_pdf_itineraires_tournees(df_carte, df_ref, mag_cols, out_dir, args.annee,
+                                          chemin_sortie=args.output_itineraires)
+
+        print(f"\nLes 4 documents, la carte HTML, le PDF itinéraires et vehicule_consignes.xlsx "
+              f"ont été générés dans : {out_dir}")
 
 
 if __name__ == '__main__':

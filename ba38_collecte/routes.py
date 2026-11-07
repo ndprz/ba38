@@ -49,6 +49,7 @@ import sqlite3
 import zipfile
 import argparse
 import subprocess
+import threading
 from io import StringIO
 from datetime import datetime, timedelta
 from ba38_utilitaires.taches_fond import lancer_tache_fond
@@ -702,6 +703,11 @@ def _ensure_table_cagettes_production(conn):
         conn.execute("ALTER TABLE collecte_cagettes_production ADD COLUMN auto_defaut INTEGER NOT NULL DEFAULT 0")
     except Exception:
         pass
+    for col in ("ref1", "ref2", "ref3", "ref4", "ref_le", "ref_total"):
+        try:
+            conn.execute(f"ALTER TABLE collecte_cagettes_production ADD COLUMN {col} TEXT")
+        except Exception:
+            pass
 
 
 def _normaliser_jour_cagettes(s):
@@ -1366,6 +1372,540 @@ def enregistrer_contenu_mail_prise_colis():
     return redirect(url_for("collecte.mail_prise_colis", annee=annee))
 
 
+MAIL_TEXTE_BILAN_DEFAUT = (
+    "Bonjour <<nom>>,\n\n"
+    "Vous avez participé à la collecte de cette année, un grand merci pour votre implication !\n\n"
+    "Nous vous invitons à la réunion de bilan de la collecte <<annee>>, l'occasion de partager "
+    "les résultats et vos retours d'expérience.\n\n"
+    "Merci de nous indiquer votre disponibilité en répondant à ce mail."
+)
+
+
+def _ensure_colonne_mail_bilan(conn):
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_campagnes)").fetchall()}
+    if "mail_texte_bilan" not in colonnes:
+        conn.execute("ALTER TABLE collecte_campagnes ADD COLUMN mail_texte_bilan TEXT")
+
+
+def _contenu_mail_bilan(annee):
+    with get_db_connection() as conn:
+        _ensure_colonne_mail_bilan(conn)
+        ligne = conn.execute(
+            "SELECT mail_texte_bilan FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    if ligne and ligne["mail_texte_bilan"]:
+        return ligne["mail_texte_bilan"]
+    return MAIL_TEXTE_BILAN_DEFAUT
+
+
+def _corps_mail_bilan(personne, texte, annee):
+    return texte.replace("<<nom>>", personne["nom"]).replace("<<annee>>", str(annee))
+
+
+def _corps_mail_bilan_html(personne, texte, annee):
+    html = str(escape(_corps_mail_bilan(personne, texte, annee))).replace("\n", "<br>\n")
+    return f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">{html}</div>'
+
+
+@collecte_bp.route("/collecte/mail_bilan", methods=["GET", "POST"])
+@login_required
+@require_access("collecte", "lecture")
+def mail_bilan():
+    """Invitation au bilan de la collecte, envoyée à tous les participants
+    go-on-web de l'année (cf. _lister_participants_gow — toute personne
+    inscrite sur au moins un magasin/créneau cette année, dédoublonnée par
+    email), pas seulement les chauffeurs/équipiers de camion : un bilan de
+    collecte concerne tous les participants, magasins compris."""
+    annee = request.args.get("annee", type=int) or request.form.get("annee", type=int) or datetime.now().year
+    destinataires = _lister_participants_gow(annee)
+    mail_texte = _contenu_mail_bilan(annee)
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        if not destinataires:
+            flash(f"❌ Aucun participant trouvé pour {annee}.", "danger")
+        elif action == "test":
+            email_test = request.form.get("test_destinataire", "")
+            exemple = next((p for p in destinataires if p["email"] == email_test), destinataires[0])
+            adresse_test = getattr(current_user, "email", "") or ""
+            if not adresse_test:
+                flash("❌ Votre compte n'a pas d'adresse email pour le test.", "danger")
+            else:
+                envoyer_mail(
+                    f"[TEST] Collecte {annee} — invitation au bilan",
+                    [adresse_test],
+                    _corps_mail_bilan_html(exemple, mail_texte, annee),
+                    sender_override="ba380.benevolecollecte@banquealimentaire.org",
+                    is_html=True,
+                )
+                flash(f"✅ Mail de test envoyé à {adresse_test}.", "success")
+        elif action == "envoyer":
+            if request.form.get("confirmation_envoi") != "oui":
+                flash("❌ Cochez d'abord « Je confirme l'envoi » — rien n'a été envoyé.", "danger")
+            else:
+                for personne in destinataires:
+                    envoyer_mail(
+                        f"Collecte {annee} — invitation au bilan",
+                        [personne["email"]],
+                        _corps_mail_bilan_html(personne, mail_texte, annee),
+                        sender_override="ba380.benevolecollecte@banquealimentaire.org",
+                        cc=[current_user.email],
+                        is_html=True,
+                    )
+                flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+
+    return render_template(
+        "collecte/mail_bilan.html",
+        annee=annee,
+        destinataires=destinataires,
+        mail_texte=mail_texte,
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/mail_bilan/apercu")
+@login_required
+@require_access("collecte", "lecture")
+def mail_bilan_apercu(annee):
+    """Rendu HTML exact du mail pour la personne sélectionnée, sans rien
+    envoyer (même en test) — même principe que l'aperçu trieurs/prise colis."""
+    destinataires = _lister_participants_gow(annee)
+    if not destinataires:
+        abort(404)
+    mail_texte = _contenu_mail_bilan(annee)
+    email = request.args.get("email", "")
+    personne = next((p for p in destinataires if p["email"] == email), destinataires[0])
+    html = _corps_mail_bilan_html(personne, mail_texte, annee)
+    return Response(html, mimetype="text/html")
+
+
+@collecte_bp.route("/collecte/mail_bilan/contenu-mail", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_contenu_mail_bilan():
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    texte = request.form.get("mail_texte", "").strip()
+    with get_db_connection() as conn:
+        _ensure_colonne_mail_bilan(conn)
+        conn.execute("UPDATE collecte_campagnes SET mail_texte_bilan = ? WHERE annee = ?", (texte, annee))
+        conn.commit()
+    flash("✅ Texte du mail enregistré.", "success")
+    return redirect(url_for("collecte.mail_bilan", annee=annee))
+
+
+MAIL_TEXTE_RESSENTI_MAGASINS_DEFAUT = (
+    "Bonjour <<nom>>,\n\n"
+    "Vous avez été bénévole en magasin lors de la collecte <<annee>>, un grand merci pour votre "
+    "engagement !\n\n"
+    "Nous aimerions recueillir votre avis : comment s'est passée votre collecte cette année, "
+    "qu'avez-vous apprécié, qu'est-ce qui pourrait être amélioré ?\n\n"
+    "N'hésitez pas à répondre directement à ce mail pour partager votre ressenti.\n\n"
+    "Merci."
+)
+
+
+def _ensure_colonne_mail_ressenti_magasins(conn):
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_campagnes)").fetchall()}
+    if "mail_texte_ressenti_magasins" not in colonnes:
+        conn.execute("ALTER TABLE collecte_campagnes ADD COLUMN mail_texte_ressenti_magasins TEXT")
+
+
+def _charger_benevoles_magasins(annee):
+    """Bénévoles ayant participé EN MAGASIN à la collecte de l'année (par
+    opposition aux chauffeurs/équipiers de camion) : tous les participants
+    go-on-web de l'année (cf. _lister_participants_gow) dont l'email n'est
+    pas celui d'un chauffeur/équipier réellement nommé dans liste-vehicule.xlsx
+    cette année (cf. _charger_chauffeurs_equipiers_bruts) — ces derniers ont
+    leur propre mail dédié (cf. mail_bilan, qui s'adresse lui à tous les
+    participants, magasins et camions confondus)."""
+    participants = _lister_participants_gow(annee)
+    emails_camions = {e for e in _charger_chauffeurs_equipiers_bruts(annee).keys() if "@" in e}
+    return [p for p in participants if p["email"] not in emails_camions]
+
+
+def _contenu_mail_ressenti_magasins(annee):
+    with get_db_connection() as conn:
+        _ensure_colonne_mail_ressenti_magasins(conn)
+        ligne = conn.execute(
+            "SELECT mail_texte_ressenti_magasins FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    if ligne and ligne["mail_texte_ressenti_magasins"]:
+        return ligne["mail_texte_ressenti_magasins"]
+    return MAIL_TEXTE_RESSENTI_MAGASINS_DEFAUT
+
+
+def _corps_mail_ressenti_magasins(personne, texte, annee):
+    return texte.replace("<<nom>>", personne["nom"]).replace("<<annee>>", str(annee))
+
+
+def _corps_mail_ressenti_magasins_html(personne, texte, annee):
+    html = str(escape(_corps_mail_ressenti_magasins(personne, texte, annee))).replace("\n", "<br>\n")
+    return f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">{html}</div>'
+
+
+@collecte_bp.route("/collecte/mail_ressenti_magasins", methods=["GET", "POST"])
+@login_required
+@require_access("collecte", "lecture")
+def mail_ressenti_magasins():
+    annee = request.args.get("annee", type=int) or request.form.get("annee", type=int) or datetime.now().year
+    destinataires = _charger_benevoles_magasins(annee)
+    mail_texte = _contenu_mail_ressenti_magasins(annee)
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        if not destinataires:
+            flash(f"❌ Aucun bénévole magasin trouvé pour {annee}.", "danger")
+        elif action == "test":
+            email_test = request.form.get("test_destinataire", "")
+            exemple = next((p for p in destinataires if p["email"] == email_test), destinataires[0])
+            adresse_test = getattr(current_user, "email", "") or ""
+            if not adresse_test:
+                flash("❌ Votre compte n'a pas d'adresse email pour le test.", "danger")
+            else:
+                envoyer_mail(
+                    f"[TEST] Collecte {annee} — votre ressenti",
+                    [adresse_test],
+                    _corps_mail_ressenti_magasins_html(exemple, mail_texte, annee),
+                    sender_override="ba380.benevolecollecte@banquealimentaire.org",
+                    is_html=True,
+                )
+                flash(f"✅ Mail de test envoyé à {adresse_test}.", "success")
+        elif action == "envoyer":
+            if request.form.get("confirmation_envoi") != "oui":
+                flash("❌ Cochez d'abord « Je confirme l'envoi » — rien n'a été envoyé.", "danger")
+            else:
+                for personne in destinataires:
+                    envoyer_mail(
+                        f"Collecte {annee} — votre ressenti",
+                        [personne["email"]],
+                        _corps_mail_ressenti_magasins_html(personne, mail_texte, annee),
+                        sender_override="ba380.benevolecollecte@banquealimentaire.org",
+                        cc=[current_user.email],
+                        is_html=True,
+                    )
+                flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+
+    return render_template(
+        "collecte/mail_ressenti_magasins.html",
+        annee=annee,
+        destinataires=destinataires,
+        mail_texte=mail_texte,
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/mail_ressenti_magasins/apercu")
+@login_required
+@require_access("collecte", "lecture")
+def mail_ressenti_magasins_apercu(annee):
+    """Rendu HTML exact du mail pour la personne sélectionnée, sans rien
+    envoyer (même en test) — même principe que l'aperçu bilan collecte."""
+    destinataires = _charger_benevoles_magasins(annee)
+    if not destinataires:
+        abort(404)
+    mail_texte = _contenu_mail_ressenti_magasins(annee)
+    email = request.args.get("email", "")
+    personne = next((p for p in destinataires if p["email"] == email), destinataires[0])
+    html = _corps_mail_ressenti_magasins_html(personne, mail_texte, annee)
+    return Response(html, mimetype="text/html")
+
+
+@collecte_bp.route("/collecte/mail_ressenti_magasins/contenu-mail", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_contenu_mail_ressenti_magasins():
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    texte = request.form.get("mail_texte", "").strip()
+    with get_db_connection() as conn:
+        _ensure_colonne_mail_ressenti_magasins(conn)
+        conn.execute("UPDATE collecte_campagnes SET mail_texte_ressenti_magasins = ? WHERE annee = ?", (texte, annee))
+        conn.commit()
+    flash("✅ Texte du mail enregistré.", "success")
+    return redirect(url_for("collecte.mail_ressenti_magasins", annee=annee))
+
+
+MAIL_TEXTE_RESSENTI_CHAUFFEURS_DEFAUT = (
+    "Bonjour <<nom>>,\n\n"
+    "Vous avez été chauffeur ou équipier de camion lors de la collecte <<annee>>, un grand merci "
+    "pour votre engagement !\n\n"
+    "Nous aimerions recueillir votre avis : comment s'est passée votre collecte cette année, "
+    "qu'avez-vous apprécié, qu'est-ce qui pourrait être amélioré ?\n\n"
+    "N'hésitez pas à répondre directement à ce mail pour partager votre ressenti.\n\n"
+    "Merci."
+)
+
+
+def _ensure_colonne_mail_ressenti_chauffeurs(conn):
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_campagnes)").fetchall()}
+    if "mail_texte_ressenti_chauffeurs" not in colonnes:
+        conn.execute("ALTER TABLE collecte_campagnes ADD COLUMN mail_texte_ressenti_chauffeurs TEXT")
+
+
+def _charger_benevoles_chauffeurs_equipiers(annee):
+    """Chauffeurs/équipiers de camion réellement nommés dans liste-vehicule.xlsx
+    cette année (cf. _charger_chauffeurs_equipiers_bruts), avec email — ceux
+    sans email ne peuvent pas recevoir ce mail."""
+    personnes = _charger_chauffeurs_equipiers_bruts(annee)
+    return sorted(
+        ({"nom": p["nom"], "email": p["email"]} for p in personnes.values() if p["email"]),
+        key=lambda p: p["nom"].lower(),
+    )
+
+
+def _contenu_mail_ressenti_chauffeurs(annee):
+    with get_db_connection() as conn:
+        _ensure_colonne_mail_ressenti_chauffeurs(conn)
+        ligne = conn.execute(
+            "SELECT mail_texte_ressenti_chauffeurs FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    if ligne and ligne["mail_texte_ressenti_chauffeurs"]:
+        return ligne["mail_texte_ressenti_chauffeurs"]
+    return MAIL_TEXTE_RESSENTI_CHAUFFEURS_DEFAUT
+
+
+def _corps_mail_ressenti_chauffeurs(personne, texte, annee):
+    return texte.replace("<<nom>>", personne["nom"]).replace("<<annee>>", str(annee))
+
+
+def _corps_mail_ressenti_chauffeurs_html(personne, texte, annee):
+    html = str(escape(_corps_mail_ressenti_chauffeurs(personne, texte, annee))).replace("\n", "<br>\n")
+    return f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">{html}</div>'
+
+
+@collecte_bp.route("/collecte/mail_ressenti_chauffeurs", methods=["GET", "POST"])
+@login_required
+@require_access("collecte", "lecture")
+def mail_ressenti_chauffeurs():
+    annee = request.args.get("annee", type=int) or request.form.get("annee", type=int) or datetime.now().year
+    destinataires = _charger_benevoles_chauffeurs_equipiers(annee)
+    mail_texte = _contenu_mail_ressenti_chauffeurs(annee)
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        if not destinataires:
+            flash(f"❌ Aucun chauffeur/équipier trouvé pour {annee}.", "danger")
+        elif action == "test":
+            email_test = request.form.get("test_destinataire", "")
+            exemple = next((p for p in destinataires if p["email"] == email_test), destinataires[0])
+            adresse_test = getattr(current_user, "email", "") or ""
+            if not adresse_test:
+                flash("❌ Votre compte n'a pas d'adresse email pour le test.", "danger")
+            else:
+                envoyer_mail(
+                    f"[TEST] Collecte {annee} — votre ressenti",
+                    [adresse_test],
+                    _corps_mail_ressenti_chauffeurs_html(exemple, mail_texte, annee),
+                    sender_override="ba380.directeur@banquealimentaire.org",
+                    is_html=True,
+                )
+                flash(f"✅ Mail de test envoyé à {adresse_test}.", "success")
+        elif action == "envoyer":
+            if request.form.get("confirmation_envoi") != "oui":
+                flash("❌ Cochez d'abord « Je confirme l'envoi » — rien n'a été envoyé.", "danger")
+            else:
+                for personne in destinataires:
+                    envoyer_mail(
+                        f"Collecte {annee} — votre ressenti",
+                        [personne["email"]],
+                        _corps_mail_ressenti_chauffeurs_html(personne, mail_texte, annee),
+                        sender_override="ba380.directeur@banquealimentaire.org",
+                        cc=[current_user.email],
+                        is_html=True,
+                    )
+                flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+
+    return render_template(
+        "collecte/mail_ressenti_chauffeurs.html",
+        annee=annee,
+        destinataires=destinataires,
+        mail_texte=mail_texte,
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/mail_ressenti_chauffeurs/apercu")
+@login_required
+@require_access("collecte", "lecture")
+def mail_ressenti_chauffeurs_apercu(annee):
+    """Rendu HTML exact du mail pour la personne sélectionnée, sans rien
+    envoyer (même en test) — même principe que l'aperçu bilan collecte."""
+    destinataires = _charger_benevoles_chauffeurs_equipiers(annee)
+    if not destinataires:
+        abort(404)
+    mail_texte = _contenu_mail_ressenti_chauffeurs(annee)
+    email = request.args.get("email", "")
+    personne = next((p for p in destinataires if p["email"] == email), destinataires[0])
+    html = _corps_mail_ressenti_chauffeurs_html(personne, mail_texte, annee)
+    return Response(html, mimetype="text/html")
+
+
+@collecte_bp.route("/collecte/mail_ressenti_chauffeurs/contenu-mail", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_contenu_mail_ressenti_chauffeurs():
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    texte = request.form.get("mail_texte", "").strip()
+    with get_db_connection() as conn:
+        _ensure_colonne_mail_ressenti_chauffeurs(conn)
+        conn.execute("UPDATE collecte_campagnes SET mail_texte_ressenti_chauffeurs = ? WHERE annee = ?", (texte, annee))
+        conn.commit()
+    flash("✅ Texte du mail enregistré.", "success")
+    return redirect(url_for("collecte.mail_ressenti_chauffeurs", annee=annee))
+
+
+CODES_ENTREPOT = ("V090", "V091", "V092")
+
+MAIL_TEXTE_RESSENTI_ENTREPOT_DEFAUT = (
+    "Bonjour <<nom>>,\n\n"
+    "Vous avez été bénévole à l'entrepôt (tri, cuisine...) lors de la collecte <<annee>>, un grand "
+    "merci pour votre engagement !\n\n"
+    "Nous aimerions recueillir votre avis : comment s'est passée votre collecte cette année, "
+    "qu'avez-vous apprécié, qu'est-ce qui pourrait être amélioré ?\n\n"
+    "N'hésitez pas à répondre directement à ce mail pour partager votre ressenti.\n\n"
+    "Merci."
+)
+
+
+def _ensure_colonne_mail_ressenti_entrepot(conn):
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_campagnes)").fetchall()}
+    if "mail_texte_ressenti_entrepot" not in colonnes:
+        conn.execute("ALTER TABLE collecte_campagnes ADD COLUMN mail_texte_ressenti_entrepot TEXT")
+
+
+def _charger_benevoles_entrepot(annee):
+    """Personnes affectées à l'entrepôt (codes non réels V090/V091/V092 —
+    tri/cuisine/divers, cf. _est_camion_reel) dans le planning véhicules de
+    l'année {annee} — nom + email, dédoublonnés par email. Même principe que
+    _charger_trieurs_annee_precedente, mais sur l'année en cours et les 3
+    codes entrepôt (pas seulement V090)."""
+    chemin = _fichier_drive(annee, "vehicules")
+    if not chemin:
+        chemin = os.path.join(_dossier_annee(annee), "liste_vehicules.xlsx")
+    if not os.path.exists(chemin):
+        raise FileNotFoundError(f"Le fichier véhicules {annee} est introuvable")
+
+    df = pd.read_excel(chemin)
+    df.columns = [str(col).strip() for col in df.columns]
+    personnes = {}
+    for _, ligne in df.iterrows():
+        code = str(ligne.get("Code", "")).strip().upper()
+        if code not in CODES_ENTREPOT:
+            continue
+        personne = str(ligne.get("Équipier", ligne.get("equipier", ""))).strip()
+        if not personne or personne == "nan":
+            continue
+        email = str(ligne.get("Email", "")).strip().lower()
+        if email == "nan":
+            email = ""
+        cle = email or f"nom:{personne.lower()}"
+        personnes.setdefault(cle, {"nom": personne, "email": email})
+
+    return sorted(
+        (p for p in personnes.values() if p["email"]), key=lambda p: p["nom"].lower()
+    )
+
+
+def _contenu_mail_ressenti_entrepot(annee):
+    with get_db_connection() as conn:
+        _ensure_colonne_mail_ressenti_entrepot(conn)
+        ligne = conn.execute(
+            "SELECT mail_texte_ressenti_entrepot FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    if ligne and ligne["mail_texte_ressenti_entrepot"]:
+        return ligne["mail_texte_ressenti_entrepot"]
+    return MAIL_TEXTE_RESSENTI_ENTREPOT_DEFAUT
+
+
+def _corps_mail_ressenti_entrepot(personne, texte, annee):
+    return texte.replace("<<nom>>", personne["nom"]).replace("<<annee>>", str(annee))
+
+
+def _corps_mail_ressenti_entrepot_html(personne, texte, annee):
+    html = str(escape(_corps_mail_ressenti_entrepot(personne, texte, annee))).replace("\n", "<br>\n")
+    return f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">{html}</div>'
+
+
+@collecte_bp.route("/collecte/mail_ressenti_entrepot", methods=["GET", "POST"])
+@login_required
+@require_access("collecte", "lecture")
+def mail_ressenti_entrepot():
+    annee = request.args.get("annee", type=int) or request.form.get("annee", type=int) or datetime.now().year
+    try:
+        destinataires = _charger_benevoles_entrepot(annee)
+        mail_texte = _contenu_mail_ressenti_entrepot(annee)
+    except Exception as erreur:
+        flash(f"❌ Impossible de charger les bénévoles entrepôt de {annee} : {erreur}", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        if not destinataires:
+            flash(f"❌ Aucun bénévole entrepôt trouvé pour {annee}.", "danger")
+        elif action == "test":
+            email_test = request.form.get("test_destinataire", "")
+            exemple = next((p for p in destinataires if p["email"] == email_test), destinataires[0])
+            adresse_test = getattr(current_user, "email", "") or ""
+            if not adresse_test:
+                flash("❌ Votre compte n'a pas d'adresse email pour le test.", "danger")
+            else:
+                envoyer_mail(
+                    f"[TEST] Collecte {annee} — votre ressenti",
+                    [adresse_test],
+                    _corps_mail_ressenti_entrepot_html(exemple, mail_texte, annee),
+                    sender_override="ba380.directeur@banquealimentaire.org",
+                    is_html=True,
+                )
+                flash(f"✅ Mail de test envoyé à {adresse_test}.", "success")
+        elif action == "envoyer":
+            if request.form.get("confirmation_envoi") != "oui":
+                flash("❌ Cochez d'abord « Je confirme l'envoi » — rien n'a été envoyé.", "danger")
+            else:
+                for personne in destinataires:
+                    envoyer_mail(
+                        f"Collecte {annee} — votre ressenti",
+                        [personne["email"]],
+                        _corps_mail_ressenti_entrepot_html(personne, mail_texte, annee),
+                        sender_override="ba380.directeur@banquealimentaire.org",
+                        cc=[current_user.email],
+                        is_html=True,
+                    )
+                flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+
+    return render_template(
+        "collecte/mail_ressenti_entrepot.html",
+        annee=annee,
+        destinataires=destinataires,
+        mail_texte=mail_texte,
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/mail_ressenti_entrepot/apercu")
+@login_required
+@require_access("collecte", "lecture")
+def mail_ressenti_entrepot_apercu(annee):
+    """Rendu HTML exact du mail pour la personne sélectionnée, sans rien
+    envoyer (même en test) — même principe que l'aperçu bilan collecte."""
+    destinataires = _charger_benevoles_entrepot(annee)
+    if not destinataires:
+        abort(404)
+    mail_texte = _contenu_mail_ressenti_entrepot(annee)
+    email = request.args.get("email", "")
+    personne = next((p for p in destinataires if p["email"] == email), destinataires[0])
+    html = _corps_mail_ressenti_entrepot_html(personne, mail_texte, annee)
+    return Response(html, mimetype="text/html")
+
+
+@collecte_bp.route("/collecte/mail_ressenti_entrepot/contenu-mail", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def enregistrer_contenu_mail_ressenti_entrepot():
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    texte = request.form.get("mail_texte", "").strip()
+    with get_db_connection() as conn:
+        _ensure_colonne_mail_ressenti_entrepot(conn)
+        conn.execute("UPDATE collecte_campagnes SET mail_texte_ressenti_entrepot = ? WHERE annee = ?", (texte, annee))
+        conn.commit()
+    flash("✅ Texte du mail enregistré.", "success")
+    return redirect(url_for("collecte.mail_ressenti_entrepot", annee=annee))
+
+
 def _charger_chauffeurs_equipiers_bruts(annee):
     """{cle: {"nom", "email", "camions": {code_camion: nom_camion}}} des
     personnes réellement nommées comme chauffeur ou équipier d'un camion dans
@@ -1753,6 +2293,7 @@ PRODUCTION_FICHIERS_SORTIE = {
     "consignes": {"nom": "vehicule_consignes.xlsx", "label": "Consignes véhicules (1 ligne/camion)"},
     "numeros_camions": {"nom": "numeros_camions_{annee}.pdf", "label": "Numéros de camion (étiquettes)"},
     "carte":     {"nom": "carte_tournees_production.html", "label": "Carte interactive des tournées"},
+    "itineraires": {"nom": "itineraires_tournees_{annee}_GOTW.pdf", "label": "📍 Itinéraires des tournées (carte)"},
 }
 
 
@@ -2244,7 +2785,8 @@ def _camions_non_utilises(annee, lignes):
         if dj not in utilises_par_dj:
             continue
         non_utilises = sorted(
-            ({"code": code, "nom": nom} for code, nom in tous_codes.items()
+            ({"code": code, "nom": nom, "libelle": code + (f" — {nom}" if nom else "")}
+             for code, nom in tous_codes.items()
              if code not in utilises_par_dj[dj] and dj in creneaux_reels.get(code, set())),
             key=lambda c: c["code"],
         )
@@ -3964,7 +4506,10 @@ def _charger_lignes_cagettes(annee):
     (collecte_cagettes) — jamais depuis le fichier magasins courant. Chaque
     ligne porte aussi un indicateur « _appl_<demi-journée> » : demi-journée
     non applicable à ce magasin (fermé ce créneau, valeur grisée dans la
-    grille) vs applicable mais pas encore saisie (None)."""
+    grille) vs applicable mais pas encore saisie (None), ainsi qu'un
+    indicateur « _n1_<demi-journée> » : le nombre de cagettes saisi l'année
+    précédente pour le même magasin/créneau (aide à la saisie), ou None si
+    rien n'a été saisi ou importé pour cette année-là."""
     with get_db_connection() as conn:
         magasins = conn.execute(
             "SELECT DISTINCT code_vif, nom_magasin FROM collecte_cagettes_magasins "
@@ -3985,6 +4530,13 @@ def _charger_lignes_cagettes(annee):
                 (annee,)
             ).fetchall()
         }
+        saisies_n1 = {
+            (r["code_vif"], r["demi_journee"]): r["nb_cagettes"]
+            for r in conn.execute(
+                "SELECT code_vif, demi_journee, nb_cagettes FROM collecte_cagettes WHERE annee = ?",
+                (annee - 1,)
+            ).fetchall()
+        }
 
     lignes = []
     for magasin in magasins:
@@ -3995,10 +4547,95 @@ def _charger_lignes_cagettes(annee):
             valeur = saisies.get((code_vif, dj)) if applicable else None
             ligne[dj] = valeur
             ligne["_appl_" + dj] = applicable
+            ligne["_n1_" + dj] = saisies_n1.get((code_vif, dj))
             if valeur:
                 ligne["total"] += valeur
         lignes.append(ligne)
     return lignes
+
+
+COLONNES_DJ_RESULTAT_CAGETTES = [
+    'Jeudi matin', 'Jeudi Après-midi',
+    'Vendredi matin', 'Vendredi Après midi',
+    'Samedi matin', 'Samedi Après midi',
+    'Dimanche matin',
+]
+
+
+@collecte_bp.route("/collecte/<int:annee>/cagettes/importer-annee-precedente", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def cagettes_importer_annee_precedente(annee):
+    """Permet de (re)charger le fichier « Résultat cagettes magasins AAAA »
+    d'une année passée (feuille 'résultats', même format que l'export annuel)
+    pour alimenter l'indice de comparaison N-1 affiché dans la grille de
+    saisie — remplace entièrement les données déjà présentes pour l'année
+    choisie plutôt que de les fusionner, afin qu'un nouveau chargement
+    corrige proprement une erreur du précédent."""
+    fichier = request.files.get("fichier")
+    annee_cible = request.form.get("annee_cible", type=int)
+    if not fichier or not fichier.filename:
+        flash("⛔ Aucun fichier sélectionné", "danger")
+        return redirect(url_for("collecte.cagettes", annee=annee))
+    if not annee_cible:
+        flash("⛔ Année cible invalide", "danger")
+        return redirect(url_for("collecte.cagettes", annee=annee))
+
+    try:
+        wb = load_workbook(fichier, data_only=True)
+        ws = wb["résultats"]
+        entetes = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
+        idx = {nom: i for i, nom in enumerate(entetes)}
+        manquantes = [c for c in ("Code VIF", "Nom") + tuple(COLONNES_DJ_RESULTAT_CAGETTES) if c not in idx]
+        if manquantes:
+            flash(f"⛔ Colonne(s) attendue(s) absente(s) de la feuille « résultats » : {', '.join(manquantes)}", "danger")
+            return redirect(url_for("collecte.cagettes", annee=annee))
+
+        maintenant = datetime.now().strftime("%Y-%m-%d %H:%M")
+        magasins_rows, cagettes_rows = [], []
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if row[idx["Code VIF"]] in (None, "", "nan"):
+                continue
+            code_vif = _vif_fmt(row[idx["Code VIF"]])
+            nom = str(row[idx["Nom"]] or "").strip()
+            if not code_vif or not nom:
+                continue
+            for col in COLONNES_DJ_RESULTAT_CAGETTES:
+                dj = _normaliser_jour_cagettes(col)
+                valeur = row[idx[col]]
+                if valeur is None or valeur == "":
+                    continue
+                try:
+                    nb = round(float(valeur))
+                except (ValueError, TypeError):
+                    continue
+                magasins_rows.append((annee_cible, code_vif, nom, dj))
+                cagettes_rows.append((annee_cible, code_vif, dj, nb, maintenant, current_user.email))
+    except KeyError:
+        flash("⛔ Feuille « résultats » introuvable dans ce fichier", "danger")
+        return redirect(url_for("collecte.cagettes", annee=annee))
+    except Exception as erreur:
+        write_log(f"❌ Import résultat cagettes {annee_cible} : {erreur}")
+        flash(f"⛔ Fichier illisible : {erreur}", "danger")
+        return redirect(url_for("collecte.cagettes", annee=annee))
+
+    with get_db_connection() as conn:
+        conn.execute("DELETE FROM collecte_cagettes_magasins WHERE annee = ?", (annee_cible,))
+        conn.execute("DELETE FROM collecte_cagettes WHERE annee = ?", (annee_cible,))
+        conn.executemany(
+            "INSERT OR IGNORE INTO collecte_cagettes_magasins (annee, code_vif, nom_magasin, demi_journee) "
+            "VALUES (?, ?, ?, ?)",
+            magasins_rows,
+        )
+        conn.executemany(
+            "INSERT OR IGNORE INTO collecte_cagettes (annee, code_vif, demi_journee, nb_cagettes, saisi_le, saisi_par) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            cagettes_rows,
+        )
+        conn.commit()
+
+    flash(f"✅ {len(cagettes_rows)} saisie(s) importée(s) pour {annee_cible} (comparaison N-1 disponible)", "success")
+    return redirect(url_for("collecte.cagettes", annee=annee))
 
 
 # ============================================================================
@@ -6032,12 +6669,15 @@ def cagettes_production(annee):
     script, sans jamais relire le drive pour les cagettes.
 
     Un magasin ENTIÈREMENT sans donnée (aucune valeur en Cagette 1 ou 2 sur
-    AUCUNE de ses demi-journées — typiquement un nouveau magasin) reçoit
-    automatiquement 10/10 par défaut sur toutes ses lignes (auto_defaut=1),
-    pour simplifier la gestion des nouveaux magasins. Un magasin déjà
-    documenté sur au moins une demi-journée n'est jamais concerné, même si
-    une autre de ses demi-journées est encore vide — un trou isolé sur un
-    magasin déjà connu reste un vrai manque à saisir, pas un nouveau magasin
+    AUCUNE de ses demi-journées — typiquement un nouveau magasin, ou tout
+    simplement le tout début d'une nouvelle campagne) reçoit automatiquement
+    une valeur par défaut sur toutes ses lignes (auto_defaut=1) : ses propres
+    valeurs Cagette 1-4 de l'année précédente (même magasin, même
+    demi-journée) si elles existent, sinon 10/10 — directement depuis la
+    base, sans export/import Excel. Un magasin déjà documenté sur au moins
+    une demi-journée n'est jamais concerné, même si une autre de ses
+    demi-journées est encore vide — un trou isolé sur un magasin déjà connu
+    reste un vrai manque à saisir, pas un nouveau magasin
     (cf. la discussion : 87 lignes vides au total, mais seulement ~20
     magasins réellement nouveaux). La ligne reste en évidence (jaune) tant
     que ces valeurs n'ont pas été modifiées à la main (cf.
@@ -6062,6 +6702,15 @@ def cagettes_production(annee):
         vifs_combos = {c["code_vif"] for c in combos}
         vifs_nouveaux = vifs_combos - vifs_documentes
 
+        # Valeurs de l'année précédente (même magasin/demi-journée), pour
+        # proposer comme point de départ au lieu d'un 10/10 arbitraire —
+        # directement en base, sans export/import Excel.
+        lignes_precedentes = conn.execute(
+            "SELECT code_vif, jour, cag1, cag2, cag3, cag4 FROM collecte_cagettes_production WHERE annee = ?",
+            (annee - 1,)
+        ).fetchall()
+        valeurs_precedentes = {(l["code_vif"], l["jour"]): l for l in lignes_precedentes}
+
         for combo in combos:
             vif = combo["code_vif"]
             if vif in vifs_documentes:
@@ -6078,12 +6727,19 @@ def cagettes_production(annee):
                         WHERE annee = ? AND code_vif = ? AND jour = ?
                     """, (maintenant, annee, vif, combo["jour"]))
                 continue
+            precedente = valeurs_precedentes.get((vif, combo["jour"]))
+            if precedente and (precedente["cag1"] or precedente["cag2"]):
+                cag1, cag2 = precedente["cag1"] or "", precedente["cag2"] or ""
+                cag3, cag4 = precedente["cag3"] or "", precedente["cag4"] or ""
+            else:
+                cag1, cag2, cag3, cag4 = "10", "10", "", ""
             conn.execute("""
-                INSERT INTO collecte_cagettes_production (annee, code_vif, jour, cag1, cag2, maj_le, auto_defaut)
-                VALUES (?, ?, ?, '10', '10', ?, 1)
+                INSERT INTO collecte_cagettes_production (annee, code_vif, jour, cag1, cag2, cag3, cag4, maj_le, auto_defaut)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
                 ON CONFLICT(annee, code_vif, jour) DO UPDATE SET
-                    cag1 = '10', cag2 = '10', maj_le = excluded.maj_le, auto_defaut = 1
-            """, (annee, vif, combo["jour"], maintenant))
+                    cag1 = excluded.cag1, cag2 = excluded.cag2, cag3 = excluded.cag3, cag4 = excluded.cag4,
+                    maj_le = excluded.maj_le, auto_defaut = 1
+            """, (annee, vif, combo["jour"], cag1, cag2, cag3, cag4, maintenant))
         conn.commit()
         lignes_db = conn.execute(
             "SELECT * FROM collecte_cagettes_production WHERE annee = ?", (annee,)
@@ -6099,6 +6755,11 @@ def cagettes_production(annee):
             "cag3": v["cag3"] if v else "",
             "cag4": v["cag4"] if v else "",
             "auto_defaut": bool(v["auto_defaut"]) if v else False,
+            "ref1": v["ref1"] if v else "",
+            "ref2": v["ref2"] if v else "",
+            "ref3": v["ref3"] if v else "",
+            "ref4": v["ref4"] if v else "",
+            "ref_total": v["ref_total"] if v else "",
         })
     return render_template("collecte/cagettes_production.html", annee=annee, lignes=lignes)
 
@@ -6134,45 +6795,109 @@ def cagettes_production_enregistrer(annee):
 @login_required
 @require_access("collecte", "ecriture")
 def cagettes_production_importer(annee):
-    """Import en masse depuis un fichier au même format que l'ancien
-    Cagettes_magasins.xlsx (colonnes Code VIF, jour, cag1..cag4) — pratique
-    pour reprendre un historique existant plutôt que ressaisir magasin par
-    magasin ; les valeurs restent ensuite modifiables cellule par cellule."""
+    """Charge un fichier historique comme RÉFÉRENCE de comparaison (ref1..ref4)
+    à côté des valeurs déjà saisies — n'écrase jamais cag1..cag4 : l'utilisateur
+    reporte lui-même la bonne valeur cellule par cellule après avoir comparé
+    (feedback utilisateur : un import qui écrase silencieusement une saisie
+    manuelle n'est pas acceptable). Deux formats de fichier acceptés :
+      - détaillé (ancien Cagettes_magasins.xlsx) : colonnes Code VIF, jour,
+        cag1..cag4 → reporté tel quel sur ref1..ref4, plus leur somme sur
+        ref_total ;
+      - synthétique (ex. « cagettes bai.xlsx ») : colonnes Code VIF + une
+        colonne par demi-journée (Jeudi matin, Vendredi Après midi, ...)
+        contenant un total unique → reporté sur ref_total uniquement
+        (ref1..4 vidées, faute de détail par passage) — comparé à la colonne
+        Total (somme cag1..4) affichée dans la grille."""
     fichier = request.files.get("fichier_cagettes")
     if not fichier or not fichier.filename:
         flash("⛔ Aucun fichier sélectionné.", "warning")
         return redirect(url_for("collecte.cagettes_production", annee=annee))
     try:
-        df = pd.read_excel(fichier, sheet_name="Feuil1")
+        df = pd.read_excel(fichier, sheet_name=0)
     except Exception as e:
         flash(f"⛔ Fichier illisible : {e}", "danger")
         return redirect(url_for("collecte.cagettes_production", annee=annee))
+
+    def _normaliser_entete(s):
+        return str(s).strip().lower().replace("è", "e").replace("é", "e").replace("à", "a")
+
+    colonnes = {_normaliser_entete(c): c for c in df.columns}
+    col_vif = colonnes.get("code vif")
+    if not col_vif:
+        flash(f"⛔ Colonne « Code VIF » introuvable dans ce fichier "
+              f"(colonnes trouvées : {', '.join(str(c) for c in df.columns)})", "danger")
+        return redirect(url_for("collecte.cagettes_production", annee=annee))
+    col_jour = colonnes.get("jour")
 
     maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     n = 0
     with get_db_connection() as conn:
         _ensure_table_cagettes_production(conn)
-        for _, r in df.iterrows():
-            code_vif = _vif_fmt(r.get("Code VIF", ""))
-            jour = _normaliser_jour_cagettes(r.get("jour", ""))
-            if not code_vif or not jour:
-                continue
-            vals = []
-            for k in ("cag1", "cag2", "cag3", "cag4"):
-                v = r.get(k, "")
-                v = str(v).strip().split(".")[0] if str(v).strip() not in ("", "nan") else ""
-                vals.append(v)
-            conn.execute("""
-                INSERT INTO collecte_cagettes_production (annee, code_vif, jour, cag1, cag2, cag3, cag4, maj_le, auto_defaut)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
-                ON CONFLICT(annee, code_vif, jour) DO UPDATE SET
-                    cag1 = excluded.cag1, cag2 = excluded.cag2, cag3 = excluded.cag3, cag4 = excluded.cag4,
-                    maj_le = excluded.maj_le, auto_defaut = 0
-            """, (annee, code_vif, jour, *vals, maintenant))
-            n += 1
+
+        if col_jour:
+            # Format détaillé : une ligne par (Code VIF, jour), 4 passages.
+            cols_cag = {k: colonnes.get(k) for k in ("cag1", "cag2", "cag3", "cag4")}
+            total = len(df)
+            for _, r in df.iterrows():
+                code_vif = _vif_fmt(r.get(col_vif, ""))
+                jour = _normaliser_jour_cagettes(r.get(col_jour, ""))
+                if not code_vif or not jour:
+                    continue
+                vals = []
+                for k in ("cag1", "cag2", "cag3", "cag4"):
+                    col = cols_cag.get(k)
+                    v = r.get(col, "") if col else ""
+                    v = str(v).strip().split(".")[0] if str(v).strip() not in ("", "nan") else ""
+                    vals.append(v)
+                ref_total = str(sum(int(v) for v in vals if v.lstrip("-").isdigit()))
+                conn.execute("""
+                    INSERT INTO collecte_cagettes_production (annee, code_vif, jour, ref1, ref2, ref3, ref4, ref_total, ref_le)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(annee, code_vif, jour) DO UPDATE SET
+                        ref1 = excluded.ref1, ref2 = excluded.ref2, ref3 = excluded.ref3, ref4 = excluded.ref4,
+                        ref_total = excluded.ref_total, ref_le = excluded.ref_le
+                """, (annee, code_vif, jour, *vals, ref_total, maintenant))
+                n += 1
+        else:
+            # Format synthétique : une colonne par demi-journée, un seul total.
+            colonnes_dj = {}
+            for header_norm, header_orig in colonnes.items():
+                dj = _normaliser_jour_cagettes(header_orig)
+                if dj:
+                    colonnes_dj[dj] = header_orig
+            if not colonnes_dj:
+                flash(f"⛔ Aucune colonne de demi-journée reconnue dans ce fichier "
+                      f"(colonnes trouvées : {', '.join(str(c) for c in df.columns)})", "danger")
+                return redirect(url_for("collecte.cagettes_production", annee=annee))
+            total = len(df) * len(colonnes_dj)
+            for _, r in df.iterrows():
+                code_vif = _vif_fmt(r.get(col_vif, ""))
+                if not code_vif:
+                    continue
+                for jour, header in colonnes_dj.items():
+                    v = r.get(header, "")
+                    if v is None or str(v).strip() in ("", "nan"):
+                        continue
+                    try:
+                        nb = str(round(float(v)))
+                    except (ValueError, TypeError):
+                        continue
+                    conn.execute("""
+                        INSERT INTO collecte_cagettes_production (annee, code_vif, jour, ref1, ref2, ref3, ref4, ref_total, ref_le)
+                        VALUES (?, ?, ?, '', '', '', '', ?, ?)
+                        ON CONFLICT(annee, code_vif, jour) DO UPDATE SET
+                            ref1 = '', ref2 = '', ref3 = '', ref4 = '',
+                            ref_total = excluded.ref_total, ref_le = excluded.ref_le
+                    """, (annee, code_vif, jour, nb, maintenant))
+                    n += 1
         conn.commit()
-    flash(f"✅ {n} ligne(s) importée(s).", "success")
-    write_log(f"📥 Import cagettes production {annee} ({n} ligne(s)) par {current_user.email}")
+    ignorees = total - n
+    message = f"✅ {n} valeur(s) de référence chargée(s) sur {total} possible(s) dans le fichier"
+    if ignorees:
+        message += f" ({ignorees} ignorée(s) — Code VIF ou demi-journée non reconnu, ou case vide)"
+    message += " — les valeurs déjà saisies (Cagette 1-4) n'ont pas été modifiées."
+    flash(message, "success" if n else "warning")
+    write_log(f"📥 Import référence cagettes production {annee} ({n}/{total}) par {current_user.email}")
     return redirect(url_for("collecte.cagettes_production", annee=annee))
 
 
@@ -6260,6 +6985,42 @@ def production():
         date_fin=_date_fr_courte(campagne["date_fin"]) if campagne else None,
         liens_manquants=liens_manquants,
     )
+
+
+def _generer_production_arriere_plan(app, cmd, dossier, annee, email):
+    """Exécute la génération complète en dehors de la requête HTTP : la durée
+    réelle (itinéraires PDF compris, appels OSRM/tuiles carte par tournée)
+    dépasse désormais le délai de réponse gunicorn/nginx (504 Gateway Timeout
+    observé 2026-11-06) alors que le script lui-même reste borné à 5 minutes
+    (timeout=300, prlimit mémoire — consigne CLAUDE.md incident pandoc). La
+    page Production relit dernier_journal.log à chaque affichage, donc un
+    simple rechargement suffit à voir le résultat une fois terminé."""
+    with app.app_context():
+        try:
+            resultat = subprocess.run(
+                ["prlimit", "--as=1572864000", "--"] + cmd,
+                capture_output=True, text=True, timeout=300,
+            )
+            sortie = (resultat.stdout or "") + "\n" + (resultat.stderr or "")
+            echec = resultat.returncode != 0
+        except subprocess.TimeoutExpired as exc:
+            sortie = ((exc.stdout or b"").decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")) \
+                + "\n⏱️ Délai de 5 minutes dépassé, génération interrompue."
+            echec = True
+
+        with open(os.path.join(dossier, "dernier_journal.log"), "w", encoding="utf-8") as f:
+            f.write(sortie)
+
+        # Nom fixe pour la carte (générée sous un nom horodaté par le script)
+        # afin d'offrir un lien de téléchargement stable.
+        cartes = sorted(glob.glob(os.path.join(dossier, "carte_tournees_bai38_*.html")))
+        if cartes:
+            os.replace(cartes[-1], os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["carte"]["nom"]))
+
+        if echec:
+            write_log(f"❌ Génération documents production {annee} en échec par {email}\n{sortie[-4000:]}")
+        else:
+            write_log(f"📄 Génération documents production {annee} par {email}")
 
 
 @collecte_bp.route("/collecte/production/generer", methods=["POST"])
@@ -6393,6 +7154,22 @@ def production_generer():
         write_log(f"📄 Fiche camion {camion} ({annee}) générée par {current_user.email}")
         return send_file(chemin_fiche, mimetype="application/pdf", as_attachment=False)
 
+    # Génération en arrière-plan (cf. _generer_production_arriere_plan) : un
+    # second clic pendant qu'une génération tourne déjà lancerait un 2e
+    # subprocess concurrent (chacun plafonné à 1,5 Go via prlimit — risque de
+    # cumul mémoire sur ce serveur à 8 Go, cf. CLAUDE.md) — on le bloque en
+    # relisant l'état du journal plutôt qu'un verrou en mémoire (3 workers
+    # gunicorn = processus séparés, un verrou en mémoire ne serait pas partagé).
+    chemin_journal = os.path.join(dossier, "dernier_journal.log")
+    if os.path.exists(chemin_journal):
+        age = time.time() - os.path.getmtime(chemin_journal)
+        with open(chemin_journal, "r", encoding="utf-8") as f:
+            debut_journal = f.read(50)
+        if debut_journal.startswith("⏳ Génération lancée") and age < 300:
+            flash("⏳ Une génération est déjà en cours pour cette année — attendez qu'elle se termine "
+                  "(jusqu'à 5 minutes) avant d'en relancer une autre.", "warning")
+            return redirect(url_for("collecte.production", annee=annee))
+
     # Génération complète (tous camions) : régénère les 6 documents officiels.
     # La carte HTML est régénérée à chaque lancement sous un nom horodaté :
     # on supprime les anciennes avant de relancer (pas d'historique ici).
@@ -6414,9 +7191,16 @@ def production_generer():
         "--output-index", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["index"]["nom"].format(annee=annee)),
         "--output-vehicule-consignes", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["consignes"]["nom"]),
         "--output-numeros-camions", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["numeros_camions"]["nom"].format(annee=annee)),
+        "--output-itineraires", os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["itineraires"]["nom"].format(annee=annee)),
     ]
     if date_jeudi:
         cmd += ["--date-jeudi", date_jeudi]
+
+    # Itinéraires des tournées (carte) : le document le plus long à produire,
+    # pas nécessaire à chaque génération (ex. simple correctif sur un autre
+    # document) — case à cocher, décochée par défaut.
+    if request.form.get("avec_itineraires") != "1":
+        cmd += ["--skip-itineraires"]
 
     # Camions déjà imprimés : exclus seulement du document 1 (fiches de
     # collecte), pour une régénération partielle sans réimprimer les fiches
@@ -6431,40 +7215,18 @@ def production_generer():
     if codes_exclus:
         cmd += ["--camions-exclus-fiches", ",".join(codes_exclus)]
 
-    try:
-        resultat = subprocess.run(
-            ["prlimit", "--as=1572864000", "--"] + cmd,
-            capture_output=True, text=True, timeout=300,
-        )
-    except subprocess.TimeoutExpired as exc:
-        sortie = ((exc.stdout or b"").decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")) \
-            + "\n⏱️ Délai de 5 minutes dépassé, génération interrompue."
-        with open(os.path.join(dossier, "dernier_journal.log"), "w", encoding="utf-8") as f:
-            f.write(sortie)
-        flash("❌ Génération interrompue (délai de 5 minutes dépassé) — voir le journal ci-dessous", "danger")
-        write_log(f"⏱️ Génération documents production {annee} : timeout dépassé, interrompue par {current_user.email}")
-        return redirect(url_for("collecte.production", annee=annee))
-    sortie = (resultat.stdout or "") + "\n" + (resultat.stderr or "")
-
     with open(os.path.join(dossier, "dernier_journal.log"), "w", encoding="utf-8") as f:
-        f.write(sortie)
+        f.write(f"⏳ Génération lancée à {datetime.now().strftime('%H:%M:%S')} par {current_user.email} "
+                f"— rechargez cette page dans quelques minutes pour voir le résultat.")
 
-    # Nom fixe pour la carte (générée sous un nom horodaté par le script) afin
-    # d'offrir un lien de téléchargement stable.
-    cartes = sorted(glob.glob(os.path.join(dossier, "carte_tournees_bai38_*.html")))
-    if cartes:
-        os.replace(cartes[-1], os.path.join(dossier, PRODUCTION_FICHIERS_SORTIE["carte"]["nom"]))
-
-    if resultat.returncode != 0:
-        flash("❌ Échec de la génération — voir le journal ci-dessous", "danger")
-        write_log(
-            f"❌ Génération documents production {annee} en échec par {current_user.email}\n"
-            f"{sortie[-4000:]}"
-        )
-    else:
-        flash("✅ Documents générés avec succès", "success")
-        write_log(f"📄 Génération documents production {annee} par {current_user.email}")
-
+    threading.Thread(
+        target=_generer_production_arriere_plan,
+        args=(current_app._get_current_object(), cmd, dossier, annee, current_user.email),
+        daemon=True,
+    ).start()
+    flash("⏳ Génération lancée en arrière-plan (jusqu'à 5 minutes) — rechargez cette page dans quelques "
+          "instants pour récupérer les documents et le journal.", "info")
+    write_log(f"📄 Génération documents production {annee} lancée par {current_user.email}")
     return redirect(url_for("collecte.production", annee=annee))
 
 
@@ -8939,6 +9701,58 @@ def evolution_magasins_export():
     )
 
 
+@collecte_bp.route("/collecte/evolution-magasins/export-gow")
+@login_required
+@require_access("collecte", "lecture")
+def evolution_magasins_export_gow():
+    """Export du tonnage par magasin au format attendu par l'import
+    « tonnage collecté année -1 » de Go on the Web --- mêmes colonnes et
+    même ordre que l'ancien fichier maintenu à la main
+    « tonnage-magasins.xlsx » (État, Code VIF, Nom, C.P., Ville, puis une
+    colonne par année, valeurs arrondies au kg) : remplace le report manuel
+    Drive + RECHERCHEV par un export direct depuis les résultats déjà
+    importés dans l'application (collecte_magasins_resultats). Les codes
+    camion fictifs (« 999... », staffing entrepôt) sont exclus, ce ne sont
+    pas des magasins."""
+    magasins, annees = _lire_referentiel_evolution()
+    annees_asc = sorted(annees)
+
+    wb_export = Workbook()
+    ws = wb_export.active
+    ws.title = "Sheet1"
+    ws.append(["État", "Code VIF", "Nom", "C.P.", "Ville"] + annees_asc)
+
+    for m in magasins:
+        if m["code_vif"].startswith("999"):
+            continue
+        resultats = m["resultats"]
+        code_postal = m["code_postal"]
+        if code_postal and code_postal.endswith(".0"):
+            code_postal = code_postal[:-2]  # nettoyage cosmétique : certains codes postaux ont été stockés en flottant ("38000.0") lors de la reprise historique
+        ligne = [m["etat"], m["code_vif"], m["nom"], code_postal, m["ville"]]
+        for a in annees_asc:
+            valeur = resultats.get(a)
+            ligne.append(round(valeur) if valeur is not None else None)
+        ws.append(ligne)
+
+    for colonne in ws.columns:
+        lettre = colonne[0].column_letter
+        ws.column_dimensions[lettre].width = 14 if lettre != "C" else 32
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+
+    tampon = io.BytesIO()
+    wb_export.save(tampon)
+    tampon.seek(0)
+    return send_file(
+        tampon,
+        as_attachment=True,
+        download_name="tonnage-magasins.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 @collecte_bp.route("/collecte/<int:annee>/evolution-magasins/detecter-nouveaux")
 @login_required
 @require_access("collecte", "lecture")
@@ -9037,6 +9851,83 @@ def evolution_magasins_importer_vif(annee):
         )
     flash(message, "success" if not inconnus else "warning")
     write_log(f"📈 Évolution magasins : import extrait VIF {annee}, {nb_maj} magasin(s) par {current_user.email}")
+    return redirect(url_for("collecte.evolution_magasins", annee=annee))
+
+
+def _calculer_tonnage_basilic(annee):
+    """Calcule le tonnage par magasin directement depuis les données saisies
+    dans Basilic (cagettes pesées pour la collecte directe + poids saisis
+    pour la collecte gardée), sans passer par un aller-retour VIF — même
+    calcul et même séparation par article que les CSV envoyés à VIF
+    (exporter_cagettes / exporter_poids_magasins_gardee), sommés par Code
+    VIF comme le ferait VIF lui-même à l'import. Basilic est la source
+    d'origine de ces chiffres (VIF n'en est qu'une réexpédition), d'où ce
+    calcul direct plutôt qu'un extrait VIF réimporté."""
+    resultats = {}
+    with get_db_connection() as conn:
+        campagne = conn.execute(
+            "SELECT poids_cagette_pese FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+    poids_cagette = (campagne["poids_cagette_pese"] if campagne else None) or 0
+    if poids_cagette:
+        for ligne in _charger_lignes_cagettes(annee):
+            total = ligne.get("total") or 0
+            if total:
+                code_vif = ligne["code_vif"]
+                resultats[code_vif] = resultats.get(code_vif, 0.0) + total * poids_cagette
+
+    with get_db_connection() as conn:
+        for r in conn.execute(
+            "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
+        ).fetchall():
+            if r["poids_kg"]:
+                resultats[r["code_vif"]] = resultats.get(r["code_vif"], 0.0) + r["poids_kg"]
+
+    return resultats
+
+
+@collecte_bp.route("/collecte/<int:annee>/evolution-magasins/calculer-depuis-basilic", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def evolution_magasins_calculer_basilic(annee):
+    if annee < PREMIERE_ANNEE_IMPORT_VIF:
+        flash(
+            f"⛔ Les résultats {annee} proviennent du fichier historique (repris tels quels) — "
+            f"le calcul depuis Basilic n'est disponible qu'à partir de {PREMIERE_ANNEE_IMPORT_VIF}.",
+            "danger",
+        )
+        return redirect(url_for("collecte.evolution_magasins", annee=annee))
+
+    resultats = _calculer_tonnage_basilic(annee)
+    if not resultats:
+        flash(f"⛔ Aucune cagette pesée ni poids gardé trouvé pour {annee}.", "danger")
+        return redirect(url_for("collecte.evolution_magasins", annee=annee))
+
+    with get_db_connection() as conn:
+        _ensure_tables_evolution_magasins(conn)
+        codes_connus = {r[0] for r in conn.execute("SELECT code_vif FROM collecte_magasins_referentiel").fetchall()}
+        maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        nb_maj, inconnus = 0, []
+        for code_vif, kg in resultats.items():
+            if code_vif not in codes_connus:
+                inconnus.append(code_vif)
+                continue
+            conn.execute("""
+                INSERT INTO collecte_magasins_resultats (code_vif, annee, resultat_kg, importe_le, importe_par)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(code_vif, annee) DO UPDATE SET
+                    resultat_kg = excluded.resultat_kg, importe_le = excluded.importe_le, importe_par = excluded.importe_par
+            """, (code_vif, annee, round(kg, 2), maintenant, current_user.email))
+            nb_maj += 1
+        conn.commit()
+
+    message = f"✅ Résultats {annee} calculés pour {nb_maj} magasin(s) depuis Basilic (cagettes + gardée)."
+    if inconnus:
+        message += f" ⚠️ {len(inconnus)} Code VIF absent(s) du référentiel, ignorés : {', '.join(inconnus[:10])}" + (
+            "…" if len(inconnus) > 10 else ""
+        )
+    flash(message, "success" if not inconnus else "warning")
+    write_log(f"📈 Évolution magasins : calcul depuis Basilic {annee}, {nb_maj} magasin(s) par {current_user.email}")
     return redirect(url_for("collecte.evolution_magasins", annee=annee))
 
 

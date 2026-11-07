@@ -27,8 +27,13 @@
         <ol class="mb-0">
             <li>« 🔍 Détecter les nouveaux magasins » — compare le fichier magasins de l'année (déjà
                 importé) au référentiel, et propose d'ajouter en un clic ceux qui manquent.</li>
-            <li>Une fois la collecte terminée et l'extrait VIF de l'année obtenu, « 📥 Importer un
-                extrait VIF » pour ajouter la colonne de résultats de l'année.</li>
+            <li>Une fois la collecte terminée (cagettes pesées et poids gardée saisis), « 🧮 Calculer
+                depuis Basilic » pour ajouter la colonne de résultats de l'année — Basilic est la
+                source d'origine de ces chiffres, inutile de passer par un extrait VIF.</li>
+            <li>« 📤 Export tonnage pour GoW » pour obtenir directement le fichier
+                <code>tonnage-magasins.xlsx</code> à déposer sur le Drive et importer dans
+                Go on the Web — remplace le report manuel depuis l'ancien fichier Excel
+                « collectes magasins evolution.xlsx ».</li>
         </ol>
     </div>
 
@@ -44,11 +49,14 @@
         <button type="button" id="btn-detecter" class="btn btn-outline-primary btn-sm">
             🔍 Détecter les nouveaux magasins
         </button>
-        <button type="button" id="btn-importer-vif" class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalImportVif">
-            📥 Importer un extrait VIF
+        <button type="button" id="btn-calculer-basilic" class="btn btn-outline-success btn-sm">
+            🧮 Calculer depuis Basilic
         </button>
         <a href="{{ url_for('collecte.evolution_magasins_export') }}" class="btn btn-outline-secondary btn-sm">
             📤 Télécharger (Excel)
+        </a>
+        <a href="{{ url_for('collecte.evolution_magasins_export_gow') }}" class="btn btn-outline-secondary btn-sm">
+            📤 Export tonnage pour GoW
         </a>
         <input type="text" id="filtre-recherche" class="form-control form-control-sm ms-auto" style="max-width:280px;"
                placeholder="🔎 Rechercher (nom, ville…)">
@@ -70,34 +78,7 @@
     <div id="tabulator-table"></div>
 </div>
 
-<!-- Modale import extrait VIF -->
-<div class="modal fade" id="modalImportVif" tabindex="-1">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <form method="post" id="formImportVif" enctype="multipart/form-data">
-        <div class="modal-header">
-          <h5 class="modal-title">📥 Importer un extrait VIF</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <p class="text-muted small">
-            Dépose le rapport texte exporté depuis VIF (quantités par magasin, articles 5010000 et
-            5010010) — remplit ou remplace la colonne de résultats de l'année sélectionnée ci-dessus
-            pour chaque magasin déjà présent dans le référentiel. Les Code VIF absents du référentiel
-            sont ignorés et listés après import — à ajouter d'abord via « Détecter les nouveaux
-            magasins » si besoin.
-          </p>
-          <input type="file" name="extrait_vif" class="form-control" accept=".txt" required>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
-          <button type="submit" class="btn btn-success">Importer</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
+<form method="post" id="formCalculerBasilic" class="d-none"></form>
 
 <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
 <script>
@@ -106,11 +87,21 @@ const annees = {{ annees|tojson }};
 const csrfToken = "{{ csrf_token() }}";
 const urlDetecter = "{{ url_for('collecte.evolution_magasins_detecter', annee=0) }}".replace('/0/', '/__ANNEE__/');
 const urlAjouter = "{{ url_for('collecte.evolution_magasins_ajouter') }}";
-const urlImporterVif = "{{ url_for('collecte.evolution_magasins_importer_vif', annee=0) }}".replace('/0/', '/__ANNEE__/');
+const urlCalculerBasilic = "{{ url_for('collecte.evolution_magasins_calculer_basilic', annee=0) }}".replace('/0/', '/__ANNEE__/');
 
-document.getElementById("formImportVif").action = urlImporterVif.replace('__ANNEE__', document.getElementById('select-annee').value);
-document.getElementById("select-annee").addEventListener("change", function () {
-    document.getElementById("formImportVif").action = urlImporterVif.replace('__ANNEE__', this.value);
+document.getElementById("btn-calculer-basilic").addEventListener("click", function () {
+    const annee = document.getElementById("select-annee").value;
+    if (!confirm("Calculer (ou recalculer) les résultats " + annee + " depuis les cagettes pesées et les poids gardée saisis dans Basilic ?\n\nRemplace la colonne " + annee + " existante pour chaque magasin concerné.")) {
+        return;
+    }
+    const form = document.getElementById("formCalculerBasilic");
+    form.action = urlCalculerBasilic.replace('__ANNEE__', annee);
+    const champCsrf = document.createElement("input");
+    champCsrf.type = "hidden";
+    champCsrf.name = "csrf_token";
+    champCsrf.value = csrfToken;
+    form.appendChild(champCsrf);
+    form.submit();
 });
 
 const messageDiv = document.getElementById("message-evolution");
@@ -143,13 +134,13 @@ const colonnes = [
     { title: "Ville", field: "ville", width: 130 },
     { title: "Stockage", field: "stockage", width: 130 },
     { title: "Évolution /an-1 (kg)", field: "evolution", width: 140, hozAlign: "right",
-      formatter: function (cell) { const v = cell.getValue(); return v == null ? "" : v.toFixed(1); },
-      topCalc: "sum", topCalcParams: { precision: 1 } },
+      formatter: function (cell) { const v = cell.getValue(); return v == null ? "" : Math.round(v); },
+      topCalc: "sum", topCalcParams: { precision: 0 } },
     { title: "% évolution", field: "pct_evolution", width: 110, hozAlign: "right",
-      formatter: function (cell) { const v = cell.getValue(); return v == null ? "" : (v * 100).toFixed(1) + " %"; },
+      formatter: function (cell) { const v = cell.getValue(); return v == null ? "" : Math.round(v * 100) + " %"; },
       topCalcFormatter: function (cell) {
           const v = cell.getValue();
-          return v == null ? "" : (v * 100).toFixed(1) + " %";
+          return v == null ? "" : Math.round(v * 100) + " %";
       },
       // Pourcentage global = somme des évolutions / somme des résultats de l'année précédente
       // (jamais la moyenne des pourcentages ligne à ligne, qui n'aurait pas de sens ici).
@@ -166,8 +157,8 @@ const colonnes = [
 annees.forEach(function (a) {
     colonnes.push({
         title: String(a), field: "annee_" + a, width: 100, hozAlign: "right",
-        formatter: function (cell) { const v = cell.getValue(); return v == null ? "—" : v.toFixed(1); },
-        topCalc: "sum", topCalcParams: { precision: 1 },
+        formatter: function (cell) { const v = cell.getValue(); return v == null ? "—" : Math.round(v); },
+        topCalc: "sum", topCalcParams: { precision: 0 },
     });
 });
 

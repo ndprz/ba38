@@ -189,10 +189,26 @@
 <script>
 const cases = document.querySelectorAll(".case-magasin");
 document.getElementById("btn-tout-cocher").addEventListener("click", function () {
+    if (!confirm("Cocher tous les magasins (" + cases.length + ") ?")) {
+        return;
+    }
     cases.forEach(function (c) { c.checked = true; });
 });
 document.getElementById("btn-tout-decocher").addEventListener("click", function () {
+    if (!confirm("Décocher tous les magasins (" + cases.length + ") : aucun ne sera marqué ni inclus dans cet envoi. Confirmer ?")) {
+        return;
+    }
     cases.forEach(function (c) { c.checked = false; });
+});
+
+cases.forEach(function (c) {
+    c.addEventListener("change", function () {
+        if (!c.checked) {
+            if (!confirm("Décocher ce magasin : il ne sera pas marqué ni inclus dans cet envoi. Confirmer ?")) {
+                c.checked = true;
+            }
+        }
+    });
 });
 
 document.getElementById("btn-apercu-mail").addEventListener("click", function () {

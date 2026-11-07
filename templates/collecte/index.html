@@ -216,7 +216,7 @@
     <div id="sectionGestionMagasins" class="collapse mt-3">
 
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
                     <h5 class="card-title mb-1">✍️ Demande d'autorisation de collecter</h5>
                     <p class="card-text small text-muted mb-0">
@@ -232,7 +232,7 @@
         </div>
 
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
                     <h5 class="card-title mb-1">📭 Pas de collecte — faute de bénévoles</h5>
                     <p class="card-text small text-muted mb-0">
@@ -248,7 +248,7 @@
         </div>
 
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
                     <h5 class="card-title mb-1">🚫 Pas de collecte le vendredi</h5>
                     <p class="card-text small text-muted mb-0">
@@ -264,7 +264,7 @@
         </div>
 
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
                     <h5 class="card-title mb-1">🗺️ Localisation magasins et associations</h5>
                     <p class="card-text small text-muted mb-0">
@@ -279,7 +279,7 @@
         </div>
 
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
                     <h5 class="card-title mb-1">📇 Référentiel magasins collecte</h5>
                     <p class="card-text small text-muted mb-0">
@@ -291,6 +291,19 @@
                     {% endif %}
                 </div>
                 {{ action_button("📇 Voir le référentiel", href=url_for('collecte.referentiel_collecte', annee=annee), color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
+                <div>
+                    <h5 class="card-title mb-1">📈 Évolution magasins (toutes années)</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Référentiel cumulatif des magasins et résultats en kg par année — détection des
+                        nouveaux magasins et import d'un extrait VIF, sans passer par Excel.
+                    </p>
+                </div>
+                {{ action_button("📈 Ouvrir", href=url_for('collecte.evolution_magasins', annee=annee), color="primary") }}
             </div>
         </div>
 
@@ -307,7 +320,7 @@
         </button>
         <div id="sousSectionSimulation" class="collapse mb-3">
         <div class="card mb-3 {% if not prets %}bg-light{% endif %}">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div><h5 class="card-title mb-1">🚀 Génération des tournées</h5><p class="card-text small text-muted mb-0">Créer et consulter les versions simulées des tournées.</p></div>
                 <div class="d-flex gap-2">
                     {% if nb_generations > 1 %}{{ action_button("📋 Historique", href=url_for('collecte.generations', annee=annee), color="outline-secondary") }}{% endif %}
@@ -317,7 +330,7 @@
             </div>
         </div>
         <div class="card mb-3 {% if not prets %}bg-light{% endif %}">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div><h5 class="card-title mb-1">🔬 Analyse comparative</h5><p class="card-text small text-muted mb-0">Comparer les 8 scénarios de camions et de magasins par tournée.</p></div>
                 <div class="d-flex gap-2">
                     {% if derniere_analyse %}{{ action_button("📊 Voir l'analyse", href=url_for('collecte.analyse', analyse_id=derniere_analyse.id), color="outline-primary") }}{% endif %}
@@ -326,7 +339,7 @@
             </div>
         </div>
         <div class="card mb-3 {% if not prets %}bg-light{% endif %}">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div><h5 class="card-title mb-1">🚚 Simulation avec capacité camions</h5><p class="card-text small text-muted mb-0">Génération tenant compte du type de camion (capacité, à titre indicatif) et d'une correspondance manuelle des camions d'une année sur l'autre.</p></div>
                 <div class="d-flex gap-2">
                     {{ action_button("🚚 Ouvrir", href=url_for('collecte.simulation_capacite_form', annee=annee), color="success" if prets else "outline-secondary", disabled=not prets) }}
@@ -334,7 +347,7 @@
             </div>
         </div>
         <div class="card mb-3 {% if not prets %}bg-light{% endif %}">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div><h5 class="card-title mb-1">🚐 Simulation depuis liste-vehicule</h5><p class="card-text small text-muted mb-0">Repart de la première version des affectations déjà saisies cette année (liste-vehicule.xlsx) et complète les demi-journées manquantes, plutôt que de repartir du PDF de l'an dernier.</p></div>
                 <div class="d-flex gap-2">
                     {{ action_button("🚐 Lancer", href=url_for('collecte.simulation_vehicule_form', annee=annee), color="success" if prets else "outline-secondary", disabled=not prets) }}
@@ -342,7 +355,7 @@
             </div>
         </div>
         <div class="card mb-3">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div><h5 class="card-title mb-1">📄 Règles fonctionnelles d'optimisation</h5><p class="card-text small text-muted mb-0">Document de référence détaillant les règles appliquées par l'algorithme de simulation des tournées (secteurs, camions figés/exclusifs, créneaux, étapes...).</p></div>
                 <div class="d-flex gap-2">
                     {{ action_button("📥 Télécharger (Word)", href=url_for('collecte.telecharger_documentation_collecte', cle='regles_optimisation'), color="outline-secondary") }}
@@ -353,7 +366,7 @@
         <h5 class="mt-4 mb-3">Production</h5>
         <div class="ms-3 ps-3 border-start border-3 border-warning">
             <div class="card mb-3">
-                <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="card-body d-flex justify-content-between align-items-center gap-2">
                     <div><h5 class="card-title mb-1">🚛 Génération des documents définitifs</h5><p class="card-text small text-muted mb-0">Générer les documents définitifs depuis le planning go-on-web.</p></div>
                     <div class="d-flex gap-2">
                         {{ action_button("🧺 Gérer les cagettes", href=url_for('collecte.cagettes_production', annee=annee), color="outline-secondary") }}
@@ -362,13 +375,13 @@
                 </div>
             </div>
             <div class="card mb-3">
-                <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="card-body d-flex justify-content-between align-items-center gap-2">
                     <div><h5 class="card-title mb-1">📧 Envoi mail tournées aux chauffeurs/équipiers de la nouvelle collecte</h5><p class="card-text small text-muted mb-0">Paramétrer puis envoyer les mails de tournée aux chauffeurs et équipiers.</p></div>
                     {{ action_button("📧 Envoi mail tournées aux chauffeurs/équipiers", href=url_for('collecte.chauffeurs_equipiers', annee=annee), color="primary") }}
                 </div>
             </div>
             <div class="card mb-3">
-                <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="card-body d-flex justify-content-between align-items-center gap-2">
                     <div>
                         <h5 class="card-title mb-1">📧 Envoi mail tournées aux chauffeurs/équipiers de l'année dernière</h5>
                         <p class="card-text small text-muted mb-0">
@@ -388,7 +401,7 @@
     {{ entete_section("sectionAssociationsGardant", "Associations gardant", "modalAideSection4", "modalManuelSection4") }}
     <div id="sectionAssociationsGardant" class="collapse mt-3">
         <div class="card mb-3 {% if not assoc_prets %}bg-light{% endif %}">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
                     <h5 class="card-title mb-1">🏠 Envoi fichiers réponse aux associations</h5>
                     <p class="card-text small text-muted mb-0">Créer la liste, la contrôler, puis préparer et envoyer les messages.</p>
@@ -409,7 +422,7 @@
     <div id="sectionResultatCollecte" class="collapse mt-3">
         <h5 class="mb-3">Résultat collecte bai</h5>
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
                     <h5 class="card-title mb-1">🧺 Saisie des cagettes par magasin</h5>
                     <p class="card-text small text-muted mb-0">
@@ -420,7 +433,7 @@
             </div>
         </div>
         <div class="card mb-3">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
                     <h5 class="card-title mb-1">⚖️ Pesée palox (poids trié à l'entrepôt)</h5>
                     <p class="card-text small text-muted mb-0">
@@ -435,7 +448,7 @@
 
         <h5 class="mb-3 mt-4">Résultat collecte gardée</h5>
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
                     <h5 class="card-title mb-1">⚖️ Saisie des poids par magasin gardé</h5>
                     <p class="card-text small text-muted mb-0">
@@ -446,7 +459,7 @@
             </div>
         </div>
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
                     <h5 class="card-title mb-1">📦 Saisie des quantités par produit</h5>
                     <p class="card-text small text-muted mb-0">
@@ -479,28 +492,14 @@
                 </div>
             </div>
         </div>
-
-        <h5 class="mb-3 mt-4">Suivi pluriannuel</h5>
-        <div class="card mb-3">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <div>
-                    <h5 class="card-title mb-1">📈 Évolution magasins (toutes années)</h5>
-                    <p class="card-text small text-muted mb-0">
-                        Référentiel cumulatif des magasins et résultats en kg par année — détection des
-                        nouveaux magasins et import d'un extrait VIF, sans passer par Excel.
-                    </p>
-                </div>
-                {{ action_button("📈 Ouvrir", href=url_for('collecte.evolution_magasins', annee=annee), color="primary") }}
-            </div>
-        </div>
     </div>
 
     {{ entete_section("sectionParticipants", "Participants", "modalAideSection6", "modalManuelSection6") }}
     <div id="sectionParticipants" class="collapse mt-3">
         <div class="card mb-3">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
-                    <h5 class="card-title mb-1">📧 Mail aux trieurs (année précédente)</h5>
+                    <h5 class="card-title mb-1">📧 Mail demande aux trieurs de l'année précédente, leur disponibilité</h5>
                     <p class="card-text small text-muted mb-0">
                         Recontacter les personnes ayant trié à l'entrepôt lors de la collecte
                         {{ annee - 1 }}, avant que le planning {{ annee }} n'existe.
@@ -510,7 +509,7 @@
             </div>
         </div>
         <div class="card mb-3">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
                     <h5 class="card-title mb-1">📧 Mail prise colis</h5>
                     <p class="card-text small text-muted mb-0">
@@ -522,7 +521,55 @@
             </div>
         </div>
         <div class="card mb-3">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
+                <div>
+                    <h5 class="card-title mb-1">📧 Mail invitation bilan collecte</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Inviter au bilan de la collecte {{ annee }} tous les participants de l'année
+                        (liste des participants go-on-web, magasins et camions confondus).
+                    </p>
+                </div>
+                {{ action_button("📧 Ouvrir", href=url_for('collecte.mail_bilan', annee=annee), color="primary") }}
+            </div>
+        </div>
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
+                <div>
+                    <h5 class="card-title mb-1">📧 Mail demande bilan bénévoles magasins</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Demander un bilan/ressenti aux bénévoles ayant participé en magasin à la
+                        collecte {{ annee }} (hors chauffeurs/équipiers de camion).
+                    </p>
+                </div>
+                {{ action_button("📧 Ouvrir", href=url_for('collecte.mail_ressenti_magasins', annee=annee), color="primary") }}
+            </div>
+        </div>
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
+                <div>
+                    <h5 class="card-title mb-1">📧 Mail demande bilan chauffeurs/équipiers</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Demander un bilan/ressenti aux chauffeurs/équipiers de camion {{ annee }}
+                        (liste-vehicule.xlsx).
+                    </p>
+                </div>
+                {{ action_button("📧 Ouvrir", href=url_for('collecte.mail_ressenti_chauffeurs', annee=annee), color="primary") }}
+            </div>
+        </div>
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
+                <div>
+                    <h5 class="card-title mb-1">📧 Mail demande bilan entrepôt</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Demander un bilan/ressenti aux bénévoles affectés à l'entrepôt {{ annee }}
+                        (codes V090/V091/V092 dans liste-vehicule.xlsx).
+                    </p>
+                </div>
+                {{ action_button("📧 Ouvrir", href=url_for('collecte.mail_ressenti_entrepot', annee=annee), color="primary") }}
+            </div>
+        </div>
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
                     <h5 class="card-title mb-1">📋 Liste d'appel chauffeurs/équipiers</h5>
                     <p class="card-text small text-muted mb-0">
@@ -536,7 +583,7 @@
             </div>
         </div>
         <div class="card mb-3">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
                     <h5 class="card-title mb-1">🔄 Comparaison BAI Basilic / go-on-web</h5>
                     <p class="card-text small text-muted mb-0">
@@ -548,7 +595,7 @@
             </div>
         </div>
         <div class="card mb-3">
-            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
                     <h5 class="card-title mb-1">🔄 Comparaison chauffeurs/équipiers Basilic</h5>
                     <p class="card-text small text-muted mb-0">

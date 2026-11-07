@@ -9,7 +9,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4" style="max-width:1400px;">
+<div class="container-fluid mt-4">
 
     <h2>📇 Référentiel magasins collecte {{ annee }}</h2>
     <p class="text-muted small">
@@ -81,6 +81,7 @@ const table = new Tabulator("#tabulator-table", {
                 return v ? v : "<span class='text-warning'>⚠️ absent</span>";
             },
         },
+        { title: "Gardée par", field: "gardee_par", width: 160, headerFilter: "input" },
         { title: "Stockage", field: "stockage", width: 130 },
     ],
 });
