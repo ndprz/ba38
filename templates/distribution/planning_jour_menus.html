@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Associations/menus{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
+<style>
+  .badge-menu { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: .75rem; font-weight: 600; }
+  .badge-sec   { background: #E5B63C; color: #212529; }
+  .badge-frais { background: #388585; color: #fff; }
+  #menus-table .tabulator-cell { font-size: .85rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-2 px-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="mb-0 fs-4">🧾 Associations/menus (planification)</h2>
+    {% call action_buttons() %}
+      {% if peut_ecrire %}<button class="btn btn-success" onclick="ouvrirModale(null)">➕ Ajouter une ligne</button>{% endif %}
+      {{ action_button("🗓️ Retour au planning", href=url_for('distribution.planning_jour_generation'), color="outline-secondary") }}
+      {{ action_button("↩️ Retour à la distribution", href=url_for('distribution.distribution_main'), color="outline-dark") }}
+    {% endcall %}
+  </div>
+
+  <p class="small text-muted mb-2">
+    Une ligne = un couple association / <strong>un</strong> menu avec sa propre planification (jours, heure, emplacement, fréquence).
+    Une association a autant de lignes que de menus : ex. menu sec le lundi, menu petit déjeuner le jeudi.
+    Plusieurs menus le même jour, à la même heure et au même emplacement forment un seul passage au planning. Pour exclure ponctuellement une association du planning, cliquer sur son ✅ / ⛔ (colonne Planning) : toutes ses lignes sont exclues, sans passer par la fiche. 💤 = ligne désactivée (✏️).
+    Les associations dont la validité est « non » ne sont pas affichées.
+  </p>
+  <div id="menus-table"></div>
+</div>
+
+<!-- ================= MODALE ================= -->
+<div class="modal fade" id="modaleLigne" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg"><div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title" id="modaleTitre">Ligne de menu</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <div id="modaleErreur" class="alert alert-danger py-2 d-none"></div>
+      <input type="hidden" id="f_id">
+      <div class="row g-2">
+        <div class="col-12">
+          <label class="form-label mb-0">Association</label>
+          <input list="liste_assos" id="f_asso" class="form-control form-control-sm" placeholder="Code VIF ou nom…" autocomplete="off">
+          <datalist id="liste_assos">
+            {% for a in associations %}<option value="{{ a.code }} — {{ a.nom }}">{% endfor %}
+          </datalist>
+          <div class="form-check mt-1">
+            <input class="form-check-input" type="checkbox" id="f_planif" checked>
+            <label class="form-check-label" for="f_planif">Association prise en compte dans le planning (champ « planification » de la fiche)</label>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label mb-0">Type de menu</label>
+          <select id="f_type" class="form-select form-select-sm">
+            <option value="sec">Menu sec</option>
+            <option value="frais">Menu frais</option>
+          </select>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label mb-0">Menu (code)</label>
+          <input list="liste_menus" id="f_menu" class="form-control form-control-sm" autocomplete="off">
+          <datalist id="liste_menus"></datalist>
+        </div>
+        <div class="col-12">
+          <label class="form-label mb-0 d-block">Jours de passage</label>
+          {% for j in jours %}
+          <div class="form-check form-check-inline">
+            <input class="form-check-input f_jour" type="checkbox" id="j_{{ j }}" value="{{ j }}">
+            <label class="form-check-label" for="j_{{ j }}">{{ j }}</label>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label mb-0">Heure</label>
+          <input list="liste_heures" id="f_heure" class="form-control form-control-sm" placeholder="13:30, Matin…" autocomplete="off">
+          <datalist id="liste_heures"><option value="Matin"><option value="Après-midi"></datalist>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label mb-0">Emplacement</label>
+          <select id="f_empl" class="form-select form-select-sm">
+            <option value="">—</option>
+            {% for p in parkings %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label mb-0">Bénéficiaires</label>
+          <input type="number" min="0" id="f_benef" class="form-control form-control-sm">
+        </div>
+        <div class="col-12">
+          <label class="form-label mb-0">Fréquence</label>
+          <input id="f_freq" class="form-control form-control-sm" placeholder="vide = chaque semaine" autocomplete="off">
+          <div class="form-text">{{ exemples_frequence }}</div>
+        </div>
+        <div class="col-12">
+          <label class="form-label mb-0">Besoins particuliers</label>
+          <textarea id="f_besoins" rows="2" class="form-control form-control-sm"></textarea>
+        </div>
+        <div class="col-12">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="f_actif" checked>
+            <label class="form-check-label" for="f_actif">Ligne active</label>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-danger me-auto d-none" id="btnSupprimer">🗑️ Supprimer</button>
+      <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+      <button type="button" class="btn btn-success" id="btnEnregistrer">Enregistrer</button>
+    </div>
+  </div></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+  var LIGNES = {{ lignes|tojson }};
+  var ASSOS = {{ associations|tojson }};
+  var CODES = {sec: {{ codes_sec|tojson }}, frais: {{ codes_frais|tojson }}};
+  var PEUT_ECRIRE = {{ 'true' if peut_ecrire else 'false' }};
+  var CSRF = "{{ csrf_token() }}";
+  var URL_SAVE = "{{ url_for('distribution.planning_jour_menu_save') }}";
+  var URL_PLANIF = "{{ url_for('distribution.planning_jour_association_planification', association_id=999999999) }}";
+  var URL_DELETE = "{{ url_for('distribution.planning_jour_menu_delete', ligne_id=999999999) }}";
+
+  function esc(v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  var vide = function (c) { var v = c.getValue(); return v ? esc(v) : '—'; };
+  function badge(cl) { return function (c) { var v = c.getValue(); return v ? '<span class="badge-menu ' + cl + '">' + esc(v) + '</span>' : '—'; }; }
+  var triTexte = function (a, b, ar, br, col, dir) {
+    if (!a && b) return dir === 'asc' ? 1 : -1;
+    if (a && !b) return dir === 'asc' ? -1 : 1;
+    return String(a || '').localeCompare(String(b || ''), 'fr', {numeric: true, sensitivity: 'base'});
+  };
+  var filtre = {headerFilter: 'input', headerFilterPlaceholder: 'filtrer…'};
+  function ext(o) { for (var k in filtre) o[k] = filtre[k]; return o; }
+
+  var table = new Tabulator('#menus-table', {
+    data: LIGNES,
+    layout: 'fitData',
+    height: 'calc(100vh - 215px)',
+    placeholder: 'Aucune ligne',
+    columnDefaults: {tooltip: true, vertAlign: 'middle'},
+    columns: [
+      ext({title: 'Code VIF', field: 'code_vif', width: 115, sorter: triTexte, formatter: vide}),
+      ext({title: 'Association', field: 'nom', width: 260, sorter: triTexte, formatter: function (c) { return '<strong>' + esc(c.getValue()) + '</strong>'; }}),
+      ext({title: 'Menu', field: 'menu', width: 130, sorter: triTexte,
+        formatter: function (c) { var d = c.getData(); return d.menu ? '<span class="badge-menu ' + (d.type_menu === 'frais' ? 'badge-frais' : 'badge-sec') + '">' + esc(d.menu) + '</span>' : '—'; }}),
+      {title: 'Type', field: 'type_menu', width: 70, formatter: function (c) { var v = c.getValue(); return v === 'sec' ? 'Sec' : (v === 'frais' ? 'Frais' : '—'); },
+        headerFilter: 'list', headerFilterParams: {values: {'': 'Tous', sec: 'Sec', frais: 'Frais'}}, headerFilterFunc: function (h, v) { return !h || h === v; }},
+      ext({title: 'Jours', field: 'jours', width: 160, formatter: vide}),
+      {title: 'Heure', field: 'heure', width: 80, formatter: vide},
+      {title: 'Empl.', field: 'emplacement', width: 100, formatter: vide},
+      {title: 'Fréquence', field: 'frequence', width: 140, formatter: vide},
+      {title: 'Bénéf.', field: 'nbre_beneficiaires', width: 75, hozAlign: 'right', formatter: vide},
+      {title: 'Besoins particuliers', field: 'besoins_particuliers', width: 280, formatter: vide},
+      {title: 'Planning', field: 'planification', width: 90, hozAlign: 'center', headerSort: false, tooltip: false,
+        headerTooltip: "Cliquer sur une case pour exclure / remettre l'association au planning",
+        formatter: function (c) {
+          var d = c.getData();
+          if (!d.actif) return '<span title="Ligne désactivée (voir ✏️)">💤</span>';
+          return '<span style="cursor:' + (PEUT_ECRIRE ? 'pointer' : 'default') + '" title="' +
+            (d.planification !== 'non' ? "Au planning — cliquer pour exclure l'association" : "Exclue du planning — cliquer pour la remettre") + '">' +
+            (d.planification !== 'non' ? '✅' : '⛔') + '</span>';
+        },
+        cellClick: function (e, c) {
+          if (!PEUT_ECRIRE || !c.getData().actif) return;
+          var d = c.getData(), inclure = d.planification === 'non';
+          post(URL_PLANIF.replace('999999999', d.association_id), {planification: inclure}).then(function (j) {
+            if (!j.ok) { alert(j.erreur || 'Erreur'); return; }
+            // toutes les lignes de cette association
+            table.getRows().forEach(function (r) {
+              if (r.getData().association_id === d.association_id) { r.update({planification: j.planification}); r.reformat(); }
+            });
+          });
+        }},
+      {title: '', width: 50, hozAlign: 'center', headerSort: false,
+        formatter: function () { return PEUT_ECRIRE ? '<button class="btn btn-outline-secondary btn-sm py-0">✏️</button>' : ''; },
+        cellClick: function (e, c) { if (PEUT_ECRIRE) ouvrirModale(c.getData()); }}
+    ],
+    rowFormatter: function (row) {
+      var d = row.getData();
+      row.getElement().style.opacity = (!d.actif || d.planification === 'non') ? '.5' : '';
+    }
+  });
+
+  // ---------- modale ----------
+  var modale, ligneCourante = null;
+  document.addEventListener('DOMContentLoaded', function () { modale = new bootstrap.Modal(document.getElementById('modaleLigne')); });
+  function libelleAsso(code, nom) { return (code || '') + ' — ' + (nom || ''); }
+  function idAsso(texte) {
+    var a = ASSOS.filter(function (x) { return libelleAsso(x.code, x.nom) === texte; })[0];
+    return a ? a.id : null;
+  }
+  function ouvrirModale(d) {
+    ligneCourante = d;
+    var $ = function (id) { return document.getElementById(id); };
+    $('modaleErreur').classList.add('d-none');
+    $('modaleTitre').textContent = d ? 'Modifier la ligne de menu' : 'Nouvelle ligne de menu';
+    $('f_id').value = d ? d.id : '';
+    $('f_asso').value = d ? libelleAsso(d.code_vif, d.nom) : '';
+    $('f_asso').disabled = !!d;
+    $('f_planif').checked = d ? d.planification !== 'non' : true;
+    $('f_type').value = d && d.type_menu ? d.type_menu : 'sec';
+    majCodes();
+    $('f_menu').value = d ? d.menu || '' : '';
+    var jours = d && d.jours ? d.jours.split(',').map(function (s) { return s.trim(); }) : [];
+    document.querySelectorAll('.f_jour').forEach(function (cb) { cb.checked = jours.indexOf(cb.value) >= 0; });
+    $('f_heure').value = d ? d.heure || '' : '';
+    $('f_empl').value = d ? d.emplacement || '' : '';
+    $('f_benef').value = d && d.nbre_beneficiaires != null ? d.nbre_beneficiaires : '';
+    $('f_freq').value = d ? d.frequence || '' : '';
+    $('f_besoins').value = d ? d.besoins_particuliers || '' : '';
+    $('f_actif').checked = d ? !!d.actif : true;
+    $('btnSupprimer').classList.toggle('d-none', !d);
+    modale.show();
+  }
+  function majCodes() {
+    document.getElementById('liste_menus').innerHTML = (CODES[document.getElementById('f_type').value] || [])
+      .map(function (c) { return '<option value="' + esc(c) + '">'; }).join('');
+  }
+  document.addEventListener('DOMContentLoaded', function () { document.getElementById('f_type').addEventListener('change', majCodes); });
+  function post(url, corps) {
+    return fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF}, body: JSON.stringify(corps || {})})
+      .then(function (r) { return r.json().catch(function () { return {ok: false, erreur: 'Réponse invalide (' + r.status + ')'}; }); });
+  }
+  document.getElementById('btnEnregistrer').addEventListener('click', function () {
+    var $ = function (id) { return document.getElementById(id); };
+    var aid = ligneCourante ? ligneCourante.association_id : idAsso($('f_asso').value);
+    var err = $('modaleErreur');
+    if (!aid) { err.textContent = "Choisissez l'association dans la liste proposée."; err.classList.remove('d-none'); return; }
+    post(URL_SAVE, {
+      id: $('f_id').value || null, association_id: aid, planification: $('f_planif').checked,
+      menu: $('f_menu').value, type_menu: $('f_type').value,
+      jours: Array.prototype.filter.call(document.querySelectorAll('.f_jour'), function (c) { return c.checked; }).map(function (c) { return c.value; }),
+      heure: $('f_heure').value, emplacement: $('f_empl').value, nbre_beneficiaires: $('f_benef').value,
+      frequence: $('f_freq').value, besoins_particuliers: $('f_besoins').value, actif: $('f_actif').checked
+    }).then(function (j) {
+      if (j.ok) location.reload();
+      else { err.textContent = j.erreur || 'Erreur'; err.classList.remove('d-none'); }
+    }).catch(function () { err.textContent = 'Erreur réseau'; err.classList.remove('d-none'); });
+  });
+  document.getElementById('btnSupprimer').addEventListener('click', function () {
+    if (!ligneCourante || !confirm('Supprimer cette ligne de menu ?')) return;
+    post(URL_DELETE.replace('999999999', ligneCourante.id)).then(function (j) { if (j.ok) location.reload(); else alert(j.erreur || 'Erreur'); });
+  });
+</script>
+{% endblock %}

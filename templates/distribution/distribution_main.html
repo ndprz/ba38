@@ -4,7 +4,19 @@
 
 {% block title %}Module Distribution{% endblock %}
 
+{% block extra_styles %}
+<style>
+  .chapitre-toggle { cursor: pointer; user-select: none; }
+  .chap-fleche { display: inline-block; transition: transform .15s; }
+  .chapitre-toggle.collapsed .chap-fleche { transform: rotate(-90deg); }
+</style>
+{% endblock %}
+
 {% block content %}
+<style>
+  .chapitre-toggle { cursor: pointer; user-select: none; }
+  .chapitre-toggle.collapsed .chap-fleche { display: inline-block; transform: rotate(-90deg); }
+</style>
 <div class="container mt-4">
 
   <h2 class="mb-3">📦 Module Distribution</h2>
@@ -15,43 +27,86 @@
 
   <div class="list-group">
 
-    <!-- ================= MVTS DE STOCK ================= -->
-    <div class="list-group-item active mt-3">
-      🚚 Mouvements de Stocks
+    <!-- ================= PLANNING DU JOUR ================= -->
+    <div class="list-group-item active mt-3 chapitre-toggle" role="button"
+         data-bs-toggle="collapse" data-bs-target="#chap-planning" aria-expanded="true">
+      <span class="chap-fleche">▾</span> 📅 Planning du jour
+    </div>
+    <div class="collapse show" id="chap-planning">
+      <a href="{{ url_for('distribution.planning_jour_generation') }}" class="list-group-item list-group-item-action">
+        🗓️ Génération du planning
+      </a>
+      <a href="{{ url_for('distribution.planning_jour_fermetures') }}" class="list-group-item list-group-item-action">
+        🔒 Jours de fermeture BA38
+      </a>
+      <a href="{{ url_for('distribution.planning_jour_menus') }}" class="list-group-item list-group-item-action">
+        🧾 Associations/menus
+      </a>
+      <a href="{{ url_for('distribution.planning_jour_fermetures_assos') }}" class="list-group-item list-group-item-action">
+        🏢 Fermetures des associations
+      </a>
     </div>
 
+    <!-- ================= MVTS DE STOCK ================= -->
+    <div class="list-group-item active mt-3 chapitre-toggle" role="button"
+         data-bs-toggle="collapse" data-bs-target="#chap-stocks" aria-expanded="true">
+      <span class="chap-fleche">▾</span> 🚚 Mouvements de Stocks
+    </div>
+    <div class="collapse show" id="chap-stocks">
+      <a href="{{ url_for('distribution.visualisation_stock') }}" class="list-group-item list-group-item-action">
+        👁️ Visualisation des stocks
+      </a>
 
-    <a href="{{ url_for('distribution.visualisation_stock') }}" class="list-group-item list-group-item-action">
-      👁️ Visualisation des stocks
-    </a>
-
-    <a href="{{ url_for('distribution.mouvements_stocks_v2') }}" class="list-group-item list-group-item-action">
-      🧪 Mouvements de stocks
-    </a>
+      <a href="{{ url_for('distribution.mouvements_stocks_v2') }}" class="list-group-item list-group-item-action">
+        🧪 Mouvements de stocks
+      </a>
+    </div>
 
     <!-- ================= RAMASSE ================= -->
-    <div class="list-group-item active mt-3">
-      🚚 Ramasse partenaires
+    <div class="list-group-item active mt-3 chapitre-toggle" role="button"
+         data-bs-toggle="collapse" data-bs-target="#chap-ramasse" aria-expanded="true">
+      <span class="chap-fleche">▾</span> 🚚 Ramasse partenaires
     </div>
+    <div class="collapse show" id="chap-ramasse">
+      <a href="{{ url_for('distribution.ramasse_types_list') }}" class="list-group-item list-group-item-action">
+        ⚙️ Modèles de ramasse
+      </a>
 
-    <a href="{{ url_for('distribution.ramasse_types_list') }}" class="list-group-item list-group-item-action">
-      ⚙️ Modèles de ramasse
-    </a>
+      <a href="{{ url_for('distribution.ramasse_types_list') }}" class="list-group-item list-group-item-action">
+        📝 Saisie de ramasse
+      </a>
 
-    <a href="{{ url_for('distribution.ramasse_types_list') }}" class="list-group-item list-group-item-action">
-      📝 Saisie de ramasse
-    </a>
+      <a href="{{ url_for('distribution.liste_ramasses') }}" class="list-group-item list-group-item-action">
+        📊 Historique des ramasses
+      </a>
 
-    <a href="{{ url_for('distribution.liste_ramasses') }}" class="list-group-item list-group-item-action">
-      📊 Historique des ramasses
-    </a>
-
-    <a href="{{ url_for('distribution.ramasses_bilan') }}" class="list-group-item list-group-item-action">
-      📈 Bilan des ramasses
-    </a>
-
+      <a href="{{ url_for('distribution.ramasses_bilan') }}" class="list-group-item list-group-item-action">
+        📈 Bilan des ramasses
+      </a>
+    </div>
 
   </div>
 </div>
 
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Chapitres repliables ; l'état est mémorisé par navigateur
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.chapitre-toggle').forEach(function (t) {
+      var cible = document.querySelector(t.dataset.bsTarget);
+      var cle = 'distrib_chap_' + t.dataset.bsTarget;
+      try {
+        if (localStorage.getItem(cle) === '0') {
+          cible.classList.remove('show');
+          t.classList.add('collapsed');
+          t.setAttribute('aria-expanded', 'false');
+        }
+      } catch (e) {}
+      cible.addEventListener('hidden.bs.collapse', function () { t.classList.add('collapsed'); try { localStorage.setItem(cle, '0'); } catch (e) {} });
+      cible.addEventListener('shown.bs.collapse', function () { t.classList.remove('collapsed'); try { localStorage.setItem(cle, '1'); } catch (e) {} });
+    });
+  });
+</script>
 {% endblock %}

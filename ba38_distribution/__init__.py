@@ -12,3 +12,4 @@ distribution_bp = Blueprint(
 from . import mvt_stocks
 from . import ramasse_assos
 from . import routes
+from . import planning_jour

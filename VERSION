@@ -1,3 +1,3 @@
-VERSION=1.7.233
-MESSAGE=Évolution magasins : export tonnage GoW, calcul direct depuis Basilic (remplace import VIF), déplacement carte vers Gestion magasins
-DATE=2026-11-07 15:35
+VERSION=1.7.234
+MESSAGE=Distribution : planning du jour (génération par jour, associations/menus un menu par ligne, fermetures BA38 et associations, déplacement jour suivant/précédent) ; Collecte : cagettes par défaut reprises de l'année précédente
+DATE=2026-11-08 10:53

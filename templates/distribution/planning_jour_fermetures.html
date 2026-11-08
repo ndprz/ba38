@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Jours de fermeture{% endblock %}
+
+{% block content %}
+<div class="container mt-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="mb-0 fs-4">🔒 Jours de fermeture de la BA38</h2>
+    {% call action_buttons() %}
+      {{ action_button("↩️ Retour au planning", href=url_for('distribution.planning_jour_generation'), color="outline-dark") }}
+    {% endcall %}
+  </div>
+
+  <p class="text-muted small">
+    Une association dont le jour de passage tombe un jour de fermeture est déplacée au jour ouvré
+    <strong>suivant</strong> ; depuis le planning du jour fermé, on peut la déplacer au jour <strong>précédent</strong>.
+  </p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}<div class="alert alert-{{ cat }} py-2">{{ msg }}</div>{% endfor %}
+  {% endwith %}
+
+  <form method="get" class="d-flex align-items-center gap-2 mb-3">
+    <label for="annee" class="mb-0">Année</label>
+    <input type="number" id="annee" name="annee" value="{{ annee }}" min="2020" max="2100" class="form-control form-control-sm" style="width:90px">
+    <button class="btn btn-outline-secondary btn-sm">Afficher</button>
+  </form>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <table class="table table-sm table-striped align-middle">
+        <thead class="table-light"><tr><th>Date</th><th>Jour</th><th>Motif</th><th></th></tr></thead>
+        <tbody>
+          {% for f in fermetures %}
+          <tr>
+            <td>{{ f.fr }}</td><td>{{ f.jour }}</td><td>{{ f.motif or '—' }}</td>
+            <td class="text-end">
+              <form method="post" class="d-inline" onsubmit="return confirm('Supprimer la fermeture du {{ f.fr }} ?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="supprimer">
+                <input type="hidden" name="date" value="{{ f.date }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <button class="btn btn-outline-danger btn-sm">🗑️</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-muted">Aucune fermeture enregistrée pour {{ annee }}.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card mb-3"><div class="card-body">
+        <h6 class="card-title">Ajouter une fermeture</h6>
+        <form method="post" class="d-flex flex-column gap-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="ajouter">
+          <input type="hidden" name="annee" value="{{ annee }}">
+          <input type="date" name="date" class="form-control form-control-sm" required>
+          <input type="text" name="motif" class="form-control form-control-sm" placeholder="Motif (ex. Pont de l'Ascension)" maxlength="100">
+          <button class="btn btn-success btn-sm">Ajouter</button>
+        </form>
+      </div></div>
+
+      <div class="card"><div class="card-body">
+        <h6 class="card-title">Jours fériés {{ annee }}</h6>
+        <p class="small text-muted mb-2">Ajoute les jours fériés tombant du lundi au vendredi. Les fermetures déjà saisies sont conservées.</p>
+        <form method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="feries">
+          <input type="hidden" name="annee" value="{{ annee }}">
+          <button class="btn btn-outline-primary btn-sm">Ajouter les jours fériés {{ annee }}</button>
+        </form>
+      </div></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
