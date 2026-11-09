@@ -27,6 +27,19 @@ Détail engagement #{{ engagement.id }}
     <!-- ENGAGEMENT SUPPRIME -->
     <!-- ================================================== -->
 
+    {% if engagement.annule_engagement_id %}
+    <div class="alert alert-warning mb-4">
+        <strong>↩️ Engagement inverse</strong> — il annule l'engagement
+        <a href="{{ url_for('engagements.detail_engagement', engagement_id=engagement.annule_engagement_id) }}">n°{{ engagement.annule_engagement_id }}</a>
+        (montant négatif = somme à encaisser, puis à comptabiliser avec le n° d'écriture EBP).
+    </div>
+    {% elif engagement.inverse_id %}
+    <div class="alert alert-warning mb-4">
+        <strong>↩️ Engagement annulé</strong> — annulé par l'engagement inverse
+        <a href="{{ url_for('engagements.detail_engagement', engagement_id=engagement.inverse_id) }}">n°{{ engagement.inverse_id }}</a>.
+    </div>
+    {% endif %}
+
     {% if engagement.deleted == 1 %}
 
     <div class="alert alert-danger mb-4">
@@ -324,6 +337,20 @@ Détail engagement #{{ engagement.id }}
 
                     🧮 Marquer comptabilisé
 
+                </button>
+
+                {% endif %}
+
+                {% if engagement.statut in ("reglee", "comptabilise", "termine")
+                      and not engagement.annule_engagement_id
+                      and not engagement.inverse_id
+                      and not engagement.est_modele_abonnement %}
+
+                <button type="button"
+                        class="btn btn-outline-warning"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalAnnulationInverse">
+                    ↩️ Annuler par engagement inverse
                 </button>
 
                 {% endif %}
@@ -1458,6 +1485,43 @@ Détail engagement #{{ engagement.id }}
 
 </div>
 
+
+<!-- ================================================== -->
+<!-- MODALE ANNULATION PAR ENGAGEMENT INVERSE -->
+<!-- ================================================== -->
+
+<div class="modal fade" id="modalAnnulationInverse" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST"
+                  action="{{ url_for('engagements.annuler_par_inverse', engagement_id=engagement.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">↩️ Annuler par engagement inverse</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>
+                        Un engagement de <strong>sens contraire</strong>
+                        (−{{ '%.2f'|format(engagement.montant_total)|replace('.', ',') }} €)
+                        sera créé et lié à l'engagement n°{{ engagement.id }}.
+                        Il apparaîtra « à encaisser » : marquez-le réglé à
+                        l'encaissement, puis comptabilisé avec le n° d'écriture EBP.
+                        Dans le reporting, la GED et le suivi budgétaire, les deux
+                        engagements s'annulent (total = 0).
+                    </p>
+                    <label class="form-label">Motif (obligatoire)</label>
+                    <textarea name="motif" class="form-control" rows="3" required
+                              placeholder="Ex. : saisi par erreur en remboursement bénévole"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+                    <button type="submit" class="btn btn-warning">Créer l'engagement inverse</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 <!-- ================================================== -->
 <!-- MODALE REFUS -->

@@ -885,3 +885,125 @@ def retransmettre_engagement(engagement_id):
             engagement_id=engagement_id
         )
     )
+
+
+# ============================================================
+# ANNULATION PAR ENGAGEMENT INVERSE (contre-passation)
+# ============================================================
+
+STATUTS_ANNULABLES_PAR_INVERSE = ("reglee", "comptabilise", "termine")
+
+
+def creer_engagement_inverse(conn, engagement_id, motif, user_id, user_email):
+    """
+    Annule un engagement déjà réglé par erreur en créant un
+    engagement de sens contraire (montant négatif), lié à l'original.
+
+    - L'original est conservé tel quel (désarchivé s'il l'était) :
+      original + inverse = 0 dans le reporting, la GED et le suivi.
+    - L'inverse est créé directement "a_payer" (= à encaisser) : le
+      trésorier le règle à l'encaissement puis le comptabilise avec
+      le n° d'écriture EBP (montant négatif accepté à ce stade).
+    Retourne (id_inverse, message_erreur).
+    """
+
+    e = conn.execute("""
+        SELECT e.*, d.id AS dep_id
+        FROM engagements e
+        LEFT JOIN engagements_depenses d ON d.engagement_id = e.id
+        WHERE e.id = ?
+    """, (engagement_id,)).fetchone()
+
+    if not e:
+        return None, "Engagement introuvable."
+    if e["statut"] not in STATUTS_ANNULABLES_PAR_INVERSE:
+        return None, ("Seul un engagement déjà réglé peut être annulé par "
+                      "un engagement inverse (sinon, utilisez Archiver/Refuser).")
+    if e["annule_engagement_id"]:
+        return None, "Cet engagement est lui-même un engagement inverse."
+    if e["est_modele_abonnement"] == 1:
+        return None, "Un modèle d'abonnement ne peut pas être annulé ainsi."
+    if conn.execute("SELECT 1 FROM engagements WHERE annule_engagement_id = ?",
+                    (engagement_id,)).fetchone():
+        return None, "Cet engagement est déjà annulé par un engagement inverse."
+
+    d = dict(conn.execute(
+        "SELECT * FROM engagements_depenses WHERE engagement_id = ?",
+        (engagement_id,)).fetchone())
+    montant = float(d["montant_total"])
+    if montant <= 0:
+        return None, "Montant non annulable."
+
+    cur = conn.execute("""
+        INSERT INTO engagements (
+            type, demandeur_id, demandeur_nom, demandeur_email, pole_id,
+            statut, deleted, annule_engagement_id,
+            valide_par_pole_le, valide_par_presidence_le
+        ) VALUES (?, ?, ?, ?, ?, 'a_payer', 0, ?, ?, ?)
+    """, (e["type"], e["demandeur_id"], e["demandeur_nom"],
+          e["demandeur_email"], e["pole_id"], engagement_id,
+          e["valide_par_pole_le"], e["valide_par_presidence_le"]))
+    nid = cur.lastrowid
+
+    d.pop("id")
+    d.update(
+        engagement_id=nid,
+        objet=f"ANNULATION de l'engagement n°{engagement_id} — {d['objet']}",
+        description=f"Engagement inverse : {motif}",
+        montant_total=-montant,
+        attestation_comparaison=0, devis_necessaire=0, nb_devis=0,
+        devis_derogation=0,
+    )
+    cols = list(d)
+    conn.execute(
+        f"INSERT INTO engagements_depenses ({','.join(cols)}) "
+        f"VALUES ({','.join('?' * len(cols))})", [d[c] for c in cols])
+
+    W = """INSERT INTO engagements_workflow
+           (engagement_id, action, ancien_statut, nouveau_statut,
+            commentaire, user_id, user_email) VALUES (?,?,?,?,?,?,?)"""
+    conn.execute(W, (nid, "creation_inverse", None, "a_payer",
+        f"Engagement inverse de l'engagement n°{engagement_id} "
+        f"({montant:.2f} € à restituer) — motif : {motif}",
+        user_id, user_email))
+    conn.execute(W, (engagement_id, "annulation_par_inverse",
+        e["statut"], e["statut"],
+        f"Annulé par l'engagement inverse n°{nid} — motif : {motif}",
+        user_id, user_email))
+
+    if e["deleted"] == 1:
+        conn.execute("""UPDATE engagements SET deleted = 0, deleted_le = NULL,
+                        deleted_by = NULL WHERE id = ?""", (engagement_id,))
+        conn.execute(W, (engagement_id, "restauration", e["statut"], e["statut"],
+            "Désarchivé automatiquement (annulation par engagement inverse)",
+            user_id, user_email))
+
+    return nid, None
+
+
+@engagements_bp.route(
+    "/engagements/<int:engagement_id>/annuler_inverse",
+    methods=["POST"]
+)
+@login_required
+@require_access("engagements", "ecriture")
+def annuler_par_inverse(engagement_id):
+
+    motif = request.form.get("motif", "").strip()
+    if not motif:
+        flash("⚠️ Un motif est obligatoire pour annuler par engagement inverse.", "warning")
+        return redirect(url_for("engagements.detail_engagement", engagement_id=engagement_id))
+
+    with sqlite3.connect(get_db_path()) as conn:
+        conn.row_factory = sqlite3.Row
+        nid, err = creer_engagement_inverse(
+            conn, engagement_id, motif, current_user.id, current_user.email)
+        if err:
+            flash(f"⚠️ {err}", "warning")
+            return redirect(url_for("engagements.detail_engagement", engagement_id=engagement_id))
+        conn.commit()
+        write_log(f"[ENGAGEMENTS] Annulation engagement #{engagement_id} "
+                  f"par engagement inverse #{nid}")
+
+    flash(f"✅ Engagement inverse n°{nid} créé (à encaisser puis à comptabiliser).", "success")
+    return redirect(url_for("engagements.detail_engagement", engagement_id=nid))

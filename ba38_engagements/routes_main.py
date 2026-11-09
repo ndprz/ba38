@@ -1858,6 +1858,13 @@ def detail_engagement(engagement_id):
 
         engagement = dict(engagement)
 
+        # Annulation par engagement inverse : lien dans les deux sens
+        r = conn.execute(
+            "SELECT id FROM engagements WHERE annule_engagement_id = ?",
+            (engagement_id,)
+        ).fetchone()
+        engagement["inverse_id"] = r["id"] if r else None
+
         if engagement["subvention_id"]:
 
             montant_utilise = float(
