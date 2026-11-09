@@ -62,7 +62,7 @@
           <tbody>
           {% for x in l.lots %}
             <tr>
-              <td>{{ x.lot }}</td>
+              <td>{{ x.lot or '(sans lot — produit non loti)' }}</td>
               <td>{{ x.dlc or x.ddm or '—' }}{% if x.dlc %} <small class="text-muted">DLC</small>{% elif x.ddm %} <small class="text-muted">DDM</small>{% endif %}</td>
               <td class="text-end">{{ '%g'|format(x.kg_net) if x.kg_net is not none else '' }}</td>
               <td class="text-end">{{ '%g'|format(x.kg_brut) if x.kg_brut is not none else '' }}</td>

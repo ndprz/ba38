@@ -122,6 +122,47 @@ def classer_passages(conn, d: date, type_menu: str = "sec"):
     return a_generer, ignores
 
 
+def repartir_ramasse(conn, passages: list[dict], iso: str):
+    """Répartition du tonnage validé du jour (ramasses journalières) sur les passages FRAIS.
+
+    Pour chaque article ramassé : au prorata des bénéficiaires, entre les seuls passages dont un menu
+    contient cet article (arrondi au 1/100 kg, reste donné aux plus gros restes). Retourne
+    ({index du passage: [lignes]}, [articles ramassés sans menu preneur])."""
+    from .frais_repartition import totaux_a_repartir
+    articles_menu = []
+    for a in passages:
+        ordre, vus = [], set()
+        for code in a["codes"]:
+            for r in conn.execute("SELECT article FROM menus_articles WHERE menu_code = ? ORDER BY ordre", (code,)):
+                if r["article"] not in vus:
+                    vus.add(r["article"])
+                    ordre.append(r["article"])
+        articles_menu.append(ordre)
+    lignes = {i: [] for i in range(len(passages))}
+    sans_menu = []
+    for t in totaux_a_repartir(conn, iso):
+        if t["kg"] <= 0:      # tout retiré à l'écran : rien à répartir pour cet article
+            continue
+        preneurs = [i for i, ordre in enumerate(articles_menu) if t["article"] in ordre]
+        total_c = int(round(t["kg"] * 100))
+        if not preneurs:
+            sans_menu.append(t)
+            continue
+        somme = sum(passages[i]["benef"] for i in preneurs)
+        parts = [(i, total_c * passages[i]["benef"] / somme) for i in preneurs]
+        base = {i: int(p) for i, p in parts}
+        reste = total_c - sum(base.values())
+        for i, p in sorted(parts, key=lambda x: x[1] - int(x[1]), reverse=True)[:reste]:
+            base[i] += 1
+        for i in preneurs:
+            if base[i] > 0:
+                lignes[i].append({"article": t["article"], "libelle": t["libelle"] or "",
+                                  "quantite": base[i] / 100, "rang": articles_menu[i].index(t["article"])})
+    for i in lignes:
+        lignes[i].sort(key=lambda l: l["rang"])
+    return lignes, sans_menu
+
+
 def generer_bons(d: date, type_menu: str, recalculer: bool = False, par: str = ""):
     """Crée les bons manquants du jour. `recalculer` supprime d'abord les bons encore
     en préparation (les modifications manuelles sont alors perdues)."""
@@ -137,7 +178,10 @@ def generer_bons(d: date, type_menu: str, recalculer: bool = False, par: str = "
                 conn.execute("DELETE FROM bons_preparation_lignes WHERE bon_id=?", (i,))
                 conn.execute("DELETE FROM bons_preparation WHERE id=?", (i,))
         crees = existants = 0
-        for a in a_generer:
+        repart, sans_menu = ({}, [])
+        if type_menu == "frais":
+            repart, sans_menu = repartir_ramasse(conn, a_generer, iso)
+        for idx, a in enumerate(a_generer):
             cur = conn.execute("""
                 INSERT OR IGNORE INTO bons_preparation
                   (date_distribution, type_bon, association_id, heure, emplacement, menus,
@@ -149,7 +193,14 @@ def generer_bons(d: date, type_menu: str, recalculer: bool = False, par: str = "
                 existants += 1
                 continue
             bon_id = cur.lastrowid
-            for l in calculer_lignes(conn, a["codes"], a["benef"]):
+            if type_menu == "frais":
+                lignes_bon = [{"ordre": n, "menu_code": ", ".join(a["codes"]), "article": l["article"],
+                               "libelle": l["libelle"], "source": "ramasse", "portion": None, "coef": None,
+                               "quantite_calc": l["quantite"], "quantite": l["quantite"], "unite": "Kg",
+                               "commentaire": ""} for n, l in enumerate(repart.get(idx, []), 1)]
+            else:
+                lignes_bon = calculer_lignes(conn, a["codes"], a["benef"])
+            for l in lignes_bon:
                 conn.execute("""
                     INSERT INTO bons_preparation_lignes
                       (bon_id, ordre, menu_code, article, libelle, source, portion, coef,
@@ -159,7 +210,7 @@ def generer_bons(d: date, type_menu: str, recalculer: bool = False, par: str = "
                      l["portion"], l["coef"], l["quantite_calc"], l["quantite"], l["unite"], l["commentaire"]))
             crees += 1
         conn.commit()
-        return {"crees": crees, "existants": existants, "ignores": ignores}
+        return {"crees": crees, "existants": existants, "ignores": ignores, "sans_menu": sans_menu}
     finally:
         conn.close()
 
@@ -189,10 +240,15 @@ def bons_prepa_liste():
         FROM bons_preparation b JOIN associations a ON a.id = b.association_id
         WHERE b.date_distribution = ? AND b.type_bon = ?
         ORDER BY a.nom_association COLLATE NOCASE, b.heure""", (d.isoformat(), type_bon))]
-    ignores = classer_passages(conn, d, "sec")[1] if type_bon == "sec" else []
+    ignores = classer_passages(conn, d, type_bon)[1]
+    frais = None
+    if type_bon == "frais":
+        from .frais_repartition import synthese_frais
+        frais = synthese_frais(conn, d)
+    tous_articles = [dict(r) for r in conn.execute("SELECT article, libelle FROM articles ORDER BY article")] if frais else []
     conn.close()
     return render_template(
-        "distribution/bons_prepa_liste.html", date_choisie=d, type_bon=type_bon, bons=bons,
+        "distribution/bons_prepa_liste.html", date_choisie=d, type_bon=type_bon, bons=bons, frais=frais, tous_articles=tous_articles,
         ignores=ignores, aujourdhui=date.today().isoformat(),
         peut_ecrire=has_access("distribution", "ecriture"))
 
@@ -209,18 +265,28 @@ def bons_prepa_generer():
     if type_bon == "frais":
         if d != date.today():
             flash("Les bons de préparation FRAIS ne peuvent être générés que pour le jour même.", "danger")
-        else:
-            flash("Génération FRAIS : en attente du module de ramasse quotidienne.", "warning")
-        return redirect(url_for("distribution.bons_prepa_liste", date=d.isoformat(), type="frais"))
-    res = generer_bons(d, "sec", recalculer=bool(request.form.get("recalculer")),
+            return redirect(url_for("distribution.bons_prepa_liste", date=d.isoformat(), type="frais"))
+        from .frais_repartition import totaux_a_repartir
+        conn = get_db_connection()
+        try:
+            a_repartir = sum(t["kg"] for t in totaux_a_repartir(conn, d.isoformat()))
+        finally:
+            conn.close()
+        if a_repartir <= 0:
+            flash("Rien à répartir aujourd'hui : valider la ramasse du jour (ou ajouter du stock) avant de générer les bons FRAIS.", "warning")
+            return redirect(url_for("distribution.bons_prepa_liste", date=d.isoformat(), type="frais"))
+    res = generer_bons(d, type_bon, recalculer=bool(request.form.get("recalculer")),
                        par=getattr(current_user, "email", "") or "")
-    msg = f"{res['crees']} bon(s) SEC créé(s)"
+    msg = f"{res['crees']} bon(s) {'FRAIS' if type_bon == 'frais' else 'SEC'} créé(s)"
     if res["existants"]:
         msg += f", {res['existants']} déjà existant(s) conservé(s)"
     if res["ignores"]:
         msg += f", {len(res['ignores'])} association(s) ignorée(s) (voir liste)"
     flash(msg + ".", "success" if res["crees"] or res["existants"] else "warning")
-    return redirect(url_for("distribution.bons_prepa_liste", date=d.isoformat(), type="sec"))
+    if res.get("sans_menu"):
+        flash("Ramassé mais dans aucun menu FRAIS du jour (à ajouter à la main sur un bon) : " + " ; ".join(
+            f"{t['article']} {t['libelle'] or ''} {t['kg']:.1f} kg" for t in res["sans_menu"]), "warning")
+    return redirect(url_for("distribution.bons_prepa_liste", date=d.isoformat(), type=type_bon))
 
 
 @distribution_bp.route("/bons_prepa/<int:bon_id>")
@@ -406,22 +472,35 @@ def _base_unite(row, unite: str):
     return {"kgn": row["kg_net"], "kg": row["kg_brut"], "col": row["col"], "pal": row["pal"]}.get((unite or "").lower())
 
 
+def lignes_stock_03(conn, article: str) -> list[dict]:
+    """Lots de l'article au dépôt de sortie : stock VIF + entrées de ramasses validées depuis ce stock
+    (quantités brutes/nettes/colis, avant déduction des BL)."""
+    from .stock_basilic import entrees_ramasse
+    rows = {}
+    for r in conn.execute("""SELECT COALESCE(lot, '') AS lot, depot, dlc, ddm, kg_net, kg_brut, col, pal FROM stocks
+                             WHERE article = ? AND depot = ?""", (article, DEPOT_SORTIE)):
+        rows[r["lot"]] = dict(r)   # lot vide = produit non loti
+    coef = conn.execute("SELECT coef_kgn_vers_kg FROM articles WHERE article = ?", (article,)).fetchone()
+    coef = (coef[0] if coef and (coef[0] or 0) > 0 else 1.0)
+    for e in entrees_ramasse(conn, article):
+        x = rows.get(e["lot"])
+        if x:   # lot déjà connu de VIF : on ajoute l'entrée du jour
+            x["kg_brut"] = (x["kg_brut"] or 0) + e["kg"]
+            x["kg_net"] = (x["kg_net"] or 0) + e["kg"] / coef
+        else:
+            rows[e["lot"]] = {"lot": e["lot"], "depot": DEPOT_SORTIE, "dlc": e["dlc"] or "", "ddm": "",
+                              "kg_net": e["kg"] / coef, "kg_brut": e["kg"], "col": None, "pal": None}
+    return list(rows.values())
+
+
 def stock_lots(conn, article: str, unite: str, exclure_bon_id: int = 0) -> list[dict]:
     """Lots disponibles d'un article dans le dépôt de sortie (03) uniquement, triés par DLC/DDM la plus proche.
-    `dispo` = stock (dans l'unité du bon) moins les lots déjà affectés par d'autres BL créés
-    mais pas encore déposés pour VIF (le stock VIF ne les a pas encore décomptés)."""
-    reserve = {}
-    for r in conn.execute("""
-            SELECT t.lot, t.depot, SUM(t.quantite) q FROM bons_preparation_lots t
-            JOIN bons_preparation_lignes l ON l.id = t.ligne_id
-            JOIN bons_preparation b ON b.id = l.bon_id
-            WHERE l.article = ? AND t.unite = ? AND b.statut = 'bl' AND b.bl_depose_le IS NULL AND b.id != ?
-            GROUP BY t.lot, t.depot""", (article, unite, exclure_bon_id)):
-        reserve[(r["lot"], r["depot"] or "")] = r["q"] or 0
+    `dispo` = stock Basilic (stock VIF + entrées de ramasse) dans l'unité du bon, moins les lots déjà
+    affectés par des BL validés depuis ce stock (VIF ne les a pas encore décomptés)."""
+    from .stock_basilic import sorties_bl
+    reserve = sorties_bl(conn, article, unite, exclure_bon_id)
     lots = []
-    for r in conn.execute("""SELECT lot, depot, dlc, ddm, kg_net, kg_brut, col, pal FROM stocks
-                             WHERE article = ? AND TRIM(COALESCE(lot, '')) != '' AND depot = ?""",
-                          (article, DEPOT_SORTIE)):
+    for r in lignes_stock_03(conn, article):
         base = _base_unite(r, unite)
         if base is None:
             if not ((r["kg_net"] or 0) > 0 or (r["kg_brut"] or 0) > 0 or (r["col"] or 0) > 0):
@@ -459,15 +538,18 @@ def _qte_bl(l):   # quantité livrée si saisie, sinon quantité préparée
 def lignes_a_valider(conn, bon_id: int) -> list[dict]:
     """Lignes du bon à livrer, avec leurs lots disponibles et la proposition FIFO."""
     res = []
+    bon = conn.execute("SELECT date_distribution FROM bons_preparation WHERE id = ?", (bon_id,)).fetchone()
+    prefixe_rj = "RJ" + bon["date_distribution"][2:4] + bon["date_distribution"][5:7] + bon["date_distribution"][8:10] if bon else "RJ"
     for l in conn.execute("SELECT * FROM bons_preparation_lignes WHERE bon_id = ? ORDER BY ordre, id", (bon_id,)):
         q = _qte_bl(l)
         d = dict(l, qte_bl=q, unite=UNITES_VIF.get((l["unite"] or "Kg").lower(), l["unite"]))
         d["lots"] = stock_lots(conn, l["article"], d["unite"], bon_id) if q else []
+        if l["source"] == "ramasse":   # produit ramassé le jour même : les lots entrés par la ramasse sont servis en premier
+            from .stock_basilic import entrees_ramasse
+            lots_ramasse = {e["lot"] for e in entrees_ramasse(conn, l["article"])}
+            d["lots"].sort(key=lambda x: x["lot"] not in lots_ramasse)
         # l'article a-t-il des lots en stock (dépôt 03), même entièrement réservés par d'autres BL ?
-        d["stock_03"] = bool(conn.execute(
-            """SELECT 1 FROM stocks WHERE article = ? AND TRIM(COALESCE(lot, '')) != '' AND depot = ?
-               AND (COALESCE(kg_net, 0) > 0 OR COALESCE(kg_brut, 0) > 0 OR COALESCE(col, 0) > 0) LIMIT 1""",
-            (l["article"], DEPOT_SORTIE)).fetchone()) if q else False
+        d["stock_03"] = bool(lignes_stock_03(conn, l["article"])) if q else False
         d["propose"] = proposer_lots(d["lots"], q) if q else []
         d["reste_propose"] = round((q or 0) - sum(p["quantite"] for p in d["propose"]), 3)
         res.append(d)

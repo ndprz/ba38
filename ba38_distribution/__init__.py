@@ -15,3 +15,5 @@ from . import routes
 from . import planning_jour
 from . import bons_prepa
 from . import bons_livraison
+from . import ramasse_jour
+from . import frais_repartition

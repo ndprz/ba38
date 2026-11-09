@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Ramasse journalière{% endblock %}
+
+{% block extra_css %}
+<style>
+  .ram-card { border: 1px solid #ccc; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; }
+  .ram-card.validee { border-left: 5px solid #198754; background: #f4fbf6; }
+  .ram-card.saisie  { border-left: 5px solid #E5B63C; }
+  .qte-kg { width: 100px; text-align: right; }
+  .etat { font-size: .85rem; min-width: 24px; display: inline-block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-2 px-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="mb-0 fs-4">🚛 Ramasse journalière</h2>
+    {% call action_buttons() %}
+      {{ action_button("📦 Bons de prépa FRAIS", href=url_for('distribution.bons_prepa_liste', date=date_choisie.isoformat(), type='frais'), color="outline-success") }}
+      {{ action_button("↩️ Retour à la distribution", href=url_for('distribution.distribution_main'), color="outline-dark") }}
+    {% endcall %}
+  </div>
+
+  <form method="get" class="d-flex flex-wrap align-items-center mb-3" style="gap:12px">
+    <label for="date" class="mb-0">Jour de ramasse</label>
+    <input type="date" id="date" name="date" class="form-control form-control-sm w-auto" value="{{ date_choisie.isoformat() }}" required>
+    <button type="submit" class="btn btn-outline-secondary btn-sm">Afficher</button>
+    <span class="badge bg-secondary">{{ ramasses|length }} ramasse{{ 's' if ramasses|length > 1 }}</span>
+    <span class="badge bg-primary">{{ ('%.1f'|format(total_kg)).replace('.', ',') }} kg validés</span>
+  </form>
+
+  <div id="erreur" class="alert alert-danger d-none"></div>
+
+  <div class="row">
+    <div class="col-lg-8">
+      {% for r in ramasses %}
+      <div class="ram-card {{ r.statut }}" data-id="{{ r.id }}">
+        <div class="d-flex flex-wrap justify-content-between align-items-center">
+          <div>
+            <strong>{{ r.fournisseur }}</strong>
+            {% if r.code_vif_fournisseur %}<span class="text-muted small">code VIF {{ r.code_vif_fournisseur }}</span>
+            {% else %}<span class="text-danger small">⚠️ code VIF manquant —
+              <a href="{{ url_for('fournisseurs.update_fournisseur', fournisseur_id=r.id_fournisseur) }}" target="_blank">ouvrir la fiche</a>
+              (cocher « Sans coordonnées » s'il n'y a pas d'e-mail)</span>{% endif %}
+            {% if r.statut == 'validee' %}<span class="badge bg-success">Validée — entrée en stock</span>{% else %}<span class="badge bg-warning text-dark">En saisie</span>{% endif %}
+          </div>
+          <div>
+            <strong>{{ ('%.1f'|format(r.total_kg)).replace('.', ',') }} kg</strong>
+            {% if peut_ecrire %}
+              {% if r.statut == 'saisie' %}
+                <button class="btn btn-success btn-sm js-valider ms-2" {{ 'disabled' if (not r.lignes or not r.code_vif_fournisseur) }}>✅ Valider (entrée en stock + fichier VIF)</button>
+                <button class="btn btn-outline-danger btn-sm js-supprimer" title="Supprimer cette ramasse">🗑️</button>
+              {% else %}
+                <a class="btn btn-outline-success btn-sm ms-2" href="{{ url_for('distribution.ramasse_jour_reception_csv', rid=r.id) }}">⬇️ Fichier réception VIF</a>
+                <button class="btn btn-outline-danger btn-sm js-rouvrir">↩️ Rouvrir</button>
+              {% endif %}
+            {% endif %}
+          </div>
+        </div>
+
+        <table class="table table-sm align-middle mb-1 mt-2">
+          <thead><tr><th>Article</th><th>Libellé</th><th class="text-end">Poids (kg)</th><th>DLC</th><th>Lot</th><th></th></tr></thead>
+          <tbody>
+          {% for l in r.lignes %}
+            <tr data-ligne="{{ l.id }}">
+              <td>{{ l.article }}</td><td>{{ l.libelle }}</td>
+              <td class="text-end"><input type="text" inputmode="decimal" class="form-control form-control-sm qte-kg d-inline-block js-kg"
+                    value="{{ '%g'|format(l.quantite_kg) }}" {{ '' if (peut_ecrire and r.statut == 'saisie' and r.code_vif_fournisseur) else 'disabled' }}></td>
+              <td><input type="text" class="form-control form-control-sm js-dlc" style="width:110px" placeholder="jj/mm/aaaa"
+                    value="{{ l.dlc or '' }}" {{ '' if (peut_ecrire and r.statut == 'saisie' and r.code_vif_fournisseur) else 'disabled' }}></td>
+              <td class="small">{{ l.lot or '—' }}</td>
+              <td class="text-nowrap"><span class="etat"></span>
+                {% if peut_ecrire and r.statut == 'saisie' %}<button class="btn btn-outline-danger btn-sm py-0 js-suppr-ligne" title="Retirer la ligne">✕</button>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+
+        {% if peut_ecrire and r.statut == 'saisie' and r.code_vif_fournisseur %}
+        <div class="d-flex flex-wrap align-items-center" style="gap:8px">
+          <input type="text" list="liste-articles" class="form-control form-control-sm js-aj-article" style="width:340px" placeholder="Article (code ou libellé)" autocomplete="off">
+          <input type="text" inputmode="decimal" class="form-control form-control-sm qte-kg js-aj-kg" placeholder="kg">
+          <input type="text" class="form-control form-control-sm js-aj-dlc" style="width:110px" placeholder="DLC jj/mm/aaaa">
+          <button class="btn btn-outline-success btn-sm js-ajouter">➕ Ajouter</button>
+        </div>
+        {% endif %}
+      </div>
+      {% else %}
+        <div class="alert alert-info">Aucune ramasse pour ce jour.</div>
+      {% endfor %}
+
+      {% if peut_ecrire %}
+      <div class="card"><div class="card-body py-2 d-flex flex-wrap align-items-center" style="gap:10px">
+        <strong>Nouvelle ramasse</strong>
+        <select id="nouv-frs" class="form-select form-select-sm" style="width:320px">
+          <option value="">— fournisseur —</option>
+          {% for f in fournisseurs %}<option value="{{ f.id }}" {{ '' if f.code_vif else 'disabled' }}>{{ f.nom }}{{ '' if f.code_vif else ' — sans code VIF : saisie impossible' }}</option>{% endfor %}
+        </select>
+        <button id="btn-creer" class="btn btn-success btn-sm">Créer</button>
+      </div></div>
+      {% endif %}
+
+      <datalist id="liste-articles">
+        {% for a in articles %}<option value="{{ a.article }} — {{ a.libelle }}"></option>{% endfor %}
+      </datalist>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card"><div class="card-header py-1"><strong>Tonnage validé à répartir</strong></div>
+        <div class="card-body p-2">
+          {% if totaux %}
+          <table class="table table-sm mb-2">
+            <thead><tr><th>Article</th><th class="text-end">kg</th></tr></thead>
+            <tbody>{% for t in totaux %}<tr><td>{{ t.article }} <span class="text-muted small">{{ t.libelle }}</span></td>
+              <td class="text-end">{{ ('%.1f'|format(t.kg)).replace('.', ',') }}</td></tr>{% endfor %}</tbody>
+          </table>
+          <div class="small text-muted mb-2">Réparti au prorata des bénéficiaires sur les bons FRAIS dont le menu contient l'article.</div>
+          {% else %}
+            <div class="text-muted small">Aucune ramasse validée ce jour.</div>
+          {% endif %}
+          <a class="btn btn-success btn-sm {{ '' if (totaux and date_choisie.isoformat() == aujourdhui) else 'disabled' }}"
+             href="{{ url_for('distribution.bons_prepa_liste', date=date_choisie.isoformat(), type='frais') }}">➡️ Générer les bons FRAIS</a>
+          {% if date_choisie.isoformat() != aujourdhui %}<div class="small text-danger mt-1">La génération FRAIS n'est possible que le jour même.</div>{% endif %}
+          {% if nb_bons_frais %}<div class="small text-muted mt-1">{{ nb_bons_frais }} bon(s) FRAIS déjà générés ce jour (à recalculer si la ramasse change).</div>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  var URL_ACTION = "{{ url_for('distribution.ramasse_jour_action') }}";
+  var CSRF = "{{ csrf_token() }}";
+  var DATE = "{{ date_choisie.isoformat() }}";
+
+  function envoyer(payload, etat) {
+    if (etat) { etat.textContent = '…'; etat.style.color = ''; }
+    return fetch(URL_ACTION, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+                              body: JSON.stringify(payload)})
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j.ok) { if (etat) { etat.textContent = '✔'; etat.style.color = '#198754'; } }
+        else { if (etat) { etat.textContent = '✖'; etat.style.color = '#dc3545'; }
+               var b = document.getElementById('erreur'); b.textContent = j.erreur || 'Erreur'; b.classList.remove('d-none'); window.scrollTo(0, 0); }
+        return j;
+      }).catch(function () { alert('Erreur réseau'); return {ok: false}; });
+  }
+  function recharger(j) { if (j && j.ok) location.reload(); }
+
+  var creer = document.getElementById('btn-creer');
+  if (creer) creer.addEventListener('click', function () {
+    var f = document.getElementById('nouv-frs').value;
+    if (!f) { alert('Choisir un fournisseur.'); return; }
+    envoyer({action: 'creer', date: DATE, id_fournisseur: f}).then(recharger);
+  });
+
+  document.querySelectorAll('.ram-card').forEach(function (card) {
+    var rid = Number(card.dataset.id);
+    var v = card.querySelector('.js-valider');
+    if (v) v.addEventListener('click', function () {
+      if (confirm('Valider cette ramasse ? Elle entre en stock Basilic et le fichier de réception VIF est créé.'))
+        envoyer({action: 'valider', ramasse_id: rid}).then(recharger);
+    });
+    var s = card.querySelector('.js-supprimer');
+    if (s) s.addEventListener('click', function () {
+      if (confirm('Supprimer cette ramasse et ses lignes ?')) envoyer({action: 'supprimer', ramasse_id: rid}).then(recharger);
+    });
+    var ro = card.querySelector('.js-rouvrir');
+    if (ro) ro.addEventListener('click', function () {
+      if (confirm('Rouvrir la ramasse ? Elle sort du stock Basilic et le fichier de réception est supprimé.'))
+        envoyer({action: 'rouvrir', ramasse_id: rid}).then(recharger);
+    });
+    card.querySelectorAll('tbody tr[data-ligne]').forEach(function (tr) {
+      var lid = Number(tr.dataset.ligne), etat = tr.querySelector('.etat');
+      var kg = tr.querySelector('.js-kg'), dlc = tr.querySelector('.js-dlc'), x = tr.querySelector('.js-suppr-ligne');
+      if (kg) kg.addEventListener('change', function () { envoyer({action: 'maj_ligne', ligne_id: lid, quantite_kg: this.value}, etat); });
+      if (dlc) dlc.addEventListener('change', function () { envoyer({action: 'maj_ligne', ligne_id: lid, dlc: this.value}, etat); });
+      if (x) x.addEventListener('click', function () { envoyer({action: 'suppr_ligne', ligne_id: lid}).then(recharger); });
+    });
+    var aj = card.querySelector('.js-ajouter');
+    if (aj) aj.addEventListener('click', function () {
+      var code = card.querySelector('.js-aj-article').value.split(' — ')[0].trim();
+      envoyer({action: 'ajouter_ligne', ramasse_id: rid, article: code,
+               quantite_kg: card.querySelector('.js-aj-kg').value, dlc: card.querySelector('.js-aj-dlc').value}).then(recharger);
+    });
+  });
+</script>
+{% endblock %}

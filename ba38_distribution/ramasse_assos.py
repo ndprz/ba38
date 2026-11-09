@@ -399,12 +399,19 @@ def saisie_ramasse(id_modele):
     entete = cur.execute("""
         SELECT t.*,
                a.nom_association,
-               f.nom AS nom_fournisseur
+               f.nom AS nom_fournisseur,
+               f.code_vif AS code_vif_magasin
         FROM ramasses_partenaire_type_entete t
         LEFT JOIN associations a ON a.id = t.id_association
         LEFT JOIN fournisseurs f ON f.id = t.id_magasin
         WHERE t.id = ?
     """, (id_modele,)).fetchone()
+
+    # 🔒 Pas de saisie de ramasse sans code VIF du magasin (nécessaire aux fichiers VIF)
+    if entete and not (entete["code_vif_magasin"] or "").strip():
+        conn.close()
+        flash(f"⛔ Saisie impossible : {entete['nom_fournisseur'] or 'le magasin'} n'a pas de code VIF : le saisir dans sa fiche fournisseur (cocher « Sans coordonnées » s'il n'y a pas d'e-mail, sinon la fiche ne s'enregistre pas).", "danger")
+        return redirect(url_for("distribution.ramasse_types_list"))
 
     # =====================================================
     # 🔹 LIGNES MODELE

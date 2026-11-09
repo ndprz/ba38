@@ -140,18 +140,50 @@ def visualisation_stock():
             ORDER BY a.famille, a.sous_famille, s.article
         """)
 
-        articles = cur.fetchall()
-
+        articles = [dict(r) for r in cur.fetchall()]
 
         cur.execute("SELECT date_import FROM stock_meta WHERE id = 1")
         row = cur.fetchone()
         date_stock = row[0] if row else None
+        try:
+            date_mail = (cur.execute("SELECT date_mail FROM stock_meta WHERE id = 1").fetchone() or [None])[0]
+        except sqlite3.Error:
+            date_mail = None
 
+        # Stock Basilic = stock VIF + entrées de ramasses validées - sorties de BL validés depuis ce stock
+        from .stock_basilic import DEPOT_SORTIE, entrees_ramasse, snapshot_utc
+        entrees = {(e["article"], e["lot"]): e for e in entrees_ramasse(conn)}
+        sorties = {(r[0], r[1], r[2] or ""): r[3] or 0 for r in conn.execute("""
+            SELECT l.article, t.lot, t.depot, SUM(t.quantite) FROM bons_preparation_lots t
+            JOIN bons_preparation_lignes l ON l.id = t.ligne_id JOIN bons_preparation b ON b.id = l.bon_id
+            WHERE b.statut = 'bl' AND t.unite = 'Kg' AND b.valide_le > ? GROUP BY l.article, t.lot, t.depot""",
+            (snapshot_utc(conn),))}
+        connus = set()
+        for a in articles:
+            a["entree_b"] = a["sortie_b"] = a["dispo_b"] = None
+            if a["depot"] == DEPOT_SORTIE:
+                lot = a["lot"] or ""
+                connus.add((a["article"], lot))
+                e = entrees.get((a["article"], lot))
+                a["entree_b"] = round(e["kg"], 2) if e else 0
+                a["sortie_b"] = round(sorties.get((a["article"], lot, a["depot"]), 0), 2)
+                a["dispo_b"] = round((a["kg_brut"] or 0) + a["entree_b"] - a["sortie_b"], 2)
+        # lots entrés aujourd'hui par ramasse et pas encore dans le stock VIF
+        for (art, lot), e in entrees.items():
+            if (art, lot) in connus:
+                continue
+            sortie = round(sorties.get((art, lot, DEPOT_SORTIE), 0), 2)
+            articles.append({"article": art, "libelle": e["libelle"], "famille": "Ramasse du jour", "sous_famille": "",
+                             "depot": DEPOT_SORTIE, "emplacement": "", "lot": lot, "dlc": e["dlc"] or "", "ddm": "",
+                             "kg_net": None, "kg_brut": 0, "col": None, "pal": None,
+                             "cdt_unite2": None, "cdt_unite3": None, "cdt_unite4": None,
+                             "entree_b": round(e["kg"], 2), "sortie_b": sortie, "dispo_b": round(e["kg"] - sortie, 2)})
 
     return render_template(
         "distribution/mvt_stocks/distribution_visualisation_stock.html",
         articles=articles,
-        date_stock=date_stock
+        date_stock=date_stock,
+        date_mail=date_mail
     )
 
 

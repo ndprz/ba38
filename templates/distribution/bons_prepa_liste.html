@@ -31,7 +31,7 @@
 
   {% if peut_ecrire %}
   <form method="post" action="{{ url_for('distribution.bons_prepa_generer') }}" class="d-flex flex-wrap align-items-center mb-3" style="gap:12px"
-        {% if bons %}onsubmit="if (this.recalculer.checked) return confirm('Recalculer supprime les bons encore en préparation de ce jour, avec leurs modifications manuelles. Continuer ?');"{% endif %}>
+        onsubmit="{% if type_bon == 'frais' and frais and not frais.suffisant %}if (!confirm('Le panier est de {{ ('%.2f'|format(frais.panier)).replace('.', ',') if frais.panier is not none else '0' }} kg par bénéficiaire, sous l\'objectif de {{ ('%g'|format(frais.seuil)).replace('.', ',') }} kg. Générer les bons quand même ?')) return false;{% endif %}{% if bons %}if (this.recalculer && this.recalculer.checked) return confirm('Recalculer supprime les bons encore en préparation de ce jour, avec leurs modifications manuelles. Continuer ?');{% endif %}return true;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="date" value="{{ date_choisie.isoformat() }}">
     <input type="hidden" name="type" value="{{ type_bon }}">
@@ -58,8 +58,87 @@
   </form>
   {% endif %}
 
-  {% if type_bon == 'frais' %}
-    <div class="alert alert-info">Les quantités FRAIS dépendront de la ramasse du jour (module à venir).</div>
+  {% if type_bon == 'frais' and frais %}
+  {% set aujourdhui_ok = (date_choisie.isoformat() == aujourdhui) %}
+  <div class="card mb-3" id="synthese-frais">
+    <div class="card-header py-1 d-flex justify-content-between align-items-center">
+      <strong>🥬 Panier FRAIS du jour</strong>
+      <a href="{{ url_for('distribution.ramasse_jour', date=date_choisie.isoformat()) }}" class="btn btn-outline-secondary btn-sm py-0">🚛 Ramasse du jour</a>
+    </div>
+    <div class="card-body py-2">
+      <table class="table table-sm mb-2" style="max-width:760px">
+        <tbody>
+          <tr><td>Ramasse validée (produits prévus dans les menus)</td><td class="text-end">{{ ('%.1f'|format(frais.ramasse_kg)).replace('.', ',') }} kg</td></tr>
+          <tr><td>± Ajouts du stock (+) ou retraits de la ramasse (−)</td><td class="text-end">{{ ('%.1f'|format(frais.stock_kg)).replace('.', ',') }} kg</td></tr>
+          <tr class="fw-bold"><td>Tonnage total à répartir</td><td class="text-end" id="total-kg">{{ ('%.1f'|format(frais.total_kg)).replace('.', ',') }} kg</td></tr>
+          <tr><td>Bénéficiaires à servir en menus frais ({{ frais.nb_passages }} passage{{ 's' if frais.nb_passages > 1 }})</td><td class="text-end">{{ frais.benef }}</td></tr>
+          <tr class="fw-bold {{ 'table-success' if frais.suffisant else 'table-danger' }}">
+            <td>Panier par bénéficiaire (objectif ≥ {{ ('%g'|format(frais.seuil)).replace('.', ',') }} kg)</td>
+            <td class="text-end" id="panier">{% if frais.panier is not none %}{{ ('%.2f'|format(frais.panier)).replace('.', ',') }} kg{% else %}—{% endif %}
+              {{ '✅' if frais.suffisant else '⚠️' }}</td>
+          </tr>
+        </tbody>
+      </table>
+      {% if not frais.suffisant and frais.panier is not none %}
+        <div class="small text-danger mb-2">Panier insuffisant : compléter avec des produits du stock (tableau ci-dessous), ou continuer si le stock manque.</div>
+      {% endif %}
+
+      <div class="row">
+        <div class="col-lg-6">
+          <h6 class="mb-1">Produits prévus dans les bons — poids à répartir</h6>
+          {% if frais.produits %}
+          <table class="table table-sm">
+            <thead><tr><th>Article</th><th class="text-end">Ramasse</th><th class="text-end">Stock</th><th class="text-end">À répartir</th><th class="text-end">Passages</th></tr></thead>
+            <tbody>
+            {% for p in frais.produits %}
+              <tr><td>{{ p.article }} <span class="text-muted small">{{ p.libelle }}</span></td>
+                <td class="text-end">{{ ('%.1f'|format(p.kg_ramasse)).replace('.', ',') }}</td>
+                <td class="text-end">{{ ('%.1f'|format(p.kg_stock)).replace('.', ',') if p.kg_stock else '' }}</td>
+                <td class="text-end"><strong>{{ ('%.1f'|format(p.kg)).replace('.', ',') }}</strong></td>
+                <td class="text-end">{{ p.nb_passages }}</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+          {% else %}<div class="text-muted small">Aucun produit de la ramasse n'est prévu dans les menus FRAIS du jour.</div>{% endif %}
+          {% if frais.hors_menu %}
+            <div class="small text-warning-emphasis">⚠️ Hors menus (non répartis) : {% for t in frais.hors_menu %}{{ t.article }} {{ t.libelle }} {{ ('%.1f'|format(t.kg)).replace('.', ',') }} kg{{ '; ' if not loop.last }}{% endfor %}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-lg-6">
+          <h6 class="mb-1">Produits ajoutables (stock dépôt 03)</h6>
+          <table class="table table-sm align-middle">
+            <thead><tr><th>Article</th><th class="text-end">Stock dispo</th><th class="text-end" title="Positif : ajout du stock. Négatif : retrait d'un article de la ramasse">Ajout / retrait (kg)</th><th></th></tr></thead>
+            <tbody>
+            {% for a in frais.ajoutables %}
+              <tr data-article="{{ a.article }}">
+                <td>{{ a.article }} <span class="text-muted small">{{ a.libelle }}</span>
+                  {% if 'ramasse' in a.origine %}<span class="badge bg-success" title="Article de la ramasse du jour : on peut le compléter avec du stock">ramasse</span>{% endif %}
+                  {% if not a.dans_menu %}<span class="badge bg-warning text-dark" title="Cet article n'est dans aucun menu FRAIS du jour : il ne sera pas réparti">hors menu</span>{% endif %}</td>
+                <td class="text-end">{{ ('%.1f'|format(a.stock)).replace('.', ',') }}</td>
+                <td class="text-end"><input type="text" class="form-control form-control-sm d-inline-block js-ajout" style="width:90px;text-align:right"
+                      value="{{ ('%g'|format(a.ajoute)) if a.ajoute else '' }}" placeholder="0"
+                      title="{{ 'Ajout : jusqu\'à ' ~ ('%g'|format(a.stock)) ~ ' kg de stock' ~ (' ; retrait (négatif) : jusqu\'à ' ~ ('%g'|format(a.ramasse)) ~ ' kg ramassés' if a.ramasse else '') }}" {{ '' if (peut_ecrire and aujourdhui_ok) else 'disabled' }}></td>
+                <td class="text-nowrap"><span class="etat"></span>
+                  {% if peut_ecrire and 'liste' in a.origine %}<button class="btn btn-outline-danger btn-sm py-0 js-retirer-ajoutable" title="Retirer de la liste des produits ajoutables">✕</button>{% endif %}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="4" class="text-muted small">Aucun produit ajoutable défini.</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+          {% if peut_ecrire %}
+          <div class="d-flex flex-wrap align-items-center" style="gap:6px">
+            <input type="text" id="aj-prod" list="liste-articles-frais" class="form-control form-control-sm" style="width:300px" placeholder="Ajouter un produit à cette liste (code ou libellé)" autocomplete="off">
+            <button class="btn btn-outline-success btn-sm" id="btn-aj-prod">➕</button>
+          </div>
+          <datalist id="liste-articles-frais">{% for a in tous_articles %}<option value="{{ a.article }} — {{ a.libelle }}"></option>{% endfor %}</datalist>
+          {% endif %}
+          {% if not aujourdhui_ok %}<div class="small text-muted mt-1">Les ajouts ne se font que pour le jour même.</div>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
   {% endif %}
 
   {% if ignores %}
@@ -99,8 +178,44 @@
     {% endfor %}
     </tbody>
   </table>
-  {% elif type_bon == 'sec' %}
+  {% else %}
     <div class="alert alert-info">Aucun bon pour ce jour. Utilisez le bouton de génération.</div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if type_bon == 'frais' and frais %}
+<script>
+  var CSRF = "{{ csrf_token() }}", DATE = "{{ date_choisie.isoformat() }}";
+  function post(url, payload, etat) {
+    if (etat) { etat.textContent = '…'; }
+    return fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF}, body: JSON.stringify(payload)})
+      .then(function (r) { return r.json(); }).then(function (j) {
+        if (!j.ok) { if (etat) { etat.textContent = '✖'; etat.style.color = '#dc3545'; } alert(j.erreur || 'Erreur'); }
+        return j;
+      }).catch(function () { alert('Erreur réseau'); return {ok: false}; });
+  }
+  document.querySelectorAll('.js-ajout').forEach(function (i) {
+    i.addEventListener('change', function () {
+      var tr = i.closest('tr'), etat = tr.querySelector('.etat');
+      post("{{ url_for('distribution.frais_ajout_stock') }}", {date: DATE, article: tr.dataset.article, quantite_kg: i.value || '0'}, etat)
+        .then(function (j) { if (j.ok) location.reload(); });
+    });
+  });
+  document.querySelectorAll('.js-retirer-ajoutable').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var art = b.closest('tr').dataset.article;
+      if (confirm('Retirer ' + art + ' de la liste des produits ajoutables ?'))
+        post("{{ url_for('distribution.frais_ajoutables_gerer') }}", {action: 'retirer', article: art}).then(function (j) { if (j.ok) location.reload(); });
+    });
+  });
+  var bt = document.getElementById('btn-aj-prod');
+  if (bt) bt.addEventListener('click', function () {
+    var code = document.getElementById('aj-prod').value.split(' — ')[0].trim();
+    if (!code) return;
+    post("{{ url_for('distribution.frais_ajoutables_gerer') }}", {action: 'ajouter', article: code}).then(function (j) { if (j.ok) location.reload(); });
+  });
+</script>
+{% endif %}
 {% endblock %}

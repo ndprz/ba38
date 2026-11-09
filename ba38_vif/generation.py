@@ -255,6 +255,26 @@ def generer_bl_collecte_gardee(conn, lignes, date_bl):
     return "\r\n".join(out) + "\r\n"
 
 
+def generer_reception_ramasse_jour(code_vif_fournisseur, date_ramasse, lignes):
+    """Réception VIF (format recepba38, 14 colonnes, comme generer_receptions_ramasses) d'UNE ramasse
+    journalière : `lignes` = dicts {article, quantite_kg, lot}, `date_ramasse` = date.
+    Les deux dates de livraison prévue sont celles de la ramasse. Fins de ligne \\n, point décimal."""
+    if not code_vif_fournisseur:
+        raise ErreursVif(["Fournisseur sans code VIF"])
+    d = date_ramasse.strftime("%d/%m/%Y")
+    out = []
+    for l in lignes:
+        out.append(";".join([
+            "01", "38", d, code_vif_fournisseur, "01", "03",
+            (l["article"] or "").strip(),
+            f"{float(l['quantite_kg']):.3f}", "KG",
+            l.get("lot") or "", d, d, "", "RA",
+        ]))
+    if not out:
+        raise ErreursVif(["Aucune ligne dans la ramasse"])
+    return "\n".join(out) + "\n"
+
+
 def generer_bl_distribution(code_vif, date_bl, lignes, depot="03"):
     """BL VIF d'UN bon de préparation (format SFTP 12 colonnes validé FFBA, comme
     generer_bl_ramasses variante FORMAT_BL_SFTP) : `lignes` = dicts {article, quantite,

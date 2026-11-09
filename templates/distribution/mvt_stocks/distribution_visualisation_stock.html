@@ -20,6 +20,10 @@
         <small class="text-muted">
             — Stock au {{ date_stock }}
         </small>
+        <small class="text-muted d-block fs-6">
+            Stock VIF{% if date_mail %} reçu le {{ date_mail[8:10] }}/{{ date_mail[5:7] }}/{{ date_mail[:4] }} à {{ date_mail[11:16] }}{% endif %}
+            — les 3 dernières colonnes ajoutent les mouvements Basilic faits depuis (ramasses entrées, BL sortis), dépôt 03.
+        </small>
         {% endif %}
     </h2>
 
@@ -85,6 +89,9 @@
                 <th>COL (Kgn)</th>
                 <th>PAL (Kgn)</th>
                 <th>Coef brut</th>
+                <th title="Ramasses validées depuis le stock VIF (kg)">Entrées Basilic</th>
+                <th title="BL validés depuis le stock VIF, lignes en Kg">Sorties Basilic</th>
+                <th title="Kg brut VIF + entrées - sorties">Dispo Basilic (kg brut)</th>
             </tr>
         </thead>
 
@@ -167,6 +174,10 @@
                 <td class="text-end">
                     {{ (a.coef_kgn_vers_kg or 1) | float | round(4) }}
                 </td>
+
+                <td class="text-end">{{ a.entree_b if a.entree_b is not none else "" }}</td>
+                <td class="text-end">{{ a.sortie_b if a.sortie_b is not none else "" }}</td>
+                <td class="text-end"><strong>{{ a.dispo_b if a.dispo_b is not none else "" }}</strong></td>
             </tr>
 
             {% endfor %}
@@ -469,7 +480,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 "famille-row";
 
             famRow.innerHTML =
-                `<td colspan="17">📁 ${fam}</td>`;
+                `<td colspan="20">📁 ${fam}</td>`;
 
 
             /* =========================================
