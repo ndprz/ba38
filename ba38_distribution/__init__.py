@@ -13,3 +13,4 @@ from . import mvt_stocks
 from . import ramasse_assos
 from . import routes
 from . import planning_jour
+from . import bons_prepa

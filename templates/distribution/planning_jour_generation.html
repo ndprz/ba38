@@ -28,6 +28,8 @@
   <div class="d-flex justify-content-between align-items-center mb-2 entete-compact">
     <h2 class="mb-0 fs-4">🗓️ Génération du planning du jour</h2>
     {% call action_buttons() %}
+      {% if date_choisie %}{{ action_button("📦 Bons de prépa", href=url_for('distribution.bons_prepa_liste', date=date_choisie.isoformat()), color="outline-success") }}{% endif %}
+      {{ action_button("🍽️ Menus", href=url_for('distribution.planning_jour_gestion_menus'), color="outline-secondary") }}
       {{ action_button("🧾 Associations/menus", href=url_for('distribution.planning_jour_menus'), color="outline-secondary") }}
       {{ action_button("🏢 Fermetures assos", href=url_for('distribution.planning_jour_fermetures_assos'), color="outline-secondary") }}
       {{ action_button("🔒 Fermetures BA38", href=url_for('distribution.planning_jour_fermetures'), color="outline-secondary") }}
@@ -55,7 +57,7 @@
     {% if ferme_motif is not none %}
       <div class="alert alert-warning py-2 mb-2">
         🔒 <strong>BA38 fermée ce jour</strong>{% if ferme_motif %} ({{ ferme_motif }}){% endif %} —
-        les associations ci-dessous sont déplacées au jour ouvré suivant (cliquer « ← Veille » pour les passer au jour précédent).
+        les associations ci-dessous sont déplacées au jour ouvré suivant (boutons « ← Veille » pour le jour précédent, « ✕ Annuler » pour supprimer le passage).
       </div>
     {% endif %}
 
@@ -101,36 +103,44 @@
 
   new Tabulator('#planning-table', {
     data: DONNEES,
-    layout: 'fitData',
+    layout: 'fitColumns',   // la table occupe la largeur de l'écran, « Besoins » s'adapte
     height: 'calc(100vh - 235px)',   // défilement interne : l'en-tête reste figé
     placeholder: 'Aucune association',
     initialSort: [{column: 'nom', dir: 'asc'}],
+    // largeurs de colonnes ajustables à la souris et mémorisées (par navigateur), d'une date / page à l'autre
+    persistence: {columns: ['width']},
+    persistenceID: 'ba38_planning_jour_largeurs_v2',
     columnDefaults: { tooltip: true, headerSort: false, vertAlign: 'middle' },
     columns: [
-      {title: 'Code VIF', field: 'code_vif', width: 110, headerSort: true, sorter: triTexte, formatter: vide},
-      {title: 'Association', field: 'nom', width: 280, headerSort: true, sorter: triTexte,
+      {title: 'Code VIF', field: 'code_vif', width: 95, headerSort: true, sorter: triTexte, formatter: vide},
+      {title: 'Association', field: 'nom', width: 230, headerSort: true, sorter: triTexte,
         formatter: function (c) { return '<strong>' + esc(c.getValue()) + '</strong>'; }},
-      {title: 'Menu sec', field: 'menu_sec', width: 110, headerSort: true, sorter: triTexte, formatter: badge('badge-sec')},
-      {title: 'Menu frais', field: 'menu_frais', width: 120, headerSort: true, sorter: triTexte, formatter: badge('badge-frais')},
-      {title: 'Bénéf.', field: 'beneficiaires', width: 70, hozAlign: 'right', formatter: vide},
-      {title: 'Besoins particuliers', field: 'remarque', width: 300, formatter: vide},
-      {title: 'Fréquence', field: 'frequence', width: 115,
+      {title: 'Menu sec', field: 'menu_sec', width: 105, headerSort: true, sorter: triTexte, formatter: badge('badge-sec')},
+      {title: 'Menu frais', field: 'menu_frais', width: 105, headerSort: true, sorter: triTexte, formatter: badge('badge-frais')},
+      {title: 'Bénéf.', field: 'beneficiaires', width: 62, hozAlign: 'right', formatter: vide},
+      {title: 'Besoins particuliers', field: 'remarque', widthGrow: 3, minWidth: 140, formatter: vide},
+      {title: 'Fréquence', field: 'frequence', width: 105,
         formatter: function (c) {
           var d = c.getData(), v = d.frequence || 'Hebdomadaire';
           return esc(v) + (d.frequence_inconnue ? '<span class="badge-alerte" title="Fréquence non reconnue : à vérifier">!</span>' : '');
         }},
-      {title: 'Heure', field: 'heure', width: 75, formatter: vide},
-      {title: 'Emplacement', field: 'emplacement', width: 115, formatter: vide},
-      {title: 'Déplacement', field: 'deplacement', width: 230, visible: AVEC_DEPLACEMENT,
+      {title: 'Heure', field: 'heure', width: 70, formatter: vide},
+      {title: 'Emplacement', field: 'emplacement', width: 95, formatter: vide},
+      {title: 'Déplacement', field: 'deplacement', width: 300, visible: AVEC_DEPLACEMENT,
         formatter: function (c) {
           var d = c.getData();
           if (d.statut === 'fermee') return '<span class="badge-menu badge-ferme">' + esc(d.deplacement) + '</span>';
           if (d.statut === 'recue') return '<span class="badge-menu badge-recue">' + esc(d.deplacement) + '</span>';
+          var BTN = {
+            suivant:   '<button class="btn btn-outline-secondary btn-sm py-0 ms-1 js-sens" data-sens="suivant">Jour suivant →</button>',
+            precedent: '<button class="btn btn-outline-secondary btn-sm py-0 ms-1 js-sens" data-sens="precedent">← Veille</button>',
+            annule:    '<button class="btn btn-outline-danger btn-sm py-0 ms-1 js-sens" data-sens="annule">✕ Annuler</button>'
+          };
+          if (d.statut === 'annulee')
+            return '<span class="badge-menu badge-ferme">Passage annulé</span>' + BTN.suivant + BTN.precedent;
           if (d.statut !== 'deplacee') return '';
-          var bouton = d.sens === 'precedent'
-            ? '<button class="btn btn-outline-secondary btn-sm py-0 ms-2 js-sens" data-sens="suivant">Jour suivant →</button>'
-            : '<button class="btn btn-outline-secondary btn-sm py-0 ms-2 js-sens" data-sens="precedent">← Veille</button>';
-          return esc(d.deplacement) + bouton;
+          var autres = ['suivant', 'precedent', 'annule'].filter(function (x) { return x !== d.sens; });
+          return esc(d.deplacement) + autres.map(function (x) { return BTN[x]; }).join('');
         },
         cellClick: function (e, c) {
           var b = e.target.closest('.js-sens');
@@ -148,6 +158,7 @@
     rowFormatter: function (row) {
       var s = row.getData().statut;
       if (s === 'deplacee') row.getElement().style.opacity = '.75';
+      if (s === 'annulee') { row.getElement().style.opacity = '.6'; row.getElement().style.textDecoration = 'line-through'; }
       if (s === 'fermee') { row.getElement().style.opacity = '.6'; row.getElement().style.background = '#f8d7da'; }
       if (s === 'recue') row.getElement().style.background = '#fff3cd';
     }

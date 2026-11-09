@@ -157,7 +157,7 @@ def associations_du_jour(d: date) -> list[dict]:
                 continue
             for r, regle in passent(d0):
                 sens = deplacements.get((r["id"], d0.isoformat()), "suivant")
-                if jour_ouvre_voisin(d0, fermetures, sens) == d:
+                if sens != "annule" and jour_ouvre_voisin(d0, fermetures, sens) == d:
                     deja = next((x for x in res if x["id"] == r["id"]), None)
                     if deja:  # passe déjà ce jour-là : un seul passage, signalé
                         deja["deplacement"] = f"Passage du {d0.strftime('%d/%m')} regroupé"
@@ -169,6 +169,9 @@ def associations_du_jour(d: date) -> list[dict]:
     else:
         for r, regle in passent(d):
             sens = deplacements.get((r["id"], d.isoformat()), "suivant")
+            if sens == "annule":
+                res.append(_ligne(r, regle, d, statut="annulee", sens=sens, deplacement="Passage annulé"))
+                continue
             dest = jour_ouvre_voisin(d, fermetures, sens)
             res.append(_ligne(
                 r, regle, d, statut="deplacee", sens=sens,
@@ -186,7 +189,7 @@ def associations_du_jour(d: date) -> list[dict]:
     for a in res:
         jour_eff = a["destination"] if a["statut"] == "deplacee" else d.isoformat()
         motif = motif_ferme(a["association_id"], jour_eff)
-        if motif is None:
+        if motif is None or a["statut"] == "annulee":
             final.append(a)
         elif a["association_id"] not in deja_fermees:   # une seule ligne par association
             deja_fermees.add(a["association_id"])
@@ -245,7 +248,7 @@ def planning_jour_generation():
 @login_required
 @require_access("distribution", "ecriture")
 def planning_jour_deplacement():
-    """Choix du sens de déplacement (suivant / précédent) d'une association
+    """Choix du sort (jour suivant / veille / annulé) d'une association
     dont le jour de passage tombe un jour de fermeture."""
     data = request.get_json(silent=True) or {}
     try:
@@ -256,7 +259,7 @@ def planning_jour_deplacement():
     except (TypeError, ValueError):
         return jsonify(ok=False, erreur="Paramètres invalides"), 400
     sens = data.get("sens")
-    if sens not in ("suivant", "precedent"):
+    if sens not in ("suivant", "precedent", "annule"):
         return jsonify(ok=False, erreur="Sens invalide"), 400
 
     conn = get_db_connection()
@@ -546,3 +549,227 @@ def planning_jour_fermetures_assos():
     return render_template("distribution/planning_jour_fermetures_assos.html",
                            lignes=lignes, associations=associations,
                            peut_ecrire=has_access("distribution", "ecriture"))
+
+
+# ============================================================
+# Portions par article (utilisées pour la distribution)
+# ============================================================
+@distribution_bp.route("/planning_jour/portions")
+@login_required
+@require_access("distribution", "lecture")
+def planning_jour_portions():
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    articles = [dict(r) for r in conn.execute("""
+        SELECT article, libelle, famille, sous_famille, unite1_principale AS unite, portion
+        FROM articles ORDER BY article""")]
+    conn.close()
+    return render_template("distribution/planning_jour_portions.html", articles=articles,
+                           peut_ecrire=has_access("distribution", "ecriture"))
+
+
+@distribution_bp.route("/planning_jour/portions/save", methods=["POST"])
+@login_required
+@require_access("distribution", "ecriture")
+def planning_jour_portion_save():
+    """Enregistre la portion (kg net, kgn, comme l'export VIF) d'un article ; vide = non définie.
+    Écrit dans articles_portions (persistante) ET articles.portion."""
+    d = request.get_json(silent=True) or {}
+    article = str(d.get("article") or "").strip()
+    brut = str(d.get("portion") if d.get("portion") is not None else "").strip().replace(",", ".")
+    portion = None
+    if brut != "":
+        try:
+            portion = float(brut)
+        except ValueError:
+            return jsonify(ok=False, erreur=f"« {d.get('portion')} » n'est pas un nombre."), 400
+        if portion < 0 or portion > 100:
+            return jsonify(ok=False, erreur="La portion doit être comprise entre 0 et 100 kg net."), 400
+        portion = round(portion, 3)
+
+    conn = get_db_connection()
+    try:
+        if not conn.execute("SELECT 1 FROM articles WHERE article=?", (article,)).fetchone():
+            return jsonify(ok=False, erreur="Article introuvable"), 404
+        if portion is None:
+            conn.execute("DELETE FROM articles_portions WHERE article=?", (article,))
+        else:
+            conn.execute("""INSERT INTO articles_portions (article, portion, maj_le) VALUES (?, ?, datetime('now','localtime'))
+                            ON CONFLICT(article) DO UPDATE SET portion=excluded.portion, maj_le=excluded.maj_le""",
+                         (article, portion))
+        conn.execute("UPDATE articles SET portion=? WHERE article=?", (portion, article))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify(ok=True, portion=portion)
+
+
+# ============================================================
+# Gestion des menus (code, type, articles composant le menu)
+# ============================================================
+UNITES_MENU = ["Kg", "kgn", "COL", "P", "U", "PAL"]
+
+
+@distribution_bp.route("/planning_jour/gestion_menus")
+@login_required
+@require_access("distribution", "lecture")
+def planning_jour_gestion_menus():
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    menus = [dict(r) for r in conn.execute("""
+        SELECT m.code, m.libelle, m.type_menu, m.actif,
+               (SELECT COUNT(*) FROM menus_articles x WHERE x.menu_code = m.code) AS nb_articles,
+               (SELECT COUNT(*) FROM associations_menus am JOIN associations a ON a.id = am.association_id
+                 WHERE am.menu = m.code AND am.actif = 1
+                   AND (a.validite IS NULL OR LOWER(TRIM(a.validite)) != 'non')) AS nb_associations
+        FROM menus m ORDER BY m.type_menu, m.code COLLATE NOCASE""")]
+    contenus = {}
+    for r in conn.execute("""SELECT menu_code, article, quantite, unite, commentaire
+                             FROM menus_articles ORDER BY menu_code, ordre"""):
+        contenus.setdefault(r["menu_code"], []).append(
+            {"article": r["article"], "quantite": r["quantite"], "unite": r["unite"], "commentaire": r["commentaire"] or ""})
+    articles = [{"article": r[0], "libelle": r[1] or ""} for r in conn.execute("SELECT article, libelle FROM articles ORDER BY article")]
+    conn.close()
+    return render_template("distribution/planning_jour_gestion_menus.html", menus=menus, contenus=contenus,
+                           articles=articles, unites=UNITES_MENU,
+                           peut_ecrire=has_access("distribution", "ecriture"))
+
+
+@distribution_bp.route("/planning_jour/gestion_menus/save", methods=["POST"])
+@login_required
+@require_access("distribution", "ecriture")
+def planning_jour_gestion_menu_save():
+    """Crée (nouveau=true) ou remplace un menu et la liste ordonnée de ses articles."""
+    d = request.get_json(silent=True) or {}
+    code = str(d.get("code") or "").strip()
+    nouveau = bool(d.get("nouveau"))
+    type_menu = d.get("type_menu")
+    if not code or len(code) > 20 or re.search(r"\s", code):
+        return jsonify(ok=False, erreur="Code obligatoire (20 caractères max, sans espace)."), 400
+    if type_menu not in ("sec", "frais"):
+        return jsonify(ok=False, erreur="Choisissez le type de menu : sec ou frais."), 400
+
+    lignes, vus = [], set()
+    for i, a in enumerate(d.get("articles") or [], start=1):
+        art = str(a.get("article") or "").strip()
+        if not art:
+            continue
+        if art in vus:
+            return jsonify(ok=False, erreur=f"L'article {art} figure deux fois dans le menu."), 400
+        vus.add(art)
+        q = str(a.get("quantite") if a.get("quantite") is not None else "").strip().replace(",", ".")
+        try:
+            q = float(q) if q != "" else None
+            if q is not None and q < 0:
+                raise ValueError
+        except ValueError:
+            return jsonify(ok=False, erreur=f"Quantité invalide pour l'article {art}."), 400
+        unite = a.get("unite") or None
+        if unite and unite not in UNITES_MENU:
+            return jsonify(ok=False, erreur=f"Unité invalide pour l'article {art}."), 400
+        lignes.append((code, len(lignes) + 1, art, q, unite, (a.get("commentaire") or "").strip() or None))
+
+    conn = get_db_connection()
+    try:
+        existe = conn.execute("SELECT 1 FROM menus WHERE code=?", (code,)).fetchone()
+        if nouveau and existe:
+            return jsonify(ok=False, erreur=f"Le code « {code} » existe déjà."), 400
+        if not nouveau and not existe:
+            return jsonify(ok=False, erreur="Menu introuvable."), 404
+        inconnus = [x[2] for x in lignes if not conn.execute("SELECT 1 FROM articles WHERE article=?", (x[2],)).fetchone()]
+        if inconnus:
+            return jsonify(ok=False, erreur=f"Article(s) inconnu(s) : {', '.join(inconnus)}"), 400
+        if nouveau:
+            conn.execute("INSERT INTO menus (code, libelle, type_menu, actif) VALUES (?,?,?,?)",
+                         (code, (d.get("libelle") or "").strip() or None, type_menu, 1 if d.get("actif", True) else 0))
+        else:
+            conn.execute("UPDATE menus SET libelle=?, type_menu=?, actif=?, maj_le=datetime('now','localtime') WHERE code=?",
+                         ((d.get("libelle") or "").strip() or None, type_menu, 1 if d.get("actif", True) else 0, code))
+            conn.execute("DELETE FROM menus_articles WHERE menu_code=?", (code,))
+            # le type porté par les lignes d'associations suit le menu
+            conn.execute("UPDATE associations_menus SET type_menu=? WHERE menu=?", (type_menu, code))
+        conn.executemany("""INSERT INTO menus_articles (menu_code, ordre, article, quantite, unite, commentaire)
+                            VALUES (?,?,?,?,?,?)""", lignes)
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify(ok=True)
+
+
+@distribution_bp.route("/planning_jour/gestion_menus/delete", methods=["POST"])
+@login_required
+@require_access("distribution", "ecriture")
+def planning_jour_gestion_menu_delete():
+    code = str((request.get_json(silent=True) or {}).get("code") or "").strip()
+    conn = get_db_connection()
+    try:
+        n = conn.execute("SELECT COUNT(*) FROM associations_menus WHERE menu=?", (code,)).fetchone()[0]
+        if n:
+            return jsonify(ok=False, erreur=f"Menu utilisé par {n} ligne(s) association/menu : supprimez-les ou désactivez le menu."), 400
+        conn.execute("DELETE FROM menus_articles WHERE menu_code=?", (code,))
+        cur = conn.execute("DELETE FROM menus WHERE code=?", (code,))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify(ok=bool(cur.rowcount), erreur=None if cur.rowcount else "Menu introuvable")
+
+
+@distribution_bp.route("/planning_jour/gestion_menus/global", methods=["POST"])
+@login_required
+@require_access("distribution", "ecriture")
+def planning_jour_gestion_menus_global():
+    """Ajoute (en fin de menu) ou retire un article dans plusieurs menus à la fois.
+    Les menus qui contiennent déjà l'article (ajout) ou ne le contiennent pas (retrait) sont ignorés."""
+    d = request.get_json(silent=True) or {}
+    action = d.get("action")
+    article = str(d.get("article") or "").strip()
+    codes = [str(c) for c in (d.get("menus") or []) if str(c).strip()]
+    if action not in ("ajouter", "retirer"):
+        return jsonify(ok=False, erreur="Action invalide."), 400
+    if not codes:
+        return jsonify(ok=False, erreur="Sélectionnez au moins un menu."), 400
+
+    q = str(d.get("quantite") if d.get("quantite") is not None else "").strip().replace(",", ".")
+    try:
+        quantite = float(q) if q != "" else None
+        if quantite is not None and quantite < 0:
+            raise ValueError
+    except ValueError:
+        return jsonify(ok=False, erreur="Quantité invalide."), 400
+    unite = d.get("unite") or None
+    if unite and unite not in UNITES_MENU:
+        return jsonify(ok=False, erreur="Unité invalide."), 400
+    commentaire = (d.get("commentaire") or "").strip() or None
+
+    conn = get_db_connection()
+    try:
+        if not conn.execute("SELECT 1 FROM articles WHERE article=?", (article,)).fetchone():
+            return jsonify(ok=False, erreur="Article introuvable : choisissez-le dans la liste."), 400
+        existants = {r[0] for r in conn.execute(f"SELECT code FROM menus WHERE code IN ({','.join('?' * len(codes))})", codes)}
+        modifies, ignores = [], []
+        for code in codes:
+            if code not in existants:
+                ignores.append(code)
+                continue
+            present = conn.execute("SELECT 1 FROM menus_articles WHERE menu_code=? AND article=?", (code, article)).fetchone()
+            if action == "ajouter":
+                if present:
+                    ignores.append(code)
+                    continue
+                ordre = conn.execute("SELECT COALESCE(MAX(ordre), 0) + 1 FROM menus_articles WHERE menu_code=?", (code,)).fetchone()[0]
+                conn.execute("""INSERT INTO menus_articles (menu_code, ordre, article, quantite, unite, commentaire)
+                                VALUES (?,?,?,?,?,?)""", (code, ordre, article, quantite, unite or "Kg", commentaire))
+            else:
+                if not present:
+                    ignores.append(code)
+                    continue
+                conn.execute("DELETE FROM menus_articles WHERE menu_code=? AND article=?", (code, article))
+                for i, (rid,) in enumerate(conn.execute(
+                        "SELECT id FROM menus_articles WHERE menu_code=? ORDER BY ordre, id", (code,)).fetchall(), start=1):
+                    conn.execute("UPDATE menus_articles SET ordre=? WHERE id=?", (i, rid))
+            conn.execute("UPDATE menus SET maj_le=datetime('now','localtime') WHERE code=?", (code,))
+            modifies.append(code)
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify(ok=True, modifies=modifies, ignores=ignores)

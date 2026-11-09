@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Bon de préparation{% endblock %}
+
+{% block extra_css %}
+<style>
+  .sans-qte { background: #fff3cd; }
+  .etat-save { font-size: .8rem; color: #198754; min-width: 60px; display: inline-block; }
+  .qte { width: 90px; text-align: right; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-2 px-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="mb-0 fs-4">📦 Bon de préparation {{ 'FRAIS' if bon.type_bon == 'frais' else 'SEC' }} — {{ bon.nom_association }}</h2>
+    {% call action_buttons() %}
+      {{ action_button("🖨️ Imprimer (PDF)", href=url_for('distribution.bons_prepa_pdf_bon', bon_id=bon.id), color="outline-dark", onclick="window.open(this.href, '_blank'); return false;") }}
+      {{ action_button("↩️ Liste du jour", href=url_for('distribution.bons_prepa_liste', date=bon.date_distribution, type=bon.type_bon), color="outline-dark") }}
+    {% endcall %}
+  </div>
+
+  <div class="card mb-3"><div class="card-body py-2">
+    <div class="row g-2">
+      <div class="col-auto"><strong>Date</strong> {{ bon.date_distribution[8:10] }}/{{ bon.date_distribution[5:7] }}/{{ bon.date_distribution[:4] }}</div>
+      <div class="col-auto"><strong>Code VIF</strong> {{ bon.code_VIF or '—' }}</div>
+      <div class="col-auto"><strong>Heure</strong> {{ bon.heure or '—' }}</div>
+      <div class="col-auto"><strong>Emplacement</strong> {{ bon.emplacement or '—' }}</div>
+      <div class="col-auto"><strong>Bénéficiaires</strong> {{ bon.nbre_beneficiaires }}</div>
+      <div class="col-auto"><strong>Menus</strong> {{ bon.menus }}</div>
+      <div class="col-auto"><strong>Statut</strong> {{ {'preparation': 'En préparation', 'validee': 'Validée', 'bl': 'BL'}.get(bon.statut, bon.statut) }}</div>
+    </div>
+    {% if bon.besoins_particuliers %}
+      <div class="mt-1"><strong>Besoins particuliers :</strong> {{ bon.besoins_particuliers }}</div>
+    {% endif %}
+    <div class="mt-2">
+      <label class="form-label mb-0"><strong>Commentaire du bon</strong> <span class="etat-save" id="etat-bon"></span></label>
+      <textarea id="commentaire-bon" class="form-control form-control-sm" rows="2" {{ '' if peut_ecrire else 'disabled' }}>{{ bon.commentaire or '' }}</textarea>
+    </div>
+  </div></div>
+
+  <table class="table table-sm align-middle">
+    <thead><tr>
+      <th>Article</th><th>Libellé</th><th>Menu</th>
+      <th class="text-end">Calcul</th><th class="text-end">Quantité</th><th>Unité</th><th>Commentaire</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for l in lignes %}
+      <tr data-id="{{ l.id }}" class="{{ 'sans-qte' if l.quantite is none }}">
+        <td>{{ l.article }}</td>
+        <td>{{ l.libelle }}</td>
+        <td>{{ l.menu_code }}</td>
+        <td class="text-end small text-muted">
+          {% if l.source == 'fixe' %}fixe menu
+          {% elif l.source == 'portion' %}{{ '%g'|format(l.portion) }} kgn × {{ bon.nbre_beneficiaires }}{% if l.coef and l.coef != 1 %} × {{ '%.2f'|format(l.coef) }}{% endif %}
+          {% else %}pas de portion{% endif %}
+        </td>
+        <td class="text-end">
+          <input type="text" inputmode="decimal" class="form-control form-control-sm qte d-inline-block"
+                 value="{{ '%g'|format(l.quantite) if l.quantite is not none else '' }}"
+                 {{ '' if peut_ecrire else 'disabled' }}>
+        </td>
+        <td>{{ l.unite }}</td>
+        <td><input type="text" class="form-control form-control-sm cmt" value="{{ l.commentaire or '' }}" {{ '' if peut_ecrire else 'disabled' }}></td>
+        <td class="text-nowrap">
+          <span class="etat-save"></span>
+          {% if peut_ecrire %}<button type="button" class="btn btn-outline-danger btn-sm py-0 js-suppr" title="Retirer cette ligne du bon">✕</button>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if not lignes %}<div class="alert alert-info">Aucune ligne.</div>{% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  var URL_SAVE = "{{ url_for('distribution.bons_prepa_save', bon_id=bon.id) }}";
+  var CSRF = "{{ csrf_token() }}";
+
+  function envoyer(payload, etat) {
+    etat.textContent = '…'; etat.style.color = '';
+    return fetch(URL_SAVE, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+      body: JSON.stringify(payload)
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (j.ok) { etat.textContent = '✔'; etat.style.color = '#198754'; }
+      else { etat.textContent = '✖'; etat.style.color = '#dc3545'; alert(j.erreur || 'Erreur'); }
+      return j;
+    }).catch(function () { etat.textContent = '✖'; etat.style.color = '#dc3545'; alert('Erreur réseau'); });
+  }
+
+  document.getElementById('commentaire-bon').addEventListener('change', function () {
+    envoyer({commentaire: this.value}, document.getElementById('etat-bon'));
+  });
+
+  document.querySelectorAll('tbody tr[data-id]').forEach(function (tr) {
+    var id = Number(tr.dataset.id), etat = tr.querySelector('.etat-save');
+    tr.querySelector('.qte').addEventListener('change', function () {
+      var v = this.value;
+      envoyer({ligne_id: id, quantite: v}, etat).then(function (j) {
+        if (j && j.ok) tr.classList.toggle('sans-qte', v.trim() === '');
+      });
+    });
+    tr.querySelector('.cmt').addEventListener('change', function () {
+      envoyer({ligne_id: id, commentaire_ligne: this.value}, etat);
+    });
+    var s = tr.querySelector('.js-suppr');
+    if (s) s.addEventListener('click', function () {
+      if (!confirm('Retirer cette ligne du bon ?')) return;
+      envoyer({ligne_id: id, supprimer: true}, etat).then(function (j) { if (j && j.ok) tr.remove(); });
+    });
+  });
+</script>
+{% endblock %}

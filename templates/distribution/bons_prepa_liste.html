@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Bons de préparation{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-2 px-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="mb-0 fs-4">📦 Bons de préparation {{ 'FRAIS' if type_bon == 'frais' else 'SECS' }}</h2>
+    {% call action_buttons() %}
+      {{ action_button("🗓️ Planning du jour", href=url_for('distribution.planning_jour_generation', date=date_choisie.isoformat()), color="outline-secondary") }}
+      {{ action_button("↩️ Retour à la distribution", href=url_for('distribution.distribution_main'), color="outline-dark") }}
+    {% endcall %}
+  </div>
+
+  <ul class="nav nav-tabs mb-2">
+    <li class="nav-item"><a class="nav-link {{ 'active' if type_bon == 'sec' }}" href="{{ url_for('distribution.bons_prepa_liste', date=date_choisie.isoformat(), type='sec') }}">SECS</a></li>
+    <li class="nav-item"><a class="nav-link {{ 'active' if type_bon == 'frais' }}" href="{{ url_for('distribution.bons_prepa_liste', date=date_choisie.isoformat(), type='frais') }}">FRAIS</a></li>
+  </ul>
+
+  <form method="get" class="d-flex flex-wrap align-items-center mb-3" style="gap:12px">
+    <input type="hidden" name="type" value="{{ type_bon }}">
+    <label for="date" class="mb-0">Jour de distribution</label>
+    <input type="date" id="date" name="date" class="form-control form-control-sm w-auto" value="{{ date_choisie.isoformat() }}" required>
+    <button type="submit" class="btn btn-outline-secondary btn-sm">Afficher</button>
+    <span class="badge bg-secondary">{{ bons|length }} bon{{ 's' if bons|length > 1 }}</span>
+    {% if bons %}<a class="btn btn-outline-dark btn-sm" target="_blank" href="{{ url_for('distribution.bons_prepa_pdf_jour', date=date_choisie.isoformat(), type=type_bon) }}">🖨️ Imprimer tous les bons (PDF)</a>{% endif %}
+  </form>
+
+  {% if peut_ecrire %}
+  <form method="post" action="{{ url_for('distribution.bons_prepa_generer') }}" class="d-flex flex-wrap align-items-center mb-3" style="gap:12px"
+        {% if bons %}onsubmit="if (this.recalculer.checked) return confirm('Recalculer supprime les bons encore en préparation de ce jour, avec leurs modifications manuelles. Continuer ?');"{% endif %}>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="date" value="{{ date_choisie.isoformat() }}">
+    <input type="hidden" name="type" value="{{ type_bon }}">
+    {% if type_bon == 'frais' and date_choisie.isoformat() != aujourdhui %}
+      <button type="button" class="btn btn-secondary btn-sm" disabled>Générer les bons de prépa FRAIS</button>
+      <span class="text-danger">La génération FRAIS n'est possible que pour le jour même ({{ aujourdhui[8:10] }}/{{ aujourdhui[5:7] }}).</span>
+    {% else %}
+      <button type="submit" class="btn btn-success btn-sm">Générer les bons de prépa {{ 'FRAIS' if type_bon == 'frais' else 'SECS' }}</button>
+      {% if bons %}
+      <label class="mb-0 small"><input type="checkbox" name="recalculer" value="1"> Tout recalculer (perd les modifications)</label>
+      {% endif %}
+    {% endif %}
+    {% if bons %}<span class="text-muted small">Les bons déjà générés sont conservés tels quels.</span>{% endif %}
+  </form>
+  {% endif %}
+
+  {% if type_bon == 'frais' %}
+    <div class="alert alert-info">Les quantités FRAIS dépendront de la ramasse du jour (module à venir).</div>
+  {% endif %}
+
+  {% if ignores %}
+    <div class="alert alert-warning">
+      <strong>⚠️ {{ ignores|length }} passage{{ 's' if ignores|length > 1 }} ignoré{{ 's' if ignores|length > 1 }} (à corriger dans « Associations/menus ») :</strong>
+      <ul class="mb-0">
+        {% for a in ignores %}
+          <li>{{ a.nom }}{% if a.heure %} — {{ a.heure }}{% endif %} : {{ a.raison }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  {% if bons %}
+  <table class="table table-sm table-hover align-middle">
+    <thead><tr>
+      <th>Code VIF</th><th>Association</th><th>Heure</th><th>Empl.</th><th>Menus</th>
+      <th class="text-end">Bénéf.</th><th class="text-end">Lignes</th><th>Statut</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for b in bons %}
+      <tr>
+        <td>{{ b.code_VIF or '—' }}</td>
+        <td><strong>{{ b.nom_association }}</strong>{% if b.commentaire %} <span title="{{ b.commentaire }}">💬</span>{% endif %}</td>
+        <td>{{ b.heure or '—' }}</td>
+        <td>{{ b.emplacement or '—' }}</td>
+        <td>{{ b.menus }}</td>
+        <td class="text-end">{{ b.nbre_beneficiaires }}</td>
+        <td class="text-end">{{ b.nb_lignes }}{% if b.nb_a_saisir %} <span class="badge bg-warning text-dark" title="Lignes sans quantité">{{ b.nb_a_saisir }} à saisir</span>{% endif %}</td>
+        <td><span class="badge bg-secondary">{{ {'preparation': 'En préparation', 'validee': 'Validée', 'bl': 'BL'}.get(b.statut, b.statut) }}</span></td>
+        <td class="text-nowrap">
+          <a class="btn btn-outline-primary btn-sm py-0" href="{{ url_for('distribution.bons_prepa_voir', bon_id=b.id) }}">Ouvrir</a>
+          <a class="btn btn-outline-dark btn-sm py-0" target="_blank" title="Imprimer ce bon (PDF)" href="{{ url_for('distribution.bons_prepa_pdf_bon', bon_id=b.id) }}">🖨️</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% elif type_bon == 'sec' %}
+    <div class="alert alert-info">Aucun bon pour ce jour. Utilisez le bouton de génération.</div>
+  {% endif %}
+</div>
+{% endblock %}
