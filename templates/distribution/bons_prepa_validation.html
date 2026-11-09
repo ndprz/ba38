@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Validation du bon – choix des lots{% endblock %}
+
+{% block extra_css %}
+<style>
+  .ligne-card { border: 1px solid #ccc; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; }
+  .ligne-card.ok  { border-left: 5px solid #198754; }
+  .ligne-card.ko  { border-left: 5px solid #dc3545; }
+  .ligne-card.neutre { border-left: 5px solid #adb5bd; }
+  .ligne-card table { font-size: .85rem; }
+  .qte-lot { width: 90px; text-align: right; }
+  .total-ligne { font-weight: bold; }
+  .depot-sortie { background: #e7f3ec; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-2 px-3">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="mb-0 fs-4">✅ Validation du bon {{ 'FRAIS' if bon.type_bon == 'frais' else 'SEC' }} — {{ bon.nom_association }}</h2>
+    {% call action_buttons() %}
+      {{ action_button("↩️ Retour au bon", href=url_for('distribution.bons_prepa_voir', bon_id=bon.id), color="outline-dark") }}
+    {% endcall %}
+  </div>
+
+  <div class="alert alert-info py-2">
+    Distribution du {{ bon.date_distribution[8:10] }}/{{ bon.date_distribution[5:7] }}/{{ bon.date_distribution[:4] }} —
+    code VIF <strong>{{ bon.code_VIF or '—' }}</strong>. Pour chaque ligne, répartir la quantité à livrer sur les lots du stock
+    (stock du dépôt {{ depot_sortie }} uniquement ; proposition : DLC/DDM la plus proche d'abord). Le fichier BL contiendra une ligne par lot.
+    <br><small>Le stock affiché est celui de la dernière synchronisation VIF, diminué des lots déjà affectés par d'autres BL non encore déposés.</small>
+  </div>
+  {% if not bon.code_VIF %}<div class="alert alert-danger">Cette association n'a pas de code VIF : le BL ne pourra pas être créé.</div>{% endif %}
+
+  <div id="erreurs" class="alert alert-danger d-none"></div>
+
+  {% for l in lignes %}
+    {% if l.qte_bl is not none and l.qte_bl > 0 %}
+    <div class="ligne-card neutre" data-ligne="{{ l.id }}" data-cible="{{ l.qte_bl }}" data-unite="{{ l.unite }}" data-avec-lots="{{ 1 if (l.lots or l.stock_03) else 0 }}">
+      <div class="d-flex flex-wrap justify-content-between align-items-center">
+        <div>
+          <strong>{{ l.article }}</strong> — {{ l.libelle }}
+          {% if l.source == 'ajout' %}<span class="badge bg-secondary">ajout</span>{% endif %}
+        </div>
+        <div>
+          À livrer : <strong>{{ '%g'|format(l.qte_bl) }} {{ l.unite }}</strong>
+          — affecté : <span class="total-ligne">0</span>
+          <span class="etat ms-1"></span>
+        </div>
+      </div>
+
+      {% if l.lots %}
+        {% set prop = {} %}
+        {% for p in l.propose %}{% if prop.update({(p.lot ~ '|' ~ p.depot): p.quantite}) %}{% endif %}{% endfor %}
+        <table class="table table-sm align-middle mb-1 mt-1">
+          <thead><tr>
+            <th>Lot</th><th>DLC / DDM</th>
+            <th class="text-end">Kg net</th><th class="text-end">Kg brut</th><th class="text-end">COL</th>
+            <th class="text-end">Dispo ({{ l.unite }})</th><th class="text-end">Quantité</th>
+          </tr></thead>
+          <tbody>
+          {% for x in l.lots %}
+            <tr>
+              <td>{{ x.lot }}</td>
+              <td>{{ x.dlc or x.ddm or '—' }}{% if x.dlc %} <small class="text-muted">DLC</small>{% elif x.ddm %} <small class="text-muted">DDM</small>{% endif %}</td>
+              <td class="text-end">{{ '%g'|format(x.kg_net) if x.kg_net is not none else '' }}</td>
+              <td class="text-end">{{ '%g'|format(x.kg_brut) if x.kg_brut is not none else '' }}</td>
+              <td class="text-end">{{ '%g'|format(x.col) if x.col is not none else '' }}</td>
+              <td class="text-end">{{ '%g'|format(x.dispo) if x.dispo is not none else 'n/c' }}</td>
+              <td class="text-end">
+                <input type="text" inputmode="decimal" class="form-control form-control-sm qte-lot d-inline-block"
+                       data-lot="{{ x.lot }}" data-depot="{{ x.depot }}" data-dispo="{{ x.dispo if x.dispo is not none else '' }}"
+                       value="{{ '%g'|format(prop.get(x.lot ~ '|' ~ x.depot)) if prop.get(x.lot ~ '|' ~ x.depot) else '' }}">
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        <label class="small"><input type="checkbox" class="sans-lot"> Livrer cette ligne sans lot (BL sans numéro de lot)</label>
+        {% if l.reste_propose > 0.005 %}<span class="text-danger small ms-3">⚠️ Stock insuffisant : {{ '%g'|format(l.reste_propose) }} {{ l.unite }} non couverts.</span>{% endif %}
+      {% elif l.stock_03 %}
+        <div class="text-danger small mt-1">⚠️ Tous les lots de cet article en dépôt {{ depot_sortie }} sont déjà affectés à d'autres BL non déposés. Retirer la ligne ou la livrer sans lot.</div>
+        <label class="small"><input type="checkbox" class="sans-lot"> Livrer cette ligne sans lot (BL sans numéro de lot)</label>
+      {% else %}
+        <div class="text-muted small mt-1">Aucun lot en stock (dépôt {{ depot_sortie }}) pour cet article : la ligne sera envoyée sans numéro de lot.</div>
+      {% endif %}
+    </div>
+    {% endif %}
+  {% endfor %}
+
+  <div class="mt-3 mb-4">
+    <button type="button" id="btn-valider" class="btn btn-success">✅ Valider et créer le BL (CSV)</button>
+    <a class="btn btn-outline-secondary" href="{{ url_for('distribution.bons_prepa_voir', bon_id=bon.id) }}">Annuler</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  var URL_VALIDER = "{{ url_for('distribution.bons_prepa_valider', bon_id=bon.id) }}";
+  var CSRF = "{{ csrf_token() }}";
+  var cartes = document.querySelectorAll('.ligne-card');
+
+  function nombre(v) { var n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? 0 : n; }
+
+  function maj(carte) {
+    var cible = nombre(carte.dataset.cible), total = 0, depasse = false;
+    carte.querySelectorAll('.qte-lot').forEach(function (i) {
+      var q = nombre(i.value); total += q;
+      var d = i.dataset.dispo;
+      if (d !== '' && q > nombre(d) + 0.005) depasse = true;
+    });
+    carte.querySelector('.total-ligne').textContent = (Math.round(total * 1000) / 1000).toString().replace('.', ',');
+    var sans = carte.querySelector('.sans-lot'), sansCoche = sans && sans.checked;
+    var etat = carte.querySelector('.etat'), ok;
+    if (carte.dataset.avecLots === '0' || sansCoche) { ok = true; etat.textContent = ''; }
+    else if (depasse) { ok = false; etat.textContent = '⚠️ dépasse le stock du lot'; }
+    else if (Math.abs(total - cible) <= 0.005) { ok = true; etat.textContent = '✔'; }
+    else { ok = false; etat.textContent = (total < cible ? '⚠️ reste ' : '⚠️ excès de ') + (Math.round(Math.abs(cible - total) * 1000) / 1000); }
+    carte.classList.toggle('ok', ok); carte.classList.toggle('ko', !ok); carte.classList.remove('neutre');
+  }
+
+  cartes.forEach(function (c) {
+    c.querySelectorAll('.qte-lot').forEach(function (i) { i.addEventListener('input', function () { maj(c); }); });
+    var s = c.querySelector('.sans-lot');
+    if (s) s.addEventListener('change', function () {
+      c.querySelectorAll('.qte-lot').forEach(function (i) { i.disabled = s.checked; });
+      maj(c);
+    });
+    maj(c);
+  });
+
+  document.getElementById('btn-valider').addEventListener('click', function () {
+    var aff = {}, sans = [];
+    cartes.forEach(function (c) {
+      var id = c.dataset.ligne, s = c.querySelector('.sans-lot');
+      if (s && s.checked) { sans.push(id); return; }
+      aff[id] = [];
+      c.querySelectorAll('.qte-lot').forEach(function (i) {
+        if (nombre(i.value) > 0) aff[id].push({lot: i.dataset.lot, depot: i.dataset.depot, quantite: i.value});
+      });
+    });
+    if (!confirm('Valider le bon et créer le BL ? Les quantités et les lots seront figés.')) return;
+    var btn = this; btn.disabled = true;
+    fetch(URL_VALIDER, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+      body: JSON.stringify({affectations: aff, sans_lot: sans})
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (j.ok) { location.href = j.url; return; }
+      var box = document.getElementById('erreurs');
+      box.innerHTML = '<strong>Validation impossible :</strong><ul class="mb-0">' +
+        (j.erreurs || ['Erreur']).map(function (e) { return '<li>' + e.replace(/[&<>]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]; }) + '</li>'; }).join('') + '</ul>';
+      box.classList.remove('d-none'); window.scrollTo(0, 0); btn.disabled = false;
+    }).catch(function () { alert('Erreur réseau'); btn.disabled = false; });
+  });
+</script>
+{% endblock %}

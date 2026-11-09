@@ -57,7 +57,7 @@
 
   <table class="lignes">
     <thead><tr>
-      <th>Article</th><th>Libellé</th><th class="d">Quantité</th><th>Unité</th><th>Remarque</th><th class="case">Prép.</th>
+      <th>Article</th><th>Libellé</th><th class="d">Préparée</th><th class="d">Livrée</th><th>Unité</th><th>Remarque</th><th class="case">Prép.</th>
     </tr></thead>
     <tbody>
     {% for l in b.lignes %}
@@ -65,6 +65,7 @@
         <td>{{ l.article }}</td>
         <td>{{ l.libelle }}</td>
         <td class="d qte">{% if l.quantite is none %}<span class="vide">………</span>{% else %}{{ ('%g'|format(l.quantite)).replace('.', ',') }}{% endif %}</td>
+        <td class="d qte">{% if l.quantite_livree is not none %}{{ ('%g'|format(l.quantite_livree)).replace('.', ',') }}{% endif %}</td>
         <td>{{ l.unite }}</td>
         <td class="cmt">{{ l.commentaire or '' }}</td>
         <td class="case"><span></span></td>

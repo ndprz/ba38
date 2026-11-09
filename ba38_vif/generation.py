@@ -255,6 +255,31 @@ def generer_bl_collecte_gardee(conn, lignes, date_bl):
     return "\r\n".join(out) + "\r\n"
 
 
+def generer_bl_distribution(code_vif, date_bl, lignes, depot="03"):
+    """BL VIF d'UN bon de préparation (format SFTP 12 colonnes validé FFBA, comme
+    generer_bl_ramasses variante FORMAT_BL_SFTP) : `lignes` = dicts {article, quantite,
+    unite}, `date_bl` = date. Quantité à 2 décimales (virgule), CRLF.
+    Une ligne par lot (`lot` facultatif : vide si la ligne part sans lot) ; la sortie se fait
+    toujours du dépôt `depot` (03)."""
+    if not code_vif:
+        raise ErreursVif(["Association sans code VIF"])
+    out = []
+    for l in lignes:
+        out.append(";".join([
+            "01", "38", "01", "38", "NORM",
+            code_vif,
+            date_bl.strftime("%d/%m/%Y"),
+            (l["article"] or "").strip(),
+            l.get("lot") or "",
+            f"{float(l['quantite']):.2f}".replace(".", ","),
+            l["unite"],
+            depot,                    # dépôt de sortie : toujours le même (03) pour tous les BL de distribution
+        ]))
+    if not out:
+        raise ErreursVif(["Aucune ligne avec une quantité"])
+    return "\r\n".join(out) + "\r\n"
+
+
 # Colonnes du fichier de mouvements VIF (format TRANSCO). Documentation : VIF
 # n'attend PAS de ligne d'entête, elle n'est pas écrite dans le fichier.
 COLONNES_MOUVEMENTS = [

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 12mm 12mm 14mm 12mm;
+          @bottom-right { content: "Page " counter(page) " / " counter(pages); font-size: 8pt; color: #666; } }
+  body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 9.5pt; color: #111; }
+  .bon { page-break-after: always; }
+  .bon:last-child { page-break-after: auto; }
+  h1 { font-size: 15pt; margin: 0 0 2mm 0; }
+  .sous { color: #555; font-size: 9pt; margin-bottom: 3mm; }
+  .copie { display: inline-block; border: 1px solid #b00; color: #b00; padding: 0 6px; font-size: 9pt; margin-left: 6px; }
+  table.entete { width: 100%; border-collapse: collapse; margin-bottom: 3mm; }
+  table.entete td { border: 1px solid #999; padding: 2mm 3mm; vertical-align: top; }
+  table.entete .lib { font-size: 7.5pt; color: #666; text-transform: uppercase; display: block; }
+  table.entete .val { font-size: 11pt; font-weight: bold; }
+  .encadre { border: 1px solid #999; padding: 2mm 3mm; margin-bottom: 3mm; }
+  table.lignes { width: 100%; border-collapse: collapse; }
+  table.lignes th { background: #eee; border: 1px solid #999; padding: 1.5mm 2mm; font-size: 8.5pt; text-align: left; }
+  table.lignes td { border: 1px solid #bbb; padding: 1.6mm 2mm; vertical-align: middle; }
+  table.lignes tr { page-break-inside: avoid; }
+  .d { text-align: right; white-space: nowrap; }
+  .qte { font-weight: bold; font-size: 11pt; }
+  .cmt { font-size: 8pt; color: #444; }
+  .signature { margin-top: 8mm; border: 1px solid #999; height: 22mm; padding: 2mm 3mm; font-size: 8.5pt; color: #555; }
+  .vide { color: #999; }
+</style>
+</head>
+<body>
+{% for b in bons %}
+<div class="bon">
+  <h1>{{ org.nom }} — Bon de livraison <span class="copie">COPIE</span></h1>
+  <div class="sous">Distribution du {{ b.date_fr }} — bon {{ 'FRAIS' if b.type_bon == 'frais' else 'SEC' }}
+    — fichier {{ b.bl_fichier }}{% if b.valide_fr %} — validé le {{ b.valide_fr }}{% if b.valide_par %} par {{ b.valide_par }}{% endif %}{% endif %}</div>
+
+  <table class="entete">
+    <tr>
+      <td colspan="2"><span class="lib">Association</span><span class="val">{{ b.nom_association }}</span></td>
+      <td><span class="lib">Code VIF</span><span class="val">{{ b.code_VIF or '—' }}</span></td>
+      <td><span class="lib">Bénéficiaires</span><span class="val">{{ b.nbre_beneficiaires }}</span></td>
+    </tr>
+    <tr>
+      <td><span class="lib">Heure</span><span class="val">{{ b.heure or '—' }}</span></td>
+      <td><span class="lib">Emplacement</span><span class="val">{{ b.emplacement or '—' }}</span></td>
+      <td colspan="2"><span class="lib">Menus</span><span class="val">{{ b.menus }}</span></td>
+    </tr>
+  </table>
+  {% if b.commentaire %}<div class="encadre"><strong>Commentaire :</strong> {{ b.commentaire }}</div>{% endif %}
+
+  <table class="lignes">
+    <thead><tr>
+      <th>Article</th><th>Libellé</th><th>Lot</th><th>DLC / DDM</th><th class="d">Quantité livrée</th><th>Unité</th><th>Remarque</th>
+    </tr></thead>
+    <tbody>
+    {% for l in b.lignes %}
+      <tr>
+        <td>{{ l.article }}</td>
+        <td>{{ l.libelle }}</td>
+        <td>{{ l.lot or '—' }}</td>
+        <td>{{ l.peremption or '' }}</td>
+        <td class="d qte">{{ ('%g'|format(l.quantite)).replace('.', ',') }}</td>
+        <td>{{ l.unite }}</td>
+        <td class="cmt">{{ l.commentaire }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if not b.lignes %}<p class="vide">Aucune ligne livrée sur ce bon.</p>{% endif %}
+  <div class="signature">Date et signature du bénéficiaire :</div>
+</div>
+{% endfor %}
+</body>
+</html>

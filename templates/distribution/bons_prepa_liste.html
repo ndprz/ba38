@@ -9,6 +9,7 @@
   <div class="d-flex justify-content-between align-items-center mb-2">
     <h2 class="mb-0 fs-4">📦 Bons de préparation {{ 'FRAIS' if type_bon == 'frais' else 'SECS' }}</h2>
     {% call action_buttons() %}
+      {{ action_button("📚 Consultation des BL", href=url_for('distribution.bons_livraison_liste'), color="outline-secondary") }}
       {{ action_button("🗓️ Planning du jour", href=url_for('distribution.planning_jour_generation', date=date_choisie.isoformat()), color="outline-secondary") }}
       {{ action_button("↩️ Retour à la distribution", href=url_for('distribution.distribution_main'), color="outline-dark") }}
     {% endcall %}
@@ -47,6 +48,16 @@
   </form>
   {% endif %}
 
+  {% if peut_ecrire and bons and bons|selectattr('statut', 'equalto', 'preparation')|list %}
+  <form method="post" action="{{ url_for('distribution.bons_prepa_valider_jour') }}" class="mb-3"
+        onsubmit="return confirm('Valider TOUS les bons en préparation de ce jour et créer leurs BL (un CSV par bon), avec répartition automatique des lots (plus ancienne DLC/DDM d'abord) ? Les bons incomplets seront signalés et laissés en préparation.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="date" value="{{ date_choisie.isoformat() }}">
+    <input type="hidden" name="type" value="{{ type_bon }}">
+    <button type="submit" class="btn btn-success btn-sm">✅ Valider tous les bons (lots automatiques) → créer les BL</button>
+  </form>
+  {% endif %}
+
   {% if type_bon == 'frais' %}
     <div class="alert alert-info">Les quantités FRAIS dépendront de la ramasse du jour (module à venir).</div>
   {% endif %}
@@ -82,6 +93,7 @@
         <td class="text-nowrap">
           <a class="btn btn-outline-primary btn-sm py-0" href="{{ url_for('distribution.bons_prepa_voir', bon_id=b.id) }}">Ouvrir</a>
           <a class="btn btn-outline-dark btn-sm py-0" target="_blank" title="Imprimer ce bon (PDF)" href="{{ url_for('distribution.bons_prepa_pdf_bon', bon_id=b.id) }}">🖨️</a>
+          {% if b.statut == 'bl' %}<a class="btn btn-outline-success btn-sm py-0" title="Télécharger le CSV du BL" href="{{ url_for('distribution.bons_prepa_bl_csv', bon_id=b.id) }}">⬇️ CSV</a>{% endif %}
         </td>
       </tr>
     {% endfor %}

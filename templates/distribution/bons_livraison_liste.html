@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Consultation des bons de livraison{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
+<style>
+  .barre-filtres { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+  .barre-filtres label { font-size: .8rem; margin: 0; display: block; color: #555; }
+  #bl-table .tabulator-cell { font-size: .85rem; }
+  .badge-sec   { background: #E5B63C; color: #212529; }
+  .badge-frais { background: #388585; color: #fff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-2 px-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="mb-0 fs-4">📚 Consultation des bons de livraison</h2>
+    {% call action_buttons() %}
+      {{ action_button("📦 Bons de prépa", href=url_for('distribution.bons_prepa_liste'), color="outline-success") }}
+      {{ action_button("↩️ Retour à la distribution", href=url_for('distribution.distribution_main'), color="outline-dark") }}
+    {% endcall %}
+  </div>
+
+  <form method="get" class="barre-filtres mb-2">
+    <div><label for="du">Du</label><input type="date" id="du" name="du" class="form-control form-control-sm" value="{{ form.du }}"></div>
+    <div><label for="au">Au</label><input type="date" id="au" name="au" class="form-control form-control-sm" value="{{ form.au }}"></div>
+    <div><label for="type">Type</label>
+      <select id="type" name="type" class="form-select form-select-sm">
+        <option value="">Tous</option>
+        <option value="sec" {{ 'selected' if form.type == 'sec' }}>SEC</option>
+        <option value="frais" {{ 'selected' if form.type == 'frais' }}>FRAIS</option>
+      </select></div>
+    <div><label for="depose">Déposé pour VIF</label>
+      <select id="depose" name="depose" class="form-select form-select-sm">
+        <option value="">Tous</option>
+        <option value="oui" {{ 'selected' if form.depose == 'oui' }}>Oui</option>
+        <option value="non" {{ 'selected' if form.depose == 'non' }}>Non</option>
+      </select></div>
+    <div style="min-width:320px"><label for="q">Recherche (association, code VIF, article, lot, n° de fichier…)</label>
+      <input type="search" id="q" name="q" class="form-control form-control-sm" value="{{ form.q }}" placeholder="ex. AMIE 0910269 38262600001"></div>
+    <div>
+      <button type="submit" class="btn btn-success btn-sm">Rechercher</button>
+      <a href="{{ url_for('distribution.bons_livraison_liste') }}" class="btn btn-outline-secondary btn-sm">Réinitialiser</a>
+    </div>
+    <div class="ms-auto">
+      <span class="badge bg-secondary">{{ bons|length }} bon{{ 's' if bons|length > 1 }}</span>
+      {% if bons %}
+      <a class="btn btn-outline-dark btn-sm" target="_blank" href="{{ url_for('distribution.bons_livraison_pdf_selection') }}?{{ query }}"
+         title="Réimprime tous les BL de la recherche (maximum {{ max_pdf }})">🖨️ Réimprimer la sélection (PDF)</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if bons %}
+    <div id="bl-table"></div>
+  {% else %}
+    <div class="alert alert-info">Aucun bon de livraison pour ces critères. Un bon apparaît ici après sa validation en BL.</div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if bons %}
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+  var DONNEES = {{ bons|tojson }};
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; });
+  }
+  function frDate(iso) { return iso ? iso.substr(8, 2) + '/' + iso.substr(5, 2) + '/' + iso.substr(0, 4) : ''; }
+  // tri alphabétique insensible aux accents, vides en fin
+  var triTexte = function (a, b) { return String(a || '').localeCompare(String(b || ''), 'fr', {numeric: true, sensitivity: 'base'}); };
+  var filtreTexte = {headerFilter: 'input', headerFilterFunc: function (val, cell) {
+    return String(cell || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .indexOf(String(val).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')) !== -1; }};
+
+  new Tabulator('#bl-table', {
+    data: DONNEES,
+    layout: 'fitColumns',
+    height: 'calc(100vh - 290px)',
+    placeholder: 'Aucun résultat',
+    initialSort: [{column: 'date_distribution', dir: 'desc'}],
+    persistence: {columns: ['width']},
+    persistenceID: 'ba38_bons_livraison_largeurs',
+    columnDefaults: {tooltip: true, vertAlign: 'middle'},
+    columns: [
+      {title: 'Date', field: 'date_distribution', width: 100, sorter: 'string', headerFilter: 'input',
+        formatter: function (c) { return frDate(c.getValue()); }},
+      {title: 'Type', field: 'type_bon', width: 80, headerFilter: 'list',
+        headerFilterParams: {values: {'': 'Tous', sec: 'SEC', frais: 'FRAIS'}, clearable: true},
+        formatter: function (c) { var v = c.getValue(); return '<span class="badge ' + (v === 'frais' ? 'badge-frais' : 'badge-sec') + '">' + (v === 'frais' ? 'FRAIS' : 'SEC') + '</span>'; }},
+      {title: 'Code VIF', field: 'code_VIF', width: 105, sorter: triTexte, ...filtreTexte},
+      {title: 'Association', field: 'nom_association', minWidth: 200, widthGrow: 2, sorter: triTexte, ...filtreTexte,
+        formatter: function (c) { return '<strong>' + esc(c.getValue()) + '</strong>'; }},
+      {title: 'Heure', field: 'heure', width: 80, ...filtreTexte},
+      {title: 'Empl.', field: 'emplacement', width: 75, ...filtreTexte},
+      {title: 'Bénéf.', field: 'nbre_beneficiaires', width: 75, hozAlign: 'right', sorter: 'number'},
+      {title: 'Lignes', field: 'nb_lignes', width: 75, hozAlign: 'right', sorter: 'number'},
+      {title: 'Menus', field: 'menus', width: 130, sorter: triTexte, ...filtreTexte},
+      {title: 'Fichier BL', field: 'bl_fichier', minWidth: 230, widthGrow: 2, sorter: triTexte, ...filtreTexte},
+      {title: 'Validé le', field: 'valide_le', width: 140, sorter: 'string',
+        formatter: function (c) { var v = c.getValue() || ''; return v ? frDate(v.substr(0, 10)) + ' ' + v.substr(11, 5) : ''; }},
+      {title: 'Par', field: 'valide_par', width: 150, sorter: triTexte, ...filtreTexte},
+      {title: 'VIF', field: 'depose', width: 80, headerFilter: 'list',
+        headerFilterParams: {values: {'': 'Tous', 'true': 'Déposé', 'false': 'Non'}, clearable: true},
+        headerFilterFunc: function (val, cell) { return val === '' || String(cell) === val; },
+        formatter: function (c) { return c.getValue() ? '✅ déposé' : '⏳ non'; }},
+      {title: '', field: 'id', width: 170, headerSort: false,
+        formatter: function (c) {
+          var d = c.getData();
+          return '<a href="' + d.url_voir + '" class="btn btn-outline-primary btn-sm py-0">Ouvrir</a> ' +
+                 '<a href="' + d.url_pdf + '" target="_blank" class="btn btn-outline-dark btn-sm py-0" title="Réimprimer le BL (PDF)">🖨️</a> ' +
+                 '<a href="' + d.url_csv + '" class="btn btn-outline-success btn-sm py-0" title="Télécharger le CSV">⬇️</a>';
+        }}
+    ]
+  });
+</script>
+{% endif %}
+{% endblock %}

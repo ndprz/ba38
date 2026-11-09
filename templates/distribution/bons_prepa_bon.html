@@ -22,6 +22,26 @@
     {% endcall %}
   </div>
 
+  {% if peut_ecrire %}
+  <div class="mb-2">
+    <a class="btn btn-success btn-sm" href="{{ url_for('distribution.bons_prepa_valider_page', bon_id=bon.id) }}">✅ Valider la préparation → choisir les lots et créer le BL</a>
+    <span class="text-muted small ms-2">Les lots disponibles du stock sont proposés à l'étape suivante.</span>
+  </div>
+  {% elif bon.statut == 'bl' %}
+  <div class="alert alert-success py-2 d-flex flex-wrap align-items-center" style="gap:12px">
+    <span>✅ <strong>BL créé</strong> le {{ (bon.valide_le or '')[8:10] }}/{{ (bon.valide_le or '')[5:7] }}/{{ (bon.valide_le or '')[:4] }} {{ (bon.valide_le or '')[11:16] }}{% if bon.valide_par %} par {{ bon.valide_par }}{% endif %} — fichier <code>{{ bon.bl_fichier }}</code>
+      {% if bon.bl_depose_le %}(déposé pour VIF){% else %}(pas encore déposé pour VIF){% endif %}</span>
+    <a class="btn btn-outline-success btn-sm" href="{{ url_for('distribution.bons_prepa_bl_csv', bon_id=bon.id) }}">⬇️ Télécharger le CSV</a>
+    {% if peut_rouvrir %}
+    <form method="post" action="{{ url_for('distribution.bons_prepa_rouvrir', bon_id=bon.id) }}" class="m-0"
+          onsubmit="return confirm('Annuler la validation ? Le CSV sera supprimé et le bon redeviendra modifiable.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-outline-danger btn-sm">↩️ Rouvrir le bon</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <div class="card mb-3"><div class="card-body py-2">
     <div class="row g-2">
       <div class="col-auto"><strong>Date</strong> {{ bon.date_distribution[8:10] }}/{{ bon.date_distribution[5:7] }}/{{ bon.date_distribution[:4] }}</div>
@@ -44,22 +64,28 @@
   <table class="table table-sm align-middle">
     <thead><tr>
       <th>Article</th><th>Libellé</th><th>Menu</th>
-      <th class="text-end">Calcul</th><th class="text-end">Quantité</th><th>Unité</th><th>Commentaire</th><th></th>
+      <th class="text-end">Calcul</th><th class="text-end">Qté préparée</th><th class="text-end">Qté livrée</th><th>Unité</th><th>Commentaire</th><th></th>
     </tr></thead>
     <tbody>
     {% for l in lignes %}
-      <tr data-id="{{ l.id }}" class="{{ 'sans-qte' if l.quantite is none }}">
+      <tr data-id="{{ l.id }}" class="{{ 'sans-qte' if l.quantite is none and l.quantite_livree is none }}">
         <td>{{ l.article }}</td>
         <td>{{ l.libelle }}</td>
         <td>{{ l.menu_code }}</td>
         <td class="text-end small text-muted">
           {% if l.source == 'fixe' %}fixe menu
           {% elif l.source == 'portion' %}{{ '%g'|format(l.portion) }} kgn × {{ bon.nbre_beneficiaires }}{% if l.coef and l.coef != 1 %} × {{ '%.2f'|format(l.coef) }}{% endif %}
+          {% elif l.source == 'ajout' %}ajout manuel
           {% else %}pas de portion{% endif %}
         </td>
         <td class="text-end">
           <input type="text" inputmode="decimal" class="form-control form-control-sm qte d-inline-block"
                  value="{{ '%g'|format(l.quantite) if l.quantite is not none else '' }}"
+                 {{ '' if peut_ecrire else 'disabled' }}>
+        </td>
+        <td class="text-end">
+          <input type="text" inputmode="decimal" class="form-control form-control-sm qte liv d-inline-block"
+                 placeholder="= préparée" value="{{ '%g'|format(l.quantite_livree) if l.quantite_livree is not none else '' }}"
                  {{ '' if peut_ecrire else 'disabled' }}>
         </td>
         <td>{{ l.unite }}</td>
@@ -73,6 +99,24 @@
     </tbody>
   </table>
   {% if not lignes %}<div class="alert alert-info">Aucune ligne.</div>{% endif %}
+
+  {% if peut_ecrire %}
+  <div class="card mb-3"><div class="card-body py-2">
+    <strong>➕ Ajouter une ligne (autre article)</strong>
+    <div class="d-flex flex-wrap align-items-center mt-1" style="gap:10px">
+      <input type="text" id="aj-article" list="liste-articles" class="form-control form-control-sm" style="width:380px"
+             placeholder="Code ou libellé de l'article" autocomplete="off">
+      <datalist id="liste-articles">
+        {% for a in articles %}<option value="{{ a.article }} — {{ a.libelle }}"></option>{% endfor %}
+      </datalist>
+      <input type="text" id="aj-qte" inputmode="decimal" class="form-control form-control-sm" style="width:100px" placeholder="Quantité">
+      <select id="aj-unite" class="form-select form-select-sm" style="width:90px">
+        <option>Kg</option><option>Kgn</option><option>COL</option><option>P</option>
+      </select>
+      <button type="button" id="aj-btn" class="btn btn-outline-success btn-sm">Ajouter</button>
+    </div>
+  </div></div>
+  {% endif %}
 </div>
 {% endblock %}
 
@@ -100,10 +144,15 @@
 
   document.querySelectorAll('tbody tr[data-id]').forEach(function (tr) {
     var id = Number(tr.dataset.id), etat = tr.querySelector('.etat-save');
-    tr.querySelector('.qte').addEventListener('change', function () {
+    tr.querySelector('.qte:not(.liv)').addEventListener('change', function () {
       var v = this.value;
       envoyer({ligne_id: id, quantite: v}, etat).then(function (j) {
-        if (j && j.ok) tr.classList.toggle('sans-qte', v.trim() === '');
+        if (j && j.ok) tr.classList.toggle('sans-qte', v.trim() === '' && tr.querySelector('.liv').value.trim() === '');
+      });
+    });
+    tr.querySelector('.liv').addEventListener('change', function () {
+      envoyer({ligne_id: id, quantite_livree: this.value}, etat).then(function (j) {
+        if (j && j.ok) tr.classList.toggle('sans-qte', tr.querySelector('.qte:not(.liv)').value.trim() === '' && tr.querySelector('.liv').value.trim() === '');
       });
     });
     tr.querySelector('.cmt').addEventListener('change', function () {
@@ -114,6 +163,16 @@
       if (!confirm('Retirer cette ligne du bon ?')) return;
       envoyer({ligne_id: id, supprimer: true}, etat).then(function (j) { if (j && j.ok) tr.remove(); });
     });
+  });
+
+  var ajBtn = document.getElementById('aj-btn');
+  if (ajBtn) ajBtn.addEventListener('click', function () {
+    var code = document.getElementById('aj-article').value.split(' — ')[0].trim();
+    var etat = document.getElementById('etat-bon');
+    if (!code) { alert('Choisir un article.'); return; }
+    envoyer({ajouter: {article: code, quantite: document.getElementById('aj-qte').value,
+                       unite: document.getElementById('aj-unite').value}}, etat)
+      .then(function (j) { if (j && j.ok) location.reload(); });
   });
 </script>
 {% endblock %}
