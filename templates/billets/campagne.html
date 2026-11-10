@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}Billets — {{ c.spectacle }}{% endblock %}
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
+<style>
+.gap-1{gap:.25rem}.gap-2{gap:.5rem}.gap-3{gap:1rem}
+.row.g-2{margin-left:-.25rem;margin-right:-.25rem}.row.g-2>*{padding:.25rem}
+.badge{margin:0}
+#corps_quill_container .ql-editor { min-height: 240px; }
+.liste-scroll { max-height: 50vh; overflow: auto; }
+.liste-scroll thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 1; }
+.liste-scroll .form-check-input { position: static; margin: 0; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="container-fluid mt-3">
+  <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
+    <h2 class="mb-0">🎟️ {{ c.spectacle }}</h2>
+    <a href="{{ url_for('billets.liste') }}" class="btn btn-outline-secondary btn-sm">⬅️ Campagnes</a>
+  </div>
+  <p class="text-muted">Offert par <b>{{ c.donateur }}</b> — {{ date_fr(c.date_spectacle) }}{% if c.heure_spectacle %} à {{ c.heure_spectacle.replace(':','h') }}{% endif %} —
+    {{ c.nb_billets }} billet(s) — inscriptions jusqu'au {{ limite_fr(c.date_limite) }}
+    {% if tiree %}<span class="badge bg-success">Tirage fait</span>{% elif depassee %}<span class="badge bg-warning text-dark">Date limite dépassée : tirage à faire</span>{% else %}<span class="badge bg-primary">Inscriptions ouvertes</span>{% endif %}</p>
+
+
+  <!-- 1. Fiche -->
+  <div class="card mb-3"><div class="card-header"><b>1. Fiche de la campagne</b></div>
+  <form method="POST" action="{{ url_for('billets.enregistrer_fiche', campagne_id=c.id) }}" class="card-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <fieldset {% if not peut_ecrire %}disabled{% endif %}>
+    <div class="row g-2">
+      <div class="col-md-4"><label class="small">Donateur</label><input name="donateur" class="form-control" value="{{ c.donateur }}" required></div>
+      <div class="col-md-4"><label class="small">Lieu</label><input name="lieu" class="form-control" value="{{ c.lieu or '' }}"></div>
+      <div class="col-md-4"><label class="small">Spectacle</label><input name="spectacle" class="form-control" value="{{ c.spectacle }}" required></div>
+      <div class="col-md-2"><label class="small">Date</label><input type="date" name="date_spectacle" class="form-control" value="{{ c.date_spectacle or '' }}" required></div>
+      <div class="col-md-2"><label class="small">Heure</label><input type="time" name="heure_spectacle" class="form-control" value="{{ c.heure_spectacle or '' }}"></div>
+      <div class="col-md-2"><label class="small">Nb de billets</label><input type="number" min="1" name="nb_billets" class="form-control" value="{{ c.nb_billets }}"></div>
+      <div class="col-md-3"><label class="small">Date limite d'inscription</label><input type="datetime-local" name="date_limite" class="form-control" value="{{ c.date_limite or '' }}" required></div>
+      <div class="col-md-12"><label class="small">Mode de retrait des billets</label><input name="mode_retrait" class="form-control" value="{{ c.mode_retrait or '' }}"></div>
+    </div>
+    {% if peut_ecrire %}<button class="btn btn-primary btn-sm mt-2">💾 Enregistrer la fiche</button>{% endif %}
+    </fieldset>
+  </form></div>
+
+  <!-- 2. Message -->
+  <div class="card mb-3" id="message"><div class="card-header"><b>2. Message d'invitation</b> <span class="text-muted small">(texte enrichi, images collables)</span></div>
+  <form method="POST" id="form-message" action="{{ url_for('billets.enregistrer_message', campagne_id=c.id) }}" class="card-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <fieldset {% if not peut_ecrire or tiree %}disabled{% endif %}>
+    <div class="row g-2 mb-2">
+      <div class="col-md-6"><label class="small">Sujet</label><input name="sujet" class="form-control" value="{{ c.sujet or '' }}"></div>
+      <div class="col-md-3"><label class="small">Expéditeur</label>
+        <select name="expediteur" class="form-control">
+          <option value="">— choisir —</option>
+          {% for e in expediteurs %}<option value="{{ e }}" {% if e == c.expediteur %}selected{% endif %}>{{ e }}</option>{% endfor %}
+        </select></div>
+      <div class="col-md-3"><label class="small">Nom affiché (facultatif)</label><input name="expediteur_nom" class="form-control" value="{{ c.expediteur_nom or '' }}"></div>
+      <div class="col-md-6"><label class="small">Adresse de réponse (facultatif)</label><input name="reply_to" class="form-control" value="{{ c.reply_to or '' }}"></div>
+    </div>
+    <div class="mb-2 small">Variables (cliquer pour insérer) :
+      {% for v in variables %}<button type="button" class="btn btn-outline-secondary btn-sm py-0 var-ins" data-var="&lt;&lt;{{ v }}&gt;&gt;">&lt;&lt;{{ v }}&gt;&gt;</button> {% endfor %}
+    </div>
+    <div id="corps_quill_container" style="background:white;"></div>
+    <textarea name="corps" id="corps_textarea" hidden>{{ c.corps or '' }}</textarea>
+    {% if peut_ecrire %}<button class="btn btn-primary btn-sm mt-2">💾 Enregistrer le message</button>{% endif %}
+    </fieldset>
+  </form></div>
+
+  <!-- 3. Destinataires + envoi -->
+  <div class="card mb-3" id="destinataires"><div class="card-header"><b>3. Bénévoles invités</b>
+    <span class="text-muted small">— bénévoles (hors salariés) à jour de cotisation 2026 et ayant une adresse mail</span></div>
+  <div class="card-body">
+    {% if peut_ecrire and not tiree %}
+    <form method="POST" action="{{ url_for('billets.definir_destinataires', campagne_id=c.id) }}" class="mb-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-outline-primary btn-sm">🔄 {{ 'Actualiser la liste' if benevoles else 'Construire la liste' }}</button>
+      <span class="small text-muted">(ajoute les nouveaux bénévoles à jour, conserve les inscriptions et envois)</span>
+    </form>
+    {% endif %}
+    {% if benevoles or salaries %}
+    <p class="small mb-1"><b>{{ nb.invites }}</b> invité(s) coché(s) — <b>{{ nb.envoyes }}</b> envoyé(s){% if nb.erreurs %} — <span class="text-danger"><b>{{ nb.erreurs }}</b> erreur(s)</span>{% endif %}
+      — <b>{{ nb.inscrits }}</b> inscrit(s)</p>
+    <div class="liste-scroll mb-2">
+      <table class="table table-sm table-striped align-middle mb-0">
+        <thead><tr><th style="width:30px"><input type="checkbox" class="form-check-input" id="tout-benev" checked></th><th>Nom</th><th>Mail</th><th>Invitation</th><th>État</th></tr></thead>
+        <tbody>
+        {% for p in benevoles %}
+          <tr>
+            <td><input type="checkbox" class="form-check-input sel-benev" data-id="{{ p.id }}" {% if p.selected %}checked{% endif %} {% if not peut_ecrire or tiree %}disabled{% endif %}></td>
+            <td>{{ p.nom }} {{ p.prenom }}</td><td class="small">{{ p.email }}</td>
+            <td class="small">
+              {% if p.invite_erreur %}<span class="badge bg-danger" title="{{ p.invite_erreur }}">Erreur</span>
+              {% elif p.invite_le and p.invite_mode_test %}<span class="badge bg-warning text-dark">Test</span>
+              {% elif p.invite_le %}<span class="badge bg-success">Envoyée {{ p.invite_le[8:10] }}/{{ p.invite_le[5:7] }}{% if p.nb_invitations > 1 %} ({{ p.nb_invitations }}×){% endif %}</span>
+              {% else %}<span class="text-muted">à envoyer</span>{% endif %}
+            </td>
+            <td>{% if p.etat == 'inscrit' %}<span class="badge bg-primary">Inscrit</span>{% elif p.etat == 'desiste' %}<span class="badge bg-secondary">Désisté</span>{% else %}<span class="text-muted small">—</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if peut_ecrire and not tiree and not depassee %}
+    <form method="POST" action="{{ url_for('billets.envoyer', campagne_id=c.id) }}" class="d-flex flex-wrap gap-2 align-items-center"
+          onsubmit="return this.mode_test.checked || confirm('Envoyer réellement les mails ?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="mb-0"><input type="checkbox" name="mode_test" value="1" class="form-check-input" style="position:static" checked> 🧪 Mode TEST (2 mails max vers moi)</label>
+      <button name="mode" value="nouveaux" class="btn btn-success btn-sm">🚀 Envoyer aux invités non servis</button>
+      <button name="mode" value="relance" class="btn btn-outline-warning btn-sm">🔔 Relancer ceux qui n'ont pas répondu</button>
+    </form>
+    {% endif %}
+    {% endif %}
+  </div></div>
+
+  <!-- 4. Inscriptions -->
+  <div class="card mb-3" id="inscriptions"><div class="card-header"><b>4. Inscriptions</b>
+    <span class="badge bg-primary">{{ nb.inscrits }} inscrit(s) pour {{ c.nb_billets }} billet(s)</span>
+    {% if nb.desistes %}<span class="badge bg-secondary">{{ nb.desistes }} désisté(s)</span>{% endif %}</div>
+  <div class="card-body">
+    {% if inscrits %}
+    <table class="table table-sm table-striped mb-0">
+      <thead><tr><th>Nom</th><th>Inscrit le</th><th>Par</th><th>Confirmation mail</th><th></th></tr></thead>
+      <tbody>{% for p in inscrits %}
+        <tr><td>{{ p.nom }} {{ p.prenom }}</td><td class="small">{{ p.inscrit_le[8:10] }}/{{ p.inscrit_le[5:7] }} {{ p.inscrit_le[11:16] }}</td>
+          <td class="small">{{ p.inscrit_par or 'lui/elle-même' }}</td>
+          <td class="small">{% if p.confirmation_le %}✅ envoyée{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td>{% if peut_ecrire and not tiree %}<form method="POST" action="{{ url_for('billets.inscription_manuelle', campagne_id=c.id) }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="pid" value="{{ p.id }}">
+            <button name="action" value="desinscrire" class="btn btn-sm btn-outline-danger py-0" onclick="return confirm('Désinscrire ?')">Désinscrire</button></form>{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+    {% else %}<p class="text-muted mb-0">Personne n'est encore inscrit.</p>{% endif %}
+    {% if peut_ecrire and not tiree and benevoles %}
+    <form method="POST" action="{{ url_for('billets.inscription_manuelle', campagne_id=c.id) }}" class="form-inline mt-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="inscrire">
+      <select name="pid" class="form-control form-control-sm mr-2">
+        {% for p in benevoles if p.etat != 'inscrit' %}<option value="{{ p.id }}">{{ p.nom }} {{ p.prenom }}</option>{% endfor %}
+      </select>
+      <button class="btn btn-sm btn-outline-primary">Inscrire à sa place (sans mail de confirmation)</button>
+    </form>
+    {% endif %}
+  </div></div>
+
+  <!-- 5. Tirage -->
+  <div class="card mb-3" id="tirage"><div class="card-header"><b>5. Tirage au sort et résultats</b></div>
+  <div class="card-body">
+    {% if not tiree %}
+      <p>Après la date limite : tirage parmi les inscrits ; s'il reste des places (moins d'inscrits que de billets), les places restantes sont tirées au sort parmi les <b>salariés</b> ({{ nb.salaries_coches }} coché(s) ci-dessous).</p>
+      {% if salaries %}
+      <details class="mb-2"><summary>Salariés pouvant être tirés au sort ({{ nb.salaries_coches }}/{{ salaries|length }})</summary>
+        <table class="table table-sm mb-0" style="max-width:480px"><tbody>
+        {% for p in salaries %}<tr><td style="width:30px"><input type="checkbox" class="form-check-input sel-benev" data-id="{{ p.id }}" style="position:static" {% if p.selected %}checked{% endif %} {% if not peut_ecrire %}disabled{% endif %}></td><td>{{ p.nom }} {{ p.prenom }}</td><td class="small">{{ p.email }}</td></tr>{% endfor %}
+        </tbody></table></details>
+      {% else %}<p class="text-muted small">Aucun salarié dans la liste : cliquez sur « Construire la liste » à l'étape 3.</p>{% endif %}
+      {% if peut_ecrire %}
+        {% if depassee %}
+        <form method="POST" action="{{ url_for('billets.tirage', campagne_id=c.id) }}" onsubmit="return confirm('Lancer le tirage au sort ? Il ne pourra pas être refait.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label><input type="checkbox" name="confirmer" value="1" class="form-check-input" style="position:static"> Je confirme : {{ nb.inscrits }} inscrit(s), {{ c.nb_billets }} billet(s)</label><br>
+          <button class="btn btn-warning">🎲 Lancer le tirage au sort</button>
+        </form>
+        {% else %}<div class="alert alert-secondary mb-0">Le tirage sera possible après le {{ limite_fr(c.date_limite) }}.</div>{% endif %}
+      {% endif %}
+    {% else %}
+      <p class="text-muted small">Tirage effectué le {{ c.tirage_le[8:10] }}/{{ c.tirage_le[5:7] }}/{{ c.tirage_le[:4] }} à {{ c.tirage_le[11:16] }} par {{ c.tirage_par }}.</p>
+      <div class="row">
+        <div class="col-md-6">
+          <h6>🎉 Gagnants ({{ nb.gagnants }}/{{ c.nb_billets }})</h6>
+          <table class="table table-sm"><tbody>{% for p in gagnants %}
+            <tr><td>{{ loop.index }}</td><td>{{ p.nom }} {{ p.prenom }}</td>
+              <td>{% if p.origine_place == 'salarie' %}<span class="badge bg-info">salarié</span>{% else %}<span class="badge bg-primary">inscrit</span>{% endif %}</td>
+              <td class="small">{% if p.resultat_erreur %}<span class="text-danger">erreur mail</span>{% elif p.resultat_envoye_le %}✅ prévenu(e){% else %}<span class="text-muted">à prévenir</span>{% endif %}</td></tr>
+          {% endfor %}</tbody></table>
+          {% if nb.gagnants < c.nb_billets %}<div class="alert alert-warning py-1">{{ c.nb_billets - nb.gagnants }} place(s) non pourvue(s).</div>{% endif %}
+        </div>
+        <div class="col-md-6">
+          <h6>Non retenus ({{ non_retenus|length }})</h6>
+          <table class="table table-sm"><tbody>{% for p in non_retenus %}
+            <tr><td>{{ p.nom }} {{ p.prenom }}</td><td class="small">{% if p.resultat_erreur %}<span class="text-danger">erreur mail</span>{% elif p.resultat_envoye_le %}✅ prévenu(e){% else %}<span class="text-muted">à prévenir</span>{% endif %}</td></tr>
+          {% endfor %}</tbody></table>
+        </div>
+      </div>
+      {% if peut_ecrire and nb.resultats_a_envoyer %}
+      <form method="POST" action="{{ url_for('billets.envoyer_resultats', campagne_id=c.id) }}" class="d-flex flex-wrap gap-2 align-items-center"
+            onsubmit="return this.mode_test.checked || confirm('Envoyer réellement les résultats à {{ nb.resultats_a_envoyer }} personne(s) ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="mb-0"><input type="checkbox" name="mode_test" value="1" class="form-check-input" style="position:static" checked> 🧪 Mode TEST (2 mails max vers moi)</label>
+        <button class="btn btn-success btn-sm">📨 Envoyer les résultats ({{ nb.resultats_a_envoyer }})</button>
+      </form>
+      {% elif nb.gagnants or non_retenus %}<p class="text-success mb-0">✅ Tous les résultats ont été envoyés.</p>{% endif %}
+    {% endif %}
+  </div></div>
+
+  {% if peut_ecrire %}
+  <form method="POST" action="{{ url_for('billets.supprimer', campagne_id=c.id) }}" onsubmit="return confirm('Supprimer définitivement cette campagne ?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-outline-danger btn-sm">🗑️ Supprimer la campagne</button>
+  </form>
+  {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+<script>
+const CSRF = "{{ csrf_token() }}";
+const quill = new Quill("#corps_quill_container", {
+  theme: "snow",
+  modules: { toolbar: [["bold","italic","underline"], [{list:"ordered"},{list:"bullet"}], ["link","image"], ["clean"]] }
+});
+const textarea = document.getElementById("corps_textarea");
+quill.root.innerHTML = textarea.value;
+
+quill.on("text-change", () => {
+  quill.root.querySelectorAll('img[src^="data:"]:not([data-uploading])').forEach(img => {
+    img.setAttribute("data-uploading", "1");
+    fetch(img.src).then(r => r.blob()).then(blob => {
+      const fd = new FormData(); fd.append("image", blob, "collee.png");
+      return fetch("{{ url_for('billets.upload_image') }}", { method: "POST", headers: {"X-CSRFToken": CSRF}, body: fd });
+    }).then(r => r.json()).then(data => {
+      if (data.url) img.src = data.url; else alert("❌ Erreur image : " + (data.error || "inconnue"));
+      img.removeAttribute("data-uploading");
+    }).catch(() => { alert("❌ Erreur réseau lors de l'import de l'image."); img.removeAttribute("data-uploading"); });
+  });
+});
+document.getElementById("form-message").addEventListener("submit", function (e) {
+  if (quill.root.querySelector("img[data-uploading]")) { e.preventDefault(); alert("Import d'image en cours, réessayez dans un instant."); return; }
+  textarea.value = quill.root.innerHTML;
+});
+document.querySelectorAll(".var-ins").forEach(b => b.addEventListener("click", () => {
+  quill.focus();
+  const r = quill.getSelection(true);
+  quill.insertText(r ? r.index : quill.getLength() - 1, b.dataset.var, "user");
+}));
+
+// Cases à cocher : enregistrement automatique
+function enregistrerSelection(ids, selected) {
+  fetch("{{ url_for('billets.selection', campagne_id=c.id) }}", {
+    method: "POST", headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF},
+    body: JSON.stringify({ids: ids, selected: selected})
+  }).then(r => { if (!r.ok) throw 0; }).catch(() => alert("❌ Échec de l'enregistrement de la sélection."));
+}
+document.querySelectorAll(".sel-benev").forEach(cb => cb.addEventListener("change", () => enregistrerSelection([cb.dataset.id], cb.checked)));
+const tout = document.getElementById("tout-benev");
+if (tout) tout.addEventListener("change", () => {
+  const cbs = [...document.querySelectorAll("#destinataires .sel-benev:not(:disabled)")];
+  cbs.forEach(cb => cb.checked = tout.checked);
+  enregistrerSelection(cbs.map(cb => cb.dataset.id), tout.checked);
+});
+</script>
+{% endblock %}

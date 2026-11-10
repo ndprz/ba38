@@ -184,7 +184,7 @@ def signer_droit_image(benevole_id):
     choix = request.form.get("choix")
     if choix not in ("accord_total", "refus"):
         flash("❌ Choix invalide", "danger")
-        return redirect(url_for("benevoles.photo_benevole_mobile", benevole_id=benevole_id))
+        return redirect(url_for("benevoles.photo_benevole_mobile"))
 
     now = datetime.now()
     nom_fichier = None
@@ -194,14 +194,14 @@ def signer_droit_image(benevole_id):
         prefixe = "data:image/png;base64,"
         if not data.startswith(prefixe) or len(data) > 2_000_000:
             flash("❌ Signature manquante ou invalide", "danger")
-            return redirect(url_for("benevoles.photo_benevole_mobile", benevole_id=benevole_id))
+            return redirect(url_for("benevoles.photo_benevole_mobile"))
         try:
             brut = base64.b64decode(data[len(prefixe):], validate=True)
             img = Image.open(io.BytesIO(brut))
             img.load()
         except (binascii.Error, ValueError, OSError):
             flash("❌ Signature illisible", "danger")
-            return redirect(url_for("benevoles.photo_benevole_mobile", benevole_id=benevole_id))
+            return redirect(url_for("benevoles.photo_benevole_mobile"))
 
         # Fond blanc (le canvas est transparent) puis PNG réencodé : on ne
         # stocke jamais les octets reçus tels quels.
@@ -211,7 +211,7 @@ def signer_droit_image(benevole_id):
         # Signature vide : image entièrement blanche
         if fond.convert("L").getextrema()[0] > 250:
             flash("❌ Le bénévole n'a pas signé", "danger")
-            return redirect(url_for("benevoles.photo_benevole_mobile", benevole_id=benevole_id))
+            return redirect(url_for("benevoles.photo_benevole_mobile"))
         fond.thumbnail((800, 400))
 
         dossier = _dossier_signatures()
@@ -237,7 +237,7 @@ def signer_droit_image(benevole_id):
 
     flash("✅ Droit à l'image enregistré"
           + (" avec signature" if nom_fichier else " (refus)"), "success")
-    return redirect(url_for("benevoles.photo_benevole_mobile", benevole_id=benevole_id))
+    return redirect(url_for("benevoles.photo_benevole_mobile"))
 
 
 @droit_image_bp.route("/droit_image/signature/<int:benevole_id>")

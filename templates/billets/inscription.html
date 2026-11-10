@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Places offertes — {{ c.spectacle }}{% endblock %}
+{% block content %}
+<div class="container mt-4 mb-5" style="max-width: 680px;">
+  <h2>🎟️ {{ c.spectacle }}</h2>
+  <p class="text-muted mb-3">{{ p.prenom }} {{ p.nom }}</p>
+
+  {% if message %}<div class="alert alert-{{ message[0] }}">{{ message[1] }}</div>{% endif %}
+
+  <div class="card mb-3"><div class="card-body">
+    <p class="mb-1"><b>Offert par :</b> {{ c.donateur }}</p>
+    {% if c.lieu %}<p class="mb-1"><b>Lieu :</b> {{ c.lieu }}</p>{% endif %}
+    <p class="mb-1"><b>Date :</b> {{ date_fr(c.date_spectacle) }}{% if c.heure_spectacle %} à {{ c.heure_spectacle.replace(':','h') }}{% endif %}</p>
+    <p class="mb-1"><b>Places à attribuer :</b> {{ c.nb_billets }}</p>
+    {% if c.mode_retrait %}<p class="mb-1"><b>Retrait des billets :</b> {{ c.mode_retrait }}</p>{% endif %}
+    <p class="mb-0"><b>Inscription jusqu'au :</b> {{ limite_fr(c.date_limite) }}</p>
+  </div></div>
+
+  {% if p.categorie != 'benevole' %}
+    <div class="alert alert-info">Cette page n'est pas destinée à l'inscription.</div>
+  {% elif c.statut == 'tiree' %}
+    {% if p.resultat == 'gagnant' %}
+      <div class="alert alert-success">🎉 Le tirage au sort a eu lieu : <b>une place vous est attribuée</b>.</div>
+    {% elif p.resultat == 'non_retenu' %}
+      <div class="alert alert-secondary">Le tirage au sort a eu lieu : vous n'avez pas été retenu(e) cette fois-ci. Merci de votre participation.</div>
+    {% else %}
+      <div class="alert alert-secondary">Le tirage au sort a eu lieu. Les inscriptions sont closes.</div>
+    {% endif %}
+  {% elif clos %}
+    <div class="alert alert-warning">La date limite est dépassée : les inscriptions sont closes. Le tirage au sort va avoir lieu.</div>
+    {% if p.etat == 'inscrit' %}<div class="alert alert-success mb-0">✅ Vous êtes inscrit(e) au tirage.</div>{% endif %}
+  {% else %}
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if p.etat == 'inscrit' %}
+        <div class="alert alert-success">✅ Vous êtes inscrit(e) au tirage au sort{% if p.inscrit_le %} (le {{ p.inscrit_le[8:10] }}/{{ p.inscrit_le[5:7] }}/{{ p.inscrit_le[:4] }}){% endif %}. Si les inscrits sont plus nombreux que les places, un tirage au sort sera fait après la date limite et vous recevrez le résultat par mail.</div>
+        <button name="action" value="desister" class="btn btn-outline-danger">Me désister</button>
+      {% else %}
+        <p>Si vous souhaitez participer, cliquez ci-dessous. Si les inscrits sont plus nombreux que les places, un tirage au sort sera fait après la date limite.</p>
+        <button name="action" value="inscrire" class="btn btn-primary btn-lg">✅ Je souhaite participer</button>
+        {% if p.etat == 'desiste' %}<div class="text-muted small mt-2">Vous vous étiez désisté(e) : vous pouvez vous réinscrire.</div>{% endif %}
+      {% endif %}
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

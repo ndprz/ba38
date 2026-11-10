@@ -377,10 +377,6 @@ def benevoles_tabulator():
 
             d["droit_image"] = "🟢"
 
-        elif statut == "Accord Entrepot":
-
-            d["droit_image"] = "🟠"
-
         elif statut == "Refus":
 
             d["droit_image"] = "🔴"
@@ -1518,6 +1514,18 @@ def serve_photo_benevole(filename):
 
     return send_from_directory(photo_dir, filename)
 
+def _retour_upload_photo(benevole_id):
+    """Redirection après envoi d'une photo.
+
+    - depuis la page mobile (champ caché retour=mobile) : retour à la page de choix du bénévole
+      (indépendant du User-Agent : un iPad se présente comme un Mac) ;
+    - sinon : fiche du bénévole.
+    """
+    if request.form.get("retour") == "mobile":
+        return redirect(url_for('benevoles.photo_benevole_mobile'))
+    return redirect(url_for('benevoles.update_benevole', benevole_id=benevole_id))
+
+
 @benevoles_bp.route('/upload_photo_benevole/<int:benevole_id>', methods=['POST'])
 @login_required
 def upload_photo_benevole(benevole_id):
@@ -1535,12 +1543,12 @@ def upload_photo_benevole(benevole_id):
     """
     if 'photo' not in request.files:
         flash("❌ Aucun fichier reçu", "danger")
-        return redirect(url_for('benevoles.update_benevole', benevole_id=benevole_id))
+        return _retour_upload_photo(benevole_id)
 
     file = request.files['photo']
     if file.filename == '':
         flash("❌ Nom de fichier vide", "danger")
-        return redirect(url_for('benevoles.update_benevole', benevole_id=benevole_id))
+        return _retour_upload_photo(benevole_id)
 
     try:
         img = Image.open(file.stream)
@@ -1595,18 +1603,11 @@ def upload_photo_benevole(benevole_id):
         flash("✅ Photo enregistrée avec succès", "success")
 
     except Exception as e:
+        current_app.logger.warning("Upload photo bénévole %s échoué (%s, %s) : %s",
+                                   benevole_id, getattr(file, "mimetype", "?"), file.filename, e)
         flash(f"❌ Erreur lors de l'enregistrement : {e}", "danger")
 
-    # 🔁 Détecte si l’utilisateur est sur mobile
-    user_agent = request.headers.get('User-Agent', '').lower()
-    is_mobile = any(m in user_agent for m in ['iphone', 'android', 'ipad'])
-
-    if is_mobile:
-        return redirect(url_for('benevoles.photo_benevole_mobile'))
-    else:
-        # Retour à la fiche bénévole sur PC
-        return redirect(url_for('benevoles.update_benevole', benevole_id=benevole_id))
-
+    return _retour_upload_photo(benevole_id)
 
 
 @benevoles_bp.route("/desactiver_benevole/<int:benevole_id>", methods=["GET", "POST"])

@@ -167,7 +167,10 @@
         </div>
         <div class="form-check mb-2">
             <input class="form-check-input" type="checkbox" name="test_une_association" id="test_une_association">
-            <label class="form-check-label" for="test_une_association">Test sur une seule association.</label>
+            <label class="form-check-label" for="test_une_association">
+                Une seule association (si « Test » ci-dessus est coché : juste à vous ; sinon, envoi réel
+                uniquement à elle — pour un premier envoi oublié ou corrigé, sans renvoyer aux autres).
+            </label>
         </div>
         <div class="mb-3 d-flex align-items-end gap-2 flex-wrap" style="max-width: 700px;">
             <div class="flex-grow-1">
@@ -259,8 +262,10 @@ document.getElementById("btn-envoyer-mails").addEventListener("click", function 
     const nbAssociations = {{ associations|length }};
 
     let message;
-    if (uneSeuleAssociation) {
+    if (uneSeuleAssociation && modeTest) {
         message = "Envoyer un mail de TEST pour l'association « " + nomAssociation + " » à votre propre adresse ?";
+    } else if (uneSeuleAssociation) {
+        message = "⚠️ ENVOI RÉEL : envoyer le mail à l'association « " + nomAssociation + " », à sa vraie adresse ?";
     } else if (modeTest) {
         message = "Envoyer un mail de TEST (pour les " + nbAssociations + " associations, mais tous à votre propre adresse) ?";
     } else {

@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Saisie {{ association }} {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 900px;">
+
+    <h2>⚖️ Saisie collecte {{ annee }} — {{ association }} {% if association_code_vif %}<small class="text-muted">(Code VIF {{ association_code_vif }})</small>{% endif %}</h2>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.gardee_saisie_choisir', annee=annee), color="outline-dark") }}
+    {% endcall %}
+
+    <p class="text-muted">
+        Poids par magasin et quantités par produit pour cette association, dans la même page —
+        regroupe les 2 grilles habituelles (poids/magasin, quantités/produit) pour une seule
+        association. Chaque case est enregistrée automatiquement dès la saisie — le bouton
+        « Enregistrer » n'est utile qu'en secours.
+    </p>
+
+    {% if detection and detection.statut == 'en_cours' %}
+    <div class="alert alert-info">
+        🤖 Analyse du PDF « {{ detection.pdf_nom }} » en cours — rechargez cette page dans
+        15 à 30 secondes pour voir les valeurs détectées.
+    </div>
+    {% elif detection and detection.statut == 'erreur' %}
+    <div class="alert alert-danger">
+        ⛔ Échec de l'analyse du PDF « {{ detection.pdf_nom }} » : {{ detection.erreur }}
+    </div>
+    {% elif detection and detection.statut == 'termine' %}
+    <div class="alert alert-warning d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            🤖 Valeurs détectées depuis le PDF « {{ detection.pdf_nom }} » — pré-remplies en
+            orange ci-dessous, <strong>vérifiez-les puis cliquez sur Enregistrer</strong> (rien
+            n'est encore enregistré).
+        </div>
+        <form method="post" action="{{ url_for('collecte.gardee_saisie_detection_ignorer', detection_id=detection.id) }}" class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="annee" value="{{ annee }}">
+            <input type="hidden" name="association" value="{{ association }}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Ignorer ces valeurs</button>
+        </form>
+    </div>
+    {% endif %}
+
+    <button class="btn btn-outline-secondary mb-3" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionImporterPdf">
+        📄 Importer un PDF reçu (pré-remplir automatiquement)
+    </button>
+    <div id="sectionImporterPdf" class="collapse mb-3">
+        <div class="card card-body">
+            <p class="text-muted small mb-2">
+                PDF envoyé à l'association, rempli à la main puis scanné et renvoyé — les poids
+                manuscrits sont lus automatiquement pour pré-remplir le formulaire ci-dessous (à
+                vérifier avant d'enregistrer).
+            </p>
+            <form method="post" action="{{ url_for('collecte.gardee_saisie_importer_pdf') }}"
+                  enctype="multipart/form-data" class="d-flex flex-wrap align-items-center gap-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <input type="hidden" name="association" value="{{ association }}">
+                <label for="pdf_association" class="visually-hidden">PDF reçu</label>
+                <input type="file" name="pdf" id="pdf_association" class="form-control" style="max-width: 320px;"
+                       accept="application/pdf" required>
+                <button type="submit" class="btn btn-outline-primary">🤖 Analyser</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="message-enregistrement" class="alert d-none mb-2" role="alert"></div>
+
+    <form method="post" id="form-saisie">
+        <input type="hidden" name="csrf_token" id="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+        <input type="hidden" name="association" value="{{ association }}">
+
+        <button type="submit" class="btn btn-primary mb-3">💾 Enregistrer</button>
+
+        <div class="card mb-4">
+            <div class="card-header"><strong>🏪 Poids par magasin (kg)</strong></div>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Code VIF</th>
+                            <th>Magasin</th>
+                            <th>Ville</th>
+                            <th style="width:140px;">Poids (kg)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for m in magasins %}
+                        <tr>
+                            <td>{{ m.code_vif }}</td>
+                            <td>{{ m.nom }}</td>
+                            <td>{{ m.ville }}</td>
+                            <td>
+                                <input type="number" step="1" min="0"
+                                       class="form-control form-control-sm champ-autosave{% if m.detecte %} border-warning bg-warning-subtle{% endif %}"
+                                       name="poids_magasin_{{ m.code_vif }}"
+                                       data-type="magasin" data-code="{{ m.code_vif }}"
+                                       title="{% if m.detecte %}Valeur détectée depuis le PDF, à vérifier{% endif %}"
+                                       value="{{ m.poids_kg|round|int if m.poids_kg is not none else '' }}">
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header"><strong>📦 Quantités par produit (kg)</strong></div>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Code</th>
+                            <th>Produit</th>
+                            <th style="width:140px;">Poids (kg)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for p in produits %}
+                        <tr>
+                            <td>{{ p.code }}</td>
+                            <td>{{ p.libelle }}</td>
+                            <td>
+                                <input type="number" step="1" min="0"
+                                       class="form-control form-control-sm champ-autosave{% if p.detecte %} border-warning bg-warning-subtle{% endif %}"
+                                       name="poids_produit_{{ p.code }}"
+                                       data-type="produit" data-code="{{ p.code }}"
+                                       title="{% if p.detecte %}Valeur détectée depuis le PDF, à vérifier{% endif %}"
+                                       value="{{ p.poids_kg|round|int if p.poids_kg is not none else '' }}">
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+    </form>
+
+</div>
+
+<script>
+const urlEnregistrerChamp = "{{ url_for('collecte.gardee_saisie_enregistrer_champ') }}";
+const annee = {{ annee|tojson }};
+const nomAssociation = {{ association|tojson }};
+const csrfToken = document.getElementById("csrf_token").value;
+const messageDiv = document.getElementById("message-enregistrement");
+
+function afficherMessage(texte, classe) {
+    messageDiv.textContent = texte;
+    messageDiv.className = "alert alert-" + classe + " mb-2";
+}
+
+document.querySelectorAll(".champ-autosave").forEach(function (input) {
+    input.addEventListener("change", function () {
+        const type = input.dataset.type;
+        const code = input.dataset.code;
+        fetch(urlEnregistrerChamp, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken,
+            },
+            body: JSON.stringify({ annee: annee, association: nomAssociation, type: type, code: code, poids_kg: input.value }),
+        })
+        .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+        .then(function (result) {
+            if (result.ok && result.data.success) {
+                input.classList.remove("is-invalid");
+                afficherMessage("✅ Enregistré", "success");
+            } else {
+                input.classList.add("is-invalid");
+                afficherMessage("⛔ Échec de l'enregistrement — ressaisissez la valeur", "danger");
+            }
+        })
+        .catch(function () {
+            input.classList.add("is-invalid");
+            afficherMessage("⛔ Erreur réseau — ressaisissez la valeur", "danger");
+        });
+    });
+});
+</script>
+{% endblock %}

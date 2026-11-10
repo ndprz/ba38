@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Menus{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
+<style>
+  .badge-menu { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: .75rem; font-weight: 600; }
+  .badge-sec   { background: #E5B63C; color: #212529; }
+  .badge-frais { background: #388585; color: #fff; }
+  #menus-table .tabulator-cell { font-size: .85rem; }
+  #tbl-articles td { padding: .15rem .25rem; vertical-align: middle; }
+  #tbl-articles input, #tbl-articles select { font-size: .85rem; }
+  th.tri-art { cursor: pointer; user-select: none; white-space: nowrap; position: sticky; top: 0; z-index: 1; background: #f8f9fa; }
+  th.tri-art::after { content: ' ↕'; color: #aaa; font-size: .8em; }
+  th.tri-art.asc::after { content: ' ▲'; color: #000; }
+  th.tri-art.desc::after { content: ' ▼'; color: #000; }
+  .zone-articles { max-height: 46vh; overflow-y: auto; border: 1px solid #dee2e6; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-2 px-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="mb-0 fs-4">🍽️ Menus</h2>
+    {% call action_buttons() %}
+      {% if peut_ecrire %}
+      <button class="btn btn-outline-success" onclick="ouvrirGlobal('ajouter')">➕ Ajouter un article aux menus</button>
+      <button class="btn btn-outline-danger" onclick="ouvrirGlobal('retirer')">➖ Retirer un article des menus</button>
+      <button class="btn btn-success" onclick="ouvrirMenu(null)">➕ Nouveau menu</button>
+      {% endif %}
+      {{ action_button("🗓️ Retour au planning", href=url_for('distribution.planning_jour_generation'), color="outline-secondary") }}
+      {{ action_button("↩️ Retour à la distribution", href=url_for('distribution.distribution_main'), color="outline-dark") }}
+    {% endcall %}
+  </div>
+
+  <p class="small text-muted mb-2">
+    Un menu = un code (celui des lignes de la table Associations/menus) et la liste des articles qui le composent.
+    Une quantité renseignée sur un article est une <strong>quantité fixe</strong> prévue par le menu ; sinon la quantité vient des portions.
+    Un menu utilisé par des associations ne peut pas être supprimé : le désactiver suffit.
+  </p>
+  <div class="mb-2">
+    <label class="small"><input type="checkbox" id="voir_inactifs"> Afficher les menus désactivés
+      (<span id="nb_inactifs">0</span>)</label>
+  </div>
+  <div id="menus-table"></div>
+</div>
+
+<!-- ================= MODALE MENU ================= -->
+<div class="modal fade" id="modaleMenu" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl"><div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title" id="mTitre">Menu</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <div id="mErreur" class="alert alert-danger py-2 d-none"></div>
+      <div class="row g-2 mb-2">
+        <div class="col-md-3">
+          <label class="form-label mb-0">Code</label>
+          <input id="m_code" class="form-control form-control-sm" maxlength="20" autocomplete="off">
+        </div>
+        <div class="col-md-5">
+          <label class="form-label mb-0">Libellé</label>
+          <input id="m_libelle" class="form-control form-control-sm" autocomplete="off">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label mb-0">Type</label>
+          <select id="m_type" class="form-select form-select-sm"><option value="sec">Sec</option><option value="frais">Frais</option></select>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="m_actif" checked><label class="form-check-label" for="m_actif">Menu actif</label></div>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <strong>Articles du menu <span id="m_nb" class="badge bg-secondary"></span></strong>
+        <div class="d-flex" style="gap:8px">
+          <input list="liste_articles" id="m_ajout" class="form-control form-control-sm" style="width:340px" placeholder="Ajouter un article (code ou libellé)…" autocomplete="off">
+          <button type="button" class="btn btn-outline-success btn-sm" id="btnAjout">➕ Ajouter</button>
+        </div>
+      </div>
+      <datalist id="liste_articles">{% for a in articles %}<option value="{{ a.article }} — {{ a.libelle }}">{% endfor %}</datalist>
+      <div class="zone-articles">
+        <table class="table table-sm table-striped mb-0" id="tbl-articles">
+          <thead class="table-light"><tr><th style="width:100px" class="tri-art" data-col="0" title="Trier par code article">Article</th><th class="tri-art" data-col="1" title="Trier par libellé">Libellé</th><th style="width:100px">Quantité fixe</th><th style="width:90px">Unité</th><th style="width:230px">Commentaire</th><th style="width:110px"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      {% if peut_ecrire %}
+      <button type="button" class="btn btn-outline-danger me-auto d-none" id="btnSupprimer">🗑️ Supprimer</button>
+      <button type="button" class="btn btn-outline-secondary d-none" id="btnDupliquer">Dupliquer</button>
+      {% endif %}
+      <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Fermer</button>
+      {% if peut_ecrire %}<button type="button" class="btn btn-success" id="btnEnregistrer">Enregistrer</button>{% endif %}
+    </div>
+  </div></div>
+</div>
+
+<!-- ================= MODALE ARTICLE GLOBAL ================= -->
+<div class="modal fade" id="modaleGlobal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg"><div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title" id="gTitre"></h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <div id="gErreur" class="alert alert-danger py-2 d-none"></div>
+      <div id="gResultat" class="alert alert-success py-2 d-none"></div>
+      <label class="form-label mb-0">Article</label>
+      <input list="liste_articles" id="g_article" class="form-control form-control-sm mb-2" placeholder="Rechercher par code ou libellé…" autocomplete="off">
+      <div id="g_ajout" class="row g-2 mb-2">
+        <div class="col-md-3"><label class="form-label mb-0">Unité</label>
+          <select id="g_unite" class="form-select form-select-sm">{% for u in unites %}<option>{{ u }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label mb-0">Quantité fixe</label><input id="g_qte" class="form-control form-control-sm" placeholder="vide"></div>
+        <div class="col-md-6"><label class="form-label mb-0">Commentaire</label><input id="g_com" class="form-control form-control-sm"></div>
+      </div>
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <strong>Menus concernés</strong>
+        <div class="small">
+          <label class="me-3"><input type="checkbox" id="g_tous_frais"> Tous les menus frais</label>
+          <label><input type="checkbox" id="g_tous_sec"> Tous les menus secs</label>
+        </div>
+      </div>
+      <div id="g_grille" class="zone-articles p-2" style="max-height:34vh"></div>
+      <div class="small text-muted mt-1" id="g_aide"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Fermer</button>
+      <button type="button" class="btn" id="g_valider"></button>
+    </div>
+  </div></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+  var MENUS = {{ menus|tojson }};
+  var CONTENUS = {{ contenus|tojson }};
+  var ARTICLES = {{ articles|tojson }};
+  var UNITES = {{ unites|tojson }};
+  var PEUT_ECRIRE = {{ 'true' if peut_ecrire else 'false' }};
+  var CSRF = "{{ csrf_token() }}";
+  var URL_SAVE = "{{ url_for('distribution.planning_jour_gestion_menu_save') }}";
+  var URL_DELETE = "{{ url_for('distribution.planning_jour_gestion_menu_delete') }}";
+  var LIB = {}; ARTICLES.forEach(function (a) { LIB[a.article] = a.libelle; });
+
+  function esc(v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  var vide = function (c) { var v = c.getValue(); return v ? esc(v) : '—'; };
+  var triTexte = function (a, b, ar, br, col, dir) {
+    if (!a && b) return dir === 'asc' ? 1 : -1;
+    if (a && !b) return dir === 'asc' ? -1 : 1;
+    return String(a || '').localeCompare(String(b || ''), 'fr', {numeric: true, sensitivity: 'base'});
+  };
+  function post(url, corps) {
+    return fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF}, body: JSON.stringify(corps || {})})
+      .then(function (r) { return r.json().catch(function () { return {ok: false, erreur: 'Réponse invalide (' + r.status + ')'}; }); });
+  }
+
+  var table = new Tabulator('#menus-table', {
+    data: MENUS, layout: 'fitData', height: 'calc(100vh - 215px)', placeholder: 'Aucun menu',
+    persistence: {columns: ['width']}, persistenceID: 'ba38_gestion_menus_largeurs',
+    initialSort: [{column: 'code', dir: 'asc'}],
+    columnDefaults: {tooltip: true, vertAlign: 'middle'},
+    columns: [
+      {title: 'Code', field: 'code', width: 130, sorter: triTexte, headerFilter: 'input', headerFilterPlaceholder: 'filtrer…',
+        formatter: function (c) { var d = c.getData(); return '<span class="badge-menu ' + (d.type_menu === 'frais' ? 'badge-frais' : 'badge-sec') + '">' + esc(d.code) + '</span>'; }},
+      {title: 'Libellé', field: 'libelle', width: 300, sorter: triTexte, headerFilter: 'input', headerFilterPlaceholder: 'filtrer…', formatter: vide},
+      {title: 'Type', field: 'type_menu', width: 90, headerFilter: 'list', headerFilterParams: {values: {'': 'Tous', sec: 'Sec', frais: 'Frais'}},
+        headerFilterFunc: function (h, v) { return !h || h === v; }, formatter: function (c) { return c.getValue() === 'frais' ? 'Frais' : 'Sec'; }},
+      {title: 'Articles', field: 'nb_articles', width: 90, hozAlign: 'right'},
+      {title: 'Lignes assos', field: 'nb_associations', width: 110, hozAlign: 'right', headerTooltip: "Lignes association/menu actives qui utilisent ce menu"},
+      {title: 'Actif', field: 'actif', width: 70, hozAlign: 'center', formatter: function (c) { return c.getValue() ? '✅' : '⛔'; }},
+      {title: '', width: 60, hozAlign: 'center', headerSort: false,
+        formatter: function () { return '<button class="btn btn-outline-secondary btn-sm py-0">' + (PEUT_ECRIRE ? '✏️' : '👁️') + '</button>'; },
+        cellClick: function (e, c) { ouvrirMenu(c.getData()); }}
+    ],
+    rowFormatter: function (row) { row.getElement().style.opacity = row.getData().actif ? '' : '.5'; }
+  });
+  // menus désactivés masqués par défaut
+  var nbInactifs = MENUS.filter(function (m) { return !m.actif; }).length;
+  document.getElementById('nb_inactifs').textContent = nbInactifs;
+  function filtreActifs() {
+    var voir = document.getElementById('voir_inactifs').checked;
+    table.setFilter(function (d) { return voir || !!d.actif; });
+  }
+  table.on('tableBuilt', filtreActifs);
+  document.getElementById('voir_inactifs').addEventListener('change', filtreActifs);
+
+  // ---------- modale ----------
+  var modale, courant = null, nouveau = false;
+  document.addEventListener('DOMContentLoaded', function () { modale = new bootstrap.Modal(document.getElementById('modaleMenu')); });
+  var $ = function (id) { return document.getElementById(id); };
+
+  function ligneHtml(a) {
+    var opts = UNITES.map(function (u) { return '<option' + (a.unite === u ? ' selected' : '') + '>' + u + '</option>'; }).join('');
+    var ro = PEUT_ECRIRE ? '' : ' disabled';
+    return '<tr><td>' + esc(a.article) + '</td><td>' + esc(LIB[a.article] || '?') + '</td>' +
+      '<td><input class="form-control form-control-sm c-qte" value="' + (a.quantite == null ? '' : a.quantite) + '"' + ro + '></td>' +
+      '<td><select class="form-select form-select-sm c-unite"' + ro + '><option value=""></option>' + opts + '</select></td>' +
+      '<td><input class="form-control form-control-sm c-com" value="' + esc(a.commentaire || '') + '"' + ro + '></td>' +
+      '<td class="text-end text-nowrap">' + (PEUT_ECRIRE ?
+        '<button type="button" class="btn btn-outline-secondary btn-sm py-0 b-haut">↑</button> ' +
+        '<button type="button" class="btn btn-outline-secondary btn-sm py-0 b-bas">↓</button> ' +
+        '<button type="button" class="btn btn-outline-danger btn-sm py-0 b-sup">✖</button>' : '') + '</td></tr>';
+  }
+  function compter() { $('m_nb').textContent = document.querySelectorAll('#tbl-articles tbody tr').length; }
+  function remplir(articles) {
+    $('tbl-articles').tBodies[0].innerHTML = articles.map(ligneHtml).join('');
+    razTri();
+    compter();
+  }
+  function lire() {
+    return Array.prototype.map.call(document.querySelectorAll('#tbl-articles tbody tr'), function (tr) {
+      return {article: tr.children[0].textContent, quantite: tr.querySelector('.c-qte').value,
+              unite: tr.querySelector('.c-unite').value, commentaire: tr.querySelector('.c-com').value};
+    });
+  }
+  function ouvrirMenu(m) {
+    courant = m; nouveau = !m;
+    $('mErreur').classList.add('d-none');
+    $('mTitre').textContent = m ? 'Menu ' + m.code : 'Nouveau menu';
+    $('m_code').value = m ? m.code : ''; $('m_code').disabled = !!m || !PEUT_ECRIRE;
+    $('m_libelle').value = m ? m.libelle || '' : '';
+    $('m_type').value = m ? m.type_menu : 'sec';
+    $('m_actif').checked = m ? !!m.actif : true;
+    ['m_libelle', 'm_type', 'm_actif', 'm_ajout', 'btnAjout'].forEach(function (id) { $(id).disabled = !PEUT_ECRIRE; });
+    remplir(m ? (CONTENUS[m.code] || []) : []);
+    if (PEUT_ECRIRE) {
+      $('btnSupprimer').classList.toggle('d-none', !m);
+      $('btnDupliquer').classList.toggle('d-none', !m);
+    }
+    modale.show();
+  }
+  $('tbl-articles').addEventListener('click', function (e) {
+    var tr = e.target.closest('tr'); if (!tr) return;
+    if (e.target.closest('.b-sup')) { tr.remove(); compter(); }
+    else if (e.target.closest('.b-haut') && tr.previousElementSibling) tr.parentNode.insertBefore(tr, tr.previousElementSibling);
+    else if (e.target.closest('.b-bas') && tr.nextElementSibling) tr.parentNode.insertBefore(tr.nextElementSibling, tr);
+  });
+  // tri des articles du menu par code ou libellé (l'ordre obtenu est celui enregistré)
+  document.querySelectorAll('th.tri-art').forEach(function (th) {
+    th.addEventListener('click', function () {
+      var col = parseInt(th.dataset.col, 10), dir = th.classList.contains('asc') ? -1 : 1;
+      document.querySelectorAll('th.tri-art').forEach(function (h) { h.classList.remove('asc', 'desc'); });
+      th.classList.add(dir === 1 ? 'asc' : 'desc');
+      var tbody = $('tbl-articles').tBodies[0];
+      Array.prototype.slice.call(tbody.rows).sort(function (a, b) {
+        return dir * a.children[col].textContent.trim().localeCompare(b.children[col].textContent.trim(), 'fr', {numeric: true, sensitivity: 'base'});
+      }).forEach(function (tr) { tbody.appendChild(tr); });
+    });
+  });
+  function razTri() { document.querySelectorAll('th.tri-art').forEach(function (h) { h.classList.remove('asc', 'desc'); }); }
+  $('btnAjout').addEventListener('click', function () {
+    var code = $('m_ajout').value.split(' — ')[0].trim(), err = $('mErreur');
+    if (!LIB.hasOwnProperty(code)) { err.textContent = "Choisissez l'article dans la liste proposée."; err.classList.remove('d-none'); return; }
+    if (lire().some(function (a) { return a.article === code; })) { err.textContent = 'Cet article est déjà dans le menu.'; err.classList.remove('d-none'); return; }
+    err.classList.add('d-none');
+    $('tbl-articles').tBodies[0].insertAdjacentHTML('beforeend', ligneHtml({article: code, unite: 'Kg'}));
+    $('m_ajout').value = ''; compter();
+    $('tbl-articles').closest('.zone-articles').scrollTop = 1e6;
+  });
+  $('btnDupliquer').addEventListener('click', function () {
+    var arts = lire(), lib = $('m_libelle').value, type = $('m_type').value;
+    courant = null; nouveau = true; $('mErreur').classList.add('d-none');
+    $('mTitre').textContent = 'Nouveau menu (copie)'; $('m_code').value = ''; $('m_code').disabled = false; $('m_code').focus();
+    $('btnSupprimer').classList.add('d-none'); $('btnDupliquer').classList.add('d-none');
+    $('m_libelle').value = lib; $('m_type').value = type; remplir(arts);
+  });
+  $('btnEnregistrer') && $('btnEnregistrer').addEventListener('click', function () {
+    var err = $('mErreur');
+    post(URL_SAVE, {code: $('m_code').value, nouveau: nouveau, libelle: $('m_libelle').value, type_menu: $('m_type').value,
+                    actif: $('m_actif').checked, articles: lire()})
+      .then(function (j) { if (j.ok) location.reload(); else { err.textContent = j.erreur || 'Erreur'; err.classList.remove('d-none'); } })
+      .catch(function () { err.textContent = 'Erreur réseau'; err.classList.remove('d-none'); });
+  });
+  $('btnSupprimer') && $('btnSupprimer').addEventListener('click', function () {
+    if (!courant || !confirm('Supprimer le menu ' + courant.code + ' ?')) return;
+    var err = $('mErreur');
+    post(URL_DELETE, {code: courant.code}).then(function (j) { if (j.ok) location.reload(); else { err.textContent = j.erreur || 'Erreur'; err.classList.remove('d-none'); } });
+  });
+
+  // ---------- ajout / retrait d'un article dans plusieurs menus ----------
+  var URL_GLOBAL = "{{ url_for('distribution.planning_jour_gestion_menus_global') }}";
+  var modaleG, modeG = 'ajouter';
+  document.addEventListener('DOMContentLoaded', function () { modaleG = new bootstrap.Modal($('modaleGlobal')); });
+  function articleG() { var c = $('g_article').value.split(' — ')[0].trim(); return LIB.hasOwnProperty(c) ? c : null; }
+  function contient(code, art) { return (CONTENUS[code] || []).some(function (a) { return a.article === art; }); }
+  function majCompteur() {
+    var n = document.querySelectorAll('#g_grille .g-cb:checked:not(:disabled)').length;
+    $('g_valider').textContent = (modeG === 'ajouter' ? 'Ajouter à ' : 'Retirer de ') + n + ' menu' + (n > 1 ? 's' : '');
+    $('g_valider').disabled = !n || !articleG();
+  }
+  function dessinerGrille() {
+    var art = articleG(), html = '';
+    [['frais', 'Menus frais'], ['sec', 'Menus secs']].forEach(function (g) {
+      html += '<div class="mb-1"><span class="badge-menu ' + (g[0] === 'frais' ? 'badge-frais' : 'badge-sec') + '">' + g[1] + '</span></div><div class="row g-0 mb-2">';
+      MENUS.filter(function (m) { return m.type_menu === g[0] && m.actif; }).forEach(function (m) {
+        var present = art ? contient(m.code, art) : false;
+        var inutile = art && (modeG === 'ajouter' ? present : !present);
+        var note = !art ? '' : (present ? ' <span class="text-success">(contient)</span>' : ' <span class="text-muted">(absent)</span>');
+        html += '<div class="col-md-4"><label class="small' + (inutile ? ' text-muted' : '') + '"><input type="checkbox" class="g-cb" data-type="' + g[0] + '" value="' + esc(m.code) + '"' +
+                (inutile ? ' disabled' : '') + '> ' + esc(m.code) + note + '</label></div>';
+      });
+      html += '</div>';
+    });
+    $('g_grille').innerHTML = html;
+    $('g_tous_frais').checked = $('g_tous_sec').checked = false;
+    $('g_aide').textContent = !art ? "Choisissez d'abord un article : les menus pour lesquels l'action est inutile sont grisés."
+      : (modeG === 'ajouter' ? "Ajout en fin de menu ; les menus qui contiennent déjà l'article sont grisés." : "Seuls les menus qui contiennent l'article peuvent être cochés.");
+    majCompteur();
+  }
+  function ouvrirGlobal(mode) {
+    modeG = mode;
+    $('gErreur').classList.add('d-none'); $('gResultat').classList.add('d-none');
+    $('gTitre').textContent = mode === 'ajouter' ? 'Ajouter un article à plusieurs menus' : 'Retirer un article de plusieurs menus';
+    $('g_article').value = ''; $('g_qte').value = ''; $('g_com').value = ''; $('g_unite').value = 'Kg';
+    $('g_ajout').classList.toggle('d-none', mode !== 'ajouter');
+    $('g_valider').className = 'btn ' + (mode === 'ajouter' ? 'btn-success' : 'btn-danger');
+    dessinerGrille(); modaleG.show();
+  }
+  $('g_article').addEventListener('input', dessinerGrille);
+  $('g_article').addEventListener('change', dessinerGrille);
+  ['frais', 'sec'].forEach(function (t) {
+    $('g_tous_' + t).addEventListener('change', function (e) {
+      document.querySelectorAll('#g_grille .g-cb[data-type="' + t + '"]:not(:disabled)').forEach(function (cb) { cb.checked = e.target.checked; });
+      majCompteur();
+    });
+  });
+  $('g_grille').addEventListener('change', majCompteur);
+  $('g_valider').addEventListener('click', function () {
+    var err = $('gErreur'), art = articleG();
+    var codes = Array.prototype.map.call(document.querySelectorAll('#g_grille .g-cb:checked:not(:disabled)'), function (cb) { return cb.value; });
+    if (!art) { err.textContent = "Choisissez l'article dans la liste proposée."; err.classList.remove('d-none'); return; }
+    if (modeG === 'retirer' && !confirm("Retirer l'article " + art + ' de ' + codes.length + ' menu(s) ?')) return;
+    err.classList.add('d-none');
+    post(URL_GLOBAL, {action: modeG, article: art, menus: codes, unite: $('g_unite').value, quantite: $('g_qte').value, commentaire: $('g_com').value})
+      .then(function (j) {
+        if (!j.ok) { err.textContent = j.erreur || 'Erreur'; err.classList.remove('d-none'); return; }
+        $('gResultat').textContent = (modeG === 'ajouter' ? 'Article ajouté à ' : 'Article retiré de ') + j.modifies.length + ' menu(s)' +
+          (j.ignores.length ? ' (' + j.ignores.length + ' ignoré(s)).' : '.') + ' Mise à jour de la page…';
+        $('gResultat').classList.remove('d-none'); $('g_valider').disabled = true;
+        setTimeout(function () { location.reload(); }, 1200);
+      }).catch(function () { err.textContent = 'Erreur réseau'; err.classList.remove('d-none'); });
+  });
+</script>
+{% endblock %}

@@ -21,6 +21,8 @@ import sys
 import io
 import pandas as pd
 import sqlite3
+from ba38_utilitaires import sqlite_tuning
+sqlite_tuning.install()
 import logging
 
 
@@ -87,6 +89,7 @@ from ba38_tresorerie import tresorerie_bp
 from ba38_cerfa import cerfa_bp
 from ba38_intervenants import intervenants_bp
 from ba38_emailing import emailing_bp
+from ba38_billets import billets_bp
 from ba38_partenaires import fiches_visite_bp
 from ba38_partenaires import annexe1bis_bp, webhook_yousign
 from ba38_utilitaires import signature_bp
@@ -453,6 +456,7 @@ app.register_blueprint(tresorerie_bp)
 app.register_blueprint(cerfa_bp)
 app.register_blueprint(intervenants_bp)
 app.register_blueprint(emailing_bp)
+app.register_blueprint(billets_bp)
 app.register_blueprint(fiches_visite_bp)
 app.register_blueprint(annexe1bis_bp)
 app.register_blueprint(signature_bp)

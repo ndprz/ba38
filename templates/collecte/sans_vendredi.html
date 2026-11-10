@@ -4,6 +4,43 @@
 
 {% block title %}Pas de collecte le vendredi {{ annee }}{% endblock %}
 
+{% block extra_css %}
+<style>
+    #scroll-top-outer {
+        overflow-x: auto;
+        overflow-y: hidden;
+        height: 18px;
+        margin-bottom: 2px;
+        scrollbar-width: auto;
+        scrollbar-color: #adb5bd #eee;
+    }
+    #scroll-top-inner {
+        height: 1px;
+    }
+    #scroll-top-outer::-webkit-scrollbar,
+    #table-scroll-area::-webkit-scrollbar {
+        height: 14px;
+    }
+    #scroll-top-outer::-webkit-scrollbar-track,
+    #table-scroll-area::-webkit-scrollbar-track {
+        background: #e9ecef;
+    }
+    #scroll-top-outer::-webkit-scrollbar-thumb,
+    #table-scroll-area::-webkit-scrollbar-thumb {
+        background: #6c757d;
+        border-radius: 7px;
+    }
+    #scroll-top-outer::-webkit-scrollbar-thumb:hover,
+    #table-scroll-area::-webkit-scrollbar-thumb:hover {
+        background: #495057;
+    }
+    #table-scroll-area {
+        scrollbar-width: auto;
+        scrollbar-color: #adb5bd #eee;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4" style="max-width: 1100px;">
     <h2>🚫 Pas de collecte le vendredi — {{ annee }}</h2>
@@ -107,7 +144,8 @@
             <button type="button" id="btn-tout-cocher" class="btn btn-sm btn-outline-secondary">☑️ Tout cocher</button>
             <button type="button" id="btn-tout-decocher" class="btn btn-sm btn-outline-secondary">⬜ Tout décocher</button>
         </div>
-        <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+        <div id="scroll-top-outer"><div id="scroll-top-inner"></div></div>
+        <div class="table-responsive" id="table-scroll-area" style="max-height: 600px; overflow-y: auto;">
             <table class="table table-sm table-striped">
                 <thead class="table-light" style="position: sticky; top: 0;">
                     <tr>
@@ -187,6 +225,33 @@
 </div>
 
 <script>
+// ── Barre de défilement horizontal dupliquée en haut ───────────────
+(function () {
+    const scrollTopOuter = document.getElementById("scroll-top-outer");
+    const scrollTopInner = document.getElementById("scroll-top-inner");
+    const tableArea = document.getElementById("table-scroll-area");
+    let syncingScrollTop = false;
+
+    function syncTopScrollWidth() {
+        scrollTopInner.style.width = tableArea.scrollWidth + "px";
+    }
+    syncTopScrollWidth();
+    window.addEventListener("resize", syncTopScrollWidth);
+
+    tableArea.addEventListener("scroll", function () {
+        if (syncingScrollTop) return;
+        syncingScrollTop = true;
+        scrollTopOuter.scrollLeft = tableArea.scrollLeft;
+        syncingScrollTop = false;
+    });
+    scrollTopOuter.addEventListener("scroll", function () {
+        if (syncingScrollTop) return;
+        syncingScrollTop = true;
+        tableArea.scrollLeft = scrollTopOuter.scrollLeft;
+        syncingScrollTop = false;
+    });
+})();
+
 const cases = document.querySelectorAll(".case-magasin");
 document.getElementById("btn-tout-cocher").addEventListener("click", function () {
     if (!confirm("Cocher tous les magasins (" + cases.length + ") ?")) {

@@ -842,17 +842,25 @@ def upload_database():
 
     service = get_drive_service()
 
-    media = MediaFileUpload(
-        local_path,
-        mimetype="application/x-sqlite3",
-        resumable=True
-    )
+    from ba38_utilitaires.sqlite_tuning import snapshot_sqlite
+    snap = snapshot_sqlite(local_path)  # copie cohérente (compatible WAL)
+    try:
+        media = MediaFileUpload(
+            snap,
+            mimetype="application/x-sqlite3",
+            resumable=True
+        )
 
-    service.files().update(
-        fileId=file_id,
-        media_body=media,
-        supportsAllDrives=True
-    ).execute()
+        service.files().update(
+            fileId=file_id,
+            media_body=media,
+            supportsAllDrives=True
+        ).execute()
+    finally:
+        try:
+            os.remove(snap)
+        except OSError:
+            pass
 
     write_log(f"✅ Base SQLite envoyée sur Drive (id={file_id})")
 

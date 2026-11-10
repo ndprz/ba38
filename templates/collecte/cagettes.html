@@ -8,7 +8,41 @@
 <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
 <style>
     .tabulator-row.ligne-erreur { background-color: #f8d7da !important; }
+    .tabulator-cell.cellule-ecart-n1-baisse { background-color: #f8d7da !important; color: #721c24; font-weight: 700; }
+    .tabulator-cell.cellule-ecart-n1-hausse { background-color: #d4edda !important; color: #155724; font-weight: 700; }
     .cellule-non-applicable { color: #adb5bd; }
+    #scroll-top-outer {
+        overflow-x: auto;
+        overflow-y: hidden;
+        height: 18px;
+        margin-bottom: 2px;
+        scrollbar-width: auto;
+        scrollbar-color: #adb5bd #eee;
+    }
+    #scroll-top-inner {
+        height: 1px;
+    }
+    #scroll-top-outer::-webkit-scrollbar,
+    .tabulator-tableholder::-webkit-scrollbar {
+        height: 14px;
+    }
+    #scroll-top-outer::-webkit-scrollbar-track,
+    .tabulator-tableholder::-webkit-scrollbar-track {
+        background: #e9ecef;
+    }
+    #scroll-top-outer::-webkit-scrollbar-thumb,
+    .tabulator-tableholder::-webkit-scrollbar-thumb {
+        background: #6c757d;
+        border-radius: 7px;
+    }
+    #scroll-top-outer::-webkit-scrollbar-thumb:hover,
+    .tabulator-tableholder::-webkit-scrollbar-thumb:hover {
+        background: #495057;
+    }
+    .tabulator-tableholder {
+        scrollbar-width: auto;
+        scrollbar-color: #adb5bd #eee;
+    }
     #tabulator-table .tabulator-col-title {
         white-space: normal !important;
         word-break: break-word;
@@ -49,9 +83,29 @@
         <button type="button" id="btn-magasins-zero" class="btn btn-outline-warning btn-sm ms-auto">
             ⚠️ Magasins à zéro
         </button>
+        <button type="button" id="btn-ecarts-n1" class="btn btn-outline-danger btn-sm">
+            📊 Écarts importants vs {{ annee - 1 }}
+        </button>
+        <div class="d-flex align-items-center gap-1">
+            <label for="seuil-ecart-pct" class="small mb-0">Seuil</label>
+            <input type="number" id="seuil-ecart-pct" class="form-control form-control-sm" style="width:68px"
+                   min="1" max="500" step="1" value="20">
+            <span class="small">%</span>
+        </div>
+        <div class="form-check form-check-inline mb-0">
+            <input class="form-check-input" type="checkbox" id="chk-ecarts-seuls">
+            <label class="form-check-label small" for="chk-ecarts-seuls">N'afficher que les écarts</label>
+        </div>
+        <a href="{{ url_for('collecte.exporter_ecarts_cagettes', annee=annee) }}" id="lien-export-ecarts" class="btn btn-outline-danger btn-sm">
+            📥 Exporter les écarts (Excel)
+        </a>
         <a href="{{ url_for('collecte.exporter_cagettes', annee=annee) }}" class="btn btn-outline-success btn-sm">
             📤 Exporter CSV (saisie des cagettes par magasin)
         </a>
+        <button type="button" id="btn-export-csv-exclure-zero" class="btn btn-outline-warning btn-sm"
+                title="Génère le CSV en excluant les magasins sans aucune cagette saisie">
+            📤 Exporter CSV (en excluant les magasins sans saisie)
+        </button>
         <a href="{{ url_for('collecte.exporter_cagettes_excel', annee=annee) }}" class="btn btn-outline-success btn-sm">
             📊 Télécharger en Excel (saisie des cagettes par magasin)
         </a>
@@ -95,6 +149,7 @@
     </div>
 
     <div id="alerte-magasins-zero" class="alert alert-warning d-none mb-3"></div>
+    <div id="alerte-ecarts-n1" class="alert alert-warning d-none mb-3"></div>
 
     <form method="POST" action="{{ url_for('collecte.enregistrer_poids_cagette', annee=annee) }}"
           class="d-flex align-items-end gap-3 flex-wrap mb-3 border rounded p-2">
@@ -121,6 +176,14 @@
         <button type="submit" class="btn btn-outline-primary btn-sm">💾 Enregistrer</button>
     </form>
 
+    <form method="POST" action="{{ url_for('collecte.recuperer_poids_palox_cagette', annee=annee) }}" class="mb-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-outline-secondary btn-sm">
+            🔁 Récupérer le poids total depuis Pesée palox
+        </button>
+        <small class="text-muted ms-1">Reprend le total déjà pesé à l'entrepôt (Pesée palox), sans le retaper.</small>
+    </form>
+
     <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
         <input type="text" id="filtre-recherche" class="form-control form-control-sm" style="max-width:320px;"
                placeholder="🔎 Rechercher (magasin…)">
@@ -142,6 +205,7 @@
 
     <div id="message-enregistrement" class="alert d-none mb-2" role="alert"></div>
 
+    <div id="scroll-top-outer"><div id="scroll-top-inner"></div></div>
     <div id="tabulator-table"></div>
     {% else %}
     <div class="alert alert-warning">
@@ -221,6 +285,22 @@ function totalN1(data) {
     return aN1 ? somme : null;
 }
 
+// Seuil de signalement d'un écart important sur le Total cagettes vs année
+// précédente — utilisé à la fois par le formatteur de cellule (coloration
+// en continu) et par le bouton de détection (liste + sélection + filtre).
+// Choisi par l'utilisateur (champ #seuil-ecart-pct), 20% par défaut.
+function seuilEcartN1() {
+    const champ = document.getElementById("seuil-ecart-pct");
+    const v = champ ? parseFloat(champ.value) : NaN;
+    return (isNaN(v) || v <= 0) ? 0.20 : v / 100;
+}
+function calculerEcartN1(total, n1) {
+    if (n1 === null || n1 === undefined) return { important: false, pct: null };
+    if (n1 === 0) return { important: total > 0, pct: null };
+    const pct = (total - n1) / n1;
+    return { important: Math.abs(pct) >= seuilEcartN1(), pct: pct };
+}
+
 // ── Enregistrement automatique cellule par cellule ─────────────────
 // Évite de dépendre d'un clic sur un bouton avant de quitter la page —
 // chaque valeur saisie est envoyée dès la sortie de la case.
@@ -260,7 +340,7 @@ function sauvegarderCellule(cell) {
     const dj = cell.getColumn().getField();
     const valeur = calculerValeurCagette(cell.getValue());
 
-    if (valeur === null || Number.isNaN(valeur)) {
+    if (Number.isNaN(valeur)) {
         row.getElement().classList.add("ligne-erreur");
         afficherMessage("⛔ Valeur invalide (" + dj + ") — utilisez un nombre ou une somme comme 9+3", "danger");
         return;
@@ -355,8 +435,14 @@ const table = new Tabulator("#tabulator-table", {
     layout: "fitColumns",
     height: "calc(100vh - 320px)",
     placeholder: "Aucun magasin",
+    selectableRows: true,
     initialSort: [{ column: "nom_magasin", dir: "asc" }],
     columns: [
+        {
+            formatter: "rowSelection", titleFormatter: "rowSelection", hozAlign: "center",
+            headerSort: false, width: 40, headerHozAlign: "center",
+            cellClick: function (e, cell) { cell.getRow().toggleSelect(); },
+        },
         { title: "Code VIF", field: "code_vif", width: 100, headerFilter: "input" },
         { title: "Magasin", field: "nom_magasin", widthGrow: 3, minWidth: 220, headerFilter: "input", frozen: true, formatter: "textarea", topCalcFormatter: function () { return "Total"; } },
     ].concat(colonnesDemiJournees.map(function (col) {
@@ -383,6 +469,12 @@ const table = new Tabulator("#tabulator-table", {
             formatter: function (cell) {
                 const v = cell.getValue();
                 const n1 = cell.getRow().getData().total_n1;
+                const el = cell.getElement();
+                el.classList.remove("cellule-ecart-n1-hausse", "cellule-ecart-n1-baisse");
+                const ecart = calculerEcartN1(v || 0, n1);
+                if (ecart.important) {
+                    el.classList.add(ecart.pct === null || ecart.pct >= 0 ? "cellule-ecart-n1-hausse" : "cellule-ecart-n1-baisse");
+                }
                 const indiceN1 = (n1 === null || n1 === undefined) ? ""
                     : " <span style='font-size:10px;color:#999' title='Total cagettes " + (annee - 1) + "'>(" + (annee - 1) + ": " + n1 + ")</span>";
                 return ((v === null || v === undefined) ? "" : v) + indiceN1;
@@ -417,6 +509,37 @@ const table = new Tabulator("#tabulator-table", {
         },
     ]),
 });
+
+// ── Barre de défilement horizontal dupliquée en haut ───────────────
+const scrollTopOuter = document.getElementById("scroll-top-outer");
+const scrollTopInner = document.getElementById("scroll-top-inner");
+let holder = null;
+let syncingScrollTop = false;
+
+function syncTopScrollWidth() {
+    holder = document.querySelector("#tabulator-table .tabulator-tableholder");
+    if (!holder) return;
+    scrollTopInner.style.width = holder.scrollWidth + "px";
+}
+
+table.on("tableBuilt", function () {
+    syncTopScrollWidth();
+    holder = document.querySelector("#tabulator-table .tabulator-tableholder");
+    holder.addEventListener("scroll", function () {
+        if (syncingScrollTop) return;
+        syncingScrollTop = true;
+        scrollTopOuter.scrollLeft = holder.scrollLeft;
+        syncingScrollTop = false;
+    });
+    scrollTopOuter.addEventListener("scroll", function () {
+        if (syncingScrollTop) return;
+        syncingScrollTop = true;
+        holder.scrollLeft = scrollTopOuter.scrollLeft;
+        syncingScrollTop = false;
+    });
+});
+table.on("renderComplete", syncTopScrollWidth);
+window.addEventListener("resize", syncTopScrollWidth);
 
 // ── Recherche + filtre demi-journée/camion combinés ─────────────────
 const filtreInput = document.getElementById("filtre-recherche");
@@ -535,6 +658,98 @@ document.getElementById("btn-magasins-zero").addEventListener("click", function 
         alerteMagasinsZero.innerHTML = "⚠️ " + magasinsZero.length + " magasin(s) sans aucune cagette saisie : "
             + magasinsZero.join(", ");
     }
+});
+
+document.getElementById("btn-export-csv-exclure-zero").addEventListener("click", function () {
+    const magasinsZero = table.getData()
+        .filter(function (data) { return !data.total; })
+        .map(function (data) { return data.nom_magasin; })
+        .sort(function (a, b) { return a.localeCompare(b); });
+
+    if (magasinsZero.length > 0 && !confirm(
+        magasinsZero.length + " magasin(s) sans aucune cagette saisie seront exclus de l'export :\n\n"
+        + magasinsZero.join(", ") + "\n\nContinuer ?"
+    )) {
+        return;
+    }
+    window.location.href = "{{ url_for('collecte.exporter_cagettes', annee=annee) }}?exclure_zero=1";
+});
+
+// ── Écarts importants vs année précédente (hors magasins nouveaux/non
+// collectés l'an dernier, repérés par total_n1 === null) — la coloration
+// de la cellule Total cagettes se fait en continu dans son formatter
+// (ci-dessus), ici on ne fait que construire la liste/sélection/filtre. ──
+const alerteEcartsN1 = document.getElementById("alerte-ecarts-n1");
+const chkEcartsSeuls = document.getElementById("chk-ecarts-seuls");
+const filtreEcartsSeuls = function (data) { return !!data.ecart_important; };
+
+function detecterEcarts() {
+    const ecarts = [];
+    const lignesEcart = [];
+    table.getRows().forEach(function (row) {
+        const data = row.getData();
+        const n1 = data.total_n1;
+        const total = data.total || 0;
+        const ecart = calculerEcartN1(total, n1);
+        row.update({ ecart_important: ecart.important });
+        if (n1 === null || n1 === undefined || !ecart.important) return;
+
+        lignesEcart.push(row);
+        const signe = ecart.pct === null ? "" : (ecart.pct >= 0 ? "+" : "") + Math.round(ecart.pct * 100) + "%";
+        ecarts.push({
+            nom: data.nom_magasin,
+            texte: data.nom_magasin + " (" + total + " vs " + (annee - 1) + ": " + n1 + (signe ? ", " + signe : "") + ")",
+        });
+    });
+    ecarts.sort(function (a, b) { return a.nom.localeCompare(b.nom); });
+    table.deselectRow();
+    table.selectRow(lignesEcart);
+    return ecarts;
+}
+
+document.getElementById("btn-ecarts-n1").addEventListener("click", function () {
+    const ecarts = detecterEcarts();
+
+    const seuilPct = Math.round(seuilEcartN1() * 100);
+    if (ecarts.length === 0) {
+        alerteEcartsN1.className = "alert alert-success mb-3";
+        alerteEcartsN1.textContent = "✅ Aucun écart de plus de " + seuilPct + "% avec " + (annee - 1) + " (magasins déjà collectés l'an dernier).";
+    } else {
+        alerteEcartsN1.className = "alert alert-danger mb-3";
+        alerteEcartsN1.innerHTML = "🔴 " + ecarts.length + " magasin(s) avec un écart de plus de " + seuilPct + "% vs " + (annee - 1)
+            + " (case Total cagettes en vert si hausse, rouge si baisse, lignes sélectionnées dans le tableau) : "
+            + ecarts.map(function (e) { return e.texte; }).join(" · ");
+    }
+
+    if (chkEcartsSeuls.checked) table.refreshFilter();
+});
+
+chkEcartsSeuls.addEventListener("change", function () {
+    if (chkEcartsSeuls.checked) {
+        detecterEcarts();
+        table.addFilter(filtreEcartsSeuls);
+    } else {
+        table.removeFilter(filtreEcartsSeuls);
+    }
+});
+
+// ── Seuil d'écart choisi par l'utilisateur : recoloration en direct +
+// propagation à l'export Excel (paramètre ?seuil=) ──────────────────────
+const champSeuil = document.getElementById("seuil-ecart-pct");
+const lienExportEcarts = document.getElementById("lien-export-ecarts");
+const urlExportEcartsBase = lienExportEcarts.getAttribute("href");
+
+function mettreAJourLienExportEcarts() {
+    const v = parseFloat(champSeuil.value);
+    const seuil = (isNaN(v) || v <= 0) ? 20 : v;
+    lienExportEcarts.setAttribute("href", urlExportEcartsBase + "?seuil=" + seuil);
+}
+mettreAJourLienExportEcarts();
+
+champSeuil.addEventListener("input", function () {
+    mettreAJourLienExportEcarts();
+    table.redraw(true);
+    if (chkEcartsSeuls.checked) detecterEcarts();
 });
 </script>
 {% endif %}

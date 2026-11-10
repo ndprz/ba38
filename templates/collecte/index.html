@@ -300,7 +300,7 @@
                     <h5 class="card-title mb-1">📈 Évolution magasins (toutes années)</h5>
                     <p class="card-text small text-muted mb-0">
                         Référentiel cumulatif des magasins et résultats en kg par année — détection des
-                        nouveaux magasins et import d'un extrait VIF, sans passer par Excel.
+                        nouveaux magasins et calcul direct depuis Basilic (cagettes + gardée), sans passer par Excel.
                     </p>
                 </div>
                 {{ action_button("📈 Ouvrir", href=url_for('collecte.evolution_magasins', annee=annee), color="primary") }}
@@ -450,23 +450,13 @@
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
             <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
-                    <h5 class="card-title mb-1">⚖️ Saisie des poids par magasin gardé</h5>
+                    <h5 class="card-title mb-1">✏️ Saisie poids + produits, par association</h5>
                     <p class="card-text small text-muted mb-0">
-                        Poids en kg relevé sur les fiches de pesée renvoyées par les associations.
+                        Poids par magasin ET quantités par produit, pour une seule association,
+                        regroupés dans la même page.
                     </p>
                 </div>
-                {{ action_button("⚖️ Saisir", href=url_for('collecte.poids_magasins_gardee', annee=annee) if magasins_prets else '#', color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
-            </div>
-        </div>
-        <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
-            <div class="card-body d-flex justify-content-between align-items-center gap-2">
-                <div>
-                    <h5 class="card-title mb-1">📦 Saisie des quantités par produit</h5>
-                    <p class="card-text small text-muted mb-0">
-                        Poids en kg brut par produit et par association, relevé sur les fiches produits renvoyées.
-                    </p>
-                </div>
-                {{ action_button("📦 Saisir", href=url_for('collecte.quantites_produits', annee=annee) if magasins_prets else '#', color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
+                {{ action_button("✏️ Saisir", href=url_for('collecte.gardee_saisie_choisir', annee=annee) if magasins_prets else '#', color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
             </div>
         </div>
 

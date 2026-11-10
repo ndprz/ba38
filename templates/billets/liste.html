@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Billets spectacle{% endblock %}
+{% block extra_css %}
+<style>
+.gap-2{gap:.5rem}.gap-3{gap:1rem}
+.row.g-2{margin-left:-.25rem;margin-right:-.25rem}.row.g-2>*{padding:.25rem}
+.badge{margin:0}
+</style>
+{% endblock %}
+{% block content %}
+<div class="container-fluid mt-3">
+  <h2 class="mb-1">🎟️ Billets spectacle</h2>
+  <p class="text-muted">Places de spectacle offertes aux bénévoles (ALPEXPO, etc.) : invitation, inscription, tirage au sort.</p>
+
+  {% if peut_ecrire %}
+  <div class="card mb-4"><div class="card-header"><b>➕ Nouvelle campagne</b></div>
+  <form method="POST" action="{{ url_for('billets.nouvelle') }}" class="card-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="row g-2">
+      <div class="col-md-4"><label class="small">Nom du donateur *</label><input name="donateur" class="form-control" placeholder="ALPEXPO Grenoble" required></div>
+      <div class="col-md-4"><label class="small">Lieu</label><input name="lieu" class="form-control" placeholder="Alpexpo, Grenoble"></div>
+      <div class="col-md-4"><label class="small">Désignation du spectacle *</label><input name="spectacle" class="form-control" required></div>
+      <div class="col-md-2"><label class="small">Date du spectacle *</label><input type="date" name="date_spectacle" class="form-control" required></div>
+      <div class="col-md-2"><label class="small">Heure</label><input type="time" name="heure_spectacle" class="form-control"></div>
+      <div class="col-md-2"><label class="small">Nombre de billets *</label><input type="number" min="1" name="nb_billets" class="form-control" value="2" required></div>
+      <div class="col-md-3"><label class="small">Date limite d'inscription *</label><input type="datetime-local" name="date_limite" class="form-control" required></div>
+      <div class="col-md-12"><label class="small">Mode de retrait des billets</label><input name="mode_retrait" class="form-control" placeholder="Ex. : à retirer à l'accueil de la BAI, ou envoyés par mail…"></div>
+    </div>
+    <button class="btn btn-success mt-3">Créer la campagne</button>
+  </form></div>
+  {% endif %}
+
+  <table class="table table-striped table-sm align-middle">
+    <thead><tr><th>Spectacle</th><th>Donateur</th><th>Date</th><th class="text-end">Billets</th>
+      <th>Date limite</th><th class="text-end">Invités</th><th class="text-end">Inscrits</th><th>État</th><th></th></tr></thead>
+    <tbody>
+    {% for c in campagnes %}
+      <tr>
+        <td><b>{{ c.spectacle }}</b></td>
+        <td>{{ c.donateur }}</td>
+        <td>{{ date_fr(c.date_spectacle) }}{% if c.heure_spectacle %} {{ c.heure_spectacle.replace(':','h') }}{% endif %}</td>
+        <td class="text-end">{{ c.nb_billets }}</td>
+        <td class="small">{{ limite_fr(c.date_limite) }}</td>
+        <td class="text-end">{{ c.nb_invites }}</td>
+        <td class="text-end">{{ c.nb_inscrits }}</td>
+        <td>
+          {% if c.statut == 'tiree' %}<span class="badge bg-success">Tirage fait</span>{% if c.resultats_envoyes_le %} <span class="badge bg-secondary">résultats envoyés</span>{% endif %}
+          {% elif limite_depassee(c) %}<span class="badge bg-warning text-dark">Tirage à faire</span>
+          {% else %}<span class="badge bg-primary">Inscriptions ouvertes</span>{% endif %}
+        </td>
+        <td><a class="btn btn-sm btn-primary" href="{{ url_for('billets.campagne', campagne_id=c.id) }}">Ouvrir</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="text-muted text-center">Aucune campagne pour le moment.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

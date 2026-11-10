@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Saisie collecte gardée {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 700px;">
+
+    <h2>⚖️ Saisie collecte gardée {{ annee }}</h2>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+        {{ action_button("📥 Export CSV VIF (poids par magasin)", href=url_for('collecte.exporter_poids_magasins_gardee', annee=annee), color="outline-secondary") }}
+        {{ action_button("📄 Générer BL VIF", href=url_for('collecte.quantites_produits_bl_vif', annee=annee), color="outline-secondary") }}
+        {{ action_button("📋 Transferts à saisir dans VIF", href=url_for('collecte.quantites_produits_transferts', annee=annee), color="outline-secondary") }}
+    {% endcall %}
+
+    <p class="text-muted">
+        Choisissez l'association pour laquelle saisir le poids par magasin et les quantités par
+        produit (une seule page pour les deux).
+    </p>
+
+    {% if not associations %}
+    <div class="alert alert-info">Aucune association trouvée pour {{ annee }}.</div>
+    {% else %}
+    <div class="list-group">
+        {% for asso in associations %}
+        <a href="{{ url_for('collecte.gardee_saisie', annee=annee, association=asso.nom) }}"
+           class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+            {{ asso.nom }}
+            <span class="badge bg-secondary">{{ asso.magasins|length }} magasin(s)</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

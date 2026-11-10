@@ -4,6 +4,43 @@
 
 {% block title %}Historique {{ annee }}{% endblock %}
 
+{% block extra_css %}
+<style>
+    #scroll-top-outer {
+        overflow-x: auto;
+        overflow-y: hidden;
+        height: 18px;
+        margin-bottom: 2px;
+        scrollbar-width: auto;
+        scrollbar-color: #adb5bd #eee;
+    }
+    #scroll-top-inner {
+        height: 1px;
+    }
+    #scroll-top-outer::-webkit-scrollbar,
+    #table-scroll-area::-webkit-scrollbar {
+        height: 14px;
+    }
+    #scroll-top-outer::-webkit-scrollbar-track,
+    #table-scroll-area::-webkit-scrollbar-track {
+        background: #e9ecef;
+    }
+    #scroll-top-outer::-webkit-scrollbar-thumb,
+    #table-scroll-area::-webkit-scrollbar-thumb {
+        background: #6c757d;
+        border-radius: 7px;
+    }
+    #scroll-top-outer::-webkit-scrollbar-thumb:hover,
+    #table-scroll-area::-webkit-scrollbar-thumb:hover {
+        background: #495057;
+    }
+    #table-scroll-area {
+        scrollbar-width: auto;
+        scrollbar-color: #adb5bd #eee;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid mt-4" style="max-width:1500px;">
 
@@ -14,7 +51,8 @@
         {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
     {% endcall %}
 
-    <div class="table-responsive">
+    <div id="scroll-top-outer"><div id="scroll-top-inner"></div></div>
+    <div class="table-responsive" id="table-scroll-area">
         <table class="table table-sm table-bordered align-middle">
             <thead class="table-dark">
                 <tr>
@@ -63,4 +101,33 @@
     </div>
 
 </div>
+
+<script>
+// ── Barre de défilement horizontal dupliquée en haut ───────────────
+(function () {
+    const scrollTopOuter = document.getElementById("scroll-top-outer");
+    const scrollTopInner = document.getElementById("scroll-top-inner");
+    const tableArea = document.getElementById("table-scroll-area");
+    let syncingScrollTop = false;
+
+    function syncTopScrollWidth() {
+        scrollTopInner.style.width = tableArea.scrollWidth + "px";
+    }
+    syncTopScrollWidth();
+    window.addEventListener("resize", syncTopScrollWidth);
+
+    tableArea.addEventListener("scroll", function () {
+        if (syncingScrollTop) return;
+        syncingScrollTop = true;
+        scrollTopOuter.scrollLeft = tableArea.scrollLeft;
+        syncingScrollTop = false;
+    });
+    scrollTopOuter.addEventListener("scroll", function () {
+        if (syncingScrollTop) return;
+        syncingScrollTop = true;
+        tableArea.scrollLeft = scrollTopOuter.scrollLeft;
+        syncingScrollTop = false;
+    });
+})();
+</script>
 {% endblock %}

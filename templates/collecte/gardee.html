@@ -163,6 +163,11 @@
                         {% endif %}
                     </p>
 
+                    <a href="{{ url_for('collecte.gardee_saisie', annee=annee, association=asso.nom) }}"
+                       class="btn btn-sm btn-outline-primary mb-3">
+                        ✏️ Saisir poids par magasin / quantités par produit
+                    </a>
+
                     <form method="POST" action="{{ url_for('collecte.gardee_code_vif_override') }}"
                           class="d-flex align-items-center gap-2 mb-3 flex-wrap">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

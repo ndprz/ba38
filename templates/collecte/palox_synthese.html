@@ -59,6 +59,8 @@
                 📺 Affichage TV
             </a>
             <button type="button" id="btnPleinEcran" class="btn btn-outline-primary btn-sm">⛶ Plein écran</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse"
+                    data-bs-target="#panelCumulHoraire">🕐 Vitesse de tri</button>
         </div>
     </div>
 
@@ -83,6 +85,21 @@
     <p class="text-muted small mb-2">Cliquez sur une catégorie pour peser un palox (s'ouvre ici, sans changer de page — garde le plein écran actif).</p>
 
     <div id="tabulator-table"></div>
+
+    <div class="collapse mt-2" id="panelCumulHoraire">
+        <div class="card card-body py-2">
+            <h6 class="mb-2">🕐 Vitesse de tri (cumul horaire)</h6>
+            <div style="max-width: 900px; height: 260px;">
+                <canvas id="graphiqueVitesseTri"></canvas>
+            </div>
+            <table class="table table-sm table-bordered w-auto mb-0 mt-3" id="tableCumulHoraire">
+                <thead class="table-light">
+                    <tr><th>Jour</th><th>Heure</th><th>Poids pesé (kg)</th><th>Cumul (kg)</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
 
     <!-- ── Fenêtre de pesée (par-dessus la synthèse, jamais de changement de
          page : c'est ce qui permet au plein écran de rester actif pendant
@@ -139,9 +156,11 @@
 </div>
 
 <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 const csrfToken = "{{ csrf_token() }}";
 const lignes = {{ lignes|tojson }};
+const cumulHoraireInitial = {{ cumul_horaire|tojson }};
 const urlDonneesBase = "{{ url_for('collecte.palox_donnees_saisie', annee=annee, categorie_id=0) }}".replace('/0/', '/__ID__/');
 const urlEnregistrerBase = "{{ url_for('collecte.palox_enregistrer', annee=annee, categorie_id=0) }}".replace('/0/', '/__ID__/');
 const urlCorrigerBase = "{{ url_for('collecte.palox_corriger', annee=annee, categorie_id=0) }}".replace('/0/', '/__ID__/');
@@ -258,6 +277,66 @@ window.addEventListener("resize", function () {
     minuteurRedimensionnement = setTimeout(function () { construireTable(HAUTEUR_ENTETE_ESTIMEE); }, 200);
 });
 
+function libelleJourHeure(ligne) {
+    const [an, mois, jourNum] = ligne.jour.split("-");
+    return jourNum + "/" + mois + " " + ligne.heure;
+}
+
+let graphiqueVitesseTri = null;
+function construireGraphiqueVitesseTri(cumulHoraire) {
+    const ctx = document.getElementById("graphiqueVitesseTri");
+    const data = {
+        labels: cumulHoraire.map(libelleJourHeure),
+        datasets: [{
+            label: "Poids pesé (kg)",
+            data: cumulHoraire.map(function (l) { return l.poids_heure; }),
+            backgroundColor: "#6ea8fe",
+        }],
+    };
+    if (graphiqueVitesseTri) {
+        graphiqueVitesseTri.data = data;
+        graphiqueVitesseTri.update();
+        return;
+    }
+    graphiqueVitesseTri = new Chart(ctx, {
+        type: "bar",
+        data: data,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }, title: { display: true, text: "Vitesse de tri (poids pesé par heure)" } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: "kg" } } },
+        },
+    });
+}
+
+function remplirCumulHoraire(cumulHoraire) {
+    const tbody = document.querySelector("#tableCumulHoraire tbody");
+    tbody.innerHTML = "";
+    if (!cumulHoraire.length) {
+        tbody.innerHTML = "<tr><td colspan='4' class='text-muted'>Aucune pesée enregistrée</td></tr>";
+        return;
+    }
+    cumulHoraire.forEach(function (ligne) {
+        const tr = document.createElement("tr");
+        const [an, mois, jourNum] = ligne.jour.split("-");
+        tr.innerHTML = "<td>" + jourNum + "/" + mois + "/" + an + "</td><td>" + ligne.heure
+            + "</td><td>" + ligne.poids_heure.toFixed(1)
+            + "</td><td><strong>" + ligne.cumul_kg.toFixed(1) + "</strong></td>";
+        tbody.appendChild(tr);
+    });
+}
+construireGraphiqueVitesseTri(cumulHoraireInitial);
+remplirCumulHoraire(cumulHoraireInitial);
+
+// Le tableau des catégories occupe presque toute la hauteur de la fenêtre
+// (hauteurDisponibleTable) : sans ce défilement automatique, le panneau
+// s'ouvre hors écran et le clic sur le bouton semble ne rien faire (bug
+// signalé 2026-11-10).
+document.getElementById("panelCumulHoraire").addEventListener("shown.bs.collapse", function () {
+    this.scrollIntoView({ behavior: "smooth", block: "end" });
+});
+
 function rafraichirSynthese() {
     fetch(urlSyntheseDonnees)
         .then(function (r) { return r.json(); })
@@ -265,6 +344,8 @@ function rafraichirSynthese() {
             table.setData(data.lignes);
             document.getElementById("totalGeneral").textContent =
                 data.poids_total + " kg" + (data.mercuriale_importee ? " — " + data.valeur_totale.toFixed(2) + " €" : "");
+            construireGraphiqueVitesseTri(data.cumul_horaire);
+            remplirCumulHoraire(data.cumul_horaire);
         });
 }
 

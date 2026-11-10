@@ -171,6 +171,10 @@ def _dossier_sans_vendredi(annee):
     return os.path.join(_dossier_annee(annee), "sans_vendredi")
 
 
+def _dossier_gardee_pdf(annee):
+    return os.path.join(_dossier_annee(annee), "gardee_pdf_recus")
+
+
 # ============================================================================
 # 🚛 PRODUCTION — génération des documents réels (fiches, pointage, équipier,
 # index, carte) directement depuis les 3 exports go-on-web du drive collecte,
@@ -291,37 +295,61 @@ def _dossier_fichiers_drive_collecte(service, drive_id, annee):
     fichier alors qu'une même page (ex. Préparer l'envoi) en télécharge
     plusieurs d'affilée pour la même année. Pour une année déjà passée,
     plusieurs variantes du dossier peuvent coexister (ex. 'après collecte',
-    repris pour les bilans) : on prend celui modifié le plus récemment,
-    sans autre distinction. Retourne (id, 'Collecte {annee} / <nom du
-    sous-dossier>') ou (None, None) si introuvable."""
+    repris pour les bilans) : s'il y en a plusieurs, on prend celui dont les
+    FICHIERS à l'intérieur sont les plus récents (jamais la date du dossier
+    lui-même — incident réel 2026-11-09 : Drive ne remet pas forcément à
+    jour la date d'un dossier quand un fichier à l'intérieur est remplacé,
+    un dossier resté affiché comme modifié des mois plus tôt contenait en
+    fait les fichiers les plus frais, pendant qu'un dossier concurrent plus
+    récemment modifié ne contenait que d'anciens fichiers — en comparant les
+    dossiers entre eux, pas le contenu, le mauvais était choisi en
+    silence). Retourne (id, 'Collecte {annee} / <nom du sous-dossier>') ou
+    (None, None) si introuvable."""
     if annee in _CACHE_DOSSIER_FICHIERS_DRIVE_COLLECTE:
         return _CACHE_DOSSIER_FICHIERS_DRIVE_COLLECTE[annee]
 
-    def _premier(q):
+    def _lister(q):
         resp = service.files().list(
             q=q, corpora="drive", driveId=drive_id,
             supportsAllDrives=True, includeItemsFromAllDrives=True,
             fields="files(id,name,modifiedTime)",
             orderBy="modifiedTime desc", pageSize=10,
         ).execute()
-        fichiers = resp.get("files", [])
+        return resp.get("files", [])
+
+    def _premier(q):
+        fichiers = _lister(q)
         return fichiers[0] if fichiers else None
+
+    def _plus_recent_fichier_dans(id_dossier):
+        fichiers = service.files().list(
+            q=f"'{id_dossier}' in parents and trashed=false "
+              f"and mimeType != 'application/vnd.google-apps.folder'",
+            corpora="drive", driveId=drive_id,
+            supportsAllDrives=True, includeItemsFromAllDrives=True,
+            fields="files(modifiedTime)", pageSize=50,
+        ).execute().get("files", [])
+        return max((f["modifiedTime"] for f in fichiers), default="")
 
     dossier_annee = _premier(
         f"'{drive_id}' in parents and mimeType='application/vnd.google-apps.folder' "
         f"and name='Collecte {annee}' and trashed=false"
     )
-    dossier_fichiers = _premier(
+    sous_dossiers = _lister(
         f"'{dossier_annee['id']}' in parents and mimeType='application/vnd.google-apps.folder' "
         f"and name contains 'go on the web {annee}' and trashed=false"
-    ) if dossier_annee else None
+    ) if dossier_annee else []
 
-    if not dossier_fichiers:
+    if not sous_dossiers:
         # Jamais mis en cache : un dossier pas encore créé (début de
         # campagne) ou un aléa passager de l'API ne doit pas condamner
         # l'année entière jusqu'au prochain redémarrage — on retente à
         # chaque appel tant qu'on n'a pas trouvé.
         return None, None
+    if len(sous_dossiers) > 1:
+        sous_dossiers.sort(key=lambda d: _plus_recent_fichier_dans(d["id"]), reverse=True)
+    dossier_fichiers = sous_dossiers[0]
+
     resultat = (dossier_fichiers["id"], f"{dossier_annee['name']} / {dossier_fichiers['name']}")
     _CACHE_DOSSIER_FICHIERS_DRIVE_COLLECTE[annee] = resultat
     return resultat
@@ -3849,6 +3877,122 @@ def _detecter_sans_vendredi_background(app, detection_id, annee, image_bytes, me
                 conn.commit()
 
 
+def _ensure_table_detection_pdf_association(conn):
+    """Détections automatiques (upload d'un PDF — fiche envoyée à
+    l'association, remplie à la main puis scannée — analysé par l'IA) des
+    poids par magasin/produit, en complément de la saisie manuelle
+    (gardee_saisie). Jamais enregistré directement dans
+    collecte_poids_magasins_gardee / collecte_quantites_produits : les
+    valeurs détectées ne font que pré-remplir le formulaire, l'utilisateur
+    reste seul à valider en cliquant Enregistrer (ou en corrigeant un champ)
+    avant qu'elles soient réellement écrites (demande 2026-11-10)."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_detection_pdf_association (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            annee INTEGER NOT NULL,
+            association TEXT NOT NULL,
+            statut TEXT NOT NULL DEFAULT 'en_cours',
+            magasins_detectes TEXT,
+            produits_detectes TEXT,
+            erreur TEXT,
+            lance_le TEXT,
+            lance_par TEXT,
+            pdf_nom TEXT
+        )
+    """)
+
+
+def _detecter_pdf_association_background(app, detection_id, annee, association, pdf_bytes, magasins_connus, produits_connus):
+    """Envoie le PDF reçu à l'API Claude (vision/document) pour lire les
+    poids écrits à la main sur la fiche renvoyée par l'association — tourne
+    en arrière-plan, même principe que _detecter_sans_vendredi_background.
+    Les codes/libellés imprimés servent d'ancrage (fournis dans le prompt)
+    pour fiabiliser la lecture de la seule colonne manuscrite."""
+    import base64, json as _json
+    with app.app_context():
+        try:
+            api_key = os.getenv("CLAUDE_API_KEY")
+            if not api_key:
+                raise RuntimeError("CLAUDE_API_KEY absente du .env")
+
+            lignes_magasins = "\n".join(f"{m['code_vif']} — {m['nom']}" for m in magasins_connus)
+            lignes_produits = "\n".join(f"{p['code']} — {p['libelle']}" for p in produits_connus)
+            prompt = (
+                "Ce document PDF est une fiche de collecte alimentaire remplie à la main par une "
+                "association puis scannée. Il contient 2 pages : une « FICHE PRODUITS » (tableau "
+                "avec colonnes Code, Produit, Poids (kg)) et une « FICHE MAGASINS » (tableau avec "
+                "colonnes Code VIF, Magasin, Ville, Poids (kg)). Le texte imprimé (codes et "
+                "libellés) est fiable ; seule la dernière colonne « Poids (kg) » est remplie à la "
+                "main et doit être lue.\n\n"
+                "Pour t'aider à associer chaque ligne au bon code même si l'écriture est peu "
+                "lisible, voici la liste EXACTE des lignes attendues sur chaque fiche :\n\n"
+                f"Magasins (FICHE MAGASINS) :\n{lignes_magasins}\n\n"
+                f"Produits (FICHE PRODUITS) :\n{lignes_produits}\n\n"
+                "Lis les poids écrits à la main en kg (nombres entiers ou avec décimale, parfois "
+                "séparateur virgule). Ignore les lignes où rien n'est écrit (case vide ou trait). "
+                "Si un nombre est vraiment illisible, ne l'inclus PAS dans la réponse plutôt que de "
+                "deviner.\n\n"
+                "Réponds UNIQUEMENT avec un objet JSON de cette forme exacte, sans aucun texte "
+                "autour :\n"
+                '{"magasins": {"<code_vif>": <poids_kg>, ...}, "produits": {"<code_produit>": <poids_kg>, ...}}'
+            )
+
+            client = anthropic.Anthropic(api_key=api_key)
+            response = client.messages.create(
+                model="claude-sonnet-5",
+                max_tokens=2000,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "document", "source": {
+                            "type": "base64", "media_type": "application/pdf",
+                            "data": base64.b64encode(pdf_bytes).decode("ascii"),
+                        }},
+                        {"type": "text", "text": prompt},
+                    ],
+                }],
+            )
+            texte = "".join(bloc.text for bloc in response.content if bloc.type == "text").strip()
+            if texte.startswith("```"):
+                texte = texte.strip("`")
+                if texte.lower().startswith("json"):
+                    texte = texte[4:]
+            data = _json.loads(texte)
+
+            codes_vif_connus = {m["code_vif"] for m in magasins_connus}
+            codes_produits_connus = {p["code"] for p in produits_connus}
+            magasins_detectes = {
+                str(code): valeur for code, valeur in (data.get("magasins") or {}).items()
+                if str(code) in codes_vif_connus
+            }
+            produits_detectes = {
+                str(code): valeur for code, valeur in (data.get("produits") or {}).items()
+                if str(code) in codes_produits_connus
+            }
+
+            with get_db_connection() as conn:
+                conn.execute(
+                    "UPDATE collecte_detection_pdf_association "
+                    "SET statut = 'termine', magasins_detectes = ?, produits_detectes = ? WHERE id = ?",
+                    (_json.dumps(magasins_detectes, ensure_ascii=False),
+                     _json.dumps(produits_detectes, ensure_ascii=False), detection_id)
+                )
+                conn.commit()
+            write_log(
+                f"🤖 Collecte gardée {annee} ({association}) : détection PDF #{detection_id} terminée "
+                f"({len(magasins_detectes)} magasin(s), {len(produits_detectes)} produit(s))"
+            )
+
+        except Exception as e:
+            write_log(f"❌ Collecte gardée {annee} ({association}) : erreur détection PDF #{detection_id} — {e}")
+            with get_db_connection() as conn:
+                conn.execute(
+                    "UPDATE collecte_detection_pdf_association SET statut = 'erreur', erreur = ? WHERE id = ?",
+                    (str(e), detection_id)
+                )
+                conn.commit()
+
+
 def _ensure_table_non_collectes_benevoles(conn):
     """Magasins marqués « pas de collecte cette année, faute de bénévoles »
     malgré leur accord donné (colonne 'Accord' du référentiel magasins,
@@ -6305,18 +6449,31 @@ def exporter_cagettes(annee):
 
     est_dev = os.getenv("ENVIRONMENT", "DEV").upper() != "PROD"
     forcer = est_dev and request.args.get("forcer") == "1"
+    exclure_zero = request.args.get("exclure_zero") == "1"
 
-    magasins_zero = [ligne["nom_magasin"] for ligne in lignes if not (ligne.get("total") or 0)]
-    if magasins_zero and not forcer:
+    if not poids_kg and not forcer:
         flash(
-            f"⛔ Export impossible : {len(magasins_zero)} magasin(s) sans aucune cagette saisie — "
-            f"{', '.join(magasins_zero)}",
+            "⛔ Export impossible : la pesée n'a pas été faite (« Poids total pesé » vide) — "
+            "le CSV exporterait 0 kg pour tous les magasins.",
             "danger",
         )
         return redirect(url_for("collecte.cagettes", annee=annee))
 
-    if magasins_zero and forcer:
-        write_log(f"🧪 Export cagettes {annee} FORCÉ (dev) malgré {len(magasins_zero)} magasin(s) à zéro par {current_user.email}")
+    magasins_zero = [ligne["nom_magasin"] for ligne in lignes if not (ligne.get("total") or 0)]
+    if magasins_zero and not forcer and not exclure_zero:
+        flash(
+            f"⛔ Export impossible : {len(magasins_zero)} magasin(s) sans aucune cagette saisie — "
+            f"{', '.join(magasins_zero)}. Utilisez le bouton « Exporter en excluant les magasins sans "
+            f"saisie » pour générer quand même le CSV sans eux.",
+            "danger",
+        )
+        return redirect(url_for("collecte.cagettes", annee=annee))
+
+    if magasins_zero and (forcer or exclure_zero):
+        write_log(
+            f"📤 Export cagettes {annee} : {len(magasins_zero)} magasin(s) à zéro exclus par "
+            f"{current_user.email} — {', '.join(magasins_zero)}"
+        )
 
     tampon = StringIO()
     ecrivain = csv.writer(tampon, delimiter=";")
@@ -6411,6 +6568,97 @@ def exporter_cagettes_excel(annee):
     )
 
 
+SEUIL_ECART_CAGETTES_N1 = 0.20
+
+
+@collecte_bp.route("/collecte/<int:annee>/cagettes/export-ecarts")
+@login_required
+@require_access("collecte", "lecture")
+def exporter_ecarts_cagettes(annee):
+    """Export Excel des magasins en écart important (seuil en %, ±20% par
+    défaut) sur le Total cagettes vs l'année précédente, pour contrôle —
+    même logique que la détection côté page (bouton « Écarts importants »),
+    recalculés ici côté serveur pour l'export. Les nouveaux magasins / non
+    collectés l'an dernier (aucune donnée N-1) sont exclus, comme à l'écran."""
+    try:
+        seuil = float(request.args.get("seuil", "")) / 100
+    except ValueError:
+        seuil = SEUIL_ECART_CAGETTES_N1
+    if seuil <= 0:
+        seuil = SEUIL_ECART_CAGETTES_N1
+
+    lignes = _charger_lignes_cagettes(annee)
+
+    rows = []
+    for ligne in lignes:
+        total = ligne.get("total") or 0
+        total_n1, a_n1 = 0, False
+        for dj in moteur.DEMI_JOURNEES:
+            n1 = ligne.get("_n1_" + dj)
+            if n1 is not None:
+                total_n1 += n1
+                a_n1 = True
+        if not a_n1:
+            continue  # nouveau magasin / pas collecté l'an dernier
+
+        if total_n1 == 0:
+            important, pct = total > 0, None
+        else:
+            pct = (total - total_n1) / total_n1
+            important = abs(pct) >= seuil
+        if not important:
+            continue
+
+        rows.append([
+            str(ligne["code_vif"]).zfill(8),
+            ligne["nom_magasin"],
+            total,
+            total_n1,
+            round(pct * 100, 1) if pct is not None else None,
+            "Hausse" if (pct is None or pct >= 0) else "Baisse",
+        ])
+
+    entetes = ["Code VIF", "Magasin", f"Total {annee}", f"Total {annee - 1}", "Écart (%)", "Sens"]
+    df = pd.DataFrame(rows, columns=entetes)
+    tampon = io.BytesIO()
+    with pd.ExcelWriter(tampon, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Écarts", index=False)
+    tampon.seek(0)
+
+    write_log(f"📤 Export Excel écarts cagettes {annee} par {current_user.email} — {len(rows)} magasin(s)")
+
+    return send_file(
+        tampon,
+        as_attachment=True,
+        download_name=f"ecarts_cagettes_{annee}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+POIDS_CAGETTE_REFERENCE_KG = 11.0  # taille IFCO changée, ex 14 kg
+POIDS_CAGETTE_TOLERANCE = 0.20
+
+
+def _alerte_coherence_poids_cagette(poids_pese):
+    """Avertissement (non bloquant) si le poids de la cagette calculé après
+    pesée s'écarte de plus de 20% de la référence habituelle (~11 kg) —
+    erreur de saisie fréquente (total pesé en kg confondu avec un autre
+    poids, cagettes mal comptées…), mais une vraie campagne peut
+    légitimement s'en écarter : on prévient, on n'empêche pas d'enregistrer."""
+    if poids_pese is None:
+        return None
+    borne_basse = POIDS_CAGETTE_REFERENCE_KG * (1 - POIDS_CAGETTE_TOLERANCE)
+    borne_haute = POIDS_CAGETTE_REFERENCE_KG * (1 + POIDS_CAGETTE_TOLERANCE)
+    if borne_basse <= poids_pese <= borne_haute:
+        return None
+    return (
+        f"⚠️ Poids de la cagette calculé inhabituel : {poids_pese:.2f} kg "
+        f"(attendu environ {POIDS_CAGETTE_REFERENCE_KG:.0f} kg ± {POIDS_CAGETTE_TOLERANCE * 100:.0f}%, "
+        f"soit {borne_basse:.1f} à {borne_haute:.1f} kg) — vérifiez le poids total pesé et le nombre de "
+        f"cagettes avant de vous y fier."
+    )
+
+
 @collecte_bp.route("/collecte/<int:annee>/cagettes/poids", methods=["POST"])
 @login_required
 @require_access("collecte", "ecriture")
@@ -6441,6 +6689,47 @@ def enregistrer_poids_cagette(annee):
     write_log(f"⚖️ Collecte {annee} : poids cagette mis à jour par {current_user.email} "
               f"(estimé={poids_estime}, total pesé={poids_total_pese}, cagette après pesée={poids_pese})")
     flash("✅ Poids de la cagette enregistré.", "success")
+    alerte = _alerte_coherence_poids_cagette(poids_pese)
+    if alerte:
+        flash(alerte, "warning")
+    return redirect(url_for("collecte.cagettes", annee=annee))
+
+
+@collecte_bp.route("/collecte/<int:annee>/cagettes/poids/recuperer-palox", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def recuperer_poids_palox_cagette(annee):
+    """Remplit « Poids total pesé » avec le total déjà calculé par la Pesée
+    palox (même pesée physique à l'entrepôt, juste détaillée par catégorie
+    là-bas) — évite de retaper à la main un chiffre déjà en base."""
+    poids_total_pese = _synthese_palox(annee)["poids_total"]
+    if not poids_total_pese:
+        flash(f"⚠️ Aucune pesée palox trouvée pour {annee}, rien à récupérer.", "warning")
+        return redirect(url_for("collecte.cagettes", annee=annee))
+
+    with get_db_connection() as conn:
+        poids_estime = conn.execute(
+            "SELECT poids_cagette_estime FROM collecte_campagnes WHERE annee = ?", (annee,)
+        ).fetchone()
+        poids_estime = poids_estime["poids_cagette_estime"] if poids_estime else None
+        total_cagettes = conn.execute(
+            "SELECT COALESCE(SUM(nb_cagettes), 0) FROM collecte_cagettes WHERE annee = ?", (annee,)
+        ).fetchone()[0]
+        poids_pese = (poids_total_pese / total_cagettes) if total_cagettes else None
+        conn.execute(
+            "UPDATE collecte_campagnes SET poids_cagette_estime = ?, poids_total_pese = ?, poids_cagette_pese = ? WHERE annee = ?",
+            (poids_estime, poids_total_pese, poids_pese, annee),
+        )
+        conn.commit()
+
+    write_log(
+        f"⚖️ Collecte {annee} : poids total pesé repris depuis Pesée palox ({poids_total_pese} kg) "
+        f"par {current_user.email}"
+    )
+    flash(f"✅ Poids total pesé récupéré depuis Pesée palox : {poids_total_pese} kg.", "success")
+    alerte = _alerte_coherence_poids_cagette(poids_pese)
+    if alerte:
+        flash(alerte, "warning")
     return redirect(url_for("collecte.cagettes", annee=annee))
 
 
@@ -10624,7 +10913,7 @@ def _synthese_palox(annee):
         _ensure_tables_palox(conn)
         categories = _categories_palox(conn)
         pesees = conn.execute(
-            "SELECT categorie_id, poids_kg, poids_corrige_kg FROM collecte_palox_pesees WHERE annee = ?",
+            "SELECT categorie_id, poids_kg, poids_corrige_kg, saisi_le FROM collecte_palox_pesees WHERE annee = ?",
             (annee,),
         ).fetchall()
         pesees_prec = conn.execute(
@@ -10641,12 +10930,29 @@ def _synthese_palox(annee):
     def _poids_effectif(r):
         return r["poids_corrige_kg"] if r["poids_corrige_kg"] is not None else (r["poids_kg"] or 0)
 
-    poids_par_categorie, nb_par_categorie, poids_prec_par_categorie = {}, {}, {}
+    poids_par_categorie, nb_par_categorie, poids_prec_par_categorie, poids_par_jour_heure = {}, {}, {}, {}
     for r in pesees:
         poids_par_categorie[r["categorie_id"]] = poids_par_categorie.get(r["categorie_id"], 0) + _poids_effectif(r)
         nb_par_categorie[r["categorie_id"]] = nb_par_categorie.get(r["categorie_id"], 0) + 1
+        if r["saisi_le"]:
+            # (jour, heure) et pas seulement l'heure : sinon les mêmes heures
+            # de jours différents de la campagne se cumulaient entre elles au
+            # lieu de rester des lignes distinctes (signalé 2026-11-10).
+            cle = (r["saisi_le"][:10], r["saisi_le"][11:13])
+            poids_par_jour_heure[cle] = poids_par_jour_heure.get(cle, 0) + _poids_effectif(r)
     for r in pesees_prec:
         poids_prec_par_categorie[r["categorie_id"]] = poids_prec_par_categorie.get(r["categorie_id"], 0) + _poids_effectif(r)
+
+    cumul_horaire, cumul = [], 0.0
+    for jour, heure in sorted(poids_par_jour_heure):
+        poids_heure = poids_par_jour_heure[(jour, heure)]
+        cumul += poids_heure
+        cumul_horaire.append({
+            "jour": jour,
+            "heure": heure + "h",
+            "poids_heure": round(poids_heure, 1),
+            "cumul_kg": round(cumul, 1),
+        })
 
     poids_total = sum(poids_par_categorie.values())
     lignes, valeur_totale = [], 0.0
@@ -10673,6 +10979,7 @@ def _synthese_palox(annee):
         "poids_total": round(poids_total, 1),
         "valeur_totale": round(valeur_totale, 2),
         "mercuriale_importee": mercuriale_importee,
+        "cumul_horaire": cumul_horaire,
     }
 
 
@@ -11019,6 +11326,321 @@ def saisie_association_enregistrer_champ(annee, token):
     return jsonify({"success": True})
 
 
+@collecte_bp.route("/collecte/gardee/saisie/choisir")
+@login_required
+@require_access("collecte", "ecriture")
+def gardee_saisie_choisir():
+    """Point d'entrée visible depuis la section "Résultat collecte" (plutôt
+    que caché dans l'accordéon "Associations gardant") : liste les
+    associations pour y choisir celle à saisir (gardee_saisie)."""
+    annee = request.args.get("annee", type=int) or datetime.now().year
+    df_mag = _lire_magasins_gardes(annee)
+    df_groupes = _lire_groupes(annee)
+    if "Code VIF" in df_mag.columns:
+        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+    associations, _ = _construire_associations(df_mag, df_groupes)
+    associations = sorted(associations, key=lambda a: a["nom"])
+    return render_template("collecte/gardee_saisie_choisir.html", annee=annee, associations=associations)
+
+
+@collecte_bp.route("/collecte/gardee/saisie", methods=["GET", "POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def gardee_saisie():
+    """Équivalent interne (compte connecté) de saisie_association : regroupe
+    en une seule page, pour UNE association, la saisie du poids par magasin
+    et des quantités par produit — au lieu d'obliger l'utilisateur à
+    naviguer entre les 2 grilles globales (poids_magasins_gardee,
+    quantites_produits) pour y repérer la même association (demande
+    2026-11-10). Mêmes conventions que les autres routes gardee/* : annee
+    en querystring/form, jamais dans le chemin."""
+    annee = request.args.get("annee", type=int) or request.form.get("annee", type=int) or datetime.now().year
+    nom_association = (request.form.get("association", "") if request.method == "POST"
+                        else request.args.get("association", "")).strip()
+
+    df_mag = _lire_magasins_gardes(annee)
+    df_groupes = _lire_groupes(annee)
+    if "Code VIF" in df_mag.columns:
+        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+    associations, _ = _construire_associations(df_mag, df_groupes)
+    association = next((a for a in associations if a["nom"] == nom_association), None)
+    if association is None:
+        flash("⛔ Association introuvable.", "danger")
+        return redirect(url_for("collecte.gardee", annee=annee))
+    index_code_vif = _table_code_vif_associations()
+    association_code_vif, _, _ = _code_vif_association(nom_association, index_code_vif)
+
+    produits = _lire_produits_modele()
+
+    if request.method == "POST":
+        def _poids_valide_ou_ignore(brut, libelle_erreur, champs_invalides):
+            if not brut:
+                return None
+            try:
+                valeur = float(brut)
+            except ValueError:
+                champs_invalides.append(libelle_erreur)
+                return "IGNORER"
+            if valeur < 0:
+                champs_invalides.append(libelle_erreur)
+                return "IGNORER"
+            return round(valeur)
+
+        champs_invalides = []
+        maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with get_db_connection() as conn:
+            for magasin in association["magasins"]:
+                code_vif = _vif_fmt(magasin.get("Code VIF"))
+                brut = request.form.get(f"poids_magasin_{code_vif}", "").strip().replace(",", ".")
+                poids_kg = _poids_valide_ou_ignore(brut, magasin.get("Nom", code_vif), champs_invalides)
+                if poids_kg == "IGNORER":
+                    continue
+                conn.execute("""
+                    INSERT INTO collecte_poids_magasins_gardee (annee, code_vif, poids_kg, saisi_le, saisi_par)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(annee, code_vif)
+                    DO UPDATE SET poids_kg = excluded.poids_kg, saisi_le = excluded.saisi_le, saisi_par = excluded.saisi_par
+                """, (annee, code_vif, poids_kg, maintenant, current_user.email))
+            for produit in produits:
+                brut = request.form.get(f"poids_produit_{produit['code']}", "").strip().replace(",", ".")
+                poids_kg = _poids_valide_ou_ignore(brut, produit.get("libelle", produit["code"]), champs_invalides)
+                if poids_kg == "IGNORER":
+                    continue
+                conn.execute("""
+                    INSERT INTO collecte_quantites_produits (annee, association, code_produit, poids_kg, saisi_le, saisi_par)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(annee, association, code_produit)
+                    DO UPDATE SET poids_kg = excluded.poids_kg, saisi_le = excluded.saisi_le, saisi_par = excluded.saisi_par
+                """, (annee, nom_association, produit["code"], poids_kg, maintenant, current_user.email))
+            conn.execute(
+                "UPDATE collecte_detection_pdf_association SET statut = 'appliquee' "
+                "WHERE annee = ? AND association = ? AND statut IN ('termine', 'erreur')",
+                (annee, nom_association),
+            )
+            conn.commit()
+        write_log(f"⚖️ Saisie collecte gardée {annee} ({nom_association}) enregistrée par {current_user.email}")
+        if champs_invalides:
+            flash(
+                "⚠️ Enregistré, sauf " + str(len(champs_invalides)) + " valeur(s) invalide(s) ignorée(s) : "
+                + ", ".join(champs_invalides), "warning",
+            )
+        else:
+            flash("✅ Saisie enregistrée.", "success")
+        return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
+
+    with get_db_connection() as conn:
+        _ensure_table_detection_pdf_association(conn)
+        conn.commit()
+        poids_magasins = {
+            r["code_vif"]: r["poids_kg"]
+            for r in conn.execute(
+                "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
+        poids_produits = {
+            r["code_produit"]: r["poids_kg"]
+            for r in conn.execute(
+                "SELECT code_produit, poids_kg FROM collecte_quantites_produits WHERE annee = ? AND association = ?",
+                (annee, nom_association),
+            ).fetchall()
+        }
+        detection = conn.execute(
+            "SELECT * FROM collecte_detection_pdf_association WHERE annee = ? AND association = ? "
+            "AND statut IN ('en_cours', 'erreur', 'termine') ORDER BY id DESC LIMIT 1",
+            (annee, nom_association),
+        ).fetchone()
+
+    magasins_detectes, produits_detectes = {}, {}
+    if detection and detection["statut"] == "termine":
+        magasins_detectes = json.loads(detection["magasins_detectes"] or "{}")
+        produits_detectes = json.loads(detection["produits_detectes"] or "{}")
+
+    magasins = [
+        {
+            "code_vif": _vif_fmt(m.get("Code VIF")),
+            "nom": m.get("Nom", ""),
+            "ville": m.get("Ville", ""),
+            "poids_kg": magasins_detectes.get(_vif_fmt(m.get("Code VIF")), poids_magasins.get(_vif_fmt(m.get("Code VIF")))),
+            "detecte": _vif_fmt(m.get("Code VIF")) in magasins_detectes,
+        }
+        for m in association["magasins"]
+    ]
+    for produit in produits:
+        produit["poids_kg"] = produits_detectes.get(produit["code"], poids_produits.get(produit["code"]))
+        produit["detecte"] = produit["code"] in produits_detectes
+
+    return render_template(
+        "collecte/gardee_saisie.html",
+        annee=annee,
+        association=nom_association,
+        association_code_vif=association_code_vif,
+        magasins=magasins,
+        produits=produits,
+        detection=detection,
+    )
+
+
+@collecte_bp.route("/collecte/gardee/saisie/champ", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def gardee_saisie_enregistrer_champ():
+    """Autosave AJAX pour gardee_saisie — équivalent interne (compte connecté)
+    de saisie_association_enregistrer_champ, mêmes contrôles de cohérence
+    (magasin/produit appartenant bien à l'association choisie)."""
+    donnees = request.get_json(silent=True) or {}
+    annee = donnees.get("annee")
+    try:
+        annee = int(annee)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "erreur": "Année invalide"}), 400
+    nom_association = str(donnees.get("association", "")).strip()
+    type_champ = donnees.get("type")
+    code = str(donnees.get("code", "")).strip()
+    poids_brut = donnees.get("poids_kg")
+
+    if not nom_association or type_champ not in ("magasin", "produit") or not code:
+        return jsonify({"success": False, "erreur": "Paramètres manquants"}), 400
+
+    try:
+        poids_kg = round(float(poids_brut)) if poids_brut not in (None, "") else None
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "erreur": "Poids invalide"}), 400
+    if poids_kg is not None and poids_kg < 0:
+        return jsonify({"success": False, "erreur": "Poids invalide"}), 400
+
+    if type_champ == "magasin":
+        df_mag_verif = _lire_magasins_gardes(annee)
+        df_groupes_verif = _lire_groupes(annee)
+        if "Code VIF" in df_mag_verif.columns:
+            df_mag_verif["Code VIF"] = df_mag_verif["Code VIF"].map(_vif_fmt)
+        associations_verif, _ = _construire_associations(df_mag_verif, df_groupes_verif)
+        association_verif = next((a for a in associations_verif if a["nom"] == nom_association), None)
+        codes_vif_association = {
+            _vif_fmt(m.get("Code VIF")) for m in (association_verif or {}).get("magasins", [])
+        }
+        if _vif_fmt(code) not in codes_vif_association:
+            return jsonify({"success": False, "erreur": "Magasin non autorisé pour cette association"}), 403
+    else:
+        codes_produits_valides = {p["code"] for p in _lire_produits_modele()}
+        if code not in codes_produits_valides:
+            return jsonify({"success": False, "erreur": "Produit inconnu"}), 400
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        if type_champ == "magasin":
+            code_vif = _vif_fmt(code)
+            conn.execute("""
+                INSERT INTO collecte_poids_magasins_gardee (annee, code_vif, poids_kg, saisi_le, saisi_par)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(annee, code_vif)
+                DO UPDATE SET poids_kg = excluded.poids_kg, saisi_le = excluded.saisi_le, saisi_par = excluded.saisi_par
+            """, (annee, code_vif, poids_kg, maintenant, current_user.email))
+        else:
+            conn.execute("""
+                INSERT INTO collecte_quantites_produits (annee, association, code_produit, poids_kg, saisi_le, saisi_par)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(annee, association, code_produit)
+                DO UPDATE SET poids_kg = excluded.poids_kg, saisi_le = excluded.saisi_le, saisi_par = excluded.saisi_par
+            """, (annee, nom_association, code, poids_kg, maintenant, current_user.email))
+        conn.execute(
+            "UPDATE collecte_detection_pdf_association SET statut = 'appliquee' "
+            "WHERE annee = ? AND association = ? AND statut IN ('termine', 'erreur')",
+            (annee, nom_association),
+        )
+        conn.commit()
+
+    return jsonify({"success": True})
+
+
+@collecte_bp.route("/collecte/gardee/saisie/importer-pdf", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def gardee_saisie_importer_pdf():
+    """Upload d'un PDF reçu d'une association (fiche qu'on lui a envoyée,
+    remplie à la main puis scannée), analysé par l'IA (arrière-plan) pour
+    pré-remplir gardee_saisie — jamais enregistré directement, voir
+    _detecter_pdf_association_background et _ensure_table_detection_pdf_association."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    nom_association = request.form.get("association", "").strip()
+
+    fichier = request.files.get("pdf")
+    if not fichier or not fichier.filename:
+        flash("⛔ Aucun PDF fourni", "warning")
+        return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
+
+    if (fichier.mimetype or "") != "application/pdf":
+        flash("⛔ Format non supporté (PDF attendu)", "warning")
+        return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
+
+    pdf_bytes = fichier.read()
+    if len(pdf_bytes) > 15 * 1024 * 1024:
+        flash("⛔ Fichier trop volumineux (15 Mo max)", "warning")
+        return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
+
+    df_mag = _lire_magasins_gardes(annee)
+    df_groupes = _lire_groupes(annee)
+    if "Code VIF" in df_mag.columns:
+        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+    associations, _ = _construire_associations(df_mag, df_groupes)
+    association = next((a for a in associations if a["nom"] == nom_association), None)
+    if association is None:
+        flash("⛔ Association introuvable.", "danger")
+        return redirect(url_for("collecte.gardee", annee=annee))
+
+    magasins_connus = [
+        {"code_vif": _vif_fmt(m.get("Code VIF")), "nom": m.get("Nom", "")}
+        for m in association["magasins"]
+    ]
+    produits_connus = _lire_produits_modele()
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        _ensure_table_detection_pdf_association(conn)
+        cur = conn.execute("""
+            INSERT INTO collecte_detection_pdf_association (annee, association, statut, lance_le, lance_par, pdf_nom)
+            VALUES (?, ?, 'en_cours', ?, ?, ?)
+        """, (annee, nom_association, maintenant, current_user.email, fichier.filename))
+        detection_id = cur.lastrowid
+        conn.commit()
+
+    # Fichier conservé sur disque pour historique (même principe que les
+    # captures d'écran de sans_vendredi_detecter_image), pas relu ensuite.
+    dossier_pdf = _dossier_gardee_pdf(annee)
+    os.makedirs(dossier_pdf, exist_ok=True)
+    with open(os.path.join(dossier_pdf, f"detection_{detection_id}.pdf"), "wb") as f:
+        f.write(pdf_bytes)
+
+    app_reel = current_app._get_current_object()
+    lancer_tache_fond(
+        target=_detecter_pdf_association_background,
+        args=(app_reel, detection_id, annee, nom_association, pdf_bytes, magasins_connus, produits_connus),
+        nom="Collecte gardée : detection PDF association",
+        utilisateur=current_user.email,
+    )
+    write_log(f"🤖 Collecte gardée {annee} ({nom_association}) : détection PDF #{detection_id} lancée par {current_user.email}")
+    flash("🤖 Analyse du PDF lancée (compter 15 à 30 secondes) — rechargez la page pour voir le résultat", "info")
+    return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
+
+
+@collecte_bp.route("/collecte/gardee/saisie/detection/<int:detection_id>/ignorer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def gardee_saisie_detection_ignorer(detection_id):
+    """Écarte une détection PDF sans l'appliquer (valeurs détectées jugées
+    inutilisables) — les champs de gardee_saisie reviennent aux valeurs déjà
+    enregistrées."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    nom_association = request.form.get("association", "").strip()
+    with get_db_connection() as conn:
+        conn.execute(
+            "UPDATE collecte_detection_pdf_association SET statut = 'ignoree' WHERE id = ? AND annee = ? AND association = ?",
+            (detection_id, annee, nom_association),
+        )
+        conn.commit()
+    flash("Valeurs détectées écartées.", "secondary")
+    return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
+
+
 def _envoyer_mail_association(asso, annee, dossier, destinataires, mode_test):
     """Génère (si besoin) les fichiers Excel/PDF de l'association et lui
     envoie le mail — factorisé pour être réutilisé par l'envoi initial
@@ -11099,9 +11721,6 @@ def gardee_envoi():
         mode_test = request.form.get("mode_test") == "on"
         test_une_association = request.form.get("test_une_association") == "on"
         nom_test = request.form.get("association_test_nom", "")
-        if test_une_association and not mode_test:
-            flash("❌ L'option sur une seule association nécessite le mode Test", "danger")
-            return redirect(url_for("collecte.gardee_envoi", annee=annee))
         associations_a_traiter = associations
         if test_une_association:
             associations_a_traiter = [a for a in associations if a["nom"] == nom_test]
@@ -11126,7 +11745,10 @@ def gardee_envoi():
         if sans_email:
             message += f" ; sans adresse : {', '.join(sans_email)}"
         flash(message, "success" if not sans_email else "warning")
-        write_log(f"📧 Envoi Associations gardant {annee} : {envoyes} envoyé(s) par {current_user.email}")
+        write_log(
+            f"📧 Envoi Associations gardant {annee} ({portee}{' réel' if test_une_association and not mode_test else ''}) : "
+            f"{envoyes} envoyé(s) par {current_user.email}"
+        )
         return redirect(url_for("collecte.gardee", annee=annee))
 
     suivi = _lire_suivi_gardee(annee)

@@ -13,6 +13,38 @@
         word-break: break-word;
         line-height: 1.15;
     }
+    #scroll-top-outer {
+        overflow-x: auto;
+        overflow-y: hidden;
+        height: 18px;
+        margin-bottom: 2px;
+        scrollbar-width: auto;
+        scrollbar-color: #adb5bd #eee;
+    }
+    #scroll-top-inner {
+        height: 1px;
+    }
+    #scroll-top-outer::-webkit-scrollbar,
+    .tabulator-tableholder::-webkit-scrollbar {
+        height: 14px;
+    }
+    #scroll-top-outer::-webkit-scrollbar-track,
+    .tabulator-tableholder::-webkit-scrollbar-track {
+        background: #e9ecef;
+    }
+    #scroll-top-outer::-webkit-scrollbar-thumb,
+    .tabulator-tableholder::-webkit-scrollbar-thumb {
+        background: #6c757d;
+        border-radius: 7px;
+    }
+    #scroll-top-outer::-webkit-scrollbar-thumb:hover,
+    .tabulator-tableholder::-webkit-scrollbar-thumb:hover {
+        background: #495057;
+    }
+    .tabulator-tableholder {
+        scrollbar-width: auto;
+        scrollbar-color: #adb5bd #eee;
+    }
 </style>
 {% endblock %}
 
@@ -53,6 +85,7 @@
 
     <div id="message-enregistrement" class="alert d-none mb-2" role="alert"></div>
 
+    <div id="scroll-top-outer"><div id="scroll-top-inner"></div></div>
     <div id="tabulator-table"></div>
 
 </div>
@@ -171,6 +204,37 @@ const table = new Tabulator("#tabulator-table", {
           topCalcFormatter: function () { return "Total"; } },
     ].concat(colonnesAssociations).concat(colonnesValorisation),
 });
+
+// ── Barre de défilement horizontal dupliquée en haut ───────────────
+const scrollTopOuter = document.getElementById("scroll-top-outer");
+const scrollTopInner = document.getElementById("scroll-top-inner");
+let holder = null;
+let syncingScrollTop = false;
+
+function syncTopScrollWidth() {
+    holder = document.querySelector("#tabulator-table .tabulator-tableholder");
+    if (!holder) return;
+    scrollTopInner.style.width = holder.scrollWidth + "px";
+}
+
+table.on("tableBuilt", function () {
+    syncTopScrollWidth();
+    holder = document.querySelector("#tabulator-table .tabulator-tableholder");
+    holder.addEventListener("scroll", function () {
+        if (syncingScrollTop) return;
+        syncingScrollTop = true;
+        scrollTopOuter.scrollLeft = holder.scrollLeft;
+        syncingScrollTop = false;
+    });
+    scrollTopOuter.addEventListener("scroll", function () {
+        if (syncingScrollTop) return;
+        syncingScrollTop = true;
+        holder.scrollLeft = scrollTopOuter.scrollLeft;
+        syncingScrollTop = false;
+    });
+});
+table.on("renderComplete", syncTopScrollWidth);
+window.addEventListener("resize", syncTopScrollWidth);
 
 document.getElementById("btn-reinitialiser").addEventListener("click", function () {
     if (!confirm("Effacer TOUTES les saisies de quantités par produit de " + annee + " ? Cette action est irréversible.")) return;

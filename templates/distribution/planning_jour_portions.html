@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Portions des articles{% endblock %}
+
+{% block extra_css %}
+<link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
+<style>
+  #portions-table .tabulator-cell { font-size: .85rem; }
+  #portions-table .cellule-ok { background: #d1e7dd !important; transition: background 1s; }
+  #portions-table .cellule-erreur { background: #f8d7da !important; }
+  #statut-sauvegarde { min-height: 1.4em; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-2 px-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="mb-0 fs-4">⚖️ Portions des articles</h2>
+    {% call action_buttons() %}
+      {{ action_button("🗓️ Retour au planning", href=url_for('distribution.planning_jour_generation'), color="outline-secondary") }}
+      {{ action_button("↩️ Retour à la distribution", href=url_for('distribution.distribution_main'), color="outline-dark") }}
+    {% endcall %}
+  </div>
+
+  <p class="small text-muted mb-1">
+    Portion = quantité en <strong>kg net (kgn)</strong> d'un article servie à une personne, comme dans l'export VIF (ex. 0,150 = 150 g nets). Vide = non définie ;
+    0 = article non distribué en portion.
+    {% if peut_ecrire %}Cliquer dans la colonne <strong>Portion</strong> pour modifier : l'enregistrement est automatique.{% endif %}
+    Les portions sont conservées lors de la mise à jour quotidienne des articles.
+  </p>
+  <div id="statut-sauvegarde" class="small mb-1"></div>
+  <div id="portions-table"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+<script>
+  var ARTICLES = {{ articles|tojson }};
+  var PEUT_ECRIRE = {{ 'true' if peut_ecrire else 'false' }};
+  var CSRF = "{{ csrf_token() }}";
+  var URL_SAVE = "{{ url_for('distribution.planning_jour_portion_save') }}";
+
+  function esc(v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  var vide = function (c) { var v = c.getValue(); return v ? esc(v) : '—'; };
+  var triTexte = function (a, b, ar, br, col, dir) {
+    if (!a && b) return dir === 'asc' ? 1 : -1;
+    if (a && !b) return dir === 'asc' ? -1 : 1;
+    return String(a || '').localeCompare(String(b || ''), 'fr', {numeric: true, sensitivity: 'base'});
+  };
+  var filtre = function (o) { o.headerFilter = 'input'; o.headerFilterPlaceholder = 'filtrer…'; return o; };
+  // setValue() redéclenche cellEdited : on neutralise le rappel pendant nos propres mises à jour
+  var muet = false;
+  function majMuette(cell, valeur) { muet = true; try { cell.setValue(valeur, true); } finally { muet = false; } }
+  function statut(msg, ok) {
+    var el = document.getElementById('statut-sauvegarde');
+    el.textContent = msg; el.className = 'small mb-1 ' + (ok ? 'text-success' : 'text-danger');
+  }
+
+  var table = new Tabulator('#portions-table', {
+    data: ARTICLES,
+    index: 'article',
+    layout: 'fitData',
+    height: 'calc(100vh - 235px)',
+    placeholder: 'Aucun article',
+    persistence: {columns: ['width']},
+    persistenceID: 'ba38_portions_largeurs',
+    columnDefaults: {tooltip: true, vertAlign: 'middle'},
+    columns: [
+      filtre({title: 'Article', field: 'article', width: 110, sorter: triTexte}),
+      filtre({title: 'Libellé', field: 'libelle', width: 340, sorter: triTexte, formatter: function (c) { return '<strong>' + esc(c.getValue()) + '</strong>'; }}),
+      filtre({title: 'Famille', field: 'famille', width: 230, sorter: triTexte, formatter: vide}),
+      {title: 'Sous-famille', field: 'sous_famille', width: 200, sorter: triTexte, formatter: vide},
+      {title: 'Unité', field: 'unite', width: 70, formatter: vide},
+      {title: 'Portion (kgn)', field: 'portion', width: 130, hozAlign: 'right', sorter: 'number',
+        editor: PEUT_ECRIRE ? 'input' : false,
+        editorParams: {selectContents: true},
+        headerFilter: 'list',
+        headerFilterParams: {values: {'': 'Toutes', 'vide': 'Non définie', 'def': 'Définie'}},
+        headerFilterFunc: function (h, v) { return !h || (h === 'vide' ? v == null : v != null); },
+        formatter: function (c) {
+          var v = c.getValue();
+          return v == null ? '<span class="text-muted">—</span>' : Number(v).toLocaleString('fr-FR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
+        },
+        cellEdited: function (cell) {
+          if (muet) return;
+          var d = cell.getData(), anc = cell.getOldValue();
+          fetch(URL_SAVE, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({article: d.article, portion: cell.getValue()})
+          }).then(function (r) { return r.json().catch(function () { return {ok: false, erreur: 'Réponse invalide (' + r.status + ')'}; }); })
+            .then(function (j) {
+              if (j.ok) {
+                majMuette(cell, j.portion);   // valeur normalisée, sans relancer l'enregistrement
+                cell.getElement().classList.add('cellule-ok');
+                setTimeout(function () { cell.getElement().classList.remove('cellule-ok'); }, 1200);
+                statut('✔ ' + d.article + ' enregistré', true);
+              } else {
+                majMuette(cell, anc);
+                statut('✖ ' + (j.erreur || 'Erreur') + ' — valeur précédente rétablie', false);
+              }
+            }).catch(function () { majMuette(cell, anc); statut('✖ Erreur réseau — valeur précédente rétablie', false); });
+        }}
+    ]
+  });
+</script>
+{% endblock %}
