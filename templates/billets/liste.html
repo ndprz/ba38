@@ -9,7 +9,7 @@
 {% endblock %}
 {% block content %}
 <div class="container-fluid mt-3">
-  <h2 class="mb-1">🎟️ Billets spectacle</h2>
+  <div class="d-flex justify-content-between align-items-center"><h2 class="mb-1">🎟️ Billets spectacle</h2><button type="button" class="btn btn-outline-info btn-sm" onclick="new bootstrap.Modal(document.getElementById('modalAideBillets')).show()">❓ Aide</button></div>
   <p class="text-muted">Places de spectacle offertes aux bénévoles (ALPEXPO, etc.) : invitation, inscription, tirage au sort.</p>
 
   {% if peut_ecrire %}
@@ -55,5 +55,24 @@
     {% endfor %}
     </tbody>
   </table>
+</div>
+
+<!-- ===== AIDE BILLETS SPECTACLE ===== -->
+<div class="modal fade" id="modalAideBillets" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📄 Aide – Billets spectacle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="max-height: 70vh; overflow:auto; font-size: 0.9rem; line-height: 1.4;">
+        {% include "docsHtml/Documentation_Utilisateur_Module_BilletsSpectacle_BA38.html" %}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAideBillets')">🖨️ Imprimer</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}

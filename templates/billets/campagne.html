@@ -16,7 +16,7 @@
 <div class="container-fluid mt-3">
   <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
     <h2 class="mb-0">🎟️ {{ c.spectacle }}</h2>
-    <a href="{{ url_for('billets.liste') }}" class="btn btn-outline-secondary btn-sm">⬅️ Campagnes</a>
+    <div><button type="button" class="btn btn-outline-info btn-sm" onclick="new bootstrap.Modal(document.getElementById('modalAideBillets')).show()">❓ Aide</button> <a href="{{ url_for('billets.liste') }}" class="btn btn-outline-secondary btn-sm">⬅️ Campagnes</a></div>
   </div>
   <p class="text-muted">Offert par <b>{{ c.donateur }}</b> — {{ date_fr(c.date_spectacle) }}{% if c.heure_spectacle %} à {{ c.heure_spectacle.replace(':','h') }}{% endif %} —
     {{ c.nb_billets }} billet(s) — inscriptions jusqu'au {{ limite_fr(c.date_limite) }}
@@ -198,6 +198,26 @@
     <button class="btn btn-outline-danger btn-sm">🗑️ Supprimer la campagne</button>
   </form>
   {% endif %}
+</div>
+
+
+<!-- ===== AIDE BILLETS SPECTACLE ===== -->
+<div class="modal fade" id="modalAideBillets" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📄 Aide – Billets spectacle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="max-height: 70vh; overflow:auto; font-size: 0.9rem; line-height: 1.4;">
+        {% include "docsHtml/Documentation_Utilisateur_Module_BilletsSpectacle_BA38.html" %}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-primary" onclick="printModal('modalAideBillets')">🖨️ Imprimer</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>

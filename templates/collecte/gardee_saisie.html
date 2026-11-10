@@ -123,6 +123,10 @@
                         </tr>
                     </thead>
                     <tbody>
+                    <tr class="table-light fw-bold">
+                        <td colspan="2">Total produit</td>
+                        <td><span id="total-produits">0</span> kg</td>
+                    </tr>
                     {% for p in produits %}
                         <tr>
                             <td>{{ p.code }}</td>
@@ -158,6 +162,20 @@ function afficherMessage(texte, classe) {
     messageDiv.textContent = texte;
     messageDiv.className = "alert alert-" + classe + " mb-2";
 }
+
+const champsProduits = document.querySelectorAll(".champ-autosave[data-type='produit']");
+function recalculerTotalProduits() {
+    let total = 0;
+    champsProduits.forEach(function (input) {
+        const valeur = parseFloat(input.value);
+        if (!isNaN(valeur)) total += valeur;
+    });
+    document.getElementById("total-produits").textContent = total.toLocaleString("fr-FR");
+}
+champsProduits.forEach(function (input) {
+    input.addEventListener("input", recalculerTotalProduits);
+});
+recalculerTotalProduits();
 
 document.querySelectorAll(".champ-autosave").forEach(function (input) {
     input.addEventListener("change", function () {
