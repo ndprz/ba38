@@ -75,11 +75,11 @@ def synthese_frais(conn, d: date) -> dict:
     iso = d.isoformat()
     a_generer, ignores = classer_passages(conn, d, "frais")
     benef = sum(a["benef"] for a in a_generer)
+    from .bons_prepa import articles_menu_passage, exceptions_passage
     articles_menus = {}
-    for a in a_generer:
-        for code in a["codes"]:
-            for r in conn.execute("SELECT article FROM menus_articles WHERE menu_code = ?", (code,)):
-                articles_menus.setdefault(r["article"], set()).add(id(a))
+    for a in a_generer:        # articles du passage = menus avec les exceptions de l'association
+        for art in articles_menu_passage(conn, a["codes"], exceptions_passage(conn, a.get("ids"))):
+            articles_menus.setdefault(art, set()).add(id(a))
     totaux = totaux_a_repartir(conn, iso)
     benef_par = {}
     for art, ids in articles_menus.items():

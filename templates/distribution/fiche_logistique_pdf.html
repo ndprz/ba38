@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 12mm 12mm 14mm 12mm;
+          @bottom-left { content: "{{ f.nom }} — fiche logistique partenaire"; font-size: 8pt; color: #666; }
+          @bottom-right { content: "Page " counter(page) " / " counter(pages); font-size: 8pt; color: #666; } }
+  body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 9.5pt; color: #111; }
+  h1 { font-size: 16pt; margin: 0 0 1mm 0; }
+  h2 { page-break-after: avoid; font-size: 11.5pt; margin: 5mm 0 2mm 0; padding-bottom: 1mm; border-bottom: 1.5px solid #E04620; }
+  .sous { color: #555; font-size: 8.5pt; margin-bottom: 2mm; }
+  table { width: 100%; border-collapse: collapse; }
+  table.kv td { border: 1px solid #bbb; padding: 1.4mm 2.5mm; vertical-align: top; }
+  table.kv td.k { width: 38mm; background: #f3f3f3; font-weight: bold; font-size: 8.5pt; }
+  table.resp td, table.resp th { border: 1px solid #bbb; padding: 1.4mm 2.5mm; vertical-align: top; }
+  table.resp th { background: #f3f3f3; font-size: 8.5pt; text-align: left; width: 38mm; }
+  .menu { border: 1px solid #999; margin-bottom: 4mm; }
+  .menu-tete { page-break-after: avoid; padding: 1.5mm 3mm; color: #fff; font-weight: bold; }
+  .t-sec { background: #b8860b; } .t-frais { background: #388585; } .inactif { background: #888; }
+  .menu-corps { padding: 2mm 3mm; }
+  table.infos { page-break-inside: avoid; }
+  .exc-resume { page-break-inside: avoid; }
+  table.infos td { padding: 0.8mm 2mm 0.8mm 0; vertical-align: top; }
+  table.infos td.k { width: 30mm; color: #555; font-size: 8.5pt; }
+  .pl-oui { color: #187a3a; font-weight: bold; } .pl-non { color: #b00020; font-weight: bold; }
+  table.art { margin-top: 2mm; }
+  table.art th { background: #eee; border: 1px solid #bbb; padding: 1mm 2mm; font-size: 8pt; text-align: left; }
+  table.art td { border: 1px solid #ddd; padding: 1mm 2mm; font-size: 8.5pt; }
+  table.art tr { page-break-inside: avoid; }
+  .exclu td { color: #b00020; text-decoration: line-through; background: #fdf1f1; }
+  .ajout td { background: #eef8ef; }
+  .tag { font-size: 7.5pt; font-weight: bold; text-decoration: none; display: inline-block; }
+  .exc-resume { margin-top: 2mm; padding: 1.5mm 2.5mm; background: #fff7e0; border: 1px solid #e5c76b; font-size: 8.5pt; }
+  .d { text-align: right; white-space: nowrap; }
+  .vide { color: #999; }
+</style>
+</head>
+<body>
+  <h1>{{ org.nom }} — Fiche logistique partenaire</h1>
+  <div class="sous">{{ f.nom }} — édité le {{ f.genere_le }} — {{ 'avec' if f.detail else 'sans' }} détail des articles</div>
+
+  <h2>Informations générales</h2>
+  <table class="kv">
+    {% for k, v in f.general %}<tr><td class="k">{{ k }}</td><td>{{ v }}</td></tr>{% endfor %}
+    <tr><td class="k">Planning</td><td><span class="{{ 'pl-oui' if f.planification else 'pl-non' }}">{{ 'Oui — prise en compte dans le planning' if f.planification else 'Non — exclue du planning' }}</span></td></tr>
+  </table>
+
+  <h2>Responsables</h2>
+  <table class="resp">
+    {% for titre, p in (('Responsable distribution', f.resp_distribution), ('Responsable hygiène (HySA)', f.resp_hysa)) %}
+    <tr><th>{{ titre }}</th>
+      <td>{% if p.nom or p.tels or p.mail %}<strong>{{ p.nom or '—' }}</strong>{% if p.statut %} <span class="vide">({{ p.statut }})</span>{% endif %}<br>
+        {% if p.tels %}Tél. : {{ p.tels|join(' / ') }}<br>{% endif %}{% if p.mail %}{{ p.mail }}{% endif %}
+        {% else %}<span class="vide">non renseigné</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>Menus ({{ f.lignes|length }})</h2>
+  {% for l in f.lignes %}
+  <div class="menu {{ 'long' if l.articles|length > 14 }}">
+    <div class="menu-tete {{ 'inactif' if not l.actif else ('t-frais' if l.type_menu == 'frais' else 't-sec') }}">
+      {{ 'FRAIS' if l.type_menu == 'frais' else 'SEC' }} — {{ l.menu or '(menu non défini)' }}{% if l.libelle_menu %} — {{ l.libelle_menu }}{% endif %}{% if not l.actif %} (ligne désactivée){% endif %}
+    </div>
+    <div class="menu-corps">
+      <table class="infos">
+        <tr><td class="k">Jours</td><td>{{ l.jours or '—' }}</td><td class="k">Heure</td><td>{{ l.heure or '—' }}</td><td class="k">Emplacement</td><td>{{ l.emplacement or '—' }}</td></tr>
+        <tr><td class="k">Fréquence</td><td>{{ l.frequence or 'chaque semaine' }}</td><td class="k">Bénéficiaires</td><td>{{ l.nbre_beneficiaires if l.nbre_beneficiaires is not none else '—' }}</td>
+            <td class="k">Planning</td><td><span class="{{ 'pl-oui' if l.planning else 'pl-non' }}">{{ 'O' if l.planning else 'N' }}</span></td></tr>
+        <tr><td class="k">Besoins particuliers</td><td colspan="5">{{ l.besoins_particuliers or '—' }}</td></tr>
+      </table>
+
+      {% if l.exclus or l.ajouts %}
+      <div class="exc-resume"><strong>Exceptions pour cette association :</strong>
+        {% if l.exclus %}<br>Articles exclus : {% for x in l.exclus %}{{ x.article }} {{ x.libelle }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}
+        {% if l.ajouts %}<br>Articles ajoutés : {% for x in l.ajouts %}{{ x.article }} {{ x.libelle }}{% if x.quantite is not none %} ({{ ('%g'|format(x.quantite)).replace('.', ',') }} {{ x.unite }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}{% endif %}
+      </div>
+      {% endif %}
+
+      {% if f.detail %}
+      <table class="art">
+        <thead><tr><th>Article</th><th>Libellé</th><th class="d">Portion (kgn/pers.)</th><th class="d">Qté fixe</th><th>Exception</th></tr></thead>
+        <tbody>
+        {% for a in l.articles %}
+          <tr class="{{ 'exclu' if a.exclu else ('ajout' if a.ajout else '') }}">
+            <td>{{ a.article }}</td><td>{{ a.libelle }}</td>
+            <td class="d">{{ ('%g'|format(a.portion)).replace('.', ',') if a.portion else '' }}</td>
+            <td class="d">{{ (('%g'|format(a.quantite)).replace('.', ',') ~ ' ' ~ a.unite) if a.quantite is not none else '' }}</td>
+            <td>{% if a.exclu %}<span class="tag">exclu</span>{% elif a.ajout %}<span class="tag">ajout</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% if not l.articles %}<p class="vide">Aucun article dans ce menu.</p>{% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+    <p class="vide">Aucune ligne de menu pour cette association.</p>
+  {% endfor %}
+</body>
+</html>

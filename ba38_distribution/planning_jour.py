@@ -371,7 +371,8 @@ def planning_jour_menus():
         SELECT m.id, m.association_id, a.code_VIF AS code_vif, a.nom_association AS nom,
                COALESCE(LOWER(TRIM(a.planification)), 'oui') AS planification,
                a.validite, m.menu, m.type_menu, m.jours, m.heure, m.emplacement,
-               m.frequence, m.nbre_beneficiaires, m.besoins_particuliers, m.actif
+               m.frequence, m.nbre_beneficiaires, m.besoins_particuliers, m.actif,
+               (SELECT COUNT(*) FROM associations_menus_exceptions e WHERE e.ligne_id = m.id) AS nb_exceptions
         FROM associations_menus m JOIN associations a ON a.id = m.association_id
         WHERE a.validite IS NULL OR LOWER(TRIM(a.validite)) != 'non'   -- associations inactives : jamais gérées ici
         ORDER BY a.nom_association COLLATE NOCASE, m.id""")]
@@ -427,11 +428,13 @@ def planning_jour_menu_save():
         if not conn.execute("SELECT 1 FROM associations WHERE id=?", (association_id,)).fetchone():
             return jsonify(ok=False, erreur="Association introuvable"), 404
         ancienne = None
+        ancien_menu = ""
         if ligne_id:
-            row = conn.execute("SELECT frequence, association_id FROM associations_menus WHERE id=?", (ligne_id,)).fetchone()
+            row = conn.execute("SELECT frequence, association_id, menu FROM associations_menus WHERE id=?", (ligne_id,)).fetchone()
             if not row:
                 return jsonify(ok=False, erreur="Ligne introuvable"), 404
             ancienne, association_id = row[0], row[1]   # l'association d'une ligne ne change pas
+            ancien_menu = (row[2] or "").strip()
         if frequence and frequence != (ancienne or None) and regle_frequence(frequence)[0] == "inconnue":
             return jsonify(ok=False, erreur=f"Fréquence non reconnue. Exemples : {EXEMPLES_FREQUENCE}"), 400
 
@@ -441,6 +444,8 @@ def planning_jour_menu_save():
             (d.get("besoins_particuliers") or "").strip() or None, 1 if d.get("actif", True) else 0,
         )
         if ligne_id:
+            if ancien_menu and ancien_menu != menu:   # autre menu : les exceptions de l'ancien n'ont plus de sens
+                conn.execute("DELETE FROM associations_menus_exceptions WHERE ligne_id=?", (ligne_id,))
             conn.execute("""UPDATE associations_menus SET menu=?, type_menu=?, jours=?, heure=?,
                             emplacement=?, frequence=?, nbre_beneficiaires=?, besoins_particuliers=?, actif=?
                             WHERE id=?""", valeurs + (ligne_id,))
@@ -474,12 +479,98 @@ def planning_jour_association_planification(association_id):
     return jsonify(ok=True, planification="oui" if inclure else "non")
 
 
+# ------------------------------------------------------------
+# Exceptions d'une ligne de menu : articles exclus / articles ajoutés pour CETTE association
+# ------------------------------------------------------------
+UNITES_EXCEPTION = ("Kg", "kgn", "COL", "P")
+
+
+@distribution_bp.route("/planning_jour/menus/<int:ligne_id>/exceptions", methods=["GET"])
+@login_required
+@require_access("distribution", "lecture")
+def planning_jour_menu_exceptions(ligne_id):
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    try:
+        ligne = conn.execute("""SELECT m.id, m.menu, m.type_menu, a.nom_association FROM associations_menus m
+                                JOIN associations a ON a.id = m.association_id WHERE m.id = ?""", (ligne_id,)).fetchone()
+        if not ligne:
+            return jsonify(ok=False, erreur="Ligne introuvable"), 404
+        code = (ligne["menu"] or "").strip()
+        exc = {r["article"]: dict(r) for r in conn.execute(
+            "SELECT article, type, quantite, unite FROM associations_menus_exceptions WHERE ligne_id = ?", (ligne_id,))}
+        articles = [{"article": r["article"], "libelle": r["libelle"] or "", "quantite": r["quantite"], "unite": r["unite"] or "",
+                     "exclu": exc.get(r["article"], {}).get("type") == "exclu"}
+                    for r in conn.execute("""SELECT ma.article, a.libelle, ma.quantite, ma.unite FROM menus_articles ma
+                                             LEFT JOIN articles a ON a.article = ma.article
+                                             WHERE ma.menu_code = ? ORDER BY ma.ordre""", (code,))]
+        ajouts = [{"article": e["article"], "quantite": e["quantite"], "unite": e["unite"] or "",
+                   "libelle": (conn.execute("SELECT libelle FROM articles WHERE article = ?", (e["article"],)).fetchone() or [""])[0] or ""}
+                  for e in exc.values() if e["type"] == "ajout"]
+        tous = [{"article": r[0], "libelle": r[1] or ""} for r in conn.execute("SELECT article, libelle FROM articles ORDER BY article")]
+    finally:
+        conn.close()
+    return jsonify(ok=True, association=ligne["nom_association"], menu=code, type_menu=ligne["type_menu"],
+                   articles=articles, ajouts=ajouts, tous_articles=tous, unites=list(UNITES_EXCEPTION))
+
+
+@distribution_bp.route("/planning_jour/menus/<int:ligne_id>/exceptions", methods=["POST"])
+@login_required
+@require_access("distribution", "ecriture")
+def planning_jour_menu_exceptions_save(ligne_id):
+    """Remplace les exceptions de la ligne : {exclus: [article], ajouts: [{article, quantite, unite}]}."""
+    d = request.get_json(silent=True) or {}
+    exclus = [str(a).strip() for a in (d.get("exclus") or []) if str(a).strip()]
+    ajouts = d.get("ajouts") or []
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    try:
+        ligne = conn.execute("SELECT menu FROM associations_menus WHERE id = ?", (ligne_id,)).fetchone()
+        if not ligne:
+            return jsonify(ok=False, erreur="Ligne introuvable"), 404
+        code = (ligne["menu"] or "").strip()
+        du_menu = {r[0] for r in conn.execute("SELECT article FROM menus_articles WHERE menu_code = ?", (code,))}
+        hors = [a for a in exclus if a not in du_menu]
+        if hors:
+            return jsonify(ok=False, erreur="Article(s) absent(s) du menu : " + ", ".join(hors)), 400
+        lignes = [(ligne_id, a, "exclu", None, None) for a in dict.fromkeys(exclus)]
+        vus = set()
+        for aj in ajouts:
+            art = str((aj or {}).get("article") or "").strip()
+            if not art or art in vus:
+                continue
+            if not conn.execute("SELECT 1 FROM articles WHERE article = ?", (art,)).fetchone():
+                return jsonify(ok=False, erreur=f"Article inconnu : {art}"), 400
+            if art in du_menu:
+                return jsonify(ok=False, erreur=f"{art} fait déjà partie du menu {code}."), 400
+            brut = str((aj or {}).get("quantite") if (aj or {}).get("quantite") is not None else "").replace(",", ".").strip()
+            try:
+                qte = float(brut) if brut != "" else None
+            except ValueError:
+                return jsonify(ok=False, erreur=f"Quantité invalide pour {art}"), 400
+            if qte is not None and qte < 0:
+                return jsonify(ok=False, erreur=f"Quantité négative pour {art}"), 400
+            unite = str((aj or {}).get("unite") or "").strip() or None
+            if unite and unite not in UNITES_EXCEPTION:
+                return jsonify(ok=False, erreur=f"Unité invalide pour {art}"), 400
+            vus.add(art)
+            lignes.append((ligne_id, art, "ajout", qte, unite))
+        conn.execute("DELETE FROM associations_menus_exceptions WHERE ligne_id = ?", (ligne_id,))
+        conn.executemany("""INSERT INTO associations_menus_exceptions (ligne_id, article, type, quantite, unite)
+                            VALUES (?,?,?,?,?)""", lignes)
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify(ok=True, nb=len(lignes))
+
+
 @distribution_bp.route("/planning_jour/menus/<int:ligne_id>/delete", methods=["POST"])
 @login_required
 @require_access("distribution", "ecriture")
 def planning_jour_menu_delete(ligne_id):
     conn = get_db_connection()
     conn.execute("DELETE FROM planning_deplacements WHERE ligne_id=?", (ligne_id,))
+    conn.execute("DELETE FROM associations_menus_exceptions WHERE ligne_id=?", (ligne_id,))
     conn.execute("DELETE FROM associations_menus WHERE id=?", (ligne_id,))
     conn.commit()
     conn.close()

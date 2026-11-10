@@ -42,7 +42,42 @@ def _conditionnement(a, unite: str):
     return None
 
 
-def calculer_lignes(conn, codes_menus: list[str], beneficiaires: int) -> list[dict]:
+def exceptions_passage(conn, ids) -> dict:
+    """Exceptions des lignes de menu (associations_menus.id) d'un passage :
+    {code_menu: {'exclus': {articles}, 'ajouts': [{article, quantite, unite}]}}.
+    Une exception ne vaut que pour le menu de SA ligne."""
+    res = {}
+    for lid in ids or []:
+        row = conn.execute("SELECT menu FROM associations_menus WHERE id = ?", (lid,)).fetchone()
+        if not row or not (row["menu"] or "").strip():
+            continue
+        d = res.setdefault(row["menu"].strip(), {"exclus": set(), "ajouts": []})
+        for e in conn.execute("""SELECT article, type, quantite, unite FROM associations_menus_exceptions
+                                 WHERE ligne_id = ? ORDER BY id""", (lid,)):
+            if e["type"] == "exclu":
+                d["exclus"].add(e["article"])
+            else:
+                d["ajouts"].append({"article": e["article"], "quantite": e["quantite"], "unite": e["unite"]})
+    return res
+
+
+def articles_menu_passage(conn, codes: list[str], exceptions: dict | None = None) -> list[str]:
+    """Articles des menus d'un passage dans l'ordre des menus, exceptions appliquées
+    (articles exclus retirés, articles ajoutés en fin de menu)."""
+    ordre, vus = [], set()
+    for code in codes:
+        exc = (exceptions or {}).get(code, {"exclus": set(), "ajouts": []})
+        suite = [r["article"] for r in conn.execute(
+            "SELECT article FROM menus_articles WHERE menu_code = ? ORDER BY ordre", (code,))]
+        suite = [a for a in suite if a not in exc["exclus"]] + [x["article"] for x in exc["ajouts"]]
+        for art in suite:
+            if art not in vus:
+                vus.add(art)
+                ordre.append(art)
+    return ordre
+
+
+def calculer_lignes(conn, codes_menus: list[str], beneficiaires: int, exceptions: dict | None = None) -> list[dict]:
     """Lignes d'un bon SEC pour un passage.
 
     - quantité fixe du menu : reprise telle quelle (par passage) ;
@@ -60,6 +95,18 @@ def calculer_lignes(conn, codes_menus: list[str], beneficiaires: int) -> list[di
                    a.unite2, a.cdt_unite2, a.unite3, a.cdt_unite3, a.unite4, a.cdt_unite4
             FROM menus_articles ma LEFT JOIN articles a ON a.article = ma.article
             WHERE ma.menu_code = ? ORDER BY ma.ordre""", (code,)).fetchall()
+        exc = (exceptions or {}).get(code, {"exclus": set(), "ajouts": []})
+        rows = [r for r in rows if r["article"] not in exc["exclus"]]          # articles exclus pour cette association
+        presents = {r["article"] for r in rows}
+        for aj in exc["ajouts"]:                                                # articles ajoutés pour cette association
+            if aj["article"] in presents:
+                continue
+            ar = conn.execute("""SELECT article, libelle, portion, coef_kgn_vers_kg, unite1_principale,
+                                        unite2, cdt_unite2, unite3, cdt_unite3, unite4, cdt_unite4
+                                 FROM articles WHERE article = ?""", (aj["article"],)).fetchone()
+            if ar:
+                presents.add(aj["article"])
+                rows.append(dict(ar, quantite=aj["quantite"], unite=aj["unite"] or "Kg", commentaire="Ajout (exception)"))
         for r in rows:
             unite = (r["unite"] or "Kg").strip()
             portion = r["portion"] if (r["portion"] or 0) > 0 else None
@@ -129,15 +176,8 @@ def repartir_ramasse(conn, passages: list[dict], iso: str):
     contient cet article (arrondi au 1/100 kg, reste donné aux plus gros restes). Retourne
     ({index du passage: [lignes]}, [articles ramassés sans menu preneur])."""
     from .frais_repartition import totaux_a_repartir
-    articles_menu = []
-    for a in passages:
-        ordre, vus = [], set()
-        for code in a["codes"]:
-            for r in conn.execute("SELECT article FROM menus_articles WHERE menu_code = ? ORDER BY ordre", (code,)):
-                if r["article"] not in vus:
-                    vus.add(r["article"])
-                    ordre.append(r["article"])
-        articles_menu.append(ordre)
+    # articles de chaque passage = menus, exceptions de l'association appliquées (exclus / ajoutés)
+    articles_menu = [articles_menu_passage(conn, a["codes"], exceptions_passage(conn, a.get("ids"))) for a in passages]
     lignes = {i: [] for i in range(len(passages))}
     sans_menu = []
     for t in totaux_a_repartir(conn, iso):
@@ -199,7 +239,7 @@ def generer_bons(d: date, type_menu: str, recalculer: bool = False, par: str = "
                                "quantite_calc": l["quantite"], "quantite": l["quantite"], "unite": "Kg",
                                "commentaire": ""} for n, l in enumerate(repart.get(idx, []), 1)]
             else:
-                lignes_bon = calculer_lignes(conn, a["codes"], a["benef"])
+                lignes_bon = calculer_lignes(conn, a["codes"], a["benef"], exceptions_passage(conn, a.get("ids")))
             for l in lignes_bon:
                 conn.execute("""
                     INSERT INTO bons_preparation_lignes

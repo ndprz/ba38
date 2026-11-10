@@ -20,6 +20,7 @@
   <div class="d-flex justify-content-between align-items-center mb-2">
     <h2 class="mb-0 fs-4">🧾 Associations/menus (planification)</h2>
     {% call action_buttons() %}
+      <button class="btn btn-outline-primary" onclick="ouvrirFiche(null)">📄 Fiche logistique partenaire</button>
       {% if peut_ecrire %}<button class="btn btn-success" onclick="ouvrirModale(null)">➕ Ajouter une ligne</button>{% endif %}
       {{ action_button("🗓️ Retour au planning", href=url_for('distribution.planning_jour_generation'), color="outline-secondary") }}
       {{ action_button("↩️ Retour à la distribution", href=url_for('distribution.distribution_main'), color="outline-dark") }}
@@ -118,6 +119,68 @@
     </div>
   </div></div>
 </div>
+
+<!-- ================= MODALE FICHE LOGISTIQUE ================= -->
+<div class="modal fade" id="modaleFiche" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title" id="ficheTitre">Fiche logistique partenaire</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <p class="small text-muted mb-2">PDF de l'association : informations générales, responsables (distribution et hygiène HySA) et toutes ses lignes de menu
+        (type, jours, heure, emplacement, fréquence, bénéficiaires, besoins particuliers, planning O/N), exceptions comprises.</p>
+      <label class="form-label mb-0" for="ficheAsso">Association</label>
+      <input list="liste_assos" id="ficheAsso" class="form-control form-control-sm mb-2" placeholder="Code VIF ou nom…" autocomplete="off">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="ficheDetail">
+        <label class="form-check-label" for="ficheDetail">Inclure le détail des articles de chaque menu (exceptions appliquées)</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+      <button type="button" class="btn btn-primary" id="btnFiche">📄 Générer le PDF</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- ================= MODALE EXCEPTIONS ================= -->
+<div class="modal fade" id="modaleExc" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg"><div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title" id="excTitre">Exceptions</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <div id="excErreur" class="alert alert-danger py-2 d-none"></div>
+      <p class="small text-muted mb-2">Cocher un article pour <strong>l'exclure</strong> du menu pour cette association seulement. Les bons générés ensuite en tiennent compte (les bons déjà générés sont à recalculer).</p>
+      <div style="max-height:45vh;overflow:auto">
+        <table class="table table-sm align-middle mb-2">
+          <thead class="table-light"><tr><th style="width:80px">Exclure</th><th>Article</th><th>Libellé</th><th class="text-end">Qté fixe</th></tr></thead>
+          <tbody id="excArticles"></tbody>
+        </table>
+      </div>
+
+      <h6 class="mt-3 mb-1">Articles ajoutés pour cette association</h6>
+      <table class="table table-sm align-middle mb-2">
+        <thead class="table-light"><tr><th>Article</th><th>Libellé</th><th class="text-end">Quantité</th><th>Unité</th><th></th></tr></thead>
+        <tbody id="excAjouts"></tbody>
+      </table>
+      <div class="d-flex flex-wrap align-items-center" style="gap:8px" id="excAjoutForm">
+        <input type="text" id="excNouvArticle" list="excListeArticles" class="form-control form-control-sm" style="width:340px" placeholder="Ajouter un article (code ou libellé)" autocomplete="off">
+        <datalist id="excListeArticles"></datalist>
+        <input type="text" id="excNouvQte" class="form-control form-control-sm" style="width:90px" placeholder="Qté (option)">
+        <select id="excNouvUnite" class="form-select form-select-sm" style="width:90px"></select>
+        <button type="button" class="btn btn-outline-success btn-sm" id="excBtnAjouter">➕ Ajouter</button>
+      </div>
+      <div class="form-text">Sans quantité : calcul par portion si l'article en a une, sinon ligne à saisir sur le bon.</div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Fermer</button>
+      <button type="button" class="btn btn-success" id="excBtnEnregistrer">Enregistrer les exceptions</button>
+    </div>
+  </div></div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -148,6 +211,9 @@
     layout: 'fitData',
     height: 'calc(100vh - 215px)',
     placeholder: 'Aucune ligne',
+    // largeurs de colonnes ajustables à la souris et mémorisées (par navigateur), d'une date / page à l'autre
+    persistence: {columns: ['width']},
+    persistenceID: 'ba38_planning_menus_largeurs',
     columnDefaults: {tooltip: true, vertAlign: 'middle'},
     columns: [
       ext({title: 'Code VIF', field: 'code_vif', width: 115, sorter: triTexte, formatter: vide}),
@@ -161,7 +227,7 @@
       {title: 'Empl.', field: 'emplacement', width: 100, formatter: vide},
       {title: 'Fréquence', field: 'frequence', width: 140, formatter: vide},
       {title: 'Bénéf.', field: 'nbre_beneficiaires', width: 75, hozAlign: 'right', formatter: vide},
-      {title: 'Besoins particuliers', field: 'besoins_particuliers', width: 280, formatter: vide},
+      {title: 'Besoins particuliers', field: 'besoins_particuliers', width: 450, formatter: vide},
       {title: 'Planning', field: 'planification', width: 90, hozAlign: 'center', headerSort: false, tooltip: false,
         headerTooltip: "Cliquer sur une case pour exclure / remettre l'association au planning",
         formatter: function (c) {
@@ -182,6 +248,19 @@
             });
           });
         }},
+      {title: 'Fiche', width: 90, hozAlign: 'center', headerSort: false, tooltip: false,
+        headerTooltip: "Fiche logistique partenaire (PDF) de l'association",
+        formatter: function () { return '<button class="btn btn-outline-primary btn-sm py-0">📄 Fiche</button>'; },
+        cellClick: function (e, c) { ouvrirFiche(c.getData()); }},
+      {title: 'Exceptions', width: 120, hozAlign: 'center', headerSort: false, tooltip: false,
+        headerTooltip: "Articles du menu exclus ou ajoutés pour cette association",
+        formatter: function (c) {
+          var d = c.getData();
+          if (!d.menu) return '—';
+          return '<button class="btn btn-sm py-0 ' + (d.nb_exceptions ? 'btn-warning' : 'btn-outline-secondary') + '">⚙️ Exceptions' +
+                 (d.nb_exceptions ? ' (' + d.nb_exceptions + ')' : '') + '</button>';
+        },
+        cellClick: function (e, c) { if (c.getData().menu) ouvrirExceptions(c.getData(), c); }},
       {title: '', width: 50, hozAlign: 'center', headerSort: false,
         formatter: function () { return PEUT_ECRIRE ? '<button class="btn btn-outline-secondary btn-sm py-0">✏️</button>' : ''; },
         cellClick: function (e, c) { if (PEUT_ECRIRE) ouvrirModale(c.getData()); }}
@@ -190,6 +269,80 @@
       var d = row.getData();
       row.getElement().style.opacity = (!d.actif || d.planification === 'non') ? '.5' : '';
     }
+  });
+
+  // ---------- fiche logistique partenaire ----------
+  var modaleFiche;
+  var URL_FICHE = "{{ url_for('distribution.fiche_logistique_pdf', association_id=999999999) }}";
+  function ouvrirFiche(d) {   // d = ligne cliquée (association préremplie) ou null (bouton du haut : choisir l'association)
+    if (!modaleFiche) modaleFiche = new bootstrap.Modal(document.getElementById('modaleFiche'));
+    document.getElementById('ficheAsso').value = d ? libelleAsso(d.code_vif, d.nom) : '';
+    document.getElementById('ficheTitre').textContent = 'Fiche logistique partenaire';
+    modaleFiche.show();
+    setTimeout(function () { if (!d) document.getElementById('ficheAsso').focus(); }, 300);
+  }
+  document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('btnFiche').addEventListener('click', function () {
+      var id = idAsso(document.getElementById('ficheAsso').value);
+      if (!id) { alert("Choisissez l'association dans la liste proposée."); return; }
+      window.open(URL_FICHE.replace('999999999', id) + '?detail=' + (document.getElementById('ficheDetail').checked ? '1' : '0'), '_blank');
+      modaleFiche.hide();
+    });
+  });
+
+  // ---------- exceptions ----------
+  var modaleExc, excLigne = null, excCellule = null, excAjouts = [];
+  var URL_EXC = "{{ url_for('distribution.planning_jour_menu_exceptions', ligne_id=999999999) }}";
+  function excMsg(t) { var e = document.getElementById('excErreur'); e.textContent = t || ''; e.classList.toggle('d-none', !t); }
+  function ouvrirExceptions(d, cellule) {
+    excLigne = d; excCellule = cellule;
+    if (!modaleExc) modaleExc = new bootstrap.Modal(document.getElementById('modaleExc'));
+    excMsg('');
+    fetch(URL_EXC.replace('999999999', d.id)).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j.ok) { alert(j.erreur || 'Erreur'); return; }
+      document.getElementById('excTitre').textContent = 'Exceptions — ' + j.association + ' — menu ' + j.menu;
+      document.getElementById('excArticles').innerHTML = j.articles.length ? j.articles.map(function (a) {
+        return '<tr><td><input type="checkbox" class="exc-cb" value="' + esc(a.article) + '"' + (a.exclu ? ' checked' : '') + (PEUT_ECRIRE ? '' : ' disabled') + '></td>' +
+               '<td>' + esc(a.article) + '</td><td>' + esc(a.libelle) + '</td>' +
+               '<td class="text-end">' + (a.quantite != null ? esc(a.quantite + ' ' + a.unite) : '') + '</td></tr>';
+      }).join('') : '<tr><td colspan="4" class="text-muted">Ce menu ne contient aucun article.</td></tr>';
+      excAjouts = j.ajouts;
+      document.getElementById('excListeArticles').innerHTML = j.tous_articles.map(function (a) {
+        return '<option value="' + esc(a.article + ' — ' + a.libelle) + '">'; }).join('');
+      document.getElementById('excNouvUnite').innerHTML = '<option value="">unité</option>' + j.unites.map(function (u) { return '<option>' + esc(u) + '</option>'; }).join('');
+      excRendreAjouts();
+      document.getElementById('excAjoutForm').classList.toggle('d-none', !PEUT_ECRIRE);
+      document.getElementById('excBtnEnregistrer').classList.toggle('d-none', !PEUT_ECRIRE);
+      modaleExc.show();
+    });
+  }
+  function excRendreAjouts() {
+    document.getElementById('excAjouts').innerHTML = excAjouts.length ? excAjouts.map(function (a, i) {
+      return '<tr><td>' + esc(a.article) + '</td><td>' + esc(a.libelle) + '</td><td class="text-end">' + (a.quantite != null && a.quantite !== '' ? esc(a.quantite) : '<span class="text-muted">auto</span>') +
+             '</td><td>' + esc(a.unite) + '</td><td>' + (PEUT_ECRIRE ? '<button class="btn btn-outline-danger btn-sm py-0" onclick="excRetirer(' + i + ')">✕</button>' : '') + '</td></tr>';
+    }).join('') : '<tr><td colspan="5" class="text-muted">Aucun article ajouté.</td></tr>';
+  }
+  function excRetirer(i) { excAjouts.splice(i, 1); excRendreAjouts(); }
+  document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('excBtnAjouter').addEventListener('click', function () {
+      var saisie = document.getElementById('excNouvArticle').value.split(' — ');
+      var code = saisie[0].trim(), lib = saisie.slice(1).join(' — ').trim();
+      if (!code) return;
+      if (excAjouts.some(function (a) { return a.article === code; })) { excMsg(code + ' est déjà ajouté.'); return; }
+      excMsg('');
+      excAjouts.push({article: code, libelle: lib, quantite: document.getElementById('excNouvQte').value.trim(), unite: document.getElementById('excNouvUnite').value});
+      document.getElementById('excNouvArticle').value = ''; document.getElementById('excNouvQte').value = '';
+      excRendreAjouts();
+    });
+    document.getElementById('excBtnEnregistrer').addEventListener('click', function () {
+      var exclus = Array.prototype.filter.call(document.querySelectorAll('.exc-cb'), function (c) { return c.checked; }).map(function (c) { return c.value; });
+      post(URL_EXC.replace('999999999', excLigne.id), {exclus: exclus, ajouts: excAjouts.map(function (a) { return {article: a.article, quantite: a.quantite, unite: a.unite}; })})
+        .then(function (j) {
+          if (!j.ok) { excMsg(j.erreur || 'Erreur'); return; }
+          excLigne.nb_exceptions = j.nb; excCellule.getRow().update({nb_exceptions: j.nb}); excCellule.getRow().reformat();
+          modaleExc.hide();
+        }).catch(function () { excMsg('Erreur réseau'); });
+    });
   });
 
   // ---------- modale ----------

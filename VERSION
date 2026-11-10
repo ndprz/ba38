@@ -1,3 +1,3 @@
-VERSION=1.7.260
-MESSAGE=Distribution : ramasse journalière (entrée en stock, réception VIF), panier FRAIS avec ajouts/retraits de stock, stock Basilic, saisie de ramasse interdite sans code VIF
-DATE=2026-11-09 15:32
+VERSION=1.7.261
+MESSAGE=Distribution : exceptions par ligne association/menu (articles exclus ou ajoutés, appliquées aux bons SEC et FRAIS) et fiche logistique partenaire (PDF)
+DATE=2026-11-10 10:07
