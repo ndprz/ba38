@@ -994,16 +994,24 @@ def mail_trieurs():
             if request.form.get("confirmation_envoi") != "oui":
                 flash("❌ Cochez d'abord « Je confirme l'envoi » — rien n'a été envoyé.", "danger")
             else:
+                echecs = []
                 for personne in destinataires:
-                    envoyer_mail(
-                        f"Collecte {annee} — recherche de trieurs",
-                        [personne["email"]],
-                        _corps_mail_trieurs_html(personne, mail_texte),
-                        sender_override="ba380.directeur@banquealimentaire.org",
-                        cc=[current_user.email],
-                        is_html=True,
-                    )
-                flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+                    try:
+                        envoyer_mail(
+                            f"Collecte {annee} — recherche de trieurs",
+                            [personne["email"]],
+                            _corps_mail_trieurs_html(personne, mail_texte),
+                            sender_override="ba380.directeur@banquealimentaire.org",
+                            is_html=True,
+                        )
+                    except Exception as e:
+                        echecs.append(personne.get("email", ""))
+                        write_log(f"❌ Collecte {annee} : échec envoi mail trieurs à {personne.get('email','')} — {e}")
+                reussis = len(destinataires) - len(echecs)
+                if echecs:
+                    flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
+                else:
+                    flash(f"✅ {reussis} mail(s) préparé(s).", "success")
 
     return render_template(
         "collecte/mail_trieurs.html",
@@ -1174,16 +1182,24 @@ def mail_disponibilite_chauffeurs_equipiers():
             if request.form.get("confirmation_envoi") != "oui":
                 flash("❌ Cochez d'abord « Je confirme l'envoi » — rien n'a été envoyé.", "danger")
             else:
+                echecs = []
                 for personne in destinataires:
-                    envoyer_mail(
-                        f"Collecte {annee} — recherche de chauffeurs et équipiers",
-                        [personne["email"]],
-                        _corps_mail_disponibilite_chauffeurs_html(personne, mail_texte),
-                        sender_override="ba380.directeur@banquealimentaire.org",
-                        cc=[current_user.email],
-                        is_html=True,
-                    )
-                flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+                    try:
+                        envoyer_mail(
+                            f"Collecte {annee} — recherche de chauffeurs et équipiers",
+                            [personne["email"]],
+                            _corps_mail_disponibilite_chauffeurs_html(personne, mail_texte),
+                            sender_override="ba380.directeur@banquealimentaire.org",
+                            is_html=True,
+                        )
+                    except Exception as e:
+                        echecs.append(personne.get("email", ""))
+                        write_log(f"❌ Collecte {annee} : échec envoi mail disponibilité chauffeurs à {personne.get('email','')} — {e}")
+                reussis = len(destinataires) - len(echecs)
+                if echecs:
+                    flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
+                else:
+                    flash(f"✅ {reussis} mail(s) préparé(s).", "success")
 
     return render_template(
         "collecte/mail_disponibilite_chauffeurs_equipiers.html",
@@ -1349,16 +1365,24 @@ def mail_prise_colis():
             if request.form.get("confirmation_envoi") != "oui":
                 flash("❌ Cochez d'abord « Je confirme l'envoi » — rien n'a été envoyé.", "danger")
             else:
+                echecs = []
                 for personne in destinataires:
-                    envoyer_mail(
-                        f"Collecte {annee} — prise du colis",
-                        [personne["email"]],
-                        _corps_mail_prise_colis_html(personne, mail_texte),
-                        sender_override="ba380.directeur@banquealimentaire.org",
-                        cc=[current_user.email],
-                        is_html=True,
-                    )
-                flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+                    try:
+                        envoyer_mail(
+                            f"Collecte {annee} — prise du colis",
+                            [personne["email"]],
+                            _corps_mail_prise_colis_html(personne, mail_texte),
+                            sender_override="ba380.directeur@banquealimentaire.org",
+                            is_html=True,
+                        )
+                    except Exception as e:
+                        echecs.append(personne.get("email", ""))
+                        write_log(f"❌ Collecte {annee} : échec envoi mail prise de colis à {personne.get('email','')} — {e}")
+                reussis = len(destinataires) - len(echecs)
+                if echecs:
+                    flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
+                else:
+                    flash(f"✅ {reussis} mail(s) préparé(s).", "success")
 
     return render_template(
         "collecte/mail_prise_colis.html",
@@ -1471,16 +1495,24 @@ def mail_bilan():
             if request.form.get("confirmation_envoi") != "oui":
                 flash("❌ Cochez d'abord « Je confirme l'envoi » — rien n'a été envoyé.", "danger")
             else:
+                echecs = []
                 for personne in destinataires:
-                    envoyer_mail(
-                        f"Collecte {annee} — invitation au bilan",
-                        [personne["email"]],
-                        _corps_mail_bilan_html(personne, mail_texte, annee),
-                        sender_override="ba380.benevolecollecte@banquealimentaire.org",
-                        cc=[current_user.email],
-                        is_html=True,
-                    )
-                flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+                    try:
+                        envoyer_mail(
+                            f"Collecte {annee} — invitation au bilan",
+                            [personne["email"]],
+                            _corps_mail_bilan_html(personne, mail_texte, annee),
+                            sender_override="ba380.benevolecollecte@banquealimentaire.org",
+                            is_html=True,
+                        )
+                    except Exception as e:
+                        echecs.append(personne.get("email", ""))
+                        write_log(f"❌ Collecte {annee} : échec envoi mail bilan à {personne.get('email','')} — {e}")
+                reussis = len(destinataires) - len(echecs)
+                if echecs:
+                    flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
+                else:
+                    flash(f"✅ {reussis} mail(s) préparé(s).", "success")
 
     return render_template(
         "collecte/mail_bilan.html",
@@ -1601,16 +1633,24 @@ def mail_ressenti_magasins():
             if request.form.get("confirmation_envoi") != "oui":
                 flash("❌ Cochez d'abord « Je confirme l'envoi » — rien n'a été envoyé.", "danger")
             else:
+                echecs = []
                 for personne in destinataires:
-                    envoyer_mail(
-                        f"Collecte {annee} — votre ressenti",
-                        [personne["email"]],
-                        _corps_mail_ressenti_magasins_html(personne, mail_texte, annee),
-                        sender_override="ba380.benevolecollecte@banquealimentaire.org",
-                        cc=[current_user.email],
-                        is_html=True,
-                    )
-                flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+                    try:
+                        envoyer_mail(
+                            f"Collecte {annee} — votre ressenti",
+                            [personne["email"]],
+                            _corps_mail_ressenti_magasins_html(personne, mail_texte, annee),
+                            sender_override="ba380.benevolecollecte@banquealimentaire.org",
+                            is_html=True,
+                        )
+                    except Exception as e:
+                        echecs.append(personne.get("email", ""))
+                        write_log(f"❌ Collecte {annee} : échec envoi mail ressenti magasins à {personne.get('email','')} — {e}")
+                reussis = len(destinataires) - len(echecs)
+                if echecs:
+                    flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
+                else:
+                    flash(f"✅ {reussis} mail(s) préparé(s).", "success")
 
     return render_template(
         "collecte/mail_ressenti_magasins.html",
@@ -1729,16 +1769,24 @@ def mail_ressenti_chauffeurs():
             if request.form.get("confirmation_envoi") != "oui":
                 flash("❌ Cochez d'abord « Je confirme l'envoi » — rien n'a été envoyé.", "danger")
             else:
+                echecs = []
                 for personne in destinataires:
-                    envoyer_mail(
-                        f"Collecte {annee} — votre ressenti",
-                        [personne["email"]],
-                        _corps_mail_ressenti_chauffeurs_html(personne, mail_texte, annee),
-                        sender_override="ba380.directeur@banquealimentaire.org",
-                        cc=[current_user.email],
-                        is_html=True,
-                    )
-                flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+                    try:
+                        envoyer_mail(
+                            f"Collecte {annee} — votre ressenti",
+                            [personne["email"]],
+                            _corps_mail_ressenti_chauffeurs_html(personne, mail_texte, annee),
+                            sender_override="ba380.directeur@banquealimentaire.org",
+                            is_html=True,
+                        )
+                    except Exception as e:
+                        echecs.append(personne.get("email", ""))
+                        write_log(f"❌ Collecte {annee} : échec envoi mail ressenti chauffeurs à {personne.get('email','')} — {e}")
+                reussis = len(destinataires) - len(echecs)
+                if echecs:
+                    flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
+                else:
+                    flash(f"✅ {reussis} mail(s) préparé(s).", "success")
 
     return render_template(
         "collecte/mail_ressenti_chauffeurs.html",
@@ -1885,16 +1933,24 @@ def mail_ressenti_entrepot():
             if request.form.get("confirmation_envoi") != "oui":
                 flash("❌ Cochez d'abord « Je confirme l'envoi » — rien n'a été envoyé.", "danger")
             else:
+                echecs = []
                 for personne in destinataires:
-                    envoyer_mail(
-                        f"Collecte {annee} — votre ressenti",
-                        [personne["email"]],
-                        _corps_mail_ressenti_entrepot_html(personne, mail_texte, annee),
-                        sender_override="ba380.directeur@banquealimentaire.org",
-                        cc=[current_user.email],
-                        is_html=True,
-                    )
-                flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+                    try:
+                        envoyer_mail(
+                            f"Collecte {annee} — votre ressenti",
+                            [personne["email"]],
+                            _corps_mail_ressenti_entrepot_html(personne, mail_texte, annee),
+                            sender_override="ba380.directeur@banquealimentaire.org",
+                            is_html=True,
+                        )
+                    except Exception as e:
+                        echecs.append(personne.get("email", ""))
+                        write_log(f"❌ Collecte {annee} : échec envoi mail ressenti entrepôt à {personne.get('email','')} — {e}")
+                reussis = len(destinataires) - len(echecs)
+                if echecs:
+                    flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
+                else:
+                    flash(f"✅ {reussis} mail(s) préparé(s).", "success")
 
     return render_template(
         "collecte/mail_ressenti_entrepot.html",
@@ -5261,17 +5317,25 @@ def chauffeurs_equipiers():
             if request.form.get("confirmation_envoi") != "oui":
                 flash("❌ Cochez d'abord « Je confirme l'envoi » — rien n'a été envoyé.", "danger")
             else:
+                echecs = []
                 for personne in destinataires:
-                    envoyer_mail(
-                        f"Vos affectations tournées {annee}",
-                        [personne["email"]],
-                        _corps_mail_affectations_html(personne, mail_texte, image_url),
-                        sender_override="ba380.directeur@banquealimentaire.org",
-                        cc=[current_user.email],
-                        attachment_paths=chemins_pj or None,
-                        is_html=True,
-                    )
-                flash(f"✅ {len(destinataires)} mail(s) préparé(s).", "success")
+                    try:
+                        envoyer_mail(
+                            f"Vos affectations tournées {annee}",
+                            [personne["email"]],
+                            _corps_mail_affectations_html(personne, mail_texte, image_url),
+                            sender_override="ba380.directeur@banquealimentaire.org",
+                            attachment_paths=chemins_pj or None,
+                            is_html=True,
+                        )
+                    except Exception as e:
+                        echecs.append(personne.get("email", ""))
+                        write_log(f"❌ Collecte {annee} : échec envoi mail affectations à {personne.get('email','')} — {e}")
+                reussis = len(destinataires) - len(echecs)
+                if echecs:
+                    flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
+                else:
+                    flash(f"✅ {reussis} mail(s) préparé(s).", "success")
 
     return render_template(
         "collecte/chauffeurs_equipiers.html",

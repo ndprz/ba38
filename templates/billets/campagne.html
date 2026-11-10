@@ -51,8 +51,7 @@
       <div class="col-md-6"><label class="small">Sujet</label><input name="sujet" class="form-control" value="{{ c.sujet or '' }}"></div>
       <div class="col-md-3"><label class="small">Expéditeur</label>
         <select name="expediteur" class="form-control">
-          <option value="">— choisir —</option>
-          {% for e in expediteurs %}<option value="{{ e }}" {% if e == c.expediteur %}selected{% endif %}>{{ e }}</option>{% endfor %}
+          {% for e in expediteurs %}<option value="{{ e }}" {% if e == (c.expediteur or 'ba380@banquealimentaire.org') %}selected{% endif %}>{{ e }}</option>{% endfor %}
         </select></div>
       <div class="col-md-3"><label class="small">Nom affiché (facultatif)</label><input name="expediteur_nom" class="form-control" value="{{ c.expediteur_nom or '' }}"></div>
       <div class="col-md-6"><label class="small">Adresse de réponse (facultatif)</label><input name="reply_to" class="form-control" value="{{ c.reply_to or '' }}"></div>

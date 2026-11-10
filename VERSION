@@ -1,3 +1,3 @@
-VERSION=1.7.266
-MESSAGE=Billets spectacle : aide utilisateur, fonctionnalités, exclusion des tables de la synchro DEV→PROD
-DATE=2026-11-10 11:50
+VERSION=1.7.269
+MESSAGE=Billets spectacle : bouton orange INSCRIPTION dans le mail d'invitation, expéditeur par défaut
+DATE=2026-11-10 12:24

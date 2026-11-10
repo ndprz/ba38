@@ -70,15 +70,28 @@ VARIABLES_AIDE = ["prenom", "nom", "spectacle", "lieu", "donateur", "date_specta
                   "date_limite", "nb_billets", "mode_retrait", "lien_inscription"]
 
 
+def bouton_inscription(lien):
+    """Bouton orange « INSCRIPTION » (table + styles en ligne : compatible clients mail)."""
+    return (
+        '<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:16px 0">'
+        '<tr><td align="center" bgcolor="#f57c00" style="border-radius:6px">'
+        f'<a href="{lien}" target="_blank" style="display:inline-block;padding:14px 36px;'
+        'font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:bold;color:#ffffff;'
+        'text-decoration:none;letter-spacing:1px;border-radius:6px;background-color:#f57c00">'
+        'INSCRIPTION</a></td></tr></table>')
+
+
 def rendre_invitation(c, p, prefixe=""):
     """(sujet, corps HTML) personnalisés. Quill enregistre << >> en &lt;&lt; &gt;&gt;."""
     v = {k: html.escape(x) for k, x in variables(c, p).items()}
     brut = re.sub(r"&lt;&lt;(\w+)&gt;&gt;", r"<<\1>>", c["corps"] or "")
     corps = render_modele_email(brut, v)
     lien = url_inscription(p["token"]) if p["token"] else ""
-    corps = re.sub(r'(?<!href=")(?<!href=\')<<lien_inscription>>',
-                   f'<a href="{lien}">{lien}</a>', corps)
-    corps = corps.replace("<<lien_inscription>>", lien)
+    # Hors d'un href : bouton orange sur sa propre ligne (le <br> qui précède est retiré)
+    corps = re.sub(r'<p>\s*<<lien_inscription>>\s*</p>', lambda m: bouton_inscription(lien), corps)
+    corps = re.sub(r'(?<!href=")(?<!href=\')(?:<br\s*/?>\s*)?<<lien_inscription>>',
+                   lambda m: "</p>" + bouton_inscription(lien) + "<p>", corps)
+    corps = corps.replace("<<lien_inscription>>", lien)  # cas d'un lien posé dans un href
     sujet = render_modele_email(c["sujet"] or f"Places offertes : {c['spectacle']}",
                                 variables(c, p)).strip()
     return prefixe + sujet, corps
