@@ -81,6 +81,11 @@ const corpsTextarea = document.getElementById("corps_textarea");
 const quillContainer = document.getElementById("corps_quill_container");
 const htmlToggle = document.getElementById("is_html_toggle");
 
+const SizeStyle = Quill.import("attributors/style/size");
+SizeStyle.whitelist = ["12px", "14px", "18px", "24px", "32px"];
+Quill.register(SizeStyle, true);
+Quill.register(Quill.import("attributors/style/align"), true);
+
 let quill = null;
 
 function initQuill() {
@@ -97,7 +102,10 @@ function initQuill() {
         modules: {
 
             toolbar: [
+                [{ size: ["12px", "14px", "18px", "24px", "32px"] }],
                 ["bold", "italic", "underline"],
+                [{ color: [] }, { background: [] }],
+                [{ align: [] }],
                 [{ list: "ordered" }, { list: "bullet" }],
                 ["link", "image"],
                 ["clean"]

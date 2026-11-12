@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
+<style>#corps_quill_container .ql-editor { min-height: 300px; }</style>
 
 <h2>{{ "Modifier" if modele else "Nouveau" }} modèle</h2>
 
@@ -33,9 +35,31 @@
         </small>
     </div>
 
+    <div class="mb-2 form-check">
+        <input type="checkbox" class="form-check-input" name="is_html" id="is_html_toggle"
+               {% if modele is none or modele.is_html %}checked{% endif %}>
+        <label class="form-check-label" for="is_html_toggle">
+            <strong>Mail évolué</strong> : gras, taille, couleur, images, liens, bouton « Saisie en ligne »
+            <span class="text-muted">(décoché = texte brut)</span>
+        </label>
+    </div>
+
+    <div id="barre-variables" class="mb-2 small">
+        Insérer :
+        <button type="button" class="btn btn-sm btn-warning var-ins" data-var="&lt;&lt;bouton_formulaire&gt;&gt;" data-txt="<<bouton_formulaire>>"
+                title="Gros bouton orange « Saisie en ligne » vers le formulaire de l'association (indicateurs)">🔘 Bouton « Saisie en ligne »</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary var-ins" data-txt="<<lien_formulaire>>">🔗 lien du formulaire</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary var-ins" data-txt="<<nom_association>>">nom_association</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary var-ins" data-txt="<<periode>>">periode</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary var-ins" data-txt="<<trimestre>>">trimestre</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary var-ins" data-txt="<<annee>>">annee</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary var-ins" data-txt="<<date_limite>>">date_limite</button>
+    </div>
+
     <div class="mb-3">
         <label>Corps</label>
-        <textarea name="corps" class="form-control" rows="10">{{ modele.corps if modele else '' }}</textarea>
+        <textarea name="corps" id="corps_textarea" class="form-control" rows="10">{{ modele.corps if modele else '' }}</textarea>
+        <div id="corps_quill_container" style="display:none; background:white;"></div>
     </div>
 
     <button type="submit" name="action" value="save" class="btn btn-success">💾 Enregistrer</button>
@@ -55,4 +79,91 @@
 
 </form>
 
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+<script>
+// Mise en forme en styles EN LIGNE (les clients mail ne connaissent pas les classes ql-*)
+const SizeStyle = Quill.import("attributors/style/size");
+SizeStyle.whitelist = ["12px", "14px", "18px", "24px", "32px"];
+Quill.register(SizeStyle, true);
+Quill.register(Quill.import("attributors/style/align"), true);
+
+const corpsTextarea = document.getElementById("corps_textarea");
+const quillContainer = document.getElementById("corps_quill_container");
+const htmlToggle = document.getElementById("is_html_toggle");
+const barreVar = document.getElementById("barre-variables");
+const modeleEstHtml = {{ 1 if (modele and modele.is_html) else 0 }};
+let quill = null;
+
+function texteVersHtml(t) {
+  return (t || "").split("\n").map(l => "<p>" + (l.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") || "<br>") + "</p>").join("");
+}
+function htmlVersTexte(h) {
+  const d = document.createElement("div"); d.innerHTML = h;
+  return Array.from(d.querySelectorAll("p")).map(p => p.innerText).join("\n");
+}
+function initQuill() {
+  if (quill) return;
+  quill = new Quill(quillContainer, {
+    theme: "snow",
+    modules: { toolbar: [
+      [{ size: ["12px", "14px", "18px", "24px", "32px"] }],
+      ["bold", "italic", "underline"],
+      [{ color: [] }, { background: [] }],
+      [{ align: [] }],
+      [{ list: "ordered" }, { list: "bullet" }],
+      ["link", "image"], ["clean"]
+    ] }
+  });
+  const brut = corpsTextarea.value;
+  // modèle texte brut converti en paragraphes ; HTML Quill rechargé tel quel
+  quill.root.innerHTML = (modeleEstHtml || /<p[ >]/.test(brut)) ? brut.replace(/&lt;&lt;(\w+)&gt;&gt;/g, "<<$1>>").replace(/<<(\w+)>>/g, "&lt;&lt;$1&gt;&gt;") : texteVersHtml(brut);
+  // images collées (base64) -> image hébergée
+  quill.on("text-change", () => {
+    quill.root.querySelectorAll('img[src^="data:"]:not([data-uploading])').forEach(img => {
+      img.setAttribute("data-uploading", "1");
+      fetch(img.src).then(r => r.blob()).then(blob => {
+        const fd = new FormData(); fd.append("image", blob, "collee.png");
+        return fetch("{{ url_for('debug_bp.upload_image_modele') }}", { method: "POST", headers: { "X-CSRFToken": "{{ csrf_token() }}" }, body: fd });
+      }).then(r => r.json()).then(data => {
+        if (data.url) img.src = data.url; else alert("❌ Erreur import image : " + (data.error || "inconnue"));
+        img.removeAttribute("data-uploading");
+      }).catch(() => { alert("❌ Erreur réseau lors de l'import de l'image."); img.removeAttribute("data-uploading"); });
+    });
+  });
+}
+function majMode() {
+  if (htmlToggle.checked) {
+    initQuill();
+    corpsTextarea.style.display = "none"; quillContainer.style.display = "block"; barreVar.style.display = "";
+  } else {
+    if (quill) corpsTextarea.value = htmlVersTexte(quill.root.innerHTML);
+    quillContainer.style.display = "none"; corpsTextarea.style.display = "block"; barreVar.style.display = "";
+  }
+}
+htmlToggle.addEventListener("change", majMode);
+
+document.querySelectorAll(".var-ins").forEach(b => b.addEventListener("click", () => {
+  const txt = b.dataset.txt;
+  if (htmlToggle.checked && quill) {
+    quill.focus();
+    const r = quill.getSelection(true);
+    quill.insertText(r ? r.index : quill.getLength() - 1, txt, "user");
+  } else {
+    const t = corpsTextarea, d = t.selectionStart || 0;
+    t.value = t.value.slice(0, d) + txt + t.value.slice(t.selectionEnd || d);
+    t.focus(); t.selectionStart = t.selectionEnd = d + txt.length;
+  }
+}));
+
+document.querySelector("form").addEventListener("submit", function (e) {
+  if (htmlToggle.checked && quill) {
+    if (quill.root.querySelector("img[data-uploading]")) { e.preventDefault(); alert("Import d'image en cours, réessayez dans un instant."); return; }
+    corpsTextarea.value = quill.root.innerHTML;
+  }
+});
+majMode();
+</script>
 {% endblock %}

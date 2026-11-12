@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Indicateurs {{ campagne.periode }}{% endblock %}
+{% block content %}
+{% set lim = campagne.date_limite or '' %}
+<div class="container mt-4 mb-5" style="max-width: 820px;">
+
+  <div class="border border-dark rounded p-3 mb-3 text-center">
+    <h3 class="mb-1" style="color:#d9531e;">
+      {% if annuel %}Indicateurs du {{ trimestre_lib }} ET de l'année{% else %}Indicateurs Etat {{ campagne.periode }}{% endif %}
+    </h3>
+    <div class="text-danger">Retournez ce bilan en le validant ci-dessous
+      {% if lim %}<strong>avant le {{ lim }}</strong>{% endif %}</div>
+  </div>
+
+  {% if ok %}
+  <div class="alert alert-success">
+    ✅ <strong>Merci, vos indicateurs sont enregistrés.</strong> Le formulaire ne peut plus être modifié.
+    {% if rep and rep.mail_confirmation_le %}<br>Un mail avec le formulaire rempli vient d'être envoyé à
+      {{ mail_info | join(', ') }}.
+    {% elif rep and rep.mail_confirmation_erreur %}<br>Le mail de confirmation n'a pas pu être envoyé ; la Banque Alimentaire en a bien reçu une copie de votre réponse.{% endif %}
+  </div>
+  {% elif verrouille %}
+  <div class="alert alert-info">
+    🔒 Ce formulaire a été validé le {{ rep.soumis_le[8:10] }}/{{ rep.soumis_le[5:7] }}/{{ rep.soumis_le[:4] }} à {{ rep.soumis_le[11:16] }}
+    et ne peut plus être modifié. Pour une correction, écrivez à
+    <a href="mailto:ba380.informatique2@banquealimentaire.org">ba380.informatique2@banquealimentaire.org</a>.
+  </div>
+  {% endif %}
+
+  {% if erreurs %}
+  <div class="alert alert-danger"><ul class="mb-0">{% for e in erreurs %}<li>{{ e }}</li>{% endfor %}</ul></div>
+  {% endif %}
+
+  {% if not verrouille %}
+  <div class="small mb-3">
+    <strong>Attention :</strong>
+    <ul class="mb-1">
+      <li><strong>Vous devez nous transmettre vos indicateurs même si vous n'avez pas d'inscrits ou des inscrits et pas de passages.</strong> Dans ce cas, mettez 0 dans les cases concernées.</li>
+      {% if annuel %}<li>Il faut remplir les indicateurs du « trimestre » et ceux de l'« année ».</li>{% endif %}
+      <li>Utilisateurs de TICADI : validez les IE avant le {{ campagne.date_limite_ams or lim or 'délai indiqué' }}. Ne remplissez pas ce formulaire.</li>
+      <li>Une fois validé, le formulaire ne pourra plus être modifié.</li>
+    </ul>
+  </div>
+  {% endif %}
+
+  <form method="POST" id="form-indic" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% set ro = 'readonly' if verrouille else '' %}
+
+    <table class="table table-bordered bg-white mb-4">
+      <tr><td style="width:38%">Association ou CCAS</td><td><strong>{{ suivi.nom_association }}</strong></td></tr>
+      <tr><td>Personne en charge du calcul des indicateurs</td>
+          <td><input class="form-control" name="responsable_ie" maxlength="120" value="{{ valeurs.responsable_ie }}" {{ ro }}></td></tr>
+      <tr><td>Téléphone</td>
+          <td><input class="form-control" name="tel_resp_ie" maxlength="40" value="{{ valeurs.tel_resp_ie }}" {{ ro }}></td></tr>
+      <tr><td>Adresse courriel</td>
+          <td><input class="form-control" type="email" name="courriel_ie" maxlength="200" value="{{ valeurs.courriel_ie }}" {{ ro }}></td></tr>
+      <tr><td>Chargé d'Animation Réseau (CAR)</td><td>{{ suivi.CAR or '' }}</td></tr>
+    </table>
+
+    <table class="table table-bordered bg-white">
+      <thead class="thead-light table-light">
+        <tr><th>Comment compter</th>
+            {% if annuel %}<th style="width:220px" class="text-center">Valeur</th>{% else %}<th style="width:220px" class="text-center">{{ campagne.periode }}</th>{% endif %}</tr>
+      </thead>
+      <tbody>
+      {% for cle, lib, aide, col in champs %}
+        <tr>
+          <td><strong>{{ lib }}</strong>
+            {% if annuel %}<span class="badge {{ 'bg-warning text-dark' if col == 'Année' else 'bg-secondary' }}">{{ col }}</span>{% endif %}
+            <div class="small text-muted">{{ aide }}</div></td>
+          <td class="align-middle" style="background:#fff9a8; min-width:200px;">
+            <input class="form-control form-control-lg text-end" inputmode="numeric" style="min-width:150px;" name="{{ cle }}" id="{{ cle }}"
+                   value="{{ valeurs.get(cle, '') }}" {{ ro }} {% if not verrouille %}required{% endif %}>
+          </td>
+        </tr>
+      {% endfor %}
+        <tr>
+          <td colspan="2"><label for="remarques" class="mb-1"><strong>Observations</strong>
+              <span class="small text-muted">(changement de coordonnées, précisions…)</span></label>
+            <textarea class="form-control" name="remarques" id="remarques" rows="3" maxlength="1500" {{ ro }}>{{ valeurs.remarques }}</textarea></td>
+        </tr>
+      </tbody>
+    </table>
+
+    {% if not verrouille %}
+    <button class="btn btn-primary btn-lg" type="submit">✅ Valider définitivement mes indicateurs</button>
+    <div class="small text-muted mt-2">Vous recevrez le formulaire rempli par mail.</div>
+    {% endif %}
+  </form>
+
+  <hr class="mt-4">
+  <div class="small text-muted text-center">
+    Contact Indicateurs : <a href="mailto:ba380.informatique2@banquealimentaire.org">ba380.informatique2@banquealimentaire.org</a> — 04 76 85 92 50<br>
+    Banque Alimentaire de l'Isère — 11 allée de la Pinéa - 38600 FONTAINE
+  </div>
+</div>
+
+{% if not verrouille %}
+<script>
+document.getElementById('form-indic').addEventListener('submit', function (e) {
+  if (!confirm("Valider définitivement ces indicateurs ?\n\nUne fois validés, vous ne pourrez plus les modifier.")) {
+    e.preventDefault();
+  }
+});
+</script>
+{% endif %}
+{% endblock %}

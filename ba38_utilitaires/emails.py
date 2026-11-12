@@ -86,7 +86,10 @@ def envoyer_indicateurs_background(app, db_path, campagne_id, campagne, lignes,
             write_log(f"CONTEXTE: {contexte}")
 
             sujet = render_modele_email(modele["sujet"], contexte).strip()
-            corps = render_modele_email(modele["corps"], contexte)
+            from ba38_partenaires.indicateurs_formulaire import (
+                assurer_token, url_formulaire, rendre_corps_modele)
+            lien_form = url_formulaire(assurer_token(conn_suivi, l["id"]))
+            corps, corps_html = rendre_corps_modele(modele, contexte, lien_form)
 
             # ============================================================================
             # 📬 DESTINATAIRES
@@ -115,6 +118,7 @@ def envoyer_indicateurs_background(app, db_path, campagne_id, campagne, lignes,
                     sujet=sujet,
                     destinataires=emails,
                     texte=corps,
+                    is_html=corps_html,
                     sender_override=sender,
                     reply_to=REPLY_TO_INDICATEURS,
                     attachment_path=pdf_path,
@@ -148,7 +152,10 @@ def envoyer_indicateurs_background(app, db_path, campagne_id, campagne, lignes,
                         mode_test=mode_test_local,
                         sujet=f"[ARCHIVE BASILIC] Indicateurs état – {association['nom_association']} – {periode}",
                         destinataires=[sender],
-                        texte=f"Copie d'archive automatique — destinataire(s) réel(s) : {', '.join(emails)}\n\n---\n\n{corps}",
+                        texte=(f"<p><em>Copie d'archive automatique — destinataire(s) réel(s) : {', '.join(emails)}</em></p><hr>{corps}"
+                               if corps_html else
+                               f"Copie d'archive automatique — destinataire(s) réel(s) : {', '.join(emails)}\n\n---\n\n{corps}"),
+                        is_html=corps_html,
                         sender_override=sender,
                         attachment_path=pdf_path,
                         current_user_email=current_user_email
@@ -227,27 +234,28 @@ def edit_modele(id=None):
             sujet = request.form.get("sujet")
             corps = request.form.get("corps")
             type_periode = request.form.get("type_periode") or None
+            is_html = 1 if request.form.get("is_html") == "on" else 0
             action = request.form.get("action", "save")
 
             if id:
                 conn.execute("""
                     UPDATE modeles_emails
-                    SET code_modele=?, sujet=?, corps=?, type_periode=?, date_modification=datetime('now')
+                    SET code_modele=?, sujet=?, corps=?, type_periode=?, is_html=?, date_modification=datetime('now')
                     WHERE id=?
-                """, (code, sujet, corps, type_periode, id))
+                """, (code, sujet, corps, type_periode, is_html, id))
                 flash("Modèle mis à jour", "success")
 
             else:
                 conn.execute("""
-                    INSERT INTO modeles_emails (code_modele, sujet, corps, type_periode, date_modification)
-                    VALUES (?, ?, ?, ?, datetime('now'))
-                """, (code, sujet, corps, type_periode))
+                    INSERT INTO modeles_emails (code_modele, sujet, corps, type_periode, is_html, date_modification)
+                    VALUES (?, ?, ?, ?, ?, datetime('now'))
+                """, (code, sujet, corps, type_periode, is_html))
                 flash("Modèle créé", "success")
 
             conn.commit()
 
             if action == "save_both" and os.getenv("ENVIRONMENT", "DEV").upper() == "DEV":
-                ok, err = copier_modele_email_vers_prod(code, sujet, corps, type_periode)
+                ok, err = copier_modele_email_vers_prod(code, sujet, corps, type_periode, is_html)
                 if ok:
                     flash("Modèle également enregistré en PROD", "success")
                 else:
@@ -333,6 +341,8 @@ def envoyer_mails(campagne_id):
             FROM indicateurs_suivi i
             JOIN associations a ON i.association_id = a.id
             WHERE i.campagne_id = ?
+            AND i.present_csv = 1
+            AND COALESCE(i.reponse_mode, 1) = 1
             AND LOWER(TRIM(i.statut_csv)) LIKE 'non%'
             AND (i.exclure_envoi_mail IS NULL OR i.exclure_envoi_mail = 0)
         """, (campagne_id,)).fetchall()

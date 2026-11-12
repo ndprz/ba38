@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Réponse {{ suivi.nom_association }} – {{ campagne.periode }}{% endblock %}
+{% block content %}
+<div class="container mt-4 mb-5" style="max-width: 820px;">
+  <div class="d-flex justify-content-between align-items-start flex-wrap mb-3" style="gap:8px;">
+    <div>
+      <h3 class="mb-0">{{ suivi.nom_association }}</h3>
+      <div class="text-muted">Indicateurs {{ campagne.periode }}{% if suivi.code_vif %} — code VIF {{ suivi.code_vif }}{% endif %}</div>
+      <div class="small text-muted">Validé en ligne le {{ rep.soumis_le[8:10] }}/{{ rep.soumis_le[5:7] }}/{{ rep.soumis_le[:4] }} à {{ rep.soumis_le[11:16] }}</div>
+    </div>
+    <div>
+      <a class="btn btn-outline-primary" href="{{ url_for('indicateurs.reponse_pdf', suivi_id=suivi.id) }}" target="_blank">📄 Exporter en PDF</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('indicateurs.resultats', campagne_id=campagne.id) }}">↩️ Résultats</a>
+    </div>
+  </div>
+
+  <table class="table table-bordered bg-white">
+    <thead class="table-light"><tr><th>Indicateur</th><th class="text-end" style="width:200px;">Valeur</th></tr></thead>
+    <tbody>
+    {% for cle, lib, aide, col in champs %}
+      <tr>
+        <td>{{ lib }}{% if annuel %} <span class="badge {{ 'bg-warning text-dark' if col == 'Année' else 'bg-secondary' }}">{{ col }}</span>{% endif %}</td>
+        <td class="text-end" style="font-size:1.4rem; font-weight:600; background:#fff9a8;">{{ rep[cle] if rep[cle] is not none else '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {% if changements %}
+  <div class="alert alert-warning">
+    <strong>⚠️ Coordonnées modifiées par l'association</strong> (différentes de la fiche association) :
+    <form method="POST" action="{{ url_for('indicateurs.reponse_maj_association', suivi_id=suivi.id) }}" class="mt-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <table class="table table-sm bg-white mb-2">
+        <thead><tr><th></th><th>Champ</th><th>Fiche actuelle</th><th>Saisi dans le formulaire</th></tr></thead>
+        <tbody>
+        {% for c in changements %}
+          <tr><td><input type="checkbox" name="champ" value="{{ c.cle }}" id="ch-{{ c.cle }}" checked></td>
+              <td><label for="ch-{{ c.cle }}" class="mb-0">{{ c.libelle }}</label></td>
+              <td class="text-muted">{{ c.ancien or '— (vide)' }}</td>
+              <td><strong>{{ c.nouveau }}</strong></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <button class="btn btn-warning btn-sm" type="submit"
+              onclick="return confirm('Mettre à jour la fiche association avec les champs cochés ?');">✏️ Mettre à jour la fiche association</button>
+      <span class="small text-muted ms-2">Le courriel remplace « Courriel resp. IE 1 ».</span>
+    </form>
+  </div>
+  {% endif %}
+
+  <table class="table table-sm table-bordered bg-white">
+    <tr><td style="width:38%">Personne en charge</td><td>{{ rep.responsable_ie or '' }}</td></tr>
+    <tr><td>Téléphone</td><td>{{ rep.tel_resp_ie or '' }}</td></tr>
+    <tr><td>Courriel</td><td>{{ rep.courriel_ie or '' }}</td></tr>
+    <tr><td>CAR</td><td>{{ suivi.CAR or '' }}</td></tr>
+    <tr><td>Observations</td><td style="white-space: pre-line;">{{ rep.remarques or '' }}</td></tr>
+  </table>
+</div>
+{% endblock %}

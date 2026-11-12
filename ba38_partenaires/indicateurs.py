@@ -280,6 +280,7 @@ def index():
     # =========================================================
     periode = request.form.get("periode")
     date_limite = request.form.get("date_limite")
+    date_limite_ams = (request.form.get("date_limite_ams") or "").strip() or None
     fichier = request.files.get("csv_file")
     action = request.form.get("action")  # reload / use / None
 
@@ -356,18 +357,18 @@ def index():
             if date_limite:
                 cur.execute("""
                     UPDATE indicateurs_campagnes
-                    SET date_limite = ?
+                    SET date_limite = ?, date_limite_ams = COALESCE(?, date_limite_ams)
                     WHERE id = ?
-                """, (date_limite, campagne_id))
+                """, (date_limite, date_limite_ams, campagne_id))
 
             write_log(f"♻️ Rechargement campagne {campagne_id}")
 
         else:
             cur.execute("""
                 INSERT INTO indicateurs_campagnes
-                (annee, trimestre, periode, date_limite, fichier_csv, date_creation)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (annee, trimestre, periode, date_limite, "", datetime.now()))
+                (annee, trimestre, periode, date_limite, fichier_csv, date_creation, date_limite_ams)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (annee, trimestre, periode, date_limite, "", datetime.now(), date_limite_ams))
 
             campagne_id = cur.lastrowid
 
@@ -478,9 +479,10 @@ def index():
         # =====================================================
         cur.execute("""
             UPDATE indicateurs_campagnes
-            SET fichier_csv = ?, date_limite = ?, date_creation = ?, periode = ?
+            SET fichier_csv = ?, date_limite = ?, date_creation = ?, periode = ?,
+                date_limite_ams = COALESCE(?, date_limite_ams)
             WHERE id = ?
-        """, (filepath, date_limite, datetime.now(), periode, campagne_id))
+        """, (filepath, date_limite, datetime.now(), periode, date_limite_ams, campagne_id), )
 
         conn.commit()
 
@@ -489,9 +491,10 @@ def index():
         # update campagne
         cur.execute("""
             UPDATE indicateurs_campagnes
-            SET fichier_csv = ?, date_limite = ?, date_creation = ?, periode = ?
+            SET fichier_csv = ?, date_limite = ?, date_creation = ?, periode = ?,
+                date_limite_ams = COALESCE(?, date_limite_ams)
             WHERE id = ?
-        """, (filepath, date_limite, datetime.now(), periode, campagne_id))
+        """, (filepath, date_limite, datetime.now(), periode, date_limite_ams, campagne_id), )
 
         conn.commit()
 
@@ -511,6 +514,7 @@ def index():
 @login_required
 @require_access("indicateurs", "lecture")
 def resultats(campagne_id):
+    from ba38_partenaires.indicateurs_formulaire import url_formulaire
 
     conn = get_db_connection()
     cur = conn.cursor()
@@ -544,11 +548,17 @@ def resultats(campagne_id):
             s.ams_nb_personnes,
             s.ams_nb_passages,
             s.ams_motif_ecart_asso,
-            s.ams_motif_ecart_ba
+            s.ams_motif_ecart_ba,
+            s.token AS form_token,
+            COALESCE(s.reponse_mode, 1) AS reponse_mode,
+            r.soumis_le AS rep_soumis_le,
+            r.rouvert_le AS rep_rouvert_le,
+            r.mail_confirmation_erreur AS rep_mail_erreur
         FROM associations a
         LEFT JOIN indicateurs_suivi s
             ON s.association_id = a.id
             AND s.campagne_id = ?
+        LEFT JOIN indicateurs_reponses r ON r.suivi_id = s.id
         WHERE a.validite = 'oui'
         ORDER BY a.nom_association
     """, (campagne_id,)).fetchall()
@@ -558,6 +568,7 @@ def resultats(campagne_id):
     for l in lignes:
         d = dict(l)
         d["coherence"], d["coherence_messages"] = controle_coherence(d, campagne["periode"])
+        d["form_url"] = url_formulaire(d["form_token"]) if d.get("form_token") else ""
         lignes_dicts.append(d)
     lignes = lignes_dicts
 
@@ -916,11 +927,13 @@ def renvoyer_gmail(suivi_id):
         }
 
         sujet = render_modele_email(modele["sujet"], contexte).strip()
-        corps = render_modele_email(modele["corps"], contexte)
+        from ba38_partenaires.indicateurs_formulaire import (
+            assurer_token, url_formulaire, rendre_corps_modele)
+        corps, corps_html = rendre_corps_modele(modele, contexte, url_formulaire(assurer_token(conn, suivi_id)))
 
         try:
             envoyer_mail_gmail(sujet=sujet, destinataires=emails, texte=corps, attachment_path=pdf_path,
-                               reply_to=REPLY_TO_INDICATEURS)
+                               reply_to=REPLY_TO_INDICATEURS, is_html=corps_html)
 
             now_iso = datetime.now().isoformat(timespec="seconds")
 
@@ -974,7 +987,7 @@ def check_campagne():
         cur = conn.cursor()
 
         campagne = cur.execute("""
-            SELECT id, date_limite
+            SELECT id, date_limite, date_limite_ams
             FROM indicateurs_campagnes
             WHERE periode = ?
         """, (periode,)).fetchone()
@@ -982,5 +995,8 @@ def check_campagne():
     return jsonify({
         "exists": campagne is not None,
         "id": campagne["id"] if campagne else None,
-        "date_limite": campagne["date_limite"] if campagne else None
+        "date_limite": campagne["date_limite"] if campagne else None,
+        "date_limite_ams": campagne["date_limite_ams"] if campagne else None
     })
+# Formulaire de réponse en ligne (routes publiques + côté BAI)
+from ba38_partenaires import indicateurs_formulaire  # noqa: E402,F401

@@ -5,6 +5,8 @@
 {% block extra_styles %}
 <style>
     /* Colonnes AMS : fond légèrement teinté, motifs tronqués (texte complet au survol) */
+    .select-repondu.repondu-1 { border-color: #dc3545; }
+    .select-repondu.repondu-2, .select-repondu.repondu-4 { border-color: #198754; background-color: #f0fff4; }
     .indicateurs-table .col-ams { background-color: rgba(13, 110, 253, 0.04); }
     /* En-tête figé : fond opaque (sinon les lignes défilent visiblement derrière) */
     .indicateurs-table thead th.col-ams { background-color: #f6f9ff; }
@@ -56,6 +58,12 @@
            target="_blank" class="btn btn-outline-primary btn-sm"
            title="Indicateurs proposés (tonnage VIF ÷ 11,75) pour les non répondus, à saisir dans AMS avant la clôture">
             📄 Proposition non répondus
+        </a>
+
+        <a href="{{ url_for('indicateurs.saisie_ams', campagne_id=campagne.id) }}"
+           class="btn btn-outline-primary btn-sm"
+           title="Réponses reçues à saisir dans l'AMS (filtrées sur le statut AMS)">
+            ⌨️ Saisie AMS
         </a>
 
         <a href="{{ url_for('indicateurs.incoherences_pdf', campagne_id=campagne.id) }}"
@@ -209,8 +217,15 @@
                 <th>Code VIF</th>
                 <th>Email IE 1</th>
                 <th>Email IE 2</th>
-                <th>Statut</th>
-                <th>Répondu</th>
+                <th title="Statut dans l'export AMS (vient uniquement du fichier AMS)">Statut AMS</th>
+                <th title="Réponse de l'association (relances : uniquement « Non reçu »)">Répondu
+                    <select id="filtre-repondu" class="form-select form-select-sm mt-1" style="min-width:130px;">
+                        <option value="">Tous</option>
+                        <option value="1">Non reçu</option>
+                        <option value="2">Réponse mail</option>
+                        <option value="3">Réponse formulaire</option>
+                        <option value="4">Courrier</option>
+                    </select></th>
                 <th title="Import export VIF (Kg Brut)">VIF kg brut Trimestre</th>
                 <th class="col-ams text-center" title="Cohérence des valeurs AMS (détail au survol de la pastille)">Cohér.</th>
                 <th class="col-ams" title="Nombre de bénéficiaires VIF (fiche association)">Benef Vif</th>
@@ -237,6 +252,7 @@
                 <th>Mail envoyé</th>
                 <th>Statut Mailjet</th>
                 <th title="Renvoyer via Gmail (ba380@) en cas de rebond Mailjet">🔁 Gmail</th>
+                <th title="Formulaire de réponse en ligne rempli par l'association">📝 Réponse en ligne</th>
             </tr>
             <tr class="ligne-totaux">
                 <th colspan="6" class="text-end" id="totaux-libelle">Total</th>
@@ -248,13 +264,13 @@
                 <th class="col-ams text-end" id="total-personnes"></th>
                 <th class="col-ams text-end" id="total-passages"></th>
                 <th class="col-ams" colspan="2"></th>
-                <th colspan="5"></th>
+                <th colspan="6"></th>
             </tr>
         </thead>
 
         <tbody>
             {% for l in lignes %}
-            <tr data-statut="{{ (l.statut_csv or '')|lower }}" data-present="{{ l.present_csv }}" data-exclu="{{ 1 if l.exclure_envoi_mail else 0 }}">
+            <tr data-reponse="{{ l.reponse_mode if l.suivi_id else '' }}" data-statut="{{ (l.statut_csv or '')|lower }}" data-present="{{ l.present_csv }}" data-exclu="{{ 1 if l.exclure_envoi_mail else 0 }}">
 
                 <td>{{ l.nom_association }}</td>
                 <td>{{ l.code_vif }}</td>
@@ -270,25 +286,16 @@
                     {% endif %}
                 </td>
                 <td class="text-center align-middle statut-cell">
-                    {% set statut = (l.statut_csv or '')|lower %}
-
-                    {% if l.present_csv == 0 %}
-                    <span class="badge bg-danger statut-badge">✖</span>
-
-                    {% elif statut == "validé" %}
-                    <span class="badge bg-success statut-badge">✔</span>
-
-                    {% elif statut == "non reçu" %}
-                    <span class="badge bg-danger statut-badge">✖</span>
-
-                    {% elif statut == "a revoir" %}
-                    <span class="badge bg-warning text-dark statut-badge">⚠</span>
-
-                    {% elif statut == "a valider" %}
-                    <span class="badge badge-avalider statut-badge">🕓</span>
-
+                    {% if not l.suivi_id %}
+                    <span class="text-muted">—</span>
+                    {% elif l.reponse_mode == 3 %}
+                    <span class="badge bg-success" title="Rempli automatiquement par la validation du formulaire en ligne">📝 Réponse formulaire</span>
                     {% else %}
-                    <span class="badge bg-secondary statut-badge">—</span>
+                    <select class="form-select form-select-sm select-repondu repondu-{{ l.reponse_mode }}" data-suivi-id="{{ l.suivi_id }}" style="min-width:130px;">
+                        <option value="1" {% if l.reponse_mode == 1 %}selected{% endif %}>Non reçu</option>
+                        <option value="2" {% if l.reponse_mode == 2 %}selected{% endif %}>Réponse mail</option>
+                        <option value="4" {% if l.reponse_mode == 4 %}selected{% endif %}>Courrier</option>
+                    </select>
                     {% endif %}
                 </td>
                 <td class="small text-end align-middle" {% if l.tonnage_kg_net is not none %}data-total="vif" data-val="{{ l.tonnage_kg_net }}"{% endif %}>
@@ -397,6 +404,26 @@
                     <span class="text-muted">—</span>
                     {% endif %}
                 </td>
+                <td class="small text-center align-middle">
+                    {% if l.rep_soumis_le %}
+                    <span class="badge bg-success" title="Validée en ligne">✅ {{ l.rep_soumis_le[8:10] }}/{{ l.rep_soumis_le[5:7] }} {{ l.rep_soumis_le[11:16] }}</span>
+                    <div>
+                        <a href="{{ url_for('indicateurs.reponse_page', suivi_id=l.suivi_id) }}" target="_blank">👁️ Voir</a>
+                        <form method="POST" action="{{ url_for('indicateurs.reponse_rouvrir', suivi_id=l.suivi_id) }}" class="d-inline"
+                              onsubmit="return confirm('Rouvrir le formulaire de {{ l.nom_association }} ? L\'association pourra le modifier puis le valider à nouveau.');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-link p-0" title="Rouvrir pour modification">🔓 Rouvrir</button>
+                        </form>
+                    </div>
+                    {% if l.rep_mail_erreur %}<div class="text-danger" title="{{ l.rep_mail_erreur }}">⚠️ mail confirm. échoué</div>{% endif %}
+                    {% elif l.form_url %}
+                    <span class="text-muted">en attente</span>
+                    {% if l.rep_rouvert_le %}<div class="text-muted" style="font-size:0.75em;">🔓 rouvert</div>{% endif %}
+                    <div><button type="button" class="btn btn-sm btn-link p-0 btn-copier-lien" data-url="{{ l.form_url }}" title="Copier le lien du formulaire">🔗 Copier le lien</button></div>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -498,6 +525,33 @@
         });
     });
 
+    // 📝 Colonne « Répondu » : enregistrement automatique + filtre
+    document.querySelectorAll(".select-repondu").forEach(sel => {
+        sel.dataset.avant = sel.value;
+        sel.addEventListener("change", function () {
+            const mode = parseInt(this.value, 10);
+            fetch(`/indicateurs/reponse_mode/${this.dataset.suiviId}`, {
+                method: "POST",
+                headers: { "X-CSRFToken": "{{ csrf_token() }}", "Content-Type": "application/json" },
+                body: JSON.stringify({ mode })
+            })
+            .then(r => r.json().then(d => ({ ok: r.ok, d })))
+            .then(({ ok, d }) => {
+                if (!ok) { alert("⚠️ " + (d.erreur || "enregistrement impossible")); this.value = this.dataset.avant; return; }
+                this.dataset.avant = this.value;
+                this.closest("tr").dataset.reponse = String(mode);
+                appliquerFiltreRepondu();
+            })
+            .catch(() => { alert("⚠️ Enregistrement impossible"); this.value = this.dataset.avant; });
+        });
+    });
+    function correspondRepondu(row) {
+        const v = document.getElementById("filtre-repondu").value;
+        return !v || row.dataset.reponse === v;
+    }
+    function appliquerFiltreRepondu() { filterStatut(filtreStatutCourant); }
+    document.getElementById("filtre-repondu").addEventListener("change", appliquerFiltreRepondu);
+
     // Même logique que le calcul Jinja : catégorie unique par ligne
     function categorieLigne(row) {
         const statut = (row.dataset.statut || "").toLowerCase();
@@ -559,6 +613,7 @@
     }
 
     function reinitialiserFiltres() {
+        document.getElementById("filtre-repondu").value = "";
         viderFiltresAms();
         filterStatut("all");
     }
@@ -616,7 +671,7 @@
                 show = (statut === "a revoir");
             }
 
-            row.style.display = (show && correspondRecherche(row) && correspondFiltresAms(row)) ? "" : "none";
+            row.style.display = (show && correspondRecherche(row) && correspondFiltresAms(row) && correspondRepondu(row)) ? "" : "none";
 
         });
         majTotaux();
@@ -624,6 +679,15 @@
 
     majTotaux();
 
+
+    document.addEventListener('click', function (e) {
+        var b = e.target.closest('.btn-copier-lien');
+        if (!b) return;
+        navigator.clipboard.writeText(b.dataset.url).then(function () {
+            var t = b.textContent; b.textContent = '✔ Copié';
+            setTimeout(function () { b.textContent = t; }, 1500);
+        });
+    });
 </script>
 
 <!-- Modeale AIDE -->

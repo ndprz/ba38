@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Saisie AMS – {{ campagne.periode }}{% endblock %}
+{% block content %}
+<style>
+  .val-ams { font-size: 1.15rem; font-weight: 600; text-align: right; cursor: copy; background: #fff9a8; white-space: nowrap; }
+  .val-ams.copie { background: #b7f0c0; }
+  #table-saisie thead th { position: sticky; top: 0; background: #f1f3f5; z-index: 2; }
+</style>
+<div class="container-fluid mt-3 mb-4">
+  <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
+    <h3 class="mb-0">⌨️ Saisie AMS – {{ campagne.periode }}</h3>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('indicateurs.resultats', campagne_id=campagne.id) }}">↩️ Résultats</a>
+  </div>
+  <p class="text-muted small mb-2">Réponses reçues (mail, formulaire, courrier) à reporter dans l'AMS. Après chaque réimport du fichier AMS
+    (Résultats), les associations saisies passent en « Validé / À valider » et disparaissent du filtre « Non saisi ».
+    Cliquez sur une valeur pour la copier. Les valeurs ne sont connues que pour les réponses par formulaire ; pour un mail ou un courrier, reprenez-les du document reçu.</p>
+
+  <div class="d-flex align-items-center flex-wrap mb-2" style="gap:10px;">
+    <label class="mb-0" for="f-statut"><strong>Statut AMS :</strong></label>
+    <select id="f-statut" class="form-select form-select-sm" style="max-width:200px;">
+      <option value="non" selected>Non saisi (Non reçu)</option>
+      <option value="revoir">À revoir</option>
+      <option value="avalider">À valider</option>
+      <option value="valide">Validé</option>
+      <option value="absent">Absent AMS</option>
+      <option value="all">Tous</option>
+    </select>
+    <input id="f-recherche" class="form-control form-control-sm" style="max-width:260px;" placeholder="Rechercher une association…">
+    <span class="ms-2"><strong id="nb-lignes">0</strong> association(s) à afficher</span>
+  </div>
+
+  <div class="table-responsive">
+  <table class="table table-bordered table-sm bg-white" id="table-saisie">
+    <thead>
+      <tr>
+        <th>Association</th><th>Code VIF</th><th>Répondu</th><th>Statut AMS</th>
+        {% for cle, lib, aide, col in champs %}<th class="text-end">{{ lib }}{% if col == 'Année' %} <span class="badge bg-warning text-dark">Année</span>{% endif %}</th>{% endfor %}
+        <th>Observations</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for l in lignes %}
+      <tr data-statut="{{ l.statut_cle }}" data-nom="{{ (l.nom_association ~ ' ' ~ (l.code_vif or ''))|lower }}">
+        <td>{{ l.nom_association }}</td>
+        <td class="small">{{ l.code_vif or '' }}</td>
+        <td class="small">{{ libelles[l.reponse_mode] }}{% if l.soumis_le %}<div class="text-muted">{{ l.soumis_le[8:10] }}/{{ l.soumis_le[5:7] }} {{ l.soumis_le[11:16] }}</div>{% endif %}</td>
+        <td class="small">{{ l.statut_csv or ('Absent AMS' if l.statut_cle == 'absent' else '—') }}</td>
+        {% for cle, lib, aide, col in champs %}
+          {% if l.soumis_le %}
+          <td class="val-ams" title="Cliquer pour copier">{{ l[cle] if l[cle] is not none else '' }}</td>
+          {% else %}
+          <td class="text-muted small text-center">voir {{ 'mail' if l.reponse_mode == 2 else 'courrier' }}</td>
+          {% endif %}
+        {% endfor %}
+        <td class="small" style="max-width:260px; white-space: pre-line;">{{ l.remarques or '' }}</td>
+        <td class="small">{% if l.soumis_le %}<a href="{{ url_for('indicateurs.reponse_page', suivi_id=l.suivi_id) }}" target="_blank">👁️</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if not lignes %}<div class="alert alert-secondary">Aucune réponse reçue pour l'instant.</div>{% endif %}
+</div>
+<script>
+(function () {
+  const sel = document.getElementById("f-statut"), rech = document.getElementById("f-recherche");
+  const norm = t => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  function filtrer() {
+    const q = norm(rech.value.trim()); let n = 0;
+    document.querySelectorAll("#table-saisie tbody tr").forEach(tr => {
+      const ok = (sel.value === "all" || tr.dataset.statut === sel.value) && (!q || norm(tr.dataset.nom).includes(q));
+      tr.style.display = ok ? "" : "none"; if (ok) n++;
+    });
+    document.getElementById("nb-lignes").textContent = n;
+  }
+  sel.addEventListener("change", filtrer); rech.addEventListener("input", filtrer); filtrer();
+  document.addEventListener("click", e => {
+    const td = e.target.closest(".val-ams"); if (!td) return;
+    navigator.clipboard.writeText(td.textContent.trim()).then(() => {
+      td.classList.add("copie"); setTimeout(() => td.classList.remove("copie"), 700);
+    });
+  });
+})();
+</script>
+{% endblock %}

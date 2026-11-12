@@ -34,6 +34,12 @@
 
     <div class="mb-3">
         {{ input_date("date_limite", "Date limite retour Assos", required=True) }}
+        <div class="form-text" style="margin-top:-12px;">Préremplie : fin du trimestre + 4 semaines.</div>
+    </div>
+
+    <div class="mb-3">
+        {{ input_date("date_limite_ams", "Date limite saisie AMS (envoi des indicateurs à la FFBA)") }}
+        <div class="form-text" style="margin-top:-12px;">Préremplie : date retour Assos + 2 semaines. Interne, non communiquée aux associations.</div>
     </div>
 
     <div class="mb-3">
@@ -141,10 +147,33 @@ document.addEventListener("DOMContentLoaded", function () {
     const select = document.getElementById("periode");
     const CHECK_URL = "/check_campagne";
 
+    // 📅 Préremplissage des dates : fin du trimestre + 4 semaines (retour assos),
+    // puis + 2 semaines (saisie AMS FFBA). « Année » = clôture au 31/12.
+    const champRetour = document.getElementById("date_limite");
+    const champAms = document.getElementById("date_limite_ams");
+    [champRetour, champAms].forEach(c => c.addEventListener("input", () => { c.dataset.saisi = "1"; }));
+
+    function fmt(d) {
+        const p = n => String(n).padStart(2, "0");
+        return p(d.getUTCDate()) + "/" + p(d.getUTCMonth() + 1) + "/" + d.getUTCFullYear();
+    }
+    function prerempliDates(periode) {
+        const m = periode.match(/^T([1-4]) (\d{4})$/);
+        const annee = m ? parseInt(m[2], 10) : parseInt((periode.match(/(\d{4})/) || [])[1], 10);
+        if (!annee) return;
+        const trimestre = m ? parseInt(m[1], 10) : 4;
+        const fin = new Date(Date.UTC(annee, trimestre * 3, 0));      // dernier jour du trimestre
+        const retour = new Date(fin.getTime() + 28 * 86400000);
+        const ams = new Date(retour.getTime() + 14 * 86400000);
+        if (!champRetour.dataset.saisi) champRetour.value = fmt(retour);
+        if (!champAms.dataset.saisi) champAms.value = fmt(ams);
+    }
+
     select.addEventListener("change", function () {
 
         const periode = this.value;
         if (!periode) return;
+        prerempliDates(periode);
 
         fetch(`${CHECK_URL}?periode=${encodeURIComponent(periode)}`)
             .then(response => response.json())
@@ -164,6 +193,8 @@ document.addEventListener("DOMContentLoaded", function () {
                     // 🔹 Pré-remplir la date limite déjà enregistrée pour cette campagne
                     const dateLimiteModalInput = document.getElementById("date_limite_modal");
                     dateLimiteModalInput.value = data.date_limite || "";
+                    // la date AMS déjà enregistrée n'est pas écrasée par la valeur calculée
+                    if (data.date_limite_ams) { champAms.value = data.date_limite_ams; champAms.dataset.saisi = "1"; }
 
                     // 🔹 Bouton CREER QUAND MEME
                     const btnForce = document.getElementById("btnForcerCreation");

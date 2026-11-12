@@ -457,9 +457,21 @@ const MODELES_DATA = {
 };
 
 // ---- Éditeur riche (toujours HTML) ----
+// Mise en forme en styles EN LIGNE (les clients mail ne connaissent pas les classes ql-*)
+const SizeStyle = Quill.import("attributors/style/size");
+SizeStyle.whitelist = ["12px", "14px", "18px", "24px", "32px"];
+Quill.register(SizeStyle, true);
+Quill.register(Quill.import("attributors/style/align"), true);
 const quill = new Quill("#corps_quill_container", {
   theme: "snow",
-  modules: { toolbar: [["bold","italic","underline"], [{list:"ordered"},{list:"bullet"}], ["link","image"], ["clean"]] }
+  modules: { toolbar: [
+    [{ size: ["12px", "14px", "18px", "24px", "32px"] }],
+    ["bold", "italic", "underline"],
+    [{ color: [] }, { background: [] }],
+    [{ align: [] }],
+    [{ list: "ordered" }, { list: "bullet" }],
+    ["link", "image"], ["clean"]
+  ] }
 });
 const textarea = document.getElementById("corps_textarea");
 function chargerCorps(texte, isHtml) {

@@ -182,6 +182,7 @@ def calculer_propositions(conn, campagne_id, periode):
         JOIN associations a ON a.id = s.association_id
         WHERE s.campagne_id = ? AND s.present_csv = 1
           AND LOWER(TRIM(s.statut_csv)) = 'non reçu'
+          AND COALESCE(s.reponse_mode, 1) = 1
         ORDER BY a.nom_association COLLATE NOCASE
     """, (campagne_id,)).fetchall()
 
