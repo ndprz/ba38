@@ -26,7 +26,6 @@
         font-size: 0.875rem; white-space: nowrap; line-height: 1;
     }
     .barre-actions form { margin: 0; display: flex; align-items: center; gap: 8px; }
-    .btn-fichier input[type=file] { display: none; }
 
     /* Ligne des dates : espacement entre les éléments */
     .ligne-dates > * { margin-right: 14px; }
@@ -82,14 +81,26 @@
             </button>
         </form>
 
+        <!-- Import / mise à jour depuis l'export AMS (même traitement que « M.A.J campagne depuis .csv ») -->
+        <form method="POST" action="{{ url_for('indicateurs.index') }}" enctype="multipart/form-data" id="form-import-ams"
+              data-confirmation="Mettre à jour la campagne {{ campagne.periode }} depuis ce fichier AMS ?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="periode" value="{{ campagne.periode }}">
+            <input type="hidden" name="date_limite" value="{{ campagne.date_limite or '' }}">
+            <input type="hidden" name="date_limite_ams" value="{{ campagne.date_limite_ams or '' }}">
+            <input type="hidden" name="action" value="reload">
+            <input type="file" name="csv_file" class="input-fichier" style="display:none;">
+            <button type="button" class="btn btn-outline-primary btn-sm btn-import" title="Choisir l'export extrait de l'AMS puis mettre à jour les statuts et valeurs">
+                📥 Importer AMS
+            </button>
+        </form>
+
+        <!-- Import des tonnages livrés (export de l'ERP VIF) -->
         <form method="POST" action="{{ url_for('indicateurs.importer_tonnage', campagne_id=campagne.id) }}"
               enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label class="btn btn-outline-secondary btn-sm btn-fichier" id="label-fichier-ams" title="Choisir le fichier à importer">
-                <input type="file" name="tonnage_file" id="tonnage_file" required>
-                <span id="texte-fichier-ams">📎 Fichier AMS</span>
-            </label>
-            <button type="submit" class="btn btn-outline-primary btn-sm" title="Import export VIF (Client / Kg Net / Kg Brut) — le Kg Brut est retenu">
+            <input type="file" name="tonnage_file" class="input-fichier" style="display:none;">
+            <button type="button" class="btn btn-outline-primary btn-sm btn-import" title="Choisir l'export des tonnages livrés de l'ERP VIF (Client / Kg Net / Kg Brut) — le Kg Brut est retenu">
                 📦 Importer tonnage
             </button>
         </form>
@@ -556,12 +567,17 @@
         });
     });
 
-    // Nom du fichier choisi affiché dans le bouton « Fichier AMS »
-    document.getElementById("tonnage_file").addEventListener("change", function () {
-        const f = this.files[0];
-        const t = document.getElementById("texte-fichier-ams");
-        t.textContent = f ? "📎 " + (f.name.length > 22 ? f.name.slice(0, 20) + "…" : f.name) : "📎 Fichier AMS";
-        this.closest("label").title = f ? f.name : "Choisir le fichier à importer";
+    // Boutons d'import : un clic ouvre le sélecteur de fichier, puis l'import est envoyé
+    // (confirmation d'abord pour la mise à jour AMS, qui écrase les statuts).
+    document.querySelectorAll("form:has(.input-fichier)").forEach(form => {
+        const inp = form.querySelector(".input-fichier");
+        form.querySelector(".btn-import").addEventListener("click", () => { inp.value = ""; inp.click(); });
+        inp.addEventListener("change", () => {
+            if (!inp.files.length) return;
+            const msg = form.dataset.confirmation;
+            if (msg && !confirm(msg + "\n\nFichier : " + inp.files[0].name)) { inp.value = ""; return; }
+            form.submit();
+        });
     });
 
     // 📝 Colonne « Répondu » : enregistrement automatique + filtre
