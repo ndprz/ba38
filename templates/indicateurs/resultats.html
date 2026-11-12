@@ -18,6 +18,36 @@
     .pastille-rouge { background-color: #dc3545; }
     /* Ligne de totaux sous l'en-tête (son "top" figé est calculé en JS) */
     .indicateurs-table thead tr.ligne-totaux th { font-weight: 600; font-size: 0.85rem; white-space: nowrap; background-color: #f1f5fb; }
+
+    /* Barre d'actions du haut : tous les boutons à la même taille */
+    .barre-actions { flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+    .barre-actions .btn, .barre-actions label.btn {
+        height: 34px; padding: 0 12px; margin: 0; display: inline-flex; align-items: center;
+        font-size: 0.875rem; white-space: nowrap; line-height: 1;
+    }
+    .barre-actions form { margin: 0; display: flex; align-items: center; gap: 8px; }
+    .btn-fichier input[type=file] { display: none; }
+
+    /* Ligne des dates : espacement entre les éléments */
+    .ligne-dates > * { margin-right: 14px; }
+    .ligne-dates label { margin-right: 6px; }
+    .ligne-dates > :last-child { margin-right: 0; }
+
+    /* Ligne de synthèse des statuts : compacte, bouton infos AMS à droite */
+    .kpi-container { margin: 6px 0; padding: 4px 14px; gap: 34px; align-items: center; justify-content: flex-start; }
+    .kpi-container .kpi-value { font-size: 20px; line-height: 1.1; }
+    .kpi-container .kpi-label { font-size: 12px; margin-top: 0; }
+    .kpi-container .kpi-box { min-width: 90px; }
+    .kpi-container .zone-droite { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+    /* Colonne Association figée à gauche (colonnes AMS visibles : le tableau défile en largeur) */
+    .indicateurs-table tbody td.col-assoc {
+        position: sticky; left: 0; z-index: 1; background: #fff; box-shadow: 2px 0 2px rgba(0, 0, 0, 0.08);
+    }
+    .indicateurs-table tbody tr:nth-of-type(odd) td.col-assoc { background: #f2f2f2; }
+    .table-container-fixe thead th.col-assoc { left: 0; z-index: 4; }
+    /* Filtres d'en-tête : même format que la recherche Association */
+    .indicateurs-table thead .form-control-sm, .indicateurs-table thead .form-select-sm { font-size: 0.875rem; min-width: 130px; }
 </style>
 {% endblock %}
 
@@ -25,9 +55,16 @@
 
 <div class="page-sticky-header d-flex justify-content-between align-items-center">
 
-    <h2 class="mb-0">📊 Résultats - {{ campagne.periode }}</h2>
+    <h2 class="mb-0" style="white-space: nowrap; margin-right: 16px;">📊 Résultats - {{ campagne.periode }}</h2>
 
-    <div class="btn-group-ba38">
+    <div class="btn-group-ba38 barre-actions">
+        <button class="btn btn-outline-info btn-sm"
+                type="button"
+                data-bs-toggle="modal"
+                data-bs-target="#modalAide">
+            ℹ️ Aide utilisateur
+        </button>
+
         <a href="{{ url_for('emails.liste_modeles') }}"
             onclick="window.open(this.href, 'emails_window', 'width=1200,height=800'); return false;"
             class="btn btn-outline-primary btn-sm">
@@ -38,7 +75,7 @@
             📤 Envoyer mails
         </a>
 
-        <form method="POST" action="{{ url_for('indicateurs.verifier_statut_mailjet', campagne_id=campagne.id) }}" class="d-inline">
+        <form method="POST" action="{{ url_for('indicateurs.verifier_statut_mailjet', campagne_id=campagne.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-outline-primary btn-sm">
                 🔄 Vérifier statut Mailjet
@@ -46,9 +83,12 @@
         </form>
 
         <form method="POST" action="{{ url_for('indicateurs.importer_tonnage', campagne_id=campagne.id) }}"
-              enctype="multipart/form-data" class="d-flex align-items-center gap-1">
+              enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="file" name="tonnage_file" class="form-control form-control-sm" style="max-width: 220px;" required>
+            <label class="btn btn-outline-secondary btn-sm btn-fichier" id="label-fichier-ams" title="Choisir le fichier à importer">
+                <input type="file" name="tonnage_file" id="tonnage_file" required>
+                <span id="texte-fichier-ams">📎 Fichier AMS</span>
+            </label>
             <button type="submit" class="btn btn-outline-primary btn-sm" title="Import export VIF (Client / Kg Net / Kg Brut) — le Kg Brut est retenu">
                 📦 Importer tonnage
             </button>
@@ -72,13 +112,6 @@
             📄 Incohérences
         </a>
 
-        <button class="btn btn-outline-info btn-sm"
-                type="button"
-                data-bs-toggle="modal"
-                data-bs-target="#modalAide">
-            ℹ️ Aide utilisateur
-        </button>
-
         {{ action_button("⬅️ Retour", href=url_for('indicateurs.index'), color="outline-dark btn-sm") }}
     </div>
 
@@ -86,13 +119,13 @@
 
 <!-- Dates limites (modifiables) : retour des associations / saisie AMS par la BA -->
 <form method="POST" action="{{ url_for('indicateurs.modifier_date_limite', campagne_id=campagne.id) }}"
-      class="d-flex align-items-center gap-2 my-2">
+      class="d-flex align-items-center my-2 ligne-dates">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="date_limite" class="mb-0">📅 Date limite retour Assos :</label>
     <input type="text" name="date_limite" id="date_limite" class="form-control date-fr"
            style="max-width: 150px;" placeholder="jj/mm ou jjmmaaaa" autocomplete="off"
            value="{{ campagne.date_limite or '' }}">
-    <label for="date_limite_ams" class="mb-0 ms-3"
+    <label for="date_limite_ams" class="mb-0"
            title="Date limite de saisie dans AMS par la Banque Alimentaire (usage interne)">🗓️ Date limite saisie AMS :</label>
     <input type="text" name="date_limite_ams" id="date_limite_ams" class="form-control date-fr"
            style="max-width: 150px;" placeholder="jj/mm ou jjmmaaaa" autocomplete="off"
@@ -186,20 +219,16 @@
         <div class="kpi-label">Total</div>
     </div>
 
-    <!-- 🔄 RESET -->
-    <div class="text-center mt-2">
+    <div class="zone-droite">
         <button class="btn btn-sm btn-outline-secondary" onclick="reinitialiserFiltres()">
             🔄 Réinitialiser
         </button>
+        <button type="button" id="btn-toggle-ams" class="btn btn-sm btn-outline-primary"
+                title="Afficher / masquer les valeurs remontées de l'export AMS">
+            📈 <span id="btn-toggle-ams-libelle">Masquer infos AMS</span>
+        </button>
     </div>
 
-</div>
-
-<div class="d-flex justify-content-end mb-1">
-    <button type="button" id="btn-toggle-ams" class="btn btn-sm btn-outline-primary"
-            title="Afficher / masquer les valeurs remontées de l'export AMS">
-        📈 <span id="btn-toggle-ams-libelle">Masquer infos AMS</span>
-    </button>
 </div>
 
 <div class="table-container-fixe" id="table-container-indicateurs">
@@ -208,7 +237,7 @@
 
         <thead>
             <tr>
-                <th>
+                <th class="col-assoc">
                     <input type="search" id="recherche-association" class="form-control form-control-sm mb-1"
                            placeholder="🔍 Rechercher…" autocomplete="off" autofocus
                            title="Nom ou code VIF — Échap pour effacer">
@@ -218,14 +247,16 @@
                 <th>Email IE 1</th>
                 <th>Email IE 2</th>
                 <th title="Statut dans l'export AMS (vient uniquement du fichier AMS)">Statut AMS</th>
-                <th title="Réponse de l'association (relances : uniquement « Non reçu »)">Répondu
-                    <select id="filtre-repondu" class="form-select form-select-sm mt-1" style="min-width:130px;">
-                        <option value="">Tous</option>
+                <th title="Réponse de l'association (relances : uniquement « Non reçu »)">
+                    <select id="filtre-repondu" class="form-select form-select-sm mb-1" style="display:block; width:100%;" title="Filtrer sur la réponse reçue">
+                        <option value="">🔍 Tous</option>
                         <option value="1">Non reçu</option>
                         <option value="2">Réponse mail</option>
                         <option value="3">Réponse formulaire</option>
                         <option value="4">Courrier</option>
-                    </select></th>
+                    </select>
+                    Répondu
+                </th>
                 <th title="Import export VIF (Kg Brut)">VIF kg brut Trimestre</th>
                 <th class="col-ams text-center" title="Cohérence des valeurs AMS (détail au survol de la pastille)">Cohér.</th>
                 <th class="col-ams" title="Nombre de bénéficiaires VIF (fiche association)">Benef Vif</th>
@@ -272,7 +303,7 @@
             {% for l in lignes %}
             <tr data-reponse="{{ l.reponse_mode if l.suivi_id else '' }}" data-statut="{{ (l.statut_csv or '')|lower }}" data-present="{{ l.present_csv }}" data-exclu="{{ 1 if l.exclure_envoi_mail else 0 }}">
 
-                <td>{{ l.nom_association }}</td>
+                <td class="col-assoc">{{ l.nom_association }}</td>
                 <td>{{ l.code_vif }}</td>
                 <td class="small">{% if l.courriel_resp_IE1 or l.courriel_resp_IE2 %}{{ l.courriel_resp_IE1 or '—' }}{% elif l.courriel_association %}<span class="text-muted fst-italic" title="Aucun courriel indicateurs : la boîte mail générale de l'association sera utilisée">{{ l.courriel_association }} (générale)</span>{% else %}—{% endif %}</td>
                 <td class="small">{{ l.courriel_resp_IE2 or '—' }}</td>
@@ -523,6 +554,14 @@
                 }
             });
         });
+    });
+
+    // Nom du fichier choisi affiché dans le bouton « Fichier AMS »
+    document.getElementById("tonnage_file").addEventListener("change", function () {
+        const f = this.files[0];
+        const t = document.getElementById("texte-fichier-ams");
+        t.textContent = f ? "📎 " + (f.name.length > 22 ? f.name.slice(0, 20) + "…" : f.name) : "📎 Fichier AMS";
+        this.closest("label").title = f ? f.name : "Choisir le fichier à importer";
     });
 
     // 📝 Colonne « Répondu » : enregistrement automatique + filtre
