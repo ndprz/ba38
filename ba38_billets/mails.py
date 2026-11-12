@@ -1,5 +1,6 @@
 # Textes et envoi des mails du module Billets spectacle
 import html
+import json
 import os
 import re
 import sqlite3
@@ -98,7 +99,7 @@ def rendre_invitation(c, p, prefixe=""):
 
 
 def _fiche(c):
-    """Bloc récapitulatif HTML du spectacle."""
+    """Bloc récapitulatif HTML du spectacle (variable <<fiche>>)."""
     lignes = [("Spectacle", c["spectacle"]), ("Lieu", c["lieu"]),
               ("Date", date_fr(c["date_spectacle"]) + (f" à {c['heure_spectacle'].replace(':', 'h')}" if c["heure_spectacle"] else "")),
               ("Offert par", c["donateur"])]
@@ -107,51 +108,103 @@ def _fiche(c):
         for a, b in lignes if b) + "</table>")
 
 
-def _cadre(prenom, contenu):
-    return (f"<p>Bonjour {html.escape(prenom or '')},</p>{contenu}"
-            "<p>Cordialement,<br>La Banque Alimentaire</p>")
+# ------------------------------------------------------------
+# Textes des autres mails (éditables dans la campagne ; valeurs par défaut ci-dessous).
+# Les << >> sont écrits &lt;&lt; &gt;&gt; comme les enregistre l'éditeur Quill.
+# ------------------------------------------------------------
+_SIGN = "<p>Cordialement,<br>La Banque Alimentaire</p>"
+TEXTES_MAILS = {
+    "confirmation": {
+        "libelle": "Confirmation d'inscription (envoyé au bénévole qui s'inscrit)",
+        "sujet": "Inscription enregistrée : <<spectacle>>",
+        "corps": (
+            "<p>Bonjour &lt;&lt;prenom&gt;&gt;,</p>"
+            "<p>Votre inscription pour les places offertes est bien enregistrée.</p>&lt;&lt;fiche&gt;&gt;"
+            "<p>&lt;&lt;nb_billets&gt;&gt; place(s) sont à attribuer. <b>Un tirage au sort sera effectué après la date "
+            "limite d'inscription, le &lt;&lt;date_limite&gt;&gt;</b> : vous recevrez alors un mail vous indiquant si "
+            "vous avez été retenu(e).</p>"
+            "<p>Vous pouvez vous désister (ou vous réinscrire) jusqu'à cette date avec votre lien personnel : "
+            "&lt;&lt;lien_inscription&gt;&gt;</p>" + _SIGN)},
+    "desistement": {
+        "libelle": "Désistement (envoyé au bénévole qui se désiste)",
+        "sujet": "Désistement enregistré : <<spectacle>>",
+        "corps": (
+            "<p>Bonjour &lt;&lt;prenom&gt;&gt;,</p>"
+            "<p>Votre désistement pour « &lt;&lt;spectacle&gt;&gt; » est bien pris en compte.</p>"
+            "<p>Vous pouvez vous réinscrire jusqu'au &lt;&lt;date_limite&gt;&gt; : &lt;&lt;lien_inscription&gt;&gt;</p>"
+            + _SIGN)},
+    "gagnant": {
+        "libelle": "Résultat — gagnant tiré parmi les inscrits",
+        "sujet": "Vous avez une place : <<spectacle>>",
+        "corps": (
+            "<p>Bonjour &lt;&lt;prenom&gt;&gt;,</p>"
+            "<p>Le tirage au sort parmi les inscrits a eu lieu : <b>félicitations, vous avez été tiré(e) au sort et une "
+            "place vous est attribuée</b> !</p>&lt;&lt;fiche&gt;&gt;"
+            "<p><b>Retrait des billets :</b> &lt;&lt;mode_retrait&gt;&gt;</p>"
+            "<p>Si vous ne pouvez finalement pas en profiter, merci de nous prévenir au plus vite pour que la place "
+            "soit proposée à quelqu'un d'autre.</p>" + _SIGN)},
+    "gagnant_salarie": {
+        "libelle": "Résultat — gagnant tiré parmi les salariés",
+        "sujet": "Vous avez une place : <<spectacle>>",
+        "corps": (
+            "<p>Bonjour &lt;&lt;prenom&gt;&gt;,</p>"
+            "<p>Les places n'ayant pas toutes trouvé preneur parmi les bénévoles inscrits, un tirage au sort a été "
+            "effectué parmi les salariés : <b>vous avez été tiré(e) au sort et une place vous est attribuée</b> !</p>"
+            "&lt;&lt;fiche&gt;&gt;"
+            "<p><b>Retrait des billets :</b> &lt;&lt;mode_retrait&gt;&gt;</p>"
+            "<p>Si vous ne pouvez finalement pas en profiter, merci de nous prévenir au plus vite pour que la place "
+            "soit proposée à quelqu'un d'autre.</p>" + _SIGN)},
+    "non_retenu": {
+        "libelle": "Résultat — inscrit non retenu",
+        "sujet": "Résultat du tirage : <<spectacle>>",
+        "corps": (
+            "<p>Bonjour &lt;&lt;prenom&gt;&gt;,</p>"
+            "<p>Le tirage au sort pour « &lt;&lt;spectacle&gt;&gt; » a eu lieu et, malheureusement, vous n'avez pas été "
+            "retenu(e) cette fois-ci : il y avait plus d'inscrits que de places.</p>"
+            "<p>Merci de votre participation, et à une prochaine occasion !</p>" + _SIGN)},
+}
+
+
+def textes_campagne(c):
+    """{clé: {libelle, sujet, corps}} : textes par défaut surchargés par ceux enregistrés dans la campagne."""
+    try:
+        perso = json.loads(c["textes_mails"] or "{}")
+    except (KeyError, IndexError, ValueError, TypeError):
+        perso = {}
+    res = {}
+    for cle, d in TEXTES_MAILS.items():
+        p = perso.get(cle) or {}
+        res[cle] = {"libelle": d["libelle"], "sujet": (p.get("sujet") or "").strip() or d["sujet"],
+                    "corps": p.get("corps") if (p.get("corps") or "").strip() else d["corps"]}
+    return res
+
+
+def rendre_texte(c, p, cle):
+    """(sujet, corps) d'un des mails éditables, variables remplacées (valeurs échappées)."""
+    t = textes_campagne(c)[cle]
+    v = {k: html.escape(x) for k, x in variables(c, p).items()}
+    lien = url_inscription(p["token"]) if p["token"] else ""
+    v["lien_inscription"] = f'<a href="{lien}">{lien}</a>' if lien else ""
+    v["fiche"] = _fiche(c)
+    brut = re.sub(r"&lt;&lt;(\w+)&gt;&gt;", r"<<\1>>", t["corps"])
+    corps = render_modele_email(brut, v)
+    sujet = render_modele_email(re.sub(r"&lt;&lt;(\w+)&gt;&gt;", r"<<\1>>", t["sujet"]), variables(c, p)).strip()
+    return sujet, corps
 
 
 def mail_confirmation_inscription(c, p):
-    lien = url_inscription(p["token"])
-    contenu = (
-        f"<p>Votre inscription pour les places offertes est bien enregistrée.</p>{_fiche(c)}"
-        f"<p>{c['nb_billets']} place(s) sont à attribuer. <b>Un tirage au sort sera effectué après la date limite "
-        f"d'inscription, le {limite_fr(c['date_limite'])}</b> : vous recevrez alors un mail vous indiquant si vous "
-        f"avez été retenu(e).</p>"
-        f"<p>Vous pouvez vous désister (ou vous réinscrire) jusqu'à cette date avec votre lien personnel : "
-        f"<a href=\"{lien}\">{lien}</a></p>")
-    return f"Inscription enregistrée : {c['spectacle']}", _cadre(p["prenom"], contenu)
+    return rendre_texte(c, p, "confirmation")
 
 
 def mail_desistement(c, p):
-    lien = url_inscription(p["token"])
-    contenu = (f"<p>Votre désistement pour « {html.escape(c['spectacle'] or '')} » est bien pris en compte.</p>"
-               f"<p>Vous pouvez vous réinscrire jusqu'au {limite_fr(c['date_limite'])} : "
-               f"<a href=\"{lien}\">{lien}</a></p>")
-    return f"Désistement enregistré : {c['spectacle']}", _cadre(p["prenom"], contenu)
+    return rendre_texte(c, p, "desistement")
 
 
 def mail_resultat(c, p):
-    """Mail de résultat du tirage (gagnant ou non retenu)."""
+    """Mail de résultat du tirage (gagnant inscrit / gagnant salarié / non retenu)."""
     if p["resultat"] == "gagnant":
-        retrait = (f"<p><b>Retrait des billets :</b> {html.escape(c['mode_retrait'])}</p>"
-                   if c["mode_retrait"] else "")
-        if p["origine_place"] == "salarie":
-            intro = ("<p>Les places n'ayant pas toutes trouvé preneur parmi les bénévoles inscrits, un tirage au sort "
-                     "a été effectué parmi les salariés : <b>vous avez été tiré(e) au sort et une place vous est "
-                     "attribuée</b> !</p>")
-        else:
-            intro = ("<p>Le tirage au sort parmi les inscrits a eu lieu : <b>félicitations, vous avez été "
-                     "tiré(e) au sort et une place vous est attribuée</b> !</p>")
-        return (f"Vous avez une place : {c['spectacle']}",
-                _cadre(p["prenom"], intro + _fiche(c) + retrait +
-                       "<p>Si vous ne pouvez finalement pas en profiter, merci de nous prévenir au plus vite "
-                       "pour que la place soit proposée à quelqu'un d'autre.</p>"))
-    contenu = (f"<p>Le tirage au sort pour « {html.escape(c['spectacle'] or '')} » a eu lieu et, malheureusement, "
-               f"vous n'avez pas été retenu(e) cette fois-ci : il y avait plus d'inscrits que de places.</p>"
-               "<p>Merci de votre participation, et à une prochaine occasion !</p>")
-    return f"Résultat du tirage : {c['spectacle']}", _cadre(p["prenom"], contenu)
+        return rendre_texte(c, p, "gagnant_salarie" if p["origine_place"] == "salarie" else "gagnant")
+    return rendre_texte(c, p, "non_retenu")
 
 
 def envoyer(c, destinataire, sujet, corps, mode_test=False, user_email=None):

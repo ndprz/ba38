@@ -203,6 +203,29 @@
     {% endif %}
   </div></div>
 
+  <!-- 6. Textes des autres mails -->
+  <div class="card mb-3" id="textes"><div class="card-header"><b>6. Textes des autres mails</b>
+    <span class="text-muted small">— confirmation d'inscription, désistement, résultats du tirage</span></div>
+  <form method="POST" id="form-textes" action="{{ url_for('billets.enregistrer_textes_mails', campagne_id=c.id) }}" class="card-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <fieldset {% if not peut_ecrire %}disabled{% endif %}>
+    <div class="mb-2 small">Variables utilisables (à taper telles quelles) :
+      {% for v in variables %}<code>&lt;&lt;{{ v }}&gt;&gt;</code> {% endfor %}<code>&lt;&lt;fiche&gt;&gt;</code> (récapitulatif spectacle / lieu / date / donateur).
+      <br><span class="text-muted">Dans ces mails, <code>&lt;&lt;lien_inscription&gt;&gt;</code> donne le lien personnel du bénévole (lien cliquable).</span></div>
+    {% for cle, t in textes_mails.items() %}
+    <div class="border rounded p-2 mb-3">
+      <b>{{ t.libelle }}</b>
+      <div class="row g-2 mt-1"><div class="col-md-8"><label class="small mb-0">Sujet</label>
+        <input name="sujet_{{ cle }}" id="sujet_{{ cle }}" class="form-control form-control-sm" value="{{ t.sujet }}"></div></div>
+      <div id="quill_{{ cle }}" class="mt-2" style="background:white;"></div>
+      <textarea name="corps_{{ cle }}" id="corps_{{ cle }}" hidden>{{ t.corps }}</textarea>
+      <button type="button" class="btn btn-link btn-sm p-0 mt-1 reset-texte" data-cle="{{ cle }}">↩️ Rétablir le texte par défaut</button>
+    </div>
+    {% endfor %}
+    {% if peut_ecrire %}<button class="btn btn-primary btn-sm">💾 Enregistrer les textes</button>{% endif %}
+    </fieldset>
+  </form></div>
+
   {% if peut_ecrire %}
   <form method="POST" action="{{ url_for('billets.supprimer', campagne_id=c.id) }}" onsubmit="return confirm('Supprimer définitivement cette campagne ?');">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -277,6 +300,26 @@ document.querySelectorAll(".var-ins").forEach(b => b.addEventListener("click", (
   quill.insertText(r ? r.index : quill.getLength() - 1, b.dataset.var, "user");
 }));
 
+
+// ---- Éditeurs des textes des autres mails ----
+const TEXTES_DEFAUT = {{ textes_defaut|tojson }};
+const editeursTextes = {};
+document.querySelectorAll("[id^=quill_]").forEach(div => {
+  const cle = div.id.slice(6);
+  const q = new Quill(div, { theme: "snow", modules: { toolbar: [["bold","italic","underline"], [{list:"ordered"},{list:"bullet"}], ["link"], ["clean"]] } });
+  q.root.innerHTML = document.getElementById("corps_" + cle).value;
+  q.root.style.minHeight = "140px";
+  editeursTextes[cle] = q;
+});
+document.querySelectorAll(".reset-texte").forEach(b => b.addEventListener("click", () => {
+  if (!confirm("Rétablir le texte par défaut de ce mail ? (n'est enregistré qu'au clic sur « Enregistrer les textes »)")) return;
+  const d = TEXTES_DEFAUT[b.dataset.cle];
+  document.getElementById("sujet_" + b.dataset.cle).value = d.sujet;
+  editeursTextes[b.dataset.cle].root.innerHTML = d.corps;
+}));
+document.getElementById("form-textes").addEventListener("submit", () => {
+  for (const cle in editeursTextes) document.getElementById("corps_" + cle).value = editeursTextes[cle].root.innerHTML;
+});
 // Cases à cocher : enregistrement automatique
 function enregistrerSelection(ids, selected) {
   fetch("{{ url_for('billets.selection', campagne_id=c.id) }}", {

@@ -8,7 +8,9 @@
 #   → 6. mails de résultat.
 # ============================================================
 
+import json
 import os
+import re
 import secrets
 import sqlite3
 import uuid
@@ -57,6 +59,13 @@ def acces(niveau):
 def _connect():
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
+    # Auto-réparation : colonne des textes éditables (ajoutée après la 1re version du module)
+    if "textes_mails" not in {r[1] for r in conn.execute("PRAGMA table_info(billets_campagnes)")}:
+        try:
+            conn.execute("ALTER TABLE billets_campagnes ADD COLUMN textes_mails TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
     return conn
 
 
@@ -171,7 +180,8 @@ def campagne(campagne_id):
         depassee=mails.limite_depassee(c), tiree=(c["statut"] == "tiree"),
         peut_ecrire=has_access("billets", "ecriture"), utilisateurs=utilisateurs_basilic(),
         variables=mails.VARIABLES_AIDE, limite_fr=mails.limite_fr, date_fr=mails.date_fr,
-        modele_defaut=TEXTE_PAR_DEFAUT)
+        modele_defaut=TEXTE_PAR_DEFAUT, textes_mails=mails.textes_campagne(c),
+        textes_defaut={k: {"sujet": v["sujet"], "corps": v["corps"]} for k, v in mails.TEXTES_MAILS.items()})
 
 
 @billets_bp.route("/<int:campagne_id>/fiche", methods=["POST"])
@@ -224,6 +234,27 @@ def enregistrer_message(campagne_id):
         conn.commit()
     flash("✅ Message enregistré.", "success")
     return _retour(campagne_id, "#destinataires")
+
+
+@billets_bp.route("/<int:campagne_id>/textes_mails", methods=["POST"])
+@login_required
+@acces("ecriture")
+def enregistrer_textes_mails(campagne_id):
+    """Enregistre les textes des mails de confirmation, désistement et résultat."""
+    textes = {}
+    for cle, d in mails.TEXTES_MAILS.items():
+        sujet = (request.form.get(f"sujet_{cle}") or "").strip()
+        corps = request.form.get(f"corps_{cle}") or ""
+        if not sujet or not re.sub(r"<[^>]+>|&nbsp;|\s", "", corps):
+            flash(f"❌ Sujet et texte obligatoires : « {d['libelle']} ».", "danger")
+            return _retour(campagne_id, "#textes")
+        textes[cle] = {"sujet": sujet[:200], "corps": corps}
+    with _connect() as conn:
+        conn.execute("UPDATE billets_campagnes SET textes_mails=? WHERE id=?",
+                     (json.dumps(textes, ensure_ascii=False), campagne_id))
+        conn.commit()
+    flash("✅ Textes des mails enregistrés.", "success")
+    return _retour(campagne_id, "#textes")
 
 
 @billets_bp.route("/upload_image", methods=["POST"])

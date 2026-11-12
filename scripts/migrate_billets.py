@@ -74,6 +74,9 @@ def ensure(conn):
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_billets_part_campagne ON billets_participants(campagne_id)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_billets_part_token ON billets_participants(token)")
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(billets_campagnes)")}
+    if "textes_mails" not in cols:
+        conn.execute("ALTER TABLE billets_campagnes ADD COLUMN textes_mails TEXT")  # JSON des textes éditables
     print("✓ Tables billets_campagnes / billets_participants prêtes.")
 
     if conn.execute("SELECT 1 FROM applications WHERE appli='billets'").fetchone() is None:
