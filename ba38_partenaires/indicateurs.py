@@ -10,6 +10,7 @@ from ba38_partenaires.indicateurs_coherence import (
     lignes_incoherentes, generer_pdf_incoherences,
 )
 import os
+import re
 import pandas as pd
 import sqlite3
 from datetime import datetime
@@ -260,11 +261,22 @@ def index():
 
     annee_now = datetime.now().year
 
-    periodes = [
-        f"T1 {annee_now}",
-        f"T2 {annee_now}",
-        f"T3 {annee_now}",
-    ]
+    # Sélecteur d'année + période : années des campagnes existantes et de l'année en cours/précédente
+    existantes = []
+    try:
+        with get_db_connection() as _c:
+            existantes = [r[0] for r in _c.execute("SELECT periode FROM indicateurs_campagnes")]
+    except Exception:
+        pass
+    annees = {annee_now - 1, annee_now}
+    for per in existantes:
+        m = re.search(r"(\d{4})", per)
+        if m:
+            annees.add(int(m.group(1)))
+    annees = sorted(annees, reverse=True)
+    # jusqu'en mars, on travaille sur l'année écoulée (campagne annuelle de janvier)
+    annee_defaut = annee_now - 1 if datetime.now().month <= 3 else annee_now
+    periodes = dict(annees=annees, annee_defaut=annee_defaut, existantes=existantes)
 
     # =========================================================
     # 🔹 GET
@@ -272,7 +284,7 @@ def index():
     if request.method == "GET":
         return render_template(
             "indicateurs/index.html",
-            periodes=periodes
+            **periodes
         )
 
     # =========================================================
@@ -331,7 +343,7 @@ def index():
 
             return render_template(
                 "indicateurs/index.html",
-                periodes=periodes,
+                **periodes,
                 show_modal=True,
                 existing_id=existing["id"],
                 periode=periode,

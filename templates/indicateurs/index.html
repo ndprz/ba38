@@ -22,13 +22,18 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="mb-3">
+        <label for="annee_select">Année</label>
+        <select id="annee_select" class="form-control" style="max-width: 160px;">
+            {% for a in annees %}
+            <option value="{{ a }}" {% if a == annee_defaut %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="mb-3">
         <label>Période</label>
         <select id="periode" name="periode" class="form-control">
             <option value="" selected disabled>-- Choisir un trimestre --</option>
-            <option value="T1 2026">T1 2026</option>
-            <option value="T2 2026">T2 2026</option>
-            <option value="T3 2026">T3 2026</option>
-            <option value="Année 2026">Année 2026</option>
         </select>
     </div>
 
@@ -145,6 +150,21 @@ document.addEventListener("DOMContentLoaded", function () {
     console.log("JS chargé");
 
     const select = document.getElementById("periode");
+    const selectAnnee = document.getElementById("annee_select");
+    const EXISTANTES = {{ existantes|tojson }};
+
+    // Périodes de l'année choisie (✔ = campagne déjà créée)
+    function peuplerPeriodes() {
+        const a = selectAnnee.value;
+        select.innerHTML = '<option value="" selected disabled>-- Choisir un trimestre --</option>';
+        ["T1 " + a, "T2 " + a, "T3 " + a, "Année " + a].forEach(p => {
+            const o = document.createElement("option");
+            o.value = p; o.textContent = p + (EXISTANTES.includes(p) ? "  ✔ campagne existante" : "");
+            select.appendChild(o);
+        });
+    }
+    selectAnnee.addEventListener("change", peuplerPeriodes);
+    peuplerPeriodes();
     const CHECK_URL = "/check_campagne";
 
     // 📅 Préremplissage des dates : fin du trimestre + 4 semaines (retour assos),
