@@ -28,7 +28,7 @@ def maj_modele_planning_pesee():
 
         # Bénévoles préparant la pesée
         benevoles_raw = cursor.execute("""
-            SELECT id, nom, prenom, prep_pesee FROM benevoles
+            SELECT id, nom, prenom, ramasse_pesee FROM benevoles
         """).fetchall()
 
         benevoles = sorted(
@@ -71,7 +71,7 @@ def maj_modele_planning_pesee():
 
             conn.commit()
             upload_database()
-            flash("✅ Modèle de planning pesée mis à jour.", "success")
+            flash("✅ Modèle de planning pesée ramasse mis à jour.", "success")
             return redirect(url_for("planning_pesee.maj_modele_planning_pesee"))
 
         # --- GET : lecture du modèle
@@ -162,7 +162,7 @@ def creation_planning_pesee():
     if travail_vendredi == "non":
         jours = [j for j in jours if j != "vendredi"]
 
-    benevoles_raw = cursor.execute("SELECT id, nom, prenom, prep_pesee FROM benevoles").fetchall()
+    benevoles_raw = cursor.execute("SELECT id, nom, prenom, ramasse_pesee FROM benevoles").fetchall()
     absences = cursor.execute("SELECT benevole_id, date_debut, date_fin FROM absences").fetchall()
     jours_dates = {j: lundi + timedelta(days=i) for i, j in enumerate(["lundi", "mardi", "mercredi", "jeudi", "vendredi"])}
     absents_par_jour = get_absents_par_jour(absences, jours_dates)
@@ -188,7 +188,7 @@ def creation_planning_pesee():
     # 🔎 Log création ou régénération
     if planning_existe:
         write_log(
-            f"🔄 Régénération planning pesée "
+            f"🔄 Régénération planning pesée ramasse "
             f"S{num_semaine}/{annee} par {current_user.username}"
         )
         cursor.execute(
@@ -197,7 +197,7 @@ def creation_planning_pesee():
         )
     else:
         write_log(
-            f"🆕 Création planning pesée "
+            f"🆕 Création planning pesée ramasse "
             f"S{num_semaine}/{annee} par {current_user.username}"
         )
     for bloc in planning:
@@ -227,7 +227,7 @@ def creation_planning_pesee():
 
     conn.commit()
     conn.close()
-    flash("✅ Planning pesée généré et enregistré avec succès.", "success")
+    flash("✅ Planning pesée ramasse généré et enregistré avec succès.", "success")
     return render_template("planning/pesee/creation_planning_pesee.html", semaine=semaine, planning=planning)
 
 
@@ -301,7 +301,7 @@ def apercu_planning_pesee():
 @require_access("planning", "ecriture")
 def gestion_planning_pesee():
     """
-    Gestion (modification) du planning Pesée.
+    Gestion (modification) du planning Pesée ramasse.
 
     Fonctionnalités:
     - Lecture du planning (plannings_pesee) pour une semaine.
@@ -454,7 +454,7 @@ def gestion_planning_pesee():
     # 4) Liste bénévoles
     # -------------------------
     benevoles = [dict(b) for b in cursor.execute(
-        "SELECT id, nom, prenom, prep_pesee FROM benevoles ORDER BY nom, prenom"
+        "SELECT id, nom, prenom, ramasse_pesee FROM benevoles ORDER BY nom, prenom"
     ).fetchall()]
 
     # Déjà affectés (en tenant compte des effectifs)
@@ -527,7 +527,7 @@ def gestion_planning_pesee():
 
             conn.commit()
             upload_database()
-            flash("✅ Planning pesée enregistré.", "success")
+            flash("✅ Planning pesée ramasse enregistré.", "success")
             return redirect(url_for("planning_pesee.gestion_planning_pesee", semaine=semaine))
 
         except Exception as e:

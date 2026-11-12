@@ -16,6 +16,7 @@ from openpyxl.styles import Font, PatternFill
 from ba38_utilitaires.core import adresse_test_utilisateur, get_db_connection, require_access, write_log
 
 from ba38_cerfa import cerfa_bp
+from ba38_benevoles import cotisations as cotis
 from ba38_cerfa.calculs import (
     adresse_complete, bareme_campagne, champs_manquants, charger_json, geocoder, totaux_declaration,
 )
@@ -57,9 +58,10 @@ def _declaration_ou_404(conn, declaration_id):
 
 
 def _colonne_cotisation(conn, annee):
-    colonne = f"cotisation_{int(annee)}"
-    colonnes = {r["name"] for r in conn.execute("PRAGMA table_info(benevoles)")}
-    return colonne if colonne in colonnes else None
+    """Les cotisations sont dans benevoles_cotisations : toute année est valide
+    (retourne la clé 'cotisation_AAAA' si au moins une cotisation existe)."""
+    n = conn.execute("SELECT COUNT(*) FROM benevoles_cotisations WHERE annee = ?", (int(annee),)).fetchone()[0]
+    return f"cotisation_{int(annee)}" if n else None
 
 
 def _maintenant():
@@ -275,12 +277,13 @@ def frais_population(campagne_id):
         campagne = _campagne_ou_404(conn, campagne_id)
         colonne = _colonne_cotisation(conn, campagne["annee_frais"])
         if not colonne:
-            flash(f"❌ Pas de colonne cotisation_{campagne['annee_frais']} dans la table bénévoles.", "danger")
+            flash(f"❌ Aucune cotisation enregistrée pour {campagne['annee_frais']} dans les bénévoles.", "danger")
             return redirect(url_for("cerfa.frais_suivi", campagne_id=campagne_id))
 
-        benevoles = conn.execute(f"""
-            SELECT * FROM benevoles WHERE LOWER(TRIM(COALESCE({colonne}, ''))) = 'oui'
-        """).fetchall()
+        benevoles = conn.execute("""
+            SELECT * FROM benevoles
+            WHERE id IN (SELECT id_benevole FROM benevoles_cotisations WHERE annee = ?)
+        """, (int(campagne["annee_frais"]),)).fetchall()
         existants = {r["benevole_id"]: r for r in conn.execute(
             "SELECT * FROM cerfa_frais_declarations WHERE campagne_id = ?", (campagne_id,))}
 

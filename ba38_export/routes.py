@@ -3,6 +3,7 @@ from flask_login import login_required, current_user
 from ba38_utilitaires.core import get_db_connection, get_db_path, write_log, has_access
 from ba38_utilitaires.organisation import get_organisation
 from ba38_export.etat_passages import construire_etat
+from ba38_benevoles import cotisations as cotis
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from weasyprint import HTML
@@ -90,6 +91,9 @@ def generateur_excel():
         """,
         (data_type,),
     ).fetchall()
+    if data_type == "benevoles":
+        # Cotisations par année : champs virtuels (table benevoles_cotisations)
+        fields_data = [dict(r) for r in fields_data] + cotis.champs_virtuels(conn)
     # write_log(f"📋 {len(fields_data)} champs trouvés pour {data_type}")
 
     # Regroupement
@@ -164,6 +168,14 @@ def generateur_excel():
     where_clauses, params = [], []
     oui_non_clauses = []
 
+    def col(nom):
+        """Expression SQL d'une colonne (sous-requête pour les cotisations par année)."""
+        if data_type == "benevoles":
+            expr = cotis.expression_sql(nom)
+            if expr:
+                return expr
+        return nom
+
     for field in fields_data:
         f = field["field_name"]
         t = (field["type_champ"] or "").lower()
@@ -182,10 +194,10 @@ def generateur_excel():
         operator = request.form.get(f"operator_{f}") or filters.get(f"operator_{f}", "contains")
         nonnull = request.form.get(f"nonnull_{f}") or filters.get(f"nonnull_{f}")
         if operator == "empty" and t != "oui_non":
-            where_clauses.append(f"({f} IS NULL OR TRIM({f})='')")
+            where_clauses.append(f"({col(f)} IS NULL OR TRIM({col(f)})='')")
             continue
         if nonnull:
-            where_clauses.append(f"({f} IS NOT NULL AND TRIM({f})<>'')")
+            where_clauses.append(f"({col(f)} IS NOT NULL AND TRIM({col(f)})<>'')")
 
         # 🔸 Ignorer les valeurs techniques ou vides
         if not value or str(value).lower() == "contains":
@@ -197,14 +209,14 @@ def generateur_excel():
 
 
         if t == "oui_non":
-            clause = f"LOWER(TRIM({f}))=?"
+            clause = f"LOWER(TRIM({col(f)}))=?"
             oui_non_clauses.append((clause, value.lower()))
         else:
             if operator == "startswith":
-                clause = f"LOWER({f}) LIKE ?"
+                clause = f"LOWER({col(f)}) LIKE ?"
                 params.append(value.lower() + "%")
             else:
-                clause = f"LOWER({f}) LIKE ?"
+                clause = f"LOWER({col(f)}) LIKE ?"
                 params.append("%" + value.lower() + "%")
             where_clauses.append(clause)
 
@@ -225,7 +237,9 @@ def generateur_excel():
     selected_columns = [c for c in selected_columns if c in valid_columns]
 
     where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
-    columns_sql = ", ".join(selected_columns) if selected_columns else "id"
+    columns_sql = ", ".join(
+        (f"{col(c)} AS {c}" if col(c) != c else c) for c in selected_columns
+    ) if selected_columns else "id"
     query = f"SELECT {columns_sql} FROM {data_type} {where_sql}"
     # write_log(f"🧠 SQL généré : {query}")
     # write_log(f"🧩 PARAMS = {params}")

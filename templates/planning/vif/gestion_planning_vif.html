@@ -88,11 +88,11 @@
           {% set remplacant_id = ligne[champ_remp] %}
           {% set selected_id = remplacant_id if remplacant_id else titulaire_id %}
 
-          {# --- Tri/Groupage : d’abord saisie_vif='oui' --- #}
+          {# --- Tri/Groupage : d’abord vif_matin (col. 1) / vif_apres_midi (col. 2) = 'oui' --- #}
           {% set favoris = [] %}
           {% set autres = [] %}
           {% for b in benevoles %}
-            {% set flag = (b.saisie_vif or b['saisie_vif'] or '') %}
+            {% set flag = ((b.vif_matin if i == 1 else b.vif_apres_midi) or '') %}
             {% if flag|string|trim|lower == 'oui' %}
               {% set _ = favoris.append(b) %}
             {% else %}

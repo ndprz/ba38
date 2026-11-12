@@ -17,6 +17,7 @@ from PIL import Image, ExifTags
 from urllib.parse import urlencode, quote_plus, quote
 from dotenv import load_dotenv
 from datetime import datetime
+from ba38_benevoles import cotisations as cotis
 
 
 def profil_esope(conn, benevole_id):
@@ -191,7 +192,9 @@ def benevoles_tabulator():
             display_order
     """)
 
-    fields = cursor.fetchall()
+    fields = [dict(f) for f in cursor.fetchall()]
+    fields += cotis.champs_virtuels(cursor.connection)  # cotisations par année
+    annees_cotis = cotis.annees_par_benevole(cursor.connection)
 
     # ============================================================
     # BENEVOLES
@@ -352,6 +355,13 @@ def benevoles_tabulator():
 
         bene_id = row["id"]
 
+        for _f in fields:
+            if _f.get("virtuel"):
+                _an = cotis.annee_du_champ(_f["field_name"])
+                _mine = annees_cotis.get(bene_id, {})
+                d[normalize(_f["field_name"])] = "oui" if _an in _mine else "non"
+                d[normalize(_f["field_name"]) + "_date"] = _mine.get(_an, "")
+
         # ========================================================
         # PHOTO
         # ========================================================
@@ -406,8 +416,7 @@ def benevoles_tabulator():
         {
             "title": "ID",
             "field": "id",
-            "minWidth": 80,
-            "widthGrow": 1,
+            "width": 55,
             "frozen": True
         },
 
@@ -415,9 +424,18 @@ def benevoles_tabulator():
             "title": "Nom",
             "field": "nom",
             "tooltip": True,
-            "minWidth": 240,
-            "widthGrow": 3,
+            "width": 192,
             "frozen": True
+        },
+
+        {
+            "title": "Prénom",
+            "field": "prenom",
+            "tooltip": True,
+            "width": 120,
+            "frozen": True,
+            "headerFilter": "input",
+            "headerFilterParams": {"placeholder": "Filtrer..."}
         },
 
         {
@@ -453,7 +471,8 @@ def benevoles_tabulator():
 
         if normalized in [
             "id",
-            "nom"
+            "nom",
+            "prenom"   # colonne fixe figée, juste après le nom
         ]:
             continue
 
@@ -513,6 +532,7 @@ def benevoles_tabulator():
             width_grow = 0
 
             hoz_align = "center"
+
 
         # ========================================================
         # EMAILS
@@ -622,8 +642,6 @@ def benevoles_tabulator():
 
             "sorter": "string",
 
-            "editor": "list",
-
             "headerFilter": header_filter,
 
             "headerFilterParams": header_filter_params,
@@ -650,6 +668,10 @@ def benevoles_tabulator():
             col["formatter"] = "dateFormatter"
 
             col["sorter"] = "dateSorter"
+
+        if field.get("virtuel"):
+            # Cotisation par année : case colorée ; le clic est géré par rowClick (fenêtre de date)
+            col["formatter"] = "cotisationFormatter"
 
         columns.append(col)
 
@@ -719,11 +741,13 @@ def edition_tableau_benevoles():
     cursor = conn.cursor()
 
     # Lire les champs disponibles
-    fields_data = cursor.execute("""
+    fields_data = [dict(r) for r in cursor.execute("""
         SELECT * FROM field_groups
         WHERE appli = 'benevoles'
         ORDER BY display_order
-    """).fetchall()
+    """).fetchall()]
+    fields_data += cotis.champs_virtuels(conn)  # cotisations par année (cases à cocher)
+    cotis_cols = [f["field_name"] for f in fields_data if f.get("virtuel")]
 
     grouped_fields = {}
     for row in fields_data:
@@ -741,7 +765,8 @@ def edition_tableau_benevoles():
     benevole_ids = request.values.getlist("benevole_ids")
 
     # Préparer la requête SQL
-    escaped_columns = [f"`{col}`" for col in selected_columns if col not in ['id', 'nom']]
+    escaped_columns = [f"`{col}`" for col in selected_columns
+                       if col not in ['id', 'nom'] and col not in cotis_cols]
     columns_clause = ", ".join(["id", "nom", "prenom"] + escaped_columns)
 
     # ============================================================
@@ -774,6 +799,20 @@ def edition_tableau_benevoles():
 
     type_benevole_options = get_type_benevole_options(conn)
 
+    # Valeurs des cotisations (cases à cocher) injectées dans les lignes
+    if any(c in selected_columns for c in cotis_cols):
+        par_benevole = cotis.annees_par_benevole(conn)
+        rows_dict = []
+        for r in rows:
+            d = dict(r)
+            for c in cotis_cols:
+                _mine = par_benevole.get(r["id"], {})
+                _an = cotis.annee_du_champ(c)
+                d[c] = "oui" if _an in _mine else "non"
+                d[c + "_date"] = _mine.get(_an, "")
+            rows_dict.append(d)
+        rows = rows_dict
+
     conn.close()
 
     return render_template("benevoles/edition_tableau_benevoles.html",
@@ -782,6 +821,7 @@ def edition_tableau_benevoles():
         grouped_fields=grouped_fields,
         selected_groups=selected_groups,
         oui_non_fields=oui_non_fields,
+        cotis_cols=cotis_cols,
         type_benevole_options=type_benevole_options
     )
 
@@ -794,6 +834,43 @@ def normaliser_date_iso(value):
     if m:
         return f"{m.group(3)}-{m.group(2).zfill(2)}-{m.group(1).zfill(2)}"
     return value
+
+
+def _date_cotis(value):
+    """Date de paiement d'une cotisation : ISO valide, sinon None."""
+    v = normaliser_date_iso((value or "").strip())
+    try:
+        datetime.strptime(v, "%Y-%m-%d")
+        return v
+    except (TypeError, ValueError):
+        return None
+
+
+def _norm_nom(v):
+    import unicodedata
+    v = unicodedata.normalize("NFD", str(v or ""))
+    v = "".join(c for c in v if unicodedata.category(c) != "Mn")
+    return " ".join(v.lower().replace("-", " ").split())
+
+
+def trouver_doublons_benevole(conn, nom, prenom, email=None, exclure_id=None):
+    """Bénévoles existants de même nom+prénom (accents/casse/ordre ignorés) ou même email."""
+    n, p = _norm_nom(nom), _norm_nom(prenom)
+    e = (email or "").strip().lower()
+    trouves = []
+    for r in conn.execute("SELECT id, nom, prenom, email FROM benevoles"):
+        if exclure_id and r["id"] == exclure_id:
+            continue
+        rn, rp = _norm_nom(r["nom"]), _norm_nom(r["prenom"])
+        meme_nom = (rn == n and rp == p) or (rn == p and rp == n)
+        meme_mail = bool(e) and (r["email"] or "").strip().lower() == e
+        if meme_nom or meme_mail:
+            trouves.append({
+                "id": r["id"], "nom": r["nom"], "prenom": r["prenom"],
+                "email": r["email"],
+                "raison": "même nom et prénom" if meme_nom else "même email",
+            })
+    return trouves
 
 
 @benevoles_bp.route("/create_benevole", methods=["GET", "POST"])
@@ -820,6 +897,7 @@ def create_benevole():
 
     # On transforme les rows en dictionnaires modifiables
     fields_data = [dict(row) for row in rows]
+    fields_data += cotis.champs_virtuels(conn)  # cotisations par année (table dédiée)
 
     # Construction initiale de grouped_fields
     grouped_fields = {}
@@ -840,10 +918,17 @@ def create_benevole():
         champs_invalides = []
         erreurs = []
         values = {}
+        cotis_cochees = []
 
         for field in fields_data:
             field_name = field["field_name"]
             value = request.form.get(field_name, "").strip()
+
+            if field.get("virtuel"):
+                if request.form.getlist(field_name)[-1:] == ["oui"]:
+                    cotis_cochees.append((cotis.annee_du_champ(field_name),
+                        _date_cotis(request.form.get(f"{field_name}_date", "")) or None))
+                continue
 
             # 🔽 Spécifique: type_benevole -> normalisation liste
             if field_name == "type_benevole":
@@ -896,7 +981,13 @@ def create_benevole():
             erreurs.append("Champ prénom manquant")
             champs_invalides.append("prenom")
 
-        if erreurs:
+        doublons = []
+        if not erreurs and request.form.get("confirmer_doublon") != "1":
+            doublons = trouver_doublons_benevole(
+                conn, values.get("nom"), values.get("prenom"), values.get("email")
+            )
+
+        if erreurs or doublons:
             # Réinjecter les valeurs dans les champs
             for field in fields_data:
                 fname = field["field_name"]
@@ -924,6 +1015,7 @@ def create_benevole():
             return render_template("benevoles/create_benevole.html",
                                 grouped_fields=grouped_fields_ordered,
                                 champs_invalides=champs_invalides,
+                                doublons=doublons,
                                 type_benevole_options=type_benevole_options)
         try:
             now = datetime.now()
@@ -937,9 +1029,36 @@ def create_benevole():
                 f"INSERT INTO benevoles ({columns}) VALUES ({placeholders})",
                 list(values.values())
             )
+            nouvel_id = cursor.lastrowid
+            for annee, date_p in cotis_cochees:
+                cotis.fixer(conn, nouvel_id, annee, True, current_user.username, date_p)
             conn.commit()
+
+            # Le filtre Fonction (rémanent par compte) pourrait masquer le
+            # bénévole qu'on vient de créer : on le réinitialise.
+            filtre_reinit = False
+            try:
+                row = conn.execute(
+                    "SELECT fonctions_filter FROM users WHERE id = ?",
+                    (current_user.id,)
+                ).fetchone()
+                if row and row["fonctions_filter"] not in (None, "", "[]"):
+                    conn.execute(
+                        "UPDATE users SET fonctions_filter = '[]' WHERE id = ?",
+                        (current_user.id,)
+                    )
+                    conn.commit()
+                    filtre_reinit = True
+            except Exception:
+                current_app.logger.exception("reset fonctions_filter après création")
+
             upload_database()
-            flash("✅ Bénévole créé avec succès.", "success")
+            flash(
+                f"✅ Bénévole « {values.get('prenom')} {values.get('nom')} » créé avec succès."
+                + (" Le filtre « Fonction » a été retiré pour qu'il apparaisse dans la liste."
+                   if filtre_reinit else ""),
+                "success"
+            )
             return redirect(url_for("benevoles.benevoles"))
 
         except Exception as e:
@@ -984,6 +1103,7 @@ def delete_benevole(benevole_id):
     cursor = conn.cursor()
     try:
         cursor.execute("DELETE FROM benevoles WHERE id = ?", (benevole_id,))
+        cotis.supprimer_benevole(conn, benevole_id)
 
         now = datetime.now()
         date_modif = now.strftime("%Y-%m-%d")
@@ -1052,8 +1172,17 @@ def update_benevole(benevole_id):
 
     fields_data = [dict(row) for row in rows]
 
+    # 🔹 Cotisations par année (table dédiée) : champs virtuels cotisation_AAAA
+    fields_data += cotis.champs_virtuels(conn)
+    cotis_a_jour = cotis.dates_par_annee(conn, benevole_id)
+
     for field in fields_data:
-        field["value"] = benevole_dict.get(field["field_name"], "")
+        if field.get("virtuel"):
+            _a = cotis.annee_du_champ(field["field_name"])
+            field["value"] = "oui" if _a in cotis_a_jour else "non"
+            field["date"] = cotis_a_jour.get(_a, "")
+        else:
+            field["value"] = benevole_dict.get(field["field_name"], "")
 
     grouped_fields = {}
     for field in fields_data:
@@ -1124,10 +1253,18 @@ def update_benevole(benevole_id):
         if can_edit:
 
             updates = {}
+            cotis_modifs = {}
 
             for field in fields_data:
                 field_name = field["field_name"]
                 if field_name == "id":
+                    continue
+
+                if field.get("virtuel"):
+                    if field_name in request.form:
+                        cotis_modifs[cotis.annee_du_champ(field_name)] = (
+                            request.form.getlist(field_name)[-1].strip().lower() == "oui",
+                            _date_cotis(request.form.get(f"{field_name}_date", "")) or None)
                     continue
 
                 value = request.form.get(field_name, "").strip()
@@ -1207,6 +1344,9 @@ def update_benevole(benevole_id):
                 f"UPDATE benevoles SET {set_clause} WHERE id=?",
                 values
             )
+
+            for annee, (coche, date_p) in cotis_modifs.items():
+                cotis.fixer(conn, benevole_id, annee, coche, current_user.username, date_p)
 
             conn.commit()
 
@@ -1307,10 +1447,24 @@ def update_benevoles_table():
         bene_dict = dict(old_row)
         modifications = {}
         champs_invalides = []
+        cotis_modifs = {}
+        cotis_actuelles = cotis.dates_par_annee(conn, bene_id)
 
         for col in columns:
             if col in ("date_modif", "heure_modif", "user_modif"):
                 # Colonnes en lecture seule dans le tableau : pas d'input soumis
+                continue
+
+            annee_cotis = cotis.annee_du_champ(col)
+            if annee_cotis is not None:
+                # Cotisation par année : case à cocher (hidden "non" + checkbox "oui")
+                vals = request.form.getlist(f"{col}_{i}")
+                if vals:
+                    coche = vals[-1].strip().lower() == "oui"
+                    date_p = _date_cotis(request.form.get(f"{col}_{i}_date", "")) or None
+                    if coche != (annee_cotis in cotis_actuelles) or (
+                            coche and date_p and date_p != cotis_actuelles.get(annee_cotis, "")):
+                        cotis_modifs[annee_cotis] = (coche, date_p)
                 continue
 
             old_val = (bene_dict[col] or "").strip() if bene_dict[col] else ""
@@ -1354,7 +1508,7 @@ def update_benevoles_table():
                 champs_invalides.append("prenom")
 
         # Enregistrement si pas d’erreurs
-        if modifications and not champs_invalides:
+        if (modifications or cotis_modifs) and not champs_invalides:
             now = datetime.now()
             modifications["date_modif"] = now.strftime("%Y-%m-%d")
             modifications["heure_modif"] = now.strftime("%H:%M:%S")
@@ -1363,6 +1517,8 @@ def update_benevoles_table():
             set_clause = ", ".join([f"`{k}` = ?" for k in modifications])
             values = list(modifications.values()) + [bene_id]
             cursor.execute(f"UPDATE benevoles SET {set_clause} WHERE id = ?", values)
+            for annee_c, (coche, date_p) in cotis_modifs.items():
+                cotis.fixer(conn, bene_id, annee_c, coche, current_user.username, date_p)
             lignes_modifiees += 1
         else:
             # 📌 Récupération fiable de nom/prénom même s’ils ne sont pas dans `columns`
@@ -1374,12 +1530,15 @@ def update_benevoles_table():
                 "champs_invalides": champs_invalides,
                 "valeurs": {
                     col: bene_dict.get(col, "") if col in ("date_modif", "heure_modif", "user_modif")
-                    else request.form.get(f"{col}_{i}", "").strip()
+                    else (request.form.getlist(f"{col}_{i}") or [""])[-1].strip()
                     for col in columns
                 },
                 "nom": nom_val,
                 "prenom": prenom_val
             }
+            for col in columns:
+                if cotis.annee_du_champ(col) is not None:
+                    row_data["valeurs"][col + "_date"] = request.form.get(f"{col}_{i}_date", "").strip()
             benevoles_data.append(row_data)
 
     conn.commit()
@@ -1412,6 +1571,7 @@ def update_benevoles_table():
             benevoles=benevoles_data,
             selected_columns=columns,
             oui_non_fields=oui_non_fields,
+            cotis_cols=[c for c in columns if cotis.annee_du_champ(c) is not None],
             type_benevole_options=type_benevole_options
         )
 
@@ -1760,6 +1920,7 @@ def supprimer_definitivement_benevole(benevole_id):
     cursor = conn.cursor()
     try:
         cursor.execute("DELETE FROM benevoles_inactifs WHERE id = ?", (benevole_id,))
+        cotis.supprimer_benevole(conn, benevole_id)
         conn.commit()
         flash("🗑️ Bénévole supprimé définitivement.", "success")
     except Exception as e:
@@ -1799,239 +1960,6 @@ def supprimer_photo_benevole(benevole_id):
     # Après suppression → retour à la fiche bénévole
     return redirect(url_for("benevoles.update_benevole", benevole_id=benevole_id))
 
-
-
-def _charger_messages():
-    """Retourne la liste des messages pré-enregistrés (id, titre, contenu)."""
-    conn = get_db_connection()
-    rows = conn.execute("""
-        SELECT id, titre, contenu
-        FROM messages_predefinis
-        ORDER BY id DESC
-    """).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-
-def _get_fonction_fields():
-    """
-    Retourne la liste des champs du groupe 'Fonctions' (ou 'Fonction') pour les bénévoles.
-    Utilise field_name comme libellé lisible.
-    """
-    conn = get_db_connection()
-    cur = conn.cursor()
-    rows = cur.execute("""
-        SELECT field_name
-        FROM field_groups
-        WHERE appli = 'benevoles' AND LOWER(group_name) LIKE '%fonction%'
-        ORDER BY display_order
-    """).fetchall()
-    conn.close()
-
-    # Crée un libellé à partir du nom du champ (remplace _ par espace, majuscule initiale)
-    return [(r[0], r[0].replace("_", " ").capitalize()) for r in rows]
-
-
-def _charger_benevoles(fonctions=None, bene_id=None):
-    """
-    Charge la liste des bénévoles selon filtres :
-      - bene_id : un seul bénévole
-      - fonctions : liste de champs (ex: ['ramasse_chauffeur','ramasse_equipier'])
-    """
-    conn = get_db_connection()
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-
-    base_query = "SELECT id, nom, prenom, email FROM benevoles WHERE email IS NOT NULL AND TRIM(email) != ''"
-    params = []
-
-    if bene_id:
-        base_query += " AND id = ?"
-        params.append(bene_id)
-    elif fonctions:
-        clauses = [f"{f}=?" for f in fonctions]
-        conditions = " OR ".join(clauses)
-        base_query += f" AND ({conditions})"
-        params += ["oui"] * len(fonctions)
-
-    base_query += " ORDER BY nom COLLATE NOCASE"
-    rows = cur.execute(base_query, params).fetchall()
-    conn.close()
-
-    return [dict(r) for r in rows]
-
-
-
-
-def _build_gmail_url(to_emails, sujet, corps):
-    """
-    Version 100 % compatible Gmail : ouvre la fenêtre de composition avec les bons destinataires.
-    """
-    base = "https://mail.google.com/mail/?view=cm&fs=1&tf=1"
-
-    # Gmail attend les emails séparés par virgule sans encodage particulier
-    to_part = "&to=" + ",".join(to_emails)
-
-    # On encode le sujet et le corps, mais PAS les virgules du champ "to"
-    su_part = "&su=" + quote(sujet or "", safe="")
-    body_part = "&body=" + quote(corps or "", safe="")
-
-    return f"{base}{to_part}{su_part}{body_part}"
-
-
-
-@benevoles_bp.route("/envoi_mail_benevoles", methods=["GET", "POST"])
-@login_required
-@require_access("benevoles", "lecture")
-def envoi_mail_benevoles():
-    from flask_login import current_user
-    from flask import flash
-
-    bene_id = request.args.get("bene_id", type=int)
-    retour_url = request.args.get("retour_url")
-
-    # ✅ On récupère d'abord l'email de l'utilisateur connecté
-    user_email = getattr(current_user, "email", "") or ""
-    write_log(f"[DEBUG USER] id={current_user.id}, email={user_email}")
-
-    if not user_email:
-        flash("⚠️ Votre compte n’a pas d’adresse email enregistrée. Le champ 'À :' sera vide.", "warning")
-
-    # 🟢 On récupère les fonctions cochées depuis GET ou POST
-    selected_fonctions = request.values.getlist("fonctions")
-    all_fonctions = _get_fonction_fields()
-    messages = _charger_messages()
-
-    gmail_url = None
-
-    # 🟢 Si bouton d'envoi appuyé
-    if request.method == "POST" and request.form.get("action") == "envoyer":
-        # 🔹 Récupération fiable des destinataires
-        to_list = request.form.getlist("destinataires")
-
-        # 🔹 Si vide, tenter la lecture du champ caché
-        if not to_list and request.form.get("_dest_list"):
-            to_list = [email.strip() for email in request.form["_dest_list"].split(",") if email.strip()]
-
-        sujet = (request.form.get("sujet") or "").strip()
-        message = (request.form.get("message") or "")
-
-        write_log(f"[MAIL BENEVOLES] Destinataires finals : {to_list}")
-
-        if not to_list:
-            flash("❌ Merci de sélectionner au moins un destinataire.", "danger")
-        elif not sujet:
-            flash("❌ Le sujet est obligatoire.", "danger")
-        else:
-            # Nettoyage to_list (parfois des doublons ou espaces)
-            to_list = [t.strip() for t in to_list if t.strip()]
-            write_log(f"[MAIL BENEVOLES] Destinataires finals : {to_list}")
-            gmail_url = _build_gmail_url(to_list, sujet, message)
-            flash("✅ Message prêt à être envoyé via Gmail.", "success")
-
-    # 🟢 Sinon : affichage initial ou filtrage par fonctions
-    destinataires = _charger_benevoles(fonctions=selected_fonctions, bene_id=bene_id)
-
-    return render_template(
-        "benevoles/envoi_mail_benevoles.html",
-        all_fonctions=all_fonctions,
-        selected_fonctions=selected_fonctions,
-        destinataires=destinataires,
-        messages=messages,
-        gmail_url=gmail_url,
-        retour_url=retour_url,
-        user_email=user_email  # ✅ maintenant bien défini
-    )
-
-
-@benevoles_bp.route("/messages_predefinis_benevoles", methods=["GET", "POST"])
-@login_required
-@require_access("benevoles", "lecture")
-def messages_predefinis_benevoles():
-    """
-    Gestion des modèles de message (communs). Identique aux associations mais avec
-    retour vers la page bénévoles.
-    """
-    if request.method == "POST":
-        titre = (request.form.get("titre") or "").strip()
-        contenu = (request.form.get("contenu") or "").rstrip()
-        if not titre or not contenu:
-            flash("❌ Merci de renseigner un titre et un contenu.", "danger")
-            return redirect(url_for("benevoles.messages_predefinis_benevoles"))
-
-        conn = get_db_connection()
-        conn.execute(
-            "INSERT INTO messages_predefinis (titre, contenu) VALUES (?, ?)",
-            (titre, contenu)
-        )
-        conn.commit()
-        conn.close()
-        upload_database()
-        flash("✅ Modèle ajouté.", "success")
-        return redirect(url_for("benevoles.messages_predefinis_benevoles"))
-
-    messages = _charger_messages()
-    return render_template("benevoles/messages_predefinis_benevoles.html", messages=messages)
-
-
-@benevoles_bp.route("/edit_message_bene/<int:mid>", methods=["GET", "POST"])
-@login_required
-@require_access("benevoles", "lecture")
-def edit_message_bene(mid):
-    """Édition d’un modèle bénévole (titre + contenu)."""
-    conn = get_db_connection()
-    conn.row_factory = sqlite3.Row
-
-    if request.method == "POST":
-        titre = (request.form.get("titre") or "").strip()
-        contenu = (request.form.get("contenu") or "").rstrip()
-        if not titre or not contenu:
-            conn.close()
-            flash("❌ Merci de renseigner un titre et un contenu.", "danger")
-            return redirect(url_for("benevoles.edit_message_bene", mid=mid))
-
-        conn.execute(
-            "UPDATE messages_predefinis SET titre = ?, contenu = ? WHERE id = ?",
-            (titre, contenu, mid)
-        )
-        conn.commit()
-        conn.close()
-        upload_database()
-        flash("✅ Modèle mis à jour.", "success")
-        return redirect(url_for("benevoles.messages_predefinis_benevoles"))
-
-    row = conn.execute(
-        "SELECT id, titre, contenu FROM messages_predefinis WHERE id = ?",
-        (mid,)
-    ).fetchone()
-    conn.close()
-
-    if not row:
-        flash("❌ Modèle introuvable.", "danger")
-        return redirect(url_for("benevoles.messages_predefinis_benevoles"))
-
-    return render_template(
-        "benevoles/messages_predefinis_benevoles.html",
-        messages=[dict(row)],  # on affiche juste celui-ci en haut, réutilisation simple
-        edit_mode=True,
-        edit_id=row["id"],
-        edit_titre=row["titre"],
-        edit_contenu=row["contenu"]
-    )
-
-
-@benevoles_bp.route("/delete_message_bene/<int:mid>", methods=["POST"])
-@login_required
-@require_access("benevoles", "ecriture")
-def delete_message_bene(mid):
-    """Suppression d’un modèle bénévole."""
-    conn = get_db_connection()
-    conn.execute("DELETE FROM messages_predefinis WHERE id = ?", (mid,))
-    conn.commit()
-    conn.close()
-    upload_database()
-    flash("🗑️ Modèle supprimé.", "warning")
-    return redirect(url_for("benevoles.messages_predefinis_benevoles"))
 
 
 def beautify_title(name):

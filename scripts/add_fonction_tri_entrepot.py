@@ -10,7 +10,7 @@ load_dotenv()
 BASE_DIR = os.getenv("BA38_BASE_DIR")
 
 FIELD_NAME = "tri_entrepot"
-DISPLAY_ORDER = 45  # entre ramasse_tri_externe (40) et prep_pesee (50)
+DISPLAY_ORDER = 45  # entre ramasse_tri_externe (40) et ramasse_pesee (50)
 
 
 def migrate(db_filename):

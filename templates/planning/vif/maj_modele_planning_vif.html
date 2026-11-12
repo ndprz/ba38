@@ -46,8 +46,8 @@
           <select name="vif{{ "%02d"|format(i) }}[]" class="form-select form-select-sm">
             <option value="">-- Aucun --</option>
 
-            {% set favoris = benevoles | selectattr('saisie_vif', 'equalto', 'oui') | list %}
-            {% set autres = benevoles | rejectattr('saisie_vif', 'equalto', 'oui') | list %}
+            {% set favoris = benevoles | selectattr('vif_matin' if i == 1 else 'vif_apres_midi', 'equalto', 'oui') | list %}
+            {% set autres = benevoles | rejectattr('vif_matin' if i == 1 else 'vif_apres_midi', 'equalto', 'oui') | list %}
 
             {% for bene in favoris %}
               <option value="{{ bene.id }}"
@@ -105,8 +105,8 @@
           <select name="vif{{ "%02d"|format(i) }}" class="form-select form-select-sm">
             <option value="">-- Aucun --</option>
 
-            {% set favoris = benevoles | selectattr('saisie_vif', 'equalto', 'oui') | list %}
-            {% set autres  = benevoles | rejectattr('saisie_vif', 'equalto','oui') | list %}
+            {% set favoris = benevoles | selectattr('vif_matin' if i == 1 else 'vif_apres_midi', 'equalto', 'oui') | list %}
+            {% set autres  = benevoles | rejectattr('vif_matin' if i == 1 else 'vif_apres_midi', 'equalto', 'oui') | list %}
 
             {% for bene in favoris %}
               <option value="{{ bene.id }}">✅ {{ bene.nom }} {{ bene.prenom }}</option>

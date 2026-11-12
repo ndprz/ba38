@@ -20,19 +20,26 @@
         « Enregistrer » n'est utile qu'en secours.
     </p>
 
+    {% if verrou_gardee %}
+    <div class="alert alert-secondary">
+        🔒 Saisie verrouillée depuis le {{ verrou_gardee.le }} par {{ verrou_gardee.par }} — déverrouillez
+        depuis la page principale Collecte (section « Résultat collecte gardée ») pour corriger.
+    </div>
+    {% endif %}
+
     {% if detection and detection.statut == 'en_cours' %}
     <div class="alert alert-info">
-        🤖 Analyse du PDF « {{ detection.pdf_nom }} » en cours — rechargez cette page dans
+        🤖 Analyse du fichier « {{ detection.pdf_nom }} » en cours — rechargez cette page dans
         15 à 30 secondes pour voir les valeurs détectées.
     </div>
     {% elif detection and detection.statut == 'erreur' %}
     <div class="alert alert-danger">
-        ⛔ Échec de l'analyse du PDF « {{ detection.pdf_nom }} » : {{ detection.erreur }}
+        ⛔ Échec de l'analyse du fichier « {{ detection.pdf_nom }} » : {{ detection.erreur }}
     </div>
     {% elif detection and detection.statut == 'termine' %}
     <div class="alert alert-warning d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
-            🤖 Valeurs détectées depuis le PDF « {{ detection.pdf_nom }} » — pré-remplies en
+            🤖 Valeurs détectées depuis « {{ detection.pdf_nom }} » — pré-remplies en
             orange ci-dessous, <strong>vérifiez-les puis cliquez sur Enregistrer</strong> (rien
             n'est encore enregistré).
         </div>
@@ -69,6 +76,30 @@
         </div>
     </div>
 
+    <button class="btn btn-outline-secondary mb-3" type="button"
+            data-bs-toggle="collapse" data-bs-target="#sectionImporterExcel">
+        📊 Importer un Excel reçu (pré-remplir automatiquement)
+    </button>
+    <div id="sectionImporterExcel" class="collapse mb-3">
+        <div class="card card-body">
+            <p class="text-muted small mb-2">
+                Excel envoyé à l'association puis rempli et renvoyé tel quel (pas besoin de l'IA,
+                la structure est lue directement) — les poids sont lus automatiquement pour
+                pré-remplir le formulaire ci-dessous (à vérifier avant d'enregistrer).
+            </p>
+            <form method="post" action="{{ url_for('collecte.gardee_saisie_importer_excel') }}"
+                  enctype="multipart/form-data" class="d-flex flex-wrap align-items-center gap-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <input type="hidden" name="association" value="{{ association }}">
+                <label for="excel_association" class="visually-hidden">Excel reçu</label>
+                <input type="file" name="excel" id="excel_association" class="form-control" style="max-width: 320px;"
+                       accept=".xlsx,.xlsm" required>
+                <button type="submit" class="btn btn-outline-primary">📊 Lire le fichier</button>
+            </form>
+        </div>
+    </div>
+
     <div id="message-enregistrement" class="alert d-none mb-2" role="alert"></div>
 
     <form method="post" id="form-saisie">
@@ -101,7 +132,7 @@
                                        class="form-control form-control-sm champ-autosave{% if m.detecte %} border-warning bg-warning-subtle{% endif %}"
                                        name="poids_magasin_{{ m.code_vif }}"
                                        data-type="magasin" data-code="{{ m.code_vif }}"
-                                       title="{% if m.detecte %}Valeur détectée depuis le PDF, à vérifier{% endif %}"
+                                       title="{% if m.detecte %}Valeur détectée, à vérifier{% endif %}"
                                        value="{{ m.poids_kg|round|int if m.poids_kg is not none else '' }}">
                             </td>
                         </tr>
@@ -136,7 +167,7 @@
                                        class="form-control form-control-sm champ-autosave{% if p.detecte %} border-warning bg-warning-subtle{% endif %}"
                                        name="poids_produit_{{ p.code }}"
                                        data-type="produit" data-code="{{ p.code }}"
-                                       title="{% if p.detecte %}Valeur détectée depuis le PDF, à vérifier{% endif %}"
+                                       title="{% if p.detecte %}Valeur détectée, à vérifier{% endif %}"
                                        value="{{ p.poids_kg|round|int if p.poids_kg is not none else '' }}">
                             </td>
                         </tr>
@@ -196,7 +227,7 @@ document.querySelectorAll(".champ-autosave").forEach(function (input) {
                 afficherMessage("✅ Enregistré", "success");
             } else {
                 input.classList.add("is-invalid");
-                afficherMessage("⛔ Échec de l'enregistrement — ressaisissez la valeur", "danger");
+                afficherMessage(result.data.erreur ? "⛔ " + result.data.erreur : "⛔ Échec de l'enregistrement — ressaisissez la valeur", "danger");
             }
         })
         .catch(function () {

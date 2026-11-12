@@ -9,8 +9,39 @@
     <h2>Créer un nouveau bénévole</h2>
 
 
-    <form method="POST" id="createForm" class="partner-form">
+    <style>
+.cotis-switch .form-check-input{width:2.6em;height:1.4em;cursor:pointer;background-color:#f8d7da;border-color:#dc3545}
+.cotis-switch .form-check-input:checked{background-color:#198754;border-color:#198754}
+.cotis-switch .form-check-label{margin-left:.4em;font-weight:600;color:#dc3545}
+.cotis-switch .form-check-label::before{content:"Non payée"}
+.cotis-switch .form-check-input:checked + .form-check-label{color:#198754}
+.cotis-switch .form-check-input:checked + .form-check-label::before{content:"À jour"}
+</style>
+<form method="POST" id="createForm" class="partner-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="confirmer_doublon" id="confirmer_doublon" value="0">
+    {% if doublons %}
+    <div class="alert alert-warning">
+        <strong>⚠ Ce bénévole existe peut-être déjà :</strong>
+        <ul class="mb-2">
+            {% for d in doublons %}
+            <li>
+                <a href="{{ url_for('benevoles.update_benevole', benevole_id=d.id) }}" target="_blank">
+                    {{ d.prenom }} {{ d.nom }}</a>
+                {% if d.email %}({{ d.email }}){% endif %} — {{ d.raison }}
+            </li>
+            {% endfor %}
+        </ul>
+        <div class="small mb-2">
+            Il est peut-être masqué dans la liste par un filtre (Fonction ou recherche).
+            Vérifiez avant de créer un doublon.
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-danger"
+                onclick="document.getElementById('confirmer_doublon').value='1'; document.getElementById('createForm').submit();">
+            Créer quand même
+        </button>
+    </div>
+    {% endif %}
         {% for group_name, fields in grouped_fields.items() %}
         <fieldset class="mb-3">
             <legend class="group-title d-flex justify-content-between align-items-center bg-light p-2 rounded"
@@ -46,6 +77,19 @@
                         </option>
                         {% endfor %}
                     </select>
+
+                    {% elif field.virtuel %}
+                    <div class="cotis-wrap">
+                        <input type="hidden" name="{{ field.field_name }}" value="non">
+                        <div class="form-check form-switch cotis-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" data-cotis
+                                id="{{ field.field_name }}" name="{{ field.field_name }}" value="oui"
+                                {% if field.value=='oui' %}checked{% endif %}>
+                            <label class="form-check-label" for="{{ field.field_name }}"></label>
+                        </div>
+                        <input type="hidden" class="cotis-date-val" name="{{ field.field_name }}_date" value="">
+                        <a href="#" class="cotis-date-txt"></a>
+                    </div>
 
                     {% elif field.type_champ == "oui_non" %}
                     <select class="form-control" name="{{ field.field_name }}" id="{{ field.field_name }}">
@@ -157,4 +201,5 @@
         });
     });
 </script>
+{% include 'benevoles/_cotisation_date.html' %}
 {% endblock %}

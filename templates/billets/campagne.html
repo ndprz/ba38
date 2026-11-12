@@ -46,20 +46,25 @@
   <div class="card mb-3" id="message"><div class="card-header"><b>2. Message d'invitation</b> <span class="text-muted small">(texte enrichi, images collables)</span></div>
   <form method="POST" id="form-message" action="{{ url_for('billets.enregistrer_message', campagne_id=c.id) }}" class="card-body">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <fieldset {% if not peut_ecrire or tiree %}disabled{% endif %}>
+    <fieldset {% if not peut_ecrire %}disabled{% endif %}>
     <div class="row g-2 mb-2">
       <div class="col-md-6"><label class="small">Sujet</label><input name="sujet" class="form-control" value="{{ c.sujet or '' }}"></div>
       <div class="col-md-3"><label class="small">Expéditeur</label>
-        <select name="expediteur" class="form-control">
-          {% for e in expediteurs %}<option value="{{ e }}" {% if e == (c.expediteur or 'ba380@banquealimentaire.org') %}selected{% endif %}>{{ e }}</option>{% endfor %}
+        <input class="form-control" value="ba380@banquealimentaire.org" readonly title="Expéditeur imposé"></div>
+      <div class="col-md-3"><label class="small">Nom affiché (facultatif)</label><input name="expediteur_nom" class="form-control" value="{{ c.expediteur_nom or '' }}" placeholder="Banque Alimentaire"></div>
+      <div class="col-md-6"><label class="small">Adresse de réponse (utilisateur Basilic)</label>
+        <select name="reply_to" class="form-control">
+          <option value="">— aucune (réponses vers ba380@) —</option>
+          {% for u in utilisateurs %}<option value="{{ u.email }}" {% if u.email == c.reply_to %}selected{% endif %}>{{ u.email }}{% if u.username %} — {{ u.username }}{% endif %}</option>{% endfor %}
+          {% if c.reply_to and c.reply_to not in utilisateurs|map(attribute='email') %}<option value="{{ c.reply_to }}" selected>{{ c.reply_to }}</option>{% endif %}
         </select></div>
-      <div class="col-md-3"><label class="small">Nom affiché (facultatif)</label><input name="expediteur_nom" class="form-control" value="{{ c.expediteur_nom or '' }}"></div>
-      <div class="col-md-6"><label class="small">Adresse de réponse (facultatif)</label><input name="reply_to" class="form-control" value="{{ c.reply_to or '' }}"></div>
     </div>
     <div class="mb-2 small">Variables (cliquer pour insérer) :
       {% for v in variables %}<button type="button" class="btn btn-outline-secondary btn-sm py-0 var-ins" data-var="&lt;&lt;{{ v }}&gt;&gt;">&lt;&lt;{{ v }}&gt;&gt;</button> {% endfor %}
     </div>
     <div id="corps_quill_container" style="background:white;"></div>
+    <div class="mt-1"><button type="button" id="btn-suppr-image" class="btn btn-outline-danger btn-sm" style="display:none">🗑️ Supprimer l'image sélectionnée</button>
+      <span class="small text-muted">Cliquez sur une image du texte pour la sélectionner.</span></div>
     <textarea name="corps" id="corps_textarea" hidden>{{ c.corps or '' }}</textarea>
     {% if peut_ecrire %}<button class="btn btn-primary btn-sm mt-2">💾 Enregistrer le message</button>{% endif %}
     </fieldset>
@@ -180,6 +185,13 @@
           {% endfor %}</tbody></table>
         </div>
       </div>
+      {% if peut_ecrire and not nb.resultats_envoyes and not c.resultats_envoyes_le %}
+      <form method="POST" action="{{ url_for('billets.annuler_tirage', campagne_id=c.id) }}" class="mb-2"
+            onsubmit="return confirm('Annuler le tirage ? Les résultats seront effacés et un nouveau tirage pourra être lancé.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-outline-secondary btn-sm">↩️ Annuler le tirage (aucun résultat n'a encore été envoyé)</button>
+      </form>
+      {% endif %}
       {% if peut_ecrire and nb.resultats_a_envoyer %}
       <form method="POST" action="{{ url_for('billets.envoyer_resultats', campagne_id=c.id) }}" class="d-flex flex-wrap gap-2 align-items-center"
             onsubmit="return this.mode_test.checked || confirm('Envoyer réellement les résultats à {{ nb.resultats_a_envoyer }} personne(s) ?');">
@@ -240,6 +252,20 @@ quill.on("text-change", () => {
       img.removeAttribute("data-uploading");
     }).catch(() => { alert("❌ Erreur réseau lors de l'import de l'image."); img.removeAttribute("data-uploading"); });
   });
+});
+// Sélection / suppression d'une image du texte
+let imageSel = null;
+const btnSuppr = document.getElementById("btn-suppr-image");
+quill.root.addEventListener("click", e => {
+  if (imageSel) imageSel.style.outline = "";
+  if (e.target.tagName === "IMG") { imageSel = e.target; imageSel.style.outline = "3px solid #f57c00"; btnSuppr.style.display = ""; }
+  else { imageSel = null; btnSuppr.style.display = "none"; }
+});
+btnSuppr.addEventListener("click", () => {
+  if (!imageSel) return;
+  const blot = Quill.find(imageSel);
+  if (blot) blot.remove(); else imageSel.remove();
+  imageSel = null; btnSuppr.style.display = "none";
 });
 document.getElementById("form-message").addEventListener("submit", function (e) {
   if (quill.root.querySelector("img[data-uploading]")) { e.preventDefault(); alert("Import d'image en cours, réessayez dans un instant."); return; }

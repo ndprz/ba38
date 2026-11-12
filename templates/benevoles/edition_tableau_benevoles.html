@@ -87,6 +87,10 @@
 
 </style>
 
+<style>
+.cotis-switch .form-check-input{width:2.6em;height:1.4em;cursor:pointer;margin:0;background-color:#f8d7da;border-color:#dc3545}
+.cotis-switch .form-check-input:checked{background-color:#198754;border-color:#198754}
+</style>
 <form method="post" action="{{ url_for('benevoles.update_benevoles_table') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="position-sticky top-0 bg-white py-2 z-3 border-bottom shadow-sm mb-2">
@@ -168,6 +172,17 @@
               </option>
               {% endfor %}
             </select>
+
+            {% elif cotis_cols is defined and column in cotis_cols %}
+            <div class="cotis-wrap" style="justify-content:center">
+              <input type="hidden" name="{{ column }}_{{ row_index }}" value="non">
+              <div class="form-check form-switch cotis-switch m-0">
+                <input class="form-check-input" type="checkbox" role="switch" data-cotis name="{{ column }}_{{ row_index }}" value="oui"
+                  {% if v == 'oui' %}checked{% endif %}>
+              </div>
+              <input type="hidden" class="cotis-date-val" name="{{ column }}_{{ row_index }}_date" value="{{ valeurs[column ~ '_date'] or '' }}">
+              <a href="#" class="cotis-date-txt"></a>
+            </div>
 
             {% elif column in oui_non_fields %}
             <select name="{{ column }}_{{ row_index }}"
@@ -267,4 +282,5 @@
   });
 
 </script>
+{% include 'benevoles/_cotisation_date.html' %}
 {% endblock %}

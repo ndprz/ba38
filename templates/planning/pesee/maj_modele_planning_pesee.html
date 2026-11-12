@@ -2,10 +2,10 @@
 
 {% from "macros/buttons.html" import action_button, action_buttons %}
 
-{% block title %}Modèle Planning Pesée{% endblock %}
+{% block title %}Modèle Planning Pesée ramasse{% endblock %}
 
 {% block content %}
-<h2>🛠️ Mise à jour du modèle de planning pesée</h2>
+<h2>🛠️ Mise à jour du modèle de planning pesée ramasse</h2>
 
 {% call action_buttons() %}
     <a href="{{ url_for('planning_pesee.apercu_modele_planning_pesee') }}" target="_blank" class="btn btn-outline-dark">
@@ -38,8 +38,8 @@
     <select class="form-select form-select-sm" name="{{ champ }}_{{ jour }}" style="max-width:150px;">
       <option value="">-- Aucun --</option>
 
-      {% set favoris = benevoles | selectattr('prep_pesee','equalto','oui') | list %}
-      {% set autres  = benevoles | rejectattr('prep_pesee','equalto','oui') | list %}
+      {% set favoris = benevoles | selectattr('ramasse_pesee','equalto','oui') | list %}
+      {% set autres  = benevoles | rejectattr('ramasse_pesee','equalto','oui') | list %}
 
       {% for bene in favoris %}
       <option value="{{ bene.id }}"

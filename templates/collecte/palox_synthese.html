@@ -64,6 +64,13 @@
         </div>
     </div>
 
+    {% if verrou_bai %}
+    <div class="alert alert-secondary py-1 small mb-2">
+        🔒 Saisie verrouillée depuis le {{ verrou_bai.le }} par {{ verrou_bai.par }} — déverrouillez
+        depuis la page principale Collecte (section « Résultat collecte bai ») pour corriger.
+    </div>
+    {% endif %}
+
     <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
         <input type="text" id="filtre-recherche" class="form-control form-control-sm" style="max-width:280px;"
                placeholder="🔎 Rechercher un produit (nom, code VIF)…">

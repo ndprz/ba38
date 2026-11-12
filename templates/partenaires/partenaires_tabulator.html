@@ -792,9 +792,12 @@ function emailFormatter(cell){
         return "";
     }
 
+    // Fenêtre de rédaction Gmail directe (un mailto: en target=_blank ouvrait un onglet vide)
+    const destinataires = encodeURIComponent(String(value).split(/[;,]/).map(v => v.trim()).filter(Boolean).join(","));
+
     return `
-        <a href="mailto:${value}"
-           target="_blank"
+        <a href="https://mail.google.com/mail/?view=cm&fs=1&to=${destinataires}"
+           target="_blank" rel="noopener"
            style="color:#ff6b2c; text-decoration:none;">
             ${value}
         </a>

@@ -2,12 +2,6 @@
 
 {% call action_buttons() %}
 
-    {{ action_button(
-        "📧 Envoyer un mail",
-        href=url_for('benevoles.envoi_mail_benevoles', bene_id=benevole['id'], retour_url=request.url),
-        color="outline-primary"
-    ) }}
-
     {% if previous_id is defined and previous_id %}
     {{ action_button(
         "⬅️ Précédent",

@@ -974,7 +974,7 @@ def adresse_test_utilisateur():
 
 
 def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_path=None, is_html=False, bcc=None, cc=None, attachment_paths=None, sender_name=None, reply_to=None, current_user_email=None,
-                 attachment_filename=None, mode_test=False):
+                 attachment_filename=None, mode_test=False, garder_expediteur=False):
 
     api_key = os.getenv("MAILJET_API_KEY")
     api_secret = os.getenv("MAILJET_API_SECRET")
@@ -1017,7 +1017,8 @@ def envoyer_mail(sujet, destinataires, texte, sender_override=None, attachment_p
             sujet = f"🧪 [DEV] {sujet}"
         elif "[TEST]" not in sujet:
             sujet = f"[TEST] {sujet}"
-        sender = utilisateur
+        if not garder_expediteur:
+            sender = utilisateur
         destinataires = [utilisateur]
         bcc = None
         cc = None

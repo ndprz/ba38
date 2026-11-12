@@ -68,6 +68,13 @@
         une ligne par magasin, une colonne par demi-journée.
     </p>
 
+    {% if verrou_bai %}
+    <div class="alert alert-secondary">
+        🔒 Saisie verrouillée depuis le {{ verrou_bai.le }} par {{ verrou_bai.par }} — déverrouillez
+        depuis la page principale Collecte (section « Résultat collecte bai ») pour corriger.
+    </div>
+    {% endif %}
+
     {% call action_buttons() %}
         {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
         {% if initialisee %}

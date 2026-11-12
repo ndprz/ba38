@@ -45,6 +45,8 @@ body{
    HEADER
 ===================================================== */
 
+.bene-actions > .d-flex{ margin-bottom:.25rem !important; }
+
 .page-header{
 
     flex:0 0 auto;
@@ -389,6 +391,15 @@ body{
     <!-- FILTRE FONCTION + BOUTONS -->
     <!-- ===================================================== -->
 
+    <div id="filtre-alerte" class="alert alert-warning align-items-center justify-content-between gap-2 py-2 mb-2" style="display:none;" role="alert">
+        <div>
+            ⚠ <strong>Filtre actif</strong> — <span id="filtre-alerte-detail"></span>
+            <span id="filtre-alerte-compte"></span>
+            <div class="small">Les bénévoles ne correspondant pas ne sont pas affichés.</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-warning text-nowrap" id="filtre-alerte-reset">Tout afficher</button>
+    </div>
+
     <div class="d-flex flex-wrap align-items-start gap-2">
 
     <div class="dropdown d-flex flex-wrap align-items-center gap-2" style="padding-top:2px;">
@@ -473,17 +484,9 @@ body{
 
     </div>
 
-    <div style="flex:1 1 auto;">
+    <div class="bene-actions" style="flex:1 1 auto;">
 
     {% call action_buttons() %}
-
-    {% if has_access("benevoles", "lecture") %}
-    {{ action_button(
-        "📣 Emailing bénévoles",
-        href=url_for('emailing.liste', cible='benevoles'),
-        color="primary"
-    ) }}
-    {% endif %}
 
     {{ action_button(
         "❓ Aide",
@@ -516,21 +519,23 @@ body{
     ) }}
 
     {{ action_button(
-        "📧 Mail groupé bénévoles",
-        href=url_for('benevoles.envoi_mail_benevoles'),
-        color="outline-primary"
+        "💶 Suivi des cotisations",
+        href=url_for('benevoles.suivi_cotisations'),
+        color="outline-success"
     ) }}
+
+    {% if has_access("benevoles", "lecture") %}
+    {{ action_button(
+        "📣 Emailing bénévoles",
+        href=url_for('emailing.liste', cible='benevoles'),
+        color="primary"
+    ) }}
+    {% endif %}
 
     {{ action_button(
         "📸 Droit à l'image",
         href=url_for('droit_image.droit_image'),
         color="outline-dark"
-    ) }}
-
-    {{ action_button(
-        "♻️ Réinitialiser",
-        onclick="resetFilters()",
-        color="outline-danger"
     ) }}
 
     {{ action_button(
@@ -549,9 +554,9 @@ body{
     <!-- GROUPES -->
     <!-- ===================================================== -->
 
-    <fieldset class="border rounded p-1 bg-white mt-2">
+    <fieldset class="border rounded p-1 bg-white mt-0">
 
-        <legend class="float-none w-auto px-2">
+        <legend class="float-none w-auto px-2 mb-1" style="font-size:1.1rem;">
             Options d'affichage
         </legend>
 
@@ -716,9 +721,12 @@ function emailFormatter(cell){
         return "";
     }
 
+    // Fenêtre de rédaction Gmail directe (un mailto: en target=_blank ouvrait un onglet vide)
+    const destinataires = encodeURIComponent(String(value).split(/[;,]/).map(v => v.trim()).filter(Boolean).join(","));
+
     return `
-        <a href="mailto:${value}"
-           target="_blank"
+        <a href="https://mail.google.com/mail/?view=cm&fs=1&to=${destinataires}"
+           target="_blank" rel="noopener"
            style="color:#ff6b2c;text-decoration:none;">
             ${value}
         </a>
@@ -844,6 +852,66 @@ function normalizeSearch(text){
 // TABULATOR
 // ======================================================
 
+// ======================================================
+// COTISATIONS : modification directe dans la liste
+// ======================================================
+
+const CAN_EDIT_COTIS = {{ 'true' if has_access("benevoles", "ecriture") else 'false' }};
+
+function cotisIsoVersFr(iso){
+    return /^\d{4}-\d{2}-\d{2}$/.test(iso || "") ? iso.slice(8,10) + "/" + iso.slice(5,7) + "/" + iso.slice(0,4) : "";
+}
+
+function cotisOuvrir(rowComponent, champ){
+
+    const cell = rowComponent.getCell(champ);
+    const row = rowComponent.getData();
+    const annee = (champ.match(/(\d{4})/) || [])[1];
+    const dejaOui = String(cell.getValue() || "").toLowerCase() === "oui";
+    const dateActuelle = String(row[champ + "_date"] || "");
+
+    const dlg = document.getElementById("cotisListeDlg");
+    const inp = document.getElementById("cotisListeDate");
+    const btnRetirer = document.getElementById("cotisListeRetirer");
+
+    document.getElementById("cotisListeTitre").textContent =
+        "Cotisation " + annee + " — " + (row.prenom || "") + " " + (row.nom || "");
+    inp.value = dateActuelle || new Date().toISOString().slice(0, 10);
+    btnRetirer.style.display = dejaOui ? "" : "none";
+    document.getElementById("cotisListeValider").textContent = dejaOui ? "Modifier la date" : "Valider le paiement";
+
+    dlg.dataset.id = row.id;
+    dlg.dataset.annee = annee;
+    dlg.dataset.champ = champ;
+    dlg._cell = cell;
+    dlg.showModal();
+}
+
+async function cotisEnregistrer(aJour){
+
+    const dlg = document.getElementById("cotisListeDlg");
+    const cell = dlg._cell;
+    const champ = dlg.dataset.champ;
+    const date = document.getElementById("cotisListeDate").value;
+
+    if (aJour && !date){ alert("Merci de saisir une date de paiement."); return; }
+
+    try {
+        const r = await fetch("/api/benevole_cotisation", {
+            method: "POST",
+            headers: {"Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token() }}"},
+            body: JSON.stringify({id: Number(dlg.dataset.id), annee: Number(dlg.dataset.annee), a_jour: aJour, date: date})
+        });
+        const data = await r.json();
+        if (!r.ok || !data.ok){ alert("❌ " + (data.erreur || "Échec de l'enregistrement")); return; }
+        const maj = {}; maj[champ] = data.a_jour ? "oui" : "non"; maj[champ + "_date"] = data.date || "";
+        cell.getRow().update(maj);
+        dlg.close();
+    } catch (err) {
+        alert("❌ Erreur réseau : " + err);
+    }
+}
+
 function resolveColumns(cols){
 
     return cols.map(col => {
@@ -861,6 +929,18 @@ function resolveColumns(cols){
         if (col.formatter === "photoFormatter"){
 
             col.formatter = photoFormatter;
+        }
+
+        if (col.formatter === "cotisationFormatter"){
+
+            col.formatter = function(cell){
+                const oui = String(cell.getValue() || "").toLowerCase() === "oui";
+                const iso = String(cell.getData()[cell.getField() + "_date"] || "");
+                const titre = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? "payée le " + iso.slice(8,10) + "/" + iso.slice(5,7) + "/" + iso.slice(0,4) : (oui ? "à jour (date non renseignée)" : "");
+                return oui
+                    ? '<span title="' + titre + '" style="display:inline-block;width:1.4em;height:1.4em;line-height:1.4em;border-radius:4px;background:#198754;color:#fff;font-weight:700;text-align:center">✓</span>'
+                    : '<span style="display:inline-block;width:1.4em;height:1.4em;line-height:1.4em;border-radius:4px;background:#f8d7da;color:#dc3545;text-align:center">✗</span>';
+            };
         }
 
         if (col.formatter === "dateFormatter"){
@@ -937,6 +1017,14 @@ table.on("rowClick", function(e, row){
 
     if (e.target.closest("a")){
 
+        return;
+    }
+
+    // Clic sur une cellule « cotisation_AAAA » : on modifie la cotisation, on n'ouvre pas la fiche
+    const cellEl = e.target.closest(".tabulator-cell");
+    const champCell = cellEl ? cellEl.getAttribute("tabulator-field") : null;
+    if (CAN_EDIT_COTIS && champCell && /^cotisation_\d{4}$/.test(champCell)){
+        cotisOuvrir(row, champCell);
         return;
     }
 
@@ -1210,11 +1298,46 @@ document
 
 renderFonctionPastilles();
 
+function updateFiltreAlerte(n){
+
+    const box = document.getElementById("filtre-alerte");
+    const search = filtreInput.value.trim();
+    const parts = [];
+
+    if (fonctionFilterSelected.size > 0){
+        parts.push("fonction : " + Array.from(fonctionFilterSelected)
+            .map(v => FONCTIONS_LABELS[v] || v).join(" ou "));
+    }
+    if (search){
+        parts.push("recherche : « " + search + " »");
+    }
+
+    if (!parts.length){
+        box.style.display = "none";
+        return;
+    }
+
+    document.getElementById("filtre-alerte-detail").textContent = parts.join(" ; ");
+    const total = table.getDataCount();
+    document.getElementById("filtre-alerte-compte").textContent =
+        "(" + n + " bénévole" + (n > 1 ? "s" : "") + " affiché" + (n > 1 ? "s" : "") + " sur " + total + ")";
+    box.style.display = "flex";
+}
+
+document.getElementById("filtre-alerte-reset").addEventListener("click", function(){
+
+    filtreInput.value = "";
+    document.getElementById("fonction-filter-clear").click();
+    applyFilters();
+});
+
 function updateBenevolesCount(n){
 
     if (typeof n !== "number"){
         n = table.getDataCount("active");
     }
+
+    updateFiltreAlerte(n);
 
     document.getElementById("benevoles-count").textContent =
         n + (n > 1 ? " bénévoles affichés" : " bénévole affiché");
@@ -1311,6 +1434,7 @@ function getVisibleColumns(){
             [
                 "id",
                 "nom",
+                "prenom",
                 "photo_url",
                 "droit_image"
             ].includes(col.field)
@@ -1503,17 +1627,6 @@ function restoreState(){
 }
 
 // ======================================================
-// RESET
-// ======================================================
-
-function resetFilters(){
-
-    localStorage.removeItem(STORAGE_KEY);
-
-    location.reload();
-}
-
-// ======================================================
 // PUBLIPOSTAGE
 // ======================================================
 
@@ -1640,4 +1753,16 @@ window.addEventListener("load", () => {
 
 </div>
 
+<dialog id="cotisListeDlg" style="border:1px solid #ced4da;border-radius:.5rem;padding:1.2rem;box-shadow:0 .5rem 1.5rem rgba(0,0,0,.25)">
+  <div class="fw-bold mb-2" id="cotisListeTitre"></div>
+  <label class="form-label small mb-1">Date de paiement</label>
+  <input type="date" id="cotisListeDate" class="form-control mb-3">
+  <div class="d-flex justify-content-between gap-2">
+    <button type="button" class="btn btn-outline-danger btn-sm" id="cotisListeRetirer" onclick="cotisEnregistrer(false)">Retirer la cotisation</button>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('cotisListeDlg').close()">Annuler</button>
+      <button type="button" class="btn btn-success btn-sm" id="cotisListeValider" onclick="cotisEnregistrer(true)">Valider le paiement</button>
+    </div>
+  </div>
+</dialog>
 {% endblock %}

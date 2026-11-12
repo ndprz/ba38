@@ -76,11 +76,13 @@ def maj_modele_planning_vif():
             id,
             nom,
             prenom,
-            saisie_vif
+            vif_matin,
+            vif_apres_midi
         FROM benevoles
         ORDER BY
             CASE
-                WHEN LOWER(TRIM(COALESCE(saisie_vif,''))) = 'oui' THEN 0
+                WHEN LOWER(TRIM(COALESCE(vif_matin,''))) = 'oui'
+                  OR LOWER(TRIM(COALESCE(vif_apres_midi,''))) = 'oui' THEN 0
                 ELSE 1
             END,
             nom,
@@ -169,7 +171,7 @@ def creation_planning_vif():
     if travail_vendredi and travail_vendredi["param_value"] == "non":
         jours.remove("vendredi")
 
-    benevoles = {b["id"]: b for b in cursor.execute("SELECT id, nom, prenom, prep_pesee FROM benevoles").fetchall()}
+    benevoles = {b["id"]: b for b in cursor.execute("SELECT id, nom, prenom, ramasse_pesee FROM benevoles").fetchall()}
     absences = cursor.execute("""
         SELECT benevole_id, date_debut, date_fin
         FROM absences
@@ -426,15 +428,16 @@ def gestion_planning_vif():
             l[f"vif{i:02d}_effectif"] = rid if absent and rid else tid
 
     # -------------------------------------------------
-    # Liste bénévoles (saisie_vif='oui' en tête)
+    # Liste bénévoles (vif_matin ou vif_apres_midi='oui' en tête)
     # -------------------------------------------------
     benevoles = [
         dict(b) for b in cursor.execute("""
-            SELECT id, nom, prenom, saisie_vif
+            SELECT id, nom, prenom, vif_matin, vif_apres_midi
             FROM benevoles
             ORDER BY
                 CASE
-                    WHEN LOWER(TRIM(COALESCE(saisie_vif,''))) = 'oui' THEN 0
+                    WHEN LOWER(TRIM(COALESCE(vif_matin,''))) = 'oui'
+                      OR LOWER(TRIM(COALESCE(vif_apres_midi,''))) = 'oui' THEN 0
                     ELSE 1
                 END,
                 nom,

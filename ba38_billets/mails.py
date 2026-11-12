@@ -156,9 +156,16 @@ def mail_resultat(c, p):
 
 def envoyer(c, destinataire, sujet, corps, mode_test=False, user_email=None):
     """Envoi Mailjet d'un mail HTML ; lève l'exception en cas d'erreur.
-    Retourne True si un message est parti (ou a été redirigé en mode test/DEV)."""
-    return envoyer_mail(
+    En mode test le destinataire devient l'utilisateur mais l'expéditeur reste celui de la
+    campagne (validé chez Mailjet) : une adresse d'utilisateur non validée est rejetée en silence.
+    Vérifie aussi le statut renvoyé par Mailjet (un rejet ne lève pas d'exception HTTP)."""
+    res = envoyer_mail(
         sujet=sujet, destinataires=[destinataire], texte=corps, is_html=True,
-        sender_override=c["expediteur"] or EXPEDITEUR_DEFAUT,
+        sender_override=EXPEDITEUR_DEFAUT,
         sender_name=c["expediteur_nom"], reply_to=c["reply_to"],
-        mode_test=bool(mode_test), current_user_email=user_email)
+        mode_test=bool(mode_test), current_user_email=user_email, garder_expediteur=True)
+    for m in (res or {}).get("Messages", []):
+        if m.get("Status") != "success":
+            raise RuntimeError("Mailjet a refusé le message : " + "; ".join(
+                e.get("ErrorMessage", "") for e in m.get("Errors", [])) [:300])
+    return True

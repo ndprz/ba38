@@ -83,6 +83,7 @@ from ba38_utilitaires.core import (
     generer_token_localisation, verifier_token_localisation,
     LOCALISATION_TOKEN_VALIDITE_JOURS,
     generer_token_saisie_association, verifier_token_saisie_association,
+    mailjet_get_message_status,
 )
 from ba38_utilitaires.organisation import get_organisation
 from ba38_collecte import collecte_bp
@@ -959,6 +960,117 @@ def _corps_mail_trieurs_html(personne, texte):
     return f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">{html}</div>'
 
 
+# ============================================================================
+# 📬 TRAÇABILITÉ DES ENVOIS MAILJET — partagée par toutes les pages d'envoi
+# en masse de Collecte (trieurs, disponibilité chauffeurs, prise colis,
+# bilan, ressenti x3, affectations tournées, autorisations, non-collecte
+# bénévoles, sans-vendredi, associations gardant...). Même principe que
+# indicateurs_suivi (ba38_partenaires/indicateurs.py) — capture le MessageID
+# Mailjet à l'envoi, vérification du statut final différée sur action
+# explicite de l'utilisateur (jamais d'appel Mailjet au chargement de la
+# page) — mais généralisé ici dans une seule table partagée (clé
+# annee+feature+email) plutôt que redupliqué colonne par colonne dans
+# chaque table métier comme c'est le cas ailleurs dans le projet (demande
+# utilisateur 2026-11-10).
+# ============================================================================
+
+def _ensure_table_collecte_envois_mail(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_envois_mail (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            annee INTEGER NOT NULL,
+            feature TEXT NOT NULL,
+            email TEXT NOT NULL,
+            nom TEXT,
+            envoye_le TEXT,
+            erreur TEXT,
+            mailjet_status TEXT,
+            mailjet_message_id TEXT,
+            statut_final TEXT,
+            statut_verifie_le TEXT,
+            UNIQUE(annee, feature, email)
+        )
+    """)
+
+
+def _enregistrer_envoi_mail_collecte(annee, feature, email, nom, resultat=None, erreur=None):
+    """À appeler juste après chaque envoyer_mail() d'une boucle d'envoi en
+    masse — resultat = objet retourné par envoyer_mail() en cas de succès
+    (JSON Mailjet), erreur = message si l'envoi a échoué (exception)."""
+    if not email:
+        return
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    mailjet_status, mailjet_message_id = None, None
+    if resultat and resultat.get("Messages"):
+        mj_message = resultat["Messages"][0]
+        mailjet_status = mj_message.get("Status")
+        ids = [str(t["MessageID"]) for t in mj_message.get("To", []) if "MessageID" in t]
+        mailjet_message_id = ids[0] if ids else None
+    with get_db_connection() as conn:
+        _ensure_table_collecte_envois_mail(conn)
+        conn.execute("""
+            INSERT INTO collecte_envois_mail
+                (annee, feature, email, nom, envoye_le, erreur, mailjet_status, mailjet_message_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(annee, feature, email) DO UPDATE SET
+                nom = excluded.nom, envoye_le = excluded.envoye_le, erreur = excluded.erreur,
+                mailjet_status = excluded.mailjet_status, mailjet_message_id = excluded.mailjet_message_id,
+                statut_final = NULL, statut_verifie_le = NULL
+        """, (annee, feature, email, nom, maintenant, erreur, mailjet_status, mailjet_message_id))
+        conn.commit()
+
+
+def _statuts_envois_mail_collecte(annee, feature):
+    """{email: ligne} des statuts déjà connus pour cette page, à fusionner
+    avec la liste de destinataires affichée (cf. _enregistrer_envoi_mail_collecte)."""
+    with get_db_connection() as conn:
+        _ensure_table_collecte_envois_mail(conn)
+        lignes = conn.execute(
+            "SELECT * FROM collecte_envois_mail WHERE annee = ? AND feature = ?", (annee, feature)
+        ).fetchall()
+    return {r["email"]: dict(r) for r in lignes}
+
+
+@collecte_bp.route("/collecte/envois-mail/verifier-statut", methods=["POST"])
+@login_required
+@require_access("collecte", "lecture")
+def collecte_verifier_statut_mailjet():
+    """Vérifie auprès de Mailjet le statut final (sent/opened/bounce/...) de
+    chaque message envoyé pour cette page (annee+feature), et le fige en
+    base — bouton « 🔄 Vérifier statut Mailjet » commun à toutes les pages
+    d'envoi de Collecte."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    feature = request.form.get("feature", "").strip()
+    retour = request.form.get("retour") or url_for("collecte.collecte_main", annee=annee)
+
+    with get_db_connection() as conn:
+        _ensure_table_collecte_envois_mail(conn)
+        lignes = conn.execute(
+            "SELECT id, mailjet_message_id FROM collecte_envois_mail "
+            "WHERE annee = ? AND feature = ? AND mailjet_message_id IS NOT NULL",
+            (annee, feature),
+        ).fetchall()
+
+    compte = {}
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        for ligne in lignes:
+            statut = mailjet_get_message_status(ligne["mailjet_message_id"])
+            if statut:
+                conn.execute(
+                    "UPDATE collecte_envois_mail SET statut_final = ?, statut_verifie_le = ? WHERE id = ?",
+                    (statut, maintenant, ligne["id"]),
+                )
+                compte[statut] = compte.get(statut, 0) + 1
+        conn.commit()
+
+    if compte:
+        flash("🔄 Statuts Mailjet vérifiés : " + ", ".join(f"{v} {k}" for k, v in compte.items()), "info")
+    else:
+        flash("⚠️ Aucun statut récupéré (aucun envoi tracé, ou Mailjet injoignable).", "warning")
+    return redirect(retour)
+
+
 @collecte_bp.route("/collecte/mail_trieurs", methods=["GET", "POST"])
 @login_required
 @require_access("collecte", "lecture")
@@ -997,21 +1109,27 @@ def mail_trieurs():
                 echecs = []
                 for personne in destinataires:
                     try:
-                        envoyer_mail(
+                        resultat = envoyer_mail(
                             f"Collecte {annee} — recherche de trieurs",
                             [personne["email"]],
                             _corps_mail_trieurs_html(personne, mail_texte),
                             sender_override="ba380.directeur@banquealimentaire.org",
                             is_html=True,
                         )
+                        _enregistrer_envoi_mail_collecte(annee, "trieurs", personne["email"], personne.get("nom", ""), resultat=resultat)
                     except Exception as e:
                         echecs.append(personne.get("email", ""))
                         write_log(f"❌ Collecte {annee} : échec envoi mail trieurs à {personne.get('email','')} — {e}")
+                        _enregistrer_envoi_mail_collecte(annee, "trieurs", personne.get("email", ""), personne.get("nom", ""), erreur=str(e))
                 reussis = len(destinataires) - len(echecs)
                 if echecs:
                     flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
                 else:
                     flash(f"✅ {reussis} mail(s) préparé(s).", "success")
+
+    statuts = _statuts_envois_mail_collecte(annee, "trieurs")
+    for p in destinataires:
+        p["statut_mailjet"] = statuts.get(p["email"])
 
     return render_template(
         "collecte/mail_trieurs.html",
@@ -1019,6 +1137,7 @@ def mail_trieurs():
         destinataires=destinataires,
         personnes_sans_email=personnes_sans_email,
         mail_texte=mail_texte,
+        feature="trieurs",
     )
 
 
@@ -1185,21 +1304,27 @@ def mail_disponibilite_chauffeurs_equipiers():
                 echecs = []
                 for personne in destinataires:
                     try:
-                        envoyer_mail(
+                        resultat = envoyer_mail(
                             f"Collecte {annee} — recherche de chauffeurs et équipiers",
                             [personne["email"]],
                             _corps_mail_disponibilite_chauffeurs_html(personne, mail_texte),
                             sender_override="ba380.directeur@banquealimentaire.org",
                             is_html=True,
                         )
+                        _enregistrer_envoi_mail_collecte(annee, "disponibilite_chauffeurs", personne["email"], personne.get("nom", ""), resultat=resultat)
                     except Exception as e:
                         echecs.append(personne.get("email", ""))
                         write_log(f"❌ Collecte {annee} : échec envoi mail disponibilité chauffeurs à {personne.get('email','')} — {e}")
+                        _enregistrer_envoi_mail_collecte(annee, "disponibilite_chauffeurs", personne.get("email", ""), personne.get("nom", ""), erreur=str(e))
                 reussis = len(destinataires) - len(echecs)
                 if echecs:
                     flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
                 else:
                     flash(f"✅ {reussis} mail(s) préparé(s).", "success")
+
+    statuts = _statuts_envois_mail_collecte(annee, "disponibilite_chauffeurs")
+    for p in destinataires:
+        p["statut_mailjet"] = statuts.get(p["email"])
 
     return render_template(
         "collecte/mail_disponibilite_chauffeurs_equipiers.html",
@@ -1207,6 +1332,7 @@ def mail_disponibilite_chauffeurs_equipiers():
         destinataires=destinataires,
         personnes_sans_email=personnes_sans_email,
         mail_texte=mail_texte,
+        feature="disponibilite_chauffeurs",
     )
 
 
@@ -1368,21 +1494,27 @@ def mail_prise_colis():
                 echecs = []
                 for personne in destinataires:
                     try:
-                        envoyer_mail(
+                        resultat = envoyer_mail(
                             f"Collecte {annee} — prise du colis",
                             [personne["email"]],
                             _corps_mail_prise_colis_html(personne, mail_texte),
                             sender_override="ba380.directeur@banquealimentaire.org",
                             is_html=True,
                         )
+                        _enregistrer_envoi_mail_collecte(annee, "prise_colis", personne["email"], personne.get("nom", ""), resultat=resultat)
                     except Exception as e:
                         echecs.append(personne.get("email", ""))
                         write_log(f"❌ Collecte {annee} : échec envoi mail prise de colis à {personne.get('email','')} — {e}")
+                        _enregistrer_envoi_mail_collecte(annee, "prise_colis", personne.get("email", ""), personne.get("nom", ""), erreur=str(e))
                 reussis = len(destinataires) - len(echecs)
                 if echecs:
                     flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
                 else:
                     flash(f"✅ {reussis} mail(s) préparé(s).", "success")
+
+    statuts = _statuts_envois_mail_collecte(annee, "prise_colis")
+    for p in destinataires:
+        p["statut_mailjet"] = statuts.get(p["email"])
 
     return render_template(
         "collecte/mail_prise_colis.html",
@@ -1391,6 +1523,7 @@ def mail_prise_colis():
         personnes_sans_email=personnes_sans_email,
         personnes_sans_portable=personnes_sans_portable,
         mail_texte=mail_texte,
+        feature="prise_colis",
     )
 
 
@@ -1463,13 +1596,15 @@ def _corps_mail_bilan_html(personne, texte, annee):
 @login_required
 @require_access("collecte", "lecture")
 def mail_bilan():
-    """Invitation au bilan de la collecte, envoyée à tous les participants
-    go-on-web de l'année (cf. _lister_participants_gow — toute personne
-    inscrite sur au moins un magasin/créneau cette année, dédoublonnée par
-    email), pas seulement les chauffeurs/équipiers de camion : un bilan de
-    collecte concerne tous les participants, magasins compris."""
+    """Invitation au bilan de la collecte, envoyée aux participants go-on-web
+    de l'année réellement actifs cette année (cf. _participants_actifs_gow —
+    affectés à un magasin, chauffeur/équipier, entrepôt, ou association en
+    collecte gardée), pas seulement les chauffeurs/équipiers de camion : un
+    bilan de collecte concerne tous les participants actifs, magasins
+    compris — mais pas une simple inscription sans affectation réelle
+    (demande utilisateur 2026-11-10)."""
     annee = request.args.get("annee", type=int) or request.form.get("annee", type=int) or datetime.now().year
-    destinataires = _lister_participants_gow(annee)
+    destinataires = _participants_actifs_gow(annee)
     mail_texte = _contenu_mail_bilan(annee)
 
     if request.method == "POST":
@@ -1498,27 +1633,34 @@ def mail_bilan():
                 echecs = []
                 for personne in destinataires:
                     try:
-                        envoyer_mail(
+                        resultat = envoyer_mail(
                             f"Collecte {annee} — invitation au bilan",
                             [personne["email"]],
                             _corps_mail_bilan_html(personne, mail_texte, annee),
                             sender_override="ba380.benevolecollecte@banquealimentaire.org",
                             is_html=True,
                         )
+                        _enregistrer_envoi_mail_collecte(annee, "bilan", personne["email"], personne.get("nom", ""), resultat=resultat)
                     except Exception as e:
                         echecs.append(personne.get("email", ""))
                         write_log(f"❌ Collecte {annee} : échec envoi mail bilan à {personne.get('email','')} — {e}")
+                        _enregistrer_envoi_mail_collecte(annee, "bilan", personne.get("email", ""), personne.get("nom", ""), erreur=str(e))
                 reussis = len(destinataires) - len(echecs)
                 if echecs:
                     flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
                 else:
                     flash(f"✅ {reussis} mail(s) préparé(s).", "success")
 
+    statuts = _statuts_envois_mail_collecte(annee, "bilan")
+    for p in destinataires:
+        p["statut_mailjet"] = statuts.get(p["email"])
+
     return render_template(
         "collecte/mail_bilan.html",
         annee=annee,
         destinataires=destinataires,
         mail_texte=mail_texte,
+        feature="bilan",
     )
 
 
@@ -1528,7 +1670,7 @@ def mail_bilan():
 def mail_bilan_apercu(annee):
     """Rendu HTML exact du mail pour la personne sélectionnée, sans rien
     envoyer (même en test) — même principe que l'aperçu trieurs/prise colis."""
-    destinataires = _lister_participants_gow(annee)
+    destinataires = _participants_actifs_gow(annee)
     if not destinataires:
         abort(404)
     mail_texte = _contenu_mail_bilan(annee)
@@ -1569,17 +1711,47 @@ def _ensure_colonne_mail_ressenti_magasins(conn):
         conn.execute("ALTER TABLE collecte_campagnes ADD COLUMN mail_texte_ressenti_magasins TEXT")
 
 
+def _emails_avec_magasin_gow(annee):
+    """Emails (en minuscules) ayant au moins une ligne avec un VRAI magasin
+    (comparé au référentiel magasins de l'année, colonne Nom) dans le
+    fichier participants go-on-web — une colonne Magasin non vide ne
+    suffit PAS : elle sert aussi à noter, pour les chauffeurs/équipiers et
+    les bénévoles entrepôt, le nom du camion/véhicule ou un rôle (ex.
+    « CAMION DLM 20m3 1 », « CHAUFFEURS », « BAI Entrepot - ... ») plutôt
+    qu'un vrai magasin — sans ce contrôle, ces personnes étaient à tort
+    comptées comme affectées à un magasin (bug trouvé 2026-11-10 : 990
+    « magasin » annoncés contre 832 réels, tout l'écart venant de ces
+    libellés de camion/entrepôt). Factorisé entre _charger_benevoles_magasins
+    et _participants_actifs_gow."""
+    chemin_participants = _fichier_drive(annee, "participants")
+    chemin_magasins = _fichier_drive(annee, "magasins")
+    if not chemin_participants or not chemin_magasins:
+        return set()
+    df_mag_ref = pd.read_excel(chemin_magasins)
+    df_mag_ref.columns = [str(c).strip() for c in df_mag_ref.columns]
+    noms_magasins_reels = set(df_mag_ref["Nom"].astype(str).str.strip())
+
+    df_part = pd.read_excel(chemin_participants)
+    df_part.columns = [str(c).strip() for c in df_part.columns]
+    df_part = df_part[df_part.get("Année") == annee]
+    df_part = df_part[df_part["Magasin"].astype(str).str.strip().isin(noms_magasins_reels)]
+    return {str(e).strip().lower() for e in df_part["Email"]}
+
+
 def _charger_benevoles_magasins(annee):
-    """Bénévoles ayant participé EN MAGASIN à la collecte de l'année (par
-    opposition aux chauffeurs/équipiers de camion) : tous les participants
-    go-on-web de l'année (cf. _lister_participants_gow) dont l'email n'est
-    pas celui d'un chauffeur/équipier réellement nommé dans liste-vehicule.xlsx
-    cette année (cf. _charger_chauffeurs_equipiers_bruts) — ces derniers ont
-    leur propre mail dédié (cf. mail_bilan, qui s'adresse lui à tous les
-    participants, magasins et camions confondus)."""
+    """Bénévoles ayant participé EN MAGASIN à la collecte de l'année : parmi
+    les participants go-on-web de l'année (cf. _lister_participants_gow),
+    uniquement ceux réellement affectés à un magasin (colonne Magasin
+    renseignée, cf. _emails_avec_magasin_gow — exclut les simples
+    inscriptions sans affectation réelle, demande utilisateur 2026-11-10).
+    N'exclut plus les chauffeurs/équipiers de camion ayant aussi un magasin
+    (demande utilisateur 2026-11-10 : "ne pas exclure les bénévoles qui
+    sont aussi dans une autre fonction") — une personne peut donc recevoir
+    à la fois ce mail et le mail ressenti chauffeurs si elle cumule les
+    deux rôles."""
     participants = _lister_participants_gow(annee)
-    emails_camions = {e for e in _charger_chauffeurs_equipiers_bruts(annee).keys() if "@" in e}
-    return [p for p in participants if p["email"] not in emails_camions]
+    emails_avec_magasin = _emails_avec_magasin_gow(annee)
+    return [p for p in participants if p["email"] in emails_avec_magasin]
 
 
 def _contenu_mail_ressenti_magasins(annee):
@@ -1636,27 +1808,34 @@ def mail_ressenti_magasins():
                 echecs = []
                 for personne in destinataires:
                     try:
-                        envoyer_mail(
+                        resultat = envoyer_mail(
                             f"Collecte {annee} — votre ressenti",
                             [personne["email"]],
                             _corps_mail_ressenti_magasins_html(personne, mail_texte, annee),
                             sender_override="ba380.benevolecollecte@banquealimentaire.org",
                             is_html=True,
                         )
+                        _enregistrer_envoi_mail_collecte(annee, "ressenti_magasins", personne["email"], personne.get("nom", ""), resultat=resultat)
                     except Exception as e:
                         echecs.append(personne.get("email", ""))
                         write_log(f"❌ Collecte {annee} : échec envoi mail ressenti magasins à {personne.get('email','')} — {e}")
+                        _enregistrer_envoi_mail_collecte(annee, "ressenti_magasins", personne.get("email", ""), personne.get("nom", ""), erreur=str(e))
                 reussis = len(destinataires) - len(echecs)
                 if echecs:
                     flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
                 else:
                     flash(f"✅ {reussis} mail(s) préparé(s).", "success")
 
+    statuts = _statuts_envois_mail_collecte(annee, "ressenti_magasins")
+    for p in destinataires:
+        p["statut_mailjet"] = statuts.get(p["email"])
+
     return render_template(
         "collecte/mail_ressenti_magasins.html",
         annee=annee,
         destinataires=destinataires,
         mail_texte=mail_texte,
+        feature="ressenti_magasins",
     )
 
 
@@ -1772,27 +1951,34 @@ def mail_ressenti_chauffeurs():
                 echecs = []
                 for personne in destinataires:
                     try:
-                        envoyer_mail(
+                        resultat = envoyer_mail(
                             f"Collecte {annee} — votre ressenti",
                             [personne["email"]],
                             _corps_mail_ressenti_chauffeurs_html(personne, mail_texte, annee),
                             sender_override="ba380.directeur@banquealimentaire.org",
                             is_html=True,
                         )
+                        _enregistrer_envoi_mail_collecte(annee, "ressenti_chauffeurs", personne["email"], personne.get("nom", ""), resultat=resultat)
                     except Exception as e:
                         echecs.append(personne.get("email", ""))
                         write_log(f"❌ Collecte {annee} : échec envoi mail ressenti chauffeurs à {personne.get('email','')} — {e}")
+                        _enregistrer_envoi_mail_collecte(annee, "ressenti_chauffeurs", personne.get("email", ""), personne.get("nom", ""), erreur=str(e))
                 reussis = len(destinataires) - len(echecs)
                 if echecs:
                     flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
                 else:
                     flash(f"✅ {reussis} mail(s) préparé(s).", "success")
 
+    statuts = _statuts_envois_mail_collecte(annee, "ressenti_chauffeurs")
+    for p in destinataires:
+        p["statut_mailjet"] = statuts.get(p["email"])
+
     return render_template(
         "collecte/mail_ressenti_chauffeurs.html",
         annee=annee,
         destinataires=destinataires,
         mail_texte=mail_texte,
+        feature="ressenti_chauffeurs",
     )
 
 
@@ -1936,26 +2122,33 @@ def mail_ressenti_entrepot():
                 echecs = []
                 for personne in destinataires:
                     try:
-                        envoyer_mail(
+                        resultat = envoyer_mail(
                             f"Collecte {annee} — votre ressenti",
                             [personne["email"]],
                             _corps_mail_ressenti_entrepot_html(personne, mail_texte, annee),
                             sender_override="ba380.directeur@banquealimentaire.org",
                             is_html=True,
                         )
+                        _enregistrer_envoi_mail_collecte(annee, "ressenti_entrepot", personne["email"], personne.get("nom", ""), resultat=resultat)
                     except Exception as e:
                         echecs.append(personne.get("email", ""))
                         write_log(f"❌ Collecte {annee} : échec envoi mail ressenti entrepôt à {personne.get('email','')} — {e}")
+                        _enregistrer_envoi_mail_collecte(annee, "ressenti_entrepot", personne.get("email", ""), personne.get("nom", ""), erreur=str(e))
                 reussis = len(destinataires) - len(echecs)
                 if echecs:
                     flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
                 else:
                     flash(f"✅ {reussis} mail(s) préparé(s).", "success")
 
+    statuts = _statuts_envois_mail_collecte(annee, "ressenti_entrepot")
+    for p in destinataires:
+        p["statut_mailjet"] = statuts.get(p["email"])
+
     return render_template(
         "collecte/mail_ressenti_entrepot.html",
         annee=annee,
         destinataires=destinataires,
+        feature="ressenti_entrepot",
         mail_texte=mail_texte,
     )
 
@@ -2306,6 +2499,116 @@ def _lister_participants_gow(annee):
         if bai_brut in ("BAI", "A-BAI"):
             entree["bai"] = bai_brut
     return sorted(resultat.values(), key=lambda p: p["nom"].lower())
+
+
+def _participants_actifs_gow(annee):
+    """Participants go-on-web (cf. _lister_participants_gow) réellement actifs
+    cette année — affectés à un magasin (collecte BAI directe), nommés
+    chauffeur/équipier ou entrepôt (liste-vehicule.xlsx), ou référents d'une
+    association en collecte gardée (cf. _referents_association, même
+    fonction déjà utilisée par la page Associations gardant — une première
+    version de ce filtre avec son propre rapprochement naïf sur la colonne
+    Groupe n'en retrouvait que 7 sur 29 réels, faute de gérer le préfixe
+    'BAI+' et les doublons multi-lignes par email comme le fait déjà
+    _referents_association) — par opposition à une simple inscription/
+    référencement sans affectation réelle cette année (demande utilisateur
+    2026-11-10, pour mail_bilan : "n'envoyer un mail qu'au bénévole actif
+    cette année donc affecté à une action")."""
+    participants = _lister_participants_gow(annee)
+
+    emails_avec_magasin = _emails_avec_magasin_gow(annee)
+    emails_camions = {e for e in _charger_chauffeurs_equipiers_bruts(annee).keys() if "@" in e}
+    emails_entrepot = {p["email"] for p in _charger_benevoles_entrepot(annee) if p.get("email")}
+
+    df_mag = _lire_magasins_gardes(annee)
+    df_groupes = _lire_groupes(annee)
+    if "Code VIF" in df_mag.columns:
+        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+    associations, _ = _construire_associations(df_mag, df_groupes)
+    df_participants = _lire_participants(annee)
+    emails_gardee = set()
+    for asso in associations:
+        for referent in _referents_association(asso["nom"], df_participants):
+            email_referent = (referent.get("email") or "").strip().lower()
+            if email_referent:
+                emails_gardee.add(email_referent)
+
+    return [
+        p for p in participants
+        if p["email"] in emails_avec_magasin
+        or p["email"] in emails_camions
+        or p["email"] in emails_entrepot
+        or p["email"] in emails_gardee
+    ]
+
+
+def _comptage_participants(annee):
+    """Comptage par grande catégorie d'affectation, pour objectiver qui
+    compte comme quoi (demande utilisateur 2026-11-10, suite au bug
+    _emails_avec_magasin_gow où la colonne Magasin contenait aussi des
+    libellés de camion/entrepôt) : vrais magasins (comparés au référentiel,
+    cf. _emails_avec_magasin_gow), équipiers/chauffeurs réellement affectés
+    à un camion réel V001-V089 (cf. _charger_chauffeurs_equipiers_bruts, qui
+    exclut déjà V090/V091/V092 — le pool V100, sans camion précis, est
+    exclu ici aussi : demande utilisateur 2026-11-10 "ne pas inclure V100"),
+    bénévoles entrepôt V090-V092 (cf. _charger_benevoles_entrepot). Chaque
+    bénévole peut apparaître dans plusieurs listes à la fois (ex. magasin
+    ET camion)."""
+    participants = _lister_participants_gow(annee)
+    emails_magasin = _emails_avec_magasin_gow(annee)
+    magasins = [p for p in participants if p["email"] in emails_magasin]
+
+    camions_bruts = _charger_chauffeurs_equipiers_bruts(annee)
+    camions = sorted(
+        ({"nom": v["nom"], "email": v["email"]} for v in camions_bruts.values() if v.get("email") and v.get("camions")),
+        key=lambda p: p["nom"].lower(),
+    )
+
+    entrepot = _charger_benevoles_entrepot(annee)
+
+    return {"magasins": magasins, "camions": camions, "entrepot": entrepot}
+
+
+@collecte_bp.route("/collecte/<int:annee>/participants/comptage")
+@login_required
+@require_access("collecte", "lecture")
+def participants_comptage(annee):
+    comptage = _comptage_participants(annee)
+    return render_template("collecte/participants_comptage.html", annee=annee, **comptage)
+
+
+@collecte_bp.route("/collecte/<int:annee>/participants/comptage/export")
+@login_required
+@require_access("collecte", "lecture")
+def participants_comptage_export(annee):
+    comptage = _comptage_participants(annee)
+
+    wb_export = Workbook()
+    ws1 = wb_export.active
+    ws1.title = "Magasins"
+    ws1.append(["Nom", "Email"])
+    for p in comptage["magasins"]:
+        ws1.append([p["nom"], p["email"]])
+
+    ws2 = wb_export.create_sheet("Camions")
+    ws2.append(["Nom", "Email"])
+    for p in comptage["camions"]:
+        ws2.append([p["nom"], p["email"]])
+
+    ws3 = wb_export.create_sheet("Entrepot")
+    ws3.append(["Nom", "Email"])
+    for p in comptage["entrepot"]:
+        ws3.append([p["nom"], p["email"]])
+
+    tampon = io.BytesIO()
+    wb_export.save(tampon)
+    tampon.seek(0)
+    return send_file(
+        tampon,
+        as_attachment=True,
+        download_name=f"comptage_participants_{annee}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @collecte_bp.route("/collecte/<int:annee>/comparaison-bai-basilic")
@@ -3494,6 +3797,7 @@ def autorisations(annee):
         maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         envoyes = 0
         deja_notifies = []
+        echecs = []
         # « Test sur un seul magasin » reste un moyen délibéré de forcer un
         # renvoi à un magasin précis (ex. il affirme ne jamais l'avoir reçu) —
         # même logique que sans_vendredi(). Hors de ce cas, jamais de second
@@ -3506,14 +3810,21 @@ def autorisations(annee):
                 continue
             fichier_lettre = _creer_pdf_autorisation(magasin, annee, dossier)
             destinataires = [current_user.email] if mode_test else magasin["emails"]
-            envoyer_mail(
-                sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — Demande d'autorisation — {magasin['nom']}",
-                destinataires=destinataires,
-                texte=texte_mail_modele.replace("<<Nom>>", magasin["nom"]),
-                sender_override="ba380.collecte@banquealimentaire.org",
-                cc=None if mode_test else ["ba380.collecte@banquealimentaire.org"],
-                attachment_path=fichier_lettre,
-            )
+            try:
+                resultat = envoyer_mail(
+                    sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — Demande d'autorisation — {magasin['nom']}",
+                    destinataires=destinataires,
+                    texte=texte_mail_modele.replace("<<Nom>>", magasin["nom"]),
+                    sender_override="ba380.collecte@banquealimentaire.org",
+                    cc=None if mode_test else ["ba380.collecte@banquealimentaire.org"],
+                    attachment_path=fichier_lettre,
+                )
+                _enregistrer_envoi_mail_collecte(annee, "autorisations", destinataires[0] if destinataires else magasin["code_vif"], magasin["nom"], resultat=resultat)
+            except Exception as e:
+                echecs.append(magasin["nom"])
+                write_log(f"❌ Collecte {annee} : échec envoi demande autorisation à {magasin['nom']} — {e}")
+                _enregistrer_envoi_mail_collecte(annee, "autorisations", destinataires[0] if destinataires else magasin["code_vif"], magasin["nom"], erreur=str(e))
+                continue
             envoyes += 1
             if not mode_test:
                 with get_db_connection() as conn:
@@ -3526,9 +3837,11 @@ def autorisations(annee):
                     conn.commit()
 
         message = f"✅ {envoyes} demande(s) d'autorisation {'de test ' if mode_test else ''}envoyée(s)"
+        if echecs:
+            message += f" — ⛔ {len(echecs)} échec(s) : {', '.join(echecs)}"
         if deja_notifies:
             message += f" — déjà notifié(s) précédemment, non renvoyé(s) : {', '.join(deja_notifies)}"
-        flash(message, "warning" if deja_notifies else "success")
+        flash(message, "warning" if (deja_notifies or echecs) else "success")
         write_log(f"📧 Envoi demandes autorisation {annee} : {envoyes} envoyé(s) par {current_user.email}")
         return redirect(url_for("collecte.autorisations", annee=annee))
 
@@ -3542,8 +3855,11 @@ def autorisations(annee):
             "SELECT autorisation_texte_lettre, autorisation_texte_coupon, autorisation_texte_mail "
             "FROM collecte_campagnes WHERE annee = ?", (annee,)
         ).fetchone()
+    statuts = _statuts_envois_mail_collecte(annee, "autorisations")
     for magasin in magasins:
         magasin["deja_envoye"] = magasin["code_vif"] in deja_envoyes
+        premier_email = magasin["emails"][0] if magasin.get("emails") else None
+        magasin["statut_mailjet"] = statuts.get(premier_email) if premier_email else None
 
     image_produits_url = url_for("collecte.autorisations_image") if _chemin_image_produits_autorisation() else None
 
@@ -3555,6 +3871,7 @@ def autorisations(annee):
         texte_coupon=(campagne["autorisation_texte_coupon"] if campagne else None) or AUTORISATION_TEXTE_COUPON_DEFAUT,
         texte_mail=(campagne["autorisation_texte_mail"] if campagne else None) or AUTORISATION_TEXTE_MAIL_DEFAUT,
         image_produits_url=image_produits_url,
+        feature="autorisations",
     )
 
 
@@ -4162,14 +4479,19 @@ def non_collecte_benevoles(annee):
             a_un_email = bool(magasin["emails"])
             if a_un_email:
                 destinataires = [current_user.email] if mode_test else magasin["emails"]
-                envoyer_mail(
-                    sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — Pas de collecte cette année — {magasin['nom']}",
-                    destinataires=destinataires,
-                    texte=texte_mail_modele.replace("<<Nom>>", magasin["nom"]),
-                    sender_override="ba380.collecte@banquealimentaire.org",
-                    cc=None if mode_test else ["ba380.collecte@banquealimentaire.org"],
-                )
-                envoyes += 1
+                try:
+                    resultat = envoyer_mail(
+                        sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — Pas de collecte cette année — {magasin['nom']}",
+                        destinataires=destinataires,
+                        texte=texte_mail_modele.replace("<<Nom>>", magasin["nom"]),
+                        sender_override="ba380.collecte@banquealimentaire.org",
+                        cc=None if mode_test else ["ba380.collecte@banquealimentaire.org"],
+                    )
+                    _enregistrer_envoi_mail_collecte(annee, "non_collecte_benevoles", destinataires[0], magasin["nom"], resultat=resultat)
+                    envoyes += 1
+                except Exception as e:
+                    write_log(f"❌ Collecte {annee} : échec envoi non-collecte bénévoles à {magasin['nom']} — {e}")
+                    _enregistrer_envoi_mail_collecte(annee, "non_collecte_benevoles", destinataires[0], magasin["nom"], erreur=str(e))
             else:
                 sans_email.append(magasin["nom"])
 
@@ -4212,16 +4534,20 @@ def non_collecte_benevoles(annee):
         campagne = conn.execute(
             "SELECT non_collecte_texte_mail FROM collecte_campagnes WHERE annee = ?", (annee,)
         ).fetchone()
+    statuts = _statuts_envois_mail_collecte(annee, "non_collecte_benevoles")
     for magasin in magasins:
         deja = deja_marques.get(magasin["code_vif"])
         magasin["deja_marque"] = deja is not None
         magasin["mail_deja_envoye"] = bool(deja and deja["mail_envoye"])
+        premier_email = magasin["emails"][0] if magasin.get("emails") else None
+        magasin["statut_mailjet"] = statuts.get(premier_email) if premier_email else None
 
     return render_template(
         "collecte/non_collecte_benevoles.html",
         annee=annee,
         magasins=magasins,
         texte_mail=(campagne["non_collecte_texte_mail"] if campagne else None) or NON_COLLECTE_TEXTE_MAIL_DEFAUT,
+        feature="non_collecte_benevoles",
     )
 
 
@@ -4462,13 +4788,19 @@ def sans_vendredi(annee):
                 sans_email.append(magasin["nom"])
                 continue
             destinataires = [current_user.email] if mode_test else magasin["emails"]
-            envoyer_mail(
-                sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — Pas de collecte le vendredi — {magasin['nom']}",
-                destinataires=destinataires,
-                texte=texte_mail_modele.replace("<<Nom>>", magasin["nom"]),
-                sender_override="ba380.collecte@banquealimentaire.org",
-                cc=None if mode_test else ["ba380.collecte@banquealimentaire.org"],
-            )
+            try:
+                resultat = envoyer_mail(
+                    sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — Pas de collecte le vendredi — {magasin['nom']}",
+                    destinataires=destinataires,
+                    texte=texte_mail_modele.replace("<<Nom>>", magasin["nom"]),
+                    sender_override="ba380.collecte@banquealimentaire.org",
+                    cc=None if mode_test else ["ba380.collecte@banquealimentaire.org"],
+                )
+                _enregistrer_envoi_mail_collecte(annee, "sans_vendredi", destinataires[0], magasin["nom"], resultat=resultat)
+            except Exception as e:
+                write_log(f"❌ Collecte {annee} : échec envoi sans-vendredi à {magasin['nom']} — {e}")
+                _enregistrer_envoi_mail_collecte(annee, "sans_vendredi", destinataires[0], magasin["nom"], erreur=str(e))
+                continue
             envoyes += 1
             if not mode_test:
                 with get_db_connection() as conn:
@@ -4496,10 +4828,13 @@ def sans_vendredi(annee):
                 "SELECT code_vif, mail_envoye FROM collecte_magasins_sans_vendredi WHERE annee = ?", (annee,)
             ).fetchall()
         }
+    statuts = _statuts_envois_mail_collecte(annee, "sans_vendredi")
     for magasin in magasins:
         deja = deja_marques.get(magasin["code_vif"])
         magasin["deja_marque"] = deja is not None
         magasin["mail_deja_envoye"] = bool(deja and deja["mail_envoye"])
+        premier_email = magasin["emails"][0] if magasin.get("emails") else None
+        magasin["statut_mailjet"] = statuts.get(premier_email) if premier_email else None
 
     derniere_detection = None
     with get_db_connection() as conn:
@@ -4571,6 +4906,7 @@ def sans_vendredi(annee):
         nb_magasins_total=len(magasins), voir_tous=voir_tous,
         derniere_detection=derniere_detection,
         texte_mail=(campagne["sans_vendredi_texte_mail"] if campagne else None) or SANS_VENDREDI_TEXTE_MAIL_DEFAUT,
+        feature="sans_vendredi",
     )
 
 
@@ -5253,6 +5589,8 @@ def collecte_main():
         mercuriale_importee_annee_precedente=(annee - 1) in mercuriale_annees_importees,
         mercuriale_import_annee=mercuriale_imports.get(annee),
         mercuriale_import_annee_precedente=mercuriale_imports.get(annee - 1),
+        verrou_bai=_resultat_bai_verrouille(annee),
+        verrou_gardee=_resultat_gardee_verrouille(annee),
     )
 
 
@@ -5320,7 +5658,7 @@ def chauffeurs_equipiers():
                 echecs = []
                 for personne in destinataires:
                     try:
-                        envoyer_mail(
+                        resultat = envoyer_mail(
                             f"Vos affectations tournées {annee}",
                             [personne["email"]],
                             _corps_mail_affectations_html(personne, mail_texte, image_url),
@@ -5328,14 +5666,20 @@ def chauffeurs_equipiers():
                             attachment_paths=chemins_pj or None,
                             is_html=True,
                         )
+                        _enregistrer_envoi_mail_collecte(annee, "affectations_tournees", personne["email"], personne.get("nom", ""), resultat=resultat)
                     except Exception as e:
                         echecs.append(personne.get("email", ""))
                         write_log(f"❌ Collecte {annee} : échec envoi mail affectations à {personne.get('email','')} — {e}")
+                        _enregistrer_envoi_mail_collecte(annee, "affectations_tournees", personne.get("email", ""), personne.get("nom", ""), erreur=str(e))
                 reussis = len(destinataires) - len(echecs)
                 if echecs:
                     flash(f"⚠️ {reussis} mail(s) envoyé(s), {len(echecs)} échec(s) : " + ", ".join(echecs), "warning")
                 else:
                     flash(f"✅ {reussis} mail(s) préparé(s).", "success")
+
+    statuts = _statuts_envois_mail_collecte(annee, "affectations_tournees")
+    for p in destinataires:
+        p["statut_mailjet"] = statuts.get(p["email"])
 
     return render_template(
         "collecte/chauffeurs_equipiers.html",
@@ -5345,6 +5689,7 @@ def chauffeurs_equipiers():
         mail_texte=mail_texte,
         image_url=image_url,
         pieces_jointes=pieces_jointes,
+        feature="affectations_tournees",
     )
 
 
@@ -6474,6 +6819,7 @@ def cagettes(annee):
         campagne=campagne,
         initialisee=initialisee,
         magasins_par_camion=magasins_par_camion,
+        verrou_bai=_resultat_bai_verrouille(annee),
     )
 
 
@@ -6849,6 +7195,13 @@ def enregistrer_cagettes():
 
     if not isinstance(annee, int):
         return jsonify({"success": False, "error": "Année invalide"}), 400
+
+    verrou = _resultat_bai_verrouille(annee)
+    if verrou:
+        return jsonify({
+            "success": False,
+            "error": f"🔒 Résultat collecte BAI {annee} verrouillé depuis le {verrou['le']} — déverrouillez-le d'abord.",
+        }), 423
 
     maintenant = datetime.now().strftime("%Y-%m-%d %H:%M")
     with get_db_connection() as conn:
@@ -9479,6 +9832,13 @@ def enregistrer_poids_magasins_gardee():
     if poids_kg is not None and poids_kg < 0:
         return jsonify({"success": False, "erreur": "Poids invalide"}), 400
 
+    verrou = _resultat_gardee_verrouille(annee)
+    if verrou:
+        return jsonify({
+            "success": False,
+            "erreur": f"🔒 Résultat collecte gardée {annee} verrouillé depuis le {verrou['le']} — déverrouillez-le d'abord.",
+        }), 423
+
     maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
         conn.execute("""
@@ -9499,6 +9859,12 @@ def poids_magasins_gardee_reinitialiser(annee):
     """Efface toutes les saisies de poids par magasin gardé de l'année —
     volontairement utilisable en prod comme en dev (pas réservé aux essais
     dev), pour pouvoir repartir à zéro après des essais réels."""
+    verrou = _resultat_gardee_verrouille(annee)
+    if verrou:
+        return jsonify({
+            "success": False,
+            "erreur": f"🔒 Résultat collecte gardée {annee} verrouillé depuis le {verrou['le']} — déverrouillez-le d'abord.",
+        }), 423
     with get_db_connection() as conn:
         cur = conn.execute("DELETE FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,))
         conn.commit()
@@ -9782,6 +10148,13 @@ def enregistrer_quantites_produits():
     if poids_kg is not None and poids_kg < 0:
         return jsonify({"success": False, "erreur": "Poids invalide"}), 400
 
+    verrou = _resultat_gardee_verrouille(annee)
+    if verrou:
+        return jsonify({
+            "success": False,
+            "erreur": f"🔒 Résultat collecte gardée {annee} verrouillé depuis le {verrou['le']} — déverrouillez-le d'abord.",
+        }), 423
+
     maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
         conn.execute("""
@@ -9802,11 +10175,165 @@ def quantites_produits_reinitialiser(annee):
     """Efface toutes les saisies de quantités par produit de l'année —
     volontairement utilisable en prod comme en dev (pas réservé aux essais
     dev), pour pouvoir repartir à zéro après des essais réels."""
+    verrou = _resultat_gardee_verrouille(annee)
+    if verrou:
+        return jsonify({
+            "success": False,
+            "erreur": f"🔒 Résultat collecte gardée {annee} verrouillé depuis le {verrou['le']} — déverrouillez-le d'abord.",
+        }), 423
     with get_db_connection() as conn:
         cur = conn.execute("DELETE FROM collecte_quantites_produits WHERE annee = ?", (annee,))
         conn.commit()
     write_log(f"🗑️ Quantités par produit {annee} réinitialisées ({cur.rowcount} ligne(s)) par {current_user.email}")
     return jsonify({"success": True, "nb_supprimees": cur.rowcount})
+
+
+def _controle_renforce_ok(annee):
+    """Contrôle renforcé exigé pour une action sensible (remise à zéro,
+    déverrouillage) : case à cocher ET année tapée exactement, vérifiés ici
+    côté serveur — jamais seulement un confirm() JS, contournable par un
+    POST direct (même principe que gardee_relancer, audit 2026-10-28 ;
+    demande utilisateur 2026-11-10 : "sous contrôle renforcé")."""
+    return (
+        request.form.get("confirmation") == "oui"
+        and request.form.get("mot_confirmation_saisi", "").strip() == str(annee)
+    )
+
+
+def _ensure_colonnes_verrouillage_resultat_bai(conn):
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_campagnes)").fetchall()}
+    if "resultat_bai_verrouille_le" not in colonnes:
+        conn.execute("ALTER TABLE collecte_campagnes ADD COLUMN resultat_bai_verrouille_le TEXT")
+    if "resultat_bai_verrouille_par" not in colonnes:
+        conn.execute("ALTER TABLE collecte_campagnes ADD COLUMN resultat_bai_verrouille_par TEXT")
+
+
+def _resultat_bai_verrouille(annee):
+    """None si la saisie Résultat collecte BAI (cagettes + palox) de
+    l'année est déverrouillée, sinon {"le":..., "par":...} — vérifié par
+    chaque route d'écriture de enregistrer_cagettes/palox_* (demande
+    utilisateur 2026-11-10 : "pouvoir bloquer la saisie une fois que tout
+    est fini afin d'éviter des erreurs")."""
+    with get_db_connection() as conn:
+        _ensure_colonnes_verrouillage_resultat_bai(conn)
+        conn.commit()
+        row = conn.execute(
+            "SELECT resultat_bai_verrouille_le, resultat_bai_verrouille_par FROM collecte_campagnes WHERE annee = ?",
+            (annee,),
+        ).fetchone()
+    if row and row["resultat_bai_verrouille_le"]:
+        return {"le": row["resultat_bai_verrouille_le"], "par": row["resultat_bai_verrouille_par"]}
+    return None
+
+
+@collecte_bp.route("/collecte/<int:annee>/resultat-bai/verrouiller", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def resultat_bai_verrouiller(annee):
+    """Verrouille la saisie Résultat collecte BAI (cagettes + palox) pour
+    l'année — geste volontairement simple (pas de contrôle renforcé) :
+    verrouiller ne risque jamais de perdre des données, contrairement au
+    déverrouillage."""
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        _ensure_colonnes_verrouillage_resultat_bai(conn)
+        conn.execute(
+            "UPDATE collecte_campagnes SET resultat_bai_verrouille_le = ?, resultat_bai_verrouille_par = ? WHERE annee = ?",
+            (maintenant, current_user.email, annee),
+        )
+        conn.commit()
+    write_log(f"🔒 Résultat collecte BAI {annee} verrouillé par {current_user.email}")
+    flash(f"🔒 Saisie Résultat collecte BAI verrouillée pour {annee}.", "success")
+    return redirect(url_for("collecte.collecte_main", annee=annee))
+
+
+@collecte_bp.route("/collecte/<int:annee>/resultat-bai/deverrouiller", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def resultat_bai_deverrouiller(annee):
+    """Déverrouille — contrôle renforcé obligatoire (cf. _controle_renforce_ok)."""
+    if not _controle_renforce_ok(annee):
+        flash("❌ Confirmation incomplète — rien n'a été déverrouillé.", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    with get_db_connection() as conn:
+        _ensure_colonnes_verrouillage_resultat_bai(conn)
+        conn.execute(
+            "UPDATE collecte_campagnes SET resultat_bai_verrouille_le = NULL, resultat_bai_verrouille_par = NULL WHERE annee = ?",
+            (annee,),
+        )
+        conn.commit()
+    write_log(f"🔓 Résultat collecte BAI {annee} déverrouillé par {current_user.email}")
+    flash(f"🔓 Saisie Résultat collecte BAI déverrouillée pour {annee}.", "warning")
+    return redirect(url_for("collecte.collecte_main", annee=annee))
+
+
+def _ensure_colonnes_verrouillage_resultat_gardee(conn):
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_campagnes)").fetchall()}
+    if "resultat_gardee_verrouille_le" not in colonnes:
+        conn.execute("ALTER TABLE collecte_campagnes ADD COLUMN resultat_gardee_verrouille_le TEXT")
+    if "resultat_gardee_verrouille_par" not in colonnes:
+        conn.execute("ALTER TABLE collecte_campagnes ADD COLUMN resultat_gardee_verrouille_par TEXT")
+
+
+def _resultat_gardee_verrouille(annee):
+    """None si la saisie Résultat collecte gardée (poids par magasin gardé +
+    quantités par produit — pages internes ET lien public associations)
+    de l'année est déverrouillée, sinon {"le":..., "par":...} — même
+    principe que _resultat_bai_verrouille (demande utilisateur 2026-11-10 :
+    "faire la même chose pour Résultat collecte gardée")."""
+    with get_db_connection() as conn:
+        _ensure_colonnes_verrouillage_resultat_gardee(conn)
+        conn.commit()
+        row = conn.execute(
+            "SELECT resultat_gardee_verrouille_le, resultat_gardee_verrouille_par FROM collecte_campagnes WHERE annee = ?",
+            (annee,),
+        ).fetchone()
+    if row and row["resultat_gardee_verrouille_le"]:
+        return {"le": row["resultat_gardee_verrouille_le"], "par": row["resultat_gardee_verrouille_par"]}
+    return None
+
+
+@collecte_bp.route("/collecte/<int:annee>/resultat-gardee/verrouiller", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def resultat_gardee_verrouiller(annee):
+    """Verrouille la saisie Résultat collecte gardée (poids par magasin
+    gardé + quantités par produit, y compris via le lien public envoyé aux
+    associations) pour l'année — geste volontairement simple, comme pour
+    le verrouillage BAI."""
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        _ensure_colonnes_verrouillage_resultat_gardee(conn)
+        conn.execute(
+            "UPDATE collecte_campagnes SET resultat_gardee_verrouille_le = ?, resultat_gardee_verrouille_par = ? WHERE annee = ?",
+            (maintenant, current_user.email, annee),
+        )
+        conn.commit()
+    write_log(f"🔒 Résultat collecte gardée {annee} verrouillé par {current_user.email}")
+    flash(f"🔒 Saisie Résultat collecte gardée verrouillée pour {annee}.", "success")
+    return redirect(url_for("collecte.collecte_main", annee=annee))
+
+
+@collecte_bp.route("/collecte/<int:annee>/resultat-gardee/deverrouiller", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def resultat_gardee_deverrouiller(annee):
+    """Déverrouille — contrôle renforcé obligatoire (cf. _controle_renforce_ok)."""
+    if not _controle_renforce_ok(annee):
+        flash("❌ Confirmation incomplète — rien n'a été déverrouillé.", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    with get_db_connection() as conn:
+        _ensure_colonnes_verrouillage_resultat_gardee(conn)
+        conn.execute(
+            "UPDATE collecte_campagnes SET resultat_gardee_verrouille_le = NULL, resultat_gardee_verrouille_par = NULL WHERE annee = ?",
+            (annee,),
+        )
+        conn.commit()
+    write_log(f"🔓 Résultat collecte gardée {annee} déverrouillé par {current_user.email}")
+    flash(f"🔓 Saisie Résultat collecte gardée déverrouillée pour {annee}.", "warning")
+    return redirect(url_for("collecte.collecte_main", annee=annee))
 
 
 RESULTAT_COLLECTE_TABLES_RESET = {
@@ -9826,11 +10353,24 @@ def resultat_collecte_remise_a_zero(annee, cle):
     « Remise à zéro des saisies » de la page. Volontairement utilisable en
     prod comme en dev (même principe que poids_magasins_gardee_reinitialiser
     / quantites_produits_reinitialiser ci-dessus), pour repartir à zéro après
-    des essais réels, pas réservé aux tests dev."""
+    des essais réels, pas réservé aux tests dev. Contrôle renforcé
+    obligatoire (cf. _controle_renforce_ok) — demande utilisateur
+    2026-11-10."""
     info = RESULTAT_COLLECTE_TABLES_RESET.get(cle)
     if not info:
         abort(404)
     table, libelle = info
+
+    if cle in ("cagettes", "palox") and _resultat_bai_verrouille(annee):
+        flash(f"🔒 Résultat collecte BAI {annee} verrouillé — déverrouillez-le d'abord.", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+    if cle in ("poids-gardee", "quantites") and _resultat_gardee_verrouille(annee):
+        flash(f"🔒 Résultat collecte gardée {annee} verrouillé — déverrouillez-le d'abord.", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    if not _controle_renforce_ok(annee):
+        flash("❌ Confirmation incomplète — rien n'a été effacé.", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
 
     with get_db_connection() as conn:
         cur = conn.execute(f"DELETE FROM {table} WHERE annee = ?", (annee,))
@@ -10799,6 +11339,12 @@ def _valider_poids_categorie(poids_kg, categorie):
 @login_required
 @require_access("collecte", "ecriture")
 def palox_enregistrer(annee, categorie_id):
+    verrou = _resultat_bai_verrouille(annee)
+    if verrou:
+        return jsonify({
+            "success": False,
+            "erreur": f"🔒 Résultat collecte BAI {annee} verrouillé depuis le {verrou['le']} — déverrouillez-le d'abord.",
+        }), 423
     donnees = request.get_json(force=True) or {}
     try:
         poids_kg = float(str(donnees.get("poids_kg", "")).replace(",", "."))
@@ -10888,6 +11434,12 @@ def palox_supprimer(annee, categorie_id):
     """Supprime une pesée entièrement (erreur de saisie sur la mauvaise
     catégorie par exemple) — contrairement à la correction, qui ne fait que
     remplacer le poids d'un palox existant."""
+    verrou = _resultat_bai_verrouille(annee)
+    if verrou:
+        return jsonify({
+            "success": False,
+            "erreur": f"🔒 Résultat collecte BAI {annee} verrouillé depuis le {verrou['le']} — déverrouillez-le d'abord.",
+        }), 423
     donnees = request.get_json(force=True) or {}
     numero_palox = donnees.get("numero_palox")
     if not numero_palox:
@@ -10912,6 +11464,12 @@ def palox_reinitialiser(annee, categorie_id):
     """Efface toutes les pesées de la catégorie pour l'année — équivalent
     de la macro "reinit" du classeur (remise à zéro de la numérotation en
     début de collecte)."""
+    verrou = _resultat_bai_verrouille(annee)
+    if verrou:
+        return jsonify({
+            "success": False,
+            "erreur": f"🔒 Résultat collecte BAI {annee} verrouillé depuis le {verrou['le']} — déverrouillez-le d'abord.",
+        }), 423
     with get_db_connection() as conn:
         curseur = conn.execute(
             "DELETE FROM collecte_palox_pesees WHERE annee = ? AND categorie_id = ?", (annee, categorie_id)
@@ -10927,6 +11485,12 @@ def palox_reinitialiser(annee, categorie_id):
 @login_required
 @require_access("collecte", "ecriture")
 def palox_corriger(annee, categorie_id):
+    verrou = _resultat_bai_verrouille(annee)
+    if verrou:
+        return jsonify({
+            "success": False,
+            "erreur": f"🔒 Résultat collecte BAI {annee} verrouillé depuis le {verrou['le']} — déverrouillez-le d'abord.",
+        }), 423
     donnees = request.get_json(force=True) or {}
     numero_palox = donnees.get("numero_palox")
     try:
@@ -11051,7 +11615,7 @@ def _synthese_palox(annee):
 @login_required
 @require_access("collecte", "lecture")
 def palox_synthese(annee):
-    return render_template("collecte/palox_synthese.html", **_synthese_palox(annee))
+    return render_template("collecte/palox_synthese.html", verrou_bai=_resultat_bai_verrouille(annee), **_synthese_palox(annee))
 
 
 @collecte_bp.route("/collecte/<int:annee>/palox/synthese/donnees")
@@ -11214,6 +11778,10 @@ def saisie_association(annee, token):
     produits = _lire_produits_modele()
 
     if request.method == "POST":
+        if _resultat_gardee_verrouille(annee):
+            flash("🔒 La saisie est actuellement verrouillée par la Banque Alimentaire — merci de réessayer plus tard.", "warning")
+            return redirect(url_for("collecte.saisie_association", annee=annee, token=token))
+
         def _poids_valide_ou_ignore(brut, libelle_erreur, champs_invalides):
             """Comme les champs du formulaire sont en texte libre (saisie
             possible depuis un téléphone), une valeur non numérique ou
@@ -11310,6 +11878,7 @@ def saisie_association(annee, token):
         association_code_vif=association_code_vif,
         magasins=magasins,
         produits=produits,
+        verrou_gardee=_resultat_gardee_verrouille(annee),
     )
 
 
@@ -11338,6 +11907,13 @@ def saisie_association_enregistrer_champ(annee, token):
 
     if poids_kg is not None and poids_kg < 0:
         return jsonify({"success": False, "erreur": "Poids invalide"}), 400
+
+    verrou = _resultat_gardee_verrouille(annee)
+    if verrou:
+        return jsonify({
+            "success": False,
+            "erreur": "🔒 La saisie est actuellement verrouillée par la Banque Alimentaire — merci de réessayer plus tard.",
+        }), 423
 
     if type_champ == "magasin":
         # Le code_vif vient du client (JSON posté) : sans ce contrôle, une
@@ -11395,16 +11971,26 @@ def saisie_association_enregistrer_champ(annee, token):
 @require_access("collecte", "ecriture")
 def gardee_saisie_choisir():
     """Point d'entrée visible depuis la section "Résultat collecte" (plutôt
-    que caché dans l'accordéon "Associations gardant") : liste les
-    associations pour y choisir celle à saisir (gardee_saisie)."""
+    que caché dans l'accordéon "Associations gardant") : reprend le même
+    tableau que gardee_envoi (répondu/résultat envoyé/saisie en
+    ligne/statut Mailjet), sans régénérer les fichiers Excel ni afficher
+    les contrôles d'envoi, pour choisir rapidement une association à
+    saisir et contrôler son avancement d'un coup d'œil (demande
+    utilisateur 2026-11-10 : "dupliquer la page... pour simplifier la
+    saisie et le contrôle")."""
     annee = request.args.get("annee", type=int) or datetime.now().year
-    df_mag = _lire_magasins_gardes(annee)
-    df_groupes = _lire_groupes(annee)
-    if "Code VIF" in df_mag.columns:
-        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
-    associations, _ = _construire_associations(df_mag, df_groupes)
+    associations = _associations_gardee_avec_suivi(annee)
+    if associations is None:
+        flash("❌ Fichier(s) source(s) manquant(s)", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
     associations = sorted(associations, key=lambda a: a["nom"])
-    return render_template("collecte/gardee_saisie_choisir.html", annee=annee, associations=associations)
+    total_magasins = sum(len(a["magasins"]) for a in associations)
+    total_poids = sum(a["poids_total"] for a in associations)
+    return render_template(
+        "collecte/gardee_saisie_choisir.html", annee=annee, associations=associations,
+        total_magasins=total_magasins, total_poids=total_poids,
+        verrou_gardee=_resultat_gardee_verrouille(annee),
+    )
 
 
 @collecte_bp.route("/collecte/gardee/saisie", methods=["GET", "POST"])
@@ -11437,6 +12023,10 @@ def gardee_saisie():
     produits = _lire_produits_modele()
 
     if request.method == "POST":
+        if _resultat_gardee_verrouille(annee):
+            flash(f"🔒 Résultat collecte gardée {annee} verrouillé — déverrouillez-le d'abord.", "danger")
+            return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
+
         def _poids_valide_ou_ignore(brut, libelle_erreur, champs_invalides):
             if not brut:
                 return None
@@ -11541,6 +12131,7 @@ def gardee_saisie():
         magasins=magasins,
         produits=produits,
         detection=detection,
+        verrou_gardee=_resultat_gardee_verrouille(annee),
     )
 
 
@@ -11571,6 +12162,13 @@ def gardee_saisie_enregistrer_champ():
         return jsonify({"success": False, "erreur": "Poids invalide"}), 400
     if poids_kg is not None and poids_kg < 0:
         return jsonify({"success": False, "erreur": "Poids invalide"}), 400
+
+    verrou = _resultat_gardee_verrouille(annee)
+    if verrou:
+        return jsonify({
+            "success": False,
+            "erreur": f"🔒 Résultat collecte gardée {annee} verrouillé depuis le {verrou['le']} — déverrouillez-le d'abord.",
+        }), 423
 
     if type_champ == "magasin":
         df_mag_verif = _lire_magasins_gardes(annee)
@@ -11626,6 +12224,10 @@ def gardee_saisie_importer_pdf():
     _detecter_pdf_association_background et _ensure_table_detection_pdf_association."""
     annee = request.form.get("annee", type=int) or datetime.now().year
     nom_association = request.form.get("association", "").strip()
+
+    if _resultat_gardee_verrouille(annee):
+        flash(f"🔒 Résultat collecte gardée {annee} verrouillé — déverrouillez-le d'abord.", "danger")
+        return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
 
     fichier = request.files.get("pdf")
     if not fichier or not fichier.filename:
@@ -11686,6 +12288,115 @@ def gardee_saisie_importer_pdf():
     return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
 
 
+def _lire_resultats_excel_association(fichier_excel, association):
+    """Lit un classeur Excel reçu d'une association (même structure que
+    _creer_fichier_association, le modèle envoyé par mail : feuilles
+    'magasins' et 'produits', code en colonne A, poids en colonne
+    C — repéré par le code présent sur la ligne, pas par un numéro de ligne
+    fixe, pour tolérer les lignes insérées/déplacées) — contrairement à
+    l'import PDF, pas besoin de l'IA : la structure est déjà directement
+    exploitable. Retourne (magasins_detectes, produits_detectes), ne
+    retient que les lignes dont le code correspond à un magasin RÉEL de
+    cette association ou à un produit du modèle (même garde-fou que
+    l'import PDF : jamais de code inventé ou d'une autre association)."""
+    wb = load_workbook(fichier_excel, data_only=True)
+    codes_vif_association = {_vif_fmt(m.get("Code VIF")) for m in association["magasins"]}
+    codes_produits_valides = {p["code"] for p in _lire_produits_modele()}
+
+    magasins_detectes = {}
+    if "magasins" in wb.sheetnames:
+        for ligne in wb["magasins"].iter_rows():
+            if len(ligne) < 3 or not ligne[0].value:
+                continue
+            code = _vif_fmt(ligne[0].value)
+            valeur = ligne[2].value
+            if code in codes_vif_association and isinstance(valeur, (int, float)) and valeur >= 0:
+                magasins_detectes[code] = round(valeur)
+
+    produits_detectes = {}
+    if "produits" in wb.sheetnames:
+        for ligne in wb["produits"].iter_rows():
+            if len(ligne) < 3 or not ligne[0].value:
+                continue
+            code = str(ligne[0].value).strip()
+            valeur = ligne[2].value
+            if code in codes_produits_valides and isinstance(valeur, (int, float)) and valeur >= 0:
+                produits_detectes[code] = round(valeur)
+
+    return magasins_detectes, produits_detectes
+
+
+@collecte_bp.route("/collecte/gardee/saisie/importer-excel", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def gardee_saisie_importer_excel():
+    """Upload d'un Excel reçu d'une association (fiche qu'on lui a envoyée,
+    remplie puis renvoyée) — lu directement (cf.
+    _lire_resultats_excel_association, pas besoin de l'IA contrairement au
+    PDF scanné), pré-remplit gardee_saisie pour relecture avant
+    enregistrement — jamais écrit directement dans
+    collecte_poids_magasins_gardee / collecte_quantites_produits (même
+    garde-fou que l'import PDF, table de détection partagée)."""
+    annee = request.form.get("annee", type=int) or datetime.now().year
+    nom_association = request.form.get("association", "").strip()
+
+    if _resultat_gardee_verrouille(annee):
+        flash(f"🔒 Résultat collecte gardée {annee} verrouillé — déverrouillez-le d'abord.", "danger")
+        return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
+
+    fichier = request.files.get("excel")
+    if not fichier or not fichier.filename:
+        flash("⛔ Aucun fichier Excel fourni", "warning")
+        return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
+
+    extension = os.path.splitext(fichier.filename)[1].lower()
+    if extension not in (".xlsx", ".xlsm"):
+        flash("⛔ Format non supporté (Excel .xlsx attendu)", "warning")
+        return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
+
+    fichier_bytes = fichier.read()
+    if len(fichier_bytes) > 15 * 1024 * 1024:
+        flash("⛔ Fichier trop volumineux (15 Mo max)", "warning")
+        return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
+
+    df_mag = _lire_magasins_gardes(annee)
+    df_groupes = _lire_groupes(annee)
+    if "Code VIF" in df_mag.columns:
+        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+    associations, _ = _construire_associations(df_mag, df_groupes)
+    association = next((a for a in associations if a["nom"] == nom_association), None)
+    if association is None:
+        flash("⛔ Association introuvable.", "danger")
+        return redirect(url_for("collecte.gardee", annee=annee))
+
+    try:
+        magasins_detectes, produits_detectes = _lire_resultats_excel_association(io.BytesIO(fichier_bytes), association)
+    except Exception as e:
+        flash(f"⛔ Impossible de lire ce fichier Excel : {e}", "danger")
+        return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        _ensure_table_detection_pdf_association(conn)
+        conn.execute("""
+            INSERT INTO collecte_detection_pdf_association
+                (annee, association, statut, magasins_detectes, produits_detectes, lance_le, lance_par, pdf_nom)
+            VALUES (?, ?, 'termine', ?, ?, ?, ?, ?)
+        """, (annee, nom_association, json.dumps(magasins_detectes, ensure_ascii=False),
+              json.dumps(produits_detectes, ensure_ascii=False), maintenant, current_user.email, fichier.filename))
+        conn.commit()
+
+    write_log(
+        f"📊 Collecte gardée {annee} ({nom_association}) : import Excel "
+        f"({len(magasins_detectes)} magasin(s), {len(produits_detectes)} produit(s)) par {current_user.email}"
+    )
+    flash(
+        f"✅ Fichier Excel lu : {len(magasins_detectes)} magasin(s), {len(produits_detectes)} produit(s) "
+        f"détecté(s) — vérifiez puis enregistrez.", "success",
+    )
+    return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
+
+
 @collecte_bp.route("/collecte/gardee/saisie/detection/<int:detection_id>/ignorer", methods=["POST"])
 @login_required
 @require_access("collecte", "ecriture")
@@ -11717,7 +12428,7 @@ def _envoyer_mail_association(asso, annee, dossier, destinataires, mode_test):
         fichier_pdf = _creer_pdf_association(fichier_association, asso, annee, dossier)
     token_saisie = generer_token_saisie_association(annee, asso["nom"])
     lien_saisie = url_for("collecte.saisie_association", annee=annee, token=token_saisie, _external=True)
-    envoyer_mail(
+    return envoyer_mail(
         sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — {asso['nom']}",
         destinataires=destinataires,
         texte=_texte_modele_gardee(asso, annee, lien_saisie=lien_saisie),
@@ -11751,6 +12462,52 @@ def _associations_gardee_enrichies(annee):
         else:
             asso["emails"] = sorted({r["email"] for r in asso["referents"] if "@" in r["email"]})
         asso["code_vif"], asso["ecart_code_vif"], asso["code_vif_force"] = _code_vif_association(asso["nom"], index_code_vif)
+    return associations
+
+
+def _associations_gardee_avec_suivi(annee):
+    """Associations gardant enrichies (cf. _associations_gardee_enrichies)
+    + suivi manuel (répondu/résultat envoyé), avancement de la saisie en
+    ligne et statut Mailjet du dernier envoi — factorisé entre gardee_envoi
+    (qui y ajoute la régénération Excel et l'UI d'envoi) et
+    gardee_saisie_choisir (page allégée dupliquée dans Résultat collecte
+    gardée pour choisir rapidement une association à saisir, sans
+    régénérer les fichiers ni afficher les contrôles d'envoi — demande
+    utilisateur 2026-11-10 : "simplifier la saisie et le contrôle")."""
+    associations = _associations_gardee_enrichies(annee)
+    if associations is None:
+        return None
+    suivi = _lire_suivi_gardee(annee)
+    produits = _lire_produits_modele()
+    with get_db_connection() as conn:
+        poids_magasins = {
+            r["code_vif"]: r["poids_kg"]
+            for r in conn.execute(
+                "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
+        poids_produits = {}
+        for r in conn.execute(
+            "SELECT association, code_produit, poids_kg FROM collecte_quantites_produits WHERE annee = ?", (annee,)
+        ).fetchall():
+            poids_produits.setdefault(r["association"], {})[r["code_produit"]] = r["poids_kg"]
+    statuts = _statuts_envois_mail_collecte(annee, "gardee_envoi")
+    for asso in associations:
+        asso["suivi"] = suivi.get(asso["nom"], {"repondu": False, "resultat_envoye": False})
+        asso["avancement_saisie"] = _saisie_association_avancement(
+            annee, asso["nom"], asso["magasins"], produits, poids_magasins, poids_produits
+        )
+        premier_email = asso["emails"][0] if asso.get("emails") else None
+        asso["statut_mailjet"] = statuts.get(premier_email) if premier_email else None
+        # Poids total collecté = somme des poids par magasin saisis (la
+        # fiche "poids par magasin" est la mesure directe du tonnage ;
+        # "quantités par produit" n'en est qu'une répartition détaillée,
+        # pas une 2e source à additionner — demande utilisateur 2026-11-10).
+        asso["poids_total"] = sum(
+            poids_magasins[_vif_fmt(m.get("Code VIF"))]
+            for m in asso["magasins"]
+            if poids_magasins.get(_vif_fmt(m.get("Code VIF"))) is not None
+        )
     return associations
 
 
@@ -11796,44 +12553,36 @@ def gardee_envoi():
             return redirect(url_for("collecte.gardee_envoi", annee=annee))
         envoyes = 0
         sans_email = []
+        echecs = []
         for asso in associations_a_traiter:
             if not asso["emails"] and not mode_test:
                 sans_email.append(asso["nom"])
                 continue
             destinataires = [current_user.email] if mode_test else asso["emails"]
-            _envoyer_mail_association(asso, annee, dossier, destinataires, mode_test)
+            try:
+                resultat = _envoyer_mail_association(asso, annee, dossier, destinataires, mode_test)
+                _enregistrer_envoi_mail_collecte(annee, "gardee_envoi", destinataires[0], asso["nom"], resultat=resultat)
+            except Exception as e:
+                echecs.append(asso["nom"])
+                write_log(f"❌ Collecte {annee} : échec envoi associations gardant à {asso['nom']} — {e}")
+                _enregistrer_envoi_mail_collecte(annee, "gardee_envoi", destinataires[0], asso["nom"], erreur=str(e))
+                continue
             envoyes += 1
 
         portee = "pour une association" if test_une_association else "pour toutes les associations"
         message = f"✅ {envoyes} mail(s) {'de test ' if mode_test else ''}envoyé(s) {portee} avec les fichiers Excel personnalisés"
+        if echecs:
+            message += f" — ⛔ {len(echecs)} échec(s) : {', '.join(echecs)}"
         if sans_email:
             message += f" ; sans adresse : {', '.join(sans_email)}"
-        flash(message, "success" if not sans_email else "warning")
+        flash(message, "success" if not (sans_email or echecs) else "warning")
         write_log(
             f"📧 Envoi Associations gardant {annee} ({portee}{' réel' if test_une_association and not mode_test else ''}) : "
             f"{envoyes} envoyé(s) par {current_user.email}"
         )
         return redirect(url_for("collecte.gardee", annee=annee))
 
-    suivi = _lire_suivi_gardee(annee)
-    produits = _lire_produits_modele()
-    with get_db_connection() as conn:
-        poids_magasins = {
-            r["code_vif"]: r["poids_kg"]
-            for r in conn.execute(
-                "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
-            ).fetchall()
-        }
-        poids_produits = {}
-        for r in conn.execute(
-            "SELECT association, code_produit, poids_kg FROM collecte_quantites_produits WHERE annee = ?", (annee,)
-        ).fetchall():
-            poids_produits.setdefault(r["association"], {})[r["code_produit"]] = r["poids_kg"]
-    for asso in associations:
-        asso["suivi"] = suivi.get(asso["nom"], {"repondu": False, "resultat_envoye": False})
-        asso["avancement_saisie"] = _saisie_association_avancement(
-            annee, asso["nom"], asso["magasins"], produits, poids_magasins, poids_produits
-        )
+    associations = _associations_gardee_avec_suivi(annee)
 
     return render_template(
         "collecte/gardee_envoi.html",
@@ -11841,6 +12590,7 @@ def gardee_envoi():
         associations=associations,
         fichier_nom=os.path.basename(chemin),
         texte_mail=_lire_texte_mail_gardee(),
+        feature="gardee_envoi",
     )
 
 
@@ -11901,17 +12651,27 @@ def gardee_relancer():
 
     envoyes = 0
     sans_email = []
+    echecs = []
     for asso in cible:
         if not asso["emails"]:
             sans_email.append(asso["nom"])
             continue
-        _envoyer_mail_association(asso, annee, dossier, asso["emails"], mode_test=False)
+        try:
+            resultat = _envoyer_mail_association(asso, annee, dossier, asso["emails"], mode_test=False)
+            _enregistrer_envoi_mail_collecte(annee, "gardee_envoi", asso["emails"][0], asso["nom"], resultat=resultat)
+        except Exception as e:
+            echecs.append(asso["nom"])
+            write_log(f"❌ Collecte {annee} : échec relance associations gardant à {asso['nom']} — {e}")
+            _enregistrer_envoi_mail_collecte(annee, "gardee_envoi", asso["emails"][0], asso["nom"], erreur=str(e))
+            continue
         envoyes += 1
 
     message = f"✅ Relance envoyée à {envoyes} association(s) {libelle_portee}"
+    if echecs:
+        message += f" — ⛔ {len(echecs)} échec(s) : {', '.join(echecs)}"
     if sans_email:
         message += f" ; sans adresse (non relancées) : {', '.join(sans_email)}"
-    flash(message, "success" if not sans_email else "warning")
+    flash(message, "success" if not (sans_email or echecs) else "warning")
     write_log(f"🔁 Relance Associations gardant {annee} ({libelle_portee}) : {envoyes} envoyé(s) par {current_user.email}")
     return redirect(url_for("collecte.gardee_envoi", annee=annee))
 

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/mailjet_statut.html" import badge_statut_mailjet, bouton_verifier_statut_mailjet %}
 
 {% block title %}Envoi associations gardant {{ annee }}{% endblock %}
 
@@ -21,6 +22,7 @@
         {{ action_button("↩️ Retour", href=url_for('collecte.gardee', annee=annee), color="outline-dark") }}
         {{ action_button("🗜️ Télécharger tout (ZIP)", href=url_for('collecte.gardee_telecharger_zip', annee=annee), color="outline-secondary") }}
     {% endcall %}
+    {{ bouton_verifier_statut_mailjet(annee, feature) }}
 
     <div class="alert alert-warning">
         Le fichier <strong>{{ fichier_nom }}</strong> (régénéré à l'instant depuis go-on-web) sera joint
@@ -100,7 +102,8 @@
             <thead>
                 <tr>
                     <th>Code VIF</th><th>Association</th><th style="max-width: 220px;">Adresse(s)</th><th>Magasins</th>
-                    <th>Répondu</th><th>Résultat envoyé</th><th>Saisie en ligne</th><th></th>
+                    <th>Poids total (kg)</th>
+                    <th>Répondu</th><th>Résultat envoyé</th><th>Saisie en ligne</th><th>Statut</th><th></th>
                 </tr>
             </thead>
             <tbody>
@@ -113,6 +116,7 @@
                     {% if asso.email_force %}<span class="badge bg-primary" title="Email forcé, indépendant de go-on-web">forcé</span>{% endif %}
                 </td>
                 <td>{{ asso.magasins|length }}</td>
+                <td>{{ "%.0f"|format(asso.poids_total) if asso.poids_total else "—" }}</td>
                 <td>
                     <input type="checkbox" class="case-suivi" data-champ="repondu" data-association="{{ asso.nom }}"
                            {% if asso.suivi.repondu %}checked{% endif %}>
@@ -135,6 +139,7 @@
                     —
                     {% endif %}
                 </td>
+                <td>{{ badge_statut_mailjet(asso.statut_mailjet) }}</td>
                 <td>
                     <form method="post" action="{{ url_for('collecte.gardee_relancer') }}" class="m-0">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

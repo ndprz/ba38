@@ -78,7 +78,15 @@
 
 
     <!-- 🔹 Formulaire principal de mise à jour -->
-    <form id="updateForm" method="POST" enctype="multipart/form-data"
+    <style>
+.cotis-switch .form-check-input{width:2.6em;height:1.4em;cursor:pointer;background-color:#f8d7da;border-color:#dc3545}
+.cotis-switch .form-check-input:checked{background-color:#198754;border-color:#198754}
+.cotis-switch .form-check-label{margin-left:.4em;font-weight:600;color:#dc3545}
+.cotis-switch .form-check-label::before{content:"Non payée"}
+.cotis-switch .form-check-input:checked + .form-check-label{color:#198754}
+.cotis-switch .form-check-input:checked + .form-check-label::before{content:"À jour"}
+</style>
+<form id="updateForm" method="POST" enctype="multipart/form-data"
         action="{{ url_for('benevoles.update_benevole', benevole_id=benevole_id) }}?{{ next_url }}"
         class="partner-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -147,6 +155,20 @@
                             value="{{ v }}"
                             class="form-control {% if champs_invalides and field['field_name'] in champs_invalides %}is-invalid{% endif %}"
                             {% if lecture_seule %}readonly{% endif %}>
+
+                        {% elif field['virtuel'] %}
+                        <div class="cotis-wrap">
+                            <input type="hidden" name="{{ field['field_name'] }}" value="non">
+                            <div class="form-check form-switch cotis-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" data-cotis
+                                    id="{{ field['field_name'] }}" name="{{ field['field_name'] }}" value="oui"
+                                    {% if (field['value'] or '')|lower == 'oui' %}checked{% endif %}
+                                    {% if lecture_seule %}disabled{% endif %}>
+                                <label class="form-check-label" for="{{ field['field_name'] }}"></label>
+                            </div>
+                            <input type="hidden" class="cotis-date-val" name="{{ field['field_name'] }}_date" value="{{ field['date'] or '' }}">
+                            <a href="#" class="cotis-date-txt"></a>
+                        </div>
 
                         {% elif field['type_champ'] == 'oui_non' %}
                         <select name="{{ field['field_name'] }}" id="{{ field['field_name'] }}"
@@ -428,4 +450,5 @@
         });
 
     </script>
-    {% endblock %}
+    {% include 'benevoles/_cotisation_date.html' %}
+{% endblock %}

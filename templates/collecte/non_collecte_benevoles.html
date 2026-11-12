@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/mailjet_statut.html" import badge_statut_mailjet, bouton_verifier_statut_mailjet %}
 
 {% block title %}Pas de collecte — faute de bénévoles {{ annee }}{% endblock %}
 
@@ -19,6 +20,7 @@
     {% call action_buttons() %}
         {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
     {% endcall %}
+    {{ bouton_verifier_statut_mailjet(annee, feature) }}
 
     <button class="btn btn-outline-secondary mb-3" type="button"
             data-bs-toggle="collapse" data-bs-target="#sectionParametresNonCollecte"
@@ -63,6 +65,7 @@
                         <th>Email(s)</th>
                         <th>Déjà marqué</th>
                         <th>Mail envoyé</th>
+                        <th>Statut</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -78,6 +81,7 @@
                     </td>
                     <td>{{ '✅' if m.deja_marque else '—' }}</td>
                     <td>{{ '✅' if m.mail_deja_envoye else '—' }}</td>
+                    <td>{{ badge_statut_mailjet(m.statut_mailjet) }}</td>
                 </tr>
                 {% endfor %}
                 </tbody>

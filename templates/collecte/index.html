@@ -1,16 +1,18 @@
 {% extends "base.html" %}
 
 {% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/confirmation_renforcee.html" import modal_confirmation_renforcee, bouton_ouvrir_confirmation_renforcee %}
 
 {% macro bouton_remise_a_zero(cle, libelle) %}
-<form method="POST" action="{{ url_for('collecte.resultat_collecte_remise_a_zero', annee=annee, cle=cle) }}"
-      class="d-inline"
-      onsubmit="return confirm('Effacer toutes les saisies « {{ libelle }} » de {{ annee }} ? Action irréversible.');">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="btn btn-outline-danger btn-sm" title="Efface les saisies « {{ libelle }} » pour {{ annee }}">
-        🗑️ {{ libelle }}
-    </button>
-</form>
+{{ bouton_ouvrir_confirmation_renforcee("modalRaz" ~ cle, "🗑️ " ~ libelle) }}
+{{ modal_confirmation_renforcee(
+    "modalRaz" ~ cle,
+    "🗑️ Remise à zéro — " ~ libelle,
+    "Effacer définitivement toutes les saisies « " ~ libelle ~ " » de " ~ annee ~ " ? Action irréversible.",
+    url_for('collecte.resultat_collecte_remise_a_zero', annee=annee, cle=cle),
+    annee,
+    libelle_bouton="🗑️ Effacer définitivement"
+) }}
 {% endmacro %}
 
 {% macro entete_section(cible, titre, modale_aide=None, modale_manuel=None) %}
@@ -421,6 +423,36 @@
     {{ entete_section("sectionResultatCollecte", "Résultat collecte", "modalAideSection5", "modalManuelSection5") }}
     <div id="sectionResultatCollecte" class="collapse mt-3">
         <h5 class="mb-3">Résultat collecte bai</h5>
+
+        {% if verrou_bai %}
+        <div class="alert alert-secondary d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div>
+                🔒 Saisie verrouillée depuis le {{ verrou_bai.le }} par {{ verrou_bai.par }} — la saisie des
+                cagettes et de la pesée palox est bloquée pour {{ annee }}.
+            </div>
+            {{ bouton_ouvrir_confirmation_renforcee("modalDeverrouillerBai", "🔓 Déverrouiller", couleur="outline-secondary") }}
+            {{ modal_confirmation_renforcee(
+                "modalDeverrouillerBai",
+                "🔓 Déverrouiller Résultat collecte BAI",
+                "Déverrouiller la saisie des cagettes et de la pesée palox pour " ~ annee ~ " ? À ne faire que si une correction est vraiment nécessaire.",
+                url_for('collecte.resultat_bai_deverrouiller', annee=annee),
+                annee,
+                libelle_bouton="🔓 Déverrouiller",
+                couleur_bouton="secondary"
+            ) }}
+        </div>
+        {% else %}
+        <div class="d-flex justify-content-end mb-3">
+            <form method="POST" action="{{ url_for('collecte.resultat_bai_verrouiller', annee=annee) }}" class="m-0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-secondary btn-sm"
+                        title="Bloque toute nouvelle saisie des cagettes et de la pesée palox pour {{ annee }}, pour éviter les erreurs une fois le résultat terminé">
+                    🔒 Verrouiller la saisie (une fois terminée)
+                </button>
+            </form>
+        </div>
+        {% endif %}
+
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
             <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
@@ -447,6 +479,37 @@
         </div>
 
         <h5 class="mb-3 mt-4">Résultat collecte gardée</h5>
+
+        {% if verrou_gardee %}
+        <div class="alert alert-secondary d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div>
+                🔒 Saisie verrouillée depuis le {{ verrou_gardee.le }} par {{ verrou_gardee.par }} — la saisie
+                du poids par magasin gardé et des quantités par produit est bloquée pour {{ annee }}
+                (y compris la saisie en ligne par les associations).
+            </div>
+            {{ bouton_ouvrir_confirmation_renforcee("modalDeverrouillerGardee", "🔓 Déverrouiller", couleur="outline-secondary") }}
+            {{ modal_confirmation_renforcee(
+                "modalDeverrouillerGardee",
+                "🔓 Déverrouiller Résultat collecte gardée",
+                "Déverrouiller la saisie du poids par magasin gardé et des quantités par produit pour " ~ annee ~ " ? À ne faire que si une correction est vraiment nécessaire.",
+                url_for('collecte.resultat_gardee_deverrouiller', annee=annee),
+                annee,
+                libelle_bouton="🔓 Déverrouiller",
+                couleur_bouton="secondary"
+            ) }}
+        </div>
+        {% else %}
+        <div class="d-flex justify-content-end mb-3">
+            <form method="POST" action="{{ url_for('collecte.resultat_gardee_verrouiller', annee=annee) }}" class="m-0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-secondary btn-sm"
+                        title="Bloque toute nouvelle saisie du poids par magasin gardé et des quantités par produit pour {{ annee }}, y compris côté associations, pour éviter les erreurs une fois le résultat terminé">
+                    🔒 Verrouiller la saisie (une fois terminée)
+                </button>
+            </form>
+        </div>
+        {% endif %}
+
         <div class="card mb-3 {% if not magasins_prets %}bg-light{% endif %}">
             <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
@@ -486,6 +549,19 @@
 
     {{ entete_section("sectionParticipants", "Participants", "modalAideSection6", "modalManuelSection6") }}
     <div id="sectionParticipants" class="collapse mt-3">
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
+                <div>
+                    <h5 class="card-title mb-1">📊 Comptage participants (magasins/camions/entrepôt)</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Nombre de bénévoles à mail différent dans les vrais magasins, les
+                        camions (équipiers/chauffeurs V001-V089) et l'entrepôt
+                        (V090-V092), avec téléchargement de toutes les adresses email.
+                    </p>
+                </div>
+                {{ action_button("📊 Ouvrir", href=url_for('collecte.participants_comptage', annee=annee), color="primary") }}
+            </div>
+        </div>
         <div class="card mb-3">
             <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>

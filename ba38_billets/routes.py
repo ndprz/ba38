@@ -68,6 +68,17 @@ def _retour(cid, ancre=""):
     return redirect(url_for("billets.campagne", campagne_id=cid) + ancre)
 
 
+EXPEDITEUR = mails.EXPEDITEUR_DEFAUT  # expéditeur imposé (validé chez Mailjet)
+
+
+def utilisateurs_basilic():
+    """Comptes Basilic actifs (hors comptes de test) pour la liste « adresse de réponse »."""
+    with _connect() as conn:
+        return conn.execute(
+            "SELECT email, username FROM users WHERE actif = 1 AND COALESCE(test_only,0) = 0 "
+            "AND TRIM(COALESCE(email,'')) != '' ORDER BY LOWER(email)").fetchall()
+
+
 def _dt(valeur):
     """Valeur d'un champ datetime-local (« 2026-11-20T23:59 ») ou date seule."""
     v = (valeur or "").strip()
@@ -129,7 +140,6 @@ def nouvelle():
 @login_required
 @acces("lecture")
 def campagne(campagne_id):
-    from ba38_emailing.routes import expediteurs_disponibles
     with _connect() as conn:
         c = _campagne(conn, campagne_id)
         if not c:
@@ -159,7 +169,7 @@ def campagne(campagne_id):
         gagnants=sorted([p for p in parts if p["resultat"] == "gagnant"], key=lambda p: p["ordre_tirage"] or 0),
         non_retenus=[p for p in parts if p["resultat"] == "non_retenu"],
         depassee=mails.limite_depassee(c), tiree=(c["statut"] == "tiree"),
-        peut_ecrire=has_access("billets", "ecriture"), expediteurs=expediteurs_disponibles(),
+        peut_ecrire=has_access("billets", "ecriture"), utilisateurs=utilisateurs_basilic(),
         variables=mails.VARIABLES_AIDE, limite_fr=mails.limite_fr, date_fr=mails.date_fr,
         modele_defaut=TEXTE_PAR_DEFAUT)
 
@@ -190,24 +200,27 @@ def enregistrer_fiche(campagne_id):
 @login_required
 @acces("ecriture")
 def enregistrer_message(campagne_id):
-    from ba38_emailing.routes import expediteurs_disponibles
     sujet = (request.form.get("sujet") or "").strip()
     corps = request.form.get("corps") or ""
-    expediteur = (request.form.get("expediteur") or "").strip()
+    reply_to = (request.form.get("reply_to") or "").strip()
     if not sujet or not corps.strip():
         flash("❌ Sujet et message sont obligatoires.", "danger")
         return _retour(campagne_id, "#message")
-    if expediteur not in expediteurs_disponibles():
-        flash("❌ Expéditeur non valide (non validé côté Mailjet).", "danger")
-        return _retour(campagne_id, "#message")
+    if reply_to:
+        with _connect() as conn:
+            c0 = _campagne(conn, campagne_id)
+        autorises = {u["email"].lower() for u in utilisateurs_basilic()}
+        if reply_to.lower() not in autorises and reply_to != (c0["reply_to"] if c0 else None):
+            flash("❌ L'adresse de réponse doit être celle d'un utilisateur Basilic.", "danger")
+            return _retour(campagne_id, "#message")
     if "lien_inscription" not in corps:
         flash("⚠️ Le texte ne contient pas <<lien_inscription>> : les bénévoles n'auront aucun lien pour s'inscrire.",
               "warning")
     with _connect() as conn:
         conn.execute(
             "UPDATE billets_campagnes SET sujet=?, corps=?, expediteur=?, expediteur_nom=?, reply_to=? WHERE id=?",
-            (sujet, corps, expediteur, (request.form.get("expediteur_nom") or "").strip() or None,
-             (request.form.get("reply_to") or "").strip() or None, campagne_id))
+            (sujet, corps, EXPEDITEUR, (request.form.get("expediteur_nom") or "").strip() or None,
+             reply_to or None, campagne_id))
         conn.commit()
     flash("✅ Message enregistré.", "success")
     return _retour(campagne_id, "#destinataires")
@@ -246,9 +259,11 @@ def construire_participants(conn, campagne_id):
     existants = {r["benevole_id"]: r for r in conn.execute(
         "SELECT * FROM billets_participants WHERE campagne_id = ?", (campagne_id,))}
     voulus, ajoutes = set(), 0
+    ids_a_jour = {r[0] for r in conn.execute(
+        "SELECT id_benevole FROM benevoles_cotisations WHERE annee = 2026")}
     for b in conn.execute("SELECT * FROM benevoles ORDER BY nom COLLATE NOCASE, prenom COLLATE NOCASE"):
         salarie = (b["type_benevole"] or "").strip().lower() == "salarie"
-        a_jour = (b["cotisation_2026"] or "").strip().lower() == "oui"
+        a_jour = b["id"] in ids_a_jour
         if not salarie and not a_jour:
             continue
         emails = split_emails(b["email"])
@@ -367,8 +382,8 @@ def envoyer(campagne_id):
     mode = request.form.get("mode", "nouveaux")
     with _connect() as conn:
         c = _campagne(conn, campagne_id)
-        if not c or not c["expediteur"] or not (c["corps"] or "").strip():
-            flash("❌ Enregistrez d'abord le message et l'expéditeur.", "danger")
+        if not c or not (c["corps"] or "").strip():
+            flash("❌ Enregistrez d'abord le message.", "danger")
             return _retour(campagne_id, "#message")
         if c["statut"] == "tiree" or mails.limite_depassee(c):
             flash("❌ La date limite est dépassée : plus d'invitation possible.", "danger")
@@ -515,6 +530,30 @@ def tirage(campagne_id):
             flash(msg, "success")
             if s["places_non_pourvues"]:
                 flash(f"⚠️ {s['places_non_pourvues']} place(s) restent non pourvues (plus de salarié disponible).", "warning")
+    return _retour(campagne_id, "#tirage")
+
+
+@billets_bp.route("/<int:campagne_id>/annuler_tirage", methods=["POST"])
+@login_required
+@acces("ecriture")
+def annuler_tirage(campagne_id):
+    """Annule un tirage tant qu'AUCUN mail de résultat n'a été réellement envoyé."""
+    with _connect() as conn:
+        c = _campagne(conn, campagne_id)
+        if not c or c["statut"] != "tiree":
+            flash("❌ Aucun tirage à annuler.", "danger")
+        elif c["resultats_envoyes_le"] or conn.execute(
+                "SELECT 1 FROM billets_participants WHERE campagne_id=? AND resultat_envoye_le IS NOT NULL",
+                (campagne_id,)).fetchone():
+            flash("❌ Des résultats ont déjà été envoyés : le tirage ne peut plus être annulé.", "danger")
+        else:
+            conn.execute("UPDATE billets_participants SET resultat=NULL, origine_place=NULL, ordre_tirage=NULL, "
+                         "resultat_erreur=NULL WHERE campagne_id=?", (campagne_id,))
+            conn.execute("UPDATE billets_campagnes SET statut='ouverte', tirage_le=NULL, tirage_par=NULL WHERE id=?",
+                         (campagne_id,))
+            conn.commit()
+            write_log(f"↩️ Billets campagne {campagne_id} : tirage annulé par {current_user.email}")
+            flash("↩️ Tirage annulé : vous pouvez modifier la campagne et relancer le tirage.", "warning")
     return _retour(campagne_id, "#tirage")
 
 

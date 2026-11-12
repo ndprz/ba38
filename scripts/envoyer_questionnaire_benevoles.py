@@ -86,7 +86,7 @@ def charger_benevoles(db_path: str, benevole_id: int | None = None):
         query += "AND id = ? "
         params.append(benevole_id)
     else:
-        query += "AND type_benevole = 'benevole' AND cotisation_2026 = 'oui' "
+        query += "AND type_benevole = 'benevole' AND id IN (SELECT id_benevole FROM benevoles_cotisations WHERE annee = 2026) "
     query += "ORDER BY nom COLLATE NOCASE"
     rows = cur.execute(query, params).fetchall()
     conn.close()

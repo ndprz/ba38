@@ -2,7 +2,7 @@
 
 {% from "macros/buttons.html" import action_button, action_buttons %}
 
-{% block title %}Gestion Planning Pesée{% endblock %}
+{% block title %}Gestion Planning Pesée ramasse{% endblock %}
 
 {% block content %}
 
@@ -13,7 +13,7 @@
 # 🔝 Bandeau supérieur : titre + boutons de navigation
 # ============================== #}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h2>Gestion du planning Pesée</h2>
+  <h2>Gestion du planning Pesée ramasse</h2>
 
     {% call action_buttons() %}
     <button type="submit"
@@ -24,7 +24,7 @@
       💾 Enregistrer le planning
     </button>
 
-    {# Bouton retour vers la page de création du planning pesée #}
+    {# Bouton retour vers la page de création du planning pesée ramasse #}
     {{ action_button("⬅️ Retour à la création", href=url_for('planning_pesee.creation_planning_pesee', semaine=semaine), color="outline-dark") }}
 
     {# Bouton retour vers le menu principal des plannings #}
@@ -50,7 +50,7 @@
 
 
 {# ============================== #
-# 🧾 Formulaire principal de gestion du planning pesée
+# 🧾 Formulaire principal de gestion du planning pesée ramasse
 # ============================== #}
   <div class="gestion-planning-container">
     <table class="table table-bordered table-striped table-sm">
@@ -102,9 +102,9 @@
             {% set remplacant_id  = ligne[champ_remp] %}
             {% set selected_id    = ligne['pesee%02d_effectif' % i] %}
 
-            {# Séparation entre favoris et autres selon le champ prep_pesee #}
-            {% set favoris = benevoles|selectattr('prep_pesee','equalto','oui')|list %}
-            {% set autres  = benevoles|rejectattr('prep_pesee','equalto','oui')|list %}
+            {# Séparation entre favoris et autres selon le champ ramasse_pesee #}
+            {% set favoris = benevoles|selectattr('ramasse_pesee','equalto','oui')|list %}
+            {% set autres  = benevoles|rejectattr('ramasse_pesee','equalto','oui')|list %}
 
             <td class="{% if is_absent and not remplacant_id %}absent-cell{% endif %}">
               <select name="pesee{{ '%02d'|format(i) }}_ids[]"
@@ -117,7 +117,7 @@
                 {# Option vide (aucun bénévole affecté) #}
                 <option value="" {% if not titulaire_id and not remplacant_id %}selected{% endif %}>-- Aucun --</option>
 
-                {# Bénévoles prioritaires (prep_pesee = oui) #}
+                {# Bénévoles prioritaires (ramasse_pesee = oui) #}
                 {% for bene in favoris %}
                   {% set is_selected         = bene.id == selected_id %}
                   {% set is_remplacant       = bene.id == remplacant_id %}

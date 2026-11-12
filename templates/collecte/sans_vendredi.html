@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/mailjet_statut.html" import badge_statut_mailjet, bouton_verifier_statut_mailjet %}
 
 {% block title %}Pas de collecte le vendredi {{ annee }}{% endblock %}
 
@@ -56,6 +57,7 @@
     {% call action_buttons() %}
         {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
     {% endcall %}
+    {{ bouton_verifier_statut_mailjet(annee, feature) }}
 
     <div class="card mb-3">
         <div class="card-body">
@@ -157,6 +159,7 @@
                         <th>Accord</th>
                         <th>Email(s)</th>
                         <th>Mail envoyé</th>
+                        <th>Statut</th>
                         <th>Commentaire</th>
                     </tr>
                 </thead>
@@ -176,6 +179,7 @@
                         {% if m.emails %}{{ m.emails|join(', ') }}{% else %}<span class="text-danger">⚠️ Aucun email</span>{% endif %}
                     </td>
                     <td>{{ '✅' if m.mail_deja_envoye else '—' }}</td>
+                    <td>{{ badge_statut_mailjet(m.statut_mailjet) }}</td>
                     <td class="small">{{ m.commentaire }}</td>
                 </tr>
                 {% endfor %}

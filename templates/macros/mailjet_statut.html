@@ -1,0 +1,29 @@
+{% macro badge_statut_mailjet(statut_mailjet) %}
+{%- if statut_mailjet -%}
+    {%- if statut_mailjet.erreur -%}
+    <span class="badge bg-danger" title="{{ statut_mailjet.erreur }}">échec</span>
+    {%- elif statut_mailjet.statut_final -%}
+        {%- if statut_mailjet.statut_final in ['sent', 'opened', 'delivered'] -%}
+        <span class="badge bg-success">{{ statut_mailjet.statut_final }}</span>
+        {%- elif statut_mailjet.statut_final in ['bounce', 'blocked', 'spam', 'hardbounced', 'softbounced'] -%}
+        <span class="badge bg-danger">{{ statut_mailjet.statut_final }}</span>
+        {%- else -%}
+        <span class="badge bg-secondary">{{ statut_mailjet.statut_final }}</span>
+        {%- endif -%}
+    {%- else -%}
+    <span class="badge bg-light text-dark border" title="Envoyé le {{ statut_mailjet.envoye_le }} — statut pas encore vérifié">envoyé</span>
+    {%- endif -%}
+{%- else -%}
+<span class="text-muted">—</span>
+{%- endif -%}
+{% endmacro %}
+
+{% macro bouton_verifier_statut_mailjet(annee, feature) %}
+<form method="post" action="{{ url_for('collecte.collecte_verifier_statut_mailjet') }}" class="d-inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="annee" value="{{ annee }}">
+    <input type="hidden" name="feature" value="{{ feature }}">
+    <input type="hidden" name="retour" value="{{ request.url }}">
+    <button type="submit" class="btn btn-outline-secondary btn-sm">🔄 Vérifier statut Mailjet</button>
+</form>
+{% endmacro %}

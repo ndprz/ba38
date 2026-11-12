@@ -2,12 +2,12 @@
 
 {% from "macros/buttons.html" import action_button, action_buttons %}
 
-{% block title %}Création Planning Pesée{% endblock %}
+{% block title %}Création Planning Pesée ramasse{% endblock %}
 
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h2>Création du Planning Pesée</h2>
+    <h2>Création du Planning Pesée ramasse</h2>
     {% call action_buttons() %}
         {{ action_button("⬅️ Retour au menu Planning", href=url_for('planning.planning_main'), color="outline-dark") }}
     {% endcall %}

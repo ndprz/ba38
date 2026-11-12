@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons %}
+
+{% block title %}Comptage participants {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 900px;">
+    <h2>📊 Comptage participants {{ annee }}</h2>
+
+    {% call action_buttons() %}
+        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+        {{ action_button("📤 Télécharger (Excel)", href=url_for('collecte.participants_comptage_export', annee=annee), color="outline-success") }}
+    {% endcall %}
+
+    <p class="text-muted">
+        Nombre de bénévoles à mail différent dans chaque grande catégorie d'affectation — une même
+        personne peut apparaître dans plusieurs catégories à la fois (ex. magasin ET camion).
+    </p>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card text-center h-100">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">🏪 Vrais magasins</h6>
+                    <p class="display-6 mb-0">{{ magasins|length }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center h-100">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">🚚 Camions (V001–V089)</h6>
+                    <p class="display-6 mb-0">{{ camions|length }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center h-100">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">📦 Entrepôt (V090–V092)</h6>
+                    <p class="display-6 mb-0">{{ entrepot|length }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button class="btn btn-outline-secondary mb-2" type="button" data-bs-toggle="collapse" data-bs-target="#listeMagasins">
+        🏪 Voir la liste « Vrais magasins » ({{ magasins|length }})
+    </button>
+    <div id="listeMagasins" class="collapse mb-3">
+        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+            <table class="table table-sm table-striped">
+                <thead class="table-light" style="position: sticky; top: 0;"><tr><th>Nom</th><th>Email</th></tr></thead>
+                <tbody>
+                {% for p in magasins %}
+                <tr><td>{{ p.nom }}</td><td>{{ p.email }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <button class="btn btn-outline-secondary mb-2" type="button" data-bs-toggle="collapse" data-bs-target="#listeCamions">
+        🚚 Voir la liste « Camions » ({{ camions|length }})
+    </button>
+    <div id="listeCamions" class="collapse mb-3">
+        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+            <table class="table table-sm table-striped">
+                <thead class="table-light" style="position: sticky; top: 0;"><tr><th>Nom</th><th>Email</th></tr></thead>
+                <tbody>
+                {% for p in camions %}
+                <tr><td>{{ p.nom }}</td><td>{{ p.email }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <button class="btn btn-outline-secondary mb-2" type="button" data-bs-toggle="collapse" data-bs-target="#listeEntrepot">
+        📦 Voir la liste « Entrepôt » ({{ entrepot|length }})
+    </button>
+    <div id="listeEntrepot" class="collapse mb-3">
+        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+            <table class="table table-sm table-striped">
+                <thead class="table-light" style="position: sticky; top: 0;"><tr><th>Nom</th><th>Email</th></tr></thead>
+                <tbody>
+                {% for p in entrepot %}
+                <tr><td>{{ p.nom }}</td><td>{{ p.email }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

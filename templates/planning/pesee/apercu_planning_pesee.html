@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Planning Pesée – Semaine {{ semaine }}</title>
+  <title>Planning Pesée ramasse – Semaine {{ semaine }}</title>
   <style>
     @page { size: A3 landscape; margin: 1cm; }
     body {
@@ -59,7 +59,7 @@
 </head>
 
 <body>
-  <h2>Planning de Pesée – Semaine {{ semaine }}</h2>
+  <h2>Planning de Pesée ramasse – Semaine {{ semaine }}</h2>
 
   <div style="text-align: center; margin-bottom: 20px;" class="no-print">
     <button onclick="window.print()" style="padding: 8px 16px; font-size: 14px; cursor: pointer;">
@@ -111,7 +111,7 @@
   </table>
   {% else %}
   <p style="text-align: center; font-weight: bold; color: red;">
-    ⚠️ Aucun planning pesée trouvé pour la semaine {{ semaine }}.
+    ⚠️ Aucun planning pesée ramasse trouvé pour la semaine {{ semaine }}.
   </p>
   {% endif %}
 </body>

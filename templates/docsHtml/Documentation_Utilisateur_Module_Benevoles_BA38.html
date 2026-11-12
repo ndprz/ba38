@@ -36,8 +36,6 @@ affiche les bénévoles sans fonction renseignée. Les fonctions
 sélectionnées apparaissent sous forme de pastilles à côté du menu, et ce
 choix est mémorisé automatiquement pour les prochaines visites (par
 poste/navigateur).</p></li>
-<li><p><strong>Réinitialiser</strong> : le bouton “♻️ Réinitialiser”
-efface tous les filtres et remet l’affichage par défaut.</p></li>
 </ul>
 <h2 id="options-daffichage">Options d’affichage</h2>
 <p>Le bandeau “Options d’affichage” permet de choisir quels groupes de
@@ -58,11 +56,39 @@ puis d’enregistrer toutes les modifications en une seule fois avec le
 bouton “💾 Enregistrer les modifications”.</p></li>
 <li><p><strong>👁 Voir les désactivés</strong> : affiche la liste des
 bénévoles archivés (désactivés).</p></li>
-<li><p><strong>📧 Mail groupé bénévoles</strong> : permet d’envoyer un
-email à plusieurs bénévoles sélectionnés.</p></li>
+<li><p><strong>💶 Suivi des cotisations</strong> : ouvre la page de
+suivi des cotisations : choix de l’année, chiffres clés (bénévoles à
+jour, pas à jour, taux, à relancer), graphique des paiements par mois,
+liste des bénévoles avec date de paiement, et export Excel.</p></li>
+<li><p><strong>📣 Emailing bénévoles</strong> : ouvre le module
+d’emailing pour envoyer un message à tous les bénévoles ou à ceux ayant
+certaines fonctions (voir l’aide du module Emailing).</p></li>
 <li><p><strong>📸 Droit à l’image</strong> : accède à l’écran de gestion
 des autorisations “droit à l’image”.</p></li>
 <li><p><strong>↩︎️ Retour</strong> : revient à la page d’accueil.</p></li>
+</ul>
+<h2 id="les-cotisations">Les cotisations</h2>
+<p>La cotisation est enregistrée année par année, sans champ à créer :
+une nouvelle année apparaît automatiquement (celle de l’année suivante
+dès le 1er décembre).</p>
+<ul>
+<li><p><strong>Dans le tableau</strong> : une colonne “cotisation_AAAA”
+par année ; ✓ vert = à jour, ✗ rose = pas à jour. Au survol d’une case
+verte, la date de paiement s’affiche. Cliquer sur une case ouvre une
+fenêtre pour enregistrer le paiement (date de paiement, aujourd’hui par
+défaut), modifier la date ou retirer la cotisation ; l’enregistrement
+est immédiat et la fiche n’est pas ouverte. Cette modification est
+réservée aux comptes ayant le droit d’écriture sur les bénévoles. Le
+filtre de la colonne permet de ne garder que les bénévoles à jour ou
+non.</p></li>
+<li><p><strong>Dans la fiche et en mise à jour en tableau</strong> : un
+interrupteur par année (vert = à jour, rouge = non payée). En
+l’activant, une fenêtre demande la date de paiement (aujourd’hui par
+défaut) ; cliquer ensuite sur “payée le …” permet de la modifier.
+Désactiver l’interrupteur supprime la cotisation de l’année.</p></li>
+<li><p><strong>Générateur Excel</strong> : les années restent
+disponibles comme colonnes et comme filtres Oui/Non (“cotisation_2026 =
+oui”).</p></li>
 </ul>
 <h2 id="astuce">Astuce</h2>
 <p>Toutes les préférences d’affichage (colonnes cochées, groupes

@@ -1,0 +1,49 @@
+{#
+  Contrôle renforcé réutilisable pour une action sensible (remise à zéro,
+  déverrouillage...) : case à cocher + année tapée exactement, vérifiés
+  aussi côté serveur (cf. _controle_renforce_ok dans routes.py) — jamais
+  seulement un confirm() JS, contournable par un POST direct.
+#}
+{% macro modal_confirmation_renforcee(id_modal, titre, texte_avertissement, action_url, annee, champs_caches={}, libelle_bouton="Confirmer", couleur_bouton="danger") %}
+<div class="modal fade" id="{{ id_modal }}" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ action_url }}">
+        <div class="modal-header">
+          <h5 class="modal-title">{{ titre }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-warning">{{ texte_avertissement }}</div>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% for nom, valeur in champs_caches.items() %}
+          <input type="hidden" name="{{ nom }}" value="{{ valeur }}">
+          {% endfor %}
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="{{ id_modal }}_case" name="confirmation" value="oui" required>
+            <label class="form-check-label" for="{{ id_modal }}_case">Je confirme vouloir effectuer cette action.</label>
+          </div>
+          <label class="form-label" for="{{ id_modal }}_mot">Tapez <strong>{{ annee }}</strong> pour confirmer</label>
+          <input type="text" class="form-control" id="{{ id_modal }}_mot" name="mot_confirmation_saisi" autocomplete="off">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-{{ couleur_bouton }}" id="{{ id_modal }}_bouton" disabled>{{ libelle_bouton }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+    const champMot = document.getElementById("{{ id_modal }}_mot");
+    const bouton = document.getElementById("{{ id_modal }}_bouton");
+    function verifier() { bouton.disabled = champMot.value.trim() !== {{ annee|string|tojson }}; }
+    champMot.addEventListener("input", verifier);
+})();
+</script>
+{% endmacro %}
+
+{% macro bouton_ouvrir_confirmation_renforcee(id_modal, libelle, couleur="outline-danger", taille="sm") %}
+<button type="button" class="btn btn-{{ couleur }} btn-{{ taille }}" data-bs-toggle="modal" data-bs-target="#{{ id_modal }}">{{ libelle }}</button>
+{% endmacro %}

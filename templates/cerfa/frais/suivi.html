@@ -100,7 +100,7 @@
                     <button class="btn btn-outline-primary btn-sm">👥 Charger / actualiser (cotisation {{ campagne.annee_frais }} = oui)</button>
                 </form>
                 {% else %}
-                <div class="text-danger small">Pas de colonne cotisation_{{ campagne.annee_frais }} dans les bénévoles.</div>
+                <div class="text-danger small">Aucune cotisation {{ campagne.annee_frais }} enregistrée dans les bénévoles.</div>
                 {% endif %}
                 <form method="post" action="{{ url_for('cerfa.frais_ajouter_benevole', campagne_id=campagne.id) }}" class="d-flex gap-1 mt-2">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

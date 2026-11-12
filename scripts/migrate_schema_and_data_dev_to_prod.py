@@ -40,6 +40,7 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 EXCLUDE_TABLES = {
+    "benevoles_cotisations",  # cotisations réelles de PROD (migrées depuis ses colonnes) : jamais copiées depuis DEV
     "users_appareils",    # ba38_securite : référence users.id, propre à chaque env
     "users_telephones",   # idem (numéros saisis par l'admin de chaque env)
     "securite_alertes",   # anti-spam des alertes, propre à chaque env

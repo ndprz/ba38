@@ -1,0 +1,70 @@
+{# Fenêtre « date de paiement » pour les interrupteurs de cotisation (fiche, création, mode tableau).
+   Markup attendu : .cotis-wrap > input[data-cotis] (case) + input.cotis-date-val (hidden ISO) + a.cotis-date-txt #}
+<style>
+.cotis-wrap{display:flex;align-items:center;gap:.6rem}
+.cotis-date-txt{font-size:.85rem;color:#0d6efd;text-decoration:underline dotted;cursor:pointer;white-space:nowrap}
+.cotis-date-txt:empty{display:none}
+#cotisDateDlg{border:1px solid #ced4da;border-radius:.5rem;padding:1.2rem;box-shadow:0 .5rem 1.5rem rgba(0,0,0,.25)}
+#cotisDateDlg::backdrop{background:rgba(0,0,0,.35)}
+</style>
+<dialog id="cotisDateDlg">
+  <form method="dialog">
+    <div class="fw-bold mb-2" id="cotisDateTitre">Date de paiement</div>
+    <input type="date" id="cotisDateInput" class="form-control mb-3" required>
+    <div class="d-flex justify-content-end gap-2">
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="cotisDateAnnuler">Annuler</button>
+      <button type="submit" class="btn btn-success btn-sm" value="ok">Valider</button>
+    </div>
+  </form>
+</dialog>
+<script>
+(function(){
+  const dlg = document.getElementById("cotisDateDlg");
+  const inp = document.getElementById("cotisDateInput");
+  const titre = document.getElementById("cotisDateTitre");
+  let courant = null;   // {wrap, box, annule}
+
+  function fr(iso){ return /^\d{4}-\d{2}-\d{2}$/.test(iso||"") ? iso.slice(8,10)+"/"+iso.slice(5,7)+"/"+iso.slice(0,4) : ""; }
+  function refresh(wrap){
+    const v = wrap.querySelector(".cotis-date-val").value;
+    wrap.querySelector(".cotis-date-txt").textContent = v ? "payée le " + fr(v) : "";
+  }
+  function ouvrir(wrap, box, nouvelle){
+    courant = {wrap, box, nouvelle};
+    const annee = (box.name.match(/(\d{4})/)||[])[1] || "";
+    titre.textContent = "Cotisation " + annee + " : date de paiement";
+    inp.value = wrap.querySelector(".cotis-date-val").value || new Date().toISOString().slice(0,10);
+    dlg.showModal();
+  }
+  function annuler(){
+    if(courant && courant.nouvelle){ courant.box.checked = false; courant.wrap.querySelector(".cotis-date-val").value=""; refresh(courant.wrap); }
+    courant = null; dlg.close("annule");
+  }
+  dlg.addEventListener("close", function(){
+    if(dlg.returnValue === "ok" && courant){
+      courant.wrap.querySelector(".cotis-date-val").value = inp.value;
+      refresh(courant.wrap);
+      courant.box.dispatchEvent(new Event("change", {bubbles:true}));
+    }
+    courant = null; dlg.returnValue = "";
+  });
+  document.getElementById("cotisDateAnnuler").addEventListener("click", annuler);
+  dlg.addEventListener("cancel", function(e){ e.preventDefault(); annuler(); });
+
+  document.addEventListener("change", function(e){
+    const box = e.target.closest && e.target.closest("input[data-cotis]");
+    if(!box || e.isTrusted === false) return;
+    const wrap = box.closest(".cotis-wrap");
+    if(box.checked){ ouvrir(wrap, box, true); }
+    else { wrap.querySelector(".cotis-date-val").value = ""; refresh(wrap); }
+  });
+  document.addEventListener("click", function(e){
+    const a = e.target.closest && e.target.closest(".cotis-date-txt");
+    if(!a) return;
+    e.preventDefault();
+    const wrap = a.closest(".cotis-wrap"), box = wrap.querySelector("input[data-cotis]");
+    if(box.checked && !box.disabled) ouvrir(wrap, box, false);
+  });
+  document.querySelectorAll(".cotis-wrap").forEach(refresh);
+})();
+</script>
