@@ -433,6 +433,9 @@ def envoyer(campagne_id):
         if not c or not (c["corps"] or "").strip():
             flash("❌ Enregistrez d'abord le message.", "danger")
             return _retour(campagne_id, "#message")
+        if not c["date_spectacle"] or not c["date_limite"]:
+            flash("❌ Renseignez d'abord la date du spectacle et la date limite (bloc Fiche).", "danger")
+            return _retour(campagne_id)
         if c["statut"] == "tiree" or mails.limite_depassee(c):
             flash("❌ La date limite est dépassée : plus d'invitation possible.", "danger")
             return _retour(campagne_id, "#destinataires")
@@ -615,6 +618,30 @@ def annuler_tirage(campagne_id):
             write_log(f"↩️ Billets campagne {campagne_id} : tirage annulé par {current_user.email}")
             flash("↩️ Tirage annulé : vous pouvez modifier la campagne et relancer le tirage.", "warning")
     return _retour(campagne_id, "#tirage")
+
+
+@billets_bp.route("/<int:campagne_id>/dupliquer", methods=["POST"])
+@login_required
+@acces("ecriture")
+def dupliquer(campagne_id):
+    """Copie la fiche, le message d'invitation et les textes des mails ; dates à ressaisir, aucun destinataire."""
+    with _connect() as conn:
+        c = _campagne(conn, campagne_id)
+        if not c:
+            return redirect(url_for("billets.liste"))
+        cur = conn.execute(
+            """INSERT INTO billets_campagnes (donateur, lieu, spectacle, date_spectacle, heure_spectacle,
+                 mode_retrait, nb_billets, date_limite, sujet, corps, expediteur, expediteur_nom, reply_to,
+                 textes_mails, statut, cree_le, cree_par)
+               VALUES (?,?,?,NULL,?,?,?,NULL,?,?,?,?,?,?, 'ouverte', ?, ?)""",
+            (c["donateur"], c["lieu"], c["spectacle"], c["heure_spectacle"], c["mode_retrait"], c["nb_billets"],
+             c["sujet"], c["corps"], c["expediteur"], c["expediteur_nom"], c["reply_to"], c["textes_mails"],
+             mails.maintenant(), current_user.email))
+        conn.commit()
+        cid = cur.lastrowid
+    flash("📑 Campagne dupliquée : renseignez la date du spectacle et la date limite d'inscription, "
+          "puis constituez la liste des destinataires.", "info")
+    return redirect(url_for("billets.campagne", campagne_id=cid))
 
 
 @billets_bp.route("/<int:campagne_id>/supprimer", methods=["POST"])

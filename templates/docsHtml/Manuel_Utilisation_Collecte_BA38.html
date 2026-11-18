@@ -3,7 +3,7 @@
 <h1 id="table-des-matières-2">Table des matières</h1>
 <p><strong>Application BA38 — Manuel d’utilisation détaillé du module
 Collecte</strong> Destiné au/à la responsable de la collecte annuelle.
-Version : 17/11/2026.</p>
+Version : 18/11/2026.</p>
 <h1 id="introduction">Introduction</h1>
 <h2 id="objet-de-ce-manuel">Objet de ce manuel</h2>
 <p>Ce manuel décrit, étape par étape, l’utilisation du module « Collecte
@@ -914,6 +914,9 @@ directement le fichier Excel reçu, rempli tel quel : la structure du
 fichier est lue directement (poids par magasin et quantités par
 produit), sans passer par une analyse par IA.</p></li>
 </ul>
+<p>Depuis le 2026-11-18, les deux imports conservent les décimales
+(jusqu’à 2 chiffres) telles qu’écrites sur le document reçu — détail et
+historique du correctif en §10.5.</p>
 <p>Le bloc dépliant « 📁 Repère {année précédente} », sur la page « ⚖️
 Saisie collecte gardée », accepte le dépôt d’un fichier Excel (une seule
 fois par campagne) contenant le résultat de l’année précédente par
@@ -1107,8 +1110,8 @@ suffit plus, il faut cocher une case « je confirme » et retaper l’année
 exacte dans un champ texte, vérifié côté serveur — ce contrôle ne peut
 donc pas être contourné par un clic automatisé ou un appel direct à
 l’adresse technique de la suppression (même principe que le verrouillage
-de la saisie, §10.5). Les poids se saisissent en nombres entiers (kg),
-sans décimale.</p>
+de la saisie, §10.5). Depuis le 2026-11-18, les poids acceptent jusqu’à
+2 décimales (kg) — détail en §10.5.</p>
 <h2 id="résultat-collecte-gardée-quantités-par-produit">5.6 Résultat
 collecte gardée — Quantités par produit</h2>
 <p>Le bouton « 📦 Saisir » (Quantités par produit) ouvre un tableau avec
@@ -1153,8 +1156,8 @@ le modèle Excel partagé.</p>
 <p>Un bouton « 🗑️ Repartir à zéro » permet, de la même façon, d'effacer
 en un clic toutes les saisies de quantités de l'année, sous le même
 contrôle renforcé (case « je confirme » + année retapée, cf. §5.5)
-depuis le 2026-11-17. Comme pour les poids par magasin, la saisie se
-fait en nombres entiers, sans décimale.</p>
+depuis le 2026-11-17. Comme pour les poids par magasin, la saisie
+accepte depuis le 2026-11-18 jusqu’à 2 décimales — détail en §10.5.</p>
 <h2 id="pesée-palox">5.7 Pesée palox</h2>
 <p>Une fois les cagettes saisies, la pesée des palox à l’entrepôt se
 fait depuis un écran de synthèse qui liste chaque catégorie de produit
@@ -2499,12 +2502,53 @@ de l'année a été importée.</p>
 <h3
 id="arrondi-des-saisies-poids-par-magasin-gardé-et-quantités-par-produit">Arrondi
 des saisies (poids par magasin gardé et quantités par produit)</h3>
-<p>Depuis le 6 novembre 2026, les poids saisis sur ces deux grilles —
-ainsi que sur le formulaire de saisie en ligne rempli par l’association
-elle-même — sont arrondis à l’entier le plus proche dès l’enregistrement
-(plus de décimale), à la fois pour la cohérence avec l’affichage et pour
-éviter des écarts de quelques grammes sans utilité pratique à ce niveau
-de pesée.</p>
+<p>Depuis le 6 novembre 2026, les poids saisis sur ces deux grilles
+étaient arrondis à l’entier le plus proche dès l’enregistrement (plus de
+décimale), à la fois pour la cohérence avec l’affichage et pour éviter
+des écarts de quelques grammes sans utilité pratique à ce niveau de
+pesée.</p>
+<p>Depuis le 2026-11-18, à la demande de l’utilisateur, la saisie
+accepte désormais jusqu’à 2 décimales (<code>round(valeur, 2)</code> au
+lieu d’un arrondi entier). Comme les deux grilles (poids par magasin
+gardé et quantités par produit) partagent leurs colonnes en base avec
+plusieurs autres points de saisie, le changement a été appliqué partout
+où ces mêmes colonnes sont écrites, pour éviter qu’un point resté à
+l’entier réarrondisse silencieusement une valeur saisie ailleurs en
+décimal :</p>
+<ul>
+<li>les deux grilles globales (<code>poids_magasins_gardee.html</code>,
+<code>quantites_produits.html</code>) — pas de marche à l’entier
+(<code>step</code> Tabulator passé de 1 à 0,01), et l’affichage arrondit
+à 2 décimales sans zéro inutile (55 reste « 55 », 55,70 s’affiche « 55,7
+») ;</li>
+<li>la page de saisie par association (§4.4,
+<code>saisie_association.html</code> et
+<code>gardee_saisie.html</code>), aussi bien pour l’autosave par champ
+que pour l’enregistrement global ;</li>
+<li>le formulaire public de saisie en ligne rempli par l’association
+elle-même (même page que <code>gardee_saisie.html</code>) ;</li>
+<li>l’import Excel reçu d’une association (§4.4) : un bogue distinct a
+été corrigé le même jour —
+<code>_lire_resultats_excel_association</code> arrondissait encore à
+l’entier (<code>round(valeur)</code> sans second argument) alors même
+que les points d’enregistrement ci-dessus avaient déjà été corrigés, ce
+qui faisait perdre les décimales dès la détection, avant même l’écran de
+confirmation (valeurs orange). Corrigé en <code>round(valeur, 2)</code>
+;</li>
+<li>l’import PDF reçu d’une association (§4.4) : par prévention plutôt
+qu’en réaction à un bogue observé, le prompt envoyé à l’IA pour lire les
+poids manuscrits a été renforcé pour lui interdire explicitement
+d’arrondir elle-même à l’entier un poids dont une décimale est visible
+sur le scan, et un filet de sécurité
+(<code>_poids_detecte_ou_rien</code>) arrondit à 2 décimales ce qu’elle
+renvoie, sans jamais générer d’erreur sur une valeur non numérique (elle
+est alors simplement ignorée plutôt que de faire échouer toute la
+détection).</li>
+</ul>
+<p>La pesée palox (§5.7–§5.9, à l’entrepôt) n’est pas concernée par ce
+changement : elle reste volontairement en nombres entiers (bornes de
+validation par catégorie, cf. ci-dessous), ce type de pesée ne
+nécessitant pas cette précision.</p>
 <h3 id="pesée-palox-catégories-et-validation-du-poids">Pesée palox —
 catégories et validation du poids</h3>
 <p>Les catégories de produit pesées à l'entrepôt reprennent les codes

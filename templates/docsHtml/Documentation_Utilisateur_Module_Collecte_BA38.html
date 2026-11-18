@@ -1,5 +1,5 @@
 <p><strong>Application BA38 – Module Collecte</strong> Version de la
-documentation : 17/11/2026</p>
+documentation : 18/11/2026</p>
 <p>Le module « Collecte » gère la préparation et le suivi de la collecte
 annuelle en magasins, organisé en six sections indépendantes :</p>
 <ul>
@@ -653,6 +653,9 @@ la page pour voir le résultat) ;</p></li>
 par l’association, lu directement sans passer par une analyse
 IA.</p></li>
 </ul>
+<p>Les deux imports conservent désormais les décimales (jusqu’à 2
+chiffres après la virgule) telles qu’écrites sur le document reçu, aussi
+bien pour les poids par magasin que pour les quantités par produit.</p>
 <p>Le bloc dépliant « 📁 Repère {année précédente} », sur la page « ⚖️
 Saisie collecte gardée », permet de déposer directement le fichier Excel
 du résultat de l’année précédente (une seule fois par campagne, un
@@ -823,8 +826,7 @@ production), <strong>sous contrôle renforcé</strong> : il faut cocher
 une case de confirmation et retaper l’année exacte avant que la
 suppression ne soit acceptée — pas un simple message de confirmation du
 navigateur, pour éviter toute suppression accidentelle ou par un clic
-automatisé. Les poids se saisissent en nombres entiers (kg), sans
-décimale.</p>
+automatisé. Les poids acceptent jusqu’à 2 décimales (kg).</p>
 <h2 id="résultat-collecte-gardée-quantités-par-produit">5.6 Résultat
 collecte gardée — Quantités par produit</h2>
 <p>Le bouton « 📦 Saisir » (Quantités par produit) ouvre un tableau avec
@@ -861,7 +863,7 @@ soi-même.</p></li>
 en un clic toutes les saisies de quantités de l’année, sous le même
 contrôle renforcé (case de confirmation + année retapée) que pour les
 poids par magasin ci-dessus. Comme pour les poids par magasin, la saisie
-se fait en nombres entiers, sans décimale.</p>
+accepte jusqu’à 2 décimales.</p>
 <h2 id="pesée-palox-synthèse">5.7 Pesée palox — synthèse</h2>
 <p>Accessible depuis Résultat collecte, cet écran liste les catégories
 de produit avec, pour chacune, le nombre de palox déjà pesés, le poids

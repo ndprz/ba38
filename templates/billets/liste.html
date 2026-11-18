@@ -48,7 +48,11 @@
           {% elif limite_depassee(c) %}<span class="badge bg-warning text-dark">Tirage à faire</span>
           {% else %}<span class="badge bg-primary">Inscriptions ouvertes</span>{% endif %}
         </td>
-        <td><a class="btn btn-sm btn-primary" href="{{ url_for('billets.campagne', campagne_id=c.id) }}">Ouvrir</a></td>
+        <td class="text-nowrap"><a class="btn btn-sm btn-primary" href="{{ url_for('billets.campagne', campagne_id=c.id) }}">Ouvrir</a>
+          {% if peut_ecrire %}<form method="POST" action="{{ url_for('billets.dupliquer', campagne_id=c.id) }}" class="d-inline"
+            onsubmit="return confirm('Dupliquer cette campagne (fiche, message et textes des mails) ?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-secondary" title="Dupliquer">📑 Dupliquer</button></form>{% endif %}</td>
       </tr>
     {% else %}
       <tr><td colspan="9" class="text-muted text-center">Aucune campagne pour le moment.</td></tr>
