@@ -14,7 +14,7 @@ import secrets
 import sqlite3
 import time
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from functools import wraps
 
 import requests
@@ -24,6 +24,7 @@ from flask import (
 from flask_login import current_user, login_required
 from PIL import Image
 
+from ba38_benevoles import cotisations
 from ba38_emailing import emailing_bp
 from ba38_utilitaires.core import (
     adresse_test_utilisateur, envoyer_mail, get_db_path, mailjet_get_message_status,
@@ -181,7 +182,7 @@ def types_benevole(conn):
         "ORDER BY type_benevole COLLATE NOCASE")]
 
 
-def construire_destinataires_benevoles(conn, campagne_id, codes, types, tous, aucune):
+def construire_destinataires_benevoles(conn, campagne_id, codes, types, tous, aucune, a_jour=False):
     """Liste des bénévoles : tous, ou ayant « oui » dans au moins une fonction cochée (OU),
     ou n'ayant aucune fonction ; restreinte aux types cochés (si aucun type coché : tous).
     Même règles de conservation que pour les associations."""
@@ -196,8 +197,11 @@ def construire_destinataires_benevoles(conn, campagne_id, codes, types, tous, au
     toutes = fonctions_benevoles(conn)
     libelles = dict(toutes)
     vus, nb = set(), 0
+    ids_ok = cotisations.ids_a_jour(conn, date.today().year) if a_jour else None
     for b in conn.execute("SELECT * FROM benevoles ORDER BY nom COLLATE NOCASE, prenom COLLATE NOCASE"):
         if types and (b["type_benevole"] or "") not in types:
+            continue
+        if ids_ok is not None and b["id"] not in ids_ok:
             continue
         a_fonctions = [code for code, _ in toutes if (b[code] or "").strip().lower() == "oui"]
         if not (tous or (aucune and not a_fonctions) or any(c in a_fonctions for c in codes)):
@@ -360,7 +364,7 @@ def campagne(campagne_id):
         "emailing/campagne.html", c=c, modeles=modeles, champs=champs, lignes=lignes, nb=nb,
         cfg_champs=cfg.get("champs", []), cfg_valides=cfg.get("valides", 1), cible=cible,
         lib_cible="Bénévole" if cible == "benevoles" else "Association", cfg=cfg,
-        fonctions=fonctions, types_benevoles=types_benevoles,
+        fonctions=fonctions, types_benevoles=types_benevoles, annee_cotisation=date.today().year,
         lien_manquant=bool(c["form_actif"]) and not _contient_lien(c["corps"]),
         expediteurs=expediteurs, nom_org=nom_org, gmail_sender=GMAIL_SENDER,
         peut_ecrire=droit_cible(cible, "ecriture"), questions=questions, reponses=reponses, derniere_verif=derniere_verif,
@@ -426,13 +430,14 @@ def definir_destinataires(campagne_id):
             aucune = request.form.get("aucune_fonction") == "1"
             codes = [f for f in request.form.getlist("fonctions") if f in dict(fonctions_benevoles(conn))]
             types = request.form.getlist("types")
+            a_jour = request.form.get("a_jour") == "1"
             if not (tous or aucune or codes):
                 flash("⚠️ Choisissez « Tous les bénévoles », « Aucune fonction » ou au moins une fonction.", "warning")
                 return redirect(url_for("emailing.campagne", campagne_id=campagne_id) + "#destinataires")
             conn.execute("UPDATE emailing_campagnes SET champs_email = ? WHERE id = ?",
-                         (json.dumps({"fonctions": codes, "tous": int(tous), "aucune": int(aucune), "types": types}),
+                         (json.dumps({"fonctions": codes, "tous": int(tous), "aucune": int(aucune), "types": types, "a_jour": int(a_jour)}),
                           campagne_id))
-            nb = construire_destinataires_benevoles(conn, campagne_id, codes, types, tous, aucune)
+            nb = construire_destinataires_benevoles(conn, campagne_id, codes, types, tous, aucune, a_jour)
             conn.commit()
             flash(f"✅ Liste construite : {nb} adresse(s) à vérifier ci-dessous.", "success")
             return retour

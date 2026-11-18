@@ -1,0 +1,48 @@
+{#
+  Champ date avec défilement : ◀ jour précédent · jour suivant ▶ · Aujourd'hui.
+
+  {% from "macros/date_nav.html" import date_input %}
+  {{ date_input("date", valeur_iso, id="date", auto_submit=True, required=True) }}
+
+  auto_submit=True  : sélecteur de jour (formulaire GET) -> un clic sur ◀ ▶ recharge la page sur le nouveau jour.
+  auto_submit=False : champ de saisie -> le clic change seulement la valeur du champ.
+  Les jours sont comptés en dates civiles (pas d'heure : pas de décalage d'heure d'été). Champ vide : on part
+  d'aujourd'hui. Les attributs min / max du champ sont respectés.
+  Le script n'est inclus qu'une fois par page (garde window.__dateNav).
+#}
+{% macro date_input(name, value="", id=None, auto_submit=False, required=False, small=True, aujourdhui=True, pleine_largeur=False) %}
+<span class="input-group{{ ' input-group-sm' if small }} date-nav{{ ' w-100' if pleine_largeur }}" style="{{ '' if pleine_largeur else 'width:auto;' }}flex-wrap:nowrap">
+  <button type="button" class="btn btn-outline-secondary{{ ' btn-sm' if small }}" data-jour="-1" title="Jour précédent" aria-label="Jour précédent">◀</button>
+  <input type="date" id="{{ id or name }}" name="{{ name }}" class="form-control{{ ' form-control-sm' if small }}" style="min-width:140px"
+         value="{{ value or '' }}" {{ 'required' if required }} {{ 'data-auto-submit=1' if auto_submit }}>
+  <button type="button" class="btn btn-outline-secondary{{ ' btn-sm' if small }}" data-jour="1" title="Jour suivant" aria-label="Jour suivant">▶</button>
+  {% if aujourdhui %}<button type="button" class="btn btn-outline-secondary{{ ' btn-sm' if small }}" data-jour="aujourdhui" title="Revenir à aujourd'hui">Aujourd'hui</button>{% endif %}
+</span>
+<script>
+(function () {
+  if (window.__dateNav) { return; }
+  window.__dateNav = true;
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function iso(d) { return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()); }
+  function aujourdhui() { var d = new Date(); return iso(new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))); }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.date-nav button[data-jour]') : null;
+    if (!b) { return; }
+    var inp = b.closest('.date-nav').querySelector('input[type="date"]');
+    if (!inp || inp.disabled || inp.readOnly) { return; }
+    var v;
+    if (b.dataset.jour === 'aujourdhui') { v = aujourdhui(); }
+    else {
+      var p = (inp.value || aujourdhui()).split('-');
+      v = iso(new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] + Number(b.dataset.jour))));
+    }
+    if (inp.min && v < inp.min) { v = inp.min; }
+    if (inp.max && v > inp.max) { v = inp.max; }
+    inp.value = v;
+    inp.dispatchEvent(new Event('input', {bubbles: true}));
+    inp.dispatchEvent(new Event('change', {bubbles: true}));
+    if (inp.dataset.autoSubmit && inp.form) { if (inp.form.requestSubmit) { inp.form.requestSubmit(); } else { inp.form.submit(); } }
+  });
+})();
+</script>
+{% endmacro %}

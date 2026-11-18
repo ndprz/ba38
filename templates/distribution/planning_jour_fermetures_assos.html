@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/date_nav.html" import date_input %}
 
 {% block title %}Fermetures des associations{% endblock %}
 
@@ -68,9 +69,9 @@
             {% for a in associations %}<option value="{{ a.code }} — {{ a.nom }}" data-id="{{ a.id }}">{% endfor %}
           </datalist>
           <label class="small mb-0">Fermée à partir du</label>
-          <input type="date" name="date_debut" class="form-control form-control-sm" required>
+          {{ date_input("date_debut", "", required=True, aujourdhui=False, pleine_largeur=True) }}
           <label class="small mb-0">Jusqu'au (inclus) — vide = jusqu'à nouvel ordre</label>
-          <input type="date" name="date_fin" class="form-control form-control-sm">
+          {{ date_input("date_fin", "", aujourdhui=False, pleine_largeur=True) }}
           <input type="text" name="motif" class="form-control form-control-sm" placeholder="Motif (ex. congés d'été)" maxlength="100">
           <button class="btn btn-success btn-sm">Ajouter</button>
         </form>

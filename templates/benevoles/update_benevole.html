@@ -44,6 +44,23 @@
         {% include "partials/boutons_nav_benevole.html" %}
     </div>
 
+    {% if benevole.get('fiche_a_completer') == 'oui' %}
+    <!-- 🔹 Bénévole créé en ajout rapide (planning) : fiche à compléter -->
+    <div id="bandeau-fiche-a-completer" class="alert alert-warning d-flex justify-content-between align-items-center flex-wrap" style="gap:10px">
+        <div>
+            ⚠️ <strong>Fiche à compléter</strong> — ce bénévole a été créé en ajout rapide depuis un planning
+            (nom, prénom, civilité, type et téléphone seulement). Renseignez ses autres informations, puis
+            marquez la fiche comme complétée.
+        </div>
+        {% if not lecture_seule %}
+        <form method="POST" action="{{ url_for('benevoles.fiche_completee', benevole_id=benevole_id) }}" class="mb-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-success btn-sm">✅ Marquer la fiche comme complétée</button>
+        </form>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <!-- 🔹 Style du survol de photo -->
     <style>
         .photo-hover-container {

@@ -63,6 +63,8 @@ import pandas as pd
 from docx import Document
 from openpyxl import load_workbook, Workbook
 from openpyxl.drawing.image import Image as ImageOpenpyxl
+from openpyxl.styles import Font, Alignment
+from openpyxl.formatting.rule import ColorScaleRule
 import lxml.html as _lxml_html
 from flask import (
     render_template, request, redirect, url_for, flash,
@@ -1917,6 +1919,22 @@ def _corps_mail_ressenti_chauffeurs_html(personne, texte, annee):
     return f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">{html}</div>'
 
 
+EXPEDITEURS_MAIL_RESSENTI = {
+    "ba380.directeur@banquealimentaire.org": "Directeur",
+    "ba380.collecte@banquealimentaire.org": "Collecte",
+}
+
+
+def _expediteur_ressenti(form):
+    """Expéditeur choisi par l'utilisateur pour les mails de demande de
+    bilan/ressenti (chauffeurs/équipiers, entrepôt) — ba380.directeur par
+    défaut (comportement historique), repli strict dessus si le POST
+    contient autre chose que les 2 adresses validées Mailjet (demande
+    utilisateur 2026-11-17)."""
+    valeur = form.get("expediteur", "")
+    return valeur if valeur in EXPEDITEURS_MAIL_RESSENTI else "ba380.directeur@banquealimentaire.org"
+
+
 @collecte_bp.route("/collecte/mail_ressenti_chauffeurs", methods=["GET", "POST"])
 @login_required
 @require_access("collecte", "lecture")
@@ -1927,6 +1945,7 @@ def mail_ressenti_chauffeurs():
 
     if request.method == "POST":
         action = request.form.get("action")
+        expediteur = _expediteur_ressenti(request.form)
         if not destinataires:
             flash(f"❌ Aucun chauffeur/équipier trouvé pour {annee}.", "danger")
         elif action == "test":
@@ -1937,10 +1956,10 @@ def mail_ressenti_chauffeurs():
                 flash("❌ Votre compte n'a pas d'adresse email pour le test.", "danger")
             else:
                 envoyer_mail(
-                    f"[TEST] Collecte {annee} — votre ressenti",
+                    f"[TEST] Collecte {annee} — votre ressenti dans les camions",
                     [adresse_test],
                     _corps_mail_ressenti_chauffeurs_html(exemple, mail_texte, annee),
-                    sender_override="ba380.directeur@banquealimentaire.org",
+                    sender_override=expediteur,
                     is_html=True,
                 )
                 flash(f"✅ Mail de test envoyé à {adresse_test}.", "success")
@@ -1952,10 +1971,10 @@ def mail_ressenti_chauffeurs():
                 for personne in destinataires:
                     try:
                         resultat = envoyer_mail(
-                            f"Collecte {annee} — votre ressenti",
+                            f"Collecte {annee} — votre ressenti dans les camions",
                             [personne["email"]],
                             _corps_mail_ressenti_chauffeurs_html(personne, mail_texte, annee),
-                            sender_override="ba380.directeur@banquealimentaire.org",
+                            sender_override=expediteur,
                             is_html=True,
                         )
                         _enregistrer_envoi_mail_collecte(annee, "ressenti_chauffeurs", personne["email"], personne.get("nom", ""), resultat=resultat)
@@ -1978,6 +1997,7 @@ def mail_ressenti_chauffeurs():
         annee=annee,
         destinataires=destinataires,
         mail_texte=mail_texte,
+        expediteurs=EXPEDITEURS_MAIL_RESSENTI,
         feature="ressenti_chauffeurs",
     )
 
@@ -2098,6 +2118,7 @@ def mail_ressenti_entrepot():
 
     if request.method == "POST":
         action = request.form.get("action")
+        expediteur = _expediteur_ressenti(request.form)
         if not destinataires:
             flash(f"❌ Aucun bénévole entrepôt trouvé pour {annee}.", "danger")
         elif action == "test":
@@ -2108,10 +2129,10 @@ def mail_ressenti_entrepot():
                 flash("❌ Votre compte n'a pas d'adresse email pour le test.", "danger")
             else:
                 envoyer_mail(
-                    f"[TEST] Collecte {annee} — votre ressenti",
+                    f"[TEST] Collecte {annee} — ressenti à l'entrepôt",
                     [adresse_test],
                     _corps_mail_ressenti_entrepot_html(exemple, mail_texte, annee),
-                    sender_override="ba380.directeur@banquealimentaire.org",
+                    sender_override=expediteur,
                     is_html=True,
                 )
                 flash(f"✅ Mail de test envoyé à {adresse_test}.", "success")
@@ -2123,10 +2144,10 @@ def mail_ressenti_entrepot():
                 for personne in destinataires:
                     try:
                         resultat = envoyer_mail(
-                            f"Collecte {annee} — votre ressenti",
+                            f"Collecte {annee} — ressenti à l'entrepôt",
                             [personne["email"]],
                             _corps_mail_ressenti_entrepot_html(personne, mail_texte, annee),
-                            sender_override="ba380.directeur@banquealimentaire.org",
+                            sender_override=expediteur,
                             is_html=True,
                         )
                         _enregistrer_envoi_mail_collecte(annee, "ressenti_entrepot", personne["email"], personne.get("nom", ""), resultat=resultat)
@@ -2150,6 +2171,7 @@ def mail_ressenti_entrepot():
         destinataires=destinataires,
         feature="ressenti_entrepot",
         mail_texte=mail_texte,
+        expediteurs=EXPEDITEURS_MAIL_RESSENTI,
     )
 
 
@@ -4301,10 +4323,12 @@ def _detecter_pdf_association_background(app, detection_id, annee, association, 
                 "lisible, voici la liste EXACTE des lignes attendues sur chaque fiche :\n\n"
                 f"Magasins (FICHE MAGASINS) :\n{lignes_magasins}\n\n"
                 f"Produits (FICHE PRODUITS) :\n{lignes_produits}\n\n"
-                "Lis les poids écrits à la main en kg (nombres entiers ou avec décimale, parfois "
-                "séparateur virgule). Ignore les lignes où rien n'est écrit (case vide ou trait). "
-                "Si un nombre est vraiment illisible, ne l'inclus PAS dans la réponse plutôt que de "
-                "deviner.\n\n"
+                "Lis les poids écrits à la main en kg EXACTEMENT comme ils sont écrits, décimales "
+                "comprises (jusqu'à 2 chiffres après la virgule ou le point, ex. 55,76 ou 36.665 → "
+                "36.67) — ne les arrondis JAMAIS toi-même à l'entier le plus proche si une décimale "
+                "est visible, même petite. Parfois le séparateur décimal est une virgule. Ignore les "
+                "lignes où rien n'est écrit (case vide ou trait). Si un nombre est vraiment "
+                "illisible, ne l'inclus PAS dans la réponse plutôt que de deviner.\n\n"
                 "Réponds UNIQUEMENT avec un objet JSON de cette forme exacte, sans aucun texte "
                 "autour :\n"
                 '{"magasins": {"<code_vif>": <poids_kg>, ...}, "produits": {"<code_produit>": <poids_kg>, ...}}'
@@ -4332,15 +4356,26 @@ def _detecter_pdf_association_background(app, detection_id, annee, association, 
                     texte = texte[4:]
             data = _json.loads(texte)
 
+            def _poids_detecte_ou_rien(valeur):
+                """Arrondi défensif à 2 décimales (cohérent avec le reste du
+                module, cf. _lire_resultats_excel_association) --- Claude
+                répond normalement déjà un nombre, mais ceci absorbe un
+                éventuel surplus de décimales ou une valeur non numérique
+                sans faire planter toute la détection pour une seule ligne."""
+                try:
+                    return round(float(valeur), 2)
+                except (TypeError, ValueError):
+                    return None
+
             codes_vif_connus = {m["code_vif"] for m in magasins_connus}
             codes_produits_connus = {p["code"] for p in produits_connus}
             magasins_detectes = {
-                str(code): valeur for code, valeur in (data.get("magasins") or {}).items()
-                if str(code) in codes_vif_connus
+                str(code): v for code, valeur in (data.get("magasins") or {}).items()
+                if str(code) in codes_vif_connus and (v := _poids_detecte_ou_rien(valeur)) is not None
             }
             produits_detectes = {
-                str(code): valeur for code, valeur in (data.get("produits") or {}).items()
-                if str(code) in codes_produits_connus
+                str(code): v for code, valeur in (data.get("produits") or {}).items()
+                if str(code) in codes_produits_connus and (v := _poids_detecte_ou_rien(valeur)) is not None
             }
 
             with get_db_connection() as conn:
@@ -5591,6 +5626,7 @@ def collecte_main():
         mercuriale_import_annee_precedente=mercuriale_imports.get(annee - 1),
         verrou_bai=_resultat_bai_verrouille(annee),
         verrou_gardee=_resultat_gardee_verrouille(annee),
+        info_fichier_n1=_info_fichier_gardee_annee_precedente(annee),
     )
 
 
@@ -8261,20 +8297,78 @@ def _ensure_table_suivi_gardee(conn):
     colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_gardee_suivi)").fetchall()}
     if "dernier_mail_saisie_le" not in colonnes:
         conn.execute("ALTER TABLE collecte_gardee_suivi ADD COLUMN dernier_mail_saisie_le TEXT")
+    # 3e case de suivi, indépendante des 2 premières (qui suivent l'échange
+    # de mails) : une association peut saisir ses résultats en ligne sans
+    # jamais passer par ce circuit. "Traitée" coche qu'on a fini, POUR CETTE
+    # ASSOCIATION, la réception VIF (export CSV poids par magasin), le
+    # transfert produits et le BL — sans attendre que TOUTES les associations
+    # aient répondu, certaines traînant beaucoup plus que d'autres (demande
+    # utilisateur 2026-11-16).
+    if "traite" not in colonnes:
+        conn.execute("ALTER TABLE collecte_gardee_suivi ADD COLUMN traite INTEGER NOT NULL DEFAULT 0")
+        conn.execute("ALTER TABLE collecte_gardee_suivi ADD COLUMN traite_le TEXT")
+        conn.execute("ALTER TABLE collecte_gardee_suivi ADD COLUMN traite_par TEXT")
 
 
 def _lire_suivi_gardee(annee):
-    """{nom_association: {'repondu': bool, 'resultat_envoye': bool}}"""
+    """{nom_association: {'repondu': bool, 'resultat_envoye': bool, 'traite': bool}}"""
     with get_db_connection() as conn:
         _ensure_table_suivi_gardee(conn)
         rows = conn.execute(
-            "SELECT nom_association, repondu, resultat_envoye FROM collecte_gardee_suivi WHERE annee = ?",
+            "SELECT nom_association, repondu, resultat_envoye, traite FROM collecte_gardee_suivi WHERE annee = ?",
             (annee,),
         ).fetchall()
     return {
-        r["nom_association"]: {"repondu": bool(r["repondu"]), "resultat_envoye": bool(r["resultat_envoye"])}
+        r["nom_association"]: {
+            "repondu": bool(r["repondu"]), "resultat_envoye": bool(r["resultat_envoye"]), "traite": bool(r["traite"]),
+        }
         for r in rows
     }
+
+
+def _noms_associations_traitees(annee):
+    """Noms des associations gardant déjà cochées « Traitée » pour l'année
+    — pour les exclure des exports Transferts à saisir dans VIF et BL VIF,
+    qui raisonnent par nom d'association (cf.
+    _codes_vif_magasins_associations_traitees, variante par magasin pour
+    l'export poids par magasin) — demande utilisateur 2026-11-16."""
+    return {nom for nom, s in _lire_suivi_gardee(annee).items() if s.get("traite")}
+
+
+def _noms_associations_completes(annee):
+    """Noms des associations gardant dont la saisie est complète — même
+    calcul que le badge vert « X/X complet » affiché dans Saisie collecte
+    gardée (cf. _saisie_association_avancement), pour ne générer le BL VIF
+    que pour les associations entièrement remplies, jamais une association
+    partiellement saisie (demande utilisateur 2026-11-17)."""
+    df_mag = _lire_magasins_gardes(annee)
+    df_groupes = _lire_groupes(annee)
+    if df_mag.empty:
+        return set()
+    if "Code VIF" in df_mag.columns:
+        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+    associations, _ = _construire_associations(df_mag, df_groupes)
+    produits = _lire_produits_modele()
+    with get_db_connection() as conn:
+        poids_magasins = {
+            r["code_vif"]: r["poids_kg"]
+            for r in conn.execute(
+                "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
+        poids_produits = {}
+        for r in conn.execute(
+            "SELECT association, code_produit, poids_kg FROM collecte_quantites_produits WHERE annee = ?", (annee,)
+        ).fetchall():
+            poids_produits.setdefault(r["association"], {})[r["code_produit"]] = r["poids_kg"]
+    complets = set()
+    for asso in associations:
+        remplis, total = _saisie_association_avancement(
+            annee, asso["nom"], asso["magasins"], produits, poids_magasins, poids_produits
+        )
+        if total and remplis == total:
+            complets.add(asso["nom"])
+    return complets
 
 
 def _marquer_suivi_gardee(annee, nom_association, champ, valeur, utilisateur):
@@ -8322,8 +8416,8 @@ def _notifier_saisie_association(annee, nom_association):
             texte=(
                 f"L'association « {nom_association} » vient de saisir ou modifier ses résultats "
                 f"de collecte gardée {annee} (poids par magasin et/ou quantités par produit).<br><br>"
-                f"<a href=\"{url_for('collecte.gardee', annee=annee, _external=True)}\">"
-                f"Voir le suivi des associations gardant</a>"
+                f"<a href=\"{url_for('collecte.gardee_saisie', annee=annee, association=nom_association, _external=True)}\">"
+                f"Voir les résultats saisis par « {nom_association} »</a>"
             ),
             sender_override="ba380.collecte@banquealimentaire.org",
             is_html=True,
@@ -9825,7 +9919,7 @@ def enregistrer_poids_magasins_gardee():
         return jsonify({"success": False, "erreur": "Paramètres manquants"}), 400
 
     try:
-        poids_kg = round(float(poids_brut)) if poids_brut not in (None, "") else None
+        poids_kg = round(float(poids_brut), 2) if poids_brut not in (None, "") else None
     except (TypeError, ValueError):
         return jsonify({"success": False, "erreur": "Poids invalide"}), 400
 
@@ -9872,6 +9966,30 @@ def poids_magasins_gardee_reinitialiser(annee):
     return jsonify({"success": True, "nb_supprimees": cur.rowcount})
 
 
+def _codes_vif_magasins_associations_traitees(annee):
+    """Codes VIF des magasins des associations gardant déjà cochées
+    « Traitée » (cf. _lire_suivi_gardee, case à cocher dans Saisie collecte
+    gardée) — pour les exclure des 3 exports VIF (poids par magasin,
+    transferts, BL), une fois leur traitement (réception VIF + transfert +
+    BL) déjà fait, et éviter un doublon de stock si on relance ces exports
+    plus tard pour les associations qui répondent en retard (demande
+    utilisateur 2026-11-16)."""
+    df_mag = _lire_magasins_gardes(annee)
+    df_groupes = _lire_groupes(annee)
+    if df_mag.empty:
+        return set()
+    if "Code VIF" in df_mag.columns:
+        df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+    associations, _ = _construire_associations(df_mag, df_groupes)
+    suivi = _lire_suivi_gardee(annee)
+    return {
+        _vif_fmt(m.get("Code VIF"))
+        for asso in associations
+        if suivi.get(asso["nom"], {}).get("traite")
+        for m in asso["magasins"]
+    }
+
+
 @collecte_bp.route("/collecte/<int:annee>/poids-magasins-gardee/export")
 @login_required
 @require_access("collecte", "lecture")
@@ -9891,6 +10009,8 @@ def exporter_poids_magasins_gardee(annee):
     if "Code VIF" in df_mag.columns:
         df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
 
+    codes_vif_deja_traites = _codes_vif_magasins_associations_traitees(annee)
+
     with get_db_connection() as conn:
         saisies = {
             r["code_vif"]: r["poids_kg"]
@@ -9906,6 +10026,8 @@ def exporter_poids_magasins_gardee(annee):
     for _, row in df_mag.iterrows():
         code_vif = str(row.get("Code VIF", "")).strip()
         if not code_vif or code_vif.lower() == "nan":
+            continue
+        if code_vif in codes_vif_deja_traites:
             continue
         poids_kg = saisies.get(code_vif)
         if not poids_kg:
@@ -9944,7 +10066,10 @@ def exporter_poids_magasins_gardee(annee):
             CAGETTES_EXPORT_ORIGINE,
         ])
 
-    write_log(f"📤 Export CSV poids magasins gardée {annee} par {current_user.email}")
+    write_log(
+        f"📤 Export CSV poids magasins gardée {annee} ({len(lignes)} magasin(s), "
+        f"{len(codes_vif_deja_traites)} déjà traité(s) exclu(s)) par {current_user.email}"
+    )
 
     return Response(
         tampon.getvalue().encode("utf-8-sig"),
@@ -9974,6 +10099,11 @@ def quantites_produits(annee):
     for nom in noms_associations:
         code_vif_asso, _, _ = _code_vif_association(nom, index_code_vif)
         code_vif_associations[nom] = code_vif_asso or ""
+    totaux_n1 = _totaux_gardee_annee_precedente(annee)
+    totaux_associations_n1 = {
+        nom: _total_gardee_annee_precedente_association(totaux_n1, nom, code_vif_associations.get(nom))
+        for nom in noms_associations
+    }
 
     with get_db_connection() as conn:
         saisies = {
@@ -10015,6 +10145,8 @@ def quantites_produits(annee):
         lignes=lignes,
         associations=noms_associations,
         code_vif_associations=code_vif_associations,
+        totaux_associations_n1=totaux_associations_n1,
+        annee_precedente=annee - 1,
         mercuriale_importee=bool(prix_mercuriale),
         total_transfere=total_transfere,
         total_stock_gardee=total_stock_gardee,
@@ -10030,22 +10162,35 @@ def _date_vif_lundi_jeudi():
     return d
 
 
+def _lignes_transferts_vif(annee):
+    """Pour chaque article de la page Quantités par produit, total à
+    transférer dans VIF (sortie du stock « collecte gardée » 5010010,
+    entrée sur l'article) — associations déjà cochées « Traitée »
+    exclues (déjà transférées lors d'un précédent export, cf.
+    _noms_associations_traitees), pour ne porter que sur les
+    associations qui viennent de répondre. Partagé par l'affichage
+    écran et l'export CSV TRANCOG."""
+    noms_traites = _noms_associations_traitees(annee)
+    with get_db_connection() as conn:
+        placeholders = ",".join("?" * len(noms_traites))
+        exclusion_sql = f"AND q.association NOT IN ({placeholders})" if noms_traites else ""
+        return [dict(r) for r in conn.execute(f"""
+            SELECT q.code_produit AS article, a.libelle, SUM(q.poids_kg) AS total_kg
+            FROM collecte_quantites_produits q
+            LEFT JOIN articles a ON a.article = q.code_produit
+            WHERE q.annee = ? AND q.poids_kg > 0 {exclusion_sql}
+            GROUP BY q.code_produit HAVING SUM(q.poids_kg) > 0
+            ORDER BY q.code_produit
+        """, (annee, *noms_traites)).fetchall()]
+
+
 @collecte_bp.route("/collecte/<int:annee>/quantites-produits/transferts")
 @login_required
 @require_access("collecte", "lecture")
 def quantites_produits_transferts(annee):
-    """Liste des mouvements de transfert à saisir à la main dans VIF :
-    pour chaque article de la page Quantités par produit, sortie du stock
-    « collecte gardée » (5010010) et entrée de l'article (total de la ligne)."""
-    with get_db_connection() as conn:
-        lignes = [dict(r) for r in conn.execute("""
-            SELECT q.code_produit AS article, a.libelle, SUM(q.poids_kg) AS total_kg
-            FROM collecte_quantites_produits q
-            LEFT JOIN articles a ON a.article = q.code_produit
-            WHERE q.annee = ? AND q.poids_kg > 0
-            GROUP BY q.code_produit HAVING SUM(q.poids_kg) > 0
-            ORDER BY q.code_produit
-        """, (annee,)).fetchall()]
+    """Liste des mouvements de transfert à saisir à la main dans VIF —
+    voir _lignes_transferts_vif."""
+    lignes = _lignes_transferts_vif(annee)
     return render_template(
         "collecte/quantites_produits_transferts.html",
         annee=annee, lignes=lignes,
@@ -10057,6 +10202,60 @@ def quantites_produits_transferts(annee):
     )
 
 
+def _ligne_trancog_vif(article, quantite_kg, date_mvt, article_sortie, nature_mouvement="TRANCOG"):
+    """Une ligne (48 colonnes, `;` séparateur) du format TRANCOG/TRANSCOL
+    VIF (transfert manuel), reproduisant exactement ce que donnerait le
+    modèle /srv/ba38/uploads/matrice TRANCOG(1).xlsx rempli à la main
+    puis enregistré en CSV en retirant ses 3 premières lignes (en-têtes
+    + instructions) --- seuls l'article, la quantité, la date et
+    l'article sortie (5010010 collecte gardée ou 5010000 collecte
+    directe, cf. appelants) varient, tout le reste est constant dans le
+    modèle. Nature de mouvement TRANCOG par défaut (collecte gardée,
+    comme le modèle), TRANSCOL pour la pesée palox (collecte directe,
+    demande utilisateur 2026-11-18). Dépôt entrée = 03 (demande
+    utilisateur 2026-11-17, pas la valeur 02 du modèle --- déjà la
+    valeur affichée sur ces pages avant ce changement) ; émplacement
+    entrée = B011 et lot entrée vide, comme le modèle réel (également
+    demande utilisateur 2026-11-17)."""
+    qte = str(int(round(quantite_kg)))
+    champs = [
+        "01", "38", "1OD", "0", "0", nature_mouvement,
+        date_mvt.strftime("%d/%m/%Y"), "120000", "transfert collecte", "",
+        "AUC", "", "",
+        article, "", "03", "B011", qte, "Kg",
+    ] + [""] * 4 + [
+        article_sortie, "", CAGETTES_EXPORT_DEPOT, "", qte, "Kg",
+    ] + [""] * 19
+    return ";".join(champs)
+
+
+@collecte_bp.route("/collecte/<int:annee>/quantites-produits/transferts/export-trancog")
+@login_required
+@require_access("collecte", "lecture")
+def quantites_produits_transferts_export_trancog(annee):
+    """Export CSV prêt à importer dans VIF (format TRANCOG, cf.
+    _ligne_trancog_vif) --- équivalent du modèle Excel rempli à la main
+    puis réenregistré en CSV en retirant les 3 premières lignes, mais
+    généré directement depuis les quantités saisies."""
+    lignes = _lignes_transferts_vif(annee)
+    if not lignes:
+        flash(f"⛔ Aucune quantité à transférer pour {annee}.", "warning")
+        return redirect(url_for("collecte.quantites_produits_transferts", annee=annee))
+
+    date_mvt = _date_vif_lundi_jeudi()
+    contenu = "\r\n".join(
+        _ligne_trancog_vif(l["article"], l["total_kg"], date_mvt, CAGETTES_EXPORT_ARTICLE_GARDEE)
+        for l in lignes
+    ) + "\r\n"
+
+    write_log(f"📤 Export CSV TRANCOG VIF {annee} ({len(lignes)} article(s)) par {current_user.email}")
+    return Response(
+        contenu.encode("utf-8-sig"),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=trancog_vif_{annee}.csv"},
+    )
+
+
 @collecte_bp.route("/collecte/<int:annee>/quantites-produits/bl-vif")
 @login_required
 @require_access("collecte", "lecture")
@@ -10064,14 +10263,31 @@ def quantites_produits_bl_vif(annee):
     """BL VIF de la collecte gardée : une ligne par association × article
     dont la quantité saisie est > 0, même format que le BL des ramasses
     partenaires (ba38_vif.generation). Colonne Gratuit d'après le statut
-    de l'association (Associations gardant) ; si non gratuit, prix = mercuriale."""
+    de l'association (Associations gardant) ; si non gratuit, prix = mercuriale.
+    Associations déjà cochées « Traitée » exclues (déjà dans un précédent
+    BL) ; celles incluses dans CE BL sont cochées « Traitée » automatiquement
+    une fois le BL généré, pour ne pas les réinclure si le BL est relancé
+    plus tard pour les associations qui répondent en retard (demande
+    utilisateur 2026-11-16). Également exclues : les associations dont la
+    saisie n'est pas complète (pas le badge vert « X/X complet », cf.
+    _noms_associations_completes) — jamais de BL sur une saisie partielle
+    (demande utilisateur 2026-11-17)."""
     df_mag = _lire_magasins_gardes(annee)
     df_groupes = _lire_groupes(annee)
     if df_mag.empty:
         flash(f"⛔ Liste des magasins gardés {annee} indisponible", "danger")
         return redirect(url_for("collecte.quantites_produits", annee=annee))
     associations, _ = _construire_associations(df_mag, df_groupes)
-    noms = sorted({a["nom"] for a in associations}, key=str.lower)
+    noms_traites_avant = _noms_associations_traitees(annee)
+    noms_completes = _noms_associations_completes(annee)
+    noms_incomplets_exclus = {
+        a["nom"] for a in associations
+        if a["nom"] not in noms_traites_avant and a["nom"] not in noms_completes
+    }
+    noms = sorted(
+        {a["nom"] for a in associations if a["nom"] not in noms_traites_avant and a["nom"] in noms_completes},
+        key=str.lower,
+    )
     index_code_vif = _table_code_vif_associations()
     gratuit_assos = _gratuit_associations()
 
@@ -10089,7 +10305,7 @@ def quantites_produits_bl_vif(annee):
         for r in saisies:
             par_asso.setdefault(r["association"], []).append(r)
 
-        lignes, erreurs = [], []
+        lignes, erreurs, noms_inclus = [], [], []
         for nom in noms:
             if nom not in par_asso:
                 continue
@@ -10107,6 +10323,7 @@ def quantites_produits_bl_vif(annee):
                     "code_vif": str(code_asso), "article": r["code_produit"],
                     "total_kg": r["poids_kg"], "gratuit": gratuit, "prix_kg": p or 0,
                 })
+            noms_inclus.append(nom)
 
         if erreurs:
             for e in erreurs:
@@ -10120,7 +10337,14 @@ def quantites_produits_bl_vif(annee):
         date_bl = _date_vif_lundi_jeudi()
         contenu = generer_bl_collecte_gardee(conn, lignes, date_bl)
 
-    write_log(f"📤 BL VIF collecte gardée {annee} ({len(lignes)} ligne(s)) par {current_user.email}")
+    for nom in noms_inclus:
+        _marquer_suivi_gardee(annee, nom, "traite", True, current_user.email)
+
+    write_log(
+        f"📤 BL VIF collecte gardée {annee} ({len(lignes)} ligne(s), {len(noms_inclus)} association(s) "
+        f"cochée(s) « Traitée », {len(noms_incomplets_exclus)} association(s) incomplète(s) exclue(s)) "
+        f"par {current_user.email}"
+    )
     return Response(
         contenu, mimetype="text/csv",
         headers={"Content-Disposition": f"attachment; filename=BL_collecte_gardee_{annee}.CSV"},
@@ -10141,7 +10365,7 @@ def enregistrer_quantites_produits():
         return jsonify({"success": False, "erreur": "Paramètres manquants"}), 400
 
     try:
-        poids_kg = round(float(poids_brut)) if poids_brut not in (None, "") else None
+        poids_kg = round(float(poids_brut), 2) if poids_brut not in (None, "") else None
     except (TypeError, ValueError):
         return jsonify({"success": False, "erreur": "Poids invalide"}), 400
 
@@ -10166,26 +10390,6 @@ def enregistrer_quantites_produits():
         conn.commit()
 
     return jsonify({"success": True})
-
-
-@collecte_bp.route("/collecte/<int:annee>/quantites-produits/reinitialiser", methods=["POST"])
-@login_required
-@require_access("collecte", "ecriture")
-def quantites_produits_reinitialiser(annee):
-    """Efface toutes les saisies de quantités par produit de l'année —
-    volontairement utilisable en prod comme en dev (pas réservé aux essais
-    dev), pour pouvoir repartir à zéro après des essais réels."""
-    verrou = _resultat_gardee_verrouille(annee)
-    if verrou:
-        return jsonify({
-            "success": False,
-            "erreur": f"🔒 Résultat collecte gardée {annee} verrouillé depuis le {verrou['le']} — déverrouillez-le d'abord.",
-        }), 423
-    with get_db_connection() as conn:
-        cur = conn.execute("DELETE FROM collecte_quantites_produits WHERE annee = ?", (annee,))
-        conn.commit()
-    write_log(f"🗑️ Quantités par produit {annee} réinitialisées ({cur.rowcount} ligne(s)) par {current_user.email}")
-    return jsonify({"success": True, "nb_supprimees": cur.rowcount})
 
 
 def _controle_renforce_ok(annee):
@@ -10348,29 +10552,35 @@ RESULTAT_COLLECTE_TABLES_RESET = {
 @login_required
 @require_access("collecte", "ecriture")
 def resultat_collecte_remise_a_zero(annee, cle):
-    """Efface, UNE saisie à la fois (pas les 4 d'un coup), la page « Résultat
-    collecte » pour l'année choisie — regroupé dans le bandeau dépliable
-    « Remise à zéro des saisies » de la page. Volontairement utilisable en
-    prod comme en dev (même principe que poids_magasins_gardee_reinitialiser
-    / quantites_produits_reinitialiser ci-dessus), pour repartir à zéro après
-    des essais réels, pas réservé aux tests dev. Contrôle renforcé
-    obligatoire (cf. _controle_renforce_ok) — demande utilisateur
-    2026-11-10."""
+    """Efface, UNE saisie à la fois (pas les 4 d'un coup), une table de
+    saisie de l'année choisie — utilisée à la fois depuis le bandeau
+    dépliable « Remise à zéro des saisies » de la page Résultat collecte
+    ET (cle="quantites") depuis le bouton « Repartir à zéro » de la page
+    Quantités par produit, qui avait jusqu'ici son propre bouton+confirm()
+    JS sans contrôle renforcé (demande utilisateur 2026-11-16). Volontairement
+    utilisable en prod comme en dev (même principe que
+    poids_magasins_gardee_reinitialiser), pour repartir à zéro après des
+    essais réels, pas réservé aux tests dev. Contrôle renforcé obligatoire
+    (cf. _controle_renforce_ok) — demande utilisateur 2026-11-10."""
     info = RESULTAT_COLLECTE_TABLES_RESET.get(cle)
     if not info:
         abort(404)
     table, libelle = info
+    # Retour sur la page d'où l'action a été lancée plutôt que toujours la
+    # page Résultat collecte — "quantites" est aussi déclenchable depuis
+    # Quantités par produit, une page à part.
+    retour_endpoint = "collecte.quantites_produits" if cle == "quantites" else "collecte.collecte_main"
 
     if cle in ("cagettes", "palox") and _resultat_bai_verrouille(annee):
         flash(f"🔒 Résultat collecte BAI {annee} verrouillé — déverrouillez-le d'abord.", "danger")
-        return redirect(url_for("collecte.collecte_main", annee=annee))
+        return redirect(url_for(retour_endpoint, annee=annee))
     if cle in ("poids-gardee", "quantites") and _resultat_gardee_verrouille(annee):
         flash(f"🔒 Résultat collecte gardée {annee} verrouillé — déverrouillez-le d'abord.", "danger")
-        return redirect(url_for("collecte.collecte_main", annee=annee))
+        return redirect(url_for(retour_endpoint, annee=annee))
 
     if not _controle_renforce_ok(annee):
         flash("❌ Confirmation incomplète — rien n'a été effacé.", "danger")
-        return redirect(url_for("collecte.collecte_main", annee=annee))
+        return redirect(url_for(retour_endpoint, annee=annee))
 
     with get_db_connection() as conn:
         cur = conn.execute(f"DELETE FROM {table} WHERE annee = ?", (annee,))
@@ -10378,7 +10588,7 @@ def resultat_collecte_remise_a_zero(annee, cle):
 
     write_log(f"🗑️ Remise à zéro {libelle} {annee} : {cur.rowcount} ligne(s) par {current_user.email}")
     flash(f"🗑️ Remise à zéro « {libelle} » : {cur.rowcount} saisie(s) effacée(s) pour {annee}.", "success")
-    return redirect(url_for("collecte.collecte_main", annee=annee))
+    return redirect(url_for(retour_endpoint, annee=annee))
 
 
 # ============================================================================
@@ -10551,11 +10761,13 @@ def evolution_magasins_export():
         if len(annees) >= 2:
             cette_annee = resultats.get(annees[0])
             annee_prec = resultats.get(annees[1])
-            if cette_annee is not None and annee_prec is not None:
-                evolution = cette_annee - annee_prec
-                pct = (evolution / annee_prec) if annee_prec else None
+            if cette_annee is not None or annee_prec is not None:
+                c = cette_annee or 0
+                p = annee_prec or 0
+                evolution = c - p
+                pct = (evolution / p) if p else None
                 somme_evolution += evolution
-                somme_annee_prec += annee_prec
+                somme_annee_prec += p
         for a in annees:
             valeur = resultats.get(a)
             if valeur is not None:
@@ -11618,6 +11830,66 @@ def palox_synthese(annee):
     return render_template("collecte/palox_synthese.html", verrou_bai=_resultat_bai_verrouille(annee), **_synthese_palox(annee))
 
 
+def _lignes_transferts_palox_vif(annee):
+    """Pour chaque catégorie pesée au palox, total à transférer dans VIF
+    (sortie du stock « collecte directe » 5010000, entrée sur le code
+    VIF de la catégorie) --- mêmes principes que
+    _lignes_transferts_vif (quantités par produit, collecte gardée),
+    mais source = pesée palox plutôt que les quantités saisies par les
+    associations gardant leur collecte. Catégories sans code VIF ou
+    sans poids ignorées."""
+    lignes = _synthese_palox(annee)["lignes"]
+    return [
+        {"article": l["code_vif"], "libelle": l["libelle"], "total_kg": l["poids_kg"]}
+        for l in lignes if l["code_vif"] and l["poids_kg"]
+    ]
+
+
+@collecte_bp.route("/collecte/<int:annee>/palox/transferts")
+@login_required
+@require_access("collecte", "lecture")
+def palox_transferts(annee):
+    """Liste des mouvements de transfert à saisir dans VIF pour la pesée
+    palox --- voir _lignes_transferts_palox_vif."""
+    lignes = _lignes_transferts_palox_vif(annee)
+    return render_template(
+        "collecte/palox_transferts.html",
+        annee=annee, lignes=lignes,
+        total=sum(l["total_kg"] for l in lignes),
+        article_source=CAGETTES_EXPORT_ARTICLE,
+        depot_source=CAGETTES_EXPORT_DEPOT,
+        depot_dest="03",
+        date_mvt=_date_vif_lundi_jeudi(),
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/palox/transferts/export-trancog")
+@login_required
+@require_access("collecte", "lecture")
+def palox_transferts_export_trancog(annee):
+    """Export CSV prêt à importer dans VIF (format TRANCOG, cf.
+    _ligne_trancog_vif) pour la pesée palox --- même principe que
+    quantites_produits_transferts_export_trancog, mais article sortie
+    5010000 (collecte directe) au lieu de 5010010 (collecte gardée)."""
+    lignes = _lignes_transferts_palox_vif(annee)
+    if not lignes:
+        flash(f"⛔ Aucun poids à transférer pour {annee}.", "warning")
+        return redirect(url_for("collecte.palox_transferts", annee=annee))
+
+    date_mvt = _date_vif_lundi_jeudi()
+    contenu = "\r\n".join(
+        _ligne_trancog_vif(l["article"], l["total_kg"], date_mvt, CAGETTES_EXPORT_ARTICLE, nature_mouvement="TRANSCOL")
+        for l in lignes
+    ) + "\r\n"
+
+    write_log(f"📤 Export CSV TRANCOG VIF palox {annee} ({len(lignes)} catégorie(s)) par {current_user.email}")
+    return Response(
+        contenu.encode("utf-8-sig"),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=trancog_vif_palox_{annee}.csv"},
+    )
+
+
 @collecte_bp.route("/collecte/<int:annee>/palox/synthese/donnees")
 @login_required
 @require_access("collecte", "lecture")
@@ -11657,6 +11929,14 @@ def palox_synthese_export(annee):
     ws.title = "pesée palox"
     entetes = ["Catégorie", "Code VIF", "Nb palox", "Poids (kg)", "% du total",
                "Prix mercuriale (€/kg)", "Valeur (€)", "Poids année précédente (kg)"]
+
+    ws.append([f"Pesée palox {annee} — synthèse valorisée"])
+    ws.merge_cells(f"A1:{chr(ord('A') + len(entetes) - 1)}1")
+    titre = ws["A1"]
+    titre.font = Font(name="Arial", bold=True, size=12, color="1F3864")
+    titre.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 22
+
     ws.append(entetes)
     ws.append([
         "Total", "", sum(l["nb_palox"] for l in synthese["lignes"]), synthese["poids_total"], 100,
@@ -11669,12 +11949,33 @@ def palox_synthese_export(annee):
             l["prix_kg"], l["valeur"], l["poids_annee_precedente"],
         ])
 
-    for colonne in ws.columns:
-        lettre = colonne[0].column_letter
-        ws.column_dimensions[lettre].width = 14 if lettre != "A" else 34
+    for i in range(len(entetes)):
+        lettre = chr(ord("A") + i)
+        ws.column_dimensions[lettre].width = 34 if lettre == "A" else 14
 
-    ws.freeze_panes = "A3"
-    ws.auto_filter.ref = ws.dimensions
+    derniere_colonne = chr(ord("A") + len(entetes) - 1)
+    derniere_ligne = 3 + len(synthese["lignes"])
+
+    ws.freeze_panes = "A4"
+    ws.auto_filter.ref = f"A2:{derniere_colonne}{derniere_ligne}"
+
+    # Mise en forme conditionnelle (dégradé blanc → vert, les poids/valeurs
+    # les plus importants ressortent) — seulement sur les lignes de détail
+    # (à partir de la ligne 4), la ligne "Total" fausserait l'échelle en
+    # étant systématiquement la plus grande valeur (demande utilisateur
+    # 2026-11-16).
+    if derniere_ligne >= 4:
+        for colonne in ("D", "E", "G"):
+            ws.conditional_formatting.add(
+                f"{colonne}4:{colonne}{derniere_ligne}",
+                ColorScaleRule(start_type="min", start_color="FFFFFF", end_type="max", end_color="63BE7B"),
+            )
+
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 1
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_options.gridLines = True
 
     tampon = io.BytesIO()
     wb_export.save(tampon)
@@ -11799,7 +12100,7 @@ def saisie_association(annee, token):
             if valeur < 0:
                 champs_invalides.append(libelle_erreur)
                 return "IGNORER"
-            return round(valeur)
+            return round(valeur, 2)
 
         champs_invalides = []
         une_saisie = False
@@ -11901,7 +12202,7 @@ def saisie_association_enregistrer_champ(annee, token):
         return jsonify({"success": False, "erreur": "Paramètres manquants"}), 400
 
     try:
-        poids_kg = round(float(poids_brut)) if poids_brut not in (None, "") else None
+        poids_kg = round(float(poids_brut), 2) if poids_brut not in (None, "") else None
     except (TypeError, ValueError):
         return jsonify({"success": False, "erreur": "Poids invalide"}), 400
 
@@ -11986,9 +12287,12 @@ def gardee_saisie_choisir():
     associations = sorted(associations, key=lambda a: a["nom"])
     total_magasins = sum(len(a["magasins"]) for a in associations)
     total_poids = sum(a["poids_total"] for a in associations)
+    total_poids_n1 = sum(a["poids_total_n1"] for a in associations if a["poids_total_n1"] is not None)
     return render_template(
         "collecte/gardee_saisie_choisir.html", annee=annee, associations=associations,
-        total_magasins=total_magasins, total_poids=total_poids,
+        total_magasins=total_magasins, total_poids=total_poids, total_poids_n1=total_poids_n1,
+        annee_precedente=annee - 1,
+        info_fichier_n1=_info_fichier_gardee_annee_precedente(annee),
         verrou_gardee=_resultat_gardee_verrouille(annee),
     )
 
@@ -12038,7 +12342,7 @@ def gardee_saisie():
             if valeur < 0:
                 champs_invalides.append(libelle_erreur)
                 return "IGNORER"
-            return round(valeur)
+            return round(valeur, 2)
 
         champs_invalides = []
         maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -12157,7 +12461,7 @@ def gardee_saisie_enregistrer_champ():
         return jsonify({"success": False, "erreur": "Paramètres manquants"}), 400
 
     try:
-        poids_kg = round(float(poids_brut)) if poids_brut not in (None, "") else None
+        poids_kg = round(float(poids_brut), 2) if poids_brut not in (None, "") else None
     except (TypeError, ValueError):
         return jsonify({"success": False, "erreur": "Poids invalide"}), 400
     if poids_kg is not None and poids_kg < 0:
@@ -12311,7 +12615,7 @@ def _lire_resultats_excel_association(fichier_excel, association):
             code = _vif_fmt(ligne[0].value)
             valeur = ligne[2].value
             if code in codes_vif_association and isinstance(valeur, (int, float)) and valeur >= 0:
-                magasins_detectes[code] = round(valeur)
+                magasins_detectes[code] = round(valeur, 2)
 
     produits_detectes = {}
     if "produits" in wb.sheetnames:
@@ -12321,7 +12625,7 @@ def _lire_resultats_excel_association(fichier_excel, association):
             code = str(ligne[0].value).strip()
             valeur = ligne[2].value
             if code in codes_produits_valides and isinstance(valeur, (int, float)) and valeur >= 0:
-                produits_detectes[code] = round(valeur)
+                produits_detectes[code] = round(valeur, 2)
 
     return magasins_detectes, produits_detectes
 
@@ -12416,10 +12720,15 @@ def gardee_saisie_detection_ignorer(detection_id):
     return redirect(url_for("collecte.gardee_saisie", annee=annee, association=nom_association))
 
 
-def _envoyer_mail_association(asso, annee, dossier, destinataires, mode_test):
+def _envoyer_mail_association(asso, annee, dossier, destinataires, mode_test, libelle_supplementaire=""):
     """Génère (si besoin) les fichiers Excel/PDF de l'association et lui
     envoie le mail — factorisé pour être réutilisé par l'envoi initial
-    (à toutes) et par la relance individuelle (à une seule)."""
+    (à toutes) et par la relance individuelle (à une seule). Le libellé
+    supplémentaire (ex. « Rappel — en attente de résultats »), saisi
+    librement sur la page au moment d'une relance, est ajouté à la fin
+    de l'objet du mail ---jamais utilisé pour l'envoi initial, seul
+    _envoyer_mail_association appelé depuis gardee_relancer en passe un
+    (demande utilisateur 2026-11-18)."""
     fichier_association = os.path.join(dossier, _nom_fichier_association(asso["nom"], annee))
     if not os.path.exists(fichier_association):
         fichier_association = _creer_fichier_association(asso, annee, dossier)
@@ -12428,8 +12737,11 @@ def _envoyer_mail_association(asso, annee, dossier, destinataires, mode_test):
         fichier_pdf = _creer_pdf_association(fichier_association, asso, annee, dossier)
     token_saisie = generer_token_saisie_association(annee, asso["nom"])
     lien_saisie = url_for("collecte.saisie_association", annee=annee, token=token_saisie, _external=True)
+    sujet = ("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — {asso['nom']}"
+    if libelle_supplementaire:
+        sujet += f" — {libelle_supplementaire}"
     return envoyer_mail(
-        sujet=("[TEST] " if mode_test else "") + f"Collecte nationale Banque Alimentaire {annee} — {asso['nom']}",
+        sujet=sujet,
         destinataires=destinataires,
         texte=_texte_modele_gardee(asso, annee, lien_saisie=lien_saisie),
         is_html=True,
@@ -12438,6 +12750,152 @@ def _envoyer_mail_association(asso, annee, dossier, destinataires, mode_test):
         attachment_path=fichier_association,
         attachment_paths=[fichier_pdf],
     )
+
+
+def _chemin_gardee_produits_annee_precedente(annee):
+    """Fichier Excel « bilan produits » annuel des associations gardant,
+    déposé à la main par l'utilisateur dans le dossier partagé dev/prod
+    /srv/ba38/uploads/ (hors des arbres dev/prod, comme MODELES_GARDEE_DIR) —
+    convention de nommage associationgardantproduitsAAAA.xlsx où AAAA est
+    l'année des résultats qu'il contient."""
+    return f"/srv/ba38/uploads/associationgardantproduits{annee - 1}.xlsx"
+
+
+def _lire_totaux_gardee_depuis_fichier(chemin, annee_resultats):
+    """Lit les totaux par association (clé code VIF + repli nom normalisé)
+    dans l'onglet « detail » du fichier donné — factorisé entre
+    _totaux_gardee_annee_precedente (fichier déjà en place) et la
+    validation d'un fichier tout juste importé depuis la page (cf.
+    gardee_produits_annee_precedente_importer).
+    Retourne (totaux, erreur) — erreur=None si tout est allé bien.
+
+    Le total par association est lu directement sur la ligne « Total AAAA »
+    du fichier, valeur mise en cache par Excel (même si c'est le résultat
+    d'une formule côté fichier) — PAS recalculé en sommant les lignes
+    produit : demande explicite utilisateur 2026-11-16 suite à un total
+    recalculé faux ("il faut prendre la ligne 30 total 2025 même si c'est
+    une somme"), le total du fichier n'est pas une simple somme des lignes
+    visibles de l'onglet detail. Le repérage de cette ligne reste
+    volontairement tolérant (nom d'onglet insensible à la casse/espaces,
+    ligne reconnue par "commence par total" + l'année en sous-chaîne
+    plutôt qu'une égalité stricte) : c'est ce repérage, pas la lecture de
+    la valeur, qui avait échoué lors de l'audit du même jour."""
+    vide = {"code_vif": {}, "nom": {}}
+    try:
+        wb = load_workbook(chemin, data_only=True)
+    except Exception as erreur:
+        return vide, f"fichier illisible ({erreur})"
+    nom_feuille = next((n for n in wb.sheetnames if n.strip().lower() == "detail"), None)
+    if nom_feuille is None:
+        return vide, f"onglet « detail » introuvable (onglets présents : {', '.join(wb.sheetnames)})"
+    ws = wb[nom_feuille]
+    cible = str(annee_resultats)
+    ligne_total = None
+    for r in range(1, ws.max_row + 1):
+        valeur = str(ws.cell(row=r, column=1).value or "").strip().lower()
+        if valeur.startswith("total") and cible in valeur:
+            ligne_total = r
+            break
+    if ligne_total is None:
+        return vide, f"ligne « Total {annee_resultats} » introuvable dans l'onglet « {nom_feuille} »"
+    par_code_vif, par_nom = {}, {}
+    for c in range(8, ws.max_column + 1):
+        code = ws.cell(row=2, column=c).value
+        nom = ws.cell(row=3, column=c).value
+        total = ws.cell(row=ligne_total, column=c).value
+        if not code or not nom or total is None:
+            continue
+        par_code_vif[_vif_fmt(code)] = float(total)
+        par_nom[_cle_recherche_association(str(nom))] = float(total)
+    if not par_code_vif:
+        return vide, (
+            f"ligne « Total {annee_resultats} » trouvée (ligne {ligne_total}) mais aucune colonne "
+            "association valide (code + nom + total non vide, à partir de la colonne H) n'a pu être lue"
+        )
+    return {"code_vif": par_code_vif, "nom": par_nom}, None
+
+
+def _totaux_gardee_annee_precedente(annee):
+    """Total par association de l'année précédente (cf.
+    _lire_totaux_gardee_depuis_fichier), seulement le total, pas le détail
+    par produit (demande utilisateur 2026-11-14 : afficher ce total en
+    repère dans Quantités par produit et Saisie collecte gardée, sans
+    réimporter tout le détail). Retourne {"code_vif": {...}, "nom": {...}}
+    — le nom normalisé sert de repli quand le Code VIF d'une association a
+    changé d'une année sur l'autre (ça arrive, cf.
+    ecart_code_vif/_code_vif_association)."""
+    chemin = _chemin_gardee_produits_annee_precedente(annee)
+    if not os.path.exists(chemin):
+        return {"code_vif": {}, "nom": {}}
+    try:
+        totaux, erreur = _lire_totaux_gardee_depuis_fichier(chemin, annee - 1)
+    except Exception as erreur_inattendue:
+        write_log(f"⚠️ Collecte {annee} : lecture totaux gardée {annee - 1} impossible ({erreur_inattendue})")
+        return {"code_vif": {}, "nom": {}}
+    if erreur:
+        write_log(f"⚠️ Collecte {annee} : fichier repère {annee - 1} en place mais invalide ({erreur})")
+    return totaux
+
+
+def _info_fichier_gardee_annee_precedente(annee):
+    """Statut du fichier repère pour l'UI (import depuis la page, cf.
+    gardee_produits_annee_precedente_importer) — None si rien d'importé."""
+    chemin = _chemin_gardee_produits_annee_precedente(annee)
+    if not os.path.exists(chemin):
+        return None
+    totaux = _totaux_gardee_annee_precedente(annee)
+    return {
+        "nom": os.path.basename(chemin),
+        "modifie_le": datetime.fromtimestamp(os.path.getmtime(chemin)).strftime("%Y-%m-%d %H:%M"),
+        "nb_associations": len(totaux["code_vif"]),
+    }
+
+
+def _total_gardee_annee_precedente_association(totaux_n1, nom, code_vif):
+    """Associe une association au total N-1 — code VIF en priorité, repli
+    sur le nom normalisé (cf. _totaux_gardee_annee_precedente)."""
+    total = totaux_n1["code_vif"].get(_vif_fmt(code_vif)) if code_vif else None
+    if total is None:
+        total = totaux_n1["nom"].get(_cle_recherche_association(nom))
+    return total
+
+
+@collecte_bp.route("/collecte/<int:annee>/gardee/produits-annee-precedente/importer", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def gardee_produits_annee_precedente_importer(annee):
+    """Dépôt du fichier repère « année précédente », depuis la section
+    Paramètres de la page principale (déplacé depuis la page Saisie
+    collecte gardée le 2026-11-17, demande utilisateur), à la place d'une
+    copie manuelle sur le serveur (demande utilisateur 2026-11-16 : "ne
+    plus partir du fichier uploadé [à la main] mais proposer un
+    téléchargement [import] du fichier dans la page")."""
+    fichier = request.files.get("fichier")
+    if not fichier or not fichier.filename:
+        flash("⛔ Aucun fichier fourni", "warning")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+    if os.path.splitext(fichier.filename)[1].lower() != ".xlsx":
+        flash("⛔ Format attendu : Excel (.xlsx)", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+
+    chemin = _chemin_gardee_produits_annee_precedente(annee)
+    # Suffixe .tmp (plutôt que de garder .xlsx à la fin) : openpyxl refuse
+    # d'ouvrir un fichier dont le nom ne se termine pas par une extension
+    # Excel reconnue, peu importe son contenu réel (bug trouvé 2026-11-16).
+    chemin_temporaire = os.path.join(os.path.dirname(chemin), "_import_" + os.path.basename(chemin))
+    fichier.save(chemin_temporaire)
+    totaux, erreur = _lire_totaux_gardee_depuis_fichier(chemin_temporaire, annee - 1)
+    if erreur:
+        os.remove(chemin_temporaire)
+        flash(f"⛔ Fichier invalide — {erreur}, rien n'a été importé.", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
+    os.replace(chemin_temporaire, chemin)
+    write_log(
+        f"📥 Collecte {annee} : fichier repère {annee - 1} importé par {current_user.email} "
+        f"({len(totaux['code_vif'])} association(s))"
+    )
+    flash(f"✅ Fichier importé — {len(totaux['code_vif'])} association(s) {annee - 1} trouvée(s).", "success")
+    return redirect(url_for("collecte.collecte_main", annee=annee))
 
 
 def _associations_gardee_enrichies(annee):
@@ -12465,6 +12923,33 @@ def _associations_gardee_enrichies(annee):
     return associations
 
 
+def _associations_ayant_repondu_en_ligne(annee, associations):
+    """Noms des associations ayant saisi au moins un champ (poids magasin ou
+    quantité produit) via le formulaire public saisie_association (lien
+    envoyé par mail, sans compte) plutôt que par saisie interne — ces
+    saisies sont enregistrées avec saisi_par = "association:<nom>" (cf.
+    saisie_association, saisie_association_enregistrer_champ), contre
+    l'adresse email du compte connecté pour une saisie interne."""
+    with get_db_connection() as conn:
+        codes_vif_en_ligne = {
+            r["code_vif"] for r in conn.execute(
+                "SELECT DISTINCT code_vif FROM collecte_poids_magasins_gardee "
+                "WHERE annee = ? AND saisi_par LIKE 'association:%'", (annee,)
+            ).fetchall()
+        }
+        noms = {
+            r["association"] for r in conn.execute(
+                "SELECT DISTINCT association FROM collecte_quantites_produits "
+                "WHERE annee = ? AND saisi_par LIKE 'association:%'", (annee,)
+            ).fetchall()
+        }
+    for asso in associations:
+        codes_asso = {_vif_fmt(m.get("Code VIF")) for m in asso["magasins"]}
+        if codes_asso & codes_vif_en_ligne:
+            noms.add(asso["nom"])
+    return noms
+
+
 def _associations_gardee_avec_suivi(annee):
     """Associations gardant enrichies (cf. _associations_gardee_enrichies)
     + suivi manuel (répondu/résultat envoyé), avancement de la saisie en
@@ -12473,7 +12958,14 @@ def _associations_gardee_avec_suivi(annee):
     gardee_saisie_choisir (page allégée dupliquée dans Résultat collecte
     gardée pour choisir rapidement une association à saisir, sans
     régénérer les fichiers ni afficher les contrôles d'envoi — demande
-    utilisateur 2026-11-10 : "simplifier la saisie et le contrôle")."""
+    utilisateur 2026-11-10 : "simplifier la saisie et le contrôle").
+
+    Coche aussi automatiquement « Résultat envoyé » (si pas déjà coché) pour
+    toute association ayant répondu via le lien public ET dont la saisie
+    est désormais complète (même calcul que le badge vert, cf.
+    _noms_associations_completes) — une association qui saisit elle-même
+    ses résultats en ligne, jusqu'au bout, n'a jamais besoin qu'on coche
+    cette case à la main (demande utilisateur 2026-11-17, ex. EQUILIBRE)."""
     associations = _associations_gardee_enrichies(annee)
     if associations is None:
         return None
@@ -12492,11 +12984,22 @@ def _associations_gardee_avec_suivi(annee):
         ).fetchall():
             poids_produits.setdefault(r["association"], {})[r["code_produit"]] = r["poids_kg"]
     statuts = _statuts_envois_mail_collecte(annee, "gardee_envoi")
+    totaux_n1 = _totaux_gardee_annee_precedente(annee)
+    repondu_en_ligne = _associations_ayant_repondu_en_ligne(annee, associations)
+    verrou = _resultat_gardee_verrouille(annee)
     for asso in associations:
-        asso["suivi"] = suivi.get(asso["nom"], {"repondu": False, "resultat_envoye": False})
+        asso["suivi"] = suivi.get(asso["nom"], {"repondu": False, "resultat_envoye": False, "traite": False})
         asso["avancement_saisie"] = _saisie_association_avancement(
             annee, asso["nom"], asso["magasins"], produits, poids_magasins, poids_produits
         )
+        remplis, total = asso["avancement_saisie"]
+        if (
+            not verrou and total and remplis == total
+            and asso["nom"] in repondu_en_ligne
+            and not asso["suivi"]["resultat_envoye"]
+        ):
+            _marquer_suivi_gardee(annee, asso["nom"], "resultat_envoye", True, f"association:{asso['nom']}")
+            asso["suivi"]["resultat_envoye"] = True
         premier_email = asso["emails"][0] if asso.get("emails") else None
         asso["statut_mailjet"] = statuts.get(premier_email) if premier_email else None
         # Poids total collecté = somme des poids par magasin saisis (la
@@ -12507,6 +13010,9 @@ def _associations_gardee_avec_suivi(annee):
             poids_magasins[_vif_fmt(m.get("Code VIF"))]
             for m in asso["magasins"]
             if poids_magasins.get(_vif_fmt(m.get("Code VIF"))) is not None
+        )
+        asso["poids_total_n1"] = _total_gardee_annee_precedente_association(
+            totaux_n1, asso["nom"], asso.get("code_vif")
         )
     return associations
 
@@ -12587,6 +13093,7 @@ def gardee_envoi():
     return render_template(
         "collecte/gardee_envoi.html",
         annee=annee,
+        annee_precedente=annee - 1,
         associations=associations,
         fichier_nom=os.path.basename(chemin),
         texte_mail=_lire_texte_mail_gardee(),
@@ -12598,16 +13105,16 @@ def gardee_envoi():
 @login_required
 @require_access("collecte", "ecriture")
 def gardee_marquer_suivi():
-    """Coche/décoche à la main l'une des deux cases de suivi (réponse au
-    1er message, résultat envoyé) pour une association — vérification
-    faite par l'équipe hors application (mail reçu, fichier reçu, ou
-    saisie en ligne consultée), jamais automatique."""
+    """Coche/décoche à la main l'une des 3 cases de suivi (réponse au 1er
+    message, résultat envoyé, traitée) pour une association — vérification
+    faite par l'équipe hors application (mail reçu, fichier reçu, saisie
+    en ligne consultée, ou VIF/BL faits pour "traitée"), jamais automatique."""
     payload = request.get_json(silent=True) or {}
     annee = payload.get("annee")
     nom_association = payload.get("association", "")
     champ = payload.get("champ", "")
     valeur = bool(payload.get("valeur"))
-    if champ not in ("repondu", "resultat_envoye") or not annee or not nom_association:
+    if champ not in ("repondu", "resultat_envoye", "traite") or not annee or not nom_association:
         return jsonify({"success": False, "erreur": "Paramètres invalides"}), 400
     _marquer_suivi_gardee(annee, nom_association, champ, valeur, current_user.email)
     return jsonify({"success": True})
@@ -12619,7 +13126,10 @@ def gardee_marquer_suivi():
 def gardee_relancer():
     """Renvoie le mail (avec les mêmes fichiers Excel/PDF) à une ou
     plusieurs associations — relance individuelle (une association) ou
-    groupée (toutes celles où la case correspondante n'est pas cochée)."""
+    groupée (toutes celles où la case correspondante n'est pas cochée).
+    Pour une relance groupée, action=test envoie un seul mail d'exemple
+    (la 1ère association ciblée) à l'adresse du compte connecté au lieu
+    d'un envoi réel (demande utilisateur 2026-11-18)."""
     annee = request.form.get("annee", type=int) or datetime.now().year
     dossier = _dossier_annee(annee)
     associations = _associations_gardee_enrichies(annee)
@@ -12629,17 +13139,24 @@ def gardee_relancer():
 
     nom_association = request.form.get("association", "")
     groupe = request.form.get("groupe", "")
+    action = request.form.get("action", "relancer")
+    libelle_supplementaire = request.form.get("libelle_supplementaire", "").strip()
     if nom_association:
         cible = [a for a in associations if a["nom"] == nom_association]
         libelle_portee = f"« {nom_association} »"
     elif groupe in ("repondu", "resultat_envoye"):
         # Relance GROUPÉE (potentiellement toutes les associations) : jamais
-        # de mode test sur cette route (mode_test=False plus bas, en dur) —
-        # seule une confirm() JS protégeait l'envoi de masse, contournable
-        # par un POST direct (audit 2026-10-28). La relance individuelle
-        # ci-dessus reste protégée par la seule confirm() JS, un envoi ciblé
-        # à une seule association étant d'une tout autre ampleur.
-        if request.form.get("confirmation_envoi") != "oui":
+        # de mode test sur l'envoi RÉEL de cette route (mode_test=False plus
+        # bas, en dur) — seule une confirm() JS protégeait l'envoi de masse,
+        # contournable par un POST direct (audit 2026-10-28). La relance
+        # individuelle ci-dessus reste protégée par la seule confirm() JS,
+        # un envoi ciblé à une seule association étant d'une tout autre
+        # ampleur. Le bouton « 🧪 Tester sur mon adresse » (action=test,
+        # demande utilisateur 2026-11-18) n'est, lui, jamais concerné par
+        # cette confirmation : mode_test=True plus bas force de toute façon
+        # la redirection vers l'adresse du compte connecté dans envoyer_mail,
+        # aucun risque d'envoi réel.
+        if action != "test" and request.form.get("confirmation_envoi") != "oui":
             flash("❌ Cochez d'abord « confirmer » — rien n'a été envoyé.", "danger")
             return redirect(url_for("collecte.gardee_envoi", annee=annee))
         suivi = _lire_suivi_gardee(annee)
@@ -12647,6 +13164,30 @@ def gardee_relancer():
         libelle_portee = "sans réponse" if groupe == "repondu" else "sans résultat envoyé"
     else:
         flash("❌ Rien à relancer — précisez une association ou un groupe", "danger")
+        return redirect(url_for("collecte.gardee_envoi", annee=annee))
+
+    if action == "test":
+        if not cible:
+            flash(f"⚠️ Aucune association {libelle_portee} à tester.", "warning")
+            return redirect(url_for("collecte.gardee_envoi", annee=annee))
+        adresse_test = getattr(current_user, "email", "") or ""
+        if not adresse_test:
+            flash("❌ Votre compte n'a pas d'adresse email pour le test.", "danger")
+            return redirect(url_for("collecte.gardee_envoi", annee=annee))
+        exemple = cible[0]
+        try:
+            _envoyer_mail_association(
+                exemple, annee, dossier, [adresse_test], mode_test=True,
+                libelle_supplementaire=libelle_supplementaire,
+            )
+        except Exception as e:
+            flash(f"⛔ Échec de l'envoi test : {e}", "danger")
+            return redirect(url_for("collecte.gardee_envoi", annee=annee))
+        flash(
+            f"✅ Mail de test envoyé à {adresse_test} (exemple : « {exemple['nom']} », "
+            f"{len(cible)} association(s) {libelle_portee} au total).",
+            "success",
+        )
         return redirect(url_for("collecte.gardee_envoi", annee=annee))
 
     envoyes = 0
@@ -12657,7 +13198,10 @@ def gardee_relancer():
             sans_email.append(asso["nom"])
             continue
         try:
-            resultat = _envoyer_mail_association(asso, annee, dossier, asso["emails"], mode_test=False)
+            resultat = _envoyer_mail_association(
+                asso, annee, dossier, asso["emails"], mode_test=False,
+                libelle_supplementaire=libelle_supplementaire,
+            )
             _enregistrer_envoi_mail_collecte(annee, "gardee_envoi", asso["emails"][0], asso["nom"], resultat=resultat)
         except Exception as e:
             echecs.append(asso["nom"])
@@ -12672,7 +13216,8 @@ def gardee_relancer():
     if sans_email:
         message += f" ; sans adresse (non relancées) : {', '.join(sans_email)}"
     flash(message, "success" if not (sans_email or echecs) else "warning")
-    write_log(f"🔁 Relance Associations gardant {annee} ({libelle_portee}) : {envoyes} envoyé(s) par {current_user.email}")
+    suffixe_log = f", libellé « {libelle_supplementaire} »" if libelle_supplementaire else ""
+    write_log(f"🔁 Relance Associations gardant {annee} ({libelle_portee}{suffixe_log}) : {envoyes} envoyé(s) par {current_user.email}")
     return redirect(url_for("collecte.gardee_envoi", annee=annee))
 
 

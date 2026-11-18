@@ -478,6 +478,18 @@ body{
 
         </ul>
 
+        <button
+            type="button"
+            class="btn btn-outline-warning btn-sm"
+            id="a-completer-btn"
+            title="Afficher seulement les fiches à compléter (bénévoles créés en ajout rapide)">
+
+            ⚠️ À compléter
+
+            <span id="a-completer-count" class="badge bg-warning text-dark ms-1">0</span>
+
+        </button>
+
         <div id="fonction-filter-pastilles" class="d-flex flex-wrap gap-1"></div>
 
         <span id="benevoles-count" class="text-muted small ms-2"></span>
@@ -734,6 +746,36 @@ function emailFormatter(cell){
 }
 
 // ======================================================
+// NOM : pastille ⚠️ si la fiche est à compléter (bénévole créé en ajout rapide)
+// ======================================================
+
+function echapperHtml(v){
+
+    return String(v == null ? "" : v)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+function ficheACompleter(data){
+
+    return String(data.fiche_a_completer || "").toLowerCase() === "oui";
+}
+
+function nomFormatter(cell){
+
+    const nom = echapperHtml(cell.getValue());
+
+    if (ficheACompleter(cell.getData())){
+
+        return '<span class="pastille-a-completer" title="Fiche à compléter (bénévole créé en ajout rapide)">⚠️</span> ' + nom;
+    }
+
+    return nom;
+}
+
+// ======================================================
 // PHOTO
 // ======================================================
 
@@ -926,6 +968,11 @@ function resolveColumns(cols){
             col.formatter = emailFormatter;
         }
 
+        if (col.formatter === "nomFormatter"){
+
+            col.formatter = nomFormatter;
+        }
+
         if (col.formatter === "photoFormatter"){
 
             col.formatter = photoFormatter;
@@ -1052,12 +1099,15 @@ let fonctionFilterSelected = new Set(
     ).map(cb => cb.value)
 );
 
+// Filtre « fiches à compléter » (non mémorisé : il sert à faire le point, pas à rester actif)
+let aCompleterSeulement = false;
+
 function applyFilters(){
 
     const search =
         normalizeSearch(filtreInput.value);
 
-    if (!search && fonctionFilterSelected.size === 0){
+    if (!search && fonctionFilterSelected.size === 0 && !aCompleterSeulement){
 
         table.clearFilter();
 
@@ -1065,6 +1115,11 @@ function applyFilters(){
     }
 
     table.setFilter(function(data){
+
+        if (aCompleterSeulement && !ficheACompleter(data)){
+
+            return false;
+        }
 
         if (fonctionFilterSelected.has("__aucune__")){
 
@@ -1308,6 +1363,9 @@ function updateFiltreAlerte(n){
         parts.push("fonction : " + Array.from(fonctionFilterSelected)
             .map(v => FONCTIONS_LABELS[v] || v).join(" ou "));
     }
+    if (aCompleterSeulement){
+        parts.push("fiches à compléter");
+    }
     if (search){
         parts.push("recherche : « " + search + " »");
     }
@@ -1327,7 +1385,41 @@ function updateFiltreAlerte(n){
 document.getElementById("filtre-alerte-reset").addEventListener("click", function(){
 
     filtreInput.value = "";
+    majBoutonACompleter(false);
     document.getElementById("fonction-filter-clear").click();
+    applyFilters();
+});
+
+// ======================================================
+// BOUTON « ⚠️ À compléter »
+// ======================================================
+
+const boutonACompleter = document.getElementById("a-completer-btn");
+
+function majBoutonACompleter(actif){
+
+    aCompleterSeulement = actif;
+    boutonACompleter.classList.toggle("btn-warning", actif);
+    boutonACompleter.classList.toggle("btn-outline-warning", !actif);
+    boutonACompleter.setAttribute("aria-pressed", actif ? "true" : "false");
+}
+
+(function initBoutonACompleter(){
+
+    const n = tableData.filter(ficheACompleter).length;
+
+    document.getElementById("a-completer-count").textContent = n;
+
+    if (n === 0){
+
+        boutonACompleter.disabled = true;
+        boutonACompleter.title = "Aucune fiche à compléter";
+    }
+})();
+
+boutonACompleter.addEventListener("click", function(){
+
+    majBoutonACompleter(!aCompleterSeulement);
     applyFilters();
 });
 

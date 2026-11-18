@@ -639,6 +639,29 @@ Détail engagement #{{ engagement.id }}
                         <strong class="text-primary">
                             {{ "%.2f"|format(engagement.montant_total or 0) }} €
                         </strong>
+                        {% if engagement.montant_prevu_initial is not none
+                              and engagement.montant_prevu_initial != engagement.montant_total %}
+                        <small class="text-muted ms-2">
+                            (prévu initialement
+                            {{ "%.2f"|format(engagement.montant_prevu_initial) }} €)
+                        </small>
+                        {% endif %}
+                        {% if (engagement.montant_paye_cumule or 0) > 0 %}
+                        {% set reste_a_payer = (engagement.montant_total or 0) - engagement.montant_paye_cumule %}
+                        <br>
+                        <small>
+                            Payé : {{ "%.2f"|format(engagement.montant_paye_cumule) }} € —
+                            {% if reste_a_payer > 0.004 %}
+                            <span class="badge bg-warning text-dark">
+                                Reste à payer : {{ "%.2f"|format(reste_a_payer) }} €
+                            </span>
+                            {% else %}
+                            <span class="badge bg-success text-white">
+                                Reste à payer : 0,00 € (soldé)
+                            </span>
+                            {% endif %}
+                        </small>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -1828,7 +1851,7 @@ document.getElementById("modalValidationPresidence")
                                name="montant_total"
                                id="montant_total_input"
                                class="form-control"
-                               value="{{ '%.2f'|format(engagement.montant_total)|replace('.', ',') }}"
+                               value="{{ '%.2f'|format(engagement.montant_total - (engagement.montant_paye_cumule or 0))|replace('.', ',') }}"
                                required>
 
                         <span class="input-group-text">€</span>
@@ -1836,11 +1859,35 @@ document.getElementById("modalValidationPresidence")
                     </div>
 
                     <small class="text-muted d-block mb-3">
-                        Montant prévu : {{ '%.2f'|format(engagement.montant_total) }} € —
-                        corrigez si le montant réellement débité en
-                        banque est différent (montant négatif
-                        accepté pour un avoir / remboursement, ex : -74,40).
+                        Montant prévu : {{ '%.2f'|format(engagement.montant_total) }} €
+                        {% if (engagement.montant_paye_cumule or 0) > 0 %}
+                        (déjà payé : {{ '%.2f'|format(engagement.montant_paye_cumule) }} €,
+                        reste à payer : {{ '%.2f'|format(engagement.montant_total - engagement.montant_paye_cumule) }} €)
+                        {% endif %}
+                        — saisissez le montant réellement débité en
+                        banque (montant négatif
+                        accepté pour un avoir / remboursement, ex : -74,40 ; 0 accepté
+                        si l'engagement est soldé par compensation d'un trop-payé).
                     </small>
+
+                    <div class="form-check mb-3">
+
+                        <input type="checkbox"
+                               class="form-check-input"
+                               name="solder"
+                               id="solder_input"
+                               value="1">
+
+                        <label class="form-check-label" for="solder_input">
+                            <strong>Solder la ligne</strong> — le reste à
+                            payer passe à 0 (écart compensé). Si la case
+                            est décochée et que le montant saisi est
+                            inférieur au reste à payer, c'est un
+                            <strong>paiement partiel</strong> : l'engagement
+                            reste à payer pour le solde.
+                        </label>
+
+                    </div>
 
                     {% if engagement.abonnement_parent_id %}
 
@@ -1885,7 +1932,9 @@ document.getElementById("modalValidationPresidence")
                     <small class="text-muted">
                         Numéro de l'écriture comptable saisie dans EBP
                         à réception du relevé bancaire, permettant de
-                        retrouver le règlement.
+                        retrouver le règlement. Si le montant est à 0,
+                        saisir à la place un commentaire (ex : « Compensé
+                        par trop-payé eng. 11 »).
                     </small>
 
                 </div>

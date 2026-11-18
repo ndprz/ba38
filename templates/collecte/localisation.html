@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/buttons.html" import action_button, action_buttons, bouton_retour %}
 
 {% block title %}Localisation {{ annee }}{% endblock %}
 
@@ -27,7 +27,7 @@
 
     {% if not est_public %}
     {% call action_buttons() %}
-        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+        {{ bouton_retour(url_for('collecte.collecte_main', annee=annee)) }}
     {% endcall %}
 
     <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">

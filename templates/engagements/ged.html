@@ -197,6 +197,16 @@
                            value="{{ filters.numero_ebp }}">
                 </div>
 
+                {# Recherche par destinataire du paiement #}
+                <div style="min-width:200px;">
+                    <label class="form-label fw-semibold small">🔍 Destinataire du paiement</label>
+                    <input type="text"
+                           name="destinataire"
+                           class="form-control form-control-sm"
+                           placeholder="Fournisseur ou bénévole"
+                           value="{{ filters.destinataire }}">
+                </div>
+
                 {# Complétude #}
                 <div style="min-width:170px;">
                     <label class="form-label fw-semibold small">📋 Complétude</label>
@@ -404,6 +414,7 @@
             <input type="hidden" name="statut"        value="{{ filters.statut }}">
             <input type="hidden" name="avec_ebp"      value="{{ filters.avec_ebp }}">
             <input type="hidden" name="numero_ebp"    value="{{ filters.numero_ebp }}">
+            <input type="hidden" name="destinataire"  value="{{ filters.destinataire }}">
             <input type="hidden" name="completude"    value="{{ filters.completude }}">
             <input type="hidden" name="archive"       value="{{ filters.archive }}">
             <button type="submit" class="btn btn-success btn-sm">

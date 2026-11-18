@@ -1,0 +1,93 @@
+<h1 id="aide-ramasse-journalière-feuille-de-ramasse">Aide – Ramasse
+journalière (feuille de ramasse)</h1>
+<p>Cette page remplace la feuille de ramasse papier : elle sert à
+imprimer la feuille de chaque magasin, puis à saisir les poids ramassés
+pour une journée, camion par camion.</p>
+<h2 id="choisir-la-journée">Choisir la journée</h2>
+<p>Le champ « Jour de ramasse » est entouré de flèches ◀ ▶ qui avancent
+ou reculent d’un jour ; le bouton « Aujourd’hui » revient à la date du
+jour. Cette navigation existe sur tous les champs date du module
+Distribution. Le chiffre « kg validés » rappelle le tonnage déjà validé
+ce jour-là.</p>
+<h2 id="imprimer-les-feuilles">Imprimer les feuilles</h2>
+<ul>
+<li><p><strong>🖨️ PDF de toute la journée :</strong> une feuille A4 par
+magasin, pré-remplie (date, magasin, code VIF, camion).</p></li>
+<li><p><strong>🖨️ PDF des magasins cochés :</strong> imprime seulement
+les magasins sélectionnés.</p></li>
+<li><p><strong>🖨️ PDF de ce camion :</strong> bouton en tête de chaque
+tournée.</p></li>
+</ul>
+<p>Les mêmes impressions de fiches camions sont disponibles depuis la
+page « Gestion du planning ramasse » (jour, semaine ou tournée).</p>
+<h2 id="la-saisie">La saisie</h2>
+<p>Les tournées du jour sont issues du planning ramasse ; chaque magasin
+apparaît sous sa tournée. Les magasins ramassés hors planning figurent
+sous « Autres magasins ». Pour ajouter un magasin non prévu, utiliser «
+Nouvelle ramasse » en bas de page : choisir le fournisseur puis « Créer
+» (un fournisseur sans code VIF ne peut pas être saisi).</p>
+<p>Pour chaque magasin, on saisit par article (pain,
+viennoiserie/épicerie, produits laitiers, fruits, légumes, viande, plats
+cuisinés/autres, poisson réfrigéré) quatre poids en kg :</p>
+<ul>
+<li><p><strong>Entrée bonne date à distribuer :</strong> le seul poids
+qui entre en stock et part dans le fichier VIF à la validation.</p></li>
+<li><p><strong>Poids date du jour :</strong> produits dont la DLC est la
+date du jour : non distribuables, sauf à l’association qui distribue
+dans la journée (pour l’instant les Restos du Cœur, qui viennent en fin
+de matinée). Enregistré, sans effet pour l’instant sur le stock, VIF et
+les bons de livraison (règles en cours de validation).</p></li>
+<li><p><strong>Rebut, Donné 3 étoiles :</strong> enregistrés, mais sans
+effet pour l’instant sur le stock, VIF et les bons de livraison (règles
+en cours de validation).</p></li>
+</ul>
+<p>Les poids s’enregistrent automatiquement en quittant la case : il n’y
+a pas de bouton « Enregistrer ». Une ligne à 0 kg n’est pas comptée
+comme validée.</p>
+<p>Le numéro de lot de la ligne (15 caractères : n° du fournisseur,
+article, jour) apparaît dès qu’une quantité est saisie, et disparaît si
+la quantité revient à zéro. Il sert à la traçabilité en cas d’alerte
+sanitaire.</p>
+<h2 id="articles-ramasse-paramétrage">Articles Ramasse
+(paramétrage)</h2>
+<p>Le bouton « ⚙️ Articles Ramasse » (réservé aux personnes ayant le
+droit d’écriture sur la distribution) permet de choisir les articles qui
+figurent sur la feuille et sur le PDF : modifier le libellé imprimé,
+changer l’ordre avec ▲ ▼, désactiver un article (case Actif), en retirer
+ou en ajouter un (choisir l’article dans la liste). Cliquer sur «
+Enregistrer » : la page se recharge.</p>
+<p>Un article désactivé ou retirée n’efface rien : si des poids avaient
+déjà été saisis pour elle, ils restent visibles dans les lignes « autres
+articles » de la ramasse.</p>
+<h2 id="valider-une-ramasse">Valider une ramasse</h2>
+<ul>
+<li><p><strong>✅ Valider :</strong> entrée en stock et production du
+fichier VIF de réception (bouton actif seulement si une quantité est
+saisie).</p></li>
+<li><p><strong>⬇️ Fichier réception VIF :</strong> télécharge le fichier
+d’une ramasse validée.</p></li>
+<li><p><strong>↩︎️ Rouvrir :</strong> remet la ramasse en saisie pour la
+corriger.</p></li>
+<li><p><strong>🗑️ :</strong> supprime la ramasse.</p></li>
+</ul>
+<h2 id="tonnage-validé-à-répartir">Tonnage validé à répartir</h2>
+<p>Le cadre de droite totalise les kg validés par article. Ce tonnage
+sert à la répartition sur les bons de préparation FRAIS, qui se génèrent
+depuis la page « Génération du planning SEC et FRAIS » (menu
+Distribution) : il n’y a plus de bouton de génération sur cette
+page.</p>
+<h2 id="page-gestion-du-planning-ramasse">Page Gestion du planning
+ramasse</h2>
+<ul>
+<li><p><strong>Replier / déplier :</strong> un bouton masque les
+colonnes de droite (tri) pour libérer de la place ; le choix est
+mémorisé sur le poste.</p></li>
+<li><p><strong>Colonne Tournée :</strong> élargie, avec une info-bulle
+donnant le texte complet.</p></li>
+<li><p><strong>Boutons Retour et Planning :</strong> placés à
+droite.</p></li>
+<li><p><strong>Listes de bénévoles :</strong> elles se remplissent à
+l’ouverture (clic ou Tab), ce qui allège beaucoup la page. « ➕ Ajouter
+un bénévole… » crée une fiche rapide, à compléter ensuite (voir l’aide
+du module Bénévoles).</p></li>
+</ul>

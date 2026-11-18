@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons, bouton_retour %}
+
+{% block title %}Transferts VIF pesée palox {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width:1000px;">
+
+    <h2>📋 Transferts à saisir dans VIF — pesée palox {{ annee }}</h2>
+
+    {% call action_buttons() %}
+        {{ bouton_retour(url_for('collecte.palox_synthese', annee=annee)) }}
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()">🖨️ Imprimer</button>
+        {% if lignes %}
+        {{ action_button("📤 Export CSV TRANSCOL (prêt pour VIF)", href=url_for('collecte.palox_transferts_export_trancog', annee=annee), color="outline-primary") }}
+        {% endif %}
+    {% endcall %}
+
+    <p class="text-muted small">
+        Mouvements de type <strong>TRANSCO (transfert)</strong>, daté du <strong>{{ date_mvt.strftime('%d/%m/%Y') }}</strong> :
+        pour chaque catégorie pesée, sortir le poids de l'article <strong>{{ article_source }}</strong> (dépôt {{ depot_source }})
+        et l'entrer sur le code VIF de la catégorie (dépôt {{ depot_dest }}, emplacement B011, sans lot).
+        Le bouton « 📤 Export CSV TRANSCOL » génère directement le fichier prêt à importer (même format que le
+        modèle <code>matrice TRANCOG(1).xlsx</code> rempli à la main, converti en CSV en retirant ses 3 premières
+        lignes) --- plus besoin de le remplir soi-même.
+    </p>
+
+    {% if not lignes %}
+    <div class="alert alert-warning">Aucun poids pesé pour {{ annee }}.</div>
+    {% else %}
+    <table class="table table-sm table-striped align-middle">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Article sortant</th><th>Dépôt</th>
+                <th>Article entrant</th><th>Catégorie</th><th>Emplacement entrant</th><th>Dépôt</th>
+                <th class="text-end">Poids (kg)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for l in lignes %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ article_source }}</td><td>{{ depot_source }}</td>
+                <td><strong>{{ l.article }}</strong></td><td>{{ l.libelle or '' }}</td>
+                <td>B011</td><td>{{ depot_dest }}</td>
+                <td class="text-end"><strong>{{ l.total_kg|round(0)|int }}</strong></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="table-light">
+                <th colspan="7">Total sorti de {{ article_source }}</th>
+                <th class="text-end">{{ total|round(0)|int }} kg</th>
+            </tr>
+        </tfoot>
+    </table>
+    {% endif %}
+</div>
+{% endblock %}

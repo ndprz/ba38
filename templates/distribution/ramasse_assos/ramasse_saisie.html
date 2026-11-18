@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/date_nav.html" import date_input %}
 
 {% block content %}
 
@@ -47,10 +48,7 @@
             <!-- 🔹 Pré-remplie avec la ramasse existante OU dernier jour du mois -->
             <div class="col-md-2">
                 <label class="form-label">Date</label>
-                <input type="date"
-                       name="date_saisie"
-                       class="form-control"
-                       value="{{ ramasse_existante.date_ramasse if ramasse_existante else today }}">
+                {{ date_input("date_saisie", ramasse_existante.date_ramasse if ramasse_existante else today, small=False, aujourdhui=False, pleine_largeur=True) }}
             </div>
 
             <!-- FOURNISSEUR -->

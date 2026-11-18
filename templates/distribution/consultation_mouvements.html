@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/date_nav.html" import date_input %}
+
+{% block title %}Consultation des mouvements de stock{% endblock %}
+
+{% block extra_css %}
+<style>
+  .barre-filtres { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+  .barre-filtres label { font-size: .8rem; margin: 0; display: block; color: #555; }
+  table.mvts td, table.mvts th { font-size: .85rem; white-space: nowrap; }
+  tr.annule td { color: #999; text-decoration: line-through; }
+  .badge-e { background: #198754; color: #fff; }
+  .badge-s { background: #c0392b; color: #fff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-2 px-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="mb-0 fs-4">🔎 Consultation des mouvements de stock</h2>
+    {% call action_buttons() %}
+      {{ action_button("↩️ Retour à la distribution", href=url_for('distribution.distribution_main'), color="outline-dark") }}
+    {% endcall %}
+  </div>
+
+  <form method="get" class="barre-filtres mb-2">
+    <div><label for="du">Du</label>{{ date_input("du", form.du, id="du", aujourdhui=False) }}</div>
+    <div><label for="au">Au</label>{{ date_input("au", form.au, id="au") }}</div>
+    <div><label for="article">Article</label>
+      <input type="text" id="article" name="article" value="{{ form.article }}" class="form-control form-control-sm" style="width:170px" placeholder="code ou libellé"></div>
+    <div><label for="lot">Lot</label>
+      <input type="text" id="lot" name="lot" value="{{ form.lot }}" class="form-control form-control-sm" style="width:170px"></div>
+    <div><label for="tiers">Fournisseur / partenaire</label>
+      <select id="tiers" name="tiers" class="form-select form-select-sm" style="width:260px">
+        <option value="">— tous —</option>
+        {% for t in liste_tiers %}
+          {% set val = t.tiers_type ~ ':' ~ t.tiers_id %}
+          <option value="{{ val }}" {{ 'selected' if form.tiers == val }}>{{ '🏪' if t.tiers_type == 'fournisseur' else '🤝' }} {{ t.tiers_nom }}</option>
+        {% endfor %}
+      </select></div>
+    <div><label for="type">Type</label>
+      <select id="type" name="type" class="form-select form-select-sm" style="width:170px">
+        <option value="">— tous —</option>
+        <option value="RA" {{ 'selected' if form.type == 'RA' }}>Réception ramasse (RA)</option>
+        <option value="BL" {{ 'selected' if form.type == 'BL' }}>Livraison (BL)</option>
+        <option value="TR" {{ 'selected' if form.type == 'TR' }}>Transfert 02 → 03 (TR)</option>
+      </select></div>
+    <div class="form-check mb-1">
+      <input type="checkbox" class="form-check-input" id="annules" name="annules" value="1" {{ 'checked' if form.annules }}>
+      <label class="form-check-label" for="annules">Afficher les annulés</label></div>
+    <button type="submit" class="btn btn-success btn-sm">Afficher</button>
+  </form>
+
+  <div class="mb-2 small">
+    <span class="badge bg-secondary">{{ mouvements|length }} mouvement(s)</span>
+    {% for u, t in totaux.items() %}
+      <span class="badge badge-e">Entrées {{ ('%.2f'|format(t.E)).replace('.', ',') }} {{ u }}</span>
+      <span class="badge badge-s">Sorties {{ ('%.2f'|format(t.S)).replace('.', ',') }} {{ u }}</span>
+    {% endfor %}
+    {% if tronque %}<span class="text-danger ms-2">Résultat limité aux {{ limite }} derniers mouvements : affinez les filtres.</span>{% endif %}
+  </div>
+
+  <div class="table-responsive">
+  <table class="table table-sm table-hover mvts">
+    <thead class="table-light"><tr>
+      <th>Date</th><th>Type</th><th>Sens</th><th>Article</th><th>Libellé</th><th>Lot</th><th>Dépôt</th>
+      <th class="text-end">Quantité</th><th>Unité</th><th>Document</th><th>Fournisseur / partenaire</th><th>Par</th>
+    </tr></thead>
+    <tbody>
+    {% for m in mouvements %}
+      <tr class="{{ 'annule' if m.annule }}">
+        <td>{{ m.date_fr }}</td>
+        <td>{{ {'RA': 'Réception ramasse', 'BL': 'Livraison BL', 'TR': 'Transfert 02→03'}.get(m.type_mvt, m.type_mvt) }}</td>
+        <td><span class="badge {{ 'badge-e' if m.sens == 'E' else 'badge-s' }}">{{ 'Entrée' if m.sens == 'E' else 'Sortie' }}</span></td>
+        <td>{{ m.article }}</td>
+        <td>{{ m.libelle or '' }}</td>
+        <td>{{ m.lot or '—' }}</td>
+        <td>{{ m.depot or '' }}</td>
+        <td class="text-end">{{ ('%.3f'|format(m.quantite)).replace('.', ',') }}</td>
+        <td>{{ m.unite }}</td>
+        <td>
+          {% if m.doc_type == 'bon_prepa' %}<a href="{{ url_for('distribution.bons_prepa_voir', bon_id=m.doc_id) }}">BL n° {{ m.doc_id }}</a>
+          {% elif m.doc_type == 'transfert_frais' %}<a href="{{ url_for('distribution.bons_prepa_liste', date=m.date_doc, type='frais') }}">{{ m.doc_ref }}</a>
+          {% else %}<a href="{{ url_for('distribution.ramasse_jour') }}?date={{ m.date_doc or '' }}">Ramasse n° {{ m.doc_id }}</a>{% endif %}
+          {% if m.annule %}<span class="badge bg-warning text-dark">annulé</span>{% endif %}
+        </td>
+        <td>{{ '🏪' if m.tiers_type == 'fournisseur' else '🤝' }} {{ m.tiers_nom or '' }}{% if m.tiers_code %} <span class="text-muted">({{ m.tiers_code }})</span>{% endif %}</td>
+        <td class="text-muted">{{ m.cree_par or '' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="12" class="text-center text-muted py-4">Aucun mouvement pour ces critères.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+</div>
+{% endblock %}

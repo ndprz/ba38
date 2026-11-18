@@ -28,6 +28,8 @@ from flask import (
 from flask_login import login_required, current_user
 
 from decimal import Decimal
+
+from ba38_engagements.tarif_km import charger_tarif_km
 from pypdf import PdfReader, PdfWriter
 
 from ba38_utilitaires.core import (
@@ -135,7 +137,7 @@ def generer_note_frais_auto(
     peages = Decimal(str(peages or 0))
     repas = Decimal(str(repas or 0))
 
-    tarif_km = Decimal("0.529")
+    tarif_km = charger_tarif_km(conn)
 
     montant_ik = (
         kms * tarif_km
@@ -455,7 +457,7 @@ def note_frais_engagement(engagement_id):
                     (request.form.get("repas") or "0").replace(",", ".")
                 )
 
-                tarif_km = Decimal("0.529")
+                tarif_km = charger_tarif_km()
 
                 montant_ik = (
                     kms * tarif_km

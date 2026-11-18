@@ -2,6 +2,7 @@
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, send_file
 from ba38_planning.utils import get_type_benevole_options
+from ba38_planning.bene_select_data import donnees_listes_benevoles
 from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 from ba38_utilitaires.core import get_db_connection, write_log, upload_database, require_access
@@ -486,13 +487,22 @@ def gestion_planning_ramasse():
 
     conn.close()
 
+    # Listes de bénévoles : envoyées une seule fois (JSON) et remplies à l'ouverture par le navigateur
+    chauffeurs_l = filtrer("chauffeur", benevoles)
+    responsables_l = filtrer("responsable", benevoles)
+    equipiers_l = filtrer("equipier", benevoles)
+    donnees_benevoles, eligibles = donnees_listes_benevoles(
+        chauffeurs_l, equipiers_l, responsables_l, collections_du_jour)
+
     return render_template(
         "planning/ramasse/gestion_planning_ramasse.html",
         semaine=raw_semaine,
         lignes=lignes,
-        chauffeurs=filtrer("chauffeur", benevoles),
-        responsables=filtrer("responsable", benevoles),
-        equipiers=filtrer("equipier", benevoles),
+        chauffeurs=chauffeurs_l,
+        responsables=responsables_l,
+        equipiers=equipiers_l,
+        donnees_benevoles=donnees_benevoles,
+        eligibles=eligibles,
         camions=camions,
         absents_par_jour=absents_par_jour,
         collections_du_jour=collections_du_jour,  # ✅ OBLIGATOIRE

@@ -5,6 +5,13 @@
 
 let lastTriggeredSelect = null;
 
+/* Jeton CSRF de la page (champ caché du formulaire). Sans lui, le serveur rejette la requête
+   (« The CSRF token is missing ») et la création échouait sans aucun message. */
+function jetonCsrf() {
+  const champ = document.querySelector('input[name="csrf_token"]');
+  return champ ? champ.value : "";
+}
+
 /* =========================================================
    Détection du choix "➕ Ajouter un bénévole…"
 ========================================================= */
@@ -82,7 +89,7 @@ document.addEventListener("DOMContentLoaded", () => {
       res = await fetch(apiUrl, {
         method: "POST",
         credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-CSRFToken": jetonCsrf() },
         body: JSON.stringify(data)
       });
     } catch (err) {
@@ -90,7 +97,18 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const result = await res.json();
+    // Réponse non JSON = refus du serveur (session expirée, droit insuffisant, jeton refusé…) : on le dit
+    let result;
+    try {
+      result = await res.json();
+    } catch (err) {
+      alert(
+        res.redirected
+          ? "Création refusée : session expirée ou droit insuffisant pour créer un bénévole."
+          : "Création impossible (réponse inattendue du serveur, code " + res.status + "). Rechargez la page et réessayez."
+      );
+      return;
+    }
 
     if (!result.success) {
       alert(result.error || "Erreur création bénévole");

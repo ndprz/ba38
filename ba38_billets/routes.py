@@ -157,6 +157,7 @@ def campagne(campagne_id):
         parts = conn.execute(
             "SELECT * FROM billets_participants WHERE campagne_id = ? "
             "ORDER BY nom COLLATE NOCASE, prenom COLLATE NOCASE", (campagne_id,)).fetchall()
+        gains = mails.gains_recents(conn, campagne_id)
     benevoles = [p for p in parts if p["categorie"] == "benevole"]
     salaries = [p for p in parts if p["categorie"] == "salarie"]
     inscrits = [p for p in benevoles if p["etat"] == "inscrit"]
@@ -177,6 +178,8 @@ def campagne(campagne_id):
         "billets/campagne.html", c=c, benevoles=benevoles, salaries=salaries, inscrits=inscrits, nb=nb,
         gagnants=sorted([p for p in parts if p["resultat"] == "gagnant"], key=lambda p: p["ordre_tirage"] or 0),
         non_retenus=[p for p in parts if p["resultat"] == "non_retenu"],
+        non_eligibles=[p for p in parts if p["resultat"] == "non_eligible"],
+        gains=gains,
         depassee=mails.limite_depassee(c), tiree=(c["statut"] == "tiree"),
         peut_ecrire=has_access("billets", "ecriture"), utilisateurs=utilisateurs_basilic(),
         variables=mails.VARIABLES_AIDE, limite_fr=mails.limite_fr, date_fr=mails.date_fr,
@@ -290,6 +293,7 @@ def construire_participants(conn, campagne_id):
     existants = {r["benevole_id"]: r for r in conn.execute(
         "SELECT * FROM billets_participants WHERE campagne_id = ?", (campagne_id,))}
     voulus, ajoutes = set(), 0
+    gains = mails.gains_recents(conn, campagne_id)
     ids_a_jour = {r[0] for r in conn.execute(
         "SELECT id_benevole FROM benevoles_cotisations WHERE annee = 2026")}
     for b in conn.execute("SELECT * FROM benevoles ORDER BY nom COLLATE NOCASE, prenom COLLATE NOCASE"):
@@ -308,7 +312,13 @@ def construire_participants(conn, campagne_id):
                VALUES (?,?,?,?,?,?,?)""",
             (campagne_id, b["id"], (b["prenom"] or "").strip(), (b["nom"] or "").strip(), emails[0],
              "salarie" if salarie else "benevole", secrets.token_urlsafe(16)))
+        if b["id"] in gains:  # a déjà gagné dans les 12 derniers mois : décoché d'office
+            conn.execute("UPDATE billets_participants SET selected = 0 WHERE campagne_id = ? AND benevole_id = ?",
+                         (campagne_id, b["id"]))
         ajoutes += 1
+    for bid, r in existants.items():  # lignes pas encore engagées d'un bénévole devenu non éligible
+        if bid in gains and not r["invite_le"] and r["etat"] == "invite":
+            conn.execute("UPDATE billets_participants SET selected = 0 WHERE id = ?", (r["id"],))
     retires = 0
     for bid, r in existants.items():
         engage = r["invite_le"] or r["etat"] != "invite" or r["resultat"]
@@ -357,6 +367,13 @@ def inscription_manuelle(campagne_id):
             flash("❌ Le tirage est fait : les inscriptions sont closes.", "danger")
             return _retour(campagne_id, "#inscriptions")
         if action == "inscrire":
+            p0 = conn.execute("SELECT benevole_id FROM billets_participants WHERE id=? AND campagne_id=?",
+                              (pid, campagne_id)).fetchone()
+            gain = mails.gains_recents(conn, campagne_id).get(p0["benevole_id"]) if p0 else None
+            if gain:
+                flash(f"❌ Ce bénévole a déjà gagné une place le {mails.date_fr(gain, False)} : un seul gain par "
+                      f"période de 12 mois.", "danger")
+                return _retour(campagne_id, "#inscriptions")
             conn.execute("UPDATE billets_participants SET etat='inscrit', inscrit_le=?, inscrit_par=? "
                          "WHERE id=? AND campagne_id=? AND categorie='benevole'",
                          (mails.maintenant(), current_user.email, pid, campagne_id))
@@ -420,13 +437,15 @@ def envoyer(campagne_id):
             flash("❌ La date limite est dépassée : plus d'invitation possible.", "danger")
             return _retour(campagne_id, "#destinataires")
         if mode == "relance":
-            sql = ("SELECT id FROM billets_participants WHERE campagne_id=? AND categorie='benevole' AND selected=1 "
+            sql = ("SELECT id, benevole_id FROM billets_participants WHERE campagne_id=? AND categorie='benevole' AND selected=1 "
                    "AND etat='invite' AND invite_le IS NOT NULL AND invite_mode_test=0 AND invite_erreur IS NULL")
         else:
-            sql = ("SELECT id FROM billets_participants WHERE campagne_id=? AND categorie='benevole' AND selected=1 "
+            sql = ("SELECT id, benevole_id FROM billets_participants WHERE campagne_id=? AND categorie='benevole' AND selected=1 "
                    "AND (invite_le IS NULL OR invite_mode_test=1 OR invite_erreur IS NOT NULL) "
                    "AND etat='invite'")
-        ids = [r["id"] for r in conn.execute(sql + " ORDER BY nom COLLATE NOCASE", (campagne_id,))]
+        gains = mails.gains_recents(conn, campagne_id)
+        ids = [r["id"] for r in conn.execute(sql + " ORDER BY nom COLLATE NOCASE", (campagne_id,))
+               if r["benevole_id"] not in gains]
     if not ids:
         flash("ℹ️ Personne à contacter.", "warning")
         return _retour(campagne_id, "#destinataires")
@@ -506,26 +525,33 @@ def envoyer_resultats(campagne_id):
 # ------------------------------------------------------------
 def effectuer_tirage(conn, c, par):
     """Tire au sort (SystemRandom) : d'abord parmi les inscrits, puis, s'il reste des places,
-    parmi les salariés cochés. Enregistre résultat + ordre. Retourne un dict de synthèse."""
+    parmi les salariés cochés. Un bénévole ayant déjà gagné une place dans une autre campagne
+    au cours des 12 derniers mois n'est pas éligible (résultat « non_eligible » pour un inscrit,
+    simplement écarté pour un salarié). Enregistre résultat + ordre. Retourne un dict de synthèse."""
     rng = secrets.SystemRandom()
     places = c["nb_billets"]
+    gains = mails.gains_recents(conn, c["id"])
     inscrits = list(conn.execute(
         "SELECT * FROM billets_participants WHERE campagne_id=? AND categorie='benevole' AND etat='inscrit'",
         (c["id"],)))
-    gagnants = rng.sample(inscrits, min(places, len(inscrits)))
+    non_eligibles = [p for p in inscrits if p["benevole_id"] in gains]
+    eligibles = [p for p in inscrits if p["benevole_id"] not in gains]
+    for p in non_eligibles:
+        conn.execute("UPDATE billets_participants SET resultat='non_eligible', ordre_tirage=NULL WHERE id=?", (p["id"],))
+    gagnants = rng.sample(eligibles, min(places, len(eligibles)))
     ids_g = {p["id"] for p in gagnants}
     ordre = 0
     for p in gagnants:
         ordre += 1
         conn.execute("UPDATE billets_participants SET resultat='gagnant', origine_place='inscrit', ordre_tirage=? WHERE id=?",
                      (ordre, p["id"]))
-    for p in inscrits:
+    for p in eligibles:
         if p["id"] not in ids_g:
             conn.execute("UPDATE billets_participants SET resultat='non_retenu', ordre_tirage=NULL WHERE id=?", (p["id"],))
     restantes = places - len(gagnants)
-    salaries = list(conn.execute(
+    salaries = [p for p in conn.execute(
         "SELECT * FROM billets_participants WHERE campagne_id=? AND categorie='salarie' AND selected=1",
-        (c["id"],)))
+        (c["id"],)) if p["benevole_id"] not in gains]
     gagnants_sal = rng.sample(salaries, min(restantes, len(salaries))) if restantes > 0 else []
     for p in gagnants_sal:
         ordre += 1
@@ -533,7 +559,8 @@ def effectuer_tirage(conn, c, par):
                      (ordre, p["id"]))
     conn.execute("UPDATE billets_campagnes SET statut='tiree', tirage_le=?, tirage_par=? WHERE id=?",
                  (mails.maintenant(), par, c["id"]))
-    return {"inscrits": len(inscrits), "gagnants_inscrits": len(gagnants), "gagnants_salaries": len(gagnants_sal),
+    return {"inscrits": len(inscrits), "non_eligibles": len(non_eligibles), "gagnants_inscrits": len(gagnants),
+            "gagnants_salaries": len(gagnants_sal),
             "places_non_pourvues": places - len(gagnants) - len(gagnants_sal)}
 
 
@@ -559,6 +586,8 @@ def tirage(campagne_id):
             msg = (f"🎲 Tirage effectué : {s['gagnants_inscrits']} gagnant(s) parmi {s['inscrits']} inscrit(s)"
                    f"{', ' + str(s['gagnants_salaries']) + ' parmi les salariés' if s['gagnants_salaries'] else ''}.")
             flash(msg, "success")
+            if s["non_eligibles"]:
+                flash(f"ℹ️ {s['non_eligibles']} inscrit(s) écarté(s) du tirage : déjà gagnant(s) dans les 12 derniers mois.", "info")
             if s["places_non_pourvues"]:
                 flash(f"⚠️ {s['places_non_pourvues']} place(s) restent non pourvues (plus de salarié disponible).", "warning")
     return _retour(campagne_id, "#tirage")

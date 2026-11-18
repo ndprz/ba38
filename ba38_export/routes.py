@@ -237,9 +237,10 @@ def generateur_excel():
     selected_columns = [c for c in selected_columns if c in valid_columns]
 
     where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
-    columns_sql = ", ".join(
-        (f"{col(c)} AS {c}" if col(c) != c else c) for c in selected_columns
-    ) if selected_columns else "id"
+    # L'id est toujours la première colonne de l'export.
+    columns_sql = ", ".join(["id"] + [
+        (f"{col(c)} AS {c}" if col(c) != c else c) for c in selected_columns if c != "id"
+    ])
     query = f"SELECT {columns_sql} FROM {data_type} {where_sql}"
     # write_log(f"🧠 SQL généré : {query}")
     # write_log(f"🧩 PARAMS = {params}")

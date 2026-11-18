@@ -4,7 +4,7 @@ import json
 import os
 import re
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from ba38_utilitaires.core import envoyer_mail, render_modele_email, write_log
 
@@ -44,6 +44,24 @@ def limite_depassee(c):
     if len(lim) == 10:
         lim += "T23:59"
     return datetime.now().isoformat(timespec="minutes") > lim[:16]
+
+
+DUREE_GAIN_JOURS = 365  # un seul gain par bénévole sur 12 mois glissants
+
+
+def gains_recents(conn, campagne_id):
+    """{benevole_id: 'YYYY-MM-DD'} des bénévoles ayant GAGNÉ une place dans une AUTRE campagne
+    tirée au cours des 12 derniers mois : ils ne peuvent plus gagner (ni être invités)."""
+    limite = (datetime.now() - timedelta(days=DUREE_GAIN_JOURS)).isoformat(timespec="seconds")
+    res = {}
+    for r in conn.execute(
+            """SELECT p.benevole_id, MAX(c.tirage_le) AS le
+               FROM billets_participants p JOIN billets_campagnes c ON c.id = p.campagne_id
+               WHERE p.resultat = 'gagnant' AND c.statut = 'tiree' AND c.id != ?
+                 AND p.benevole_id IS NOT NULL AND c.tirage_le >= ?
+               GROUP BY p.benevole_id""", (campagne_id, limite)):
+        res[r["benevole_id"]] = (r["le"] or "")[:10]
+    return res
 
 
 def url_inscription(token):
@@ -154,6 +172,15 @@ TEXTES_MAILS = {
             "<p><b>Retrait des billets :</b> &lt;&lt;mode_retrait&gt;&gt;</p>"
             "<p>Si vous ne pouvez finalement pas en profiter, merci de nous prévenir au plus vite pour que la place "
             "soit proposée à quelqu'un d'autre.</p>" + _SIGN)},
+    "non_eligible": {
+        "libelle": "Résultat — inscrit non éligible (a déjà gagné une place dans les 12 derniers mois)",
+        "sujet": "Résultat du tirage : <<spectacle>>",
+        "corps": (
+            "<p>Bonjour &lt;&lt;prenom&gt;&gt;,</p>"
+            "<p>Merci de votre inscription pour « &lt;&lt;spectacle&gt;&gt; ». Pour que chacun puisse en profiter, "
+            "une personne ne peut gagner qu'une place par période de 12 mois : vous en avez déjà bénéficié "
+            "récemment, vous n'avez donc pas participé au tirage au sort cette fois-ci.</p>"
+            "<p>Merci de votre compréhension, et à une prochaine occasion !</p>" + _SIGN)},
     "non_retenu": {
         "libelle": "Résultat — inscrit non retenu",
         "sujet": "Résultat du tirage : <<spectacle>>",
@@ -204,6 +231,8 @@ def mail_resultat(c, p):
     """Mail de résultat du tirage (gagnant inscrit / gagnant salarié / non retenu)."""
     if p["resultat"] == "gagnant":
         return rendre_texte(c, p, "gagnant_salarie" if p["origine_place"] == "salarie" else "gagnant")
+    if p["resultat"] == "non_eligible":
+        return rendre_texte(c, p, "non_eligible")
     return rendre_texte(c, p, "non_retenu")
 
 

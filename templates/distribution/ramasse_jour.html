@@ -1,99 +1,200 @@
 {% extends "base.html" %}
 {% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/date_nav.html" import date_input %}
 
 {% block title %}Ramasse journalière{% endblock %}
 
 {% block extra_css %}
 <style>
-  .ram-card { border: 1px solid #ccc; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; }
+  .ram-card { border: 1px solid #ccc; border-radius: 6px; margin-bottom: 10px; background: #fff; }
   .ram-card.validee { border-left: 5px solid #198754; background: #f4fbf6; }
   .ram-card.saisie  { border-left: 5px solid #E5B63C; }
+  .ram-card.vide    { border-left: 5px solid #adb5bd; }
+  .ram-card > summary { cursor: pointer; padding: 8px 12px; list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .ram-card > summary::-webkit-details-marker { display: none; }
+  .ram-card > summary::before { content: "▸"; color: #666; }
+  .ram-card[open] > summary::before { content: "▾"; }
+  .ram-corps { padding: 4px 12px 12px; }
+  .tournee-tete { background: #f3f3f3; border: 1px solid #ddd; border-radius: 6px; padding: 8px 12px; margin: 14px 0 8px; }
+  table.feuille { border-collapse: collapse; width: 100%; }
+  table.feuille th, table.feuille td { border: 1.5px solid #333; padding: 4px 6px; vertical-align: middle; }
+  table.feuille th { background: #f2f2f2; text-align: center; font-size: .82rem; }
+  table.feuille td.fam { font-weight: 700; min-width: 160px; }
+  table.feuille td.code { text-align: center; color: #444; width: 85px; font-size: .9rem; }
+  table.feuille td.poids { width: 120px; padding: 3px; }
+  table.feuille input.js-cell { text-align: right; font-weight: 600; width: 100%; }
+  table.feuille input.js-cell.ok { border-color: #198754; }
+  table.feuille input.js-cell.ko { border-color: #dc3545; background: #fff5f5; }
+  table.feuille td.dlc { width: 125px; padding: 3px; }
+  table.feuille tfoot td { background: #fafafa; font-weight: 700; text-align: right; }
+  .etat { font-size: .85rem; min-width: 22px; display: inline-block; }
   .qte-kg { width: 100px; text-align: right; }
-  .etat { font-size: .85rem; min-width: 24px; display: inline-block; }
 </style>
 {% endblock %}
 
 {% block content %}
+
+{# une feuille de ramasse (un magasin, un jour) #}
+{% macro carte(c, date_iso, colonnes, peut_ecrire, cell, fmt) %}
+  {% set rid = c.ram.id if c.ram else '' %}
+  {% set modifiable = peut_ecrire and c.statut != 'validee' and c.code_vif %}
+  <details class="ram-card {{ c.statut }}" data-id="{{ rid }}" data-frs="{{ c.id_fournisseur }}" {{ 'open' if (c.nb_lignes or c.statut == 'validee') else '' }}>
+    <summary>
+      <input type="checkbox" form="pdf-form" name="f" value="{{ c.id_fournisseur }}" class="form-check-input mt-0" title="Inclure dans le PDF des magasins cochés">
+      <span class="badge bg-secondary" title="Identifiant du fournisseur dans Basilic (repris dans le n° de lot)">{{ '%03d'|format(c.id_fournisseur) }}</span>
+      <strong>{{ c.nom }}</strong>
+      {% if c.code_vif %}<span class="text-muted small">code VIF {{ c.code_vif }}</span>
+      {% else %}<span class="text-danger small">⚠️ code VIF manquant —
+        <a href="{{ url_for('fournisseurs.update_fournisseur', fournisseur_id=c.id_fournisseur) }}" target="_blank">ouvrir la fiche</a>
+        (cocher « Sans coordonnées » s'il n'y a pas d'e-mail)</span>{% endif %}
+      <span class="js-badge">
+        {% if c.statut == 'validee' %}<span class="badge bg-success">Validée — entrée en stock</span>
+        {% elif c.statut == 'saisie' %}<span class="badge bg-warning text-dark">En saisie</span>
+        {% else %}<span class="badge bg-secondary">À saisir</span>{% endif %}
+      </span>
+      <strong class="ms-auto js-total-resume">{{ fmt(c.totaux.quantite_kg) or '0' }} kg</strong>
+    </summary>
+
+    <div class="ram-corps">
+      {% if peut_ecrire %}
+      <div class="d-flex flex-wrap justify-content-end mb-2" style="gap:8px">
+        {% if c.statut == 'validee' %}
+          <a class="btn btn-outline-success btn-sm" href="{{ url_for('distribution.ramasse_jour_reception_csv', rid=c.ram.id) }}">⬇️ Fichier réception VIF</a>
+          <button type="button" class="btn btn-outline-danger btn-sm js-rouvrir">↩️ Rouvrir</button>
+        {% elif c.code_vif %}
+          <button type="button" class="btn btn-success btn-sm js-valider" {{ 'disabled' if not c.totaux.quantite_kg }}>✅ Valider (entrée en stock + fichier VIF)</button>
+          <button type="button" class="btn btn-outline-danger btn-sm js-supprimer" title="Supprimer cette ramasse" {{ '' if rid else 'style=display:none' }}>🗑️</button>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <table class="feuille">
+        <thead>
+          <tr>
+            <th></th><th>CODE VIF</th>
+            {% for col, titre in colonnes %}<th>{{ titre }}</th>{% endfor %}
+            <th>DLC</th><th>Lot</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in c.familles %}
+          {% set l = f.ligne %}
+          <tr data-article="{{ f.code }}" data-ligne="{{ l.id if l else '' }}">
+            <td class="fam">{{ f.libelle }}</td>
+            <td class="code">{{ f.code }}</td>
+            {% for col, titre in colonnes %}
+            <td class="poids"><input type="text" inputmode="decimal" autocomplete="off" class="form-control form-control-sm js-cell"
+                  data-col="{{ col }}" aria-label="{{ f.libelle }} — {{ titre }}"
+                  value="{{ cell(l[col]) if l else '' }}" {{ '' if modifiable else 'disabled' }}></td>
+            {% endfor %}
+            <td class="dlc"><input type="text" class="form-control form-control-sm js-cell" data-col="dlc" placeholder="jjmm ou jj/mm/aaaa"
+                  value="{{ (l.dlc or '') if l else '' }}" {{ '' if modifiable else 'disabled' }}></td>
+            <td class="small js-lot">{{ (l.lot or '—') if l else '—' }}</td>
+            <td class="text-nowrap"><span class="etat"></span></td>
+          </tr>
+          {% endfor %}
+          {% for l in c.autres %}
+          <tr data-article="{{ l.article }}" data-ligne="{{ l.id }}" class="table-light">
+            <td class="fam">{{ l.libelle or l.article }}</td>
+            <td class="code">{{ l.article }}</td>
+            {% for col, titre in colonnes %}
+            <td class="poids"><input type="text" inputmode="decimal" autocomplete="off" class="form-control form-control-sm js-cell"
+                  data-col="{{ col }}" aria-label="{{ l.libelle or l.article }} — {{ titre }}"
+                  value="{{ cell(l[col]) }}" {{ '' if modifiable else 'disabled' }}></td>
+            {% endfor %}
+            <td class="dlc"><input type="text" class="form-control form-control-sm js-cell" data-col="dlc" placeholder="jjmm ou jj/mm/aaaa"
+                  value="{{ l.dlc or '' }}" {{ '' if modifiable else 'disabled' }}></td>
+            <td class="small js-lot">{{ l.lot or '—' }}</td>
+            <td class="text-nowrap"><span class="etat"></span>
+              {% if peut_ecrire and c.statut == 'saisie' %}<button type="button" class="btn btn-outline-danger btn-sm py-0 js-suppr-ligne" title="Retirer la ligne">✕</button>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2" style="text-align:left">TOTAL (kg)</td>
+            {% for col, titre in colonnes %}<td class="js-tot" data-col="{{ col }}">{{ fmt(c.totaux[col]) or '0' }}</td>{% endfor %}
+            <td colspan="3"></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      {% if modifiable %}
+      <div class="d-flex flex-wrap align-items-center mt-2" style="gap:8px">
+        <span class="small text-muted">Autre article :</span>
+        <input type="text" list="liste-articles" class="form-control form-control-sm js-aj-article" style="width:340px" placeholder="Article (code ou libellé)" autocomplete="off">
+        <input type="text" inputmode="decimal" class="form-control form-control-sm qte-kg js-aj-kg" placeholder="kg bonne date">
+        <input type="text" class="form-control form-control-sm js-aj-dlc" style="width:125px" placeholder="DLC jjmm">
+        <button type="button" class="btn btn-outline-success btn-sm js-ajouter">➕ Ajouter</button>
+      </div>
+      {% endif %}
+    </div>
+  </details>
+{% endmacro %}
+
 <div class="container-fluid mt-2 px-3">
 
   <div class="d-flex justify-content-between align-items-center mb-2">
     <h2 class="mb-0 fs-4">🚛 Ramasse journalière</h2>
     {% call action_buttons() %}
-      {{ action_button("📦 Bons de prépa FRAIS", href=url_for('distribution.bons_prepa_liste', date=date_choisie.isoformat(), type='frais'), color="outline-success") }}
+      {% if peut_ecrire %}{{ action_button("⚙️ Articles Ramasse", onclick="new bootstrap.Modal(document.getElementById('modalFamilles')).show()", color="outline-secondary") }}{% endif %}
+      {{ action_button("ℹ️ Aide utilisateur", onclick="new bootstrap.Modal(document.getElementById('modalAide')).show()", color="outline-info") }}
       {{ action_button("↩️ Retour à la distribution", href=url_for('distribution.distribution_main'), color="outline-dark") }}
     {% endcall %}
   </div>
 
-  <form method="get" class="d-flex flex-wrap align-items-center mb-3" style="gap:12px">
+  <form method="get" class="d-flex flex-wrap align-items-center mb-2" style="gap:12px">
     <label for="date" class="mb-0">Jour de ramasse</label>
-    <input type="date" id="date" name="date" class="form-control form-control-sm w-auto" value="{{ date_choisie.isoformat() }}" required>
+    {{ date_input("date", date_choisie.isoformat(), id="date", auto_submit=True, required=True) }}
     <button type="submit" class="btn btn-outline-secondary btn-sm">Afficher</button>
-    <span class="badge bg-secondary">{{ ramasses|length }} ramasse{{ 's' if ramasses|length > 1 }}</span>
+    <span class="badge bg-secondary">{{ jour }}</span>
     <span class="badge bg-primary">{{ ('%.1f'|format(total_kg)).replace('.', ',') }} kg validés</span>
   </form>
 
   <div id="erreur" class="alert alert-danger d-none"></div>
 
   <div class="row">
-    <div class="col-lg-8">
-      {% for r in ramasses %}
-      <div class="ram-card {{ r.statut }}" data-id="{{ r.id }}">
-        <div class="d-flex flex-wrap justify-content-between align-items-center">
-          <div>
-            <strong>{{ r.fournisseur }}</strong>
-            {% if r.code_vif_fournisseur %}<span class="text-muted small">code VIF {{ r.code_vif_fournisseur }}</span>
-            {% else %}<span class="text-danger small">⚠️ code VIF manquant —
-              <a href="{{ url_for('fournisseurs.update_fournisseur', fournisseur_id=r.id_fournisseur) }}" target="_blank">ouvrir la fiche</a>
-              (cocher « Sans coordonnées » s'il n'y a pas d'e-mail)</span>{% endif %}
-            {% if r.statut == 'validee' %}<span class="badge bg-success">Validée — entrée en stock</span>{% else %}<span class="badge bg-warning text-dark">En saisie</span>{% endif %}
-          </div>
-          <div>
-            <strong>{{ ('%.1f'|format(r.total_kg)).replace('.', ',') }} kg</strong>
-            {% if peut_ecrire %}
-              {% if r.statut == 'saisie' %}
-                <button class="btn btn-success btn-sm js-valider ms-2" {{ 'disabled' if (not r.lignes or not r.code_vif_fournisseur) }}>✅ Valider (entrée en stock + fichier VIF)</button>
-                <button class="btn btn-outline-danger btn-sm js-supprimer" title="Supprimer cette ramasse">🗑️</button>
-              {% else %}
-                <a class="btn btn-outline-success btn-sm ms-2" href="{{ url_for('distribution.ramasse_jour_reception_csv', rid=r.id) }}">⬇️ Fichier réception VIF</a>
-                <button class="btn btn-outline-danger btn-sm js-rouvrir">↩️ Rouvrir</button>
-              {% endif %}
-            {% endif %}
-          </div>
-        </div>
+    <div class="col-xl-9">
 
-        <table class="table table-sm align-middle mb-1 mt-2">
-          <thead><tr><th>Article</th><th>Libellé</th><th class="text-end">Poids (kg)</th><th>DLC</th><th>Lot</th><th></th></tr></thead>
-          <tbody>
-          {% for l in r.lignes %}
-            <tr data-ligne="{{ l.id }}">
-              <td>{{ l.article }}</td><td>{{ l.libelle }}</td>
-              <td class="text-end"><input type="text" inputmode="decimal" class="form-control form-control-sm qte-kg d-inline-block js-kg"
-                    value="{{ '%g'|format(l.quantite_kg) }}" {{ '' if (peut_ecrire and r.statut == 'saisie' and r.code_vif_fournisseur) else 'disabled' }}></td>
-              <td><input type="text" class="form-control form-control-sm js-dlc" style="width:110px" placeholder="jj/mm/aaaa"
-                    value="{{ l.dlc or '' }}" {{ '' if (peut_ecrire and r.statut == 'saisie' and r.code_vif_fournisseur) else 'disabled' }}></td>
-              <td class="small">{{ l.lot or '—' }}</td>
-              <td class="text-nowrap"><span class="etat"></span>
-                {% if peut_ecrire and r.statut == 'saisie' %}<button class="btn btn-outline-danger btn-sm py-0 js-suppr-ligne" title="Retirer la ligne">✕</button>{% endif %}</td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
+      {# PDF à imprimer pour les camions #}
+      <form id="pdf-form" method="get" action="{{ url_for('distribution.ramasse_jour_pdf') }}" target="_blank"
+            class="d-flex flex-wrap align-items-center mb-2" style="gap:10px">
+        <input type="hidden" name="date" value="{{ date_choisie.isoformat() }}">
+        <a class="btn btn-success btn-sm {{ '' if tournees else 'disabled' }}" target="_blank" title="Une feuille A4 par magasin, pré-remplie (date, magasin, code VIF, camion)"
+           href="{{ url_for('distribution.ramasse_jour_pdf', date=date_choisie.isoformat()) }}">🖨️ PDF de toute la journée</a>
+        <button type="submit" class="btn btn-outline-success btn-sm">🖨️ PDF des magasins cochés</button>
+      </form>
 
-        {% if peut_ecrire and r.statut == 'saisie' and r.code_vif_fournisseur %}
-        <div class="d-flex flex-wrap align-items-center" style="gap:8px">
-          <input type="text" list="liste-articles" class="form-control form-control-sm js-aj-article" style="width:340px" placeholder="Article (code ou libellé)" autocomplete="off">
-          <input type="text" inputmode="decimal" class="form-control form-control-sm qte-kg js-aj-kg" placeholder="kg">
-          <input type="text" class="form-control form-control-sm js-aj-dlc" style="width:110px" placeholder="DLC jj/mm/aaaa">
-          <button class="btn btn-outline-success btn-sm js-ajouter">➕ Ajouter</button>
+      {% if not tournees %}
+        <div class="alert alert-info">
+          Aucune tournée au planning ramasse pour le {{ jour }} {{ date_choisie.strftime('%d/%m/%Y') }}.
+          Ajoutez un magasin avec « Nouvelle ramasse » ci-dessous.
         </div>
-        {% endif %}
+      {% endif %}
+
+      {% for t in tournees %}
+      <div class="tournee-tete d-flex justify-content-between align-items-center flex-wrap" style="gap:8px">
+        <div>
+          <strong>{{ t.libelle }}</strong>
+          {% if t.camion_txt %}<span class="badge bg-dark ms-2">🚚 {{ t.camion_txt }}</span>{% endif %}
+        </div>
+        <a class="btn btn-outline-success btn-sm" target="_blank"
+           href="{{ url_for('distribution.ramasse_jour_pdf', date=date_choisie.isoformat(), tournee_id=t.tournee_id) }}">🖨️ PDF de ce camion</a>
       </div>
-      {% else %}
-        <div class="alert alert-info">Aucune ramasse pour ce jour.</div>
+      {% for c in t.cartes %}
+        {{ carte(c, date_choisie.isoformat(), colonnes, peut_ecrire, cell, fmt) }}
+      {% endfor %}
       {% endfor %}
 
+      {% if autres_cartes %}
+      <div class="tournee-tete"><strong>Autres magasins (hors planning de ce jour)</strong></div>
+      {% for c in autres_cartes %}
+        {{ carte(c, date_choisie.isoformat(), colonnes, peut_ecrire, cell, fmt) }}
+      {% endfor %}
+      {% endif %}
+
       {% if peut_ecrire %}
-      <div class="card"><div class="card-body py-2 d-flex flex-wrap align-items-center" style="gap:10px">
+      <div class="card mt-3"><div class="card-body py-2 d-flex flex-wrap align-items-center" style="gap:10px">
         <strong>Nouvelle ramasse</strong>
         <select id="nouv-frs" class="form-select form-select-sm" style="width:320px">
           <option value="">— fournisseur —</option>
@@ -103,34 +204,87 @@
       </div></div>
       {% endif %}
 
+      <div class="text-center fw-bold small mt-3">{% for n in notes %}{{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</div>
+
       <datalist id="liste-articles">
         {% for a in articles %}<option value="{{ a.article }} — {{ a.libelle }}"></option>{% endfor %}
       </datalist>
     </div>
 
-    <div class="col-lg-4">
+    <div class="col-xl-3">
       <div class="card"><div class="card-header py-1"><strong>Tonnage validé à répartir</strong></div>
         <div class="card-body p-2">
-          {% if totaux %}
+          {% if a_repartir %}
+          <div class="d-flex justify-content-between align-items-center fw-bold border-bottom pb-1 mb-2" title="Ramasse validée, plus les ajouts de stock et moins les retraits faits sur la page des bons de prépa FRAIS">
+            <span>Total</span><span>{{ ('%.1f'|format(total_a_repartir)).replace('.', ',') }} kg</span>
+          </div>
           <table class="table table-sm mb-2">
             <thead><tr><th>Article</th><th class="text-end">kg</th></tr></thead>
-            <tbody>{% for t in totaux %}<tr><td>{{ t.article }} <span class="text-muted small">{{ t.libelle }}</span></td>
+            <tbody>{% for t in a_repartir %}<tr><td>{{ t.article }} <span class="text-muted small">{{ t.libelle }}</span>{% if t.kg_stock %}<div class="text-muted small">ramassé {{ ('%.1f'|format(t.kg_ramasse)).replace('.', ',') }} {{ '+' if t.kg_stock > 0 else '−' }} stock {{ ('%.1f'|format(t.kg_stock|abs)).replace('.', ',') }}</div>{% endif %}</td>
               <td class="text-end">{{ ('%.1f'|format(t.kg)).replace('.', ',') }}</td></tr>{% endfor %}</tbody>
           </table>
-          <div class="small text-muted mb-2">Réparti au prorata des bénéficiaires sur les bons FRAIS dont le menu contient l'article.</div>
           {% else %}
             <div class="text-muted small">Aucune ramasse validée ce jour.</div>
           {% endif %}
-          <a class="btn btn-success btn-sm {{ '' if (totaux and date_choisie.isoformat() == aujourdhui) else 'disabled' }}"
-             href="{{ url_for('distribution.bons_prepa_liste', date=date_choisie.isoformat(), type='frais') }}">➡️ Générer les bons FRAIS</a>
-          {% if date_choisie.isoformat() != aujourdhui %}<div class="small text-danger mt-1">La génération FRAIS n'est possible que le jour même.</div>{% endif %}
-          {% if nb_bons_frais %}<div class="small text-muted mt-1">{{ nb_bons_frais }} bon(s) FRAIS déjà générés ce jour (à recalculer si la ramasse change).</div>{% endif %}
         </div>
       </div>
     </div>
   </div>
 </div>
+{% if peut_ecrire %}
+<div class="modal fade" id="modalFamilles" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">⚙️ Articles Ramasse (lignes de la feuille de ramasse)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="fam-erreur" class="alert alert-danger d-none"></div>
+        <table class="table table-sm align-middle" id="fam-table">
+          <thead><tr><th style="width:90px"></th><th>Article</th><th>Libellé imprimé</th><th class="text-center">Actif</th><th></th></tr></thead>
+          <tbody>
+          {% for f in familles_config %}
+            <tr data-article="{{ f.article }}">
+              <td class="text-nowrap"><button type="button" class="btn btn-outline-secondary btn-sm py-0 js-fam-haut">▲</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm py-0 js-fam-bas">▼</button></td>
+              <td><input class="form-control form-control-sm fam-article" value="{{ f.article }}" list="liste-articles" style="width:130px"></td>
+              <td><input class="form-control form-control-sm fam-libelle" value="{{ f.libelle }}" maxlength="60"></td>
+              <td class="text-center"><input type="checkbox" class="form-check-input fam-actif" {{ 'checked' if f.actif != 'non' }}></td>
+              <td><button type="button" class="btn btn-outline-danger btn-sm py-0 js-fam-suppr" title="Retirer">✕</button></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        <button type="button" class="btn btn-outline-success btn-sm" id="fam-ajouter">➕ Ajouter une famille</button>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-success" id="fam-enregistrer">💾 Enregistrer</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+<div class="modal fade" id="modalAide" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📘 Aide utilisateur</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        {% include "docsHtml/Documentation_Utilisateur_Module_Ramasse_Journaliere_BA38.html" %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" onclick="printModal('modalAide')">🖨️ Imprimer</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
+
 
 {% block extra_js %}
 <script>
@@ -138,18 +292,63 @@
   var CSRF = "{{ csrf_token() }}";
   var DATE = "{{ date_choisie.isoformat() }}";
 
+  function afficherErreur(msg) {
+    var b = document.getElementById('erreur');
+    b.textContent = msg || 'Erreur'; b.classList.remove('d-none');
+  }
+
   function envoyer(payload, etat) {
     if (etat) { etat.textContent = '…'; etat.style.color = ''; }
     return fetch(URL_ACTION, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
                               body: JSON.stringify(payload)})
-      .then(function (r) { return r.json(); })
+      .then(function (r) { return r.json().catch(function () { return {ok: false, erreur: 'Réponse inattendue du serveur'}; }); })
       .then(function (j) {
-        if (j.ok) { if (etat) { etat.textContent = '✔'; etat.style.color = '#198754'; } }
-        else { if (etat) { etat.textContent = '✖'; etat.style.color = '#dc3545'; }
-               var b = document.getElementById('erreur'); b.textContent = j.erreur || 'Erreur'; b.classList.remove('d-none'); window.scrollTo(0, 0); }
+        if (j.ok) { if (etat) { etat.textContent = '✔'; etat.style.color = '#198754'; } document.getElementById('erreur').classList.add('d-none'); }
+        else { if (etat) { etat.textContent = '✖'; etat.style.color = '#dc3545'; } afficherErreur(j.erreur); }
         return j;
-      }).catch(function () { alert('Erreur réseau'); return {ok: false}; });
+      }).catch(function () { afficherErreur('Erreur réseau : la dernière valeur n’est peut-être pas enregistrée.'); return {ok: false}; });
   }
+  // ---- paramétrage des articles ramasse de la feuille
+  var famBody = document.querySelector('#fam-table tbody');
+  if (famBody) {
+    var libellesArticles = {};
+    document.querySelectorAll('#liste-articles option').forEach(function (o) {
+      var p = o.value.split(' — '); libellesArticles[p[0]] = p.slice(1).join(' — ');
+    });
+    famBody.addEventListener('click', function (e) {
+      var tr = e.target.closest('tr'); if (!tr) return;
+      if (e.target.classList.contains('js-fam-suppr')) tr.remove();
+      if (e.target.classList.contains('js-fam-haut') && tr.previousElementSibling) tr.parentNode.insertBefore(tr, tr.previousElementSibling);
+      if (e.target.classList.contains('js-fam-bas') && tr.nextElementSibling) tr.parentNode.insertBefore(tr.nextElementSibling, tr);
+    });
+    famBody.addEventListener('change', function (e) {   // choix dans la liste « code — libellé » : garde le code, propose le libellé
+      if (!e.target.classList.contains('fam-article')) return;
+      var code = e.target.value.split(' — ')[0].trim(); e.target.value = code;
+      var lib = e.target.closest('tr').querySelector('.fam-libelle');
+      if (!lib.value && libellesArticles[code]) lib.value = libellesArticles[code];
+    });
+    if (new URLSearchParams(location.search).has('articles')) {   // lien « Paramétrage > Articles Ramasse » du menu Distribution
+      new bootstrap.Modal(document.getElementById('modalFamilles')).show();
+    }
+    document.getElementById('fam-ajouter').addEventListener('click', function () {
+      var tr = famBody.rows[0] ? famBody.rows[0].cloneNode(true) : null; if (!tr) return;
+      tr.querySelector('.fam-article').value = ''; tr.querySelector('.fam-libelle').value = ''; tr.querySelector('.fam-actif').checked = true;
+      famBody.appendChild(tr); tr.querySelector('.fam-article').focus();
+    });
+    document.getElementById('fam-enregistrer').addEventListener('click', function () {
+      var fams = Array.prototype.map.call(famBody.rows, function (tr) {
+        return {article: tr.querySelector('.fam-article').value.trim(), libelle: tr.querySelector('.fam-libelle').value.trim(),
+                actif: tr.querySelector('.fam-actif').checked ? 'oui' : 'non'};
+      });
+      var err = document.getElementById('fam-erreur');
+      fetch(URL_ACTION, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+                         body: JSON.stringify({action: 'familles', familles: fams})})
+        .then(function (r) { return r.json(); })
+        .then(function (j) { if (j.ok) { var u = new URL(location.href); u.searchParams.delete('articles'); location.href = u.toString(); } else { err.textContent = j.erreur || 'Erreur'; err.classList.remove('d-none'); } })
+        .catch(function () { err.textContent = 'Erreur réseau.'; err.classList.remove('d-none'); });
+    });
+  }
+
   function recharger(j) { if (j && j.ok) location.reload(); }
 
   var creer = document.getElementById('btn-creer');
@@ -159,34 +358,105 @@
     envoyer({action: 'creer', date: DATE, id_fournisseur: f}).then(recharger);
   });
 
+  // ---- saisie : une cellule = un enregistrement
+  function majCarte(card, j) {
+    card.dataset.id = j.ramasse_id;
+    card.querySelectorAll('.js-tot').forEach(function (td) { td.textContent = j.totaux[td.dataset.col]; });
+    card.querySelector('.js-total-resume').textContent = j.totaux.quantite_kg + ' kg';
+    if (card.classList.contains('vide')) {
+      card.classList.remove('vide'); card.classList.add('saisie');
+      card.querySelector('.js-badge').innerHTML = '<span class="badge bg-warning text-dark">En saisie</span>';
+    }
+    var v = card.querySelector('.js-valider'); if (v) v.disabled = !(j.total_ok > 0);
+    var s = card.querySelector('.js-supprimer'); if (s) s.style.display = '';
+  }
+
+  // DLC : saisie rapide comme ailleurs dans Basilic (1611 -> 16/11/année, 161126 ou 16112026 -> 16/11/2026,
+  // 16/11 -> 16/11/année). Sans année : celle du jour de ramasse, ou la suivante si la date serait déjà
+  // très en arrière (ex. DLC 03/01 saisie un 30/12). Retourne '' (vide), la date jj/mm/aaaa, ou null si invalide.
+  function normaliserDlc(v) {
+    v = (v || '').trim();
+    if (!v) return '';
+    var m = v.match(/^(\d{1,2})[\/.\-\s]?(\d{1,2})(?:[\/.\-\s]?(\d{2}|\d{4}))?$/);
+    if (!m) return null;
+    var j = +m[1], mo = +m[2], a = m[3], base = new Date(DATE + 'T00:00:00');
+    if (a === undefined) {
+      var an = base.getFullYear();
+      if (new Date(an, mo - 1, j) < new Date(base.getTime() - 180 * 86400000)) an += 1;
+      a = an;
+    } else if (a.length === 2) { a = 2000 + (+a); } else { a = +a; }
+    var d = new Date(a, mo - 1, j);
+    if (d.getFullYear() !== a || d.getMonth() !== mo - 1 || d.getDate() !== j) return null;
+    return ('0' + j).slice(-2) + '/' + ('0' + mo).slice(-2) + '/' + a;
+  }
+
+  function enregistrer(inp) {
+    var card = inp.closest('.ram-card'), tr = inp.closest('tr'), etat = tr.querySelector('.etat');
+    inp.classList.remove('ok', 'ko');
+    if (inp.dataset.col === 'dlc') {
+      var n = normaliserDlc(inp.value);
+      if (n === null) { inp.classList.add('ko'); afficherErreur('DLC invalide : saisir par exemple 1611 ou 16/11/2026.'); return Promise.resolve({ok: false}); }
+      inp.value = n;
+    }
+    var payload = {action: 'cellule', article: tr.dataset.article, colonne: inp.dataset.col, valeur: inp.value,
+                   ligne_id: tr.dataset.ligne || null};
+    if (card.dataset.id) { payload.ramasse_id = Number(card.dataset.id); }
+    else { payload.date = DATE; payload.id_fournisseur = Number(card.dataset.frs); }
+    return envoyer(payload, etat).then(function (j) {
+      if (j.ok) {
+        inp.value = j.valeur; inp.classList.add('ok');
+        tr.dataset.ligne = j.ligne_id || '';
+        var lot = tr.querySelector('.js-lot'); if (lot) { lot.textContent = (j.ligne_id && j.lot) ? j.lot : '—'; }
+        majCarte(card, j);
+      } else { inp.classList.add('ko'); }
+    });
+  }
+
+  document.addEventListener('change', function (e) {
+    if (e.target.classList && e.target.classList.contains('js-cell')) { enregistrer(e.target); }
+  });
+  document.addEventListener('keydown', function (e) {
+    var inp = e.target;
+    if (e.key !== 'Enter' || !inp.classList || !inp.classList.contains('js-cell')) { return; }
+    e.preventDefault();
+    var card = inp.closest('.ram-card');
+    var colonne = Array.prototype.filter.call(card.querySelectorAll('.js-cell'), function (x) { return x.dataset.col === inp.dataset.col; });
+    var suivante = colonne[colonne.indexOf(inp) + 1];
+    if (suivante) { suivante.focus(); suivante.select(); } else { inp.blur(); }
+  });
+
+  // ---- actions de la carte
   document.querySelectorAll('.ram-card').forEach(function (card) {
-    var rid = Number(card.dataset.id);
+    var rid = function () { return Number(card.dataset.id); };
     var v = card.querySelector('.js-valider');
     if (v) v.addEventListener('click', function () {
       if (confirm('Valider cette ramasse ? Elle entre en stock Basilic et le fichier de réception VIF est créé.'))
-        envoyer({action: 'valider', ramasse_id: rid}).then(recharger);
+        envoyer({action: 'valider', ramasse_id: rid()}).then(recharger);
     });
     var s = card.querySelector('.js-supprimer');
     if (s) s.addEventListener('click', function () {
-      if (confirm('Supprimer cette ramasse et ses lignes ?')) envoyer({action: 'supprimer', ramasse_id: rid}).then(recharger);
+      if (confirm('Supprimer cette ramasse et ses lignes ?')) envoyer({action: 'supprimer', ramasse_id: rid()}).then(recharger);
     });
     var ro = card.querySelector('.js-rouvrir');
     if (ro) ro.addEventListener('click', function () {
       if (confirm('Rouvrir la ramasse ? Elle sort du stock Basilic et le fichier de réception est supprimé.'))
-        envoyer({action: 'rouvrir', ramasse_id: rid}).then(recharger);
+        envoyer({action: 'rouvrir', ramasse_id: rid()}).then(recharger);
     });
-    card.querySelectorAll('tbody tr[data-ligne]').forEach(function (tr) {
-      var lid = Number(tr.dataset.ligne), etat = tr.querySelector('.etat');
-      var kg = tr.querySelector('.js-kg'), dlc = tr.querySelector('.js-dlc'), x = tr.querySelector('.js-suppr-ligne');
-      if (kg) kg.addEventListener('change', function () { envoyer({action: 'maj_ligne', ligne_id: lid, quantite_kg: this.value}, etat); });
-      if (dlc) dlc.addEventListener('change', function () { envoyer({action: 'maj_ligne', ligne_id: lid, dlc: this.value}, etat); });
-      if (x) x.addEventListener('click', function () { envoyer({action: 'suppr_ligne', ligne_id: lid}).then(recharger); });
+    card.querySelectorAll('.js-suppr-ligne').forEach(function (x) {
+      x.addEventListener('click', function () {
+        envoyer({action: 'suppr_ligne', ligne_id: Number(x.closest('tr').dataset.ligne)}).then(recharger);
+      });
     });
     var aj = card.querySelector('.js-ajouter');
     if (aj) aj.addEventListener('click', function () {
       var code = card.querySelector('.js-aj-article').value.split(' — ')[0].trim();
-      envoyer({action: 'ajouter_ligne', ramasse_id: rid, article: code,
-               quantite_kg: card.querySelector('.js-aj-kg').value, dlc: card.querySelector('.js-aj-dlc').value}).then(recharger);
+      var dlcAj = normaliserDlc(card.querySelector('.js-aj-dlc').value);
+      if (dlcAj === null) { afficherErreur('DLC invalide : saisir par exemple 1611 ou 16/11/2026.'); return; }
+      var payload = {action: 'ajouter_ligne', article: code,
+                     quantite_kg: card.querySelector('.js-aj-kg').value, dlc: dlcAj};
+      if (card.dataset.id) { payload.ramasse_id = rid(); }
+      else { payload.date = DATE; payload.id_fournisseur = Number(card.dataset.frs); }   // créée avec la ligne
+      envoyer(payload).then(recharger);
     });
   });
 </script>

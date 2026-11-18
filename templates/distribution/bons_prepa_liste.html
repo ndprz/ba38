@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/date_nav.html" import date_input %}
 
 {% block title %}Bons de préparation{% endblock %}
 
@@ -23,7 +24,7 @@
   <form method="get" class="d-flex flex-wrap align-items-center mb-3" style="gap:12px">
     <input type="hidden" name="type" value="{{ type_bon }}">
     <label for="date" class="mb-0">Jour de distribution</label>
-    <input type="date" id="date" name="date" class="form-control form-control-sm w-auto" value="{{ date_choisie.isoformat() }}" required>
+    {{ date_input("date", date_choisie.isoformat(), id="date", auto_submit=True, required=True) }}
     <button type="submit" class="btn btn-outline-secondary btn-sm">Afficher</button>
     <span class="badge bg-secondary">{{ bons|length }} bon{{ 's' if bons|length > 1 }}</span>
     {% if bons %}<a class="btn btn-outline-dark btn-sm" target="_blank" href="{{ url_for('distribution.bons_prepa_pdf_jour', date=date_choisie.isoformat(), type=type_bon) }}">🖨️ Imprimer tous les bons (PDF)</a>{% endif %}
@@ -73,7 +74,8 @@
           <tr class="fw-bold"><td>Tonnage total à répartir</td><td class="text-end" id="total-kg">{{ ('%.1f'|format(frais.total_kg)).replace('.', ',') }} kg</td></tr>
           <tr><td>Bénéficiaires à servir en menus frais ({{ frais.nb_passages }} passage{{ 's' if frais.nb_passages > 1 }})</td><td class="text-end">{{ frais.benef }}</td></tr>
           <tr class="fw-bold {{ 'table-success' if frais.suffisant else 'table-danger' }}">
-            <td>Panier par bénéficiaire (objectif ≥ {{ ('%g'|format(frais.seuil)).replace('.', ',') }} kg)</td>
+            <td>Panier par bénéficiaire (objectif ≥ {{ ('%g'|format(frais.seuil)).replace('.', ',') }} kg)
+              {% if peut_ecrire %}<button type="button" class="btn btn-link btn-sm p-0 ms-1 js-objectif" title="Modifier l'objectif de panier (kg par bénéficiaire)">✏️</button>{% endif %}</td>
             <td class="text-end" id="panier">{% if frais.panier is not none %}{{ ('%.2f'|format(frais.panier)).replace('.', ',') }} kg{% else %}—{% endif %}
               {{ '✅' if frais.suffisant else '⚠️' }}</td>
           </tr>
@@ -106,9 +108,9 @@
         </div>
 
         <div class="col-lg-6">
-          <h6 class="mb-1">Produits ajoutables (stock dépôt 03)</h6>
+          <h6 class="mb-1">Produits ajoutables (stock des dépôts 02 et 03)</h6>
           <table class="table table-sm align-middle">
-            <thead><tr><th>Article</th><th class="text-end">Stock dispo</th><th class="text-end" title="Positif : ajout du stock. Négatif : retrait d'un article de la ramasse">Ajout / retrait (kg)</th><th></th></tr></thead>
+            <thead><tr><th>Article</th><th class="text-end" title="Stock disponible au dépôt 03 (kg brut)">Stock 03</th><th class="text-end" title="Stock au dépôt 02 (kg brut), transférable vers le 03">Stock 02</th><th class="text-end" title="Ajouté à la distribution depuis les lots choisis (kg brut)">Ajouté</th><th class="text-end" title="Négatif : retrait d'un article de la ramasse (kg)">Retrait ramasse (kg)</th><th></th></tr></thead>
             <tbody>
             {% for a in frais.ajoutables %}
               <tr data-article="{{ a.article }}">
@@ -116,14 +118,17 @@
                   {% if 'ramasse' in a.origine %}<span class="badge bg-success" title="Article de la ramasse du jour : on peut le compléter avec du stock">ramasse</span>{% endif %}
                   {% if not a.dans_menu %}<span class="badge bg-warning text-dark" title="Cet article n'est dans aucun menu FRAIS du jour : il ne sera pas réparti">hors menu</span>{% endif %}</td>
                 <td class="text-end">{{ ('%.1f'|format(a.stock)).replace('.', ',') }}</td>
+                <td class="text-end">{{ ('%.1f'|format(a.stock02)).replace('.', ',') if a.stock02 else '' }}</td>
+                <td class="text-end">{{ ('%.1f'|format(a.ajoute_lots)).replace('.', ',') if a.ajoute_lots else '' }}</td>
                 <td class="text-end"><input type="text" class="form-control form-control-sm d-inline-block js-ajout" style="width:90px;text-align:right"
-                      value="{{ ('%g'|format(a.ajoute)) if a.ajoute else '' }}" placeholder="0"
+                      value="{{ ('%g'|format(a.retrait)) if a.retrait else '' }}" placeholder="0"
                       title="{{ 'Ajout : jusqu\'à ' ~ ('%g'|format(a.stock)) ~ ' kg de stock' ~ (' ; retrait (négatif) : jusqu\'à ' ~ ('%g'|format(a.ramasse)) ~ ' kg ramassés' if a.ramasse else '') }}" {{ '' if (peut_ecrire and aujourdhui_ok) else 'disabled' }}></td>
                 <td class="text-nowrap"><span class="etat"></span>
+                  <button type="button" class="btn btn-outline-success btn-sm py-0 js-lots" title="Choisir les lots à ajouter (dépôt 02 ou 03)">📦 Lots…</button>
                   {% if peut_ecrire and 'liste' in a.origine %}<button class="btn btn-outline-danger btn-sm py-0 js-retirer-ajoutable" title="Retirer de la liste des produits ajoutables">✕</button>{% endif %}</td>
               </tr>
             {% else %}
-              <tr><td colspan="4" class="text-muted small">Aucun produit ajoutable défini.</td></tr>
+              <tr><td colspan="6" class="text-muted small">Aucun produit ajoutable défini.</td></tr>
             {% endfor %}
             </tbody>
           </table>
@@ -186,6 +191,31 @@
 
 {% block extra_js %}
 {% if type_bon == 'frais' and frais %}
+<div class="modal fade" id="modalLots" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="lots-titre">📦 Lots en stock</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="small text-muted mb-2">Quantités en kg brut. Un lot du <strong>dépôt 02</strong> est transféré vers le dépôt 03 (ligne ajoutée à
+          « Mouvements de stocks », à exporter vers VIF) : on peut transférer une palette entière et n'affecter qu'une partie à la distribution.</div>
+        <div id="lots-erreur" class="alert alert-danger d-none"></div>
+        <table class="table table-sm align-middle">
+          <thead><tr><th>Dépôt</th><th>Lot</th><th>DLC / DDM</th><th class="text-end">Disponible</th><th class="text-end">Affecter à la distribution</th><th class="text-end">Transférer 02 → 03</th></tr></thead>
+          <tbody id="lots-corps"></tbody>
+        </table>
+        <div id="lots-vide" class="text-muted d-none">Aucun lot en stock pour cet article.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-success" id="lots-enregistrer">💾 Enregistrer</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
   var CSRF = "{{ csrf_token() }}", DATE = "{{ date_choisie.isoformat() }}";
   function post(url, payload, etat) {
@@ -209,6 +239,52 @@
       if (confirm('Retirer ' + art + ' de la liste des produits ajoutables ?'))
         post("{{ url_for('distribution.frais_ajoutables_gerer') }}", {action: 'retirer', article: art}).then(function (j) { if (j.ok) location.reload(); });
     });
+  });
+  // ---- choix des lots (dépôts 02 / 03) d'un produit ajoutable
+  var lotsArticle = null, lotsInitial = {};
+  function num(v) { var n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? 0 : n; }
+  function fmt(n) { return String(Math.round(n * 1000) / 1000).replace('.', ','); }
+  document.querySelectorAll('.js-lots').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var tr = b.closest('tr'); lotsArticle = tr.dataset.article;
+      document.getElementById('lots-titre').textContent = '📦 Lots en stock — ' + tr.children[0].textContent.replace(/\s+/g, ' ').trim();
+      document.getElementById('lots-erreur').classList.add('d-none');
+      fetch("{{ url_for('distribution.frais_lots') }}?date=" + DATE + "&article=" + encodeURIComponent(lotsArticle))
+        .then(function (r) { return r.json(); }).then(function (j) {
+          var corps = document.getElementById('lots-corps'); corps.innerHTML = ''; lotsInitial = {};
+          document.getElementById('lots-vide').classList.toggle('d-none', j.lots.length > 0);
+          j.lots.forEach(function (l, i) {
+            var cle = l.depot + '|' + l.lot; lotsInitial[cle] = {q: l.choisi, t: l.transfert};
+            var tr2 = document.createElement('tr'); tr2.dataset.depot = l.depot; tr2.dataset.lot = l.lot; tr2.dataset.cle = cle;
+            var dis = j.modifiable ? '' : ' disabled';
+            tr2.innerHTML = '<td><span class="badge ' + (l.depot === '02' ? 'bg-warning text-dark' : 'bg-success') + '">' + l.depot + '</span></td>' +
+              '<td>' + (l.lot || '(sans lot)') + '</td><td>' + (l.dlc || l.ddm || '') + '</td>' +
+              '<td class="text-end">' + fmt(l.dispo) + '</td>' +
+              '<td class="text-end"><input type="text" class="form-control form-control-sm d-inline-block js-lq" style="width:90px;text-align:right" value="' + (l.choisi ? fmt(l.choisi) : '') + '" placeholder="0"' + dis + '></td>' +
+              '<td class="text-end">' + (l.depot === '02' ? '<input type="text" class="form-control form-control-sm d-inline-block js-lt" style="width:90px;text-align:right" value="' + (l.transfert ? fmt(l.transfert) : '') + '" placeholder="= affecté"' + dis + '>' : '') + '</td>';
+            corps.appendChild(tr2);
+          });
+          new bootstrap.Modal(document.getElementById('modalLots')).show();
+        });
+    });
+  });
+  document.getElementById('lots-enregistrer').addEventListener('click', async function () {
+    var err = document.getElementById('lots-erreur'); err.classList.add('d-none');
+    var lignes = Array.prototype.slice.call(document.querySelectorAll('#lots-corps tr'));
+    for (var k = 0; k < lignes.length; k++) {
+      var tr = lignes[k], q = num(tr.querySelector('.js-lq').value), tEl = tr.querySelector('.js-lt');
+      var t = tEl ? (tEl.value.trim() === '' ? q : num(tEl.value)) : 0, ini = lotsInitial[tr.dataset.cle] || {q: 0, t: 0};
+      if (Math.abs(q - ini.q) < 0.0005 && Math.abs(t - ini.t) < 0.0005) continue;   // inchangé
+      var j = await post("{{ url_for('distribution.frais_ajout_lot') }}", {date: DATE, article: lotsArticle, lot: tr.dataset.lot, depot: tr.dataset.depot, quantite_kg: String(q), transfert_kg: String(t)});
+      if (!j.ok) { err.textContent = 'Lot ' + (tr.dataset.lot || '(sans lot)') + ' (dépôt ' + tr.dataset.depot + ') : erreur, voir le message.'; err.classList.remove('d-none'); return; }
+    }
+    location.reload();
+  });
+  var ob = document.querySelector('.js-objectif');
+  if (ob) ob.addEventListener('click', function () {
+    var v = prompt('Objectif de panier FRAIS (kg par bénéficiaire) :', '{{ ('%g'|format(frais.seuil)).replace('.', ',') }}');
+    if (v === null) return;
+    post("{{ url_for('distribution.frais_objectif') }}", {valeur: v}).then(function (j) { if (j.ok) location.reload(); });
   });
   var bt = document.getElementById('btn-aj-prod');
   if (bt) bt.addEventListener('click', function () {

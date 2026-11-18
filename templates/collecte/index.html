@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/buttons.html" import action_button, action_buttons, bouton_retour %}
 {% from "macros/confirmation_renforcee.html" import modal_confirmation_renforcee, bouton_ouvrir_confirmation_renforcee %}
 
 {% macro bouton_remise_a_zero(cle, libelle) %}
@@ -52,7 +52,7 @@
     </button>
 
     {% call action_buttons() %}
-        {{ action_button("↩️ Retour à l'accueil", href=url_for('index'), color="outline-dark") }}
+        {{ bouton_retour(url_for('index'), "↩️ Retour à l'accueil") }}
     {% endcall %}
 
     <p class="text-muted">Paramètres et fichiers de la campagne de collecte.</p>
@@ -169,6 +169,34 @@
                     </form>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">📁 Repère {{ annee - 1 }} — Saisie collecte gardée</h5>
+            <p class="card-text text-muted small">
+                Résultat de l'année précédente par association, affiché à titre de repère dans
+                « Préparer l'envoi », « Saisie collecte gardée » et « Quantités par produit » —
+                une seule fois par campagne, un nouveau dépôt remplace le précédent.
+            </p>
+            {% if info_fichier_n1 %}
+            <p class="small text-muted mb-2">
+                Fichier actuel : <strong>{{ info_fichier_n1.nom }}</strong> — déposé le
+                {{ info_fichier_n1.modifie_le }}, {{ info_fichier_n1.nb_associations }} association(s)
+                reconnue(s).
+            </p>
+            {% else %}
+            <p class="small text-muted mb-2">Aucun fichier déposé pour l'instant.</p>
+            {% endif %}
+            <form method="post" action="{{ url_for('collecte.gardee_produits_annee_precedente_importer', annee=annee) }}"
+                  enctype="multipart/form-data" class="d-flex flex-wrap align-items-center gap-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <label for="fichier_n1" class="visually-hidden">Fichier Excel</label>
+                <input type="file" name="fichier" id="fichier_n1" class="form-control" style="max-width: 320px;"
+                       accept=".xlsx" required>
+                <button type="submit" class="btn btn-outline-primary">📥 Importer</button>
+            </form>
         </div>
     </div>
 
@@ -382,19 +410,6 @@
                     {{ action_button("📧 Envoi mail tournées aux chauffeurs/équipiers", href=url_for('collecte.chauffeurs_equipiers', annee=annee), color="primary") }}
                 </div>
             </div>
-            <div class="card mb-3">
-                <div class="card-body d-flex justify-content-between align-items-center gap-2">
-                    <div>
-                        <h5 class="card-title mb-1">📧 Envoi mail tournées aux chauffeurs/équipiers de l'année dernière</h5>
-                        <p class="card-text small text-muted mb-0">
-                            Demander leur disponibilité aux chauffeurs et équipiers de la collecte
-                            {{ annee - 1 }}, avant que le planning {{ annee }} n'existe — pas d'affectation
-                            par demi-journée, juste une demande de disponibilité.
-                        </p>
-                    </div>
-                    {{ action_button("📧 Ouvrir", href=url_for('collecte.mail_disponibilite_chauffeurs_equipiers', annee=annee), color="outline-primary") }}
-                </div>
-            </div>
         </div>
     </div>
 
@@ -522,6 +537,18 @@
                 {{ action_button("✏️ Saisir", href=url_for('collecte.gardee_saisie_choisir', annee=annee) if magasins_prets else '#', color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
             </div>
         </div>
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
+                <div>
+                    <h5 class="card-title mb-1">📦 Quantités par produit (toutes associations)</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Tableau récapitulatif des quantités saisies par produit et par association,
+                        valorisé en mercuriale, avec génération des transferts/BL VIF.
+                    </p>
+                </div>
+                {{ action_button("📦 Ouvrir", href=url_for('collecte.quantites_produits', annee=annee), color="outline-secondary") }}
+            </div>
+        </div>
 
         <button class="btn btn-outline-danger mb-3" type="button"
                 data-bs-toggle="collapse" data-bs-target="#sousSectionRemiseAZero"
@@ -549,19 +576,7 @@
 
     {{ entete_section("sectionParticipants", "Participants", "modalAideSection6", "modalManuelSection6") }}
     <div id="sectionParticipants" class="collapse mt-3">
-        <div class="card mb-3">
-            <div class="card-body d-flex justify-content-between align-items-center gap-2">
-                <div>
-                    <h5 class="card-title mb-1">📊 Comptage participants (magasins/camions/entrepôt)</h5>
-                    <p class="card-text small text-muted mb-0">
-                        Nombre de bénévoles à mail différent dans les vrais magasins, les
-                        camions (équipiers/chauffeurs V001-V089) et l'entrepôt
-                        (V090-V092), avec téléchargement de toutes les adresses email.
-                    </p>
-                </div>
-                {{ action_button("📊 Ouvrir", href=url_for('collecte.participants_comptage', annee=annee), color="primary") }}
-            </div>
-        </div>
+        <h5 class="mb-3">Avant la collecte</h5>
         <div class="card mb-3">
             <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
@@ -577,6 +592,19 @@
         <div class="card mb-3">
             <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
+                    <h5 class="card-title mb-1">📧 Mail demande aux chauffeurs/équipiers de l'année précédente, leur disponibilité</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Demander leur disponibilité aux chauffeurs et équipiers de la collecte
+                        {{ annee - 1 }}, avant que le planning {{ annee }} n'existe — pas d'affectation
+                        par demi-journée, juste une demande de disponibilité.
+                    </p>
+                </div>
+                {{ action_button("📧 Ouvrir", href=url_for('collecte.mail_disponibilite_chauffeurs_equipiers', annee=annee), color="primary") }}
+            </div>
+        </div>
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
+                <div>
                     <h5 class="card-title mb-1">📧 Mail prise colis</h5>
                     <p class="card-text small text-muted mb-0">
                         Prévenir les primo responsables (référents magasin) que le colis de
@@ -586,6 +614,45 @@
                 {{ action_button("📧 Ouvrir", href=url_for('collecte.mail_prise_colis', annee=annee), color="primary") }}
             </div>
         </div>
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
+                <div>
+                    <h5 class="card-title mb-1">📋 Liste d'appel chauffeurs/équipiers</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Liste unique (nom, email, BAI, n° et nom du camion), sans doublon, de tous les
+                        chauffeurs et équipiers {{ annee }} réellement nommés dans liste-vehicule.xlsx,
+                        complétée par tous les bénévoles de la base Basilic (camion indiqué si la
+                        personne est aussi chauffeur/équipier).
+                    </p>
+                </div>
+                {{ action_button("📤 Télécharger l'Excel", href=url_for('collecte.appel_chauffeurs_export', annee=annee), color="primary") }}
+            </div>
+        </div>
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
+                <div>
+                    <h5 class="card-title mb-1">🔄 Comparaison BAI Basilic / go-on-web</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Rapproche, par email et dans les 2 sens, la base bénévoles de Basilic et les
+                        personnes marquées BAI {{ annee }} dans la liste des participants go-on-web.
+                    </p>
+                </div>
+                {{ action_button("🔄 Ouvrir", href=url_for('collecte.comparaison_bai_basilic', annee=annee), color="primary") }}
+            </div>
+        </div>
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
+                <div>
+                    <h5 class="card-title mb-1">🔄 Comparaison chauffeurs/équipiers Basilic</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Rapproche, par email et dans les 2 sens, les chauffeurs/équipiers de camion
+                        {{ annee }} (liste-vehicule.xlsx) et la base bénévoles de Basilic.
+                    </p>
+                </div>
+                {{ action_button("🔄 Ouvrir", href=url_for('collecte.comparaison_chauffeurs_basilic', annee=annee), color="primary") }}
+            </div>
+        </div>
+        <h5 class="mb-3 mt-4">Après la collecte</h5>
         <div class="card mb-3">
             <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
@@ -637,39 +704,14 @@
         <div class="card mb-3">
             <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
-                    <h5 class="card-title mb-1">📋 Liste d'appel chauffeurs/équipiers</h5>
+                    <h5 class="card-title mb-1">📊 Comptage participants (magasins/camions/entrepôt)</h5>
                     <p class="card-text small text-muted mb-0">
-                        Liste unique (nom, email, BAI, n° et nom du camion), sans doublon, de tous les
-                        chauffeurs et équipiers {{ annee }} réellement nommés dans liste-vehicule.xlsx,
-                        complétée par tous les bénévoles de la base Basilic (camion indiqué si la
-                        personne est aussi chauffeur/équipier).
+                        Nombre de bénévoles à mail différent dans les vrais magasins, les
+                        camions (équipiers/chauffeurs V001-V089) et l'entrepôt
+                        (V090-V092), avec téléchargement de toutes les adresses email.
                     </p>
                 </div>
-                {{ action_button("📤 Télécharger l'Excel", href=url_for('collecte.appel_chauffeurs_export', annee=annee), color="primary") }}
-            </div>
-        </div>
-        <div class="card mb-3">
-            <div class="card-body d-flex justify-content-between align-items-center gap-2">
-                <div>
-                    <h5 class="card-title mb-1">🔄 Comparaison BAI Basilic / go-on-web</h5>
-                    <p class="card-text small text-muted mb-0">
-                        Rapproche, par email et dans les 2 sens, la base bénévoles de Basilic et les
-                        personnes marquées BAI {{ annee }} dans la liste des participants go-on-web.
-                    </p>
-                </div>
-                {{ action_button("🔄 Ouvrir", href=url_for('collecte.comparaison_bai_basilic', annee=annee), color="primary") }}
-            </div>
-        </div>
-        <div class="card mb-3">
-            <div class="card-body d-flex justify-content-between align-items-center gap-2">
-                <div>
-                    <h5 class="card-title mb-1">🔄 Comparaison chauffeurs/équipiers Basilic</h5>
-                    <p class="card-text small text-muted mb-0">
-                        Rapproche, par email et dans les 2 sens, les chauffeurs/équipiers de camion
-                        {{ annee }} (liste-vehicule.xlsx) et la base bénévoles de Basilic.
-                    </p>
-                </div>
-                {{ action_button("🔄 Ouvrir", href=url_for('collecte.comparaison_chauffeurs_basilic', annee=annee), color="primary") }}
+                {{ action_button("📊 Ouvrir", href=url_for('collecte.participants_comptage', annee=annee), color="primary") }}
             </div>
         </div>
     </div>
@@ -724,6 +766,18 @@
 document.getElementById("selectAnnee").addEventListener("change", function () {
     window.location.href = "{{ url_for('collecte.collecte_main') }}?annee=" + this.value;
 });
+
+// Déplie automatiquement une section visée par l'ancre de l'URL (ex. lien
+// "#sectionCollecteAnnuelle" depuis Saisie collecte gardée vers Paramètres).
+if (window.location.hash) {
+    const cible = document.querySelector(window.location.hash + ".collapse");
+    if (cible) {
+        new bootstrap.Collapse(cible, { show: true });
+        cible.addEventListener("shown.bs.collapse", function () {
+            cible.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, { once: true });
+    }
+}
 
 // Vérification Drive chargée à la demande, seulement au premier dépliage
 // de la section Paramètres — jamais au chargement de la page (voir

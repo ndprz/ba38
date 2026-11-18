@@ -151,8 +151,19 @@ def visualisation_stock():
             date_mail = None
 
         # Stock Basilic = stock VIF + entrées de ramasses validées - sorties de BL validés depuis ce stock
-        from .stock_basilic import DEPOT_SORTIE, entrees_ramasse, snapshot_utc
+        from .stock_basilic import DEPOT_SORTIE, entrees_ramasse, reservations_par_lot_kg, snapshot_utc, transferts_depuis_snapshot
+        reserves = reservations_par_lot_kg(conn)   # lots réservés par les bons de préparation non validés (lignes en Kg)
         entrees = {(e["article"], e["lot"]): e for e in entrees_ramasse(conn)}
+        # lots transférés 02 -> 03 depuis le stock VIF (produits ajoutables FRAIS) : entrée au 03, sortie du 02
+        transferts = {(t["article"], t["lot"]): t["kg"] for t in transferts_depuis_snapshot(conn)}
+        for (art, lot), kg in transferts.items():
+            e = entrees.get((art, lot))
+            if e:
+                e["kg"] = (e["kg"] or 0) + kg
+            else:
+                src = conn.execute("SELECT dlc FROM stocks WHERE article = ? AND depot = '02' AND COALESCE(lot,'') = ? LIMIT 1", (art, lot)).fetchone()
+                lib = conn.execute("SELECT libelle FROM articles WHERE article = ?", (art,)).fetchone()
+                entrees[(art, lot)] = {"article": art, "libelle": lib[0] if lib else "", "lot": lot, "dlc": src[0] if src else "", "kg": kg}
         sorties = {(r[0], r[1], r[2] or ""): r[3] or 0 for r in conn.execute("""
             SELECT l.article, t.lot, t.depot, SUM(t.quantite) FROM bons_preparation_lots t
             JOIN bons_preparation_lignes l ON l.id = t.ligne_id JOIN bons_preparation b ON b.id = l.bon_id
@@ -160,24 +171,31 @@ def visualisation_stock():
             (snapshot_utc(conn),))}
         connus = set()
         for a in articles:
-            a["entree_b"] = a["sortie_b"] = a["dispo_b"] = None
+            a["entree_b"] = a["sortie_b"] = a["dispo_b"] = a["reserve_b"] = None
             if a["depot"] == DEPOT_SORTIE:
                 lot = a["lot"] or ""
                 connus.add((a["article"], lot))
                 e = entrees.get((a["article"], lot))
                 a["entree_b"] = round(e["kg"], 2) if e else 0
                 a["sortie_b"] = round(sorties.get((a["article"], lot, a["depot"]), 0), 2)
-                a["dispo_b"] = round((a["kg_brut"] or 0) + a["entree_b"] - a["sortie_b"], 2)
+                a["reserve_b"] = round(reserves.get((a["article"], lot, a["depot"] or ""), 0), 2)
+                a["dispo_b"] = round((a["kg_brut"] or 0) + a["entree_b"] - a["sortie_b"] - a["reserve_b"], 2)
+            elif a["depot"] == "02" and transferts.get((a["article"], a["lot"] or "")):
+                a["entree_b"], a["reserve_b"] = 0, 0
+                a["sortie_b"] = round(transferts[(a["article"], a["lot"] or "")], 2)
+                a["dispo_b"] = round((a["kg_brut"] or 0) - a["sortie_b"], 2)
         # lots entrés aujourd'hui par ramasse et pas encore dans le stock VIF
         for (art, lot), e in entrees.items():
             if (art, lot) in connus:
                 continue
             sortie = round(sorties.get((art, lot, DEPOT_SORTIE), 0), 2)
-            articles.append({"article": art, "libelle": e["libelle"], "famille": "Ramasse du jour", "sous_famille": "",
+            reserve = round(reserves.get((art, lot, DEPOT_SORTIE), 0), 2)
+            articles.append({"article": art, "libelle": e["libelle"], "famille": "Entrées du jour (ramasse, transferts)", "sous_famille": "",
                              "depot": DEPOT_SORTIE, "emplacement": "", "lot": lot, "dlc": e["dlc"] or "", "ddm": "",
                              "kg_net": None, "kg_brut": 0, "col": None, "pal": None,
                              "cdt_unite2": None, "cdt_unite3": None, "cdt_unite4": None,
-                             "entree_b": round(e["kg"], 2), "sortie_b": sortie, "dispo_b": round(e["kg"] - sortie, 2)})
+                             "entree_b": round(e["kg"], 2), "sortie_b": sortie, "reserve_b": reserve,
+                             "dispo_b": round(e["kg"] - sortie - reserve, 2)})
 
     return render_template(
         "distribution/mvt_stocks/distribution_visualisation_stock.html",

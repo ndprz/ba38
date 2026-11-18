@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/buttons.html" import action_button, action_buttons, bouton_retour %}
 
 {% block title %}Tournées Production {{ annee }}{% endblock %}
 
@@ -50,7 +50,7 @@
     {% call action_buttons() %}
         {{ action_button("📥 Télécharger Excel", href=url_for('collecte.production_telecharger', cle='excel', annee=annee), color="outline-success") }}
         {{ action_button("📄 Télécharger PDF (selon filtres)", onclick="telechargerPdfFiltre()", color="outline-danger") }}
-        {{ action_button("↩️ Retour", href=url_for('collecte.production', annee=annee), color="outline-dark") }}
+        {{ bouton_retour(url_for('collecte.production', annee=annee)) }}
     {% endcall %}
 
     <p class="text-muted small mb-2">

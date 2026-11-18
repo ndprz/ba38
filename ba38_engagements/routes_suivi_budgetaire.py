@@ -37,6 +37,7 @@ from ba38_utilitaires.core import (
 from ba38_utilitaires.organisation import get_organisation
 
 from ba38_engagements import engagements_bp
+from ba38_engagements.routes_main import FILTRE_DEMANDEUR_OU_POLE
 from ba38_engagements.routes_reporting import STATUTS_LABELS
 
 from openpyxl import Workbook
@@ -108,8 +109,8 @@ def _charger_donnees(conn, mode, annee, voir_tout):
         params = [s["id"]]
 
         if not voir_tout:
-            where.append("e.demandeur_id = ?")
-            params.append(current_user.id)
+            where.append(FILTRE_DEMANDEUR_OU_POLE)
+            params.extend([current_user.id, current_user.id])
 
         if date_debut_iso:
             where.append("DATE(e.cree_le) >= ?")

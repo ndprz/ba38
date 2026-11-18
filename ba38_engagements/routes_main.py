@@ -43,6 +43,12 @@ def charger_motifs_derogation_devis(conn=None):
 def _injecter_motifs_derogation_devis():
     return {"motifs_derogation_devis": charger_motifs_derogation_devis}
 
+
+@engagements_bp.context_processor
+def _injecter_tarif_km():
+    from ba38_engagements.tarif_km import charger_tarif_km
+    return {"tarif_km_engagements": charger_tarif_km()}
+
 # ============================================================
 # PAGE PRINCIPALE MODULE ENGAGEMENTS
 # ============================================================
@@ -1798,6 +1804,8 @@ def detail_engagement(engagement_id):
                 d.rubrique,
                 d.precision_rubrique,
                 d.montant_total,
+                d.montant_paye_cumule,
+                d.montant_prevu_initial,
                 d.attestation_comparaison,
                 d.devis_necessaire,
                 d.nb_devis,

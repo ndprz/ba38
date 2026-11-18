@@ -344,6 +344,18 @@
             </div>
           {% endif %}
         {% endfor %}
+        {% if group_name|lower == 'coordonnées principales' %}
+        <div class="row mb-2" id="row_date_fin_habilitation_annexe">
+          <div class="col-md-4 fw-bold text-end">Date fin habilitation</div>
+          <div class="col-md-8">
+            <input type="text" class="form-control" readonly
+                   value="{{ date_fin_habilitation or '' }}"
+                   placeholder="{{ 'Date de fin d\'habilitation non renseignée dans l\'annexe 1 bis' if annexe_existe else 'Aucune annexe 1 bis' }}"
+                   title="Lecture seule : issue de la dernière annexe 1 bis">
+            <div class="form-text">Issue de la dernière annexe 1 bis.</div>
+          </div>
+        </div>
+        {% endif %}
       </div>
     </fieldset>
     {% endfor %}

@@ -396,6 +396,8 @@ def marquer_comptabilise(engagement_id):
         "appliquer_futurs"
     ) == "1"
 
+    solder = request.form.get("solder") == "1"
+
     if not numero_ecriture_ebp:
 
         flash(
@@ -420,8 +422,10 @@ def marquer_comptabilise(engagement_id):
 
     # Montant négatif autorisé ici (et seulement ici) : facture
     # d'avoir / remboursement promotionnel constaté au rapprochement
-    # bancaire. Le zéro reste refusé.
-    if nouveau_montant is None or nouveau_montant == 0:
+    # bancaire. Le zéro est aussi autorisé : engagement soldé par
+    # compensation d'un trop-payé (le champ « n° écriture EBP » peut
+    # alors contenir un commentaire libre).
+    if nouveau_montant is None:
 
         flash(
             "⚠️ Le montant saisi est invalide.",
@@ -451,12 +455,26 @@ def marquer_comptabilise(engagement_id):
             abort(404)
 
         depense = conn.execute("""
-            SELECT montant_total
+            SELECT montant_total, montant_paye_cumule, montant_prevu_initial
             FROM engagements_depenses
             WHERE engagement_id = ?
         """, (engagement_id,)).fetchone()
 
         ancien_montant = Decimal(str(depense["montant_total"]))
+        deja_paye = Decimal(str(depense["montant_paye_cumule"] or 0))
+        reste_avant = ancien_montant - deja_paye
+
+        # Paiement partiel : montant payé inférieur au reste à payer,
+        # sans demande de solde. Le montant prévu est conservé et
+        # l'engagement repasse « à payer » pour le reste.
+        # Un montant à 0 ou négatif (avoir) clôt toujours la ligne.
+        partiel = (
+            not solder
+            and nouveau_montant > 0
+            and nouveau_montant < reste_avant
+        )
+        # Total réellement payé une fois la ligne close
+        montant_final = deja_paye + nouveau_montant
 
         if engagement["statut"] != "reglee":
 
@@ -505,7 +523,13 @@ def marquer_comptabilise(engagement_id):
             )
 
         ancien_statut = engagement["statut"]
-        nouveau_statut = "comptabilise"
+        nouveau_statut = "a_payer" if partiel else "comptabilise"
+
+        # Paiements successifs : on cumule les références d'écriture
+        numero_stocke = numero_ecriture_ebp
+        ancien_numero = (engagement["numero_ecriture_ebp"] or "").strip()
+        if ancien_numero and ancien_numero != numero_ecriture_ebp:
+            numero_stocke = f"{ancien_numero} ; {numero_ecriture_ebp}"
 
         # =====================================================
         # UPDATE ENGAGEMENT
@@ -522,9 +546,61 @@ def marquer_comptabilise(engagement_id):
         """, (
             nouveau_statut,
             current_user.id,
-            numero_ecriture_ebp,
+            numero_stocke,
             engagement_id
         ))
+
+        if partiel:
+
+            conn.execute("""
+                UPDATE engagements_depenses
+                SET montant_paye_cumule = ?
+                WHERE engagement_id = ?
+            """, (float(montant_final), engagement_id))
+
+            conn.execute("""
+                INSERT INTO engagements_workflow (
+                    engagement_id, action, ancien_statut,
+                    nouveau_statut, commentaire, user_id, user_email
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                engagement_id,
+                "comptabilisation_partielle",
+                ancien_statut,
+                nouveau_statut,
+                f"Paiement partiel de {nouveau_montant}€ comptabilisé "
+                f"(écriture EBP n° {numero_ecriture_ebp}). Payé au total "
+                f"{montant_final}€ sur {ancien_montant}€ : reste à payer "
+                f"{ancien_montant - montant_final}€.",
+                current_user.id,
+                current_user.email
+            ))
+
+            conn.commit()
+
+            write_log(
+                f"[ENGAGEMENTS] Comptabilisation partielle engagement "
+                f"#{engagement_id} ({nouveau_montant}€, reste "
+                f"{ancien_montant - montant_final}€)"
+            )
+
+            flash(
+                f"✅ Paiement partiel comptabilisé ({nouveau_montant} €). "
+                f"Reste à payer : {ancien_montant - montant_final} €.",
+                "success"
+            )
+
+            return redirect(
+                url_for(
+                    "engagements.detail_engagement",
+                    engagement_id=engagement_id
+                )
+            )
+
+        # Ligne close : le total payé devient le montant de l'engagement
+        # (identique au prévu si le reste a été payé en totalité).
+        nouveau_montant = montant_final
 
         # =====================================================
         # WORKFLOW
@@ -566,9 +642,15 @@ def marquer_comptabilise(engagement_id):
 
             conn.execute("""
                 UPDATE engagements_depenses
-                SET montant_total = ?
+                SET montant_total = ?,
+                    montant_prevu_initial = COALESCE(
+                        montant_prevu_initial, ?
+                    )
                 WHERE engagement_id = ?
-            """, (float(nouveau_montant), engagement_id))
+            """, (
+                float(nouveau_montant), float(ancien_montant),
+                engagement_id
+            ))
 
             conn.execute("""
                 INSERT INTO engagements_workflow (
@@ -595,6 +677,13 @@ def marquer_comptabilise(engagement_id):
                 current_user.id,
                 current_user.email
             ))
+
+        # Total payé = montant final : reste à payer = 0
+        conn.execute("""
+            UPDATE engagements_depenses
+            SET montant_paye_cumule = ?
+            WHERE engagement_id = ?
+        """, (float(nouveau_montant), engagement_id))
 
         # =====================================================
         # REPERCUSSION SUR LES PROCHAINS PRELEVEMENTS DE

@@ -161,7 +161,7 @@
         }) %}
     {% endif %}
 
-    {% if has_access('engagement_parametres', 'lecture') %}
+    {% if has_access('engagements', 'ecriture') or has_access('engagement_parametres', 'lecture') %}
         {% set _ = buttons.append({
         'url': url_for('engagements.engagements_reporting'),
         'label': "📊 Reporting",
@@ -169,7 +169,7 @@
         }) %}
     {% endif %}
 
-    {% if has_access('engagement_parametres', 'lecture') %}
+    {% if has_access('engagements', 'ecriture') or has_access('engagement_parametres', 'lecture') %}
         {% set _ = buttons.append({
         'url': url_for('engagements.suivi_budgetaire'),
         'label': "📈 Suivi budgétaire",
@@ -177,7 +177,7 @@
         }) %}
     {% endif %}
 
-    {% if has_access('engagement_parametres', 'lecture') %}
+    {% if has_access('engagements', 'ecriture') or has_access('engagement_parametres', 'lecture') %}
             {% set _ = buttons.append({
             'url': url_for('engagements.engagements_ged'),
             'label': "🗂️ GED",

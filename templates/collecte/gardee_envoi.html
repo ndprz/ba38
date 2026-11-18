@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/buttons.html" import action_button, action_buttons, bouton_retour %}
 {% from "macros/mailjet_statut.html" import badge_statut_mailjet, bouton_verifier_statut_mailjet %}
 
 {% block title %}Envoi associations gardant {{ annee }}{% endblock %}
@@ -19,7 +19,7 @@
     <h2>📧 Envoi aux associations gardant {{ annee }}</h2>
 
     {% call action_buttons() %}
-        {{ action_button("↩️ Retour", href=url_for('collecte.gardee', annee=annee), color="outline-dark") }}
+        {{ bouton_retour(url_for('collecte.gardee', annee=annee)) }}
         {{ action_button("🗜️ Télécharger tout (ZIP)", href=url_for('collecte.gardee_telecharger_zip', annee=annee), color="outline-secondary") }}
     {% endcall %}
     {{ bouton_verifier_statut_mailjet(annee, feature) }}
@@ -65,16 +65,33 @@
         </form>
     </div>
 
+    <div class="mb-2">
+        <label for="libelle_relance" class="form-label small mb-1">
+            Libellé supplémentaire pour une relance (optionnel — ajouté à la fin de l'objet du mail,
+            ex. « Rappel — en attente de résultats »)
+        </label>
+        <input type="text" id="libelle_relance" class="form-control form-control-sm" style="max-width: 420px;"
+               placeholder="ex. Rappel — en attente de résultats">
+    </div>
+
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
         <form method="post" action="{{ url_for('collecte.gardee_relancer') }}" class="d-flex align-items-center gap-1 m-0">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="annee" value="{{ annee }}">
             <input type="hidden" name="groupe" value="repondu">
+            <input type="hidden" name="libelle_supplementaire" class="champ-libelle-relance">
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    onclick="filtrerDestinataires('repondu', 'non-répondants');">
+                👁️ Voir la liste
+            </button>
+            <button type="submit" name="action" value="test" class="btn btn-sm btn-outline-info">
+                🧪 Tester sur mon adresse
+            </button>
             <div class="form-check m-0">
                 <input class="form-check-input" type="checkbox" name="confirmation_envoi" value="oui" id="confirmation_envoi_repondu">
                 <label class="form-check-label small" for="confirmation_envoi_repondu">confirmer</label>
             </div>
-            <button type="submit" class="btn btn-sm btn-outline-warning"
+            <button type="submit" name="action" value="relancer" class="btn btn-sm btn-outline-warning"
                     onclick="return confirm('Relancer toutes les associations dont la case « Répondu » n\'est pas cochée ?');">
                 🔁 Relancer les non-répondants
             </button>
@@ -83,11 +100,19 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="annee" value="{{ annee }}">
             <input type="hidden" name="groupe" value="resultat_envoye">
+            <input type="hidden" name="libelle_supplementaire" class="champ-libelle-relance">
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    onclick="filtrerDestinataires('resultat_envoye', 'sans résultat envoyé');">
+                👁️ Voir la liste
+            </button>
+            <button type="submit" name="action" value="test" class="btn btn-sm btn-outline-info">
+                🧪 Tester sur mon adresse
+            </button>
             <div class="form-check m-0">
                 <input class="form-check-input" type="checkbox" name="confirmation_envoi" value="oui" id="confirmation_envoi_resultat">
                 <label class="form-check-label small" for="confirmation_envoi_resultat">confirmer</label>
             </div>
-            <button type="submit" class="btn btn-sm btn-outline-warning"
+            <button type="submit" name="action" value="relancer" class="btn btn-sm btn-outline-warning"
                     onclick="return confirm('Relancer toutes les associations dont la case « Résultat envoyé » n\'est pas cochée ?');">
                 🔁 Relancer ceux sans résultat
             </button>
@@ -97,12 +122,20 @@
     <form method="post">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="annee" value="{{ annee }}">
-        <h5>Destinataires ({{ associations|length }} associations)</h5>
-        <table class="table table-sm table-striped align-middle">
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <h5 class="mb-0">Destinataires ({{ associations|length }} associations)</h5>
+            <button type="button" id="btn-afficher-tout" class="btn btn-sm btn-outline-dark d-none"
+                    onclick="afficherToutesDestinataires();">
+                ✖️ Afficher toutes
+            </button>
+        </div>
+        <div id="filtre-destinataires-info" class="alert alert-secondary small d-none py-1 mb-2"></div>
+        <table class="table table-sm table-striped align-middle" id="tableDestinataires">
             <thead>
                 <tr>
                     <th>Code VIF</th><th>Association</th><th style="max-width: 220px;">Adresse(s)</th><th>Magasins</th>
                     <th>Poids total (kg)</th>
+                    <th title="Repère : total {{ annee_precedente }} (fichier associationgardantproduits{{ annee_precedente }}.xlsx)">Poids {{ annee_precedente }} (kg)</th>
                     <th>Répondu</th><th>Résultat envoyé</th><th>Saisie en ligne</th><th>Statut</th><th></th>
                 </tr>
             </thead>
@@ -117,6 +150,7 @@
                 </td>
                 <td>{{ asso.magasins|length }}</td>
                 <td>{{ "%.0f"|format(asso.poids_total) if asso.poids_total else "—" }}</td>
+                <td class="text-muted">{{ "%.0f"|format(asso.poids_total_n1) if asso.poids_total_n1 else "—" }}</td>
                 <td>
                     <input type="checkbox" class="case-suivi" data-champ="repondu" data-association="{{ asso.nom }}"
                            {% if asso.suivi.repondu %}checked{% endif %}>
@@ -145,6 +179,7 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="annee" value="{{ annee }}">
                         <input type="hidden" name="association" value="{{ asso.nom }}">
+                        <input type="hidden" name="libelle_supplementaire" class="champ-libelle-relance">
                         <button type="submit" class="btn btn-sm btn-outline-secondary"
                                 onclick="return confirm('Renvoyer le mail à « {{ asso.nom }} » ?');"
                                 {% if not asso.emails %}disabled title="Aucune adresse"{% endif %}>
@@ -203,6 +238,15 @@
 
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 <script>
+// Recopie le libellé de relance saisi en haut de page dans le champ caché
+// du formulaire au moment de l'envoi (relance groupée ou ligne par ligne,
+// tous partagent le même champ texte visible).
+document.querySelectorAll(".champ-libelle-relance").forEach(function (champ) {
+    champ.closest("form").addEventListener("submit", function () {
+        champ.value = document.getElementById("libelle_relance").value.trim();
+    });
+});
+
 const texteMailTextarea = document.getElementById("texte_mail");
 const quillTexteMail = new Quill(document.getElementById("texte_mail_quill"), {
     theme: "snow",
@@ -247,6 +291,30 @@ document.querySelectorAll(".case-suivi").forEach(function (case_) {
         });
     });
 });
+
+function filtrerDestinataires(champ, libelle) {
+    const lignes = document.querySelectorAll("#tableDestinataires tbody tr");
+    let nb = 0;
+    lignes.forEach(function (ligne) {
+        const case_ = ligne.querySelector('.case-suivi[data-champ="' + champ + '"]');
+        const concerne = !!case_ && !case_.checked;
+        ligne.classList.toggle("d-none", !concerne);
+        if (concerne) nb++;
+    });
+    const info = document.getElementById("filtre-destinataires-info");
+    info.textContent = "👁️ Liste filtrée sur « " + libelle + " » — " + nb + " association(s) concernée(s) par cette relance.";
+    info.classList.remove("d-none");
+    document.getElementById("btn-afficher-tout").classList.remove("d-none");
+    document.getElementById("tableDestinataires").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function afficherToutesDestinataires() {
+    document.querySelectorAll("#tableDestinataires tbody tr").forEach(function (ligne) {
+        ligne.classList.remove("d-none");
+    });
+    document.getElementById("filtre-destinataires-info").classList.add("d-none");
+    document.getElementById("btn-afficher-tout").classList.add("d-none");
+}
 
 document.getElementById("btn-apercu-mail").addEventListener("click", function () {
     const nom = document.getElementById("association_test_nom").value;

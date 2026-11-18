@@ -99,10 +99,22 @@ STATUTS_EN_COURS = {
 
 def _est_admin_ged():
     """
-    Accès GED réservé aux admins engagement_parametres.
-    C'est le même rôle que l'admin du reporting.
+    Accès GED : droit écriture sur engagements, ou admin engagement_parametres.
     """
-    return has_access("engagement_parametres", "lecture")
+    return (has_access("engagements", "ecriture")
+            or has_access("engagement_parametres", "lecture"))
+
+
+def _acces_ged(f):
+    from functools import wraps
+    from flask import abort
+
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not _est_admin_ged():
+            abort(403)
+        return f(*args, **kwargs)
+    return wrapper
 
 
 def _trouver_palier(montant, paliers):
@@ -327,6 +339,12 @@ def _build_ged_query(filters):
         where.append("e.numero_ecriture_ebp LIKE ?")
         params.append(f"%{filters['numero_ebp']}%")
 
+    if filters.get("destinataire"):
+        where.append(
+            "(d.fournisseur_nom LIKE ? OR d.beneficiaire_nom LIKE ?)"
+        )
+        params.extend([f"%{filters['destinataire']}%"] * 2)
+
     # Le filtre completude est appliqué en Python après calcul
     sql = f"""
         SELECT
@@ -420,7 +438,7 @@ def _charger_fichiers_par_engagement(conn, ids_engagements):
     methods=["GET", "POST"]
 )
 @login_required
-@require_access("engagement_parametres", "lecture")
+@_acces_ged
 def engagements_ged():
     """
     Page GED principale.
@@ -447,6 +465,7 @@ def engagements_ged():
         "statut":       request.form.get("statut",        "").strip(),
         "avec_ebp":     request.form.get("avec_ebp",      "").strip(),
         "numero_ebp":   request.form.get("numero_ebp",    "").strip(),
+        "destinataire": request.form.get("destinataire",  "").strip(),
         "completude":   request.form.get("completude",    "").strip(),
         "archive":      request.form.get("archive",       "").strip(),
     }
@@ -591,7 +610,7 @@ def engagements_ged():
     methods=["POST"]
 )
 @login_required
-@require_access("engagement_parametres", "lecture")
+@_acces_ged
 def engagements_ged_excel():
     """
     Export Excel de la GED avec toutes les colonnes utiles au CAC,
@@ -609,6 +628,7 @@ def engagements_ged_excel():
         "statut":       request.form.get("statut",        "").strip(),
         "avec_ebp":     request.form.get("avec_ebp",      "").strip(),
         "numero_ebp":   request.form.get("numero_ebp",    "").strip(),
+        "destinataire": request.form.get("destinataire",  "").strip(),
         "completude":   request.form.get("completude",    "").strip(),
         "archive":      request.form.get("archive",       "").strip(),
     }

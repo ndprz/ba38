@@ -64,7 +64,7 @@
   <table class="table table-sm align-middle">
     <thead><tr>
       <th>Article</th><th>Libellé</th><th>Menu</th>
-      <th class="text-end">Calcul</th><th class="text-end">Qté préparée</th><th class="text-end">Qté livrée</th><th>Unité</th><th>Commentaire</th><th></th>
+      <th class="text-end">Calcul</th><th class="text-end">Qté préparée</th><th class="text-end">Qté livrée</th><th>Unité</th><th title="Lots réservés en FIFO (recalculés à chaque modification de quantité ; actualiser la page pour les voir)">Lots réservés</th><th>Commentaire</th><th></th>
     </tr></thead>
     <tbody>
     {% for l in lignes %}
@@ -89,6 +89,7 @@
                  {{ '' if peut_ecrire else 'disabled' }}>
         </td>
         <td>{{ l.unite }}</td>
+        <td class="small">{% for t in l.lots %}<div><strong>{{ t.lot or '(sans lot)' }}</strong>{% if t.dlc or t.ddm %} · {{ t.dlc or t.ddm }}{% endif %} · {{ ('%g'|format(t.quantite)).replace('.', ',') }}</div>{% endfor %}</td>
         <td><input type="text" class="form-control form-control-sm cmt" value="{{ l.commentaire or '' }}" {{ '' if peut_ecrire else 'disabled' }}></td>
         <td class="text-nowrap">
           <span class="etat-save"></span>

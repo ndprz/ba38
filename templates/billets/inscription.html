@@ -21,6 +21,8 @@
   {% elif c.statut == 'tiree' %}
     {% if p.resultat == 'gagnant' %}
       <div class="alert alert-success">🎉 Le tirage au sort a eu lieu : <b>une place vous est attribuée</b>.</div>
+    {% elif p.resultat == 'non_eligible' %}
+      <div class="alert alert-secondary">Le tirage au sort a eu lieu. Vous avez déjà gagné une place dans les 12 derniers mois : vous n'avez pas participé à ce tirage (un seul gain par période de 12 mois).</div>
     {% elif p.resultat == 'non_retenu' %}
       <div class="alert alert-secondary">Le tirage au sort a eu lieu : vous n'avez pas été retenu(e) cette fois-ci. Merci de votre participation.</div>
     {% else %}
@@ -29,6 +31,8 @@
   {% elif clos %}
     <div class="alert alert-warning">La date limite est dépassée : les inscriptions sont closes. Le tirage au sort va avoir lieu.</div>
     {% if p.etat == 'inscrit' %}<div class="alert alert-success mb-0">✅ Vous êtes inscrit(e) au tirage.</div>{% endif %}
+  {% elif gain %}
+    <div class="alert alert-secondary">Vous avez déjà gagné une place le {{ gain[8:10] }}/{{ gain[5:7] }}/{{ gain[:4] }} : pour que chacun puisse en profiter, une personne ne peut gagner qu'une place par période de 12 mois. Vous ne pouvez donc pas vous inscrire pour ce spectacle. Merci de votre compréhension.</div>
   {% else %}
     <form method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

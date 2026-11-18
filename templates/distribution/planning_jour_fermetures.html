@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/date_nav.html" import date_input %}
 
 {% block title %}Jours de fermeture{% endblock %}
 
@@ -61,7 +62,7 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="ajouter">
           <input type="hidden" name="annee" value="{{ annee }}">
-          <input type="date" name="date" class="form-control form-control-sm" required>
+          {{ date_input("date", "", required=True, aujourdhui=False, pleine_largeur=True) }}
           <input type="text" name="motif" class="form-control form-control-sm" placeholder="Motif (ex. Pont de l'Ascension)" maxlength="100">
           <button class="btn btn-success btn-sm">Ajouter</button>
         </form>

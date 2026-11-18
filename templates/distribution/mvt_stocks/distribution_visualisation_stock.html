@@ -91,7 +91,8 @@
                 <th>Coef brut</th>
                 <th title="Ramasses validées depuis le stock VIF (kg)">Entrées Basilic</th>
                 <th title="BL validés depuis le stock VIF, lignes en Kg">Sorties Basilic</th>
-                <th title="Kg brut VIF + entrées - sorties">Dispo Basilic (kg brut)</th>
+                <th title="Lots réservés par les bons de préparation pas encore validés (lignes en Kg) ; retombe à zéro à la validation du BL">Réservé (bons de prépa)</th>
+                <th title="Kg brut VIF + entrées - sorties - réservé">Dispo Basilic (kg brut)</th>
             </tr>
         </thead>
 
@@ -130,7 +131,7 @@
             {% endif %}
 
             <tr data-famille="{{ a.famille or 'Sans famille' }}" data-depot="{{ a.depot }}"
-                data-stock-zero="{% if not a.kg_net or (a.kg_net | float) <= 0 %}1{% else %}0{% endif %}">
+                data-stock-zero="{% if (not a.kg_net or (a.kg_net | float) <= 0) and (a.dispo_b is none or (a.dispo_b | float) <= 0) %}1{% else %}0{% endif %}">
                 <td>{{ a.article }}</td>
                 <td>{{ a.libelle }}</td>
                 <td>{{ a.sous_famille or "" }}</td>
@@ -177,6 +178,7 @@
 
                 <td class="text-end">{{ a.entree_b if a.entree_b is not none else "" }}</td>
                 <td class="text-end">{{ a.sortie_b if a.sortie_b is not none else "" }}</td>
+                <td class="text-end">{{ a.reserve_b if a.reserve_b is not none else "" }}</td>
                 <td class="text-end"><strong>{{ a.dispo_b if a.dispo_b is not none else "" }}</strong></td>
             </tr>
 

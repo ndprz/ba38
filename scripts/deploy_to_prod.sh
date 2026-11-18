@@ -223,7 +223,11 @@ done
 # ============================================================================
 echo "📁 Synchronisation DEV → PROD"
 
+# Les images collées dans les éditeurs de mails (static/modeles_images/) sont créées en PROD
+# aussi : on ne les supprime JAMAIS (sinon elles disparaissent des mails/campagnes à chaque
+# déploiement). On y ajoute seulement celles de DEV, sans --delete.
 rsync -av --delete \
+  --exclude "static/modeles_images/" \
   --exclude ".env" \
   --exclude ".git/" \
   --exclude ".git_OLD_ba380DEV/" \
@@ -243,6 +247,9 @@ rsync -av --delete \
   --exclude "__pycache__/" \
   --exclude "venv/" \
   "$DEV_DIR/" "$PROD_DIR/"
+
+mkdir -p "$PROD_DIR/static/modeles_images"
+rsync -a "$DEV_DIR/static/modeles_images/" "$PROD_DIR/static/modeles_images/"
 
 # ============================================================================
 # 📝 VERSION

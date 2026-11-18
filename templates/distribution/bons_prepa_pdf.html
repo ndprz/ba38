@@ -27,6 +27,8 @@
   .case { width: 9mm; text-align: center; }
   .case span { display: inline-block; width: 4.5mm; height: 4.5mm; border: 1px solid #333; }
   .cmt { font-size: 8pt; color: #444; }
+  .lots { font-size: 8pt; }
+  .manque { color: #b02a37; font-weight: bold; }
 </style>
 </head>
 <body>
@@ -57,7 +59,7 @@
 
   <table class="lignes">
     <thead><tr>
-      <th>Article</th><th>Libellé</th><th class="d">Préparée</th><th class="d">Livrée</th><th>Unité</th><th>Remarque</th><th class="case">Prép.</th>
+      <th>Article</th><th>Libellé</th><th class="d">Préparée</th><th class="d">Livrée</th><th>Unité</th><th>Lot(s) à prélever</th><th>Remarque</th><th class="case">Prép.</th>
     </tr></thead>
     <tbody>
     {% for l in b.lignes %}
@@ -67,6 +69,7 @@
         <td class="d qte">{% if l.quantite is none %}<span class="vide">………</span>{% else %}{{ ('%g'|format(l.quantite)).replace('.', ',') }}{% endif %}</td>
         <td class="d qte">{% if l.quantite_livree is not none %}{{ ('%g'|format(l.quantite_livree)).replace('.', ',') }}{% endif %}</td>
         <td>{{ l.unite }}</td>
+        <td class="lots">{% for t in l.lots %}<div><strong>{{ t.lot or '(sans lot)' }}</strong>{% if t.dlc or t.ddm %} · {{ t.dlc or t.ddm }}{% endif %} · {{ ('%g'|format(t.quantite)).replace('.', ',') }}</div>{% endfor %}{% if l.manque %}<div class="manque">⚠️ stock insuffisant : {{ ('%g'|format(l.manque)).replace('.', ',') }} non réservé</div>{% elif not l.lots and l.quantite %}<div class="manque">⚠️ aucun lot en stock</div>{% endif %}</td>
         <td class="cmt">{{ l.commentaire or '' }}</td>
         <td class="case"><span></span></td>
       </tr>

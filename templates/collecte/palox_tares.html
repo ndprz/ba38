@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/buttons.html" import action_button, action_buttons, bouton_retour %}
 
 {% block title %}Tares — Pesée palox{% endblock %}
 
@@ -35,7 +35,7 @@
     </p>
 
     {% call action_buttons() %}
-        {{ action_button("↩️ Retour", href=url_for('collecte.palox_categories'), color="outline-dark") }}
+        {{ bouton_retour(url_for('collecte.palox_categories')) }}
         <button type="button" id="btn-ajouter-ligne" class="btn btn-outline-primary btn-sm">➕ Ajouter une tare</button>
         <button type="button" id="btn-enregistrer" class="btn btn-warning btn-sm">💾 Enregistrer</button>
         <button type="button" id="btn-imprimer" class="btn btn-outline-primary btn-sm">🖨️ Imprimer</button>

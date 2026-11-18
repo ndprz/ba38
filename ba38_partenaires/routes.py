@@ -198,6 +198,19 @@ def partenaires_tabulator():
 
         fields = cursor.fetchall()
 
+        # Date de fin d'habilitation = celle de la dernière annexe 1 bis
+        fin_hab = {}
+        for r in cursor.execute("""
+            SELECT a.partenaire_id, a.date_FIN_habilitation
+            FROM annexe1bis a
+            WHERE a.id = (
+                SELECT b.id FROM annexe1bis b
+                WHERE b.partenaire_id = a.partenaire_id
+                ORDER BY b.date_creation DESC, b.id DESC LIMIT 1
+            )
+        """).fetchall():
+            fin_hab[r[0]] = _format_date_fr(r[1])
+
     # ============================================================
     # NORMALISATION
     # ============================================================
@@ -249,6 +262,8 @@ def partenaires_tabulator():
         for key in row.keys():
 
             d[normalize(key)] = row[key]
+
+        d["date_fin_habilitation_annexe"] = fin_hab.get(row["Id"], "")
 
         table_data.append(d)
 
@@ -502,6 +517,38 @@ def partenaires_tabulator():
             col["formatter"] = "emailFormatter"
 
         columns.append(col)
+
+    # Colonne virtuelle (hors table associations) : fin d'habilitation de la dernière annexe 1 bis
+    cle_coord = next(
+        (g for g in grouped_fields if g.lower() == "coordonnées principales"), None
+    )
+    if cle_coord:
+        noms_coord = {f["normalized"] for f in grouped_fields[cle_coord]}
+        grouped_fields[cle_coord].append({
+            "field_name": "Date fin habilitation (annexe 1 bis)",
+            "normalized": "date_fin_habilitation_annexe",
+        })
+        idx = max(
+            (i for i, c in enumerate(columns) if c["field"] in noms_coord),
+            default=len(columns) - 1,
+        )
+    else:
+        idx = len(columns) - 1
+    columns.insert(idx + 1, {
+        "title": "Date fin habilitation (annexe 1 bis)",
+        "field": "date_fin_habilitation_annexe",
+        "tooltip": True,
+        "headerTooltip": "Issue de la dernière annexe 1 bis",
+        "minWidth": 140,
+        "widthGrow": 1,
+        "hozAlign": "center",
+        "headerFilter": "list",
+        "headerFilterParams": {
+            "valuesLookup": "active", "clearable": True,
+            "autocomplete": True, "sort": "asc",
+        },
+        "headerFilterFunc": "=",
+    })
 
     return render_template(
         "partenaires/partenaires_tabulator.html",
@@ -1335,10 +1382,14 @@ def update_partner(partner_id):
                 ).fetchall()
             ]
 
+            annexe_existe, date_fin_habilitation = _date_fin_habilitation_derniere_annexe(cursor, partner_id)
+
             conn.close()
 
             return render_template(
                 "partenaires/update_partenaire.html",
+                date_fin_habilitation=date_fin_habilitation,
+                annexe_existe=annexe_existe,
                 partenaire=partner_dict,
                 partner_id=partner_id,
                 nom_association=request.form.get(
@@ -1601,10 +1652,14 @@ def update_partner(partner_id):
         ).fetchall()
     ]
 
+    annexe_existe, date_fin_habilitation = _date_fin_habilitation_derniere_annexe(cursor, partner_id)
+
     conn.close()
 
     return render_template(
         "partenaires/update_partenaire.html",
+        date_fin_habilitation=date_fin_habilitation,
+        annexe_existe=annexe_existe,
         partenaire=partner_dict,
         partner_id=partner_id,
         nom_association=partner_dict.get(
@@ -1632,6 +1687,37 @@ def update_partner(partner_id):
         data=dict(partner),
         besoins_historique=besoins_historique
     )
+
+
+def _format_date_fr(val):
+    """Date texte (AAAA-MM-JJ ou JJ/MM/AAAA) -> JJ/MM/AAAA ; chaîne vide si absente."""
+    val = (val or "").strip()
+    if not val:
+        return ""
+    try:
+        return datetime.strptime(val[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+    except ValueError:
+        return val
+
+
+def _date_fin_habilitation_derniere_annexe(cursor, partner_id):
+    """Date de fin d'habilitation de la dernière annexe 1 bis.
+
+    Retourne (annexe_existe, date JJ/MM/AAAA ou None)."""
+    row = cursor.execute(
+        "SELECT date_FIN_habilitation FROM annexe1bis WHERE partenaire_id = ? "
+        "ORDER BY date_creation DESC, id DESC LIMIT 1",
+        (partner_id,),
+    ).fetchone()
+    if not row:
+        return (False, None)
+    val = (row[0] or "").strip()
+    if not val:
+        return (True, None)
+    try:
+        return (True, datetime.strptime(val[:10], "%Y-%m-%d").strftime("%d/%m/%Y"))
+    except ValueError:
+        return (True, val)
 
 
 @partenaires_bp.route("/delete_partner/<int:partner_id>", methods=["POST"])

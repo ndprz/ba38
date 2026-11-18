@@ -192,6 +192,10 @@
         </div>
         {% endfor %}
       </div>
+      <div class="form-check mt-3">
+        <input class="form-check-input" type="checkbox" name="a_jour" value="1" id="a_jour" {% if cfg.a_jour %}checked{% endif %}>
+        <label class="form-check-label fw-bold" for="a_jour">Uniquement les bénévoles à jour de cotisation en {{ annee_cotisation }}</label>
+      </div>
       <div class="mt-3 d-flex gap-2 flex-wrap">
         <button type="button" class="btn btn-outline-secondary btn-sm"
                 onclick="document.querySelectorAll('.fonction-cb').forEach(e=>e.checked=true)">☑️ Toutes les fonctions</button>

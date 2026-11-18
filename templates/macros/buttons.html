@@ -27,6 +27,16 @@
 {% endmacro %}
 
 
+{% macro bouton_retour(href, libelle="↩️ Retour") %}
+{# Revient à la page précédente de l'historique du navigateur plutôt
+   qu'à une destination fixe, quand c'est possible — href reste le
+   repli si la page est ouverte sans historique (lien direct, nouvel
+   onglet). #}
+{{ action_button(libelle, href=href, color="outline-dark",
+    onclick="if (window.history.length > 1) { history.back(); return false; }") }}
+{% endmacro %}
+
+
 {% macro action_buttons(buttons=None) %}
 <div class="d-flex justify-content-end mb-3">
     <div style="display:flex; gap:15px; flex-wrap:wrap;">

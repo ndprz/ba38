@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/buttons.html" import action_button, action_buttons, bouton_retour %}
 
 {% block title %}Comptage participants {{ annee }}{% endblock %}
 
@@ -9,7 +9,7 @@
     <h2>📊 Comptage participants {{ annee }}</h2>
 
     {% call action_buttons() %}
-        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+        {{ bouton_retour(url_for('collecte.collecte_main', annee=annee)) }}
         {{ action_button("📤 Télécharger (Excel)", href=url_for('collecte.participants_comptage_export', annee=annee), color="outline-success") }}
     {% endcall %}
 

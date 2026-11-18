@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
-{% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/buttons.html" import action_button, action_buttons, bouton_retour %}
+{% from "macros/confirmation_renforcee.html" import modal_confirmation_renforcee, bouton_ouvrir_confirmation_renforcee %}
 
 {% block title %}Quantités par produit {{ annee }}{% endblock %}
 
@@ -58,16 +59,26 @@
     </p>
 
     {% call action_buttons() %}
-        {{ action_button("↩️ Retour", href=url_for('collecte.collecte_main', annee=annee), color="outline-dark") }}
+        {{ bouton_retour(url_for('collecte.collecte_main', annee=annee)) }}
         {{ action_button("📄 Générer BL VIF", href=url_for('collecte.quantites_produits_bl_vif', annee=annee), color="outline-primary") }}
         {{ action_button("📋 Transferts à saisir dans VIF", href=url_for('collecte.quantites_produits_transferts', annee=annee), color="outline-primary") }}
-        <button type="button" id="btn-reinitialiser" class="btn btn-outline-danger btn-sm">🗑️ Repartir à zéro</button>
+        {{ bouton_ouvrir_confirmation_renforcee("modalRazQuantites", "🗑️ Repartir à zéro") }}
     {% endcall %}
 
-    <div class="alert {% if total_transfere|round(0) == total_stock_gardee|round(0) %}alert-success{% else %}alert-warning{% endif %} small py-1 mb-2">
-        Total quantités par produit : <strong>{{ total_transfere|round(0)|int }} kg</strong> —
-        stock entré sur l'article 5010010 (poids par magasin gardé) : <strong>{{ total_stock_gardee|round(0)|int }} kg</strong>
-        {% if total_transfere|round(0) != total_stock_gardee|round(0) %}(écart {{ (total_stock_gardee - total_transfere)|round(0)|int }} kg){% endif %}
+    {{ modal_confirmation_renforcee(
+        "modalRazQuantites",
+        "🗑️ Repartir à zéro — Quantités par produit",
+        "Effacer définitivement toutes les saisies « Quantités par produit » de " ~ annee ~
+            " pour TOUTES les associations ? Action irréversible.",
+        url_for('collecte.resultat_collecte_remise_a_zero', annee=annee, cle='quantites'),
+        annee,
+        libelle_bouton="🗑️ Effacer définitivement"
+    ) }}
+
+    <div class="alert {% if total_transfere|round(2) == total_stock_gardee|round(2) %}alert-success{% else %}alert-warning{% endif %} small py-1 mb-2">
+        Total quantités par produit : <strong>{{ "%.2f"|format(total_transfere) }} kg</strong> —
+        stock entré sur l'article 5010010 (poids par magasin gardé) : <strong>{{ "%.2f"|format(total_stock_gardee) }} kg</strong>
+        {% if total_transfere|round(2) != total_stock_gardee|round(2) %}(écart {{ "%.2f"|format(total_stock_gardee - total_transfere) }} kg){% endif %}
     </div>
 
     {% if not mercuriale_importee %}
@@ -95,6 +106,8 @@
 const lignes = {{ lignes|tojson }};
 const associations = {{ associations|tojson }};
 const codeVifAssociations = {{ code_vif_associations|tojson }};
+const totauxAssociationsN1 = {{ totaux_associations_n1|tojson }};
+const anneePrecedente = {{ annee_precedente }};
 const annee = {{ annee }};
 const urlEnregistrer = "{{ url_for('collecte.enregistrer_quantites_produits') }}";
 const csrfToken = "{{ csrf_token() }}";
@@ -149,19 +162,29 @@ function sauvegarderCellule(cell) {
 
 const colonnesAssociations = associations.map(function (nom) {
     const codeVif = codeVifAssociations[nom];
+    const totalN1 = totauxAssociationsN1[nom];
+    const titreBase = nom + (codeVif ? " (" + codeVif + ")" : "");
     return {
-        title: nom + (codeVif ? " (" + codeVif + ")" : ""),
+        title: titreBase,
+        titleFormatter: function () {
+            let html = titreBase;
+            if (totalN1 !== undefined && totalN1 !== null) {
+                html += "<br><span class=\"fw-normal text-muted\" style=\"font-size:0.75em;\">"
+                    + anneePrecedente + " : " + Math.round(totalN1) + " kg</span>";
+            }
+            return html;
+        },
         field: nom,
         width: 110,
         hozAlign: "right",
         headerWordWrap: true,
         editor: "number",
-        editorParams: { min: 0, step: 1 },
+        editorParams: { min: 0, step: 0.01 },
         topCalc: "sum",
-        topCalcParams: { precision: 0 },
+        topCalcParams: { precision: 2 },
         formatter: function (cell) {
             const v = cell.getValue();
-            return (v === null || v === undefined) ? "" : Math.round(v);
+            return (v === null || v === undefined) ? "" : Math.round(v * 100) / 100;
         },
         cellEdited: sauvegarderCellule,
     };
@@ -183,8 +206,8 @@ lignes.forEach(function (l) { Object.assign(l, calculerTotauxLigne(l)); });
 
 const colonnesValorisation = [
     { title: "Total poids (kg)", field: "total_poids", width: 130, hozAlign: "right",
-      formatter: function (cell) { return Math.round(cell.getValue() || 0); },
-      topCalc: "sum", topCalcFormatter: function (cell) { return "<strong>" + Math.round(cell.getValue() || 0) + "</strong>"; } },
+      formatter: function (cell) { return Math.round((cell.getValue() || 0) * 100) / 100; },
+      topCalc: "sum", topCalcFormatter: function (cell) { return "<strong>" + Math.round((cell.getValue() || 0) * 100) / 100 + "</strong>"; } },
     { title: "Valeur (€)", field: "valeur", width: 130, hozAlign: "right",
       formatter: function (cell) {
           const v = cell.getValue();
@@ -235,24 +258,6 @@ table.on("tableBuilt", function () {
 });
 table.on("renderComplete", syncTopScrollWidth);
 window.addEventListener("resize", syncTopScrollWidth);
-
-document.getElementById("btn-reinitialiser").addEventListener("click", function () {
-    if (!confirm("Effacer TOUTES les saisies de quantités par produit de " + annee + " ? Cette action est irréversible.")) return;
-    fetch("{{ url_for('collecte.quantites_produits_reinitialiser', annee=annee) }}", {
-        method: "POST",
-        headers: { "X-CSRFToken": csrfToken },
-    })
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-        if (data.success) {
-            afficherMessage("✅ " + data.nb_supprimees + " saisie(s) effacée(s) — rechargement…", "success");
-            setTimeout(function () { window.location.reload(); }, 800);
-        } else {
-            afficherMessage("⛔ Échec de la réinitialisation", "danger");
-        }
-    })
-    .catch(function () { afficherMessage("⛔ Erreur réseau.", "danger"); });
-});
 
 const filtreInput = document.getElementById("filtre-recherche");
 filtreInput.addEventListener("input", function () {

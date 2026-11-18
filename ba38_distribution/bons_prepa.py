@@ -215,6 +215,8 @@ def generer_bons(d: date, type_menu: str, recalculer: bool = False, par: str = "
                 "SELECT id FROM bons_preparation WHERE date_distribution=? AND type_bon=? AND statut='preparation'",
                 (iso, type_menu))]
             for i in ids:
+                conn.execute("""DELETE FROM bons_preparation_lots WHERE ligne_id IN
+                                (SELECT id FROM bons_preparation_lignes WHERE bon_id=?)""", (i,))
                 conn.execute("DELETE FROM bons_preparation_lignes WHERE bon_id=?", (i,))
                 conn.execute("DELETE FROM bons_preparation WHERE id=?", (i,))
         crees = existants = 0
@@ -248,6 +250,7 @@ def generer_bons(d: date, type_menu: str, recalculer: bool = False, par: str = "
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (bon_id, l["ordre"], l["menu_code"], l["article"], l["libelle"], l["source"],
                      l["portion"], l["coef"], l["quantite_calc"], l["quantite"], l["unite"], l["commentaire"]))
+            reserver_lots_bon(conn, bon_id)   # lots FIFO réservés pour ce bon (imprimés sur le bon de préparation)
             crees += 1
         conn.commit()
         return {"crees": crees, "existants": existants, "ignores": ignores, "sans_menu": sans_menu}
@@ -342,6 +345,9 @@ def bons_prepa_voir(bon_id):
         return redirect(url_for("distribution.bons_prepa_liste"))
     lignes = [dict(r) for r in conn.execute(
         "SELECT * FROM bons_preparation_lignes WHERE bon_id = ? ORDER BY ordre, id", (bon_id,))]
+    for l in lignes:   # lots réservés (bon en préparation) ou affectés (BL validé)
+        l["lots"] = [dict(t) for t in conn.execute(
+            "SELECT lot, dlc, ddm, quantite FROM bons_preparation_lots WHERE ligne_id = ? ORDER BY id", (l["id"],))]
     articles = [dict(r) for r in conn.execute("SELECT article, libelle FROM articles ORDER BY article")]
     conn.close()
     ecriture = has_access("distribution", "ecriture")
@@ -371,6 +377,7 @@ def bons_prepa_save(bon_id):
         lid = data.get("ligne_id")
         if lid is not None:
             if data.get("supprimer"):
+                conn.execute("DELETE FROM bons_preparation_lots WHERE ligne_id=?", (lid,))
                 conn.execute("DELETE FROM bons_preparation_lignes WHERE id=? AND bon_id=?", (lid, bon_id))
             else:
                 if "quantite" in data:
@@ -418,6 +425,8 @@ def bons_prepa_save(bon_id):
                             VALUES (?,?,?,?,?,?,?,?)""",
                          (bon_id, ordre, "", art["article"], art["libelle"] or "", "ajout", qte, unite))
         conn.execute("UPDATE bons_preparation SET modifie_le=CURRENT_TIMESTAMP WHERE id=?", (bon_id,))
+        if aj or data.get("supprimer") or "quantite" in data or "quantite_livree" in data:
+            reserver_lots_bon(conn, bon_id)   # quantité changée : les lots réservés sont recalculés
         conn.commit()
         return jsonify(ok=True)
     finally:
@@ -438,6 +447,12 @@ def _charger_bons_pdf(conn, where: str, params: tuple) -> list[dict]:
         b["date_fr"] = f"{iso[8:10]}/{iso[5:7]}/{iso[:4]}"
         b["lignes"] = [dict(r) for r in conn.execute(
             "SELECT * FROM bons_preparation_lignes WHERE bon_id = ? ORDER BY ordre, id", (b["id"],))]
+        for l in b["lignes"]:   # lots réservés (bon en préparation) ou affectés (BL validé)
+            l["lots"] = [dict(t) for t in conn.execute(
+                "SELECT lot, dlc, ddm, quantite FROM bons_preparation_lots WHERE ligne_id = ? ORDER BY id", (l["id"],))]
+            q = l["quantite_livree"] if l["quantite_livree"] is not None else l["quantite"]
+            manque = round((q or 0) - sum(t["quantite"] for t in l["lots"]), 3)
+            l["manque"] = manque if (q or 0) > 0 and manque > TOLERANCE and b["statut"] == "preparation" else 0
     bons.sort(key=lambda b: (_rang_heure(b["heure"]), _sans_accents(b["nom_association"] or "")))
     return bons
 
@@ -515,7 +530,7 @@ def _base_unite(row, unite: str):
 def lignes_stock_03(conn, article: str) -> list[dict]:
     """Lots de l'article au dépôt de sortie : stock VIF + entrées de ramasses validées depuis ce stock
     (quantités brutes/nettes/colis, avant déduction des BL)."""
-    from .stock_basilic import entrees_ramasse
+    from .stock_basilic import entrees_ramasse, transferts_depuis_snapshot
     rows = {}
     for r in conn.execute("""SELECT COALESCE(lot, '') AS lot, depot, dlc, ddm, kg_net, kg_brut, col, pal FROM stocks
                              WHERE article = ? AND depot = ?""", (article, DEPOT_SORTIE)):
@@ -530,15 +545,35 @@ def lignes_stock_03(conn, article: str) -> list[dict]:
         else:
             rows[e["lot"]] = {"lot": e["lot"], "depot": DEPOT_SORTIE, "dlc": e["dlc"] or "", "ddm": "",
                               "kg_net": e["kg"] / coef, "kg_brut": e["kg"], "col": None, "pal": None}
+    # lots transférés du dépôt 02 vers 03 dans Basilic depuis ce stock (produits ajoutables FRAIS)
+    for t in transferts_depuis_snapshot(conn, article):
+        x = rows.get(t["lot"])
+        if x:
+            x["kg_brut"] = (x["kg_brut"] or 0) + t["kg"]
+            x["kg_net"] = (x["kg_net"] or 0) + t["kg"] / coef
+        else:
+            src = conn.execute("SELECT dlc, ddm FROM stocks WHERE article = ? AND depot = '02' AND COALESCE(lot, '') = ? LIMIT 1",
+                               (article, t["lot"])).fetchone()
+            rows[t["lot"]] = {"lot": t["lot"], "depot": DEPOT_SORTIE, "dlc": (src["dlc"] if src else "") or "",
+                              "ddm": (src["ddm"] if src else "") or "", "kg_net": t["kg"] / coef, "kg_brut": t["kg"],
+                              "col": None, "pal": None}
     return list(rows.values())
+
+
+def lots_prioritaires(conn, article: str, iso: str) -> set:
+    """Lots à servir en premier pour un bon FRAIS : ceux de la ramasse du jour et ceux ajoutés depuis le stock."""
+    from .stock_basilic import entrees_ramasse, lots_ajoutes_frais
+    return {e["lot"] for e in entrees_ramasse(conn, article)} | lots_ajoutes_frais(conn, article, iso)
 
 
 def stock_lots(conn, article: str, unite: str, exclure_bon_id: int = 0) -> list[dict]:
     """Lots disponibles d'un article dans le dépôt de sortie (03) uniquement, triés par DLC/DDM la plus proche.
     `dispo` = stock Basilic (stock VIF + entrées de ramasse) dans l'unité du bon, moins les lots déjà
-    affectés par des BL validés depuis ce stock (VIF ne les a pas encore décomptés)."""
-    from .stock_basilic import sorties_bl
+    affectés par des BL validés depuis ce stock (VIF ne les a pas encore décomptés) et moins les lots
+    réservés par les AUTRES bons encore en préparation."""
+    from .stock_basilic import reservations_prepa, sorties_bl
     reserve = sorties_bl(conn, article, unite, exclure_bon_id)
+    res_prepa = reservations_prepa(conn, article, unite, exclure_bon_id)   # lots réservés par d'autres bons en préparation
     lots = []
     for r in lignes_stock_03(conn, article):
         base = _base_unite(r, unite)
@@ -547,7 +582,8 @@ def stock_lots(conn, article: str, unite: str, exclure_bon_id: int = 0) -> list[
                 continue
             dispo = None
         else:
-            dispo = round(base - reserve.get((r["lot"], r["depot"] or ""), 0), 3)
+            cle = (r["lot"], r["depot"] or "")
+            dispo = round(base - reserve.get(cle, 0) - res_prepa.get(cle, 0), 3)
             if dispo <= 0:
                 continue
         lots.append({"lot": r["lot"], "depot": r["depot"] or "", "dlc": r["dlc"] or "", "ddm": r["ddm"] or "",
@@ -571,26 +607,77 @@ def proposer_lots(lots: list[dict], quantite: float) -> list[dict]:
     return res
 
 
+def reserver_lots_bon(conn, bon_id: int) -> None:
+    """Réserve, pour chaque ligne d'un bon EN PRÉPARATION, les lots disponibles du dépôt 03 en FIFO
+    (DLC/DDM la plus proche d'abord) : lignes écrites dans bons_preparation_lots, imprimées sur le bon.
+    Remplace la réservation précédente du bon ; les lots déjà réservés par d'autres bons ne sont pas
+    reproposés. Un manque de stock laisse la ligne partiellement ou pas réservée (signalé sur le bon).
+    À la validation, ces lignes sont reprises comme proposition puis remplacées par les lots affectés."""
+    bon = conn.execute("SELECT statut, date_distribution FROM bons_preparation WHERE id = ?", (bon_id,)).fetchone()
+    conn.execute("""DELETE FROM bons_preparation_lots WHERE ligne_id IN
+                    (SELECT id FROM bons_preparation_lignes WHERE bon_id = ?)""", (bon_id,))
+    if not bon or bon["statut"] != "preparation":
+        return
+    pris = {}   # (article, unité, lot, dépôt) -> quantité déjà réservée par une ligne précédente de CE bon
+    for l in conn.execute("SELECT * FROM bons_preparation_lignes WHERE bon_id = ? ORDER BY ordre, id", (bon_id,)).fetchall():
+        q = _qte_bl(l)
+        if not q or q <= 0:
+            continue
+        unite = UNITES_VIF.get((l["unite"] or "Kg").lower(), l["unite"])
+        lots = stock_lots(conn, l["article"], unite, bon_id)
+        for x in lots:
+            if x["dispo"] is not None:
+                x["dispo"] = round(x["dispo"] - pris.get((l["article"], unite, x["lot"], x["depot"]), 0), 3)
+        lots = [x for x in lots if x["dispo"] is None or x["dispo"] > 0]
+        if l["source"] == "ramasse":   # produit ramassé le jour même : les lots entrés par la ramasse sont servis en premier
+            prioritaires = lots_prioritaires(conn, l["article"], bon["date_distribution"])
+            lots.sort(key=lambda x: x["lot"] not in prioritaires)
+        for p in proposer_lots(lots, q):
+            conn.execute("""INSERT INTO bons_preparation_lots (ligne_id, lot, depot, dlc, ddm, quantite, unite)
+                            VALUES (?,?,?,?,?,?,?)""", (l["id"], p["lot"], p["depot"], p["dlc"], p["ddm"], p["quantite"], unite))
+            cle = (l["article"], unite, p["lot"], p["depot"])
+            pris[cle] = pris.get(cle, 0) + p["quantite"]
+
+
 def _qte_bl(l):   # quantité livrée si saisie, sinon quantité préparée
     return l["quantite_livree"] if l["quantite_livree"] is not None else l["quantite"]
+
+
+def _reservation_valide(conn, ligne_id: int, lots: list[dict], quantite: float):
+    """Lots réservés pour la ligne, s'ils couvrent exactement la quantité et sont tous encore disponibles ;
+    sinon None (on retombe sur la répartition FIFO)."""
+    rows = conn.execute("SELECT lot, depot, dlc, ddm, quantite FROM bons_preparation_lots WHERE ligne_id = ? ORDER BY id",
+                        (ligne_id,)).fetchall()
+    if not rows or abs(sum(r["quantite"] for r in rows) - quantite) > TOLERANCE:
+        return None
+    dispo = {(x["lot"], x["depot"]): x for x in lots}
+    res = []
+    for r in rows:
+        x = dispo.get((r["lot"], r["depot"] or ""))
+        if x is None or (x["dispo"] is not None and r["quantite"] > x["dispo"] + TOLERANCE):
+            return None
+        res.append({"lot": r["lot"], "depot": x["depot"], "dlc": x["dlc"], "ddm": x["ddm"], "quantite": round(r["quantite"], 3)})
+    return res
 
 
 def lignes_a_valider(conn, bon_id: int) -> list[dict]:
     """Lignes du bon à livrer, avec leurs lots disponibles et la proposition FIFO."""
     res = []
     bon = conn.execute("SELECT date_distribution FROM bons_preparation WHERE id = ?", (bon_id,)).fetchone()
-    prefixe_rj = "RJ" + bon["date_distribution"][2:4] + bon["date_distribution"][5:7] + bon["date_distribution"][8:10] if bon else "RJ"
+    bon_date = bon["date_distribution"] if bon else ""
     for l in conn.execute("SELECT * FROM bons_preparation_lignes WHERE bon_id = ? ORDER BY ordre, id", (bon_id,)):
         q = _qte_bl(l)
         d = dict(l, qte_bl=q, unite=UNITES_VIF.get((l["unite"] or "Kg").lower(), l["unite"]))
         d["lots"] = stock_lots(conn, l["article"], d["unite"], bon_id) if q else []
         if l["source"] == "ramasse":   # produit ramassé le jour même : les lots entrés par la ramasse sont servis en premier
-            from .stock_basilic import entrees_ramasse
-            lots_ramasse = {e["lot"] for e in entrees_ramasse(conn, l["article"])}
+            lots_ramasse = lots_prioritaires(conn, l["article"], bon_date)
             d["lots"].sort(key=lambda x: x["lot"] not in lots_ramasse)
         # l'article a-t-il des lots en stock (dépôt 03), même entièrement réservés par d'autres BL ?
         d["stock_03"] = bool(lignes_stock_03(conn, l["article"])) if q else False
         d["propose"] = proposer_lots(d["lots"], q) if q else []
+        reserve = _reservation_valide(conn, l["id"], d["lots"], q) if q else None
+        if reserve:   # les lots déjà réservés (et imprimés sur le bon de préparation) sont proposés en priorité
+            d["propose"] = reserve
         d["reste_propose"] = round((q or 0) - sum(p["quantite"] for p in d["propose"]), 3)
         res.append(d)
     return res
@@ -657,9 +744,15 @@ def valider_bon(conn, bon_id: int, par: str = "", affectations: dict | None = No
     conn.execute("""UPDATE bons_preparation SET statut='bl', valide_le=CURRENT_TIMESTAMP, valide_par=?,
                     bl_fichier=?, bl_csv=?, modifie_le=CURRENT_TIMESTAMP WHERE id=? AND statut='preparation'""",
                  (par, nom, csv, bon_id))
+    # la réservation faite à la préparation est remplacée par les lots réellement affectés (la quantité
+    # réservée retombe ainsi à zéro : ces lots deviennent des sorties du BL validé)
+    conn.execute("""DELETE FROM bons_preparation_lots WHERE ligne_id IN
+                    (SELECT id FROM bons_preparation_lignes WHERE bon_id=?)""", (bon_id,))
     for t in a_stocker:
         conn.execute("""INSERT INTO bons_preparation_lots (ligne_id, lot, depot, dlc, ddm, quantite, unite)
                         VALUES (?,?,?,?,?,?,?)""", t)
+    from .journal_stock import enregistrer_bl
+    enregistrer_bl(conn, bon_id)
     conn.commit()
     return True, [nom]
 
@@ -767,6 +860,9 @@ def bons_prepa_rouvrir(bon_id):
                             (SELECT id FROM bons_preparation_lignes WHERE bon_id=?)""", (bon_id,))
             conn.execute("""UPDATE bons_preparation SET statut='preparation', valide_le=NULL, valide_par=NULL,
                             bl_fichier=NULL, bl_csv=NULL, modifie_le=CURRENT_TIMESTAMP WHERE id=?""", (bon_id,))
+            from .journal_stock import annuler_document
+            annuler_document(conn, "bon_prepa", bon_id)
+            reserver_lots_bon(conn, bon_id)   # le bon revient en préparation : ses lots sont réservés à nouveau
             conn.commit()
             flash("Validation annulée : le bon est de nouveau modifiable, le CSV a été supprimé.", "success")
     finally:

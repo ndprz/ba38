@@ -24,11 +24,15 @@ def inscription(token):
             abort(404)
         c = conn.execute("SELECT * FROM billets_campagnes WHERE id = ?", (p["campagne_id"],)).fetchone()
         clos = c["statut"] == "tiree" or mails.limite_depassee(c)
+        gain = mails.gains_recents(conn, c["id"]).get(p["benevole_id"]) if p["categorie"] == "benevole" else None
         mail_a_envoyer = None
         if request.method == "POST" and p["categorie"] == "benevole":
             action = request.form.get("action")
             if clos:
                 message = ("danger", "Les inscriptions sont closes.")
+            elif gain and action == "inscrire":
+                message = ("danger", "Vous avez déjà gagné une place récemment : une personne ne peut gagner "
+                                     "qu'une place par période de 12 mois.")
             elif action == "inscrire" and p["etat"] != "inscrit":
                 conn.execute("UPDATE billets_participants SET etat='inscrit', inscrit_le=?, inscrit_par=NULL WHERE id=?",
                              (mails.maintenant(), p["id"]))
@@ -53,5 +57,5 @@ def inscription(token):
                 write_log(f"❌ Billets confirmation → {p['email']} : {e}")
         if mail_a_envoyer:
             upload_database()
-    return render_template("billets/inscription.html", c=c, p=p, clos=clos, message=message,
+    return render_template("billets/inscription.html", c=c, p=p, clos=clos, gain=gain, message=message,
                            date_fr=mails.date_fr, limite_fr=mails.limite_fr)

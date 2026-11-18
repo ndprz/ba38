@@ -893,7 +893,7 @@
     style="display:none;">
 
     <div class="card-header bg-light">
-        🚗 Pré-calcul note de frais (Application du barême FFBA 2026 : 0,529€/km, restaurant maxi 21.40€, hotel maxi 100€ p.dej compris)
+        🚗 Pré-calcul note de frais (Application du barème fiscal 5 CV : {{ '%.3f'|format((tarif_km_engagements or 0.636)|float)|replace('.', ',') }}€/km, restaurant maxi 21.40€, hotel maxi 100€ p.dej compris)
     </div>
 
     <div class="card-body">
@@ -1147,7 +1147,7 @@ function updateNoteFrais() {
             )?.value
         ) || 0;
 
-    const tarifKm = 0.529;
+    const tarifKm = {{ (tarif_km_engagements or 0.636)|float }};
 
     const ik =
         kms * tarifKm;

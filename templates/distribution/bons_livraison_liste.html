@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/date_nav.html" import date_input %}
 
 {% block title %}Consultation des bons de livraison{% endblock %}
 
@@ -26,8 +27,8 @@
   </div>
 
   <form method="get" class="barre-filtres mb-2">
-    <div><label for="du">Du</label><input type="date" id="du" name="du" class="form-control form-control-sm" value="{{ form.du }}"></div>
-    <div><label for="au">Au</label><input type="date" id="au" name="au" class="form-control form-control-sm" value="{{ form.au }}"></div>
+    <div><label for="du">Du</label>{{ date_input("du", form.du, id="du", aujourdhui=False) }}</div>
+    <div><label for="au">Au</label>{{ date_input("au", form.au, id="au", aujourdhui=False) }}</div>
     <div><label for="type">Type</label>
       <select id="type" name="type" class="form-select form-select-sm">
         <option value="">Tous</option>

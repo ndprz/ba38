@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% from "macros/buttons.html" import action_button, action_buttons %}
+{% from "macros/buttons.html" import action_button, action_buttons, bouton_retour %}
 
 {% block title %}Transferts VIF collecte gardée {{ annee }}{% endblock %}
 
@@ -10,15 +10,20 @@
     <h2>📋 Transferts à saisir dans VIF — collecte gardée {{ annee }}</h2>
 
     {% call action_buttons() %}
-        {{ action_button("↩️ Retour", href=url_for('collecte.quantites_produits', annee=annee), color="outline-dark") }}
+        {{ bouton_retour(url_for('collecte.quantites_produits', annee=annee)) }}
         <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()">🖨️ Imprimer</button>
+        {% if lignes %}
+        {{ action_button("📤 Export CSV TRANCOG (prêt pour VIF)", href=url_for('collecte.quantites_produits_transferts_export_trancog', annee=annee), color="outline-primary") }}
+        {% endif %}
     {% endcall %}
 
     <p class="text-muted small">
         Mouvements de type <strong>TRANSCO (transfert)</strong>, daté du <strong>{{ date_mvt.strftime('%d/%m/%Y') }}</strong> :
         pour chaque ligne, sortir la quantité de l'article <strong>{{ article_source }}</strong> (dépôt {{ depot_source }})
-        et l'entrer sur l'article indiqué (dépôt {{ depot_dest }}, lot <code>COG</code> + code article).
-        À saisir <strong>avant</strong> le BL VIF.
+        et l'entrer sur l'article indiqué (dépôt {{ depot_dest }}, emplacement B011, sans lot).
+        À saisir <strong>avant</strong> le BL VIF. Le bouton « 📤 Export CSV TRANCOG » génère directement
+        le fichier prêt à importer (même format que le modèle <code>matrice TRANCOG(1).xlsx</code> rempli
+        à la main, converti en CSV en retirant ses 3 premières lignes) --- plus besoin de le remplir soi-même.
     </p>
 
     {% if not lignes %}
@@ -29,7 +34,7 @@
             <tr>
                 <th>#</th>
                 <th>Article sortant</th><th>Dépôt</th>
-                <th>Article entrant</th><th>Libellé</th><th>Lot entrant</th><th>Dépôt</th>
+                <th>Article entrant</th><th>Libellé</th><th>Emplacement entrant</th><th>Dépôt</th>
                 <th class="text-end">Quantité (kg)</th>
             </tr>
         </thead>
@@ -39,7 +44,7 @@
                 <td>{{ loop.index }}</td>
                 <td>{{ article_source }}</td><td>{{ depot_source }}</td>
                 <td><strong>{{ l.article }}</strong></td><td>{{ l.libelle or '' }}</td>
-                <td>COG{{ l.article }}</td><td>{{ depot_dest }}</td>
+                <td>B011</td><td>{{ depot_dest }}</td>
                 <td class="text-end"><strong>{{ l.total_kg|round(0)|int }}</strong></td>
             </tr>
             {% endfor %}

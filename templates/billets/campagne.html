@@ -72,7 +72,7 @@
 
   <!-- 3. Destinataires + envoi -->
   <div class="card mb-3" id="destinataires"><div class="card-header"><b>3. Bénévoles invités</b>
-    <span class="text-muted small">— bénévoles (hors salariés) à jour de cotisation 2026 et ayant une adresse mail</span></div>
+    <span class="text-muted small">— bénévoles (hors salariés) à jour de cotisation 2026 et ayant une adresse mail ; ceux qui ont gagné une place dans les 12 derniers mois ne sont pas invités</span></div>
   <div class="card-body">
     {% if peut_ecrire and not tiree %}
     <form method="POST" action="{{ url_for('billets.definir_destinataires', campagne_id=c.id) }}" class="mb-2">
@@ -91,7 +91,7 @@
         {% for p in benevoles %}
           <tr>
             <td><input type="checkbox" class="form-check-input sel-benev" data-id="{{ p.id }}" {% if p.selected %}checked{% endif %} {% if not peut_ecrire or tiree %}disabled{% endif %}></td>
-            <td>{{ p.nom }} {{ p.prenom }}</td><td class="small">{{ p.email }}</td>
+            <td>{{ p.nom }} {{ p.prenom }}{% if p.benevole_id in gains %} <span class="badge bg-warning text-dark" title="Un seul gain par période de 12 mois : non invité, ne peut pas s'inscrire">a gagné le {{ gains[p.benevole_id][8:10] }}/{{ gains[p.benevole_id][5:7] }}/{{ gains[p.benevole_id][:4] }}</span>{% endif %}</td><td class="small">{{ p.email }}</td>
             <td class="small">
               {% if p.invite_erreur %}<span class="badge bg-danger" title="{{ p.invite_erreur }}">Erreur</span>
               {% elif p.invite_le and p.invite_mode_test %}<span class="badge bg-warning text-dark">Test</span>
@@ -150,7 +150,7 @@
   <div class="card mb-3" id="tirage"><div class="card-header"><b>5. Tirage au sort et résultats</b></div>
   <div class="card-body">
     {% if not tiree %}
-      <p>Après la date limite : tirage parmi les inscrits ; s'il reste des places (moins d'inscrits que de billets), les places restantes sont tirées au sort parmi les <b>salariés</b> ({{ nb.salaries_coches }} coché(s) ci-dessous).</p>
+      <p>Après la date limite : tirage parmi les inscrits (un bénévole ayant déjà gagné une place dans les 12 derniers mois en est écarté) ; s'il reste des places (moins d'inscrits que de billets), les places restantes sont tirées au sort parmi les <b>salariés</b> ({{ nb.salaries_coches }} coché(s) ci-dessous).</p>
       {% if salaries %}
       <details class="mb-2"><summary>Salariés pouvant être tirés au sort ({{ nb.salaries_coches }}/{{ salaries|length }})</summary>
         <table class="table table-sm mb-0" style="max-width:480px"><tbody>
@@ -179,6 +179,10 @@
           {% if nb.gagnants < c.nb_billets %}<div class="alert alert-warning py-1">{{ c.nb_billets - nb.gagnants }} place(s) non pourvue(s).</div>{% endif %}
         </div>
         <div class="col-md-6">
+          {% if non_eligibles %}<h6>Non éligibles — déjà gagnants dans les 12 mois ({{ non_eligibles|length }})</h6>
+          <table class="table table-sm"><tbody>{% for p in non_eligibles %}
+            <tr><td>{{ p.nom }} {{ p.prenom }}</td><td class="small">{% if p.resultat_erreur %}<span class="text-danger">erreur mail</span>{% elif p.resultat_envoye_le %}✅ prévenu(e){% else %}<span class="text-muted">à prévenir</span>{% endif %}</td></tr>
+          {% endfor %}</tbody></table>{% endif %}
           <h6>Non retenus ({{ non_retenus|length }})</h6>
           <table class="table table-sm"><tbody>{% for p in non_retenus %}
             <tr><td>{{ p.nom }} {{ p.prenom }}</td><td class="small">{% if p.resultat_erreur %}<span class="text-danger">erreur mail</span>{% elif p.resultat_envoye_le %}✅ prévenu(e){% else %}<span class="text-muted">à prévenir</span>{% endif %}</td></tr>
@@ -199,7 +203,7 @@
         <label class="mb-0"><input type="checkbox" name="mode_test" value="1" class="form-check-input" style="position:static" checked> 🧪 Mode TEST (2 mails max vers moi)</label>
         <button class="btn btn-success btn-sm">📨 Envoyer les résultats ({{ nb.resultats_a_envoyer }})</button>
       </form>
-      {% elif nb.gagnants or non_retenus %}<p class="text-success mb-0">✅ Tous les résultats ont été envoyés.</p>{% endif %}
+      {% elif nb.gagnants or non_retenus or non_eligibles %}<p class="text-success mb-0">✅ Tous les résultats ont été envoyés.</p>{% endif %}
     {% endif %}
   </div></div>
 

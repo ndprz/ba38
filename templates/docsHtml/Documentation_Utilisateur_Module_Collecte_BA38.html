@@ -1,5 +1,5 @@
 <p><strong>Application BA38 – Module Collecte</strong> Version de la
-documentation : 07/11/2026</p>
+documentation : 17/11/2026</p>
 <p>Le module « Collecte » gère la préparation et le suivi de la collecte
 annuelle en magasins, organisé en six sections indépendantes :</p>
 <ul>
@@ -263,6 +263,12 @@ année), à déposer sur le Drive puis importer dans GoW — remplace le
 report manuel depuis l'ancien fichier Excel « collectes magasins
 evolution.xlsx ».</p></li>
 </ul>
+<p>La colonne « Évolution /an-1 (kg) » et le « % évolution » s'affichent
+dès qu'au moins une des deux années les plus récentes a un résultat pour
+ce magasin — une année sans résultat compte alors pour 0 kg (magasin
+nouvellement ajouté au référentiel, ou fermé/non recalculé l'autre
+année). Ils restent vides uniquement si aucune des deux années n'a de
+résultat.</p>
 <h1 id="gestion-tournées">3. Gestion tournées</h1>
 <h2 id="lancer-une-simulation">3.1 Lancer une simulation</h2>
 <p>Une fois les deux fichiers importés, le bouton « 🚀 Générer les
@@ -517,21 +523,6 @@ un message personnalisé à chaque chauffeur ou équipier ayant une adresse
 e-mail.</p>
 <p>Les personnes sans adresse e-mail sont signalées sur la page et ne
 reçoivent pas de message.</p>
-<h2 id="demande-de-disponibilité-année-précédente">3.6 Demande de
-disponibilité (année précédente)</h2>
-<p>Juste en dessous, « Envoi mail tournées aux chauffeurs/équipiers de
-l’année dernière » sert à recontacter, avant que le planning de l’année
-en cours n’existe, les chauffeurs et équipiers de l’année précédente
-(nom, rôle, email, téléphone portable) pour leur demander simplement
-s’ils sont disponibles cette année — contrairement à la page précédente
-(§3.5), il n’y a ici aucune affectation par demi-journée à afficher,
-puisque le planning de la nouvelle campagne n’existe pas encore.</p>
-<p>Le texte du mail est personnalisable avec les repères
-&lt;&lt;nom&gt;&gt; et &lt;&lt;telephone&gt;&gt; (son portable de
-l’année précédente, ou « — » si absent). Mêmes principes que les autres
-envois du module : aperçu du mail pour la personne sélectionnée, test
-sur sa propre adresse, puis envoi à tous les destinataires ayant une
-adresse e-mail.</p>
 <h1 id="associations-gardant">4. Associations gardant</h1>
 <p>La section « 📁 Associations gardant » concerne les associations qui
 assurent elles-mêmes la collecte d’un ou plusieurs magasins au lieu de
@@ -595,25 +586,119 @@ connus, en attendant que l’information soit complétée dans
 go-on-web.</p>
 <h2 id="suivi-des-réponses-et-relances">4.3 Suivi des réponses et
 relances</h2>
-<p>Sur la page « Préparer l’envoi », deux cases à cocher par association
-permettent de suivre l’état des échanges : « Répondu » (au 1ᵉʳ message)
-et « Résultat envoyé ». Elles se cochent à la main, après vérification
-par l’équipe (mail ou fichier reçu, ou saisie en ligne consultée) —
-elles ne se cochent jamais automatiquement.</p>
+<p>Le tableau des destinataires affiche, pour chaque association, son «
+Poids total (kg) » (somme des résultats déjà saisis pour l’année) et,
+juste à côté, son « Poids {année précédente} (kg) » en gris — repère de
+comparaison directe, importé une fois par campagne (bloc « 📁 Repère
+{année précédente} », voir §4.4).</p>
+<p>Deux cases à cocher par association permettent de suivre l’état des
+échanges : « Répondu » (au 1ᵉʳ message) et « Résultat envoyé ». Elles se
+cochent normalement à la main, après vérification par l’équipe (mail ou
+fichier reçu, ou saisie en ligne consultée) — sauf « Résultat envoyé »
+qui se coche aussi <strong>automatiquement</strong> dès que
+l’association a répondu via son lien de saisie en ligne et que sa saisie
+est complète (badge vert, cf. §4.4), sans attendre une vérification
+manuelle dans ce cas précis.</p>
 <p>Une colonne « Saisie en ligne » affiche, à titre d’indice seulement,
 l’avancement du formulaire de saisie en ligne de l’association (ex. «
 18/30 »), pour aider à décider si les cases doivent être cochées — elle
-n’a aucun effet automatique sur elles.</p>
+n’a aucun effet automatique sur elles (en dehors de l’auto-cochage «
+Résultat envoyé » ci-dessus, qui s’appuie sur ce même avancement).</p>
 <p>Le bouton 🔁 sur la ligne d’une association renvoie le même mail
 (texte, fichiers Excel/PDF) à cette seule association. Deux boutons en
 haut du tableau, « 🔁 Relancer les non-répondants » et « 🔁 Relancer
 ceux sans résultat », renvoient le mail en une fois à toutes les
-associations où la case correspondante n’est pas cochée.</p>
+associations où la case correspondante n’est pas cochée. Un bouton « 👁️
+Voir la liste » à côté de chacun affiche d’abord, dans le tableau des
+destinataires, uniquement les associations qui seront concernées par
+cette relance — pour contrôler la liste avant de l’envoyer ; « ✖️
+Afficher toutes » réaffiche l’ensemble. Un bouton « 🧪 Tester sur mon
+adresse », sur ces 2 relances groupées, envoie un seul mail d’exemple
+(la 1ʳᵉ association de la liste concernée) à votre propre adresse, pour
+contrôler le rendu sans jamais toucher aux vraies associations — pas
+besoin de cocher « confirmer » pour ce test.</p>
+<p>Un champ « Libellé supplémentaire pour une relance », au-dessus de
+ces boutons, permet d’ajouter librement un texte à la fin de l’objet du
+mail (ex. « Rappel — en attente de résultats »), pour les 3 façons de
+relancer (ligne par ligne ou groupée) — jamais pour l’envoi initial.
+Laissé vide, l’objet du mail reste inchangé.</p>
 <p>Une notification mail informe automatiquement l’équipe collecte
 (ba380.collecte@banquealimentaire.org) dès qu’une association saisit ou
 modifie des données via son lien de saisie en ligne — au maximum un mail
-par association et par jour d’activité.</p>
+par association et par jour d’activité. Le lien contenu dans ce mail
+mène directement aux résultats saisis par cette association (et non plus
+à la page générale de suivi), pour y accéder en un clic.</p>
+<h2 id="saisie-par-association-et-export-vif">4.4 Saisie par association
+et export VIF</h2>
+<p>« ✏️ Saisir » (Saisie poids + produits, par association — accessible
+depuis Résultat collecte) ouvre « ⚖️ Saisie collecte gardée », une
+version allégée du tableau de « 📧 Préparer l’envoi » (mêmes colonnes et
+mêmes cases, mais sans régénération des fichiers ni outils d’envoi),
+pour choisir rapidement l’association à saisir. Un bouton « ✏️ Saisir »
+sur chaque ligne ouvre, pour cette seule association, une page unique
+regroupant le poids par magasin ET les quantités par produit (plutôt que
+les deux grilles globales habituelles) — pratique pour traiter les
+associations une par une au fur et à mesure qu’elles répondent, sans
+attendre que toutes aient répondu.</p>
+<p>Sur cette page de saisie par association, deux imports permettent de
+pré-remplir automatiquement le formulaire (valeurs affichées en orange,
+jamais enregistrées directement — à vérifier puis confirmer avec «
+Enregistrer », ou écarter avec « Ignorer ces valeurs ») :</p>
+<ul>
+<li><p>« 📄 Importer un PDF reçu » : le PDF envoyé à l’association,
+rempli à la main puis scanné et renvoyé — les poids manuscrits sont lus
+automatiquement (analyse en tâche de fond, 15 à 30 secondes, recharger
+la page pour voir le résultat) ;</p></li>
+<li><p>« 📊 Importer un Excel reçu » : le fichier Excel renvoyé tel quel
+par l’association, lu directement sans passer par une analyse
+IA.</p></li>
+</ul>
+<p>Le bloc dépliant « 📁 Repère {année précédente} », sur la page « ⚖️
+Saisie collecte gardée », permet de déposer directement le fichier Excel
+du résultat de l’année précédente (une seule fois par campagne, un
+nouveau dépôt remplace le précédent) : il alimente la colonne « Poids
+{année précédente} (kg) » visible ici et sur « Préparer l’envoi »
+(§4.3), ainsi que le total N-1 affiché sous le nom de chaque association
+dans « Quantités par produit » (§5.6) — à titre de repère uniquement,
+jamais recalculé automatiquement.</p>
+<p>Une case « Traitée » par association indique que le VIF a été fait
+pour elle : export CSV du poids par magasin, transfert de produits et
+bon de livraison (BL). Elle se coche normalement à la main, mais se
+coche aussi <strong>automatiquement</strong> pour chaque association
+incluse dans un « 📄 Générer BL VIF » (voir §5.6) — pour pouvoir
+relancer plus tard le même export sans réinclure les associations déjà
+traitées. Tant qu’elle n’est pas cochée, l’association reste incluse
+dans les 3 exports VIF suivants ; une fois cochée, elle en est exclue
+(pour éviter tout double comptage du tonnage si un export est relancé
+après coup pour les associations qui répondent en retard) :</p>
+<ul>
+<li><p>« 📥 Export CSV VIF (poids par magasin) » (même bouton qu’en
+§5.5) ;</p></li>
+<li><p>« 📄 Générer BL VIF » (§5.6) — qui, lui, n’inclut de toute façon
+que les associations dont la saisie est complète (badge vert « X/X
+complet ») : jamais de BL sur une saisie partielle ;</p></li>
+<li><p>« 📋 Transferts à saisir dans VIF » (§5.6).</p></li>
+</ul>
 <h1 id="résultat-collecte">5. Résultat collecte</h1>
+<p>Cette section regroupe deux circuits indépendants, chacun avec son
+propre verrouillage : « Résultat collecte BAI » (cagettes + pesée palox)
+et « Résultat collecte gardée » (poids par magasin gardé + quantités par
+produit, y compris la saisie en ligne faite par les associations
+elles-mêmes). Un bouton « 🔒 Verrouiller la saisie (une fois terminée) »
+bloque toute nouvelle saisie du circuit concerné pour l’année — geste
+simple, sans confirmation, puisqu’il ne risque jamais de perdre des
+données. Une fois verrouillé, un bandeau l’indique (date et auteur) avec
+un bouton « 🔓 Déverrouiller », celui-ci <strong>sous contrôle
+renforcé</strong> (case à cocher + année retapée) puisqu’un
+déverrouillage rouvre la possibilité de modifier des données considérées
+comme définitives.</p>
+<p>Un bandeau dépliant « ⚠️ Remise à zéro des saisies », sur la page
+principale du module, regroupe en un seul endroit les 4 boutons de
+suppression complète d’une saisie de l’année (Saisie des cagettes, Pesée
+palox, Poids par magasin gardé, Quantités par produit) — les mêmes
+actions que les boutons « 🗑️ Repartir à zéro » déjà présents sur chaque
+page concernée (§5.4, §5.5, §5.6), toutes sous le même contrôle
+renforcé, et bloquées si le circuit correspondant est verrouillé.</p>
 <h2 id="initialiser-la-liste-des-magasins">5.1 Initialiser la liste des
 magasins</h2>
 <p>La première ouverture de « 🧺 Saisir » (Saisie des cagettes par
@@ -729,13 +814,17 @@ Chaque case est enregistrée automatiquement dès la saisie, avec un
 bouton « 💾 Enregistrer » en secours en haut de page.</p>
 <p>Le bouton « 📤 Exporter CSV (saisie des poids par magasin) » génère
 un fichier au format d’import VIF, bloqué tant qu’un magasin n’a pas de
-poids saisi (sauf option de forçage, réservée à l’environnement de
-test).</p>
+poids saisi (sauf option de forçage, réservée à l’environnement de test)
+— les magasins des associations déjà cochées « Traitée » (§4.4) en sont
+exclus, pour ne pas renvoyer dans VIF un tonnage déjà transmis.</p>
 <p>Un bouton « 🗑️ Repartir à zéro » permet d’effacer en un clic toutes
 les saisies de poids de l’année (utilisable aussi bien en test qu’en
-production, avec confirmation avant suppression), pour repartir d’une
-page vierge après des essais. Les poids se saisissent en nombres entiers
-(kg), sans décimale.</p>
+production), <strong>sous contrôle renforcé</strong> : il faut cocher
+une case de confirmation et retaper l’année exacte avant que la
+suppression ne soit acceptée — pas un simple message de confirmation du
+navigateur, pour éviter toute suppression accidentelle ou par un clic
+automatisé. Les poids se saisissent en nombres entiers (kg), sans
+décimale.</p>
 <h2 id="résultat-collecte-gardée-quantités-par-produit">5.6 Résultat
 collecte gardée — Quantités par produit</h2>
 <p>Le bouton « 📦 Saisir » (Quantités par produit) ouvre un tableau avec
@@ -746,11 +835,33 @@ les poids par magasin, chaque case est enregistrée automatiquement, avec
 un bouton « 💾 Enregistrer » en secours. Deux colonnes supplémentaires
 affichent le poids total (toutes associations confondues) et la valeur
 en euros de chaque produit, dès que la mercuriale de l’année a été
-importée.</p>
+importée. Le total de l’année précédente (si le fichier repère a été
+déposé, §4.4) s’affiche en petit, sous le nom de chaque colonne
+association.</p>
+<p>Deux boutons permettent de produire les mouvements VIF
+correspondants, en excluant les associations déjà cochées « Traitée »
+(§4.4) :</p>
+<ul>
+<li><p>« 📄 Générer BL VIF » — génère le bon de livraison (format VIF)
+des quantités saisies, une ligne par association et par produit. Ne
+porte que sur les associations dont la saisie est complète (badge vert «
+X/X complet », §4.4) ; coche automatiquement « Traitée » pour chaque
+association incluse dans ce BL, afin qu’un nouveau « Générer BL VIF »
+lancé plus tard ne les réinclue pas ;</p></li>
+<li><p>« 📋 Transferts à saisir dans VIF » — liste, par produit, les
+mouvements de sortie/entrée de stock (sortie de l’article « collecte
+gardée » 5010010, entrée sur l’article, emplacement B011, sans lot). Le
+bouton « 📤 Export CSV TRANCOG (prêt pour VIF) » génère directement le
+fichier prêt à importer, au même format que le modèle Excel
+<code>matrice TRANCOG(1).xlsx</code> rempli à la main puis réenregistré
+en CSV en retirant ses 3 premières lignes — plus besoin de le remplir
+soi-même.</p></li>
+</ul>
 <p>Un bouton « 🗑️ Repartir à zéro » permet, de la même façon, d’effacer
-en un clic toutes les saisies de quantités de l’année. Comme pour les
-poids par magasin, la saisie se fait en nombres entiers, sans
-décimale.</p>
+en un clic toutes les saisies de quantités de l’année, sous le même
+contrôle renforcé (case de confirmation + année retapée) que pour les
+poids par magasin ci-dessus. Comme pour les poids par magasin, la saisie
+se fait en nombres entiers, sans décimale.</p>
 <h2 id="pesée-palox-synthèse">5.7 Pesée palox — synthèse</h2>
 <p>Accessible depuis Résultat collecte, cet écran liste les catégories
 de produit avec, pour chacune, le nombre de palox déjà pesés, le poids
@@ -758,12 +869,26 @@ total, le % du total et la valeur en euros (si la mercuriale a été
 importée) — total général affiché en haut. Un clic sur une catégorie
 ouvre directement la pesée, sans changer de page (le mode plein écran,
 s’il est activé, n’est donc jamais interrompu).</p>
+<p>L’export Excel de cette synthèse (« 📤 Télécharger ») affiche en
+titre « Pesée palox {année} — synthèse valorisée », et colore en dégradé
+de vert (plus foncé = valeur plus importante) les colonnes Poids, % et
+Valeur (€), pour repérer d’un coup d’œil les catégories les plus
+lourdes. La feuille est mise en page pour l’impression en paysage sur
+une seule page de large et une seule page de haut, quadrillage
+imprimé.</p>
 <p>Le bouton « 📺 Affichage TV » ouvre, dans une fenêtre séparée (idéale
 pour un second écran), une synthèse dynamique en lecture seule : poids
 total dans un cartouche en haut, catégories réparties en colonnes en
 dessous pour tout tenir sur une seule page sans défilement, quel que
 soit le nombre de catégories. Se met à jour automatiquement toutes les
 15 secondes.</p>
+<p>Le bouton « 📋 Transferts à saisir dans VIF » liste, par catégorie
+pesée, les mouvements de sortie/entrée de stock à transférer — même
+principe qu’en §5.6, mais sortie de l’article « collecte directe »
+(5010000 au lieu de 5010010) et entrée sur le code VIF de la catégorie.
+Le bouton « 📤 Export CSV TRANSCOL (prêt pour VIF) » génère directement
+le fichier prêt à importer, même format 48 colonnes que l’export de §5.6
+(nature de mouvement TRANSCOL au lieu de TRANCOG).</p>
 <h2 id="poste-de-pesée">5.8 Poste de pesée</h2>
 <p>Dans la fenêtre qui s’ouvre : le numéro de palox proposé peut être
 modifié si besoin, le poids doit respecter les bornes définies pour
@@ -802,8 +927,12 @@ modification, suppression) et imprimable (bouton 🖨️), pour garder une
 feuille de référence près de la balance. La soustraction du poids net
 reste à faire à la main : aucun calcul automatique n’est fait ici.</p>
 <h1 id="participants">6. Participants</h1>
-<p>Toutes les pages de cette section partagent les mêmes principes pour
-un mailing : texte personnalisable (bloc « 📁 Paramètres »), « ✉️ Aperçu
+<p>Cette section est divisée à l’écran en deux blocs : « Avant la
+collecte » (§6.1, §6.2, §6.3, §6.8 à §6.10) et « Après la collecte »
+(§6.4 à §6.7, §6.11), selon le moment où chaque action a normalement
+lieu.</p>
+<p>Toutes les pages d’envoi de mail de cette section partagent les mêmes
+principes : texte personnalisable (bloc « 📁 Paramètres »), « ✉️ Aperçu
 du mail » pour contrôler le rendu exact sans rien envoyer, « 🧪 Tester
 sur mon adresse », puis « 📤 Envoyer les mails » (avec case de
 confirmation) pour l’envoi réel à tous les destinataires ayant une
@@ -816,56 +945,84 @@ Mail demande aux trieurs de l’année précédente, leur disponibilité</h2>
 leur demander leur disponibilité avant que le planning de l’année en
 cours existe. Le texte du mail est modifiable (repère
 &lt;&lt;nom&gt;&gt;).</p>
-<h2 id="mail-prise-colis">6.2 Mail prise colis</h2>
+<h2
+id="mail-demande-aux-chauffeurséquipiers-de-lannée-précédente-leur-disponibilité">6.2
+Mail demande aux chauffeurs/équipiers de l’année précédente, leur
+disponibilité</h2>
+<p>Même principe que le mail trieurs (§6.1), mais pour les chauffeurs et
+équipiers de camion réellement nommés dans liste-vehicule.xlsx l’année
+précédente — une simple demande de disponibilité, sans affectation par
+demi-journée puisque le planning de l’année en cours n’existe pas
+encore. Repères &lt;&lt;nom&gt;&gt; et &lt;&lt;telephone&gt;&gt; (son
+portable de l’année précédente, ou « — » si absent). Envoyé depuis
+<code>ba380.directeur@banquealimentaire.org</code>.</p>
+<h2 id="mail-prise-colis">6.3 Mail prise colis</h2>
 <p>Prévient les primo responsables (référents magasin du fichier colis)
 que leur colis est prêt à être récupéré — ne concerne que les magasins
 dont le colis est préparé mais pas encore pris. Repères
 &lt;&lt;nom&gt;&gt; et &lt;&lt;magasin&gt;&gt;. Les personnes sans
 adresse email ou sans numéro de portable sont signalées à part.</p>
-<h2 id="mail-invitation-bilan-collecte">6.3 Mail invitation bilan
+<h2 id="mail-invitation-bilan-collecte">6.4 Mail invitation bilan
 collecte</h2>
-<p>Invite au bilan de la collecte de l’année en cours
-<strong>tous</strong> les participants de l’année (liste des
-participants go-on-web, magasins et camions confondus). Repères
-&lt;&lt;nom&gt;&gt; et &lt;&lt;annee&gt;&gt;. Envoyé depuis l’adresse
+<p>Invite au bilan de la collecte de l’année en cours tous les
+participants <strong>actifs</strong> de l’année (liste des participants
+go-on-web, magasins et camions confondus) — affectés à un vrai magasin,
+nommés chauffeur/équipier ou entrepôt, ou référents d’une association en
+collecte gardée ; une simple inscription sans affectation réelle cette
+année-là n’en fait pas partie. Repères &lt;&lt;nom&gt;&gt; et
+&lt;&lt;annee&gt;&gt;. Envoyé depuis l’adresse
 <code>ba380.benevolecollecte@banquealimentaire.org</code>.</p>
-<h2 id="mail-demande-bilan-bénévoles-magasins">6.4 Mail demande bilan
+<h2 id="mail-demande-bilan-bénévoles-magasins">6.5 Mail demande bilan
 bénévoles magasins</h2>
 <p>Demande un bilan/ressenti aux bénévoles ayant participé <strong>en
-magasin</strong> à la collecte de l’année en cours — exclut les
-chauffeurs/équipiers de camion, qui ont leur propre mail (§6.5). Repères
-&lt;&lt;nom&gt;&gt; et &lt;&lt;annee&gt;&gt;. Envoyé depuis la même
-adresse que le mail bilan collecte (§6.3).</p>
-<h2 id="mail-demande-bilan-chauffeurséquipiers">6.5 Mail demande bilan
+magasin</strong> à la collecte de l’année en cours. Une personne
+affectée à la fois à un magasin et à un camion reçoit aussi bien ce mail
+que le mail ressenti chauffeurs/équipiers (§6.6) si elle cumule les deux
+rôles. Repères &lt;&lt;nom&gt;&gt; et &lt;&lt;annee&gt;&gt;. Envoyé
+depuis la même adresse que le mail bilan collecte (§6.4).</p>
+<h2 id="mail-demande-bilan-chauffeurséquipiers">6.6 Mail demande bilan
 chauffeurs/équipiers</h2>
 <p>Demande un bilan/ressenti aux chauffeurs et équipiers de camion
-réellement nommés dans liste-vehicule.xlsx cette année. Repères
-&lt;&lt;nom&gt;&gt; et &lt;&lt;annee&gt;&gt;. Envoyé depuis
-<code>ba380.directeur@banquealimentaire.org</code>.</p>
-<h2 id="mail-demande-bilan-entrepôt">6.6 Mail demande bilan
+réellement nommés dans liste-vehicule.xlsx cette année — sujet « … votre
+ressenti dans les camions ». Repères &lt;&lt;nom&gt;&gt; et
+&lt;&lt;annee&gt;&gt;. Un sélecteur permet de choisir l’adresse d’envoi,
+<code>ba380.directeur@banquealimentaire.org</code> (choisie par défaut)
+ou <code>ba380.collecte@banquealimentaire.org</code>.</p>
+<h2 id="mail-demande-bilan-entrepôt">6.7 Mail demande bilan
 entrepôt</h2>
 <p>Demande un bilan/ressenti aux bénévoles affectés à l’entrepôt (tri,
 cuisine…) cette année — codes camion V090/V091/V092 dans
-liste-vehicule.xlsx. Repères &lt;&lt;nom&gt;&gt; et
-&lt;&lt;annee&gt;&gt;. Envoyé depuis
-<code>ba380.directeur@banquealimentaire.org</code>.</p>
-<h2 id="liste-dappel-chauffeurséquipiers">6.7 Liste d’appel
+liste-vehicule.xlsx — sujet « … ressenti à l’entrepôt ». Repères
+&lt;&lt;nom&gt;&gt; et &lt;&lt;annee&gt;&gt;. Même sélecteur d’adresse
+d’envoi qu’en §6.6 (<code>ba380.directeur@banquealimentaire.org</code>
+par défaut, ou <code>ba380.collecte@banquealimentaire.org</code>).</p>
+<h2 id="liste-dappel-chauffeurséquipiers">6.8 Liste d’appel
 chauffeurs/équipiers</h2>
 <p>Télécharge un fichier Excel listant, sans doublon, tous les
 chauffeurs et équipiers réellement nommés dans liste-vehicule.xlsx cette
 année (nom, email, BAI, n° et nom du camion), complété par tous les
 bénévoles de la base Basilic — avec le camion indiqué si la personne est
 aussi chauffeur/équipier. N’envoie aucun mail.</p>
-<h2 id="comparaison-bai-basilic-go-on-web">6.8 Comparaison BAI Basilic /
+<h2 id="comparaison-bai-basilic-go-on-web">6.9 Comparaison BAI Basilic /
 go-on-web</h2>
 <p>Rapproche, par email et dans les deux sens, la base bénévoles de
 Basilic et les personnes marquées « BAI » dans la liste des participants
 go-on-web de l’année — pour repérer les écarts entre les deux bases.</p>
-<h2 id="comparaison-chauffeurséquipiers-basilic">6.9 Comparaison
+<h2 id="comparaison-chauffeurséquipiers-basilic">6.10 Comparaison
 chauffeurs/équipiers Basilic</h2>
-<p>Même principe que ci-dessus (§6.8), mais entre les
+<p>Même principe que ci-dessus (§6.9), mais entre les
 chauffeurs/équipiers de camion de l’année (liste-vehicule.xlsx) et la
 base bénévoles de Basilic.</p>
+<h2 id="comptage-participants-magasinscamionsentrepôt">6.11 Comptage
+participants (magasins/camions/entrepôt)</h2>
+<p>Affiche trois compteurs — 🏪 Vrais magasins, 🚚 Camions (codes V001 à
+V089), 📦 Entrepôt (codes V090 à V092, pool de réserve V100 exclu) —
+construits sur les mêmes règles que les pages de mail de cette section,
+pour objectiver qui compte comme quoi : un bénévole est compté dans
+chaque catégorie où il est réellement affecté, et peut donc apparaître
+dans plusieurs à la fois (ex. magasin ET camion). Un bouton « 👁️ Voir la
+liste » par catégorie affiche le détail nom/email ; « 📤 Télécharger
+(Excel) » exporte les trois listes.</p>
 <h1 id="bonnes-pratiques">7. Bonnes pratiques</h1>
 <ul>
 <li><p>Toujours vérifier les onglets de contrôle du classeur Excel avant

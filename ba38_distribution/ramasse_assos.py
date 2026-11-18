@@ -1,7 +1,7 @@
 # ba38_distribution/ramasse_assos.py
 
 from flask import Blueprint, render_template, send_file, request, jsonify, session, redirect, url_for, flash
-from flask import Response
+from flask import Response, abort
 from flask_login import login_required, current_user
 from ba38_utilitaires.core import get_db_path, get_db_connection, require_access, write_log
 from openpyxl import Workbook
@@ -13,7 +13,12 @@ from collections import defaultdict
 from . import distribution_bp
 
 import sqlite3
-from ba38_vif.generation import ErreursVif, generer_bl_ramasses, generer_receptions_ramasses
+from ba38_vif.generation import (
+    ErreursVif, FORMAT_BL_SFTP, PREFIXE_BL, PREFIXE_RECEPTIONS,
+    generer_bl_ramasses, generer_receptions_ramasses,
+)
+from ba38_vif.depot import DepotVifError, deposer
+from ba38_vif import suivi as vif_suivi
 
 
 
@@ -971,6 +976,87 @@ def export_bl_vif():
     )
 
 
+# ============================================================================
+# 📡 Dépôt SFTP pour VIF (réceptions / BL des ramasses partenaires)
+#   Même contenu que les exports téléchargeables, mais posé dans le dossier lu
+#   par VIF (paramètres vif_depot_dossier_bl / vif_depot_dossier_receptions) au
+#   lieu d'être téléchargé. BL au format validé FFBA du 05/11/2026 (12 colonnes).
+#   Un export déjà fait (téléchargé OU déposé) pour le mois bloque le dépôt sauf
+#   confirmation explicite : VIF importerait le fichier deux fois.
+# ============================================================================
+@distribution_bp.route("/ramasses/deposer_vif/<type_export>", methods=["POST"])
+@login_required
+@require_access("distribution", "ecriture")
+def deposer_vif_ramasses(type_export):
+
+    if type_export not in vif_suivi.PARAM_DOSSIER:
+        abort(404)
+
+    mois = request.form.get("mois") or session.get("mois_ramasse")
+    force = request.form.get("force") == "1"
+
+    if not mois:
+        flash("❌ Mois non sélectionné", "danger")
+        return redirect(url_for("distribution.liste_ramasses"))
+
+    retour = url_for("distribution.controle_ramasses_get", mois=mois)
+    nom_flux = "Réception" if type_export == "reception" else "Bon de livraison"
+
+    conn = get_db_connection()
+    try:
+        if not vif_suivi.colonnes_presentes(conn):
+            flash("❌ Suivi des dépôts non installé (migration exports_vif à passer).", "danger")
+            return redirect(retour)
+
+        dossier = vif_suivi.dossier_depot(conn, type_export)
+        if dossier is None:
+            flash(f"❌ Dossier de dépôt VIF non configuré (paramètre {vif_suivi.PARAM_DOSSIER[type_export]}).", "danger")
+            return redirect(retour)
+
+        # 🔴 contrôle double import
+        deja = vif_suivi.export_existant(conn, mois, type_export)
+        if deja and not force:
+            ou = "déposé" if deja["statut"] else "téléchargé à la main"
+            flash(f"⚠️ {nom_flux} déjà {ou} pour ce mois : un nouveau dépôt risque de créer un double import dans VIF.", "warning")
+            return redirect(url_for("distribution.controle_ramasses_get", mois=mois, confirm_depot=type_export))
+
+        # ================= GÉNÉRATION (package ba38_vif) =================
+        try:
+            if type_export == "reception":
+                date_livraison = (datetime.now() + timedelta(days=2)).strftime("%d/%m/%Y")
+                texte = generer_receptions_ramasses(conn, mois, date_livraison)
+                prefixe = PREFIXE_RECEPTIONS
+            else:
+                texte = generer_bl_ramasses(conn, mois, FORMAT_BL_SFTP)
+                prefixe = PREFIXE_BL
+        except ErreursVif as e:
+            for msg in e.messages:
+                flash(f"❌ {msg}", "danger")
+            return redirect(retour)
+
+        # ================= DÉPÔT =================
+        try:
+            chemin = deposer(texte, dossier, f"{prefixe}_{mois}")
+        except (DepotVifError, OSError) as e:
+            flash(f"❌ Dépôt impossible : {e}", "danger")
+            return redirect(retour)
+
+        # ================= TRACE =================
+        try:
+            vif_suivi.enregistrer_depot(conn, mois, type_export, current_user.email, chemin.name, dossier)
+        except sqlite3.Error as e:
+            write_log(f"[VIF dépôt] ⚠️ fichier déposé SANS trace en base : {chemin} ({e})")
+            flash(f"⚠️ Fichier déposé ({chemin.name}) mais non enregistré dans l'historique : NE PAS le redéposer.", "warning")
+            return redirect(retour)
+
+        write_log(f"[VIF dépôt] {current_user.email} a déposé {chemin} ({type_export} {mois})")
+        flash(f"✅ {nom_flux} déposé pour VIF : {chemin.name}", "success")
+        return redirect(retour)
+
+    finally:
+        conn.close()
+
+
 @distribution_bp.route("/ramasses/controle", methods=["POST"])
 @login_required
 @require_access("distribution", "lecture")
@@ -1105,6 +1191,19 @@ def controle_ramasses_get():
 
     coherent = abs(total_entrees - total_sorties) < 0.1
 
+
+    # ==============================
+    # 📡 Dépôts VIF (suivi + disponibilité des boutons)
+    # ==============================
+    confirm_depot = request.args.get("confirm_depot")
+    historique_vif = []
+    depot_possible = {"reception": False, "bl": False}
+    if vif_suivi.colonnes_presentes(conn):
+        vif_suivi.actualiser_prises_en_charge(conn)
+        historique_vif = vif_suivi.historique(conn, mois)
+        for t in depot_possible:
+            depot_possible[t] = vif_suivi.dossier_depot(conn, t) is not None
+
     conn.close()
 
     return render_template(
@@ -1116,7 +1215,10 @@ def controle_ramasses_get():
         total_sorties=total_sorties,
         coherent=coherent,
         confirm_reception=confirm_reception,
-        confirm_commande=confirm_commande
+        confirm_commande=confirm_commande,
+        confirm_depot=confirm_depot,
+        historique_vif=historique_vif,
+        depot_possible=depot_possible
     )
 
 # ============================================================================

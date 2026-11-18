@@ -43,6 +43,7 @@ from ba38_utilitaires.core import (
 from ba38_utilitaires.organisation import get_organisation
 
 from ba38_engagements import engagements_bp
+from ba38_engagements.routes_main import FILTRE_DEMANDEUR_OU_POLE
 from ba38_engagements.utils_financement import calculer_montants_utilises
 
 from openpyxl import Workbook
@@ -87,8 +88,8 @@ def _build_query(filters, voir_tout):
         where.append("COALESCE(e.deleted, 0) = 1")
 
     if not voir_tout:
-        where.append("e.demandeur_id = ?")
-        params.append(current_user.id)
+        where.append(FILTRE_DEMANDEUR_OU_POLE)
+        params.extend([current_user.id, current_user.id])
 
     if filters.get("date_debut"):
         where.append("DATE(e.cree_le) >= ?")

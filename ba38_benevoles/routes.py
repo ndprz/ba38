@@ -114,10 +114,19 @@ def api_quick_create_benevole():
             f"Creating benevole: {nom} {prenom} / {type_benevole}"
         )
 
-        cur.execute("""
-            INSERT INTO benevoles (civilite, nom, prenom, telephone_portable, type_benevole)
-            VALUES (?, ?, ?, ?, ?)
-        """, (civilite, nom, prenom, telephone or None, type_benevole))
+        # Un bénévole créé ici n'a que nom, prénom, civilité, type et téléphone : on signale sa fiche
+        # « à compléter » (bandeau sur la fiche). Colonne testée : le code peut précéder la migration.
+        colonnes = {r[1] for r in cur.execute("PRAGMA table_info(benevoles)").fetchall()}
+        if "fiche_a_completer" in colonnes:
+            cur.execute("""
+                INSERT INTO benevoles (civilite, nom, prenom, telephone_portable, type_benevole, fiche_a_completer)
+                VALUES (?, ?, ?, ?, ?, 'oui')
+            """, (civilite, nom, prenom, telephone or None, type_benevole))
+        else:
+            cur.execute("""
+                INSERT INTO benevoles (civilite, nom, prenom, telephone_portable, type_benevole)
+                VALUES (?, ?, ?, ?, ?)
+            """, (civilite, nom, prenom, telephone or None, type_benevole))
 
         benevole_id = cur.lastrowid
         conn.commit()
@@ -425,7 +434,8 @@ def benevoles_tabulator():
             "field": "nom",
             "tooltip": True,
             "width": 192,
-            "frozen": True
+            "frozen": True,
+            "formatter": "nomFormatter"   # ⚠️ devant le nom si la fiche est à compléter
         },
 
         {
@@ -1136,6 +1146,27 @@ def get_neighbor_benevole_ids_alphabetically(conn, current_id):
     return previous_id, next_id
 
 
+
+
+@benevoles_bp.route("/benevole/<int:benevole_id>/fiche_completee", methods=["POST"])
+@login_required
+@require_access("benevoles", "ecriture")
+def fiche_completee(benevole_id):
+    """Retire le bandeau « fiche à compléter » (bénévole créé en ajout rapide)."""
+    conn = get_db_connection()
+    try:
+        existe = conn.execute("SELECT 1 FROM benevoles WHERE id = ?", (benevole_id,)).fetchone()
+        if not existe:
+            flash("Bénévole introuvable.", "danger")
+            return redirect(url_for("benevoles.benevoles"))
+        conn.execute("UPDATE benevoles SET fiche_a_completer = 'non' WHERE id = ?", (benevole_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    upload_database()
+    write_log(f"Fiche bénévole {benevole_id} marquée comme complétée par {current_user.id}")
+    flash("✅ Fiche marquée comme complétée.", "success")
+    return redirect(url_for("benevoles.update_benevole", benevole_id=benevole_id))
 
 
 @benevoles_bp.route('/update_benevole/<int:benevole_id>', methods=['GET', 'POST'])
