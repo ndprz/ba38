@@ -15,7 +15,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="container mt-4" style="max-width: 1000px;">
+<div class="container-fluid mt-4" style="max-width: 1400px;">
     <h2>📧 Envoi aux associations gardant {{ annee }}</h2>
 
     {% call action_buttons() %}
@@ -24,33 +24,118 @@
     {% endcall %}
     {{ bouton_verifier_statut_mailjet(annee, feature) }}
 
+    {% if verrou_gardee %}
+    <div class="alert alert-secondary">
+        🔒 Saisie des résultats verrouillée depuis le {{ verrou_gardee.le }} par {{ verrou_gardee.par }} —
+        déverrouillez depuis la page principale Collecte (section « Résultat collecte gardée ») pour
+        pouvoir de nouveau saisir des poids. L'envoi et les relances restent possibles.
+    </div>
+    {% endif %}
+
     <div class="alert alert-warning">
         Le fichier <strong>{{ fichier_nom }}</strong> (régénéré à l'instant depuis go-on-web) sera joint
         à chaque mail. Vérifiez que vous avez contrôlé son contenu avant de confirmer.
     </div>
 
+    <p class="small text-muted mb-2">
+        📁 Repère {{ annee_precedente }}
+        {% if info_fichier_n1 %}— chargé ({{ info_fichier_n1.nb_associations }} association(s)){% else %}— aucun fichier{% endif %}
+        — à déposer depuis <a href="{{ url_for('collecte.collecte_main', annee=annee) }}#sectionCollecteAnnuelle">Paramètres de la collecte annuelle</a>.
+    </p>
+
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        {{ action_button("📥 Export CSV VIF (poids par magasin)", href=url_for('collecte.exporter_poids_magasins_gardee', annee=annee), color="outline-secondary") }}
+        {{ action_button("📄 Générer BL VIF", href=url_for('collecte.quantites_produits_bl_vif', annee=annee), color="outline-secondary") }}
+        {{ action_button("📋 Transferts à saisir dans VIF", href=url_for('collecte.quantites_produits_transferts', annee=annee), color="outline-secondary") }}
+    </div>
+
     <div class="alert alert-info small">
         <strong>Ordre à suivre :</strong>
         <ol class="mb-0">
-            <li>Vérifier/adapter le texte du mail ci-dessous (📁 Paramètres).</li>
-            <li>Utiliser « ✉️ Aperçu du mail » pour contrôler le rendu, sans rien envoyer.</li>
-            <li>Envoyer en mode test, puis cocher « Répondu » / « Résultat envoyé » au fil de l'eau.</li>
-            <li>Relancer (individuellement ou en groupe) les associations qui n'ont pas répondu ou pas
-                envoyé leur résultat.</li>
+            <li>Si besoin, vérifier/adapter le modèle Excel et le texte du mail (1️⃣ Paramètres).</li>
+            <li>Envoyer en mode test (2️⃣ Envoi initial), puis l'envoi réel.</li>
+            <li>Cocher « Répondu » / « Résultat envoyé » au fil de l'eau, relancer (3️⃣) les
+                associations qui n'ont pas répondu ou pas envoyé leur résultat.</li>
+            <li>Saisir (✏️, colonne de droite du tableau 4️⃣) et suivre l'avancement association
+                par association.</li>
         </ol>
     </div>
 
-    <button class="btn btn-outline-secondary mb-3" type="button"
-            data-bs-toggle="collapse" data-bs-target="#sectionParametresGardeeEnvoi"
-            aria-expanded="false" aria-controls="sectionParametresGardeeEnvoi">
-        📁 Paramètres (texte du mail)
-    </button>
-    <div id="sectionParametresGardeeEnvoi" class="collapse mb-3">
-        <form method="post" action="{{ url_for('collecte.enregistrer_texte_mail_gardee') }}" class="border rounded p-3">
+    <div class="card carte-etape mb-2">
+        <div class="card-header entete-etape bg-secondary" role="button"
+             data-bs-toggle="collapse" data-bs-target="#etape1" aria-expanded="false" aria-controls="etape1">
+            <span class="pastille-etape">1</span>
+            <span class="titre-etape">📁 Paramètres (modèle Excel et texte du mail)</span>
+            <span class="chevron-etape">▾</span>
+        </div>
+        <div id="etape1" class="collapse">
+        <div class="card-body">
+        <h6>Modèle Excel envoyé à chaque association</h6>
+        <div class="border rounded p-3 mb-3">
+            <a href="{{ url_for('collecte.gardee_modele_produits', annee=annee) }}" class="btn btn-sm btn-primary">
+                📦 Modifier la liste des produits
+            </a>
+            <span class="text-muted small">
+                Ajoutez, renommez ou supprimez des produits directement dans l'application — pas besoin
+                d'Excel pour ça.
+            </span>
+        </div>
+        <div class="border rounded p-3 mb-3">
+            <strong>Édition complète via Google Sheets</strong>
+            <p class="text-muted small mb-2">
+                Pour modifier les titres, la mise en page, les commentaires ou les formules — tout ce
+                qu'Excel permet et qu'un simple éditeur en ligne ne permet pas — collez ici le lien de
+                partage d'une copie Google Sheets du modèle, éditez-la normalement dans Google Sheets,
+                puis synchronisez pour reprendre la dernière version.
+            </p>
+            <form method="post" action="{{ url_for('collecte.enregistrer_url_drive_modele_association') }}"
+                  class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <label for="url_drive" class="visually-hidden">Lien Google Sheets</label>
+                <input type="url" name="url_drive" id="url_drive" class="form-control form-control-sm"
+                       style="max-width: 420px;" placeholder="https://docs.google.com/spreadsheets/d/..."
+                       value="{{ url_drive_modele_association }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">💾 Enregistrer le lien</button>
+            </form>
+            {% if url_drive_modele_association %}
+            <form method="post" action="{{ url_for('collecte.synchroniser_modele_association') }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <button type="submit" class="btn btn-sm btn-primary"
+                        onclick="return confirm('Remplacer le modèle actuel par la version Google Sheets ? L’ancienne version sera conservée en sauvegarde.');">
+                    🔄 Synchroniser depuis Google Sheets
+                </button>
+            </form>
+            {% else %}
+            <span class="text-muted small">Enregistrez d'abord un lien pour activer la synchronisation.</span>
+            {% endif %}
+        </div>
+        <div class="border rounded p-3 mb-3 d-flex flex-wrap align-items-center gap-2">
+            <a href="{{ url_for('collecte.telecharger_modele_association', annee=annee) }}" class="btn btn-sm btn-outline-secondary">
+                📥 Télécharger le modèle actuel
+            </a>
+            <form method="post" action="{{ url_for('collecte.enregistrer_modele_association') }}"
+                  enctype="multipart/form-data" class="d-flex flex-wrap align-items-center gap-2 m-0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <label for="modele_excel" class="visually-hidden">Nouveau modèle Excel</label>
+                <input type="file" name="modele_excel" id="modele_excel" class="form-control form-control-sm"
+                       style="max-width: 320px;" accept=".xlsx" required>
+                <button type="submit" class="btn btn-sm btn-outline-primary">🔄 Remplacer le modèle</button>
+            </form>
+            <span class="text-muted small w-100">
+                Ou déposez directement un fichier .xlsx modifié sur votre poste — repris automatiquement,
+                sans redémarrage de l'application. L'ancienne version est conservée en sauvegarde.
+            </span>
+        </div>
+
+        <hr>
+        <h6>Texte du mail</h6>
+        <form method="post" action="{{ url_for('collecte.enregistrer_texte_mail_gardee') }}" id="form-texte-mail">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="annee" value="{{ annee }}">
             <div class="mb-3">
-                <label for="texte_mail" class="form-label"><strong>Texte du mail</strong></label>
                 <textarea name="texte_mail" id="texte_mail" class="d-none">{{ texte_mail }}</textarea>
                 <div id="texte_mail_quill" class="bg-white"></div>
                 <small class="text-muted">
@@ -63,83 +148,163 @@
             </div>
             <button type="submit" class="btn btn-outline-primary">💾 Enregistrer le texte</button>
         </form>
+        </div>
+        </div>
     </div>
 
-    <div class="mb-2">
-        <label for="libelle_relance" class="form-label small mb-1">
-            Libellé supplémentaire pour une relance (optionnel — ajouté à la fin de l'objet du mail,
-            ex. « Rappel — en attente de résultats »)
-        </label>
-        <input type="text" id="libelle_relance" class="form-control form-control-sm" style="max-width: 420px;"
-               placeholder="ex. Rappel — en attente de résultats">
-    </div>
-
-    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <form method="post" action="{{ url_for('collecte.gardee_relancer') }}" class="d-flex align-items-center gap-1 m-0">
+    <div class="card carte-etape mb-2">
+        <div class="card-header entete-etape bg-primary" role="button"
+             data-bs-toggle="collapse" data-bs-target="#etape2" aria-expanded="true" aria-controls="etape2">
+            <span class="pastille-etape">2</span>
+            <span class="titre-etape">📧 Envoi initial</span>
+            <span class="chevron-etape">▾</span>
+        </div>
+        <div id="etape2" class="collapse show">
+        <form method="post" class="card-body">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="annee" value="{{ annee }}">
-            <input type="hidden" name="groupe" value="repondu">
-            <input type="hidden" name="libelle_supplementaire" class="champ-libelle-relance">
-            <button type="button" class="btn btn-sm btn-outline-secondary"
-                    onclick="filtrerDestinataires('repondu', 'non-répondants');">
-                👁️ Voir la liste
-            </button>
-            <button type="submit" name="action" value="test" class="btn btn-sm btn-outline-info">
-                🧪 Tester sur mon adresse
-            </button>
-            <div class="form-check m-0">
-                <input class="form-check-input" type="checkbox" name="confirmation_envoi" value="oui" id="confirmation_envoi_repondu">
-                <label class="form-check-label small" for="confirmation_envoi_repondu">confirmer</label>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="confirmation" value="oui" id="confirmation" required>
+                <label class="form-check-label" for="confirmation">J'ai contrôlé le fichier Excel et je confirme l'envoi.</label>
             </div>
-            <button type="submit" name="action" value="relancer" class="btn btn-sm btn-outline-warning"
-                    onclick="return confirm('Relancer toutes les associations dont la case « Répondu » n\'est pas cochée ?');">
-                🔁 Relancer les non-répondants
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="mode_test" id="mode_test" checked>
+                <label class="form-check-label" for="mode_test">Test : envoyer uniquement à l'adresse de test.</label>
+            </div>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" name="test_une_association" id="test_une_association">
+                <label class="form-check-label" for="test_une_association">
+                    Une seule association (si « Test » ci-dessus est coché : juste à vous ; sinon, envoi réel
+                    uniquement à elle — pour un premier envoi oublié ou corrigé, sans renvoyer aux autres).
+                </label>
+            </div>
+            <div class="mb-3 d-flex align-items-end gap-2 flex-wrap" style="max-width: 700px;">
+                <div class="flex-grow-1">
+                    <label class="form-label" for="association_test_nom">Association à tester / prévisualiser</label>
+                    <select class="form-select" name="association_test_nom" id="association_test_nom">
+                        {% for asso in associations %}
+                        <option value="{{ asso.nom }}">{{ asso.nom }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="button" id="btn-apercu-mail" class="btn btn-outline-info">
+                    ✉️ Aperçu du mail
+                </button>
+            </div>
+            <p class="text-muted small">
+                L'aperçu ouvre le texte exact du mail pour l'association sélectionnée ci-dessus, sans rien
+                envoyer (même en test).
+            </p>
+
+            <button type="submit" class="btn btn-primary" id="btn-envoyer-mails">
+                📧 Envoyer les mails
             </button>
         </form>
-        <form method="post" action="{{ url_for('collecte.gardee_relancer') }}" class="d-flex align-items-center gap-1 m-0">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="annee" value="{{ annee }}">
-            <input type="hidden" name="groupe" value="resultat_envoye">
-            <input type="hidden" name="libelle_supplementaire" class="champ-libelle-relance">
-            <button type="button" class="btn btn-sm btn-outline-secondary"
-                    onclick="filtrerDestinataires('resultat_envoye', 'sans résultat envoyé');">
-                👁️ Voir la liste
-            </button>
-            <button type="submit" name="action" value="test" class="btn btn-sm btn-outline-info">
-                🧪 Tester sur mon adresse
-            </button>
-            <div class="form-check m-0">
-                <input class="form-check-input" type="checkbox" name="confirmation_envoi" value="oui" id="confirmation_envoi_resultat">
-                <label class="form-check-label small" for="confirmation_envoi_resultat">confirmer</label>
-            </div>
-            <button type="submit" name="action" value="relancer" class="btn btn-sm btn-outline-warning"
-                    onclick="return confirm('Relancer toutes les associations dont la case « Résultat envoyé » n\'est pas cochée ?');">
-                🔁 Relancer ceux sans résultat
-            </button>
-        </form>
+        </div>
     </div>
 
-    <form method="post">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="annee" value="{{ annee }}">
+    <div class="card carte-etape mb-2">
+        <div class="card-header entete-etape bg-warning" role="button"
+             data-bs-toggle="collapse" data-bs-target="#etape3" aria-expanded="true" aria-controls="etape3">
+            <span class="pastille-etape">3</span>
+            <span class="titre-etape">🔁 Suivi & relances</span>
+            <span class="chevron-etape">▾</span>
+        </div>
+        <div id="etape3" class="collapse show">
+        <div class="card-body">
+        <div class="mb-2">
+            <label for="libelle_relance" class="form-label small mb-1">
+                Libellé supplémentaire pour une relance (optionnel — ajouté à la fin de l'objet du mail,
+                ex. « Rappel — en attente de résultats »)
+            </label>
+            <input type="text" id="libelle_relance" class="form-control form-control-sm" style="max-width: 420px;"
+                   placeholder="ex. Rappel — en attente de résultats">
+        </div>
+
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <form method="post" action="{{ url_for('collecte.gardee_relancer') }}" class="d-flex align-items-center gap-1 m-0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <input type="hidden" name="groupe" value="repondu">
+                <input type="hidden" name="libelle_supplementaire" class="champ-libelle-relance">
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                        onclick="filtrerDestinataires('repondu', 'non-répondants');">
+                    👁️ Voir la liste
+                </button>
+                <button type="submit" name="action" value="test" class="btn btn-sm btn-outline-info">
+                    🧪 Tester sur mon adresse
+                </button>
+                <div class="form-check m-0">
+                    <input class="form-check-input" type="checkbox" name="confirmation_envoi" value="oui" id="confirmation_envoi_repondu">
+                    <label class="form-check-label small" for="confirmation_envoi_repondu">confirmer</label>
+                </div>
+                <button type="submit" name="action" value="relancer" class="btn btn-sm btn-outline-warning"
+                        onclick="return confirm('Relancer toutes les associations dont la case « Répondu » n\'est pas cochée ?');">
+                    🔁 Relancer les non-répondants
+                </button>
+            </form>
+            <form method="post" action="{{ url_for('collecte.gardee_relancer') }}" class="d-flex align-items-center gap-1 m-0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <input type="hidden" name="groupe" value="resultat_envoye">
+                <input type="hidden" name="libelle_supplementaire" class="champ-libelle-relance">
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                        onclick="filtrerDestinataires('resultat_envoye', 'sans résultat envoyé');">
+                    👁️ Voir la liste
+                </button>
+                <button type="submit" name="action" value="test" class="btn btn-sm btn-outline-info">
+                    🧪 Tester sur mon adresse
+                </button>
+                <div class="form-check m-0">
+                    <input class="form-check-input" type="checkbox" name="confirmation_envoi" value="oui" id="confirmation_envoi_resultat">
+                    <label class="form-check-label small" for="confirmation_envoi_resultat">confirmer</label>
+                </div>
+                <button type="submit" name="action" value="relancer" class="btn btn-sm btn-outline-warning"
+                        onclick="return confirm('Relancer toutes les associations dont la case « Résultat envoyé » n\'est pas cochée ?');">
+                    🔁 Relancer ceux sans résultat
+                </button>
+            </form>
+        </div>
+        </div>
+        </div>
+    </div>
+
+    <div class="card carte-etape mb-2">
+        <div class="card-header entete-etape bg-info" role="button"
+             data-bs-toggle="collapse" data-bs-target="#etape4" aria-expanded="true" aria-controls="etape4">
+            <span class="pastille-etape">4</span>
+            <span class="titre-etape">📋 Destinataires ({{ associations|length }} associations)</span>
+            <span class="chevron-etape">▾</span>
+        </div>
+        <div id="etape4" class="collapse show">
+        <div class="card-body">
         <div class="d-flex align-items-center gap-2 mb-1">
-            <h5 class="mb-0">Destinataires ({{ associations|length }} associations)</h5>
             <button type="button" id="btn-afficher-tout" class="btn btn-sm btn-outline-dark d-none"
                     onclick="afficherToutesDestinataires();">
                 ✖️ Afficher toutes
             </button>
         </div>
         <div id="filtre-destinataires-info" class="alert alert-secondary small d-none py-1 mb-2"></div>
+        <div class="table-responsive">
         <table class="table table-sm table-striped align-middle" id="tableDestinataires">
             <thead>
                 <tr>
                     <th>Code VIF</th><th>Association</th><th style="max-width: 220px;">Adresse(s)</th><th>Magasins</th>
                     <th>Poids total (kg)</th>
                     <th title="Repère : total {{ annee_precedente }} (fichier associationgardantproduits{{ annee_precedente }}.xlsx)">Poids {{ annee_precedente }} (kg)</th>
-                    <th>Répondu</th><th>Résultat envoyé</th><th>Saisie en ligne</th><th>Statut</th><th></th>
+                    <th>Répondu</th><th>Résultat envoyé</th><th>Saisie en ligne</th>
+                    <th title="VIF fait pour cette association : export CSV poids par magasin + transfert produits + BL">Traitée</th>
+                    <th>Statut</th><th></th>
                 </tr>
             </thead>
             <tbody>
+            <tr class="table-light fw-bold">
+                <td colspan="3">Total</td>
+                <td>{{ total_magasins }}</td>
+                <td>{{ "%.0f"|format(total_poids) if total_poids else "—" }}</td>
+                <td class="text-muted">{{ "%.0f"|format(total_poids_n1) if total_poids_n1 else "—" }}</td>
+                <td colspan="6"></td>
+            </tr>
             {% for asso in associations %}
             <tr>
                 <td>{{ asso.code_vif or '—' }}</td>
@@ -173,8 +338,12 @@
                     —
                     {% endif %}
                 </td>
-                <td>{{ badge_statut_mailjet(asso.statut_mailjet) }}</td>
                 <td>
+                    <input type="checkbox" class="case-suivi" data-champ="traite" data-association="{{ asso.nom }}"
+                           {% if asso.suivi.traite %}checked{% endif %}>
+                </td>
+                <td>{{ badge_statut_mailjet(asso.statut_mailjet) }}</td>
+                <td class="d-flex gap-1">
                     <form method="post" action="{{ url_for('collecte.gardee_relancer') }}" class="m-0">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="annee" value="{{ annee }}">
@@ -186,54 +355,26 @@
                             🔁
                         </button>
                     </form>
+                    <a href="{{ url_for('collecte.gardee_saisie', annee=annee, association=asso.nom) }}"
+                       class="btn btn-sm btn-primary" title="Saisir le poids par magasin et les quantités par produit">
+                        ✏️ Saisir
+                    </a>
                 </td>
             </tr>
             {% endfor %}
             </tbody>
         </table>
-        <p class="text-muted small">
-            Les cases « Répondu » et « Résultat envoyé » sont à cocher manuellement après vérification
-            (mail reçu, fichier reçu, ou saisie en ligne consultée) — la colonne « Saisie en ligne » n'est
-            qu'un indice automatique, elle ne coche jamais rien toute seule.
-        </p>
-
-        <div class="form-check mb-3">
-            <input class="form-check-input" type="checkbox" name="confirmation" value="oui" id="confirmation" required>
-            <label class="form-check-label" for="confirmation">J'ai contrôlé le fichier Excel et je confirme l'envoi.</label>
-        </div>
-        <div class="form-check mb-3">
-            <input class="form-check-input" type="checkbox" name="mode_test" id="mode_test" checked>
-            <label class="form-check-label" for="mode_test">Test : envoyer uniquement à l'adresse de test.</label>
-        </div>
-        <div class="form-check mb-2">
-            <input class="form-check-input" type="checkbox" name="test_une_association" id="test_une_association">
-            <label class="form-check-label" for="test_une_association">
-                Une seule association (si « Test » ci-dessus est coché : juste à vous ; sinon, envoi réel
-                uniquement à elle — pour un premier envoi oublié ou corrigé, sans renvoyer aux autres).
-            </label>
-        </div>
-        <div class="mb-3 d-flex align-items-end gap-2 flex-wrap" style="max-width: 700px;">
-            <div class="flex-grow-1">
-                <label class="form-label" for="association_test_nom">Association à tester / prévisualiser</label>
-                <select class="form-select" name="association_test_nom" id="association_test_nom">
-                    {% for asso in associations %}
-                    <option value="{{ asso.nom }}">{{ asso.nom }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <button type="button" id="btn-apercu-mail" class="btn btn-outline-info">
-                ✉️ Aperçu du mail
-            </button>
         </div>
         <p class="text-muted small">
-            L'aperçu ouvre le texte exact du mail pour l'association sélectionnée ci-dessus, sans rien
-            envoyer (même en test).
+            Les cases « Répondu », « Résultat envoyé » et « Traitée » sont à cocher manuellement après
+            vérification (mail reçu, fichier reçu, saisie en ligne consultée, ou VIF/BL faits) — la colonne
+            « Saisie en ligne » n'est qu'un indice automatique, elle ne coche jamais rien toute seule.
+            « Traitée » permet de suivre association par association la réception VIF (export CSV), le
+            transfert produits et le BL, sans attendre que toutes les associations aient répondu.
         </p>
-
-        <button type="submit" class="btn btn-primary" id="btn-envoyer-mails">
-            📧 Envoyer les mails
-        </button>
-    </form>
+        </div>
+        </div>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
@@ -262,7 +403,7 @@ const quillTexteMail = new Quill(document.getElementById("texte_mail_quill"), {
     },
 });
 quillTexteMail.root.innerHTML = texteMailTextarea.value;
-document.querySelector('#sectionParametresGardeeEnvoi form').addEventListener("submit", function () {
+document.getElementById('form-texte-mail').addEventListener("submit", function () {
     texteMailTextarea.value = quillTexteMail.root.innerHTML;
 });
 

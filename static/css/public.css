@@ -962,3 +962,41 @@ body{
 .badge.bg-warning, .badge.bg-light {
   color: #3d383d !important;
 }
+
+/* ------------------------------------------------------------
+   Étapes numérotées repliables (cartes colorées + pastille) —
+   utilisé sur les pages Collecte gardée (envoi, paramètres...),
+   réutilisable sur toute page voulant présenter une marche à
+   suivre sous forme d'accordéon numéroté.
+   ------------------------------------------------------------ */
+.carte-etape {
+    overflow: hidden;
+}
+.entete-etape {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    color: #fff;
+}
+.entete-etape .pastille-etape {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+}
+.entete-etape .titre-etape {
+    flex-grow: 1;
+    font-weight: 600;
+}
+.entete-etape .chevron-etape {
+    transition: transform .2s ease;
+}
+.entete-etape[aria-expanded="true"] .chevron-etape {
+    transform: rotate(180deg);
+}

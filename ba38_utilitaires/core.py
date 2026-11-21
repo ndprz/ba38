@@ -1144,6 +1144,49 @@ def mailjet_get_message_status(message_id):
         return None
 
 
+def _mailjet_sender_request(method, chemin, json_body=None):
+    """Appel authentifié à l'API Mailjet /v3/REST/sender (gestion des
+    expéditeurs). Retourne (ok, data, message) : data = liste « Data » de la
+    réponse, message = erreur lisible si échec (jamais d'exception)."""
+    api_key = os.getenv("MAILJET_API_KEY")
+    api_secret = os.getenv("MAILJET_API_SECRET")
+    if not api_key or not api_secret:
+        return False, [], "Clés API Mailjet absentes de l'environnement."
+    try:
+        r = requests.request(
+            method, f"https://api.mailjet.com/v3/REST/sender{chemin}",
+            auth=(api_key, api_secret), json=json_body, timeout=15,
+        )
+        try:
+            corps = r.json()
+        except ValueError:
+            corps = {}
+        if not r.ok:
+            detail = corps.get("ErrorMessage") or corps.get("ErrorInfo") or r.text[:200]
+            return False, [], f"Mailjet HTTP {r.status_code} : {detail}"
+        return True, corps.get("Data", []), ""
+    except Exception as e:
+        write_log(f"⚠️ Erreur API Mailjet /sender : {e}")
+        return False, [], f"Mailjet injoignable : {e}"
+
+
+def mailjet_list_senders():
+    """Liste les expéditeurs du compte Mailjet (Email, Status, id...)."""
+    ok, data, msg = _mailjet_sender_request("GET", "?Limit=1000")
+    return ok, sorted(data, key=lambda s: (s.get("Status") != "Active", (s.get("Email") or "").lower())), msg
+
+
+def mailjet_create_sender(email):
+    """Enregistre une adresse comme expéditeur : Mailjet envoie alors un
+    mail de confirmation à cette adresse (lien à cliquer)."""
+    return _mailjet_sender_request("POST", "", {"Email": email})
+
+
+def mailjet_validate_sender(sender_id):
+    """Relance la validation d'un expéditeur déjà enregistré (Inactive)."""
+    return _mailjet_sender_request("POST", f"/{int(sender_id)}/validate")
+
+
 def send_reset_email(email, token):
     """
     Envoie un email de réinitialisation de mot de passe via Mailjet.

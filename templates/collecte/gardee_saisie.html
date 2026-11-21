@@ -37,6 +37,11 @@
         ⛔ Échec de l'analyse du fichier « {{ detection.pdf_nom }} » : {{ detection.erreur }}
     </div>
     {% elif detection and detection.statut == 'termine' %}
+    {% if detection.avertissement %}
+    <div class="alert alert-danger">
+        {{ detection.avertissement }}
+    </div>
+    {% endif %}
     <div class="alert alert-warning d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
             🤖 Valeurs détectées depuis « {{ detection.pdf_nom }} » — pré-remplies en

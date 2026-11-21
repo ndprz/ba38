@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Expéditeurs Mailjet{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>✉️ Expéditeurs Mailjet</h2>
+  <p class="text-muted">
+    Un mail ne part que si son adresse d'expéditeur est <strong>Active</strong> chez Mailjet,
+    sinon il est rejeté sans aucune erreur dans l'appli. Le compte Mailjet est commun à DEV et PROD.
+  </p>
+
+  <a href="{{ url_for('debug_bp.admin_scripts') }}" class="btn btn-outline-secondary btn-sm mb-3">
+    ← Retour à l'administration
+  </a>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h5 class="card-title">➕ Enregistrer une adresse</h5>
+      <p class="small text-muted mb-2">
+        Mailjet envoie un mail de confirmation à cette adresse : la personne n'a besoin d'aucun accès
+        à Mailjet, il suffit de cliquer le lien (ou de vous transférer le mail sans cliquer, et de cliquer vous-même).
+      </p>
+      <form method="POST" class="row g-2 align-items-center"
+            onsubmit="return confirm('Enregistrer cette adresse chez Mailjet ? Un mail de confirmation lui sera envoyé.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="ajouter">
+        <div class="col-md-6">
+          <input type="email" name="email" class="form-control" placeholder="prenom.nom@banquealimentaire.org" required {% if test_locked %}disabled{% endif %}>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary" {% if test_locked %}disabled{% endif %}>Enregistrer et envoyer la confirmation</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <h5>Expéditeurs du compte ({{ senders|length }})</h5>
+  <table class="table table-sm table-bordered align-middle">
+    <thead class="table-light">
+      <tr><th>Adresse</th><th>Statut</th><th>Créée le</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for s in senders %}
+      <tr>
+        <td>{{ s.Email }}{% if s.Name %} <span class="text-muted small">({{ s.Name }})</span>{% endif %}</td>
+        <td>
+          {% if s.Status == 'Active' %}<span class="badge bg-success">Active</span>
+          {% else %}<span class="badge bg-warning text-dark">{{ s.Status or 'Inconnu' }}</span>{% endif %}
+        </td>
+        <td class="small">{{ (s.CreatedAt or '')[:10] }}</td>
+        <td class="text-end">
+          {% if s.Status != 'Active' and s.ID %}
+          <form method="POST" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="valider">
+            <input type="hidden" name="sender_id" value="{{ s.ID }}">
+            <button type="submit" class="btn btn-sm btn-outline-primary" {% if test_locked %}disabled{% endif %}>🔁 Relancer la validation</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="text-muted">Aucun expéditeur lu.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

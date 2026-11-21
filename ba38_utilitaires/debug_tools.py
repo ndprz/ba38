@@ -44,7 +44,11 @@ from ba38_utilitaires.core import (
     is_admin_global,
     envoyer_mail,
     render_modele_email,
-    copier_modele_email_vers_prod
+    copier_modele_email_vers_prod,
+    is_valid_email,
+    mailjet_list_senders,
+    mailjet_create_sender,
+    mailjet_validate_sender,
 )
 
 # ============================================================================
@@ -1295,6 +1299,59 @@ def mail_utilisateurs():
         "admin/mail_utilisateurs.html",
         modeles=modeles,
         users=users
+    )
+
+
+@debug_bp.route("/admin/mailjet_senders", methods=["GET", "POST"])
+@login_required
+def mailjet_senders():
+    """Expéditeurs Mailjet : liste, ajout (Mailjet envoie un mail de
+    confirmation à l'adresse) et relance de validation. Le compte Mailjet
+    est partagé DEV/PROD : la liste est donc identique des deux côtés."""
+    if session.get("user_role") != "admin":
+        flash("⛔ Accès interdit", "danger")
+        return redirect(url_for("index"))
+
+    test_locked = bool(session.get("test_user"))
+
+    if request.method == "POST":
+        if test_locked:
+            flash("🔒 Compte en mode test : action désactivée.", "warning")
+            return redirect(url_for("debug_bp.mailjet_senders"))
+
+        action = request.form.get("action")
+        if action == "ajouter":
+            email = (request.form.get("email") or "").strip().lower()
+            if not is_valid_email(email):
+                flash("❌ Adresse email invalide.", "danger")
+            else:
+                ok, _data, msg = mailjet_create_sender(email)
+                write_log(f"📧 Mailjet /sender : ajout {email} par {current_user.email} → {'OK' if ok else msg}")
+                if ok:
+                    flash(f"✅ {email} enregistrée chez Mailjet : un mail de confirmation vient d'être envoyé à cette adresse (lien à cliquer).", "success")
+                else:
+                    flash(f"❌ {msg}", "danger")
+        elif action == "valider":
+            sender_id = request.form.get("sender_id", "")
+            if not sender_id.isdigit():
+                flash("❌ Identifiant d'expéditeur invalide.", "danger")
+            else:
+                ok, _data, msg = mailjet_validate_sender(sender_id)
+                write_log(f"📧 Mailjet /sender : validation id={sender_id} par {current_user.email} → {'OK' if ok else msg}")
+                if ok:
+                    flash("✅ Validation relancée chez Mailjet (vérifiez la boîte de l'adresse concernée).", "success")
+                else:
+                    flash(f"❌ {msg}", "danger")
+        return redirect(url_for("debug_bp.mailjet_senders"))
+
+    ok, senders, msg = mailjet_list_senders()
+    if not ok:
+        flash(f"❌ Impossible de lire les expéditeurs : {msg}", "danger")
+
+    return render_template(
+        "admin/mailjet_senders.html",
+        senders=senders,
+        test_locked=test_locked,
     )
 
 

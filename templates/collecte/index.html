@@ -420,8 +420,13 @@
         <div class="card mb-3 {% if not assoc_prets %}bg-light{% endif %}">
             <div class="card-body d-flex justify-content-between align-items-center gap-2">
                 <div>
-                    <h5 class="card-title mb-1">🏠 Envoi fichiers réponse aux associations</h5>
-                    <p class="card-text small text-muted mb-0">Créer la liste, la contrôler, puis préparer et envoyer les messages.</p>
+                    <h5 class="card-title mb-1">🏠 Envoi, suivi et saisie des associations gardant</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Créer la liste, la contrôler, puis préparer/envoyer les messages — « Préparer
+                        l'envoi » regroupe aussi le suivi (répondu/résultat envoyé/traitée), les relances
+                        et l'accès direct à la saisie de chaque association (même page que l'ancien «
+                        Saisir » de Résultat collecte gardée, fusionnée le 2026-11-18).
+                    </p>
                     {% if not assoc_prets %}
                     <p class="text-warning small mb-0">⚠️ Fichiers magasins et/ou groupes manquants pour {{ annee }}.</p>
                     {% endif %}
@@ -429,7 +434,7 @@
                 <div class="d-flex flex-wrap gap-2">
                     {{ action_button("🏠 Créer la liste", href=url_for('collecte.gardee_excel', annee=annee), color="success" if assoc_prets else "outline-secondary", disabled=not assoc_prets) }}
                     {{ action_button("📋 Contrôler / corriger la liste", href=url_for('collecte.gardee', annee=annee), color="outline-secondary") }}
-                    {{ action_button("📧 Préparer l'envoi", href=url_for('collecte.gardee_envoi', annee=annee), color="primary") }}
+                    {{ action_button("📧 Envoi, suivi & saisie", href=url_for('collecte.gardee_envoi', annee=annee), color="primary") }}
                 </div>
             </div>
         </div>
@@ -492,6 +497,18 @@
                 {{ action_button("⚖️ Ouvrir", href=url_for('collecte.palox_synthese', annee=annee), color="primary") }}
             </div>
         </div>
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center gap-2">
+                <div>
+                    <h5 class="card-title mb-1">📊 Statistiques enseignes et sous-enseignes</h5>
+                    <p class="card-text small text-muted mb-0">
+                        Répartition du poids des cagettes par enseigne et sous-enseigne (vendredi et
+                        samedi uniquement), comparée à l'année précédente.
+                    </p>
+                </div>
+                {{ action_button("📊 Ouvrir", href=url_for('collecte.statistiques_enseignes', annee=annee), color="outline-primary") }}
+            </div>
+        </div>
 
         <h5 class="mb-3 mt-4">Résultat collecte gardée</h5>
 
@@ -531,10 +548,11 @@
                     <h5 class="card-title mb-1">✏️ Saisie poids + produits, par association</h5>
                     <p class="card-text small text-muted mb-0">
                         Poids par magasin ET quantités par produit, pour une seule association,
-                        regroupés dans la même page.
+                        regroupés dans la même page — choisir l'association depuis le tableau de suivi
+                        « Associations gardant → Envoi, suivi & saisie » (bouton ci-dessous, même tableau).
                     </p>
                 </div>
-                {{ action_button("✏️ Saisir", href=url_for('collecte.gardee_saisie_choisir', annee=annee) if magasins_prets else '#', color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
+                {{ action_button("✏️ Saisir", href=url_for('collecte.gardee_envoi', annee=annee) if magasins_prets else '#', color="success" if magasins_prets else "outline-secondary", disabled=not magasins_prets) }}
             </div>
         </div>
         <div class="card mb-3">

@@ -1,3 +1,3 @@
-VERSION=1.7.347
-MESSAGE=Billets spectacle : duplication d'une campagne
-DATE=2026-11-18 11:47
+VERSION=1.7.358
+MESSAGE=Admin : page Expéditeurs Mailjet (lister, ajouter, relancer la validation d'une adresse expéditeur)
+DATE=2026-11-21 15:46

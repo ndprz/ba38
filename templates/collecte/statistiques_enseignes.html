@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_buttons, bouton_retour %}
+
+{% block title %}Statistiques enseignes {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 900px;">
+    <h2>📊 Statistiques enseignes et sous-enseignes {{ annee }}</h2>
+
+    {% call action_buttons() %}
+        {{ bouton_retour(url_for('collecte.collecte_main', annee=annee)) }}
+    {% endcall %}
+
+    <p class="text-muted small">
+        Répartition du poids des cagettes (nombre saisi × poids moyen pesé de la cagette) par enseigne
+        et sous-enseigne, sur les demi-journées <strong>{{ libelle_jours|lower }}</strong> — comparée à
+        {{ annee - 1 }} sur le(s) même(s) créneau(x). Un magasin collecté en {{ annee - 1 }} mais plus
+        cette année (fermé, racheté...) reste compté dans le poids {{ annee - 1 }}, à 0 en {{ annee }}.
+    </p>
+
+    <div class="btn-group mb-3" role="group" aria-label="Choix du jour">
+        {% for cle, (libelle, _prefixes) in filtres_jours.items() %}
+        <a href="{{ url_for('collecte.statistiques_enseignes', annee=annee, jours=cle) }}"
+           class="btn btn-sm {{ 'btn-primary' if cle == filtre_jours else 'btn-outline-primary' }}">
+            {{ libelle }}
+        </a>
+        {% endfor %}
+    </div>
+
+    {% if not poids_cagette %}
+    <div class="alert alert-warning small">
+        ⚠️ Aucun poids de cagette pesé (ni estimé) enregistré pour {{ annee }} — les poids ci-dessous
+        seront à 0 tant que la pesée n'est pas renseignée (page « ⚖️ Pesée palox » ou saisie cagettes).
+    </div>
+    {% endif %}
+
+    {% if not resultats %}
+    <div class="alert alert-secondary">Aucune cagette saisie sur {{ libelle_jours|lower }} pour {{ annee }} ou {{ annee - 1 }}.</div>
+    {% else %}
+
+    {% if analyse %}
+    <div class="alert alert-info">
+        <strong>📝 Analyse — {{ libelle_jours }}</strong>
+        <ul class="mb-0">
+            <li>
+                <strong>{{ analyse.leader }}</strong> est la première enseigne avec
+                {{ "%.0f%%"|format(analyse.leader_part) }} du poids {{ annee }}
+                {% if analyse.leader_evolution is not none %}
+                ({{ "%+.0f%%"|format(analyse.leader_evolution) }} par rapport à {{ annee - 1 }}){% endif %}.
+            </li>
+            <li>
+                Poids total {{ "%+.0f%%"|format(analyse.evolution_generale) }} par rapport à {{ annee - 1 }}
+                ({{ "%.0f"|format(total_general) }} kg contre {{ "%.0f"|format(total_general_n1) }} kg).
+            </li>
+            {% if analyse.plus_forte_hausse %}
+            <li>
+                Plus forte hausse : <strong>{{ analyse.plus_forte_hausse.enseigne }}</strong>
+                ({{ "%+.0f%%"|format(analyse.plus_forte_hausse.evolution_pct) }}).
+            </li>
+            {% endif %}
+            {% if analyse.plus_forte_baisse %}
+            <li>
+                Plus forte baisse : <strong>{{ analyse.plus_forte_baisse.enseigne }}</strong>
+                ({{ "%+.0f%%"|format(analyse.plus_forte_baisse.evolution_pct) }}).
+            </li>
+            {% endif %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if rachats %}
+    <div class="alert alert-secondary small">
+        🔁 {{ rachats|length }} changement(s) d'enseigne détecté(s) (même adresse, Code VIF différent) —
+        les poids restent comptés sous l'enseigne réelle de chaque année, mais ce n'est pas une vraie
+        perte/gain de volume :
+        <ul class="mb-0">
+            {% for r in rachats %}
+            <li>{{ r.ancien }} → {{ r.nouveau }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+            <h6>Par enseigne</h6>
+            <div style="position: relative; height: 320px;">
+                <canvas id="graphiqueEnseignes"></canvas>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <h6>Par sous-enseigne</h6>
+            <div style="position: relative; height: 320px;">
+                <canvas id="graphiqueSousEnseignes"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <table class="table table-sm table-striped align-middle">
+        <thead>
+            <tr>
+                <th>Enseigne / sous-enseigne</th>
+                <th class="text-end">Poids {{ annee }} (kg)</th>
+                <th class="text-end">Poids {{ annee - 1 }} (kg)</th>
+                <th class="text-end">Évolution</th>
+                <th class="text-end">Part {{ annee }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr class="table-light fw-bold">
+                <td>Total</td>
+                <td class="text-end">{{ "%.0f"|format(total_general) }}</td>
+                <td class="text-end">{{ "%.0f"|format(total_general_n1) }}</td>
+                <td class="text-end">
+                    {% if total_general_n1 %}{{ "%+.0f%%"|format((total_general - total_general_n1) / total_general_n1 * 100) }}{% else %}—{% endif %}
+                </td>
+                <td class="text-end">100%</td>
+            </tr>
+            {% for e in resultats %}
+            <tr class="fw-bold">
+                <td>{{ e.enseigne }}</td>
+                <td class="text-end">{{ "%.0f"|format(e.poids) }}</td>
+                <td class="text-end">{{ "%.0f"|format(e.poids_n1) }}</td>
+                <td class="text-end">
+                    {% if e.poids_n1 %}{{ "%+.0f%%"|format((e.poids - e.poids_n1) / e.poids_n1 * 100) }}{% else %}—{% endif %}
+                </td>
+                <td class="text-end">{{ "%.0f%%"|format(e.part) }}</td>
+            </tr>
+            {% for s in e.sous_enseignes %}
+            <tr class="small text-muted">
+                <td class="ps-4">↳ {{ s.nom }}</td>
+                <td class="text-end">{{ "%.0f"|format(s.poids) }}</td>
+                <td class="text-end">{{ "%.0f"|format(s.poids_n1) }}</td>
+                <td class="text-end">
+                    {% if s.poids_n1 %}{{ "%+.0f%%"|format((s.poids - s.poids_n1) / s.poids_n1 * 100) }}{% else %}—{% endif %}
+                </td>
+                <td></td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+
+{% if resultats %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const resultats = {{ resultats|tojson }};
+const anneeN = {{ annee }};
+const anneeN1 = {{ annee - 1 }};
+const COULEUR_N1 = "#2a78d6";
+const COULEUR_N = "#eb6834";
+
+function construireGraphique(idCanvas, labels, donneesN, donneesN1) {
+    new Chart(document.getElementById(idCanvas), {
+        type: "bar",
+        data: {
+            labels: labels,
+            datasets: [
+                { label: String(anneeN1), data: donneesN1, backgroundColor: COULEUR_N1, borderRadius: 4 },
+                { label: String(anneeN), data: donneesN, backgroundColor: COULEUR_N, borderRadius: 4 },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: true, position: "top" } },
+            scales: {
+                y: { beginAtZero: true, title: { display: true, text: "kg" } },
+                x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 0 } },
+            },
+        },
+    });
+}
+
+// Par enseigne (déjà trié par poids décroissant côté serveur)
+construireGraphique(
+    "graphiqueEnseignes",
+    resultats.map(e => e.enseigne),
+    resultats.map(e => e.poids),
+    resultats.map(e => e.poids_n1),
+);
+
+// Par sous-enseigne, toutes enseignes confondues, triées par poids décroissant
+const sousEnseignes = resultats.flatMap(e => e.sous_enseignes.length ? e.sous_enseignes : [{ nom: e.enseigne, poids: e.poids, poids_n1: e.poids_n1 }]);
+sousEnseignes.sort((a, b) => b.poids - a.poids);
+construireGraphique(
+    "graphiqueSousEnseignes",
+    sousEnseignes.map(s => s.nom),
+    sousEnseignes.map(s => s.poids),
+    sousEnseignes.map(s => s.poids_n1),
+);
+</script>
+{% endif %}
+{% endblock %}

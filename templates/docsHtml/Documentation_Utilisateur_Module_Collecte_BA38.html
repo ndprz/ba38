@@ -656,6 +656,13 @@ IA.</p></li>
 <p>Les deux imports conservent désormais les décimales (jusqu’à 2
 chiffres après la virgule) telles qu’écrites sur le document reçu, aussi
 bien pour les poids par magasin que pour les quantités par produit.</p>
+<p>Les deux imports vérifient aussi que le fichier déposé concerne bien
+<strong>cette</strong> association (nom imprimé sur le PDF, ou cellule
+dédiée du classeur Excel) : en cas de nom différent, un bandeau rouge
+s’affiche au-dessus des valeurs détectées pour prévenir d’un fichier
+probablement déposé par erreur sur la mauvaise association — les valeurs
+restent quand même pré-remplies en orange, à vérifier (ou à écarter avec
+« Ignorer ces valeurs ») comme d’habitude.</p>
 <p>Le bloc dépliant « 📁 Repère {année précédente} », sur la page « ⚖️
 Saisie collecte gardée », permet de déposer directement le fichier Excel
 du résultat de l’année précédente (une seule fois par campagne, un

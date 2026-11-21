@@ -22,7 +22,10 @@
     </p>
 
     {% if destinataires %}
-    <p class="fw-bold">📬 {{ destinataires|length }} mail(s) différent(s) à envoyer</p>
+    <p class="fw-bold">
+        📬 {{ destinataires|length }} participant(s) au total
+        {% if nb_restants < destinataires|length %}— {{ nb_restants }} mail(s) restant(s) à envoyer ({{ destinataires|length - nb_restants }} déjà envoyé(s) avec succès){% else %}— {{ nb_restants }} mail(s) à envoyer{% endif %}
+    </p>
 
     <div class="alert alert-info small">
         <strong>Ordre à suivre :</strong>
@@ -81,7 +84,7 @@
             <label class="form-check-label small" for="confirmation_envoi_ressenti_entrepot">Je confirme l'envoi</label>
         </div>
         <button type="submit" name="action" value="envoyer" class="btn btn-primary"
-                onclick="return confirm('Préparer un mail pour chacun des {{ destinataires|length }} bénévoles entrepôt ?');">
+                onclick="return confirm('Envoyer le mail à {{ nb_restants }} bénévole(s) entrepôt restant(s) (sur {{ destinataires|length }} au total) ?');">
             📤 Envoyer les mails
         </button>
     </form>

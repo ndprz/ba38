@@ -917,6 +917,13 @@ produit), sans passer par une analyse par IA.</p></li>
 <p>Depuis le 2026-11-18, les deux imports conservent les décimales
 (jusqu’à 2 chiffres) telles qu’écrites sur le document reçu — détail et
 historique du correctif en §10.5.</p>
+<p>Depuis le 2026-11-18 également, à la demande de l’utilisateur, les
+deux imports vérifient que le fichier déposé concerne bien l’association
+actuellement ouverte, et affichent un bandeau rouge au-dessus des
+valeurs détectées si ce n’est apparemment pas le cas (fichier déposé par
+erreur sur la mauvaise association) — détail en §10.5. Ce contrôle
+n’empêche jamais l’import : les valeurs détectées restent pré-remplies
+en orange, à vérifier ou à écarter comme d’habitude.</p>
 <p>Le bloc dépliant « 📁 Repère {année précédente} », sur la page « ⚖️
 Saisie collecte gardée », accepte le dépôt d’un fichier Excel (une seule
 fois par campagne) contenant le résultat de l’année précédente par
@@ -2549,6 +2556,55 @@ détection).</li>
 changement : elle reste volontairement en nombres entiers (bornes de
 validation par catégorie, cf. ci-dessous), ce type de pesée ne
 nécessitant pas cette précision.</p>
+<h3
+id="vérification-de-lassociation-sur-les-imports-pdfexcel-4.4">Vérification
+de l’association sur les imports PDF/Excel (§4.4)</h3>
+<p>Depuis le 2026-11-18, à la demande de l’utilisateur, les deux imports
+de la page de saisie par association (§4.4) vérifient que le fichier
+déposé concerne bien l’association actuellement ouverte, plutôt que de
+faire une confiance aveugle au fichier choisi par qui dépose. Risque
+identifié : les codes magasins d’un fichier sont déjà filtrés par
+association (un magasin d’une autre association n’est jamais retenu,
+cf. §10.4), mais les codes produits sont <strong>communs à toutes les
+associations</strong> — rien ne les empêchait donc d’être importés
+silencieusement même si le fichier déposé provenait en réalité d’une
+autre association.</p>
+<p>Le contrôle s’appuie sur ce que
+<code>_creer_fichier_association</code> /
+<code>_creer_pdf_association</code> écrivent déjà sur chaque fiche au
+moment de sa génération, sans qu’il soit besoin d’ajouter la moindre
+donnée supplémentaire :</p>
+<ul>
+<li><p><strong>Import Excel</strong>
+(<code>_nom_association_dans_classeur</code>) : le nom de l’association
+est écrit en toutes lettres dans une cellule dédiée du modèle (B10
+feuille « produits », B11 feuille « magasins » du modèle actuel) — la
+fonction scanne l’ensemble du classeur à la recherche d’une cellule dont
+le texte, normalisé (casse, accents, ponctuation —
+<code>_normaliser_nom_association</code>), correspond exactement au nom
+de l’association de la page ouverte ;</p></li>
+<li><p><strong>Import PDF</strong>
+(<code>_detecter_pdf_association_background</code>) : le nom de
+l’association est imprimé en haut de chaque page du PDF généré (sous le
+titre « COLLECTE »), à côté de son code. Le prompt envoyé à Claude lui
+demande désormais de lire ce nom imprimé et de le renvoyer tel quel dans
+le champ <code>association_imprimee</code> du JSON ; il est ensuite
+comparé (même normalisation) au nom de l’association de la page
+ouverte.</p></li>
+</ul>
+<p>Dans les deux cas, en cas de nom absent de la liste de correspondance
+(ou non lisible sur le PDF), <strong>aucun avertissement n’est
+déclenché</strong> — par choix délibéré, pour ne jamais pénaliser un
+document par ailleurs correct dont le repère serait juste illisible ou
+coupé au scan. En cas de nom trouvé mais différent, un avertissement
+texte est enregistré (nouvelle colonne <code>avertissement</code> de
+<code>collecte_detection_pdf_association</code>, migration automatique
+de la table) et affiché en bandeau rouge sur
+<code>gardee_saisie.html</code>, juste au-dessus du bandeau orange
+habituel des valeurs détectées. Ce contrôle <strong>n’empêche
+jamais</strong> l’import : il prévient seulement avant la vérification
+manuelle déjà requise de toute façon (valeurs en orange, à confirmer
+avec Enregistrer ou à écarter avec « Ignorer ces valeurs », §4.4).</p>
 <h3 id="pesée-palox-catégories-et-validation-du-poids">Pesée palox —
 catégories et validation du poids</h3>
 <p>Les catégories de produit pesées à l'entrepôt reprennent les codes
