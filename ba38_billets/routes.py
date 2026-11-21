@@ -23,7 +23,7 @@ from flask import (
 from flask_login import current_user, login_required
 from PIL import Image
 
-from ba38_billets import billets_bp
+from ba38_billets import attribution, billets_bp
 from ba38_billets import mails
 from ba38_utilitaires.core import (
     adresse_test_utilisateur, get_db_path, has_access, split_emails, upload_database, write_log,
@@ -56,16 +56,23 @@ def acces(niveau):
     return decorator
 
 
+TEXTE_PREMIER_DEFAUT = (
+    "<p>Bonjour &lt;&lt;prenom&gt;&gt;,</p>"
+    "<p>&lt;&lt;donateur&gt;&gt; offre à ses bénévoles et salariés <b>&lt;&lt;nb_billets&gt;&gt; place(s)</b> pour le "
+    "spectacle <b>&lt;&lt;spectacle&gt;&gt;</b>, &lt;&lt;lieu&gt;&gt;, le &lt;&lt;date_spectacle&gt;&gt; à &lt;&lt;heure&gt;&gt;.</p>"
+    "<p>Les places sont attribuées <b>dans l'ordre des inscriptions (premier inscrit, premier servi)</b>. "
+    "Pour réserver la vôtre, cliquez sur le bouton ci-dessous avant le <b>&lt;&lt;date_limite&gt;&gt;</b> :</p>"
+    "<p>&lt;&lt;lien_inscription&gt;&gt;</p>"
+    "<p>Quand toutes les places sont prises, les inscriptions suivantes sont placées en liste d'attente et "
+    "servies en cas de désistement.</p>"
+    "<p>Retrait des billets : &lt;&lt;mode_retrait&gt;&gt;</p>"
+    "<p>Cordialement,<br>La Banque Alimentaire</p>")
+
+
 def _connect():
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
-    # Auto-réparation : colonne des textes éditables (ajoutée après la 1re version du module)
-    if "textes_mails" not in {r[1] for r in conn.execute("PRAGMA table_info(billets_campagnes)")}:
-        try:
-            conn.execute("ALTER TABLE billets_campagnes ADD COLUMN textes_mails TEXT")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass
+    mails.ensure_schema(conn)  # auto-réparation : colonnes ajoutées après la 1re version
     return conn
 
 
@@ -130,13 +137,16 @@ def nouvelle():
     if not (donateur and spectacle and d and limite):
         flash("❌ Donateur, spectacle, date du spectacle et date limite d'inscription sont obligatoires.", "danger")
         return redirect(url_for("billets.liste"))
+    mode = "premier" if request.form.get("mode") == "premier" else "tirage"
+    regle = 1 if request.form.get("regle_12_mois") == "1" else 0
     with _connect() as conn:
         cur = conn.execute(
             """INSERT INTO billets_campagnes (donateur, lieu, spectacle, date_spectacle, heure_spectacle,
-                 mode_retrait, nb_billets, date_limite, sujet, corps, statut, cree_le, cree_par)
-               VALUES (?,?,?,?,?,?,?,?,?,?, 'ouverte', ?, ?)""",
+                 mode_retrait, nb_billets, date_limite, sujet, corps, statut, cree_le, cree_par, mode, regle_12_mois)
+               VALUES (?,?,?,?,?,?,?,?,?,?, 'ouverte', ?, ?, ?, ?)""",
             (donateur, lieu, spectacle, d, h, retrait, nb, limite,
-             "Places offertes : <<spectacle>>", TEXTE_PAR_DEFAUT, mails.maintenant(), current_user.email))
+             "Places offertes : <<spectacle>>", TEXTE_PREMIER_DEFAUT if mode == "premier" else TEXTE_PAR_DEFAUT,
+             mails.maintenant(), current_user.email, mode, regle))
         conn.commit()
         cid = cur.lastrowid
     return redirect(url_for("billets.campagne", campagne_id=cid))
@@ -158,8 +168,12 @@ def campagne(campagne_id):
             "SELECT * FROM billets_participants WHERE campagne_id = ? "
             "ORDER BY nom COLLATE NOCASE, prenom COLLATE NOCASE", (campagne_id,)).fetchall()
         gains = mails.gains_recents(conn, campagne_id)
-    benevoles = [p for p in parts if p["categorie"] == "benevole"]
-    salaries = [p for p in parts if p["categorie"] == "salarie"]
+    premier = mails.est_premier(c)
+    if premier:  # bénévoles ET salariés sont invités et s'inscrivent
+        benevoles, salaries = list(parts), []
+    else:
+        benevoles = [p for p in parts if p["categorie"] == "benevole"]
+        salaries = [p for p in parts if p["categorie"] == "salarie"]
     inscrits = [p for p in benevoles if p["etat"] == "inscrit"]
     nb = {
         "invites": sum(1 for p in benevoles if p["selected"]),
@@ -179,6 +193,9 @@ def campagne(campagne_id):
         gagnants=sorted([p for p in parts if p["resultat"] == "gagnant"], key=lambda p: p["ordre_tirage"] or 0),
         non_retenus=[p for p in parts if p["resultat"] == "non_retenu"],
         non_eligibles=[p for p in parts if p["resultat"] == "non_eligible"],
+        premier=premier, regle12=mails.regle_12_mois(c),
+        attente=sorted([p for p in parts if p["resultat"] == "attente"], key=lambda p: (p["ordre_tirage"] or 0, p["id"])),
+        cles_textes=mails.cles_textes(c),
         gains=gains,
         depassee=mails.limite_depassee(c), tiree=(c["statut"] == "tiree"),
         peut_ecrire=has_access("billets", "ecriture"), utilisateurs=utilisateurs_basilic(),
@@ -200,11 +217,25 @@ def enregistrer_fiche(campagne_id):
         if c and c["statut"] == "tiree" and nb != c["nb_billets"]:
             flash("❌ Le tirage est fait : le nombre de billets ne peut plus changer.", "danger")
             return _retour(campagne_id)
+        if c and mails.est_premier(c) and nb < attribution.nb_gagnants(conn, campagne_id):
+            flash(f"❌ {attribution.nb_gagnants(conn, campagne_id)} places sont déjà attribuées : "
+                  "désinscrivez d'abord des personnes pour réduire le nombre de billets.", "danger")
+            return _retour(campagne_id)
+        regle = 1 if request.form.get("regle_12_mois") == "1" else 0
         conn.execute(
             """UPDATE billets_campagnes SET donateur=?, lieu=?, spectacle=?, date_spectacle=?, heure_spectacle=?,
-                 mode_retrait=?, nb_billets=?, date_limite=? WHERE id=?""",
-            (donateur, lieu, spectacle, d, h, retrait, nb, limite, campagne_id))
+                 mode_retrait=?, nb_billets=?, date_limite=?, regle_12_mois=? WHERE id=?""",
+            (donateur, lieu, spectacle, d, h, retrait, nb, limite, regle, campagne_id))
+        if c and mails.regle_12_mois(c) != bool(regle):
+            flash("ℹ️ Règle des 12 mois " + ("activée : cliquez sur « Actualiser la liste » (étape 3) pour décocher les personnes concernées."
+                  if regle else "désactivée : recochez, si besoin, les personnes précédemment décochées (étape 3)."), "info")
+        promus = []
+        if c and mails.est_premier(c):  # plus de billets : la liste d'attente avance
+            promus = attribution.promouvoir(conn, _campagne(conn, campagne_id))
         conn.commit()
+        if promus:
+            attribution.prevenir_promus(conn, _campagne(conn, campagne_id), promus)
+            flash(f"ℹ️ {len(promus)} personne(s) de la liste d'attente ont obtenu une place et sont prévenues par mail.", "info")
     flash("✅ Fiche enregistrée.", "success")
     return _retour(campagne_id)
 
@@ -244,8 +275,14 @@ def enregistrer_message(campagne_id):
 @acces("ecriture")
 def enregistrer_textes_mails(campagne_id):
     """Enregistre les textes des mails de confirmation, désistement et résultat."""
-    textes = {}
-    for cle, d in mails.TEXTES_MAILS.items():
+    with _connect() as conn:
+        c = _campagne(conn, campagne_id)
+    try:
+        textes = json.loads(c["textes_mails"] or "{}") if c else {}
+    except ValueError:
+        textes = {}
+    for cle in mails.cles_textes(c):  # seuls les textes du mode de la campagne sont modifiés
+        d = mails.TEXTES_MAILS[cle]
         sujet = (request.form.get(f"sujet_{cle}") or "").strip()
         corps = request.form.get(f"corps_{cle}") or ""
         if not sujet or not re.sub(r"<[^>]+>|&nbsp;|\s", "", corps):
@@ -366,17 +403,31 @@ def inscription_manuelle(campagne_id):
         if not c or c["statut"] == "tiree":
             flash("❌ Le tirage est fait : les inscriptions sont closes.", "danger")
             return _retour(campagne_id, "#inscriptions")
+        premier = mails.est_premier(c)
+        if action == "desinscrire" and premier:
+            promus = attribution.desinscrire(conn, c, pid)
+            conn.commit()
+            attribution.prevenir_promus(conn, c, promus)
+            if promus:
+                flash(f"ℹ️ {len(promus)} personne(s) de la liste d'attente ont obtenu une place et sont prévenues par mail.", "info")
+            return _retour(campagne_id, "#inscriptions")
         if action == "inscrire":
-            p0 = conn.execute("SELECT benevole_id FROM billets_participants WHERE id=? AND campagne_id=?",
+            p0 = conn.execute("SELECT * FROM billets_participants WHERE id=? AND campagne_id=?",
                               (pid, campagne_id)).fetchone()
             gain = mails.gains_recents(conn, campagne_id).get(p0["benevole_id"]) if p0 else None
             if gain:
                 flash(f"❌ Ce bénévole a déjà gagné une place le {mails.date_fr(gain, False)} : un seul gain par "
                       f"période de 12 mois.", "danger")
                 return _retour(campagne_id, "#inscriptions")
-            conn.execute("UPDATE billets_participants SET etat='inscrit', inscrit_le=?, inscrit_par=? "
-                         "WHERE id=? AND campagne_id=? AND categorie='benevole'",
-                         (mails.maintenant(), current_user.email, pid, campagne_id))
+            if premier:
+                if p0:
+                    res = attribution.inscrire(conn, c, p0, par=current_user.email)
+                    flash("✅ Inscrit : place attribuée." if res == "gagnant" else
+                          "⏳ Inscrit en liste d'attente (toutes les places sont prises).", "info")
+            else:
+                conn.execute("UPDATE billets_participants SET etat='inscrit', inscrit_le=?, inscrit_par=? "
+                             "WHERE id=? AND campagne_id=? AND categorie='benevole'",
+                             (mails.maintenant(), current_user.email, pid, campagne_id))
         elif action == "desinscrire":
             conn.execute("UPDATE billets_participants SET etat='desiste' WHERE id=? AND campagne_id=?",
                          (pid, campagne_id))
@@ -439,11 +490,12 @@ def envoyer(campagne_id):
         if c["statut"] == "tiree" or mails.limite_depassee(c):
             flash("❌ La date limite est dépassée : plus d'invitation possible.", "danger")
             return _retour(campagne_id, "#destinataires")
+        cat = "" if mails.est_premier(c) else "AND categorie='benevole' "
         if mode == "relance":
-            sql = ("SELECT id, benevole_id FROM billets_participants WHERE campagne_id=? AND categorie='benevole' AND selected=1 "
+            sql = ("SELECT id, benevole_id FROM billets_participants WHERE campagne_id=? " + cat + "AND selected=1 "
                    "AND etat='invite' AND invite_le IS NOT NULL AND invite_mode_test=0 AND invite_erreur IS NULL")
         else:
-            sql = ("SELECT id, benevole_id FROM billets_participants WHERE campagne_id=? AND categorie='benevole' AND selected=1 "
+            sql = ("SELECT id, benevole_id FROM billets_participants WHERE campagne_id=? " + cat + "AND selected=1 "
                    "AND (invite_le IS NULL OR invite_mode_test=1 OR invite_erreur IS NOT NULL) "
                    "AND etat='invite'")
         gains = mails.gains_recents(conn, campagne_id)
@@ -575,7 +627,9 @@ def tirage(campagne_id):
         c = _campagne(conn, campagne_id)
         if not c:
             return redirect(url_for("billets.liste"))
-        if c["statut"] == "tiree":
+        if mails.est_premier(c):
+            flash("❌ Cette campagne est en « premier inscrit, premier servi » : il n'y a pas de tirage.", "danger")
+        elif c["statut"] == "tiree":
             flash("❌ Le tirage a déjà été effectué (il ne peut pas être refait).", "danger")
         elif not mails.limite_depassee(c):
             flash(f"❌ La date limite d'inscription ({mails.limite_fr(c['date_limite'])}) n'est pas encore dépassée.",
@@ -632,11 +686,12 @@ def dupliquer(campagne_id):
         cur = conn.execute(
             """INSERT INTO billets_campagnes (donateur, lieu, spectacle, date_spectacle, heure_spectacle,
                  mode_retrait, nb_billets, date_limite, sujet, corps, expediteur, expediteur_nom, reply_to,
-                 textes_mails, statut, cree_le, cree_par)
-               VALUES (?,?,?,NULL,?,?,?,NULL,?,?,?,?,?,?, 'ouverte', ?, ?)""",
+                 textes_mails, statut, cree_le, cree_par, mode, regle_12_mois)
+               VALUES (?,?,?,NULL,?,?,?,NULL,?,?,?,?,?,?, 'ouverte', ?, ?, ?, ?)""",
             (c["donateur"], c["lieu"], c["spectacle"], c["heure_spectacle"], c["mode_retrait"], c["nb_billets"],
              c["sujet"], c["corps"], c["expediteur"], c["expediteur_nom"], c["reply_to"], c["textes_mails"],
-             mails.maintenant(), current_user.email))
+             mails.maintenant(), current_user.email, c["mode"] or "tirage",
+             1 if mails.regle_12_mois(c) else 0))
         conn.commit()
         cid = cur.lastrowid
     flash("📑 Campagne dupliquée : renseignez la date du spectacle et la date limite d'inscription, "

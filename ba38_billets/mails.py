@@ -49,17 +49,52 @@ def limite_depassee(c):
 DUREE_GAIN_JOURS = 365  # un seul gain par bénévole sur 12 mois glissants
 
 
+def ensure_schema(conn):
+    """Colonnes ajoutées après la 1re version du module (auto-réparation, tables hors synchro DEV→PROD)."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(billets_campagnes)")}
+    for col, ddl in (("textes_mails", "TEXT"), ("mode", "TEXT DEFAULT 'tirage'"),
+                     ("regle_12_mois", "INTEGER DEFAULT 1")):
+        if col not in cols:
+            try:
+                conn.execute(f"ALTER TABLE billets_campagnes ADD COLUMN {col} {ddl}")
+                conn.commit()
+            except Exception:
+                pass
+
+
+def est_premier(c):
+    """Campagne « premier inscrit, premier servi » (sans tirage au sort)."""
+    try:
+        return (c["mode"] or "tirage") == "premier"
+    except (KeyError, IndexError):
+        return False
+
+
+def regle_12_mois(c):
+    """La règle « un seul gain sur 12 mois » s'applique-t-elle à cette campagne ? (oui par défaut)"""
+    try:
+        return c["regle_12_mois"] is None or int(c["regle_12_mois"]) == 1
+    except (KeyError, IndexError, ValueError):
+        return True
+
+
 def gains_recents(conn, campagne_id):
-    """{benevole_id: 'YYYY-MM-DD'} des bénévoles ayant GAGNÉ une place dans une AUTRE campagne
-    tirée au cours des 12 derniers mois : ils ne peuvent plus gagner (ni être invités)."""
+    """{benevole_id: 'YYYY-MM-DD'} des personnes ayant GAGNÉ une place dans une AUTRE campagne
+    au cours des 12 derniers mois dans une campagne soumise à la règle (tirage effectué, ou place attribuée à l'inscription en mode
+    « premier inscrit ») : elles ne peuvent plus gagner (ni être invitées)."""
     limite = (datetime.now() - timedelta(days=DUREE_GAIN_JOURS)).isoformat(timespec="seconds")
     res = {}
+    cible = conn.execute("SELECT * FROM billets_campagnes WHERE id = ?", (campagne_id,)).fetchone()
+    if cible is not None and not regle_12_mois(cible):
+        return res  # campagne exemptée de la règle : personne n'est écarté
     for r in conn.execute(
-            """SELECT p.benevole_id, MAX(c.tirage_le) AS le
+            """SELECT p.benevole_id,
+                      MAX(CASE WHEN c.mode = 'premier' THEN p.inscrit_le ELSE c.tirage_le END) AS le
                FROM billets_participants p JOIN billets_campagnes c ON c.id = p.campagne_id
-               WHERE p.resultat = 'gagnant' AND c.statut = 'tiree' AND c.id != ?
-                 AND p.benevole_id IS NOT NULL AND c.tirage_le >= ?
-               GROUP BY p.benevole_id""", (campagne_id, limite)):
+               WHERE p.resultat = 'gagnant' AND c.id != ? AND p.benevole_id IS NOT NULL
+                 AND COALESCE(c.regle_12_mois, 1) = 1
+                 AND ((c.mode = 'premier' AND p.inscrit_le >= ?) OR (c.statut = 'tiree' AND c.tirage_le >= ?))
+               GROUP BY p.benevole_id""", (campagne_id, limite, limite)):
         res[r["benevole_id"]] = (r["le"] or "")[:10]
     return res
 
@@ -181,6 +216,34 @@ TEXTES_MAILS = {
             "une personne ne peut gagner qu'une place par période de 12 mois : vous en avez déjà bénéficié "
             "récemment, vous n'avez donc pas participé au tirage au sort cette fois-ci.</p>"
             "<p>Merci de votre compréhension, et à une prochaine occasion !</p>" + _SIGN)},
+    "place_confirmee": {
+        "libelle": "Premier inscrit — place réservée (envoyé à l'inscription)",
+        "sujet": "Votre place est réservée : <<spectacle>>",
+        "corps": (
+            "<p>Bonjour &lt;&lt;prenom&gt;&gt;,</p>"
+            "<p>Votre inscription est enregistrée : <b>une place vous est réservée</b> !</p>&lt;&lt;fiche&gt;&gt;"
+            "<p><b>Retrait des billets :</b> &lt;&lt;mode_retrait&gt;&gt;</p>"
+            "<p>Si vous ne pouvez finalement pas en profiter, merci de vous désister avec votre lien personnel "
+            "pour que la place soit proposée à quelqu'un d'autre : &lt;&lt;lien_inscription&gt;&gt;</p>" + _SIGN)},
+    "liste_attente": {
+        "libelle": "Premier inscrit — liste d'attente (toutes les places sont prises)",
+        "sujet": "Liste d'attente : <<spectacle>>",
+        "corps": (
+            "<p>Bonjour &lt;&lt;prenom&gt;&gt;,</p>"
+            "<p>Merci de votre inscription. Toutes les places ayant déjà été attribuées, <b>vous êtes placé(e) en "
+            "liste d'attente</b> pour « &lt;&lt;spectacle&gt;&gt; ».</p>"
+            "<p>Si une place se libère (désistement), elle vous sera attribuée dans l'ordre d'inscription et vous "
+            "en serez averti(e) par mail.</p>" + _SIGN)},
+    "place_liberee": {
+        "libelle": "Premier inscrit — place libérée attribuée à un inscrit en liste d'attente",
+        "sujet": "Une place s'est libérée : <<spectacle>>",
+        "corps": (
+            "<p>Bonjour &lt;&lt;prenom&gt;&gt;,</p>"
+            "<p>Bonne nouvelle : <b>une place s'est libérée et elle vous est attribuée</b> pour "
+            "« &lt;&lt;spectacle&gt;&gt; » !</p>&lt;&lt;fiche&gt;&gt;"
+            "<p><b>Retrait des billets :</b> &lt;&lt;mode_retrait&gt;&gt;</p>"
+            "<p>Si vous ne pouvez finalement pas en profiter, merci de vous désister avec votre lien personnel : "
+            "&lt;&lt;lien_inscription&gt;&gt;</p>" + _SIGN)},
     "non_retenu": {
         "libelle": "Résultat — inscrit non retenu",
         "sujet": "Résultat du tirage : <<spectacle>>",
@@ -190,6 +253,15 @@ TEXTES_MAILS = {
             "retenu(e) cette fois-ci : il y avait plus d'inscrits que de places.</p>"
             "<p>Merci de votre participation, et à une prochaine occasion !</p>" + _SIGN)},
 }
+
+
+CLES_PREMIER = ("place_confirmee", "liste_attente", "place_liberee", "desistement")
+CLES_TIRAGE = ("confirmation", "desistement", "gagnant", "gagnant_salarie", "non_eligible", "non_retenu")
+
+
+def cles_textes(c):
+    """Clés des mails éditables utiles pour le mode de la campagne."""
+    return CLES_PREMIER if est_premier(c) else CLES_TIRAGE
 
 
 def textes_campagne(c):
@@ -220,7 +292,13 @@ def rendre_texte(c, p, cle):
 
 
 def mail_confirmation_inscription(c, p):
+    if est_premier(c):
+        return rendre_texte(c, p, "place_confirmee" if p["resultat"] == "gagnant" else "liste_attente")
     return rendre_texte(c, p, "confirmation")
+
+
+def mail_place_liberee(c, p):
+    return rendre_texte(c, p, "place_liberee")
 
 
 def mail_desistement(c, p):

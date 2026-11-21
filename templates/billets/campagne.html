@@ -20,7 +20,8 @@
   </div>
   <p class="text-muted">Offert par <b>{{ c.donateur }}</b> — {{ date_fr(c.date_spectacle) }}{% if c.heure_spectacle %} à {{ c.heure_spectacle.replace(':','h') }}{% endif %} —
     {{ c.nb_billets }} billet(s) — inscriptions jusqu'au {{ limite_fr(c.date_limite) }}
-    {% if tiree %}<span class="badge bg-success">Tirage fait</span>{% elif depassee %}<span class="badge bg-warning text-dark">Date limite dépassée : tirage à faire</span>{% else %}<span class="badge bg-primary">Inscriptions ouvertes</span>{% endif %}</p>
+    {% if not regle12 %}<span class="badge bg-dark">Sans règle des 12 mois</span> {% endif %}{% if premier %}<span class="badge bg-info">Premier inscrit, premier servi</span> <span class="badge bg-{{ 'success' if nb.gagnants >= c.nb_billets else 'primary' }}">{{ nb.gagnants }}/{{ c.nb_billets }} places attribuées</span>{% if attente %} <span class="badge bg-warning text-dark">{{ attente|length }} en attente</span>{% endif %}{% if depassee %} <span class="badge bg-secondary">Inscriptions closes</span>{% else %} <span class="badge bg-primary">Inscriptions ouvertes</span>{% endif %}
+    {% elif tiree %}<span class="badge bg-success">Tirage fait</span>{% elif depassee %}<span class="badge bg-warning text-dark">Date limite dépassée : tirage à faire</span>{% else %}<span class="badge bg-primary">Inscriptions ouvertes</span>{% endif %}</p>
 
 
   <!-- 1. Fiche -->
@@ -36,6 +37,8 @@
       <div class="col-md-2"><label class="small">Heure</label><input type="time" name="heure_spectacle" class="form-control" value="{{ c.heure_spectacle or '' }}"></div>
       <div class="col-md-2"><label class="small">Nb de billets</label><input type="number" min="1" name="nb_billets" class="form-control" value="{{ c.nb_billets }}"></div>
       <div class="col-md-3"><label class="small">Date limite d'inscription</label><input type="datetime-local" name="date_limite" class="form-control" value="{{ c.date_limite or '' }}" required></div>
+      <div class="col-md-12"><label class="mb-1"><input type="checkbox" name="regle_12_mois" value="1" class="form-check-input" style="position:static" {% if regle12 %}checked{% endif %}>
+        Appliquer la règle « un seul gain par personne sur 12 mois » <span class="text-muted small">(à décocher pour une campagne qui y échappe : personne n'est écarté, et ses gains ne comptent pas pour les autres campagnes)</span></label></div>
       <div class="col-md-12"><label class="small">Mode de retrait des billets</label><input name="mode_retrait" class="form-control" value="{{ c.mode_retrait or '' }}"></div>
     </div>
     {% if peut_ecrire %}<button class="btn btn-primary btn-sm mt-2">💾 Enregistrer la fiche</button>{% endif %}
@@ -71,8 +74,8 @@
   </form></div>
 
   <!-- 3. Destinataires + envoi -->
-  <div class="card mb-3" id="destinataires"><div class="card-header"><b>3. Bénévoles invités</b>
-    <span class="text-muted small">— bénévoles (hors salariés) à jour de cotisation 2026 et ayant une adresse mail ; ceux qui ont gagné une place dans les 12 derniers mois ne sont pas invités</span></div>
+  <div class="card mb-3" id="destinataires"><div class="card-header"><b>3. {{ 'Bénévoles et salariés invités' if premier else 'Bénévoles invités' }}</b>
+    <span class="text-muted small">— {% if premier %}bénévoles à jour de cotisation 2026 et salariés, ayant une adresse mail{% else %}bénévoles (hors salariés) à jour de cotisation 2026 et ayant une adresse mail{% endif %} ; ceux qui ont gagné une place dans les 12 derniers mois ne sont pas invités</span></div>
   <div class="card-body">
     {% if peut_ecrire and not tiree %}
     <form method="POST" action="{{ url_for('billets.definir_destinataires', campagne_id=c.id) }}" class="mb-2">
@@ -91,14 +94,14 @@
         {% for p in benevoles %}
           <tr>
             <td><input type="checkbox" class="form-check-input sel-benev" data-id="{{ p.id }}" {% if p.selected %}checked{% endif %} {% if not peut_ecrire or tiree %}disabled{% endif %}></td>
-            <td>{{ p.nom }} {{ p.prenom }}{% if p.benevole_id in gains %} <span class="badge bg-warning text-dark" title="Un seul gain par période de 12 mois : non invité, ne peut pas s'inscrire">a gagné le {{ gains[p.benevole_id][8:10] }}/{{ gains[p.benevole_id][5:7] }}/{{ gains[p.benevole_id][:4] }}</span>{% endif %}</td><td class="small">{{ p.email }}</td>
+            <td>{{ p.nom }} {{ p.prenom }}{% if premier and p.categorie == 'salarie' %} <span class="badge bg-info">salarié</span>{% endif %}{% if p.benevole_id in gains %} <span class="badge bg-warning text-dark" title="Un seul gain par période de 12 mois : non invité, ne peut pas s'inscrire">a gagné le {{ gains[p.benevole_id][8:10] }}/{{ gains[p.benevole_id][5:7] }}/{{ gains[p.benevole_id][:4] }}</span>{% endif %}</td><td class="small">{{ p.email }}</td>
             <td class="small">
               {% if p.invite_erreur %}<span class="badge bg-danger" title="{{ p.invite_erreur }}">Erreur</span>
               {% elif p.invite_le and p.invite_mode_test %}<span class="badge bg-warning text-dark">Test</span>
               {% elif p.invite_le %}<span class="badge bg-success">Envoyée {{ p.invite_le[8:10] }}/{{ p.invite_le[5:7] }}{% if p.nb_invitations > 1 %} ({{ p.nb_invitations }}×){% endif %}</span>
               {% else %}<span class="text-muted">à envoyer</span>{% endif %}
             </td>
-            <td>{% if p.etat == 'inscrit' %}<span class="badge bg-primary">Inscrit</span>{% elif p.etat == 'desiste' %}<span class="badge bg-secondary">Désisté</span>{% else %}<span class="text-muted small">—</span>{% endif %}</td>
+            <td>{% if p.etat == 'inscrit' and premier and p.resultat == 'attente' %}<span class="badge bg-warning text-dark">En attente</span>{% elif p.etat == 'inscrit' and premier %}<span class="badge bg-success">Place attribuée</span>{% elif p.etat == 'inscrit' %}<span class="badge bg-primary">Inscrit</span>{% elif p.etat == 'desiste' %}<span class="badge bg-secondary">Désisté</span>{% else %}<span class="text-muted small">—</span>{% endif %}</td>
           </tr>
         {% endfor %}
         </tbody>
@@ -123,9 +126,9 @@
   <div class="card-body">
     {% if inscrits %}
     <table class="table table-sm table-striped mb-0">
-      <thead><tr><th>Nom</th><th>Inscrit le</th><th>Par</th><th>Confirmation mail</th><th></th></tr></thead>
+      <thead><tr><th>Nom</th>{% if premier %}<th>Place</th>{% endif %}<th>Inscrit le</th><th>Par</th><th>Confirmation mail</th><th></th></tr></thead>
       <tbody>{% for p in inscrits %}
-        <tr><td>{{ p.nom }} {{ p.prenom }}</td><td class="small">{{ p.inscrit_le[8:10] }}/{{ p.inscrit_le[5:7] }} {{ p.inscrit_le[11:16] }}</td>
+        <tr><td>{{ p.nom }} {{ p.prenom }}{% if p.categorie == 'salarie' %} <span class="badge bg-info">salarié</span>{% endif %}</td>{% if premier %}<td>{% if p.resultat == 'gagnant' %}<span class="badge bg-success">attribuée</span>{% else %}<span class="badge bg-warning text-dark">attente</span>{% endif %}</td>{% endif %}<td class="small">{{ p.inscrit_le[8:10] }}/{{ p.inscrit_le[5:7] }} {{ p.inscrit_le[11:16] }}</td>
           <td class="small">{{ p.inscrit_par or 'lui/elle-même' }}</td>
           <td class="small">{% if p.confirmation_le %}✅ envoyée{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td>{% if peut_ecrire and not tiree %}<form method="POST" action="{{ url_for('billets.inscription_manuelle', campagne_id=c.id) }}" class="d-inline">
@@ -141,12 +144,36 @@
       <select name="pid" class="form-control form-control-sm mr-2">
         {% for p in benevoles if p.etat != 'inscrit' %}<option value="{{ p.id }}">{{ p.nom }} {{ p.prenom }}</option>{% endfor %}
       </select>
-      <button class="btn btn-sm btn-outline-primary">Inscrire à sa place (sans mail de confirmation)</button>
+      <button class="btn btn-sm btn-outline-primary">Inscrire à sa place (sans mail de confirmation{% if premier %} : prévenez la personne{% endif %})</button>
     </form>
     {% endif %}
   </div></div>
 
-  <!-- 5. Tirage -->
+  <!-- 5. Attribution (premier inscrit) -->
+  {% if premier %}
+  <div class="card mb-3" id="tirage"><div class="card-header"><b>5. Attribution des places</b> <span class="text-muted small">— pas de tirage au sort : place attribuée à l'inscription, dans l'ordre</span></div>
+  <div class="card-body">
+    <div class="row">
+      <div class="col-md-6">
+        <h6>🎉 Places attribuées ({{ nb.gagnants }}/{{ c.nb_billets }})</h6>
+        <table class="table table-sm"><tbody>{% for p in gagnants %}
+          <tr><td>{{ loop.index }}</td><td>{{ p.nom }} {{ p.prenom }}{% if p.categorie == 'salarie' %} <span class="badge bg-info">salarié</span>{% endif %}</td>
+            <td class="small">{{ p.inscrit_le[8:10] }}/{{ p.inscrit_le[5:7] }} {{ p.inscrit_le[11:16] }}</td>
+            <td class="small">{% if p.resultat_erreur %}<span class="text-danger">erreur mail</span>{% elif p.confirmation_le %}✅ prévenu(e){% else %}<span class="text-muted">—</span>{% endif %}</td></tr>
+        {% else %}<tr><td class="text-muted">Aucune place attribuée pour le moment.</td></tr>{% endfor %}</tbody></table>
+        {% if nb.gagnants < c.nb_billets %}<div class="alert alert-info py-1">{{ c.nb_billets - nb.gagnants }} place(s) encore disponible(s).</div>{% endif %}
+      </div>
+      <div class="col-md-6">
+        <h6>⏳ Liste d'attente ({{ attente|length }})</h6>
+        <table class="table table-sm"><tbody>{% for p in attente %}
+          <tr><td>{{ loop.index }}</td><td>{{ p.nom }} {{ p.prenom }}{% if p.categorie == 'salarie' %} <span class="badge bg-info">salarié</span>{% endif %}</td>
+            <td class="small">{{ p.inscrit_le[8:10] }}/{{ p.inscrit_le[5:7] }} {{ p.inscrit_le[11:16] }}</td></tr>
+        {% else %}<tr><td class="text-muted">Personne en attente.</td></tr>{% endfor %}</tbody></table>
+      </div>
+    </div>
+    <p class="small text-muted mb-0">Un désistement (par la personne ou « Désinscrire » à l'étape 4) attribue automatiquement la place au premier de la liste d'attente, qui est prévenu par mail.</p>
+  </div></div>
+  {% else %}
   <div class="card mb-3" id="tirage"><div class="card-header"><b>5. Tirage au sort et résultats</b></div>
   <div class="card-body">
     {% if not tiree %}
@@ -207,16 +234,18 @@
     {% endif %}
   </div></div>
 
+  {% endif %}
+
   <!-- 6. Textes des autres mails -->
   <div class="card mb-3" id="textes"><div class="card-header"><b>6. Textes des autres mails</b>
-    <span class="text-muted small">— confirmation d'inscription, désistement, résultats du tirage</span></div>
+    <span class="text-muted small">— {% if premier %}place réservée, liste d'attente, place libérée, désistement{% else %}confirmation d'inscription, désistement, résultats du tirage{% endif %}</span></div>
   <form method="POST" id="form-textes" action="{{ url_for('billets.enregistrer_textes_mails', campagne_id=c.id) }}" class="card-body">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <fieldset {% if not peut_ecrire %}disabled{% endif %}>
     <div class="mb-2 small">Variables utilisables (à taper telles quelles) :
       {% for v in variables %}<code>&lt;&lt;{{ v }}&gt;&gt;</code> {% endfor %}<code>&lt;&lt;fiche&gt;&gt;</code> (récapitulatif spectacle / lieu / date / donateur).
       <br><span class="text-muted">Dans ces mails, <code>&lt;&lt;lien_inscription&gt;&gt;</code> donne le lien personnel du bénévole (lien cliquable).</span></div>
-    {% for cle, t in textes_mails.items() %}
+    {% for cle, t in textes_mails.items() if cle in cles_textes %}
     <div class="border rounded p-2 mb-3">
       <b>{{ t.libelle }}</b>
       <div class="row g-2 mt-1"><div class="col-md-8"><label class="small mb-0">Sujet</label>

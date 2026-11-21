@@ -16,8 +16,29 @@
     <p class="mb-0"><b>Inscription jusqu'au :</b> {{ limite_fr(c.date_limite) }}</p>
   </div></div>
 
-  {% if p.categorie != 'benevole' %}
+  {% if not peut_inscrire %}
     <div class="alert alert-info">Cette page n'est pas destinée à l'inscription.</div>
+  {% elif premier %}
+    {% if p.etat == 'inscrit' and p.resultat == 'gagnant' %}
+      <div class="alert alert-success">🎉 Une place vous est réservée{% if p.inscrit_le %} (inscription du {{ p.inscrit_le[8:10] }}/{{ p.inscrit_le[5:7] }}/{{ p.inscrit_le[:4] }}){% endif %}.</div>
+    {% elif p.etat == 'inscrit' and p.resultat == 'attente' %}
+      <div class="alert alert-warning">⏳ Toutes les places sont prises : vous êtes en <b>liste d'attente</b> (rang {{ rang }}). Si une place se libère, elle vous sera attribuée et vous serez prévenu(e) par mail.</div>
+    {% endif %}
+    {% if gain and p.etat != 'inscrit' %}
+      <div class="alert alert-secondary">Vous avez déjà gagné une place le {{ gain[8:10] }}/{{ gain[5:7] }}/{{ gain[:4] }} : pour que chacun puisse en profiter, une personne ne peut gagner qu'une place par période de 12 mois. Vous ne pouvez donc pas vous inscrire pour ce spectacle. Merci de votre compréhension.</div>
+    {% elif clos and p.etat != 'inscrit' %}
+      <div class="alert alert-warning">La date limite est dépassée : les inscriptions sont closes.</div>
+    {% elif p.etat != 'inscrit' %}
+      <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <p>Les places sont attribuées <b>dans l'ordre des inscriptions</b> (premier inscrit, premier servi).</p>
+        <button name="action" value="inscrire" class="btn btn-primary btn-lg">✅ Je m'inscris</button>
+        {% if p.etat == 'desiste' %}<div class="text-muted small mt-2">Vous vous étiez désisté(e) : vous pouvez vous réinscrire (en fin de file).</div>{% endif %}
+      </form>
+    {% else %}
+      <form method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button name="action" value="desister" class="btn btn-outline-danger" onclick="return confirm('Confirmer votre désistement ?');">Me désister</button></form>
+    {% endif %}
   {% elif c.statut == 'tiree' %}
     {% if p.resultat == 'gagnant' %}
       <div class="alert alert-success">🎉 Le tirage au sort a eu lieu : <b>une place vous est attribuée</b>.</div>
