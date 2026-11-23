@@ -10,13 +10,19 @@
 .liste-scroll { max-height: 50vh; overflow: auto; }
 .liste-scroll thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 1; }
 .liste-scroll .form-check-input { position: static; margin: 0; }
+.sect > .card-header { cursor: pointer; user-select: none; }
+.sect > .card-header:hover { background: #e9ecef; }
+.sect > .card-header::before { content: "▾"; display: inline-block; width: 1.2em; color: #6c757d; }
+.sect.replie > .card-header::before { content: "▸"; }
+.sect.replie > :not(.card-header) { display: none !important; }
+.sect.replie > .card-header { border-bottom: 0; }
 </style>
 {% endblock %}
 {% block content %}
 <div class="container-fluid mt-3">
   <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
     <h2 class="mb-0">🎟️ {{ c.spectacle }}</h2>
-    <div><button type="button" class="btn btn-outline-info btn-sm" onclick="new bootstrap.Modal(document.getElementById('modalAideBillets')).show()">❓ Aide</button> <a href="{{ url_for('billets.liste') }}" class="btn btn-outline-secondary btn-sm">⬅️ Campagnes</a></div>
+    <div><button type="button" class="btn btn-outline-secondary btn-sm" id="btn-deplier-tout" title="Tout déplier">▾ Tout déplier</button> <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-replier-tout" title="Tout replier">▸ Tout replier</button> <button type="button" class="btn btn-outline-info btn-sm" onclick="new bootstrap.Modal(document.getElementById('modalAideBillets')).show()">❓ Aide</button> <a href="{{ url_for('billets.liste') }}" class="btn btn-outline-secondary btn-sm">⬅️ Campagnes</a></div>
   </div>
   <p class="text-muted">Offert par <b>{{ c.donateur }}</b> — {{ date_fr(c.date_spectacle) }}{% if c.heure_spectacle %} à {{ c.heure_spectacle.replace(':','h') }}{% endif %} —
     {{ c.nb_billets }} billet(s) — inscriptions jusqu'au {{ limite_fr(c.date_limite) }}
@@ -25,7 +31,7 @@
 
 
   <!-- 1. Fiche -->
-  <div class="card mb-3"><div class="card-header"><b>1. Fiche de la campagne</b></div>
+  <div class="card mb-3 sect" id="fiche" data-defaut="{{ 'ferme' if nb.envoyes else 'ouvert' }}"><div class="card-header"><b>1. Fiche de la campagne</b></div>
   <form method="POST" action="{{ url_for('billets.enregistrer_fiche', campagne_id=c.id) }}" class="card-body">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <fieldset {% if not peut_ecrire %}disabled{% endif %}>
@@ -46,7 +52,7 @@
   </form></div>
 
   <!-- 2. Message -->
-  <div class="card mb-3" id="message"><div class="card-header"><b>2. Message d'invitation</b> <span class="text-muted small">(texte enrichi, images collables)</span></div>
+  <div class="card mb-3 sect" id="message" data-defaut="{{ 'ferme' if nb.envoyes else 'ouvert' }}"><div class="card-header"><b>2. Message d'invitation</b> <span class="text-muted small">(texte enrichi, images collables)</span></div>
   <form method="POST" id="form-message" action="{{ url_for('billets.enregistrer_message', campagne_id=c.id) }}" class="card-body">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <fieldset {% if not peut_ecrire %}disabled{% endif %}>
@@ -74,7 +80,7 @@
   </form></div>
 
   <!-- 3. Destinataires + envoi -->
-  <div class="card mb-3" id="destinataires"><div class="card-header"><b>3. {{ 'Bénévoles et salariés invités' if premier else 'Bénévoles invités' }}</b>
+  <div class="card mb-3 sect" id="destinataires" data-defaut="ouvert"><div class="card-header"><b>3. {{ 'Bénévoles et salariés invités' if premier else 'Bénévoles invités' }}</b>
     <span class="text-muted small">— {% if premier %}bénévoles à jour de cotisation 2026 et salariés, ayant une adresse mail{% else %}bénévoles (hors salariés) à jour de cotisation 2026 et ayant une adresse mail{% endif %} ; ceux qui ont gagné une place dans les 12 derniers mois ne sont pas invités</span></div>
   <div class="card-body">
     {% if peut_ecrire and not tiree %}
@@ -120,7 +126,7 @@
   </div></div>
 
   <!-- 4. Inscriptions -->
-  <div class="card mb-3" id="inscriptions"><div class="card-header"><b>4. Inscriptions</b>
+  <div class="card mb-3 sect" id="inscriptions" data-defaut="ouvert"><div class="card-header"><b>4. Inscriptions</b>
     <span class="badge bg-primary">{{ nb.inscrits }} inscrit(s) pour {{ c.nb_billets }} billet(s)</span>
     {% if nb.desistes %}<span class="badge bg-secondary">{{ nb.desistes }} désisté(s)</span>{% endif %}</div>
   <div class="card-body">
@@ -151,7 +157,7 @@
 
   <!-- 5. Attribution (premier inscrit) -->
   {% if premier %}
-  <div class="card mb-3" id="tirage"><div class="card-header"><b>5. Attribution des places</b> <span class="text-muted small">— pas de tirage au sort : place attribuée à l'inscription, dans l'ordre</span></div>
+  <div class="card mb-3 sect" id="tirage" data-defaut="ouvert"><div class="card-header"><b>5. Attribution des places</b> <span class="text-muted small">— pas de tirage au sort : place attribuée à l'inscription, dans l'ordre</span></div>
   <div class="card-body">
     <div class="row">
       <div class="col-md-6">
@@ -174,7 +180,7 @@
     <p class="small text-muted mb-0">Un désistement (par la personne ou « Désinscrire » à l'étape 4) attribue automatiquement la place au premier de la liste d'attente, qui est prévenu par mail.</p>
   </div></div>
   {% else %}
-  <div class="card mb-3" id="tirage"><div class="card-header"><b>5. Tirage au sort et résultats</b></div>
+  <div class="card mb-3 sect" id="tirage" data-defaut="ouvert"><div class="card-header"><b>5. Tirage au sort et résultats</b></div>
   <div class="card-body">
     {% if not tiree %}
       <p>Après la date limite : tirage parmi les inscrits (un bénévole ayant déjà gagné une place dans les 12 derniers mois en est écarté) ; s'il reste des places (moins d'inscrits que de billets), les places restantes sont tirées au sort parmi les <b>salariés</b> ({{ nb.salaries_coches }} coché(s) ci-dessous).</p>
@@ -237,7 +243,7 @@
   {% endif %}
 
   <!-- 6. Textes des autres mails -->
-  <div class="card mb-3" id="textes"><div class="card-header"><b>6. Textes des autres mails</b>
+  <div class="card mb-3 sect" id="textes" data-defaut="ferme"><div class="card-header"><b>6. Textes des autres mails</b>
     <span class="text-muted small">— {% if premier %}place réservée, liste d'attente, place libérée, désistement{% else %}confirmation d'inscription, désistement, résultats du tirage{% endif %}</span></div>
   <form method="POST" id="form-textes" action="{{ url_for('billets.enregistrer_textes_mails', campagne_id=c.id) }}" class="card-body">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -367,5 +373,25 @@ if (tout) tout.addEventListener("change", () => {
   cbs.forEach(cb => cb.checked = tout.checked);
   enregistrerSelection(cbs.map(cb => cb.dataset.id), tout.checked);
 });
+// ---- Chapitres repliables (état mémorisé par navigateur et par campagne) ----
+(function () {
+  const cle = "billets_replie_{{ c.id }}";
+  const sects = [...document.querySelectorAll(".sect")];
+  let etat = {};
+  try { etat = JSON.parse(localStorage.getItem(cle) || "{}"); } catch (e) {}
+  const sauver = () => { try { localStorage.setItem(cle, JSON.stringify(etat)); } catch (e) {} };
+  const appliquer = (el, ferme) => { el.classList.toggle("replie", ferme); etat[el.id] = ferme ? 1 : 0; };
+  sects.forEach(el => appliquer(el, el.id in etat ? !!etat[el.id] : el.dataset.defaut === "ferme"));
+  // Lien avec ancre (#inscriptions…) : la section ciblée est dépliée
+  const cible = location.hash && document.querySelector(".sect" + location.hash);
+  if (cible) { appliquer(cible, false); setTimeout(() => cible.scrollIntoView(), 50); }
+  sauver();
+  sects.forEach(el => el.querySelector(".card-header").addEventListener("click", e => {
+    if (e.target.closest("a, button, input, select, label")) return;
+    appliquer(el, !el.classList.contains("replie")); sauver();
+  }));
+  document.getElementById("btn-replier-tout").addEventListener("click", () => { sects.forEach(el => appliquer(el, true)); sauver(); });
+  document.getElementById("btn-deplier-tout").addEventListener("click", () => { sects.forEach(el => appliquer(el, false)); sauver(); });
+})();
 </script>
 {% endblock %}
