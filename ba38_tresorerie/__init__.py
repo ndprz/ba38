@@ -15,3 +15,6 @@ from ba38_tresorerie import factures_upload
 from ba38_tresorerie.factures_decoupage import factures_bp
 from ba38_tresorerie.participation import participation_bp
 from ba38_tresorerie import participation_chorus
+from ba38_tresorerie import mecenat
+from ba38_tresorerie import mecenat_export
+from ba38_tresorerie import mecenat_suivi

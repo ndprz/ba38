@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Mécénat{% endblock %}
+{% block content %}
+<div class="container-fluid mt-3">
+  <div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:15px;">
+    <h2 class="mb-1">🤝 Mécénat — dossiers à financer</h2>
+    <div style="display:flex; gap:15px;">
+      <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#modalAideMecenat">❓ Aide</button>
+      <a class="btn btn-outline-primary" href="{{ url_for('tresorerie.mecenat_suivi') }}">📋 Suivi / relances</a>
+      <a class="btn btn-outline-primary" href="{{ url_for('tresorerie.mecenat_mecenes') }}">🏢 Mécènes et prospects</a>
+      {% if peut_ecrire %}<a class="btn btn-success" href="{{ url_for('tresorerie.mecenat_dossier_nouveau') }}">➕ Nouveau dossier</a>{% endif %}
+      <a class="btn btn-outline-dark" href="{{ url_for('index') }}">↩️ Retour à l'accueil</a>
+    </div>
+  </div>
+  <p class="text-muted">Investissements à financer (TTC, la TVA n'est pas récupérée) et subventions de mécénat obtenues.</p>
+
+  <form method="GET" class="d-flex align-items-center mb-2" style="gap:15px;">
+    {% if filtre %}<input type="hidden" name="type" value="{{ filtre }}">{% endif %}
+    <label class="small mb-0">Pôle :</label>
+    <select name="pole" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+      <option value="">Tous</option>
+      {% for po in poles %}<option value="{{ po.id }}" {{ 'selected' if filtre_pole == po.id }}>{{ po.nom_affiche }}</option>{% endfor %}
+    </select>
+  </form>
+  <ul class="nav nav-pills mb-3">
+    <li class="nav-item"><a class="nav-link {{ 'active' if not filtre }}" href="{{ url_for('tresorerie.mecenat_dossiers', pole=filtre_pole or none) }}">Tous</a></li>
+    {% for k, lib in types.items() %}<li class="nav-item"><a class="nav-link {{ 'active' if filtre == k }}" href="{{ url_for('tresorerie.mecenat_dossiers', type=k, pole=filtre_pole or none) }}">{{ lib }}s</a></li>{% endfor %}
+  </ul>
+
+  <form method="GET" action="{{ url_for('tresorerie.mecenat_export_ppi') }}" class="card card-body mb-3">
+    <div class="row g-2 align-items-end">
+      <div class="col-auto"><b>📤 Export du plan pluriannuel d'investissements (Excel)</b></div>
+      <div class="col-auto"><label class="small">Type</label>
+        <select name="type" class="form-select">
+          <option value="investissement" selected>Investissements</option>
+          <option value="achat_denrees">Achats de denrées</option>
+          <option value="tous">Les deux</option></select></div>
+      <div class="col-auto"><label class="small">Pôle</label>
+        <select name="pole" class="form-select" style="width:auto">
+          <option value="">Tous les pôles</option>
+          {% for po in poles %}<option value="{{ po.id }}" {{ 'selected' if filtre_pole == po.id }}>{{ po.nom_affiche }}</option>{% endfor %}</select></div>
+      <div class="col-auto"><label class="small">À partir de l'année</label>
+        <input type="number" name="annee" class="form-control" style="width:110px" value="{{ annee_courante }}" min="2000" max="2100"></div>
+      <div class="col-auto"><label class="small">Nombre d'années</label>
+        <select name="nb" class="form-select" style="width:90px">{% for n in range(1, 11) %}<option value="{{ n }}" {{ 'selected' if n == 4 }}>{{ n }}</option>{% endfor %}</select></div>
+      <div class="col-auto"><label class="mb-2"><input type="checkbox" name="non_dates" value="1" class="form-check-input" style="position:static"> inclure les dossiers sans date prévue</label></div>
+      <div class="col-auto"><button class="btn btn-outline-success">Exporter</button></div>
+    </div>
+  </form>
+
+  <table class="table table-striped table-sm align-middle">
+    <thead><tr>
+      <th>Type</th><th>Pôle</th><th>Famille</th><th>Objet</th><th>Date prévue</th>
+      <th class="text-end">Montant TTC</th><th class="text-end">Demandé</th><th class="text-end">Obtenu</th>
+      <th class="text-end">Reste à financer</th><th>Pilote projet</th><th>Pilote recherche mécénat</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for d in dossiers %}
+      {% set reste = (d.montant_ttc or 0) - (d.total_subvention_obtenues or 0) %}
+      <tr>
+        <td><span class="badge bg-{{ 'primary' if d.type_dossier == 'investissement' else 'warning text-dark' }}">{{ types[d.type_dossier] }}</span></td>
+        <td>{{ d.pole or '' }}</td>
+        <td>{{ d.famille or '' }}</td>
+        <td><b>{{ d.objet }}</b>{% if d.nb_demandes %} <span class="badge bg-secondary">{{ d.nb_demandes }} mécène{{ 's' if d.nb_demandes > 1 }}</span>{% endif %}</td>
+        <td>{{ mecenat_date_fr(d.date_prevue) }}</td>
+        <td class="text-end">{{ mecenat_eur(d.montant_ttc) }}</td>
+        <td class="text-end">{{ mecenat_eur(d.total_demande) }}</td>
+        <td class="text-end">{{ mecenat_eur(d.total_subvention_obtenues) }}</td>
+        <td class="text-end {{ 'text-success' if reste <= 0 else 'text-danger' }}">{{ mecenat_eur(reste) if reste > 0 else 'Financé' }}</td>
+        <td>{{ d.pilote_projet }}</td>
+        <td>{{ d.pilote_mecenat }}</td>
+        <td><a class="btn btn-sm btn-primary" href="{{ url_for('tresorerie.mecenat_dossier', dossier_id=d.id) }}">Ouvrir</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="12" class="text-muted text-center">Aucun dossier pour le moment.</td></tr>
+    {% endfor %}
+    </tbody>
+    {% if dossiers %}
+    <tfoot><tr class="fw-bold">
+      <td colspan="5">Total</td><td class="text-end">{{ mecenat_eur(tot_ttc) }}</td><td></td>
+      <td class="text-end">{{ mecenat_eur(tot_obt) }}</td><td colspan="4"></td>
+    </tr></tfoot>
+    {% endif %}
+  </table>
+</div>
+{% include "tresorerie/mecenat/_aide.html" %}
+{% endblock %}

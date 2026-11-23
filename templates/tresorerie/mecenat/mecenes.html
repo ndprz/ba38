@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Mécènes{% endblock %}
+{% block content %}
+<div class="container-fluid mt-3">
+  <div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:15px;">
+    <h2 class="mb-1">🏢 Mécènes</h2>
+    <div style="display:flex; gap:15px;">
+      <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#modalAideMecenat">❓ Aide</button>
+      <a class="btn btn-outline-primary" href="{{ url_for('tresorerie.mecenat_suivi') }}">📋 Suivi / relances</a>
+      {% if peut_ecrire %}<a class="btn btn-success" href="{{ url_for('tresorerie.mecenat_mecene_nouveau') }}">➕ Nouveau mécène</a>{% endif %}
+      <a class="btn btn-outline-dark" href="{{ url_for('tresorerie.mecenat_dossiers') }}">↩️ Dossiers</a>
+    </div>
+  </div>
+  <ul class="nav nav-pills my-3">
+    <li class="nav-item"><a class="nav-link {{ 'active' if not filtre }}" href="{{ url_for('tresorerie.mecenat_mecenes') }}">Tous</a></li>
+    {% for k, lib in statuts_mecene.items() %}<li class="nav-item"><a class="nav-link {{ 'active' if filtre == k }}" href="{{ url_for('tresorerie.mecenat_mecenes', statut=k) }}">{{ lib }}</a></li>{% endfor %}
+  </ul>
+  <table class="table table-striped table-sm align-middle">
+    <thead><tr><th>Structure</th><th>Statut</th><th>Contact</th><th>Téléphones</th><th>Email</th><th>Ville</th><th>Dernier contact</th><th>Prochaine relance</th>
+      <th class="text-end">Dossiers</th><th class="text-end">Total obtenu</th><th></th></tr></thead>
+    <tbody>
+    {% for m in mecenes %}
+      <tr>
+        <td><b>{{ m.structure }}</b></td>
+        <td><span class="badge bg-{{ statut_couleurs[m.statut] }}">{{ statuts_mecene[m.statut] }}</span></td>
+        <td>{{ m.prenom or '' }} {{ m.nom or '' }}</td>
+        <td class="small">{{ m.telephone_fixe or '' }}{% if m.telephone_fixe and m.telephone_portable %}<br>{% endif %}{{ m.telephone_portable or '' }}</td>
+        <td>{% if m.email %}<a href="mailto:{{ m.email }}">{{ m.email }}</a>{% endif %}</td>
+        <td>{{ m.cp or '' }} {{ m.ville or '' }}</td>
+        <td>{{ mecenat_date_fr(m.dernier_contact) }}</td>
+        <td class="{{ 'text-danger fw-bold' if m.prochaine_relance and m.prochaine_relance < mecenat_today }}">{{ mecenat_date_fr(m.prochaine_relance) }}</td>
+        <td class="text-end">{{ m.nb_dossiers }}</td>
+        <td class="text-end">{{ mecenat_eur(m.total_obtenu) }}</td>
+        <td><a class="btn btn-sm btn-primary" href="{{ url_for('tresorerie.mecenat_mecene', mecene_id=m.id) }}">Ouvrir</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="11" class="text-muted text-center">Aucun mécène pour le moment.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include "tresorerie/mecenat/_aide.html" %}
+{% endblock %}

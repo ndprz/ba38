@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Mécène' if mecene else 'Nouveau mécène' }}{% endblock %}
+{% block content %}
+{% set v = mecene if mecene else form %}
+{% set editable = (peut_ecrire is not defined) or peut_ecrire %}
+<div class="container mt-3">
+  <div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:15px;">
+    <h2>🏢 {{ mecene.structure if mecene else 'Nouveau mécène' }}</h2>
+    <a class="btn btn-outline-dark" href="{{ url_for('tresorerie.mecenat_dossier', dossier_id=retour_dossier) if retour_dossier else url_for('tresorerie.mecenat_mecenes') }}">↩️ Retour</a>
+  </div>
+  <form method="POST" action="{{ url_for('tresorerie.mecenat_mecene', mecene_id=mecene.id) if mecene else url_for('tresorerie.mecenat_mecene_nouveau') }}" class="card card-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if retour_dossier %}<input type="hidden" name="retour_dossier" value="{{ retour_dossier }}">{% endif %}
+    <fieldset {{ '' if editable else 'disabled' }}>
+    <div class="row g-2">
+      <div class="col-md-9"><label class="small">Structure (entité du mécène) *</label><input name="structure" class="form-control" required value="{{ v['structure'] or '' if v else '' }}"></div>
+      <div class="col-md-3"><label class="small">Statut</label>
+        <select name="statut" class="form-select">
+          {% for k, lib in statuts_mecene.items() %}<option value="{{ k }}" {{ 'selected' if (v and v['statut'] == k) or (not v and k == 'prospect') or (v and not v['statut'] and k == 'prospect') }}>{{ lib }}</option>{% endfor %}</select></div>
+      <div class="col-md-3"><label class="small">Nom (contact)</label><input name="nom" class="form-control" value="{{ v['nom'] or '' if v else '' }}"></div>
+      <div class="col-md-3"><label class="small">Prénom</label><input name="prenom" class="form-control" value="{{ v['prenom'] or '' if v else '' }}"></div>
+      <div class="col-md-3"><label class="small">Téléphone fixe</label><input name="telephone_fixe" class="form-control" value="{{ v['telephone_fixe'] or '' if v else '' }}"></div>
+      <div class="col-md-3"><label class="small">Téléphone portable</label><input name="telephone_portable" class="form-control" value="{{ v['telephone_portable'] or '' if v else '' }}"></div>
+      <div class="col-md-12"><label class="small">Email</label><input type="email" name="email" class="form-control" value="{{ v['email'] or '' if v else '' }}"></div>
+      <div class="col-md-6"><label class="small">Adresse</label><input name="adresse" class="form-control" value="{{ v['adresse'] or '' if v else '' }}"></div>
+      <div class="col-md-2"><label class="small">Code postal</label><input name="cp" class="form-control" value="{{ v['cp'] or '' if v else '' }}"></div>
+      <div class="col-md-4"><label class="small">Ville</label><input name="ville" class="form-control" value="{{ v['ville'] or '' if v else '' }}"></div>
+      <div class="col-md-12"><label class="small">Commentaire</label><textarea name="commentaire" rows="3" class="form-control">{{ v['commentaire'] or '' if v else '' }}</textarea></div>
+    </div>
+    </fieldset>
+    {% if editable %}<div class="mt-3"><button class="btn btn-success">💾 Enregistrer</button></div>{% endif %}
+  </form>
+
+  {% if mecene %}
+  <h5 class="mt-4" id="historique">📋 Suivi des échanges</h5>
+  {% if editable %}
+  <details class="card card-body mb-3" {{ 'open' if not historique }}>
+    <summary class="fw-bold" style="cursor:pointer">➕ Noter un échange (rendez-vous, appel, mail, événement…)</summary>
+    <form method="POST" enctype="multipart/form-data" action="{{ url_for('tresorerie.mecenat_interaction_ajouter', mecene_id=mecene.id) }}" class="mt-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% set i = none %}
+      {% include "tresorerie/mecenat/_champs_interaction.html" %}
+      <button class="btn btn-success mt-3">Enregistrer l'échange</button>
+    </form>
+  </details>
+  {% endif %}
+  {% for e, pieces in historique %}
+    <div class="card mb-2 {{ 'border-warning' if e.date_relance and not e.relance_faite }}">
+      <div class="card-body py-2">
+        <div class="d-flex justify-content-between flex-wrap">
+          <div><b>{{ types_interaction[e.type_interaction] }}</b> — {{ mecenat_date_fr(e.date_interaction) }} {{ e.date_interaction[11:16] if e.date_interaction else '' }}
+            {% if e.benevole %}· {{ e.benevole }}{% endif %}
+            {% if e.dossier_objet %}· <span class="badge bg-light text-dark border">{{ e.dossier_objet }}</span>{% endif %}</div>
+          <div class="small text-muted">saisi par {{ e.user_creation or '?' }}</div>
+        </div>
+        {% if e.compte_rendu %}<div style="white-space:pre-wrap" class="mt-1">{{ e.compte_rendu }}</div>{% endif %}
+        {% if e.prochaine_action or e.date_relance %}
+          <div class="mt-1 small">➡️ <b>{{ e.prochaine_action or 'Relance' }}</b>
+            {% if e.date_relance %}— relance le <b>{{ mecenat_date_fr(e.date_relance) }}</b>{% endif %}
+            {% if e.relance_faite %}<span class="badge bg-success">Fait</span>{% else %}<span class="badge bg-warning text-dark">À faire</span>{% endif %}</div>
+        {% endif %}
+        {% for p in pieces %}<div class="small">📎 <a href="{{ url_for('tresorerie.mecenat_piece', piece_id=p.id) }}">{{ p.nom_original }}</a></div>{% endfor %}
+        <div class="mt-1" style="display:flex; gap:15px;">
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('tresorerie.mecenat_interaction', interaction_id=e.id) }}">{{ 'Modifier' if editable else 'Ouvrir' }}</a>
+          {% if editable and (e.prochaine_action or e.date_relance) %}
+          <form method="POST" action="{{ url_for('tresorerie.mecenat_interaction_relance', interaction_id=e.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-success">{{ '↩️ Rouvrir' if e.relance_faite else '✔ Marquer fait' }}</button></form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% else %}<p class="text-muted">Aucun échange enregistré.</p>{% endfor %}
+
+  <h5 class="mt-4">Dossiers concernés</h5>
+  <table class="table table-sm">
+    <thead><tr><th>Dossier</th><th>Famille</th><th class="text-end">Demandé</th><th class="text-end">Obtenu</th><th>Versement</th><th>Notes</th></tr></thead>
+    <tbody>
+    {% for d in dossiers %}
+      <tr><td><a href="{{ url_for('tresorerie.mecenat_dossier', dossier_id=d.dossier_id) }}">{{ d.objet }}</a></td><td>{{ d.famille or '' }}</td>
+        <td class="text-end">{{ mecenat_eur(d.montant_demande) }}</td><td class="text-end">{{ mecenat_eur(d.montant_obtenu) }}</td><td>{{ mecenat_date_fr(d.date_versement) }}</td><td class="small">{{ d.notes or '' }}</td></tr>
+    {% else %}<tr><td colspan="6" class="text-muted text-center">Aucun dossier.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  {% if editable %}
+  <form method="POST" action="{{ url_for('tresorerie.mecenat_mecene_supprimer', mecene_id=mecene.id) }}"
+        onsubmit="return confirm('Supprimer ce mécène ?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-outline-danger btn-sm">🗑️ Supprimer le mécène</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

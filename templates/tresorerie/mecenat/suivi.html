@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Mécénat — suivi{% endblock %}
+{% macro tableau_relances(lignes, couleur) %}
+  <table class="table table-sm align-middle mb-0">
+    <tbody>
+    {% for r in lignes %}
+      <tr>
+        <td style="width:110px" class="text-{{ couleur }} fw-bold">{{ mecenat_date_fr(r.date_relance) }}</td>
+        <td><a href="{{ url_for('tresorerie.mecenat_mecene', mecene_id=r.mecene_id) }}#historique"><b>{{ r.structure }}</b></a>
+          — {{ r.prochaine_action or 'Relance' }}
+          <div class="small text-muted">{{ types_interaction[r.type_interaction] }} du {{ mecenat_date_fr(r.date_interaction) }}{% if r.benevole %} · {{ r.benevole }}{% endif %}</div></td>
+        <td class="text-end text-nowrap"><div style="display:flex; gap:15px; justify-content:flex-end;">
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('tresorerie.mecenat_interaction', interaction_id=r.id) }}">Ouvrir</a>
+          {% if peut_ecrire %}<form method="POST" class="d-inline" action="{{ url_for('tresorerie.mecenat_interaction_relance', interaction_id=r.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="retour" value="suivi">
+            <button class="btn btn-sm btn-success" title="Marquer comme fait">✔ Fait</button></form>{% endif %}
+        </div></td>
+      </tr>
+    {% else %}<tr><td class="text-muted">Rien.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+{% endmacro %}
+{% block content %}
+<div class="container-fluid mt-3">
+  <div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:15px;">
+    <h2 class="mb-1">📋 Mécénat — suivi et relances</h2>
+    <div style="display:flex; gap:15px;">
+      <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#modalAideMecenat">❓ Aide</button>
+      <a class="btn btn-outline-primary" href="{{ url_for('tresorerie.mecenat_mecenes') }}">🏢 Mécènes et prospects</a>
+      <a class="btn btn-outline-dark" href="{{ url_for('tresorerie.mecenat_dossiers') }}">↩️ Dossiers</a>
+    </div>
+  </div>
+  <form method="GET" class="d-flex align-items-center my-2" style="gap:15px;">
+    <label class="small mb-0">Filtrer par responsable de l'échange :</label>
+    <select name="resp" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+      <option value="">Tous</option>
+      {% for b in benevoles %}<option value="{{ b.id }}" {{ 'selected' if resp == b.id }}>{{ b.nom }} {{ b.prenom or '' }}</option>{% endfor %}
+    </select>
+  </form>
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card border-danger mb-3"><div class="card-header bg-danger text-white"><b>⏰ Relances en retard ({{ en_retard|length }})</b></div>
+        {{ tableau_relances(en_retard, 'danger') }}</div>
+      <div class="card border-warning mb-3"><div class="card-header bg-warning"><b>📆 Relances dans les 7 jours ({{ cette_semaine|length }})</b></div>
+        {{ tableau_relances(cette_semaine, 'warning') }}</div>
+      <div class="card mb-3"><div class="card-header"><b>🗓️ Relances plus tard ({{ plus_tard|length }})</b></div>
+        {{ tableau_relances(plus_tard, 'secondary') }}</div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card mb-3"><div class="card-header"><b>📅 Rendez-vous et événements à venir ({{ rdv|length }})</b></div>
+        <table class="table table-sm align-middle mb-0"><tbody>
+        {% for r in rdv %}
+          <tr><td style="width:150px" class="fw-bold">{{ mecenat_date_fr(r.date_interaction) }} {{ r.date_interaction[11:16] }}</td>
+            <td><a href="{{ url_for('tresorerie.mecenat_mecene', mecene_id=r.mecene_id) }}#historique"><b>{{ r.structure }}</b></a>
+              — {{ types_interaction[r.type_interaction] }}{% if r.benevole %} · {{ r.benevole }}{% endif %}
+              {% if r.compte_rendu %}<div class="small text-muted">{{ r.compte_rendu[:120] }}</div>{% endif %}</td>
+            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('tresorerie.mecenat_interaction', interaction_id=r.id) }}">Ouvrir</a></td></tr>
+        {% else %}<tr><td class="text-muted">Aucun rendez-vous planifié.</td></tr>{% endfor %}
+        </tbody></table></div>
+      <div class="card mb-3"><div class="card-header"><b>💤 Sans contact depuis plus de {{ mois }} mois et aucune relance prévue ({{ sans_contact|length }})</b></div>
+        <table class="table table-sm align-middle mb-0"><tbody>
+        {% for m in sans_contact %}
+          <tr><td><a href="{{ url_for('tresorerie.mecenat_mecene', mecene_id=m.id) }}"><b>{{ m.structure }}</b></a>
+              <span class="badge bg-{{ statut_couleurs[m.statut] }}">{{ statuts[m.statut] }}</span></td>
+            <td class="small text-muted text-end">{% if m.dernier_contact %}dernier contact le {{ mecenat_date_fr(m.dernier_contact) }}{% else %}jamais contacté{% endif %}</td></tr>
+        {% else %}<tr><td class="text-muted">Aucun.</td></tr>{% endfor %}
+        </tbody></table></div>
+    </div>
+  </div>
+</div>
+{% include "tresorerie/mecenat/_aide.html" %}
+{% endblock %}

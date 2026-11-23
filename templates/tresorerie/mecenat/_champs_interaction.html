@@ -1,0 +1,22 @@
+{# Champs d'un échange. Variables : i (échange existant ou None), types_interaction, tous_dossiers, benevoles #}
+<div class="row g-2">
+  <div class="col-md-3"><label class="small">Type</label>
+    <select name="type_interaction" class="form-select">
+      {% for k, lib in types_interaction.items() %}<option value="{{ k }}" {{ 'selected' if i and i['type_interaction'] == k }}>{{ lib }}</option>{% endfor %}</select></div>
+  <div class="col-md-3"><label class="small">Date et heure</label>
+    <input type="datetime-local" name="date_interaction" class="form-control" value="{{ (i['date_interaction'] if i else mecenat_now) }}"></div>
+  <div class="col-md-3"><label class="small">Mené par (bénévole)</label>
+    <select name="benevole_id" class="form-select"><option value="">—</option>
+      {% for b in benevoles %}<option value="{{ b.id }}" {{ 'selected' if i and i['benevole_id'] == b.id }}>{{ b.nom }} {{ b.prenom or '' }}</option>{% endfor %}</select></div>
+  <div class="col-md-3"><label class="small">Dossier concerné</label>
+    <select name="dossier_id" class="form-select"><option value="">— aucun / général —</option>
+      {% for d in tous_dossiers %}<option value="{{ d.id }}" {{ 'selected' if i and i['dossier_id'] == d.id }}>{{ d.objet }}</option>{% endfor %}</select></div>
+  <div class="col-md-12"><label class="small">Compte rendu / retour d'entretien</label>
+    <textarea name="compte_rendu" rows="4" class="form-control">{{ i['compte_rendu'] or '' if i else '' }}</textarea></div>
+  <div class="col-md-8"><label class="small">Prochaine action</label>
+    <input name="prochaine_action" class="form-control" placeholder="Ex. : envoyer le dossier de candidature" value="{{ i['prochaine_action'] or '' if i else '' }}"></div>
+  <div class="col-md-4"><label class="small">Date de relance</label>
+    <input type="date" name="date_relance" class="form-control" value="{{ i['date_relance'] or '' if i else '' }}"></div>
+  <div class="col-md-12"><label class="small">Pièces jointes (PDF, Word, Excel, images… 15 Mo max chacune)</label>
+    <input type="file" name="pieces" multiple class="form-control"></div>
+</div>

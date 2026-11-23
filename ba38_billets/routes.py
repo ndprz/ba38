@@ -186,13 +186,15 @@ def campagne(campagne_id):
         "gagnants_salaries": sum(1 for p in parts if p["resultat"] == "gagnant" and p["origine_place"] == "salarie"),
         "salaries_coches": sum(1 for p in salaries if p["selected"]),
         "resultats_envoyes": sum(1 for p in parts if p["resultat_envoye_le"]),
-        "resultats_a_envoyer": sum(1 for p in parts if p["resultat"] and not p["resultat_envoye_le"]),
+        "resultats_a_envoyer": sum(1 for p in parts if p["resultat"] and p["resultat"] != "desiste"
+                                  and not p["resultat_envoye_le"]),
     }
     return render_template(
         "billets/campagne.html", c=c, benevoles=benevoles, salaries=salaries, inscrits=inscrits, nb=nb,
         gagnants=sorted([p for p in parts if p["resultat"] == "gagnant"], key=lambda p: p["ordre_tirage"] or 0),
         non_retenus=[p for p in parts if p["resultat"] == "non_retenu"],
         non_eligibles=[p for p in parts if p["resultat"] == "non_eligible"],
+        desistes=[p for p in parts if p["resultat"] == "desiste"],
         premier=premier, regle12=mails.regle_12_mois(c),
         attente=sorted([p for p in parts if p["resultat"] == "attente"], key=lambda p: (p["ordre_tirage"] or 0, p["id"])),
         cles_textes=mails.cles_textes(c),
@@ -562,7 +564,7 @@ def envoyer_resultats(campagne_id):
             return _retour(campagne_id, "#tirage")
         ids = [r["id"] for r in conn.execute(
             "SELECT id FROM billets_participants WHERE campagne_id=? AND resultat IS NOT NULL "
-            "AND resultat_envoye_le IS NULL ORDER BY ordre_tirage", (campagne_id,))]
+            "AND resultat != 'desiste' AND resultat_envoye_le IS NULL ORDER BY ordre_tirage", (campagne_id,))]
     if not ids:
         flash("ℹ️ Tous les résultats ont déjà été envoyés.", "warning")
         return _retour(campagne_id, "#tirage")
@@ -647,6 +649,70 @@ def tirage(campagne_id):
                 flash(f"ℹ️ {s['non_eligibles']} inscrit(s) écarté(s) du tirage : déjà gagnant(s) dans les 12 derniers mois.", "info")
             if s["places_non_pourvues"]:
                 flash(f"⚠️ {s['places_non_pourvues']} place(s) restent non pourvues (plus de salarié disponible).", "warning")
+    return _retour(campagne_id, "#tirage")
+
+
+@billets_bp.route("/<int:campagne_id>/desister_gagnant", methods=["POST"])
+@login_required
+@acces("ecriture")
+def desister_gagnant(campagne_id):
+    """Désistement d'un gagnant reçu hors lien (mail, téléphone) : la place est libérée."""
+    pid = request.form.get("pid", type=int)
+    with _connect() as conn:
+        c = _campagne(conn, campagne_id)
+        p = conn.execute("SELECT * FROM billets_participants WHERE id=? AND campagne_id=?",
+                         (pid, campagne_id)).fetchone()
+        if not c or c["statut"] != "tiree" or mails.est_premier(c) or not p or p["resultat"] != "gagnant":
+            flash("❌ Désistement impossible (gagnant introuvable ou campagne non tirée).", "danger")
+        else:
+            conn.execute("UPDATE billets_participants SET resultat='desiste', etat='desiste' WHERE id=?", (pid,))
+            conn.commit()
+            write_log(f"🚫 Billets campagne {campagne_id} : désistement du gagnant {p['nom']} {p['prenom']} "
+                      f"enregistré par {current_user.email}")
+            flash(f"✅ Désistement de {p['prenom']} {p['nom']} enregistré : une place est libérée. "
+                  "Vous pouvez tirer un remplaçant.", "success")
+    return _retour(campagne_id, "#tirage")
+
+
+@billets_bp.route("/<int:campagne_id>/remplacer", methods=["POST"])
+@login_required
+@acces("ecriture")
+def remplacer(campagne_id):
+    """Tire au sort un remplaçant pour une place libérée : parmi les inscrits non retenus,
+    à défaut parmi les salariés cochés n'ayant pas encore de résultat (hors gains des 12 mois)."""
+    with _connect() as conn:
+        c = _campagne(conn, campagne_id)
+        if not c or c["statut"] != "tiree" or mails.est_premier(c):
+            flash("❌ Aucun tirage effectué sur cette campagne.", "danger")
+            return _retour(campagne_id, "#tirage")
+        if attribution.nb_gagnants(conn, campagne_id) >= c["nb_billets"]:
+            flash("ℹ️ Toutes les places sont déjà attribuées.", "warning")
+            return _retour(campagne_id, "#tirage")
+        gains = mails.gains_recents(conn, campagne_id)
+        rng = secrets.SystemRandom()
+        pool = [p for p in conn.execute(
+            "SELECT * FROM billets_participants WHERE campagne_id=? AND resultat='non_retenu' AND etat='inscrit'",
+            (campagne_id,)) if p["benevole_id"] not in gains]
+        origine = "inscrit"
+        if not pool:
+            pool = [p for p in conn.execute(
+                "SELECT * FROM billets_participants WHERE campagne_id=? AND categorie='salarie' AND selected=1 "
+                "AND resultat IS NULL AND etat != 'desiste'", (campagne_id,)) if p["benevole_id"] not in gains]
+            origine = "salarie"
+        if not pool:
+            flash("⚠️ Plus personne à tirer (ni inscrit non retenu, ni salarié disponible).", "warning")
+            return _retour(campagne_id, "#tirage")
+        g = rng.choice(pool)
+        ordre = (conn.execute("SELECT COALESCE(MAX(ordre_tirage),0) FROM billets_participants WHERE campagne_id=?",
+                              (campagne_id,)).fetchone()[0] or 0) + 1
+        conn.execute("UPDATE billets_participants SET resultat='gagnant', origine_place=?, ordre_tirage=?, "
+                     "resultat_envoye_le=NULL, resultat_erreur=NULL WHERE id=?", (origine, ordre, g["id"]))
+        conn.commit()
+        write_log(f"🎲 Billets campagne {campagne_id} : remplaçant tiré {g['nom']} {g['prenom']} ({origine}) "
+                  f"par {current_user.email}")
+        flash(f"🎲 Remplaçant tiré au sort : {g['prenom']} {g['nom']} "
+              f"({'salarié' if origine == 'salarie' else 'inscrit non retenu'}). "
+              "Cliquez sur « Envoyer les résultats » pour le prévenir.", "success")
     return _retour(campagne_id, "#tirage")
 
 

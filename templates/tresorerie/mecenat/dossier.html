@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Dossier de mécénat{% endblock %}
+{% block content %}
+{% set reste = (dossier.montant_ttc or 0) - (dossier.total_subvention_obtenues or 0) %}
+<div class="container-fluid mt-3">
+  <div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:15px;">
+    <h2 class="mb-1">🤝 {{ dossier.objet }}</h2>
+    <a class="btn btn-outline-dark" href="{{ url_for('tresorerie.mecenat_dossiers') }}">↩️ Dossiers</a>
+  </div>
+
+  <div class="row text-center my-3">
+    <div class="col-md-3"><div class="card card-body"><div class="small text-muted">Montant TTC</div><b>{{ mecenat_eur(dossier.montant_ttc) }}</b></div></div>
+    <div class="col-md-3"><div class="card card-body"><div class="small text-muted">Total demandé</div><b>{{ mecenat_eur(total_demande) }}</b></div></div>
+    <div class="col-md-3"><div class="card card-body"><div class="small text-muted">Subventions obtenues</div><b>{{ mecenat_eur(dossier.total_subvention_obtenues) }}</b></div></div>
+    <div class="col-md-3"><div class="card card-body"><div class="small text-muted">Reste à financer</div>
+      <b class="{{ 'text-success' if reste <= 0 else 'text-danger' }}">{{ mecenat_eur(reste) if reste > 0 else 'Financé' }}</b></div></div>
+  </div>
+
+  <div class="card mb-4"><div class="card-header"><b>Fiche du dossier</b></div>
+    <form method="POST" action="{{ url_for('tresorerie.mecenat_dossier_modifier', dossier_id=dossier.id) }}" class="card-body">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <fieldset {{ '' if peut_ecrire else 'disabled' }}>
+        {% set form = {} %}
+        {% include "tresorerie/mecenat/_champs_dossier.html" %}
+      </fieldset>
+      {% if peut_ecrire %}<button class="btn btn-primary mt-3">💾 Enregistrer</button>{% endif %}
+    </form>
+  </div>
+
+  <div class="card mb-4"><div class="card-header"><b>Mécènes sollicités</b></div>
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+      <thead><tr><th>Mécène</th><th>Contact</th><th class="text-end" style="width:150px">Montant demandé (€)</th>
+        <th class="text-end" style="width:150px">Montant obtenu (€)</th><th style="width:170px">Date de versement</th><th>Notes</th><th></th></tr></thead>
+      <tbody>
+      {% for d in demandes %}
+        <tr>
+          <td><a href="{{ url_for('tresorerie.mecenat_mecene', mecene_id=d.mecene_id) }}">{{ d.structure }}</a></td>
+          <td class="small">{{ d.prenom or '' }} {{ d.nom or '' }}</td>
+          <td><input form="dm{{ d.id }}" name="montant_demande" class="form-control form-control-sm text-end" inputmode="decimal" value="{{ ('%.2f' % (d.montant_demande or 0)).replace('.', ',') }}" {{ '' if peut_ecrire else 'disabled' }}></td>
+          <td><input form="dm{{ d.id }}" name="montant_obtenu" class="form-control form-control-sm text-end" inputmode="decimal" value="{{ ('%.2f' % (d.montant_obtenu or 0)).replace('.', ',') }}" {{ '' if peut_ecrire else 'disabled' }}></td>
+          <td><input form="dm{{ d.id }}" type="date" name="date_versement" class="form-control form-control-sm" value="{{ d.date_versement or '' }}" {{ '' if peut_ecrire else 'disabled' }}></td>
+          <td><textarea form="dm{{ d.id }}" name="notes" rows="1" class="form-control form-control-sm" style="min-width:220px" {{ '' if peut_ecrire else 'disabled' }}>{{ d.notes or '' }}</textarea></td>
+          <td class="text-nowrap">
+            {% if peut_ecrire %}<div style="display:flex; gap:15px;">
+            <button form="dm{{ d.id }}" class="btn btn-sm btn-primary">💾</button>
+            <button type="submit" form="sup{{ d.id }}" class="btn btn-sm btn-outline-danger" title="Retirer ce mécène du dossier"
+                    onclick="return confirm('Retirer ce mécène du dossier ?');">🗑️</button>
+            </div>{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="text-muted text-center">Aucun mécène associé à ce dossier.</td></tr>
+      {% endfor %}
+      </tbody>
+      {% if demandes %}<tfoot><tr class="fw-bold"><td colspan="2">Total</td>
+        <td class="text-end">{{ mecenat_eur(total_demande) }}</td><td class="text-end">{{ mecenat_eur(dossier.total_subvention_obtenues) }}</td><td colspan="3"></td></tr></tfoot>{% endif %}
+    </table></div>
+    {% for d in demandes %}
+    <form method="POST" id="dm{{ d.id }}" action="{{ url_for('tresorerie.mecenat_demande_modifier', demande_id=d.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+    <form method="POST" id="sup{{ d.id }}" action="{{ url_for('tresorerie.mecenat_demande_supprimer', demande_id=d.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+    {% endfor %}
+
+    {% if peut_ecrire %}
+    <form method="POST" action="{{ url_for('tresorerie.mecenat_demande_ajouter', dossier_id=dossier.id) }}" class="card-body border-top">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4"><label class="small">Ajouter un mécène</label>
+          <select name="mecene_id" class="form-select" required><option value="">— choisir —</option>
+            {% for m in mecenes_dispo %}<option value="{{ m.id }}">{{ m.structure }}{% if m.nom %} ({{ m.prenom or '' }} {{ m.nom }}){% endif %}</option>{% endfor %}</select></div>
+        <div class="col-md-2"><label class="small">Montant demandé (€)</label><input name="montant_demande" class="form-control text-end" inputmode="decimal"></div>
+        <div class="col-md-2"><label class="small">Montant obtenu (€)</label><input name="montant_obtenu" class="form-control text-end" inputmode="decimal"></div>
+        <div class="col-md-2"><label class="small">Date de versement</label><input type="date" name="date_versement" class="form-control"></div>
+        <div class="col-md-9"><label class="small">Notes</label><input name="notes" class="form-control"></div>
+        <div class="col-md-3"><button class="btn btn-success w-100">➕ Ajouter</button></div>
+      </div>
+      <div class="small mt-2"><a href="{{ url_for('tresorerie.mecenat_mecene_nouveau', retour_dossier=dossier.id) }}">Le mécène n'existe pas encore ? Le créer</a></div>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if peut_ecrire %}
+  <form method="POST" action="{{ url_for('tresorerie.mecenat_dossier_supprimer', dossier_id=dossier.id) }}"
+        onsubmit="return confirm('Supprimer ce dossier et ses demandes de mécénat ? Action irréversible.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-outline-danger btn-sm">🗑️ Supprimer le dossier</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Nouveau dossier de mécénat{% endblock %}
+{% block content %}
+<div class="container mt-3">
+  <h2>🤝 Nouveau dossier à financer</h2>
+  <form method="POST" action="{{ url_for('tresorerie.mecenat_dossier_nouveau') }}" class="card card-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% include "tresorerie/mecenat/_champs_dossier.html" %}
+    <div class="mt-3" style="display:flex; gap:15px;">
+      <button class="btn btn-success">Créer le dossier</button>
+      <a class="btn btn-outline-dark" href="{{ url_for('tresorerie.mecenat_dossiers') }}">Annuler</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

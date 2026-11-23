@@ -15,7 +15,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4" style="max-width: 1400px;">
+<div class="container-fluid mt-4" style="max-width: 100%; padding-left: 1rem; padding-right: 1rem;">
     <h2>📧 Envoi aux associations gardant {{ annee }}</h2>
 
     {% call action_buttons() %}
@@ -293,7 +293,9 @@
                     <th>Poids total (kg)</th>
                     <th title="Repère : total {{ annee_precedente }} (fichier associationgardantproduits{{ annee_precedente }}.xlsx)">Poids {{ annee_precedente }} (kg)</th>
                     <th>Répondu</th><th>Résultat envoyé</th><th>Saisie en ligne</th>
-                    <th title="VIF fait pour cette association : export CSV poids par magasin + transfert produits + BL">Traitée</th>
+                    <th title="Cochée automatiquement par l'export CSV VIF (poids par magasin)">Poids exporté</th>
+                    <th title="Cochée automatiquement par l'export CSV TRANCOG (transferts)">Transferts exportés</th>
+                    <th title="Cochée automatiquement par la génération du BL VIF">BL généré</th>
                     <th>Statut</th><th></th>
                 </tr>
             </thead>
@@ -303,7 +305,7 @@
                 <td>{{ total_magasins }}</td>
                 <td>{{ "%.0f"|format(total_poids) if total_poids else "—" }}</td>
                 <td class="text-muted">{{ "%.0f"|format(total_poids_n1) if total_poids_n1 else "—" }}</td>
-                <td colspan="6"></td>
+                <td colspan="8"></td>
             </tr>
             {% for asso in associations %}
             <tr>
@@ -339,8 +341,16 @@
                     {% endif %}
                 </td>
                 <td>
-                    <input type="checkbox" class="case-suivi" data-champ="traite" data-association="{{ asso.nom }}"
-                           {% if asso.suivi.traite %}checked{% endif %}>
+                    <input type="checkbox" class="case-suivi" data-champ="poids_exporte" data-association="{{ asso.nom }}"
+                           {% if asso.suivi.poids_exporte %}checked{% endif %}>
+                </td>
+                <td>
+                    <input type="checkbox" class="case-suivi" data-champ="transferts_exportes" data-association="{{ asso.nom }}"
+                           {% if asso.suivi.transferts_exportes %}checked{% endif %}>
+                </td>
+                <td>
+                    <input type="checkbox" class="case-suivi" data-champ="bl_genere" data-association="{{ asso.nom }}"
+                           {% if asso.suivi.bl_genere %}checked{% endif %}>
                 </td>
                 <td>{{ badge_statut_mailjet(asso.statut_mailjet) }}</td>
                 <td class="d-flex gap-1">
@@ -366,11 +376,14 @@
         </table>
         </div>
         <p class="text-muted small">
-            Les cases « Répondu », « Résultat envoyé » et « Traitée » sont à cocher manuellement après
-            vérification (mail reçu, fichier reçu, saisie en ligne consultée, ou VIF/BL faits) — la colonne
+            Les cases « Répondu » et « Résultat envoyé » sont à cocher manuellement après vérification
+            (mail reçu, fichier reçu, saisie en ligne consultée, ou VIF/BL faits) — la colonne
             « Saisie en ligne » n'est qu'un indice automatique, elle ne coche jamais rien toute seule.
-            « Traitée » permet de suivre association par association la réception VIF (export CSV), le
-            transfert produits et le BL, sans attendre que toutes les associations aient répondu.
+            Les 3 cases « Poids exporté », « Transferts exportés » et « BL généré » se cochent automatiquement,
+            indépendamment les unes des autres, dès que l'export correspondant est généré pour cette
+            association — ce qui permet de relancer chaque export séparément, en plusieurs fois, au fil
+            des associations qui répondent, sans jamais redoubler le même tonnage dans VIF. Décochables à
+            la main en cas d'erreur ou pour forcer un nouvel export.
         </p>
         </div>
         </div>

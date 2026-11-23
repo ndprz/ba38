@@ -128,7 +128,7 @@
       <div class="col-md-6">
         <label class="form-label">Fichier (vidéo .mp4/.webm ou PDF)</label>
         <input type="file" name="fichier" class="form-control">
-        <small class="text-muted">Déposé dans /static/evenements/</small>
+        <small class="text-muted">Déposé dans /static/evenements/ — taille max : 50 Mo</small>
       </div>
 
       <div class="col-md-6">
@@ -764,6 +764,23 @@ document.addEventListener('submit', ev => {
       window.scrollTo(0, parseInt(y, 10));
     }
   } catch (e) {}
+})();
+</script>
+<script>
+// Contrôle de taille des fichiers avant envoi (limite nginx PROD : 50 Mo)
+(function () {
+  const MAX_MO = 50;
+  document.querySelectorAll('input[type=file][name=fichier]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const f = inp.files && inp.files[0];
+      if (!f || f.size <= MAX_MO * 1024 * 1024) return;
+      const mo = (f.size / 1024 / 1024).toFixed(1).replace('.', ',');
+      alert('⛔ Le fichier « ' + f.name + ' » fait ' + mo + ' Mo.\n\n' +
+            'La taille maximale acceptée par le serveur est de ' + MAX_MO + ' Mo : l\'envoi serait rejeté (erreur 413).\n\n' +
+            'Compressez la vidéo (ex. H.264, 720p) puis réessayez.');
+      inp.value = '';
+    });
+  });
 })();
 </script>
 {% endblock %}

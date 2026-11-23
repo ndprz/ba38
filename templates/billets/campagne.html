@@ -207,9 +207,20 @@
           <table class="table table-sm"><tbody>{% for p in gagnants %}
             <tr><td>{{ loop.index }}</td><td>{{ p.nom }} {{ p.prenom }}</td>
               <td>{% if p.origine_place == 'salarie' %}<span class="badge bg-info">salarié</span>{% else %}<span class="badge bg-primary">inscrit</span>{% endif %}</td>
-              <td class="small">{% if p.resultat_erreur %}<span class="text-danger">erreur mail</span>{% elif p.resultat_envoye_le %}✅ prévenu(e){% else %}<span class="text-muted">à prévenir</span>{% endif %}</td></tr>
+              <td class="small">{% if p.resultat_erreur %}<span class="text-danger">erreur mail</span>{% elif p.resultat_envoye_le %}✅ prévenu(e){% else %}<span class="text-muted">à prévenir</span>{% endif %}</td>
+              <td>{% if peut_ecrire %}<form method="POST" action="{{ url_for('billets.desister_gagnant', campagne_id=c.id) }}" class="d-inline"
+                onsubmit="return confirm('Enregistrer le désistement de {{ (p.prenom ~ ' ' ~ p.nom)|replace("'", "’") }} ? Sa place sera libérée.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="pid" value="{{ p.id }}">
+                <button class="btn btn-sm btn-outline-danger py-0" title="Désistement reçu par mail ou téléphone">Désister</button></form>{% endif %}</td></tr>
           {% endfor %}</tbody></table>
-          {% if nb.gagnants < c.nb_billets %}<div class="alert alert-warning py-1">{{ c.nb_billets - nb.gagnants }} place(s) non pourvue(s).</div>{% endif %}
+          {% if nb.gagnants < c.nb_billets %}<div class="alert alert-warning py-1">{{ c.nb_billets - nb.gagnants }} place(s) non pourvue(s).
+            {% if peut_ecrire %}<form method="POST" action="{{ url_for('billets.remplacer', campagne_id=c.id) }}" class="mt-1"
+              onsubmit="return confirm('Tirer au sort un remplaçant (parmi les inscrits non retenus, puis les salariés) ?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-warning">🎲 Tirer un remplaçant</button>
+              <span class="small text-muted">non retenus d'abord, puis salariés ; il sera à prévenir avec « Envoyer les résultats »</span></form>{% endif %}</div>{% endif %}
+          {% if desistes %}<h6 class="mt-2">Désistés après le tirage ({{ desistes|length }})</h6>
+          <table class="table table-sm"><tbody>{% for p in desistes %}<tr><td>{{ p.nom }} {{ p.prenom }}</td></tr>{% endfor %}</tbody></table>{% endif %}
         </div>
         <div class="col-md-6">
           {% if non_eligibles %}<h6>Non éligibles — déjà gagnants dans les 12 mois ({{ non_eligibles|length }})</h6>

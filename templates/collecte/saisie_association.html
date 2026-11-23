@@ -23,10 +23,17 @@
 
     <div id="message-enregistrement" class="alert d-none mb-2" role="alert"></div>
 
+    {% if suivi_terminee %}
+    <div class="alert alert-success small">
+        ✅ Vous avez indiqué avoir terminé votre saisie — les produits non listés ont été comptés à 0.
+        Vous pouvez encore modifier une valeur si besoin, elle sera prise en compte normalement.
+    </div>
+    {% endif %}
+
     <form method="post" id="form-saisie">
         <input type="hidden" name="csrf_token" id="csrf_token" value="{{ csrf_token() }}">
 
-        <button type="submit" class="btn btn-primary mb-3">💾 Enregistrer</button>
+        <button type="submit" name="action" value="enregistrer" class="btn btn-primary mb-3">💾 Enregistrer</button>
 
         <div class="card mb-4">
             <div class="card-header"><strong>🏪 Poids par magasin (kg)</strong></div>
@@ -88,7 +95,19 @@
             </div>
         </div>
 
-        <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+        <button type="submit" name="action" value="enregistrer" class="btn btn-primary">💾 Enregistrer</button>
+
+        <hr class="my-4">
+        <p class="text-muted small mb-2">
+            Si vous avez bien saisi <strong>tous vos magasins</strong> et <strong>tous les produits que
+            vous avez réellement collectés</strong>, vous pouvez confirmer ci-dessous — les produits que
+            vous n'avez pas remplis seront alors comptés à 0 (vous n'avez pas besoin de les saisir un par
+            un vous-même).
+        </p>
+        <button type="submit" name="action" value="terminer" class="btn btn-success"
+                onclick="return confirm('Confirmer la fin de votre saisie ? Les produits non remplis seront comptés à 0.');">
+            ✅ J'ai terminé ma saisie
+        </button>
     </form>
 
 </div>

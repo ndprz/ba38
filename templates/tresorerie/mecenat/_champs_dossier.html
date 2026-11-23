@@ -1,0 +1,25 @@
+{# Champs communs création / modification d'un dossier. Variables : dossier (ou None), form, benevoles, familles #}
+{% set v = dossier if dossier else form %}
+<div class="row g-2">
+  <div class="col-md-3"><label class="small">Type de dossier *</label>
+    <select name="type_dossier" class="form-select">
+      {% for k, lib in types.items() %}<option value="{{ k }}" {{ 'selected' if v and v['type_dossier'] == k }}>{{ lib }}</option>{% endfor %}</select></div>
+  <div class="col-md-3"><label class="small">Famille</label>
+    <input name="famille" class="form-control" list="mecenat-familles" value="{{ v['famille'] or '' if v else '' }}" placeholder="Flotte automobile, travaux, achats de denrées…">
+    <datalist id="mecenat-familles">{% for f in familles %}<option value="{{ f }}">{% endfor %}</datalist></div>
+  <div class="col-md-6"><label class="small">Objet (désignation de l'investissement) *</label>
+    <input name="objet" class="form-control" required value="{{ v['objet'] if v else '' }}" placeholder="Ex. : camion frigorifique 20 m³, ou achat de denrées 2027"></div>
+  <div class="col-md-3"><label class="small">Date prévue</label>
+    <input type="date" name="date_prevue" class="form-control" value="{{ v['date_prevue'] or '' if v else '' }}"></div>
+  <div class="col-md-3"><label class="small">Montant TTC (€)</label>
+    <input name="montant_ttc" class="form-control text-end" inputmode="decimal" value="{{ (('%.2f' % v['montant_ttc']).replace('.', ',') if dossier else v['montant_ttc']) if v and v['montant_ttc'] is not none else '' }}"></div>
+  <div class="col-md-3"><label class="small">Pôle</label>
+    <select name="pole_id" class="form-select"><option value="">—</option>
+      {% for po in poles %}<option value="{{ po.id }}" {{ 'selected' if v and (v['pole_id']|string) == (po.id|string) }}>{{ po.nom_affiche }}</option>{% endfor %}</select></div>
+  <div class="col-md-3"><label class="small">Pilote du projet</label>
+    <select name="pilote_projet_id" class="form-select"><option value="">—</option>
+      {% for b in benevoles %}<option value="{{ b.id }}" {{ 'selected' if v and (v['pilote_projet_id']|string) == (b.id|string) }}>{{ b.nom }} {{ b.prenom or '' }}</option>{% endfor %}</select></div>
+  <div class="col-md-3"><label class="small">Pilote recherche mécénat</label>
+    <select name="pilote_mecenat_id" class="form-select"><option value="">—</option>
+      {% for b in benevoles %}<option value="{{ b.id }}" {{ 'selected' if v and (v['pilote_mecenat_id']|string) == (b.id|string) }}>{{ b.nom }} {{ b.prenom or '' }}</option>{% endfor %}</select></div>
+</div>
