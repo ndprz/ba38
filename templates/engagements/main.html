@@ -22,38 +22,20 @@
 
 <div class="engagements-legende">
 
-    <div class="d-flex flex-wrap align-items-center gap-2" style="font-size:.9rem;">
-        <span class="fw-bold me-1">Workflow :</span>
-        <span class="badge bg-warning text-dark badge-workflow">
-
-            🟡 En attente pôle
-
-        </span>
-        <span class="badge bg-success text-white badge-workflow">
-
-            🟢 Validé Pôle
-
-        </span>
-        <span class="badge bg-primary text-dark badge-workflow">
-
-            🔵 Validation bureau
-
-        </span>
-        <span class="badge bg-danger text-white badge-workflow">
-
-            🔴 Refusé
-
-        </span>
-        <span class="badge bg-warning text-dark badge-workflow">
-
-            🟠 À payer
-
-        </span>
-        <span class="badge bg-info text-white badge-workflow">
-
-            💶 Réglé
-
-        </span>
+    <div class="d-flex flex-wrap align-items-center" style="font-size:.9rem; gap:.6rem .75rem;" id="filtres-statut">
+        <span class="fw-bold me-1">Filtrer :</span>
+        <button type="button" class="chip-filtre actif" data-f="tous">Tous</button>
+        <button type="button" class="chip-filtre chip-traiter" data-f="a_traiter" title="Engagements qui attendent une action de ma part">
+            ⚡ À traiter par moi ({{ nb_a_traiter }})</button>
+        <button type="button" class="chip-filtre" data-f="mien">👤 Mes demandes</button>
+        {% for k, lib in [("validation_pole","🟡 Attente pôle"),("validation_presidence","🔵 Bureau"),("valide","🟢 Validé Pôle"),("a_payer","🟠 À payer"),("reglee","💶 Réglé"),("comptabilise","🧮 Comptabilisé"),("termine","📦 Terminé"),("refuse","🔴 Refusé")] %}
+        {% if nb_par_statut.get(k) %}
+        <button type="button" class="chip-filtre" data-f="s:{{ k }}">{{ lib }} ({{ nb_par_statut[k] }})</button>
+        {% endif %}
+        {% endfor %}
+        <input type="search" id="recherche-eng" class="form-control form-control-sm" style="width:220px;"
+               placeholder="🔎 Rechercher (objet, nom, n°…)">
+        <span class="text-muted small" id="compteur-eng"></span>
     </div>
 
 <div class="d-flex flex-wrap align-items-center mt-2">
@@ -433,9 +415,9 @@
             <th>Objet</th>
             <th class="tri-col" data-tri="txt" title="Trier par bénéficiaire du paiement">Paiement</th>
             <th class="text-end tri-col" data-tri="num" title="Trier par montant">Montant (€)</th>
-            <th style="min-width:230px;">
+            <th>
 
-                Statut / Workflow
+                Statut
 
             </th>
 
@@ -449,7 +431,8 @@
     </thead>
     <tbody>
         {% for d in demandes %}
-        <tr>
+        <tr data-statut="{{ d.statut }}" data-mien="{{ 1 if d.mien else 0 }}" data-traiter="{{ 1 if d.a_traiter else 0 }}"
+            {% if d.a_traiter %}class="ligne-a-traiter"{% endif %}>
             {% if peut_archiver_masse %}
             <td class="text-center">
 
@@ -471,8 +454,18 @@
             </td>
             <td data-v="{{ d.demandeur_nom }}">{{ d.demandeur_nom }}</td>
             <td data-v="{{ d.pole }}">{{ d.pole }}</td>
-            <td>
+            <td class="cell-trunc" title="{{ d.objet }}">
                 {{ d.objet }}
+
+                {% if d.annule_engagement_id %}
+                <a href="{{ url_for('engagements.detail_engagement', engagement_id=d.annule_engagement_id) }}"
+                   class="badge bg-warning text-dark text-decoration-none"
+                   title="Engagement inverse : annule l'engagement n°{{ d.annule_engagement_id }}">↩ Annulation du n°{{ d.annule_engagement_id }}</a>
+                {% elif d.annule_par_id %}
+                <a href="{{ url_for('engagements.detail_engagement', engagement_id=d.annule_par_id) }}"
+                   class="badge bg-secondary text-decoration-none"
+                   title="Annulé par l'engagement inverse n°{{ d.annule_par_id }}">↩ Annulé par le n°{{ d.annule_par_id }}</a>
+                {% endif %}
 
                 {% if d.est_modele_abonnement %}
                 <span class="badge bg-secondary"
@@ -482,7 +475,7 @@
                 {% endif %}
 
             </td>
-            <td data-v="{% if d.type_engagement == 'fournisseur' %}{{ d.fournisseur_nom }}{% elif d.type_engagement == 'benevole_self' %}{{ d.demandeur_nom }}{% elif d.type_engagement == 'benevole_other' %}{{ d.benevole_nom }} {{ d.benevole_prenom }}{% endif %}">
+            <td class="cell-trunc" data-v="{% if d.type_engagement == 'fournisseur' %}{{ d.fournisseur_nom }}{% elif d.type_engagement == 'benevole_self' %}{{ d.demandeur_nom }}{% elif d.type_engagement == 'benevole_other' %}{{ d.benevole_nom }} {{ d.benevole_prenom }}{% endif %}">
 
                 {% if d.type_engagement == "fournisseur" %}
 
@@ -505,105 +498,35 @@
 
             </td>
             <td class="text-end" data-v="{{ d.montant_total }}">
-                {{ "%.2f"|format(d.montant_total) }}
+                {{ "{:,.2f}".format(d.montant_total).replace(",", " ").replace(".", ",") }}
             </td>
-            <td style="min-width:230px;">
+            <td>
 
             <!-- ========================================== -->
             <!-- WORKFLOW METIER -->
             <!-- ========================================== -->
 
 
-            <div class="d-flex flex-wrap gap-2">
-
-                {% for s in d.workflow_badges %}
-
-                    {% if s == "validation_pole" %}
-
-                        <span class="badge bg-warning text-dark badge-workflow">
-                            🟡 En attente Pôle
-                        </span>
-
-                    {% elif s == "validation_presidence" %}
-
-                        <span class="badge bg-primary text-dark badge-workflow">
-                            🔵 presidence
-                        </span>
-
-                    {% elif s == "valide" %}
-
-                        <span class="badge bg-success text-dark badge-workflow">
-                            🟢 Validé Pôle
-                        </span>
-
-                    {% elif s == "a_payer" %}
-
-                        <span class="badge bg-warning text-dark badge-workflow">
-
-                            🟠 À payer
-
-                        </span>
-
-                    {% elif s == "reglee" %}
-
-                        <span class="badge bg-info text-white badge-workflow">
-
-                            💶 Réglé
-
-                        </span>
-                    {% elif s == "comptabilise" %}
-
-                        <span class="badge bg-dark text-white badge-workflow">
-
-                            🧮 Comptabilisé
-
-                        </span>
-                    {% elif s == "termine" %}
-
-                        <span class="badge bg-secondary text-white badge-workflow
-                        ">
-                            📦 Terminé
-                        </span>
-
-                    {% elif s == "refuse" %}
-
-                        <span class="badge bg-danger text-white badge-workflow">
-
-                            🔴 Refusé
-
-                        </span>
-
-
-                    {% elif s == "retransmission" %}
-
-                    <span class="badge bg-info text-white">
-
-                        🔄 Retransmis
-
-                    </span>
-
-                    {% endif %}
-
-
-                {% endfor %}
-
-            </div>
-
-                <!-- ========================================== -->
-                <!-- ETAT TECHNIQUE -->
-                <!-- ========================================== -->
-
-                {% if d.deleted == 1 %}
-
-                    <span class="badge bg-danger text-white badge-workflow">
-
-                        🗑 Archivé
-
-                    </span>
-
-                {% endif %}
-
-            </div>
+            {% set wf = {
+                "validation_pole":      ("bg-warning text-dark", "🟡 Attente Pôle"),
+                "validation_presidence":("bg-primary text-white", "🔵 Présidence"),
+                "valide":               ("bg-success text-white", "🟢 Validé Pôle"),
+                "a_payer":              ("bg-warning text-dark", "🟠 À payer"),
+                "reglee":               ("bg-info text-white", "💶 Réglé"),
+                "comptabilise":         ("bg-dark text-white", "🧮 Comptabilisé"),
+                "termine":              ("bg-secondary text-white", "📦 Terminé"),
+                "refuse":               ("bg-danger text-white", "🔴 Refusé"),
+                "retransmission":       ("bg-info text-white", "🔄 Retransmis")
+            } %}
+            {% set cur = wf.get(d.statut) %}
+            {% set labels = {"validation_pole":"Attente Pôle","validation_presidence":"Présidence","valide":"Validé Pôle","a_payer":"À payer","reglee":"Réglé","comptabilise":"Comptabilisé","termine":"Terminé","refuse":"Refusé","retransmission":"Retransmis"} %}
+            <span class="badge {{ cur[0] if cur else 'bg-light text-dark' }} badge-workflow badge-statut"
+                  title="Parcours : {% for s in d.workflow_badges %}{{ labels.get(s, s) }}{% if not loop.last %} → {% endif %}{% endfor %}">
+                {{ cur[1] if cur else d.statut }}
+            </span>
+            {% if d.deleted == 1 %}
+            <span class="badge bg-danger text-white badge-statut" title="Archivé">🗑</span>
+            {% endif %}
             </td>
 
             <td class="text-center">
@@ -653,7 +576,9 @@ document.addEventListener("DOMContentLoaded", function () {
         checkAll.addEventListener("change", function () {
 
             checks.forEach(c => {
-                c.checked = checkAll.checked;
+                // uniquement les lignes visibles (filtres actifs)
+                const tr = c.closest("tr");
+                c.checked = checkAll.checked && !(tr && tr.style.display === "none");
             });
 
             majBouton();
@@ -676,6 +601,23 @@ document.addEventListener("DOMContentLoaded", function () {
 #table-engagements { font-size: .9rem; }
 #table-engagements td:nth-child(n+3) { padding-left: .4rem; padding-right: .4rem; }
 #table-engagements td .btn-outline-primary { white-space: nowrap; }
+#table-engagements { table-layout: fixed; width: 100%; }
+#table-engagements td, #table-engagements th { overflow: hidden; }
+#table-engagements td.cell-trunc { white-space: nowrap; text-overflow: ellipsis; }
+#table-engagements .badge-statut { font-size: .75rem; font-weight: 600; white-space: nowrap; }
+#table-engagements th { position: relative; }
+#table-engagements .col-resizer { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; user-select: none; }
+#table-engagements .col-resizer:hover, #table-engagements .col-resizer.actif { background: rgba(255,255,255,.45); }
+#btn-reset-cols { font-size: .75rem; }
+#table-engagements th.text-end, #table-engagements td.text-end { text-align: right !important; font-variant-numeric: tabular-nums; }
+#table-engagements tr.ligne-a-traiter td { font-weight: 600; background-color: #fff3cd !important; }
+#table-engagements tr.ligne-a-traiter td:first-child { box-shadow: inset 4px 0 0 #fd7e14; }
+.chip-filtre { margin: 0 .15rem; border: 1px solid #adb5bd; background: #fff; border-radius: 999px; padding: .15rem .7rem; font-size: .8rem; cursor: pointer; }
+.chip-filtre:hover { background: #e9ecef; }
+.chip-filtre.actif { background: #343a40; color: #fff; border-color: #343a40; }
+.chip-traiter { border-color: #fd7e14; }
+.chip-traiter.actif { background: #fd7e14; border-color: #fd7e14; }
+
 #table-engagements th.tri-col { cursor: pointer; user-select: none; white-space: nowrap; }
 #table-engagements th.tri-col:hover { background: #343a40; }
 #table-engagements th.tri-col::after { content: " \2195"; opacity: .35; font-size: .85em; }
@@ -710,6 +652,96 @@ document.addEventListener("DOMContentLoaded", function () {
             rows.forEach(r => tbody.appendChild(r));
         });
     });
+});
+</script>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const table = document.getElementById("table-engagements");
+    if (!table) return;
+    const ths = Array.from(table.tHead.rows[0].cells);
+    const KEY = "engagements_main_cols_v1";
+    const DEF = {check:30, "ID":50, "Date":105, "Demandeur":130, "Pôle":100, "Objet":260,
+                 "Paiement":150, "Montant (€)":90, "Statut":150, "Actions":95};
+    const nom = th => th.id === "" && th.querySelector("#check-all") ? "check" : th.innerText.trim().replace(/[\s↕▲▼]+$/,"");
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) {}
+    const cg = document.createElement("colgroup");
+    ths.forEach(function (th) {
+        const c = document.createElement("col");
+        const n = nom(th);
+        c.style.width = (saved[n] || DEF[n] || 100) + "px";
+        cg.appendChild(c);
+        th._col = c; th._nom = n;
+    });
+    table.insertBefore(cg, table.firstChild);
+    function majLargeur() {
+        let t = 0; ths.forEach(th => t += parseInt(th._col.style.width));
+        table.style.width = t + "px";
+    }
+    majLargeur();
+    function sauve() {
+        const o = {}; ths.forEach(th => o[th._nom] = parseInt(th._col.style.width));
+        try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {}
+    }
+    ths.forEach(function (th) {
+        if (th._nom === "check") return;
+        const r = document.createElement("div");
+        r.className = "col-resizer";
+        th.appendChild(r);
+        r.addEventListener("click", e => e.stopPropagation());
+        r.addEventListener("mousedown", function (e) {
+            e.preventDefault(); e.stopPropagation();
+            const x0 = e.pageX, w0 = parseInt(th._col.style.width);
+            r.classList.add("actif");
+            function mv(ev) { th._col.style.width = Math.max(40, w0 + ev.pageX - x0) + "px"; majLargeur(); }
+            function up() { document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up); r.classList.remove("actif"); sauve(); }
+            document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up);
+        });
+    });
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.id = "btn-reset-cols"; btn.className = "btn btn-link btn-sm";
+    btn.textContent = "↺ Réinitialiser les largeurs de colonnes";
+    btn.onclick = function () {
+        try { localStorage.removeItem(KEY); } catch (e) {}
+        ths.forEach(th => th._col.style.width = (DEF[th._nom] || 100) + "px"); majLargeur();
+    };
+    table.parentNode.parentNode.insertBefore(btn, table.parentNode);
+});
+</script>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const table = document.getElementById("table-engagements");
+    if (!table) return;
+    const rows = Array.from(table.tBodies[0].rows);
+    const chips = document.querySelectorAll(".chip-filtre");
+    const inp = document.getElementById("recherche-eng");
+    const compteur = document.getElementById("compteur-eng");
+    let filtre = "tous";
+    rows.forEach(r => r._txt = r.innerText.toLowerCase());
+    function applique() {
+        const q = inp.value.trim().toLowerCase();
+        let n = 0;
+        rows.forEach(function (r) {
+            let ok = true;
+            if (filtre === "a_traiter") ok = r.dataset.traiter === "1";
+            else if (filtre === "mien") ok = r.dataset.mien === "1";
+            else if (filtre.startsWith("s:")) ok = r.dataset.statut === filtre.slice(2);
+            if (ok && q) ok = r._txt.indexOf(q) !== -1;
+            r.style.display = ok ? "" : "none";
+            if (ok) n++;
+        });
+        compteur.textContent = (filtre !== "tous" || q) ? n + " / " + rows.length + " lignes" : "";
+    }
+    chips.forEach(c => c.addEventListener("click", function () {
+        filtre = c.dataset.f;
+        chips.forEach(x => x.classList.toggle("actif", x === c));
+        applique();
+    }));
+    inp.addEventListener("input", applique);
 });
 </script>
 

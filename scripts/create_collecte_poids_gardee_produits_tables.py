@@ -13,10 +13,11 @@ def main():
             CREATE TABLE IF NOT EXISTS collecte_poids_magasins_gardee (
                 annee INTEGER NOT NULL,
                 code_vif TEXT NOT NULL,
+                nom_association TEXT NOT NULL,
                 poids_kg REAL,
                 saisi_le TEXT,
                 saisi_par TEXT,
-                PRIMARY KEY (annee, code_vif)
+                PRIMARY KEY (annee, code_vif, nom_association)
             )
         """)
         conn.execute("""

@@ -122,6 +122,9 @@ def engagements_main():
                 e.cree_le,
                 e.statut,
                 e.demandeur_nom,
+                e.demandeur_id,
+                e.pole_id,
+                e.annule_engagement_id,
 
                 e.deleted,
                 e.deleted_le,
@@ -363,11 +366,50 @@ def engagements_main():
 
                     badges.append(r["nouveau_statut"])
 
+        # Engagements inverses (annulations) : original -> inverse
+        annule_par = {}
+        if demandes:
+            for r in conn.execute(f"""
+                SELECT id, annule_engagement_id FROM engagements
+                WHERE annule_engagement_id IN ({placeholders})
+            """, ids).fetchall():
+                annule_par[r["annule_engagement_id"]] = r["id"]
+
+        # Pôles dont l'utilisateur est responsable / suppléant
+        mes_poles = {
+            r["id"] for r in conn.execute("""
+                SELECT id FROM engagement_poles
+                WHERE ? IN (responsable_id, suppleant1_id, suppleant2_id)
+            """, (current_user.id,)).fetchall()
+        }
+        est_admin_eng = has_access("engagements", "admin")
+
         for d in demandes:
 
             d["workflow_badges"] = historique_par_engagement.get(
                 d["id"], [d["statut"]]
             )
+            d["annule_par_id"] = annule_par.get(d["id"])
+            d["mien"] = d["demandeur_id"] == current_user.id
+
+            # Action attendue de l'utilisateur connecté ?
+            d["a_traiter"] = bool(
+                not d["deleted"]
+                and not d["est_modele_abonnement"]
+                and (
+                    (d["statut"] == "validation_pole"
+                     and d["pole_id"] in mes_poles)
+                    or (d["statut"] in (
+                            "validation_presidence", "valide",
+                            "a_payer", "reglee", "comptabilise")
+                        and est_admin_eng)
+                )
+            )
+
+        nb_a_traiter = sum(1 for d in demandes if d["a_traiter"])
+        nb_par_statut = {}
+        for d in demandes:
+            nb_par_statut[d["statut"]] = nb_par_statut.get(d["statut"], 0) + 1
 
     # =========================================================
     # AFFICHAGE
@@ -378,7 +420,9 @@ def engagements_main():
         demandes=demandes,
         show_deleted=show_deleted,
         show_modeles=show_modeles,
-        stats=stats
+        stats=stats,
+        nb_a_traiter=nb_a_traiter,
+        nb_par_statut=nb_par_statut
     )
 
 

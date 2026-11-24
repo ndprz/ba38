@@ -22,6 +22,9 @@
   .esope-partiel { font-style: italic; color: #6f42c1; font-size: .75rem; }
   .esope-libre { color: #adb5bd; display: block; }
   .esope-outils a, .esope-outils button { font-size: .75rem; padding: 0 2px; text-decoration: none; border: 0; background: none; }
+  .esope-nom.cliquable { user-select: none; -webkit-user-select: none; }
+  .esope-ghost { position: fixed; z-index: 2000; pointer-events: none; background: #fff; border: 1px solid #0d6efd; border-radius: 4px; padding: 2px 8px; box-shadow: 0 2px 8px rgba(0,0,0,.3); opacity: .92; font-size: .85rem; }
+  td.depot, .card-body.depot { outline: 3px dashed #0d6efd; outline-offset: -3px; background-color: #e7f1ff !important; }
   .legende span { display: inline-block; padding: 1px 8px; border: 1px solid #dee2e6; margin-right: 6px; border-radius: 4px; }
 </style>
 
@@ -50,7 +53,7 @@
   <span>✔ confirmé</span>
   <span><s>annulé</s></span>
   <span class="esope-partiel">(horaires partiels)</span>
-  {% if peut_ecrire %}<span class="text-muted border-0">Cliquez sur un nom pour le modifier, sur ➕ pour ajouter, sur ⚙️ pour changer le créneau du jour.</span>{% endif %}
+  {% if peut_ecrire %}<span class="text-muted border-0">Cliquez sur un nom pour le modifier, sur ➕ pour ajouter, sur ⚙️ pour changer le créneau du jour. Glissez un nom vers un autre créneau pour l'y déplacer.</span>{% endif %}
 </div>
 
 {% set nb_alertes = [] %}
@@ -86,7 +89,7 @@
   {% if c.commentaire %}<div class="small text-muted fst-italic">{{ c.commentaire }}</div>{% endif %}
   {% for a in c.affectations %}
     <span class="esope-nom st-{{ a.statut }} {{ 'cliquable' if peut_ecrire }} {{ 'alerte' if a.alerte }}"
-          {% if peut_ecrire %}onclick="ouvrirAffectation({{ a.id }})"{% endif %}
+          {% if peut_ecrire %}data-aff="{{ a.id }}" onclick="clicNom({{ a.id }})"{% endif %}
           title="{{ a.libelle }}{% if a.telephone_portable %} – {{ a.telephone_portable }}{% endif %}{% if a.commentaire %} – {{ a.commentaire }}{% endif %}{% if a.absence %} – absent (voir Absences){% endif %}">
       {% if a.alerte %}⚠ {% endif %}{% if a.absence %}🏖️ {% endif %}{{ a.libelle }}{% if a.partiel %} <span class="esope-partiel">({{ a.partiel }})</span>{% endif %}{% if a.commentaire %} 💬{% endif %}
     </span>
@@ -125,7 +128,7 @@
       {% for j in jours %}
         {% set c = grille.get(l.cle, {}).get(j.idx) %}
         {% if c %}
-          <td class="{{ c.couverture }}">{{ cellule(c, j) }}</td>
+          <td class="{{ c.couverture }}" {% if peut_ecrire %}data-creneau="{{ c.id }}"{% endif %}>{{ cellule(c, j) }}</td>
         {% else %}
           <td class="{{ 'jour-ferme' if j.fermeture is not none else 'vide' }}"></td>
         {% endif %}
@@ -141,7 +144,7 @@
 <div class="row g-2">
   {% for c in evenements %}
   <div class="col-md-4">
-    <div class="card"><div class="card-body p-2 {{ c.couverture }}" style="font-size:.85rem">
+    <div class="card"><div class="card-body p-2 {{ c.couverture }}" style="font-size:.85rem" {% if peut_ecrire %}data-creneau="{{ c.id }}"{% endif %}>
       <div class="fw-bold">{{ c.libelle }} <span class="fw-normal text-muted">– {{ c.date_txt }}{% if c.lieu %}, {{ c.lieu }}{% endif %}</span></div>
       {{ cellule(c, none) }}
     </div></div>
@@ -164,7 +167,19 @@
     <div class="modal-body">
       <label class="form-label">Bénévole</label>
       <select name="benevole_id" id="ajout_benevole" class="form-select" required></select>
-      <div class="form-text">En premier : les bénévoles qui ont cette fonction et sont disponibles ce jour-là.</div>
+      <div class="form-text">En premier : les bénévoles qui ont cette fonction et sont disponibles ce jour-là. Les intervenants temporaires sont en bas de liste.</div>
+      <div class="mt-2"><a href="#" onclick="basculeNouvel(event)">➕ Intervenant temporaire absent de la liste ? Le créer ici</a></div>
+      <div id="bloc_nouvel" class="border rounded p-2 mt-2" style="display:none">
+        <div class="row g-2">
+          <div class="col"><label class="form-label mb-0">Nom *</label><input name="nouvel_nom" class="form-control form-control-sm" maxlength="200" disabled></div>
+          <div class="col"><label class="form-label mb-0">Prénom *</label><input name="nouvel_prenom" class="form-control form-control-sm" maxlength="200" disabled></div>
+        </div>
+        <div class="row g-2 mt-1">
+          <div class="col"><label class="form-label mb-0">Téléphone</label><input name="nouvel_telephone" class="form-control form-control-sm" maxlength="40" disabled></div>
+          <div class="col"><label class="form-label mb-0">Organisme</label><input name="nouvel_organisme" class="form-control form-control-sm" maxlength="200" disabled></div>
+        </div>
+        <div class="form-text">Il est enregistré dans le module Intervenants temporaires (photo et droit à l'image à compléter là-bas).</div>
+      </div>
       <div class="row mt-3">
         <div class="col"><label class="form-label">Arrive à <small class="text-muted">(si partiel)</small></label><input type="time" name="heure_debut" class="form-control"></div>
         <div class="col"><label class="form-label">Part à <small class="text-muted">(si partiel)</small></label><input type="time" name="heure_fin" class="form-control"></div>
@@ -183,7 +198,7 @@
     <input type="hidden" name="retour" value="{{ request.full_path }}">
     <div class="modal-header"><h5 class="modal-title" id="aff_titre"></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
     <div class="modal-body">
-      <div class="small text-muted mb-2" id="aff_contact"></div>
+      <div class="small text-muted mb-2"><span id="aff_contact"></span> <a id="aff_fiche" href="#" class="ms-2" style="display:none">📋 Tous ses créneaux du mois et son historique</a></div>
       <div class="alert alert-warning py-1 px-2 small" id="aff_reponse" style="display:none"></div>
       <label class="form-label">Statut</label>
       <select name="statut" id="aff_statut" class="form-select">
@@ -247,8 +262,13 @@
 {% set tous = [] %}
 {% for l in grille.values() %}{% for c in l.values() %}{% set _ = tous.append(c) %}{% endfor %}{% endfor %}
 {% for c in evenements %}{% set _ = tous.append(c) %}{% endfor %}
+<script src="{{ url_for('static', filename='js/esope_recherche_select.js') }}?v=1"></script>
 <script>
 const BENEVOLES = {{ benevoles | tojson }};
+const INTERVENANTS = {{ intervenants | tojson }};
+const URL_FICHE = "{{ url_for('esope.benevole_planning', benevole_id=999999999) }}";
+const URL_DEPLACER = "{{ url_for('esope.affectation_deplacer', aff_id=999999999) }}";
+const CSRF = "{{ csrf_token() }}";
 const CRENEAUX = {
 {% for c in tous %}
   {{ c.id }}: {id: {{ c.id }}, fonction_id: {{ c.fonction_id | tojson }}, fonction: {{ (c.fonction or c.libelle or '') | tojson }}, poste: {{ (c.poste or '') | tojson }},
@@ -259,7 +279,7 @@ const CRENEAUX = {
 };
 const AFFECTATIONS = {
 {% for c in tous %}{% for a in c.affectations %}
-  {{ a.id }}: {id: {{ a.id }}, creneau_id: {{ c.id }}, libelle: {{ a.libelle | tojson }}, statut: {{ a.statut | tojson }}, debut: {{ (a.heure_debut or '') | tojson }},
+  {{ a.id }}: {id: {{ a.id }}, creneau_id: {{ c.id }}, benevole_id: {{ a.benevole_id }}, libelle: {{ a.libelle | tojson }}, statut: {{ (a.statut_reel or a.statut) | tojson }}, debut: {{ (a.heure_debut or '') | tojson }},
     fin: {{ (a.heure_fin or '') | tojson }}, commentaire: {{ (a.commentaire or '') | tojson }}, tel: {{ (a.telephone_portable or '') | tojson }}, email: {{ (a.email or '') | tojson }},
     reponse_le: {{ (a.reponse_le or '') | tojson }}, reponse_commentaire: {{ (a.reponse_commentaire or '') | tojson }}, alerte: {{ (a.alerte or 0) | tojson }} },
 {% endfor %}{% endfor %}
@@ -308,7 +328,17 @@ function ouvrirAjout(id) {
     groupe("Fonction " + c.fonction + " (autre jour)", fct);
   }
   groupe("Autres bénévoles ESOPE", autres);
-  new bootstrap.Modal(document.getElementById("modalAjout")).show();
+  if (INTERVENANTS.length) {
+    const og = document.createElement("optgroup"); og.label = "Intervenants temporaires";
+    for (const i of INTERVENANTS) { const o = document.createElement("option"); o.value = "i" + i.id; o.textContent = i.libelle; og.appendChild(o); }
+    sel.appendChild(og);
+  }
+  basculeNouvel(null, false);
+  esopeRechercheSelect(sel); sel._rafraichir();
+  const fenetre = document.getElementById("modalAjout");
+  // le focus doit être pris une fois la fenêtre affichée : Bootstrap le redonne à la fenêtre à la fin de l'animation
+  fenetre.addEventListener("shown.bs.modal", () => sel._recherche.focus(), {once: true});
+  new bootstrap.Modal(fenetre).show();
 }
 
 function ouvrirAffectation(id) {
@@ -317,6 +347,9 @@ function ouvrirAffectation(id) {
   document.getElementById("formAffSuppr").action = URL_AFF_SUPPR.replace("999999999", id);
   document.getElementById("aff_titre").textContent = a.libelle + " · " + titreCreneau(CRENEAUX[a.creneau_id]);
   document.getElementById("aff_contact").textContent = [a.tel, a.email].filter(Boolean).join(" · ");
+  const lf = document.getElementById("aff_fiche");
+  lf.style.display = a.benevole_id > 0 ? "" : "none";
+  lf.href = URL_FICHE.replace("999999999", a.benevole_id) + "?mois=" + CRENEAUX[a.creneau_id].date.slice(0, 7);
   const rep = document.getElementById("aff_reponse");
   if (a.reponse_le) {
     rep.style.display = "";
@@ -330,6 +363,64 @@ function ouvrirAffectation(id) {
   document.getElementById("aff_commentaire").value = a.commentaire;
   new bootstrap.Modal(document.getElementById("modalAff")).show();
 }
+
+function basculeNouvel(e, force) {
+  if (e) { e.preventDefault(); }
+  const bloc = document.getElementById("bloc_nouvel");
+  const montrer = force === undefined ? bloc.style.display === "none" : force;
+  bloc.style.display = montrer ? "" : "none";
+  bloc.querySelectorAll("input").forEach(i => { i.disabled = !montrer; if (!montrer) { i.value = ""; } });
+  document.getElementById("ajout_benevole").required = !montrer;
+  if (montrer) { bloc.querySelector("input").focus(); }
+}
+
+// ── Déplacer un nom vers un autre créneau (souris) ──
+// Moins de 5 px de mouvement entre l'appui et le relâchement = simple clic (ouvre la fenêtre du bénévole) ;
+// au-delà = glisser, quelle que soit la fermeté de la main. Pas de glisser-déposer natif du navigateur.
+let appui = null, ghost = null, aSupprimerClic = false;
+function clicNom(id) {
+  if (aSupprimerClic) { aSupprimerClic = false; return; }
+  ouvrirAffectation(id);
+}
+function zoneSous(x, y) { const e = document.elementFromPoint(x, y); return e ? e.closest("[data-creneau]") : null; }
+function nettoyerGlisse() {
+  document.querySelectorAll(".depot").forEach(e => e.classList.remove("depot"));
+  if (ghost) { ghost.remove(); ghost = null; }
+  document.body.style.cursor = "";
+  appui = null;
+}
+document.addEventListener("pointerdown", ev => {
+  if (ev.pointerType !== "mouse" || ev.button !== 0) { return; }
+  aSupprimerClic = false;
+  const nom = ev.target.closest(".esope-nom[data-aff]");
+  if (nom) { appui = {id: nom.dataset.aff, x: ev.clientX, y: ev.clientY, actif: false, texte: nom.textContent.trim()}; }
+});
+document.addEventListener("pointermove", ev => {
+  if (!appui) { return; }
+  if (!appui.actif) {
+    if (Math.hypot(ev.clientX - appui.x, ev.clientY - appui.y) < 5) { return; }
+    appui.actif = true;
+    ghost = document.createElement("div"); ghost.className = "esope-ghost"; ghost.textContent = appui.texte;
+    document.body.appendChild(ghost); document.body.style.cursor = "grabbing";
+  }
+  ghost.style.left = (ev.clientX + 12) + "px"; ghost.style.top = (ev.clientY + 12) + "px";
+  document.querySelectorAll(".depot").forEach(e => e.classList.remove("depot"));
+  const z = zoneSous(ev.clientX, ev.clientY);
+  if (z && AFFECTATIONS[appui.id].creneau_id != z.dataset.creneau) { z.classList.add("depot"); }
+});
+document.addEventListener("pointerup", ev => {
+  if (!appui) { return; }
+  const {id, actif} = appui;
+  const z = actif ? zoneSous(ev.clientX, ev.clientY) : null;
+  nettoyerGlisse();
+  if (!actif) { return; }
+  aSupprimerClic = true;                     // le « click » qui suit le relâchement ne doit pas ouvrir la fenêtre (remis à zéro à l'appui suivant)
+  if (!z || AFFECTATIONS[id].creneau_id == z.dataset.creneau) { return; }
+  const fd = new FormData(); fd.append("csrf_token", CSRF); fd.append("creneau_id", z.dataset.creneau);
+  fetch(URL_DEPLACER.replace("999999999", id), {method: "POST", body: fd, headers: {"X-CSRFToken": CSRF}})
+    .then(() => window.location.reload()).catch(() => alert("Le déplacement a échoué."));
+});
+document.addEventListener("keydown", ev => { if (ev.key === "Escape" && appui) { aSupprimerClic = true; nettoyerGlisse(); } });
 
 function retirerAffectation() {
   if (confirm("Retirer ce bénévole du créneau ?\n\n(Pour garder une trace de son absence, choisissez plutôt le statut « Annulé ».)"))

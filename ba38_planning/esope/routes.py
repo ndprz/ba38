@@ -1,8 +1,10 @@
 """Planning ESOPE : planning réel (semaine), événements, fermetures, impression."""
 
-from datetime import date, timedelta
+import calendar
+import os
+from datetime import date, datetime, timedelta
 
-from flask import render_template, request, redirect, url_for, flash
+from flask import render_template, request, redirect, url_for, flash, session
 from flask_login import login_required
 
 from ba38_utilitaires.core import get_db_connection, write_log, upload_database, require_access, has_access
@@ -78,6 +80,7 @@ def semaine():
     data = D.semaine(conn, lundi)
     lignes = D.lignes_planning(conn)
     benevoles = D.benevoles_esope(conn)
+    intervenants = D.intervenants_liste(conn)
     conn.close()
     samedi = lundi + timedelta(days=5)
     return render_template(
@@ -87,7 +90,7 @@ def semaine():
         suivante=(lundi + timedelta(days=7)).isoformat(),
         mois_courant=f"{lundi.year}-{lundi.month:02d}",
         titre=f"Semaine du {lundi.day} {D.MOIS[lundi.month - 1]} au {samedi.day} {D.MOIS[samedi.month - 1]} {samedi.year}",
-        lignes=lignes, benevoles=benevoles, statuts=D.STATUTS,
+        lignes=lignes, benevoles=benevoles, intervenants=intervenants, statuts=D.STATUTS,
         peut_ecrire=has_access("planning_esope", "ecriture"),
         peut_sms=has_access("sms_benevoles", "lecture"),
         **data,
@@ -127,29 +130,55 @@ def generer():
 # Affectations
 # ─────────────────────────────────────────────────────────────
 
+def _benevole_ou_intervenant(conn):
+    """Personne choisie dans la fenêtre d'ajout : bénévole (id), intervenant temporaire existant (« i12 »)
+    ou nouvel intervenant saisi à la volée. Un intervenant est stocké avec benevole_id = -id."""
+    brut = (request.form.get("benevole_id") or "").strip()
+    nom = (request.form.get("nouvel_nom") or "").strip()[:200]
+    prenom = (request.form.get("nouvel_prenom") or "").strip()[:200]
+    if nom or prenom:
+        if not nom or not prenom:
+            return None, "Le nom et le prénom de l'intervenant temporaire sont obligatoires."
+        iid = conn.execute(
+            "INSERT INTO intervenants_temporaires (nom, prenom, telephone, email, organisme, cree_le, cree_par) "
+            "VALUES (?, ?, ?, ?, ?, datetime('now','localtime'), ?)",
+            (nom, prenom, (request.form.get("nouvel_telephone") or "").strip()[:40] or None,
+             (request.form.get("nouvel_email") or "").strip()[:200] or None,
+             (request.form.get("nouvel_organisme") or "").strip()[:200] or None, D.utilisateur())).lastrowid
+        D.journaliser(conn, "intervenant_cree", benevole_id=-iid, commentaire=f"{nom} {prenom} (créé depuis le planning)")
+        return -iid, None
+    if brut.startswith("i"):
+        iid = _int(brut[1:])
+        if iid and conn.execute("SELECT 1 FROM intervenants_temporaires WHERE id = ?", (iid,)).fetchone():
+            return -iid, None
+        return None, "Intervenant introuvable."
+    return _int(brut), None
+
+
 @esope_bp.route("/affectation/ajouter", methods=["POST"])
 @login_required
 @require_access("planning_esope", "ecriture")
 def affectation_ajouter():
     creneau_id = _int(request.form.get("creneau_id"))
-    benevole_id = _int(request.form.get("benevole_id"))
     debut, fin, err = _heures_form()
-    if err or not creneau_id or not benevole_id:
+    if err or not creneau_id:
         flash(f"❌ {err or 'Choisissez un bénévole.'}", "danger")
         return _retour()
     conn = get_db_connection()
+    benevole_id, err = _benevole_ou_intervenant(conn)
+    if err or not benevole_id:
+        conn.rollback()
+        conn.close()
+        flash(f"❌ {err or 'Choisissez un bénévole.'}", "danger")
+        return _retour()
     c = conn.execute("SELECT * FROM esope_creneaux WHERE id = ?", (creneau_id,)).fetchone()
     if not c:
+        conn.rollback()
         conn.close()
         flash("❌ Créneau introuvable.", "danger")
         return _retour()
     nb = conn.execute("SELECT COUNT(*) FROM esope_affectations WHERE creneau_id = ? AND statut != 'annule'",
                       (creneau_id,)).fetchone()[0]
-    if nb >= c["nb_max"]:
-        conn.close()
-        flash(f"⚠️ Ce créneau est complet ({c['nb_max']} bénévole(s) maximum). "
-              "Augmentez le maximum du créneau si besoin.", "warning")
-        return _retour()
     existe = conn.execute("SELECT id, statut FROM esope_affectations WHERE creneau_id = ? AND benevole_id = ?",
                           (creneau_id, benevole_id)).fetchone()
     commentaire = (request.form.get("commentaire") or "").strip() or None
@@ -169,6 +198,8 @@ def affectation_ajouter():
     conn.commit()
     conn.close()
     upload_database()
+    if nb >= c["nb_max"]:
+        flash(f"⚠️ Ajouté, mais ce créneau dépasse maintenant son maximum ({c['nb_max']} bénévole(s)) : il apparaît en jaune.", "warning")
     return _retour()
 
 
@@ -190,14 +221,12 @@ def affectation_modifier(aff_id):
         conn.close()
         flash("❌ Affectation introuvable.", "danger")
         return _retour()
+    depasse = False
     if a["statut"] == "annule" and statut != "annule":
         c = conn.execute("SELECT nb_max FROM esope_creneaux WHERE id = ?", (a["creneau_id"],)).fetchone()
         nb = conn.execute("SELECT COUNT(*) FROM esope_affectations WHERE creneau_id = ? AND statut != 'annule'",
                           (a["creneau_id"],)).fetchone()[0]
-        if c and nb >= c["nb_max"]:
-            conn.close()
-            flash("⚠️ Le créneau est complet : impossible de remettre ce bénévole.", "warning")
-            return _retour()
+        depasse = bool(c and nb >= c["nb_max"])
     # enregistrer depuis le planning vaut lecture de la réponse du bénévole
     conn.execute("UPDATE esope_affectations SET statut = ?, heure_debut = ?, heure_fin = ?, commentaire = ?, alerte = 0, "
                  "modifie_le = datetime('now','localtime'), user_modif = ? WHERE id = ?",
@@ -209,7 +238,58 @@ def affectation_modifier(aff_id):
     conn.commit()
     conn.close()
     upload_database()
+    if depasse:
+        flash("⚠️ Remis en place, mais ce créneau dépasse maintenant son maximum de bénévoles : il apparaît en jaune.", "warning")
     return _retour()
+
+
+@esope_bp.route("/affectation/<int:aff_id>/deplacer", methods=["POST"])
+@login_required
+@require_access("planning_esope", "ecriture")
+def affectation_deplacer(aff_id):
+    """Glisser-déposer d'un nom vers un autre créneau (planning de la semaine)."""
+    cible = _int(request.form.get("creneau_id"))
+    conn = get_db_connection()
+    a = conn.execute("SELECT * FROM esope_affectations WHERE id = ?", (aff_id,)).fetchone()
+    c = conn.execute("""SELECT c.*, f.nom AS fonction FROM esope_creneaux c LEFT JOIN esope_fonctions f ON f.id = c.fonction_id
+                        WHERE c.id = ?""", (cible,)).fetchone()
+    if not a or not c:
+        conn.close()
+        flash("❌ Déplacement impossible : créneau introuvable.", "danger")
+        return redirect(request.referrer or url_for("esope.semaine"))
+    if a["creneau_id"] == cible:
+        conn.close()
+        return ("", 204)
+    if c["ferme"]:
+        conn.close()
+        flash("⚠️ Ce créneau est fermé : déplacement refusé.", "warning")
+        return ("", 204)
+    if conn.execute("SELECT 1 FROM esope_affectations WHERE creneau_id = ? AND benevole_id = ?",
+                    (cible, a["benevole_id"])).fetchone():
+        conn.close()
+        flash("⚠️ Cette personne est déjà dans ce créneau (éventuellement annulée) : déplacement refusé.", "warning")
+        return ("", 204)
+    ancien_c = conn.execute("""SELECT c.date, c.poste, c.libelle, f.nom AS fonction FROM esope_creneaux c
+                               LEFT JOIN esope_fonctions f ON f.id = c.fonction_id WHERE c.id = ?""",
+                            (a["creneau_id"],)).fetchone()
+    nb = conn.execute("SELECT COUNT(*) FROM esope_affectations WHERE creneau_id = ? AND statut != 'annule'",
+                      (cible,)).fetchone()[0]
+
+    def txt(x):
+        return f"{x['date'][8:10]}/{x['date'][5:7]} {x['fonction'] or x['libelle'] or ''}{' ' + x['poste'] if x['poste'] else ''}".strip()
+
+    # les horaires partiels étaient ceux de l'ancien créneau : on les retire
+    conn.execute("UPDATE esope_affectations SET creneau_id = ?, heure_debut = NULL, heure_fin = NULL, rappel_envoye_le = NULL, "
+                 "modifie_le = datetime('now','localtime'), user_modif = ? WHERE id = ?", (cible, D.utilisateur(), aff_id))
+    D.journaliser(conn, "deplacement", creneau_id=cible, affectation_id=aff_id, benevole_id=a["benevole_id"],
+                  ancien=txt(ancien_c), nouveau=txt(c))
+    conn.commit()
+    conn.close()
+    upload_database()
+    flash("✅ Déplacé vers " + txt(c) + "." + (" ⚠️ Ce créneau dépasse maintenant son maximum." if nb >= c["nb_max"] else "")
+          + (" Les horaires partiels ont été retirés." if a["heure_debut"] or a["heure_fin"] else ""),
+          "warning" if nb >= c["nb_max"] else "success")
+    return ("", 204)
 
 
 @esope_bp.route("/affectation/<int:aff_id>/supprimer", methods=["POST"])
@@ -403,8 +483,61 @@ def historique():
         LEFT JOIN esope_fonctions f ON f.id = c.fonction_id
         ORDER BY h.id DESC LIMIT 300
     """)]
+    _noms_intervenants(conn, rows)
     conn.close()
     return render_template("planning/esope/historique.html", lignes=rows)
+
+
+def _noms_intervenants(conn, rows):
+    """Complète nom/prénom des lignes d'historique concernant un intervenant temporaire (benevole_id négatif)."""
+    for r in rows:
+        if (r.get("benevole_id") or 0) < 0:
+            i = conn.execute("SELECT nom, prenom FROM intervenants_temporaires WHERE id = ?", (-r["benevole_id"],)).fetchone()
+            r["nom"], r["prenom"] = (i["nom"], f"{i['prenom']} (interv.)") if i else ("?", "")
+
+
+@esope_bp.route("/benevole/<int:benevole_id>")
+@login_required
+@require_access("planning_esope", "lecture")
+def benevole_planning(benevole_id):
+    """Toutes les positions d'un bénévole sur un mois (corrections, mail individuel) + son historique."""
+    from ba38_planning.esope import liens as L
+    mois = request.args.get("mois") or ""
+    if not D.parse_mois(mois):
+        mois = date.today().strftime("%Y-%m")
+    a, m = D.parse_mois(mois)
+    conn = get_db_connection()
+    b = conn.execute("SELECT id, nom, prenom, email, telephone_portable, esope FROM benevoles WHERE id = ?", (benevole_id,)).fetchone()
+    if not b:
+        conn.close()
+        flash("❌ Bénévole introuvable.", "danger")
+        return redirect(url_for("esope.index"))
+    creneaux = L.creneaux_benevole(conn, benevole_id, mois)
+    absences = []
+    for r in conn.execute("SELECT * FROM absences WHERE benevole_id = ?", (benevole_id,)):
+        try:
+            d = datetime.strptime(r["date_debut"].strip(), "%d/%m/%Y").date()
+            f = datetime.strptime(r["date_fin"].strip(), "%d/%m/%Y").date()
+        except ValueError:
+            continue
+        if d <= date(a, m, calendar.monthrange(a, m)[1]) and f >= date(a, m, 1):
+            absences.append(dict(r))
+    historique = [dict(r) for r in conn.execute("""
+        SELECT h.*, c.date AS creneau_date, c.libelle AS creneau_libelle, c.poste, f.nom AS fonction
+        FROM esope_historique h
+        LEFT JOIN esope_creneaux c ON c.id = h.creneau_id
+        LEFT JOIN esope_fonctions f ON f.id = c.fonction_id
+        WHERE h.benevole_id = ? ORDER BY h.id DESC LIMIT 300""", (benevole_id,))]
+    lien = conn.execute("SELECT * FROM esope_liens WHERE benevole_id = ? AND mois = ?", (benevole_id, mois)).fetchone()
+    conn.close()
+    precedent = f"{a - 1}-12" if m == 1 else f"{a}-{m - 1:02d}"
+    suivant = f"{a + 1}-01" if m == 12 else f"{a}-{m + 1:02d}"
+    return render_template(
+        "planning/esope/benevole_planning.html", b=dict(b), libelle=f"{b['nom'] or ''} {b['prenom'] or ''}".strip(),
+        mois=mois, mois_txt=L.libelle_mois(mois).capitalize(), precedent=precedent, suivant=suivant,
+        creneaux=creneaux, absences=absences, historique=historique, lien=dict(lien) if lien else None,
+        statuts=D.STATUTS, mail_mode=session.get("MAIL_MODE", os.getenv("MAIL_MODE", "TEST").upper()),
+        peut_ecrire=has_access("planning_esope", "ecriture"))
 
 
 # ─────────────────────────────────────────────────────────────

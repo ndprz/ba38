@@ -269,10 +269,12 @@ def envoi_envoyer():
     if mail_mode == "TEST":
         # les 2 mails de test montrent de préférence des bénévoles qui ont des créneaux
         selection.sort(key=lambda l: l["nb_actifs"] == 0)
+    retour_page = (request.form.get("retour") or "")
+    retour_page = retour_page if retour_page.startswith("/planning/esope") else None
     if not selection:
         conn.close()
         flash("ℹ️ Personne à qui envoyer ce mail" + (f" pour {L.libelle_semaine(lundi)}." if lundi else "."), "info")
-        return redirect(url_for("esope.envoi", mois=mois))
+        return redirect(retour_page or url_for("esope.envoi", mois=mois))
 
     code = "esope_relance" if type_envoi == "relance" else "esope_preplanning"
     sujet_m, corps_m = L.modele_mail(conn, code)
@@ -315,7 +317,7 @@ def envoi_envoyer():
     else:
         flash(f"🚀 Envoi lancé en arrière-plan : {len(items)} mail(s). Actualisez la page dans quelques instants.",
               "success")
-    return redirect(url_for("esope.envoi", mois=mois))
+    return redirect(retour_page or url_for("esope.envoi", mois=mois))
 
 
 # ─────────────────────────────────────────────────────────────

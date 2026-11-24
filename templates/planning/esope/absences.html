@@ -66,10 +66,14 @@
   </tbody>
 </table>
 </div>
+<script src="{{ url_for('static', filename='js/esope_recherche_select.js') }}?v=1"></script>
 <script>
+esopeRechercheSelect(document.querySelector('select[name=benevole_id]'));
+const norm = t => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const trouve = (nom, q) => norm(q).split(/\s+/).filter(Boolean).every(m => norm(nom).includes(m));
 function filtrer() {
-  const q = document.getElementById('filtre').value.trim().toLowerCase();
-  document.querySelectorAll('#tb tbody tr[data-nom]').forEach(tr => tr.style.display = tr.dataset.nom.includes(q) ? '' : 'none');
+  const q = document.getElementById('filtre').value;
+  document.querySelectorAll('#tb tbody tr[data-nom]').forEach(tr => tr.style.display = trouve(tr.dataset.nom, q) ? '' : 'none');
 }
 </script>
 {% endblock %}

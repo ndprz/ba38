@@ -355,6 +355,18 @@ Détail engagement #{{ engagement.id }}
 
                 {% endif %}
 
+                {% if engagement.statut in ("comptabilise", "termine")
+                      and engagement.numero_ecriture_ebp %}
+
+                <button type="button"
+                        class="btn btn-outline-secondary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalCorrectionEbp">
+                    ✏️ Corriger le n° d'écriture EBP
+                </button>
+
+                {% endif %}
+
                 <!-- ============================================== -->
                 <!-- REFUS -->
                 <!-- ============================================== -->
@@ -1540,6 +1552,49 @@ Détail engagement #{{ engagement.id }}
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
                     <button type="submit" class="btn btn-warning">Créer l'engagement inverse</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ================================================== -->
+<!-- MODALE CORRECTION N° ECRITURE EBP -->
+<!-- ================================================== -->
+
+<div class="modal fade" id="modalCorrectionEbp" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST"
+                  action="{{ url_for('engagements.corriger_numero_ebp', engagement_id=engagement.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">✏️ Corriger le n° d'écriture EBP</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">
+                        N° actuel : <code>{{ engagement.numero_ecriture_ebp }}</code><br>
+                        <small class="text-muted">Le numéro est remplacé ; le statut, le montant
+                        et la date de comptabilisation ne changent pas. La correction est
+                        tracée dans l'historique.</small>
+                    </p>
+                    <label class="form-label">Nouveau n° d'écriture EBP</label>
+                    <input type="text" name="numero_ecriture_ebp" class="form-control mb-3"
+                           required maxlength="100" autocomplete="off">
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="confirmer_doublon" value="1" id="ebpDoublon">
+                        <label class="form-check-label small" for="ebpDoublon">
+                            Autoriser un numéro déjà utilisé par un autre engagement
+                        </label>
+                    </div>
+                    <label class="form-label">Motif (obligatoire)</label>
+                    <input type="text" name="motif" class="form-control" required maxlength="300"
+                           placeholder="Ex. : erreur de saisie du comptable">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+                    <button type="submit" class="btn btn-primary">Corriger le numéro</button>
                 </div>
             </form>
         </div>

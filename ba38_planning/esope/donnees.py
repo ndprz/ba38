@@ -189,6 +189,13 @@ def benevoles_esope(conn):
     return res
 
 
+def intervenants_liste(conn):
+    """Intervenants temporaires (module Intervenants), proposés dans le planning à côté des bénévoles."""
+    return [dict(r, libelle=f"{r['nom']} {r['prenom']}".strip() + (f" ({r['organisme']})" if r["organisme"] else ""))
+            for r in conn.execute("SELECT id, nom, prenom, organisme FROM intervenants_temporaires "
+                                  "ORDER BY nom COLLATE NOCASE, prenom COLLATE NOCASE")]
+
+
 def noms_benevoles(conn, ids):
     ids = [i for i in set(ids) if i]
     if not ids:
@@ -243,6 +250,7 @@ def absent_sql(aff="a", cre="c"):
 
 def appliquer_absence(d):
     """Une absence saisie vaut « annulé » à l'affichage (sans toucher à la base : supprimer l'absence rend le créneau)."""
+    d["statut_reel"] = d["statut"]
     if d.get("absent_saisie") and d["statut"] != "annule":
         d["statut"] = "annule"
         d["absence"] = 1
@@ -254,7 +262,7 @@ def _affectations_par_creneau(conn, creneau_ids):
         return {}
     ph = ",".join("?" * len(creneau_ids))
     rows = conn.execute(f"""
-        SELECT a.*, b.nom, b.prenom, b.telephone_portable, b.email, {absent_sql()} AS absent_saisie
+        SELECT a.*, c.heure_debut AS c_debut, b.nom, b.prenom, b.telephone_portable, b.email, {absent_sql()} AS absent_saisie
         FROM esope_affectations a
         JOIN esope_creneaux c ON c.id = a.creneau_id
         LEFT JOIN benevoles b ON b.id = a.benevole_id
@@ -262,9 +270,17 @@ def _affectations_par_creneau(conn, creneau_ids):
         ORDER BY b.nom COLLATE NOCASE, b.prenom COLLATE NOCASE
     """, list(creneau_ids)).fetchall()
     res = {}
-    for r in sorted((appliquer_absence(dict(r)) for r in rows), key=lambda d: d["statut"] == "annule"):
+    interv = {r["id"]: r for r in conn.execute("SELECT * FROM intervenants_temporaires")}
+    # annulés en dernier ; sinon par heure d'arrivée (début du créneau si présence complète), puis par nom
+    ordre = lambda d: (d["statut"] == "annule", d["heure_debut"] or d["c_debut"] or "",
+                       (d["nom"] or "").lower(), (d["prenom"] or "").lower())
+    for r in sorted((appliquer_absence(dict(r)) for r in rows), key=ordre):
         d = r
-        d["libelle"] = f"{d['nom'] or '?'} {d['prenom'] or ''}".strip()
+        if d["benevole_id"] < 0:  # intervenant temporaire : benevole_id = -id (aucun lien avec la table benevoles)
+            i = interv.get(-d["benevole_id"])
+            d.update(nom=i["nom"] if i else "?", prenom=i["prenom"] if i else "", telephone_portable=i["telephone"] if i else None,
+                     email=i["email"] if i else None, intervenant=1)
+        d["libelle"] = f"{d['nom'] or '?'} {d['prenom'] or ''}".strip() + (" (interv.)" if d.get("intervenant") else "")
         d["partiel"] = fmt_plage(d["heure_debut"], d["heure_fin"]) if d["heure_debut"] and d["heure_fin"] else (
             f"dès {fmt_heure(d['heure_debut'])}" if d["heure_debut"] else (
                 f"jusqu'à {fmt_heure(d['heure_fin'])}" if d["heure_fin"] else ""))

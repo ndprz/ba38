@@ -1,6 +1,6 @@
 <p><strong>Application BA38 – Engagements (dépenses, déplacements, notes
 de frais)</strong><br />
-Version de la documentation : 03/08/2026</p>
+Version de la documentation : 24/11/2026</p>
 <h1 id="objectif-du-module">1. Objectif du module</h1>
 <p>Le module « Engagements » permet de gérer l’ensemble des demandes de
 dépense de l’association, depuis leur création jusqu’à leur règlement et
@@ -268,6 +268,27 @@ comptabilisé » : c’est à ce moment qu’elle renseigne le numéro
 d’écriture EBP correspondant (obligatoire). Si ce numéro est déjà
 utilisé par un autre engagement, une confirmation supplémentaire est
 demandée avant de valider le doublon volontaire.</p>
+<p>Corriger un numéro d’écriture EBP : si le numéro saisi à la
+comptabilisation est erroné, ouvrir la fiche de l’engagement (statut «
+Comptabilisé » ou « Terminé ») et cliquer sur « ✏️ Corriger le n°
+d’écriture EBP ». Saisir le nouveau numéro et un motif (obligatoire). Le
+numéro est remplacé ; le statut, le montant et la date de
+comptabilisation ne changent pas, et la correction (ancien → nouveau
+numéro, motif, auteur) est inscrite dans l’historique du dossier. Si le
+nouveau numéro est déjà utilisé par un autre engagement, la correction
+est refusée sauf si la case « Autoriser un numéro déjà utilisé » est
+cochée.</p>
+<p>Annuler un engagement déjà réglé : si la dépense est annulée
+(commande annulée, remboursement reçu…), ne pas modifier l’engagement
+d’origine. Sur sa fiche (statut « Réglé », « Comptabilisé » ou « Terminé
+»), cliquer sur « ↩︎️ Annuler par engagement inverse » et indiquer un
+motif. Un engagement de montant négatif, lié à l’original, est créé au
+statut « À payer » (à encaisser) : la trésorière le marque réglé à
+l’encaissement du remboursement, puis comptabilisé avec le numéro
+d’écriture EBP. L’original est conservé (et désarchivé s’il l’était) ;
+dans le reporting, la GED et le suivi budgétaire, les deux engagements
+s’annulent (total = 0). L’original affiche « Annulé par le n°… » et
+l’inverse « Annulation du n°… », avec un lien vers l’autre dossier.</p>
 <h1 id="clôture-archivage-et-restauration">11. Clôture, archivage et
 restauration</h1>
 <p>Une fois la comptabilisation effectuée, le dossier peut être clôturé
@@ -341,10 +362,40 @@ détaillée, prêt à être imprimé ou archivé.</p>
 demandes ; pour un administrateur, l’ensemble des demandes de
 l’association, avec un tableau de synthèse récapitulant le nombre de
 dossiers par statut et les montants restant à payer ou à rembourser.</p>
-<p>Chaque ligne indique la date, le demandeur, le pôle, l’objet, le mode
-de paiement, le montant et le statut (sous forme de badge coloré), avec
-un bouton « 👁 Ouvrir » pour accéder au détail complet du dossier
-(historique, pièces jointes, actions disponibles).</p>
+<p>Chaque ligne indique la date, le demandeur, le pôle, l’objet, le
+bénéficiaire du paiement, le montant (aligné à droite) et le statut,
+avec un bouton « 👁 Ouvrir » pour accéder au détail complet du dossier
+(historique, pièces jointes, actions disponibles). La colonne « Statut »
+affiche un seul badge coloré : le statut actuel ; le parcours complet du
+dossier (par exemple « Attente Pôle → Validé Pôle → À payer ») apparaît
+au survol du badge. Une petite icône 🗑 signale un dossier archivé.</p>
+<ul>
+<li><p>Filtres : au-dessus du tableau, des puces filtrent la liste d’un
+clic : « Tous », « ⚡ À traiter par moi », « 👤 Mes demandes », puis un
+statut par puce (Attente pôle, Bureau, Validé Pôle, À payer, Réglé,
+Comptabilisé, Terminé, Refusé) avec le nombre de dossiers. Seuls les
+statuts présents dans la liste sont proposés.</p></li>
+<li><p>Recherche : le champ « Rechercher » filtre les lignes sur tout
+leur contenu (objet, nom, fournisseur, numéro, montant). Il se combine
+avec les puces ; un compteur indique le nombre de lignes
+affichées.</p></li>
+<li><p>« À traiter par moi » : les dossiers qui attendent une action de
+l’utilisateur connecté sont surlignés en jaune et en gras avec une barre
+orange à gauche : validation pôle pour les responsables et suppléants du
+pôle concerné ; validation bureau, transmission, règlement et
+comptabilisation pour les administrateurs du module. La case « tout
+cocher » de l’archivage en masse ne coche que les lignes visibles
+(filtres actifs).</p></li>
+<li><p>Colonnes : la largeur de chaque colonne se modifie en tirant le
+bord droit de son en-tête. Les largeurs sont mémorisées par navigateur ;
+le lien « ↺ Réinitialiser les largeurs de colonnes » rétablit les
+valeurs par défaut. Les textes trop longs (objet, bénéficiaire) sont
+tronqués avec « … » ; le texte complet s’affiche au survol. Un clic sur
+un en-tête trie le tableau.</p></li>
+<li><p>Annulations : un dossier annulé par engagement inverse porte le
+badge « ↩︎ Annulé par le n°… » et son inverse le badge « ↩︎ Annulation du
+n°… » ; un clic sur le badge ouvre l’autre dossier.</p></li>
+</ul>
 <h1 id="règles-métier-importantes">18. Règles métier importantes</h1>
 <ul>
 <li><p>Le circuit de validation (pôle, présidence) dépend uniquement du
@@ -371,6 +422,14 @@ l’engagement d’origine a été validé par le pôle, les mois suivants sont
 transmis directement à la trésorerie (statut « À payer ») sans nouvelle
 validation pôle. La validation présidence reste obligatoire si le palier
 l’exige.</p></li>
+<li><p>Une erreur sur le numéro d’écriture EBP d’un dossier déjà
+comptabilisé se corrige avec le bouton « Corriger le n° d’écriture EBP »
+(motif obligatoire, historique conservé) ; on ne repasse pas le dossier
+par une nouvelle comptabilisation.</p></li>
+<li><p>Un engagement déjà réglé, saisi par erreur ou annulé, ne se
+supprime pas et ne se met pas à zéro : on l’annule par un engagement
+inverse (montant négatif lié), qui s’encaisse puis se
+comptabilise.</p></li>
 </ul>
 <h1 id="conseils-dutilisation">19. Conseils d’utilisation</h1>
 <ul>
@@ -386,6 +445,9 @@ demande en quelques secondes depuis un smartphone, sans avoir besoin de
 se connecter à l’application.</p></li>
 <li><p>Toujours vérifier qu’un numéro d’écriture EBP n’est pas déjà
 utilisé avant de confirmer un doublon volontaire.</p></li>
+<li><p>Pour annuler une dépense déjà réglée, utiliser « Annuler par
+engagement inverse » plutôt que de modifier le dossier : la trace
+comptable (dépense puis remboursement) est ainsi conservée.</p></li>
 </ul>
 <h1 id="informations-techniques">20. Informations techniques</h1>
 <p>Le module repose principalement sur les éléments suivants :<br />

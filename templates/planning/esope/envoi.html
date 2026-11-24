@@ -186,7 +186,7 @@
   <tbody>
   {% for l in lignes %}
     <tr data-nom="{{ l.libelle|lower }}" data-etat="{{ l.etat }}">
-      <td><span class="fw-bold">{{ l.libelle }}</span>{% if not l.esope %} <span class="badge bg-light text-dark border" title="Affecté ce mois-ci mais champ esope ≠ oui">hors ESOPE</span>{% endif %}
+      <td><span class="fw-bold">{{ l.libelle }}</span> <a href="{{ url_for('esope.benevole_planning', benevole_id=l.id, mois=mois) }}" title="Ses créneaux du mois et son historique" class="text-decoration-none">📅</a>{% if not l.esope %} <span class="badge bg-light text-dark border" title="Affecté ce mois-ci mais champ esope ≠ oui">hors ESOPE</span>{% endif %}
         <div class="small text-muted">{{ l.email or '' }}{% if l.telephone_portable %} · {{ l.telephone_portable }}{% endif %}</div></td>
       <td class="text-center">{{ l.nb_actifs }}</td>
       <td class="text-center text-success">{{ l.nb_confirmes or '' }}</td>
@@ -236,11 +236,13 @@ function confirmerEnvoi(f) {
   return confirm('Envoyer le pré-planning de {{ mois_txt|lower }} aux bénévoles qui ne l\'ont pas encore reçu ?');
 }
 
+const norm = t => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const trouve = (nom, q) => norm(q).split(/\s+/).filter(Boolean).every(m => norm(nom).includes(m));
 function filtrer() {
-  const q = document.getElementById("filtre").value.trim().toLowerCase();
+  const q = document.getElementById("filtre").value;
   const e = document.getElementById("filtreEtat").value;
   document.querySelectorAll("tbody tr[data-nom]").forEach(tr => {
-    tr.style.display = (!q || tr.dataset.nom.includes(q)) && (!e || tr.dataset.etat === e) ? "" : "none";
+    tr.style.display = trouve(tr.dataset.nom, q) && (!e || tr.dataset.etat === e) ? "" : "none";
   });
 }
 </script>

@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Planning ESOPE – {{ libelle }}{% endblock %}
+{% block content %}
+<style>
+  .st-annule td { color: #6c757d; }
+  .st-annule .intitule { text-decoration: line-through; }
+  .passe td { background: #f8f9fa; }
+</style>
+<div class="container mt-3">
+<h2>👤 Planning ESOPE – {{ libelle }}</h2>
+{% set actif = 'benevole' %}{% include "planning/esope/_nav.html" %}
+
+<div class="small text-muted mb-2">
+  {% if b.telephone_portable %}📱 {{ b.telephone_portable }}{% endif %}
+  {% if b.email %} · ✉️ {{ b.email }}{% else %} · <span class="text-danger">pas de mail</span>{% endif %}
+  · <a href="{{ url_for('benevoles.update_benevole', benevole_id=b.id) }}" target="_blank" rel="noopener">fiche bénévole</a>
+</div>
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+  <a class="btn btn-outline-secondary" href="{{ url_for('esope.benevole_planning', benevole_id=b.id, mois=precedent) }}">◀</a>
+  <form method="GET" class="m-0"><input type="month" name="mois" value="{{ mois }}" class="form-control" onchange="this.form.submit()"></form>
+  <a class="btn btn-outline-secondary" href="{{ url_for('esope.benevole_planning', benevole_id=b.id, mois=suivant) }}">▶</a>
+  <h4 class="mb-0 ms-2">{{ mois_txt }}</h4>
+  {% if peut_ecrire %}
+  <form method="POST" action="{{ url_for('esope.envoi_envoyer') }}" class="ms-auto m-0 d-flex align-items-center gap-2"
+        onsubmit="return confirm('Envoyer à {{ libelle|e }} son planning de {{ mois_txt|lower }} (créneaux actifs seulement) ?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="mois" value="{{ mois }}"><input type="hidden" name="type" value="preplanning">
+    <input type="hidden" name="benevole_id" value="{{ b.id }}"><input type="hidden" name="retour" value="{{ request.full_path }}">
+    {% if mail_mode == 'TEST' %}<span class="badge bg-warning text-dark">🧪 Mode TEST : le mail part chez vous</span>{% else %}<span class="badge bg-danger">🚀 Mode RÉEL</span>{% endif %}
+    <button class="btn btn-success" {{ 'disabled' if not b.email }}>📨 Lui envoyer son planning du mois</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if lien and lien.envoye_le %}<div class="small text-muted mb-2">Dernier envoi du mois : {{ lien.envoye_le[8:10] }}/{{ lien.envoye_le[5:7] }} à {{ lien.envoye_le[11:16] }}{% if lien.derniere_reponse_le %} · a répondu le {{ lien.derniere_reponse_le[8:10] }}/{{ lien.derniere_reponse_le[5:7] }}{% endif %}</div>{% endif %}
+
+{% if absences %}
+<div class="alert alert-info py-2 small">🏖️ Absence(s) saisie(s) ce mois-ci :
+  {% for x in absences %}du {{ x.date_debut }} au {{ x.date_fin }}{{ ' ; ' if not loop.last }}{% endfor %}
+  – <a href="{{ url_for('esope.absences') }}">gérer les absences</a>. Ses créneaux de la période sont comptés absents.</div>
+{% endif %}
+
+<table class="table table-sm align-middle">
+  <thead class="table-light"><tr><th>Jour</th><th>Créneau</th><th>Horaires</th><th>Statut</th><th>Commentaire / réponse</th>{% if peut_ecrire %}<th></th>{% endif %}</tr></thead>
+  <tbody>
+  {% for c in creneaux %}
+    <tr class="st-{{ c.statut }} {{ 'passe' if c.passe }}">
+      <td class="text-nowrap">{{ c.date_txt }}</td>
+      <td class="intitule">{{ c.intitule }}{% if c.ferme %} <span class="badge bg-secondary">fermé</span>{% endif %}</td>
+      <td class="text-nowrap">{{ c.plage }}{% if c.partiel %} <small class="text-muted">(partiel)</small>{% endif %}</td>
+      <td>{% if c.absence %}<span class="badge bg-info text-dark">🏖️ Absent</span>
+          {% elif c.statut == 'annule' %}<span class="badge bg-danger">Annulé</span>
+          {% elif c.statut == 'confirme' %}<span class="badge bg-success">Confirmé</span>
+          {% else %}<span class="badge bg-secondary">Prévu</span>{% endif %}</td>
+      <td class="small">{{ c.commentaire or '' }}{% if c.reponse_le %} <span class="text-muted">· réponse du {{ c.reponse_le[8:10] }}/{{ c.reponse_le[5:7] }}{% if c.reponse_commentaire %} : « {{ c.reponse_commentaire }} »{% endif %}</span>{% endif %}</td>
+      {% if peut_ecrire %}<td class="text-nowrap"><button class="btn btn-sm btn-outline-primary" onclick="ouvrir({{ c.id }})">✏️</button>
+        <a class="btn btn-sm btn-outline-secondary" title="Voir la semaine" href="{{ url_for('esope.semaine', date=c.date) }}">📅</a></td>{% endif %}
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="text-muted text-center">Aucun créneau ce mois-ci.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="small text-muted">Le mail individuel ne contient que les créneaux actifs (prévus ou confirmés) : les créneaux annulés ou en absence n'y figurent pas.</p>
+
+<h5 class="mt-4">🕒 Historique de {{ libelle }}</h5>
+{% set actions = {'absence': 'Absence', 'ajout': 'Ajout', 'modification': 'Modification', 'retrait': 'Retrait', 'deplacement': 'Déplacement', 'reponse_benevole': 'Réponse du bénévole'} %}
+<table class="table table-sm small">
+  <thead class="table-light"><tr><th>Date</th><th>Par</th><th>Action</th><th>Créneau</th><th>Avant</th><th>Après</th><th>Commentaire</th></tr></thead>
+  <tbody>
+  {% for h in historique %}
+    <tr>
+      <td class="text-nowrap">{{ h.date_heure[8:10] }}/{{ h.date_heure[5:7] }}/{{ h.date_heure[:4] }} {{ h.date_heure[11:16] }}</td>
+      <td>{{ (h.auteur or '').split('@')[0] }}</td>
+      <td>{{ actions.get(h.action, h.action) }}</td>
+      <td class="text-nowrap">{% if h.creneau_date %}{{ h.creneau_date[8:10] }}/{{ h.creneau_date[5:7] }} {{ h.fonction or h.creneau_libelle or '' }}{% if h.poste %} {{ h.poste }}{% endif %}{% endif %}</td>
+      <td>{{ h.ancien or '' }}</td><td>{{ h.nouveau or '' }}</td><td>{{ h.commentaire or '' }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="text-muted">Aucune action enregistrée pour ce bénévole.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if peut_ecrire %}
+<div class="modal fade" id="modalAff" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <form method="POST" id="formAff">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="retour" value="{{ request.full_path }}">
+    <div class="modal-header"><h5 class="modal-title" id="aff_titre"></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <label class="form-label">Statut</label>
+      <select name="statut" id="aff_statut" class="form-select">{% for k, v in statuts.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+      <div class="row mt-3">
+        <div class="col"><label class="form-label">Arrive à <small class="text-muted">(si partiel)</small></label><input type="time" name="heure_debut" id="aff_debut" class="form-control"></div>
+        <div class="col"><label class="form-label">Part à <small class="text-muted">(si partiel)</small></label><input type="time" name="heure_fin" id="aff_fin" class="form-control"></div>
+      </div>
+      <label class="form-label mt-3">Commentaire</label>
+      <input type="text" name="commentaire" id="aff_commentaire" class="form-control" maxlength="200">
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-danger me-auto" onclick="retirer()">🗑️ Retirer du créneau</button>
+      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+      <button class="btn btn-primary">💾 Enregistrer</button>
+    </div>
+  </form>
+  <form method="POST" id="formSuppr" class="d-none">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="retour" value="{{ request.full_path }}">
+  </form>
+</div></div></div>
+<script>
+const AFF = {
+{% for c in creneaux %}  {{ c.id }}: {statut: {{ c.statut_reel | tojson }}, debut: {{ (c.heure_debut or '') | tojson }}, fin: {{ (c.heure_fin or '') | tojson }}, commentaire: {{ (c.commentaire or '') | tojson }}, titre: {{ (c.date_txt ~ ' · ' ~ c.intitule) | tojson }}},
+{% endfor %}};
+const URL_MOD = "{{ url_for('esope.affectation_modifier', aff_id=999999999) }}";
+const URL_SUP = "{{ url_for('esope.affectation_supprimer', aff_id=999999999) }}";
+let courant = null;
+function ouvrir(id) {
+  courant = id; const a = AFF[id];
+  document.getElementById("formAff").action = URL_MOD.replace("999999999", id);
+  document.getElementById("formSuppr").action = URL_SUP.replace("999999999", id);
+  document.getElementById("aff_titre").textContent = a.titre;
+  document.getElementById("aff_statut").value = a.statut;
+  document.getElementById("aff_debut").value = a.debut;
+  document.getElementById("aff_fin").value = a.fin;
+  document.getElementById("aff_commentaire").value = a.commentaire;
+  new bootstrap.Modal(document.getElementById("modalAff")).show();
+}
+function retirer() {
+  if (confirm("Retirer ce bénévole du créneau ?\n\n(Pour garder une trace de son absence, choisissez plutôt le statut « Annulé ».)"))
+    document.getElementById("formSuppr").submit();
+}
+</script>
+{% endif %}
+{% endblock %}

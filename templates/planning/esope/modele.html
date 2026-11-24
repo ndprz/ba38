@@ -110,6 +110,7 @@
 
 {% set types = [] %}
 {% for l in grille.values() %}{% for t in l.values() %}{% set _ = types.append(t) %}{% endfor %}{% endfor %}
+<script src="{{ url_for('static', filename='js/esope_recherche_select.js') }}?v=1"></script>
 <script>
 const BENEVOLES = {{ benevoles | tojson }};
 const JOURS = {{ jours | map(attribute='nom') | list | tojson }};
@@ -151,6 +152,7 @@ function remplirBenevoles(t, selection) {
   groupe("Fonction " + t.fonction + " et disponibles le " + JOURS[t.jour], prio);
   groupe("Fonction " + t.fonction + " (autre jour)", fct);
   groupe("Autres bénévoles ESOPE", autres);
+  esopeRechercheSelect(sel); sel._rafraichir();
 }
 
 function ouvrir(ctId, e, idEntree) {
@@ -167,7 +169,9 @@ function ouvrir(ctId, e, idEntree) {
   document.getElementById("m_suppr").style.display = idEntree ? "" : "none";
   document.getElementById("formSuppr").action = idEntree ? URL_SUPPR.replace("999999999", idEntree) : "";
   majRef();
-  new bootstrap.Modal(document.getElementById("modalEntree")).show();
+  const fenetre = document.getElementById("modalEntree"), liste = document.getElementById("m_benevole");
+  fenetre.addEventListener("shown.bs.modal", () => { if (liste._recherche) { liste._recherche.focus(); } }, {once: true});
+  new bootstrap.Modal(fenetre).show();
 }
 function ouvrirAjout(ctId) { ouvrir(ctId, null, null); }
 function ouvrirEntree(id) { ouvrir(ENTREES[id].ct, ENTREES[id], id); }

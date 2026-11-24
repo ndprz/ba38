@@ -2,7 +2,7 @@
 <p>Le planning ESOPE remplace le fichier Excel de l’épicerie sociale. On
 décrit une fois la semaine type, puis Basilic construit le planning de
 chaque mois ; il ne reste qu’à le retoucher et l’imprimer.</p>
-<p>Version du 30/10/2026. Les bénévoles reçoivent leurs créneaux par
+<p>Version du 24/11/2026. Les bénévoles reçoivent leurs créneaux par
 mail et répondent en ligne avec un lien personnel, sans compte
 Basilic.</p>
 <h2 id="mise-en-route-dans-lordre">Mise en route, dans l’ordre</h2>
@@ -121,8 +121,10 @@ sur une partie du créneau seulement.</li>
 </ul>
 <p><strong>Ajouter un bénévole</strong> : cliquer sur <strong>➕
 ajouter</strong> dans la case. La liste propose d’abord les bénévoles
-qui ont cette fonction et sont disponibles ce jour-là, puis les
-autres.</p>
+qui ont cette fonction et sont disponibles ce jour-là, puis les autres.
+Un champ de recherche permet de taper un morceau du prénom et/ou du nom,
+dans n’importe quel ordre (« juliette gou » trouve « GOUCHAULT Juliette
+»). Il existe dans toutes les listes de bénévoles du module.</p>
 <p><strong>Modifier ou retirer un bénévole</strong> : cliquer sur son
 nom. On peut changer :</p>
 <ul>
@@ -135,6 +137,26 @@ nom. On peut changer :</p>
 que de retirer le bénévole : son nom reste visible barré et la place se
 libère. Pour une absence qui dure (congés, maladie…), utiliser plutôt la
 page Absences (voir plus bas).</p>
+<p><strong>Déplacer un bénévole</strong> : glisser son nom avec la
+souris vers la case d’un autre créneau (ou vers un événement). Le
+déplacement est refusé si le créneau est fermé ou si la personne y est
+déjà. Ses horaires partiels sont retirés (ils concernaient l’ancien
+créneau). Il est noté dans l’historique.</p>
+<p><strong>Créneau au-dessus du maximum</strong> : on peut ajouter,
+déplacer ou remettre en « Prévu » un bénévole même si le créneau a
+atteint son maximum. Un avertissement s’affiche et la case passe en
+jaune (trop de bénévoles).</p>
+<p><strong>Intervenant temporaire</strong> : dans la fenêtre ➕ ajouter,
+les intervenants du module Intervenants temporaires sont en bas de liste
+(« (interv.) » dans le planning). S’il n’y est pas, utiliser le lien «
+Intervenant temporaire absent de la liste ? Le créer ici » (nom, prénom,
+téléphone, organisme) : il est enregistré dans le module Intervenants
+temporaires, où l’on complète sa photo et son droit à l’image. Les
+intervenants ne reçoivent aucun mail du planning.</p>
+<p><strong>Ordre des noms</strong> : dans chaque case, par heure
+d’arrivée (présence complète d’abord, puis horaires partiels du plus tôt
+au plus tard), puis par nom ; les annulés sont en dernier. C’est le même
+ordre à l’impression et dans le PDF.</p>
 <p><strong>Modifier le créneau d’un jour</strong> : cliquer sur ⚙️ en
 haut de la case. On peut changer les horaires, le nombre de bénévoles,
 ajouter un commentaire ou <strong>fermer le créneau</strong> ce jour-là.
@@ -143,6 +165,23 @@ Cela ne touche que ce jour.</p>
 onglet, avec tous les bénévoles du créneau en copie cachée. Le bouton
 <strong>📱 SMS bénévoles ESOPE</strong> ouvre l’envoi de SMS déjà filtré
 sur l’ESOPE.</p>
+<h2 id="page-dun-bénévole">Page d’un bénévole</h2>
+<p>Pour voir toutes les positions d’un bénévole sur un mois : cliquer
+sur <strong>📅</strong> à côté de son nom (Bénévoles ESOPE, suivi des
+envois) ou sur « Tous ses créneaux du mois et son historique » dans la
+fenêtre qui s’ouvre en cliquant sur son nom dans le planning.</p>
+<ul>
+<li>Ses créneaux du mois, avec statut, horaires, commentaire et
+réponses. ✏️ permet de corriger un statut, des horaires ou de le retirer
+du créneau ; 📅 ouvre la semaine correspondante.</li>
+<li>📨 Lui envoyer son planning du mois : un mail à lui seul (créneaux
+actifs seulement, planning du mois en PDF, son lien personnel), en mode
+TEST ou RÉEL selon le réglage de la page Envoi.</li>
+<li>Son historique : ajouts, modifications, déplacements, réponses et
+absences, avec la date et l’auteur.</li>
+</ul>
+<p>Les absences saisies pour ce mois-là s’affichent en haut de la
+page.</p>
 <h2 id="absences">Absences</h2>
 <p>Bouton <strong>🏖️ Absences</strong> : signaler qu’un bénévole est
 absent un jour, une période ou un mois (congés, maladie, absence
@@ -225,6 +264,8 @@ seulement ;</li>
 place (bénévole sans mail, réponse donnée par téléphone) ;</li>
 <li><strong>🔗</strong> : copier son lien personnel (pour le lui
 transmettre autrement).</li>
+<li><strong>📅</strong> : ouvrir la page du bénévole (ses créneaux du
+mois et son historique).</li>
 </ul>
 <p>Les réponses aux mails (bouton « Répondre » de la messagerie)
 arrivent dans la boîte de la responsable ESOPE.</p>

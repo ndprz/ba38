@@ -4406,7 +4406,7 @@ def _detecter_sans_vendredi_background(app, detection_id, annee, image_bytes, me
             client = anthropic.Anthropic(api_key=api_key)
             response = client.messages.create(
                 model="claude-sonnet-5",
-                max_tokens=2000,
+                max_tokens=8000,
                 messages=[{
                     "role": "user",
                     "content": [
@@ -4419,6 +4419,20 @@ def _detecter_sans_vendredi_background(app, detection_id, annee, image_bytes, me
                 }],
             )
             texte = "".join(bloc.text for bloc in response.content if bloc.type == "text").strip()
+            if not texte:
+                # Arrivé en prod le 2026-11-24 (détection PDF association,
+                # cf. _detecter_pdf_association_background) : avec
+                # max_tokens trop bas, la réflexion interne du modèle
+                # consommait tout le budget avant d'écrire la réponse —
+                # stop_reason='max_tokens', aucun bloc 'text' en retour,
+                # json.loads("") plantait avec une erreur illisible
+                # ("Expecting value..."). max_tokens remonté à 8000 (prévu
+                # large) ; ce garde-fou donne un message clair si ça se
+                # reproduisait quand même.
+                raise RuntimeError(
+                    f"Réponse vide du modèle (stop_reason={response.stop_reason!r}) — "
+                    "document probablement trop complexe pour le budget de réflexion, réessayez."
+                )
             if texte.startswith("```"):
                 texte = texte.strip("`")
                 if texte.lower().startswith("json"):
@@ -4523,7 +4537,7 @@ def _detecter_pdf_association_background(app, detection_id, annee, association, 
             client = anthropic.Anthropic(api_key=api_key)
             response = client.messages.create(
                 model="claude-sonnet-5",
-                max_tokens=2000,
+                max_tokens=8000,
                 messages=[{
                     "role": "user",
                     "content": [
@@ -4536,6 +4550,21 @@ def _detecter_pdf_association_background(app, detection_id, annee, association, 
                 }],
             )
             texte = "".join(bloc.text for bloc in response.content if bloc.type == "text").strip()
+            if not texte:
+                # Incident réel 2026-11-24 (détection PDF ASAT, 24 produits +
+                # écriture manuscrite) : avec max_tokens=2000, la réflexion
+                # interne du modèle consommait tout le budget avant d'écrire
+                # la réponse (stop_reason='max_tokens', aucun bloc 'text') —
+                # json.loads("") plantait avec "Expecting value: line 1
+                # column 1 (char 0)", illisible pour l'utilisateur. Vérifié
+                # empiriquement : ce document nécessitait ~3766 tokens de
+                # réflexion avant de produire sa réponse JSON ; max_tokens
+                # remonté à 8000 pour laisser une marge large. Ce garde-fou
+                # donne un message clair si ça se reproduisait quand même.
+                raise RuntimeError(
+                    f"Réponse vide du modèle (stop_reason={response.stop_reason!r}) — "
+                    "document probablement trop complexe pour le budget de réflexion, réessayez."
+                )
             if texte.startswith("```"):
                 texte = texte.strip("`")
                 if texte.lower().startswith("json"):
@@ -8841,21 +8870,88 @@ def _lire_suivi_gardee(annee):
     }
 
 
-def _noms_associations_gardee_a_exclure(annee, champ_specifique):
-    """Noms des associations à exclure d'UN export VIF précis (poids par
-    magasin / transferts / BL) : déjà cochées pour le champ spécifique à
-    cet export (poids_exporte / transferts_exportes / bl_genere, coché
-    automatiquement par l'export correspondant). Chaque export est ainsi
-    rejouable en plusieurs fois indépendamment des 2 autres, au fil de
-    l'eau selon les associations qui répondent, sans jamais redoubler une
-    association déjà traitée par CET export précis (demande utilisateur
-    2026-11-23). La case « Traitée » (ancien coupe-circuit commun aux 3
-    exports, créé le 2026-11-16 avant que ces 3 cases dédiées existent)
-    n'a plus d'effet ici depuis le 2026-11-23 — devenue redondante et
-    source de confusion (une association cochée Traitée avant cette date
-    restait exclue de tout, sans que ce soit visible dans le détail)."""
+def _noms_associations_gardee_avec_champ(annee, champ_specifique):
+    """Noms des associations déjà cochées pour UN champ de suivi précis
+    (poids_exporte / transferts_exportes / bl_genere, coché automatiquement
+    par l'export correspondant). Double usage : exclusion d'un export déjà
+    rejoué plusieurs fois (ne pas redoubler une association déjà traitée
+    PAR CET export précis, demande utilisateur 2026-11-23), ET condition
+    d'éligibilité de l'export SUIVANT dans la chaîne poids → transferts →
+    BL — les 3 CSV doivent être générés dans cet ordre, une association ne
+    passe à la phase suivante que si la précédente est faite pour elle
+    (demande utilisateur 2026-11-23). La case « Traitée » (ancien
+    coupe-circuit commun aux 3 exports, créé le 2026-11-16 avant que ces 3
+    cases dédiées existent) n'a plus d'effet ici depuis le 2026-11-23 —
+    devenue redondante et source de confusion (une association cochée
+    Traitée avant cette date restait exclue de tout, sans que ce soit
+    visible dans le détail)."""
     suivi = _lire_suivi_gardee(annee)
     return {nom for nom, s in suivi.items() if s.get(champ_specifique)}
+
+
+def _ensure_table_poids_magasins_gardee(conn):
+    """Ajoute la dimension association à la clé de collecte_poids_magasins_gardee
+    (auparavant (annee, code_vif) seul, une unique pesée par magasin quelle
+    que soit l'association) : un magasin collecté par PLUSIEURS associations
+    (ex. Intermarché La Mure, partagé entre Beurrepinard et Coll Entraide du
+    Trièves) correspond en réalité à plusieurs réceptions VIF distinctes,
+    chacune avec son propre poids — avant ce correctif, la 2e association à
+    saisir écrasait silencieusement la pesée de la 1ère, sans que rien ne le
+    signale (demande utilisateur 2026-11-23). Migration paresseuse (SQLite
+    ne sait pas modifier une clé primaire en place) : recrée la table avec
+    nom_association dans la clé, en reportant chaque ancienne ligne vers
+    CHAQUE association à laquelle le magasin est rattaché cette année-là
+    (donc dupliquée à l'identique pour un magasin partagé — à corriger
+    ensuite manuellement association par association, un log le signale)."""
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_poids_magasins_gardee)").fetchall()}
+    if "nom_association" in colonnes:
+        return
+    anciennes = conn.execute(
+        "SELECT annee, code_vif, poids_kg, saisi_le, saisi_par FROM collecte_poids_magasins_gardee"
+    ).fetchall()
+    conn.execute("ALTER TABLE collecte_poids_magasins_gardee RENAME TO collecte_poids_magasins_gardee_ancien")
+    conn.execute("""
+        CREATE TABLE collecte_poids_magasins_gardee (
+            annee INTEGER NOT NULL,
+            code_vif TEXT NOT NULL,
+            nom_association TEXT NOT NULL,
+            poids_kg REAL,
+            saisi_le TEXT,
+            saisi_par TEXT,
+            PRIMARY KEY (annee, code_vif, nom_association)
+        )
+    """)
+    par_annee = {}
+    for ligne in anciennes:
+        par_annee.setdefault(ligne["annee"], []).append(ligne)
+    for annee_migree, lignes in par_annee.items():
+        df_mag = _lire_magasins_gardes(annee_migree)
+        noms_par_code_vif = {}
+        if not df_mag.empty:
+            if "Code VIF" in df_mag.columns:
+                df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
+            df_groupes = _lire_groupes(annee_migree)
+            associations, _ = _construire_associations(df_mag, df_groupes)
+            for asso in associations:
+                for m in asso["magasins"]:
+                    noms_par_code_vif.setdefault(_vif_fmt(m.get("Code VIF")), []).append(asso["nom"])
+        for ligne in lignes:
+            noms = noms_par_code_vif.get(ligne["code_vif"]) or [""]
+            if len(noms) > 1:
+                write_log(
+                    f"⚠️ Migration poids_magasins_gardee {annee_migree} : magasin {ligne['code_vif']} "
+                    f"partagé entre {len(noms)} associations ({', '.join(noms)}) — valeur "
+                    f"{ligne['poids_kg']} dupliquée à l'identique dans chacune, à vérifier/corriger "
+                    "manuellement (une seule des deux a peut-être réellement saisi cette pesée)."
+                )
+            for nom in noms:
+                conn.execute("""
+                    INSERT INTO collecte_poids_magasins_gardee
+                        (annee, code_vif, nom_association, poids_kg, saisi_le, saisi_par)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (annee_migree, ligne["code_vif"], nom, ligne["poids_kg"], ligne["saisi_le"], ligne["saisi_par"]))
+    conn.execute("DROP TABLE collecte_poids_magasins_gardee_ancien")
+    write_log("✅ Migration collecte_poids_magasins_gardee : nom_association ajouté à la clé")
 
 
 def _noms_associations_completes(annee):
@@ -8873,12 +8969,12 @@ def _noms_associations_completes(annee):
     associations, _ = _construire_associations(df_mag, df_groupes)
     produits = _lire_produits_modele()
     with get_db_connection() as conn:
-        poids_magasins = {
-            r["code_vif"]: r["poids_kg"]
-            for r in conn.execute(
-                "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
-            ).fetchall()
-        }
+        _ensure_table_poids_magasins_gardee(conn)
+        poids_magasins = {}
+        for r in conn.execute(
+            "SELECT nom_association, code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
+        ).fetchall():
+            poids_magasins.setdefault(r["nom_association"], {})[r["code_vif"]] = r["poids_kg"]
         poids_produits = {}
         for r in conn.execute(
             "SELECT association, code_produit, poids_kg FROM collecte_quantites_produits WHERE annee = ?", (annee,)
@@ -8955,7 +9051,9 @@ def _saisie_association_avancement(annee, nom_association, magasins, produits, p
     à cocher manuelles, jamais utilisé pour les cocher automatiquement
     (cf. _ensure_table_suivi_gardee)."""
     codes_magasins = [_vif_fmt(m.get("Code VIF")) for m in magasins]
-    remplis_magasins = sum(1 for c in codes_magasins if poids_magasins.get(c) is not None)
+    remplis_magasins = sum(
+        1 for c in codes_magasins if poids_magasins.get(nom_association, {}).get(c) is not None
+    )
     remplis_produits = sum(
         1 for p in produits if poids_produits.get(nom_association, {}).get(p["code"]) is not None
     )
@@ -10388,15 +10486,18 @@ def gardee_telecharger_zip():
 # exporter_poids_magasins_gardee pointent désormais vers gardee_envoi.
 
 
-def _codes_vif_magasins_a_exclure_export_poids(annee):
-    """Codes VIF des magasins à exclure de l'export poids par magasin :
-    association déjà cochée « Poids exporté » (coché automatiquement par
-    cet export lui-même après génération, cf.
+def _paires_magasin_association_a_exclure_export_poids(annee):
+    """Paires (code_vif, nom_association) à exclure de l'export poids par
+    magasin : association déjà cochée « Poids exporté » (coché
+    automatiquement par cet export lui-même après génération, cf.
     exporter_poids_magasins_gardee) — permet de relancer cet export
-    plusieurs fois sans redoubler les mêmes magasins, au fil des
-    associations qui répondent (demande utilisateur
-    2026-11-23, remplace l'ancienne exclusion par « Traitée » seule du
-    2026-11-16)."""
+    plusieurs fois sans redoubler les mêmes paires, au fil des associations
+    qui répondent. Exclusion par PAIRE (magasin, association), pas par
+    magasin seul : un magasin collecté par plusieurs associations (ex.
+    stockage partagé) donne lieu à une réception VIF par association, et
+    l'export de l'une ne doit jamais exclure celui de l'autre (demande
+    utilisateur 2026-11-23, suite au cas réel Intermarché La Mure, partagé
+    Beurrepinard / Coll Entraide du Trièves)."""
     df_mag = _lire_magasins_gardes(annee)
     df_groupes = _lire_groupes(annee)
     if df_mag.empty:
@@ -10404,9 +10505,9 @@ def _codes_vif_magasins_a_exclure_export_poids(annee):
     if "Code VIF" in df_mag.columns:
         df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
     associations, _ = _construire_associations(df_mag, df_groupes)
-    noms_exclus = _noms_associations_gardee_a_exclure(annee, "poids_exporte")
+    noms_exclus = _noms_associations_gardee_avec_champ(annee, "poids_exporte")
     return {
-        _vif_fmt(m.get("Code VIF"))
+        (_vif_fmt(m.get("Code VIF")), asso["nom"])
         for asso in associations
         if asso["nom"] in noms_exclus
         for m in asso["magasins"]
@@ -10418,21 +10519,25 @@ def _codes_vif_magasins_a_exclure_export_poids(annee):
 @require_access("collecte", "lecture")
 def exporter_poids_magasins_gardee(annee):
     """Export CSV « Saisie des poids par magasin gardé » pour import VIF —
-    même format que exporter_cagettes (une ligne par magasin), quantité =
-    poids en kg brut saisi pour ce magasin, mais article 5010010 (collecte
-    gardée) au lieu de 5010000 (collecte directe) — ces magasins peuvent
-    aussi être suivis côté cagettes (camions BAI, cf. magasins Collecte BAI
-    à stockage partagé avec une association), l'article différent évite que
-    les deux exports comptent le même tonnage en double dans VIF. Une
-    association dont la saisie n'est pas complète (pas le badge vert
-    « X/X complet », cf. _noms_associations_completes — mêmes magasins ET
-    produits que pour le BL VIF) est exclue de CET export (ses magasins
-    restent en attente, aucun blocage des autres) plutôt que de bloquer
-    l'export entier comme avant (demande utilisateur 2026-11-23, suite à
-    un cas réel : CCAS du Val de Virieu et Coll Entraide du Trièves
-    complets bloqués par 32 magasins d'autres associations pas encore
-    prêtes ; puis demande explicite d'exiger la complétude pleine — pas
-    seulement les magasins — pour les 3 exports VIF, cohérente avec le BL)."""
+    même format que exporter_cagettes, quantité = poids en kg brut saisi,
+    mais article 5010010 (collecte gardée) au lieu de 5010000 (collecte
+    directe) — ces magasins peuvent aussi être suivis côté cagettes (camions
+    BAI, cf. magasins Collecte BAI à stockage partagé avec une association),
+    l'article différent évite que les deux exports comptent le même tonnage
+    en double dans VIF. Une ligne par (magasin, association) : un magasin
+    collecté par PLUSIEURS associations (stockage partagé) donne lieu à
+    PLUSIEURS réceptions VIF distinctes, chacune avec le poids propre saisi
+    par cette association (cf. _ensure_table_poids_magasins_gardee) — ce
+    n'est PAS le même poids dupliqué, mais bien 2 pesées réelles différentes
+    (demande utilisateur 2026-11-23, suite au cas réel Intermarché La Mure,
+    partagé Beurrepinard / Coll Entraide du Trièves). Une association dont
+    la saisie n'est pas complète (pas le badge vert « X/X complet », cf.
+    _noms_associations_completes — mêmes magasins ET produits que pour le BL
+    VIF) est exclue de CET export (ses magasins restent en attente, aucun
+    blocage des autres) plutôt que de bloquer l'export entier comme avant
+    (demande utilisateur 2026-11-23, suite à un cas réel : CCAS du Val de
+    Virieu et Coll Entraide du Trièves complets bloqués par 32 magasins
+    d'autres associations pas encore prêtes)."""
     df_mag = _lire_magasins_gardes(annee)
     if df_mag.empty:
         flash(f"⛔ Liste des magasins gardés {annee} indisponible", "danger")
@@ -10441,21 +10546,22 @@ def exporter_poids_magasins_gardee(annee):
     if "Code VIF" in df_mag.columns:
         df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
 
-    codes_vif_deja_traites = _codes_vif_magasins_a_exclure_export_poids(annee)
+    paires_deja_traitees = _paires_magasin_association_a_exclure_export_poids(annee)
 
     df_groupes = _lire_groupes(annee)
     associations, _ = _construire_associations(df_mag, df_groupes)
-    nom_association_par_code_vif = {
-        _vif_fmt(m.get("Code VIF")): asso["nom"]
-        for asso in associations
-        for m in asso["magasins"]
-    }
+    noms_par_code_vif = {}
+    for asso in associations:
+        for m in asso["magasins"]:
+            noms_par_code_vif.setdefault(_vif_fmt(m.get("Code VIF")), []).append(asso["nom"])
 
     with get_db_connection() as conn:
+        _ensure_table_poids_magasins_gardee(conn)
         saisies = {
-            r["code_vif"]: r["poids_kg"]
+            (r["code_vif"], r["nom_association"]): r["poids_kg"]
             for r in conn.execute(
-                "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
+                "SELECT code_vif, nom_association, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?",
+                (annee,),
             ).fetchall()
         }
 
@@ -10470,18 +10576,29 @@ def exporter_poids_magasins_gardee(annee):
 
     lignes = []
     magasins_en_attente = []
+    paires_deja_exportees = []
     for _, row in df_mag.iterrows():
         code_vif = str(row.get("Code VIF", "")).strip()
         if not code_vif or code_vif.lower() == "nan":
             continue
-        if code_vif in codes_vif_deja_traites:
-            continue
-        nom_asso = nom_association_par_code_vif.get(code_vif)
-        if nom_asso is None or nom_asso in noms_incomplets:
+        noms_asso_magasin = noms_par_code_vif.get(code_vif, [])
+        if not noms_asso_magasin:
             magasins_en_attente.append(str(row.get("Nom", "")).strip())
             continue
-        poids_kg = saisies.get(code_vif)
-        lignes.append((code_vif, poids_kg))
+        for nom_asso in noms_asso_magasin:
+            paire = (code_vif, nom_asso)
+            if paire in paires_deja_traitees:
+                paires_deja_exportees.append(f"{row.get('Nom', '')} ({nom_asso})")
+                continue
+            if nom_asso in noms_incomplets:
+                magasins_en_attente.append(f"{row.get('Nom', '')} ({nom_asso})")
+                continue
+            poids_kg = saisies.get(paire)
+            if poids_kg is None:
+                continue
+            lignes.append((code_vif, poids_kg, nom_asso))
+
+    noms_inclus = {nom_asso for _, _, nom_asso in lignes}
 
     if not lignes:
         if magasins_en_attente:
@@ -10496,7 +10613,7 @@ def exporter_poids_magasins_gardee(annee):
 
     tampon = StringIO()
     ecrivain = csv.writer(tampon, delimiter=";")
-    for code_vif, poids_kg in lignes:
+    for code_vif, poids_kg, _ in lignes:
         ecrivain.writerow([
             CAGETTES_EXPORT_SOCIETE,
             CAGETTES_EXPORT_ETAB,
@@ -10511,19 +10628,14 @@ def exporter_poids_magasins_gardee(annee):
             CAGETTES_EXPORT_ORIGINE,
         ])
 
-    noms_inclus = {
-        nom_association_par_code_vif[code_vif]
-        for code_vif, _ in lignes
-        if code_vif in nom_association_par_code_vif
-    }
     for nom in noms_inclus:
         _marquer_suivi_gardee(annee, nom, "poids_exporte", True, current_user.email)
 
     write_log(
-        f"📤 Export CSV poids magasins gardée {annee} ({len(lignes)} magasin(s), "
+        f"📤 Export CSV poids magasins gardée {annee} ({len(lignes)} réception(s), "
         f"{len(noms_inclus)} association(s) marquée(s) « Poids exporté », "
-        f"{len(codes_vif_deja_traites)} magasin(s) déjà exclu(s), "
-        f"{len(magasins_en_attente)} magasin(s) en attente de saisie) par {current_user.email}"
+        f"{len(paires_deja_exportees)} paire(s) magasin/association déjà exclue(s), "
+        f"{len(magasins_en_attente)} en attente de saisie) par {current_user.email}"
     )
 
     return Response(
@@ -10579,6 +10691,7 @@ def quantites_produits(annee):
 
     total_transfere = sum(v or 0 for v in saisies.values())
     with get_db_connection() as conn:
+        _ensure_table_poids_magasins_gardee(conn)
         total_stock_gardee = conn.execute(
             "SELECT COALESCE(SUM(poids_kg), 0) FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
         ).fetchone()[0]
@@ -10622,19 +10735,25 @@ def _lignes_transferts_vif(annee):
     transférer dans VIF (sortie du stock « collecte gardée » 5010010,
     entrée sur l'article) — associations déjà cochées « Transferts
     exportés » exclues (déjà transférées lors d'un précédent export, cf.
-    _noms_associations_gardee_a_exclure), ET
+    _noms_associations_gardee_avec_champ), ET
     associations dont la saisie n'est pas complète exclues aussi (mêmes
-    magasins ET produits que le BL VIF, cf. _noms_associations_completes)
-    — pour ne porter que sur les associations qui ont vraiment fini de
-    répondre, et pouvoir relancer cet export plusieurs fois sans redoubler
-    un transfert déjà fait (demande utilisateur 2026-11-23). Partagé par
-    l'affichage écran et l'export CSV TRANCOG."""
-    noms_traites = _noms_associations_gardee_a_exclure(annee, "transferts_exportes")
+    magasins ET produits que le BL VIF, cf. _noms_associations_completes),
+    ET associations pas encore cochées « Poids exporté » exclues aussi —
+    les 3 CSV (poids par magasin / transferts / BL) doivent être générés
+    dans cet ordre, une association ne passe à cet export que si l'export
+    poids par magasin a déjà été fait pour elle (demande utilisateur
+    2026-11-23) — pour ne porter que sur les associations qui ont vraiment
+    fini de répondre, et pouvoir relancer cet export plusieurs fois sans
+    redoubler un transfert déjà fait. Partagé par l'affichage écran et
+    l'export CSV TRANCOG."""
+    noms_traites = _noms_associations_gardee_avec_champ(annee, "transferts_exportes")
     noms_completes = _noms_associations_completes(annee)
+    noms_poids_exporte = _noms_associations_gardee_avec_champ(annee, "poids_exporte")
+    noms_eligibles = noms_completes & noms_poids_exporte
     with get_db_connection() as conn:
         placeholders_exclus = ",".join("?" * len(noms_traites))
         exclusion_sql = f"AND q.association NOT IN ({placeholders_exclus})" if noms_traites else ""
-        placeholders_completes = ",".join("?" * len(noms_completes))
+        placeholders_completes = ",".join("?" * len(noms_eligibles))
         return [dict(r) for r in conn.execute(f"""
             SELECT q.code_produit AS article, a.libelle, SUM(q.poids_kg) AS total_kg
             FROM collecte_quantites_produits q
@@ -10643,7 +10762,7 @@ def _lignes_transferts_vif(annee):
             AND q.association IN ({placeholders_completes})
             GROUP BY q.code_produit HAVING SUM(q.poids_kg) > 0
             ORDER BY q.code_produit
-        """, (annee, *noms_traites, *noms_completes)).fetchall()]
+        """, (annee, *noms_traites, *noms_eligibles)).fetchall()]
 
 
 @collecte_bp.route("/collecte/<int:annee>/quantites-produits/transferts")
@@ -10715,15 +10834,18 @@ def quantites_produits_transferts_export_trancog(annee):
         for l in lignes
     ) + "\r\n"
 
-    noms_exclus = _noms_associations_gardee_a_exclure(annee, "transferts_exportes")
+    noms_exclus = _noms_associations_gardee_avec_champ(annee, "transferts_exportes")
     noms_completes = _noms_associations_completes(annee)
+    noms_poids_exporte = _noms_associations_gardee_avec_champ(annee, "poids_exporte")
     with get_db_connection() as conn:
         noms_inclus = {
             r["association"] for r in conn.execute(
                 "SELECT DISTINCT association FROM collecte_quantites_produits "
                 "WHERE annee = ? AND poids_kg > 0", (annee,)
             ).fetchall()
-            if r["association"] not in noms_exclus and r["association"] in noms_completes
+            if r["association"] not in noms_exclus
+            and r["association"] in noms_completes
+            and r["association"] in noms_poids_exporte
         }
     for nom in noms_inclus:
         _marquer_suivi_gardee(annee, nom, "transferts_exportes", True, current_user.email)
@@ -10751,25 +10873,30 @@ def quantites_produits_bl_vif(annee):
     précédent BL) ; celles incluses dans CE BL sont
     cochées « BL généré » automatiquement une fois le BL généré, pour ne
     pas les réinclure si le BL est relancé plus tard pour les associations
-    qui répondent en retard (demande utilisateur 2026-11-16, indépendant
-    des 2 autres exports VIF depuis le 2026-11-23). Également exclues : les
-    associations dont la saisie n'est pas complète (pas le badge vert
-    « X/X complet », cf. _noms_associations_completes) — jamais de BL sur
-    une saisie partielle (demande utilisateur 2026-11-17)."""
+    qui répondent en retard (demande utilisateur 2026-11-16). Également
+    exclues : les associations dont la saisie n'est pas complète (pas le
+    badge vert « X/X complet », cf. _noms_associations_completes) — jamais
+    de BL sur une saisie partielle (demande utilisateur 2026-11-17) — ET
+    les associations pas encore cochées « Transferts exportés » : les 3 CSV
+    (poids par magasin / transferts / BL) doivent être générés dans cet
+    ordre, le BL ne se génère pour une association que si son transfert
+    VIF a déjà été fait (demande utilisateur 2026-11-23)."""
     df_mag = _lire_magasins_gardes(annee)
     df_groupes = _lire_groupes(annee)
     if df_mag.empty:
         flash(f"⛔ Liste des magasins gardés {annee} indisponible", "danger")
         return redirect(url_for("collecte.quantites_produits", annee=annee))
     associations, _ = _construire_associations(df_mag, df_groupes)
-    noms_traites_avant = _noms_associations_gardee_a_exclure(annee, "bl_genere")
+    noms_traites_avant = _noms_associations_gardee_avec_champ(annee, "bl_genere")
     noms_completes = _noms_associations_completes(annee)
-    noms_incomplets_exclus = {
+    noms_transferts_exportes = _noms_associations_gardee_avec_champ(annee, "transferts_exportes")
+    noms_eligibles = noms_completes & noms_transferts_exportes
+    noms_pas_encore_eligibles = {
         a["nom"] for a in associations
-        if a["nom"] not in noms_traites_avant and a["nom"] not in noms_completes
+        if a["nom"] not in noms_traites_avant and a["nom"] not in noms_eligibles
     }
     noms = sorted(
-        {a["nom"] for a in associations if a["nom"] not in noms_traites_avant and a["nom"] in noms_completes},
+        {a["nom"] for a in associations if a["nom"] not in noms_traites_avant and a["nom"] in noms_eligibles},
         key=str.lower,
     )
     index_code_vif = _table_code_vif_associations()
@@ -10826,8 +10953,8 @@ def quantites_produits_bl_vif(annee):
 
     write_log(
         f"📤 BL VIF collecte gardée {annee} ({len(lignes)} ligne(s), {len(noms_inclus)} association(s) "
-        f"cochée(s) « BL généré », {len(noms_incomplets_exclus)} association(s) incomplète(s) exclue(s)) "
-        f"par {current_user.email}"
+        f"cochée(s) « BL généré », {len(noms_pas_encore_eligibles)} association(s) incomplète(s) ou "
+        f"pas encore exportée(s) (transferts) exclue(s)) par {current_user.email}"
     )
     return Response(
         contenu, mimetype="text/csv",
@@ -11466,6 +11593,7 @@ def _calculer_tonnage_basilic(annee):
                 resultats[code_vif] = resultats.get(code_vif, 0.0) + total * poids_cagette
 
     with get_db_connection() as conn:
+        _ensure_table_poids_magasins_gardee(conn)
         for r in conn.execute(
             "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
         ).fetchall():
@@ -12609,6 +12737,7 @@ def saisie_association(annee, token):
             # l'association ait à taper un 0 sur chaque produit qu'elle n'a
             # pas (demande utilisateur 2026-11-23).
             with get_db_connection() as conn:
+                _ensure_table_poids_magasins_gardee(conn)
                 codes_magasins = [_vif_fmt(m.get("Code VIF")) for m in association["magasins"]]
                 poids_magasins_actuels = {}
                 if codes_magasins:
@@ -12616,8 +12745,8 @@ def saisie_association(annee, token):
                     poids_magasins_actuels = {
                         r["code_vif"]: r["poids_kg"] for r in conn.execute(
                             f"SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee "
-                            f"WHERE annee = ? AND code_vif IN ({marque})",
-                            (annee, *codes_magasins)
+                            f"WHERE annee = ? AND nom_association = ? AND code_vif IN ({marque})",
+                            (annee, nom_association, *codes_magasins)
                         ).fetchall()
                     }
                 magasins_manquants_termine = [
@@ -12642,6 +12771,7 @@ def saisie_association(annee, token):
                 conn.commit()
         else:
             with get_db_connection() as conn:
+                _ensure_table_poids_magasins_gardee(conn)
                 for magasin in association["magasins"]:
                     code_vif = _vif_fmt(magasin.get("Code VIF"))
                     brut = request.form.get(f"poids_magasin_{code_vif}", "").strip().replace(",", ".")
@@ -12650,11 +12780,11 @@ def saisie_association(annee, token):
                         continue
                     une_saisie = True
                     conn.execute("""
-                        INSERT INTO collecte_poids_magasins_gardee (annee, code_vif, poids_kg, saisi_le, saisi_par)
-                        VALUES (?, ?, ?, ?, ?)
-                        ON CONFLICT(annee, code_vif)
+                        INSERT INTO collecte_poids_magasins_gardee (annee, code_vif, nom_association, poids_kg, saisi_le, saisi_par)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(annee, code_vif, nom_association)
                         DO UPDATE SET poids_kg = excluded.poids_kg, saisi_le = excluded.saisi_le, saisi_par = excluded.saisi_par
-                    """, (annee, code_vif, poids_kg, maintenant, f"association:{nom_association}"))
+                    """, (annee, code_vif, nom_association, poids_kg, maintenant, f"association:{nom_association}"))
                 for produit in produits:
                     brut = request.form.get(f"poids_produit_{produit['code']}", "").strip().replace(",", ".")
                     poids_kg = _poids_valide_ou_ignore(brut, produit.get("libelle", produit["code"]), champs_invalides)
@@ -12693,10 +12823,12 @@ def saisie_association(annee, token):
         return redirect(url_for("collecte.saisie_association", annee=annee, token=token))
 
     with get_db_connection() as conn:
+        _ensure_table_poids_magasins_gardee(conn)
         poids_magasins = {
             r["code_vif"]: r["poids_kg"]
             for r in conn.execute(
-                "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
+                "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ? AND nom_association = ?",
+                (annee, nom_association),
             ).fetchall()
         }
         poids_produits = {
@@ -12795,14 +12927,15 @@ def saisie_association_enregistrer_champ(annee, token):
     maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     saisi_par = f"association:{nom_association}"
     with get_db_connection() as conn:
+        _ensure_table_poids_magasins_gardee(conn)
         if type_champ == "magasin":
             code_vif = _vif_fmt(code)
             conn.execute("""
-                INSERT INTO collecte_poids_magasins_gardee (annee, code_vif, poids_kg, saisi_le, saisi_par)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(annee, code_vif)
+                INSERT INTO collecte_poids_magasins_gardee (annee, code_vif, nom_association, poids_kg, saisi_le, saisi_par)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(annee, code_vif, nom_association)
                 DO UPDATE SET poids_kg = excluded.poids_kg, saisi_le = excluded.saisi_le, saisi_par = excluded.saisi_par
-            """, (annee, code_vif, poids_kg, maintenant, saisi_par))
+            """, (annee, code_vif, nom_association, poids_kg, maintenant, saisi_par))
         else:
             conn.execute("""
                 INSERT INTO collecte_quantites_produits (annee, association, code_produit, poids_kg, saisi_le, saisi_par)
@@ -12880,6 +13013,7 @@ def gardee_saisie():
         champs_invalides = []
         maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with get_db_connection() as conn:
+            _ensure_table_poids_magasins_gardee(conn)
             for magasin in association["magasins"]:
                 code_vif = _vif_fmt(magasin.get("Code VIF"))
                 brut = request.form.get(f"poids_magasin_{code_vif}", "").strip().replace(",", ".")
@@ -12887,11 +13021,11 @@ def gardee_saisie():
                 if poids_kg == "IGNORER":
                     continue
                 conn.execute("""
-                    INSERT INTO collecte_poids_magasins_gardee (annee, code_vif, poids_kg, saisi_le, saisi_par)
-                    VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT(annee, code_vif)
+                    INSERT INTO collecte_poids_magasins_gardee (annee, code_vif, nom_association, poids_kg, saisi_le, saisi_par)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(annee, code_vif, nom_association)
                     DO UPDATE SET poids_kg = excluded.poids_kg, saisi_le = excluded.saisi_le, saisi_par = excluded.saisi_par
-                """, (annee, code_vif, poids_kg, maintenant, current_user.email))
+                """, (annee, code_vif, nom_association, poids_kg, maintenant, current_user.email))
             for produit in produits:
                 brut = request.form.get(f"poids_produit_{produit['code']}", "").strip().replace(",", ".")
                 poids_kg = _poids_valide_ou_ignore(brut, produit.get("libelle", produit["code"]), champs_invalides)
@@ -12921,11 +13055,13 @@ def gardee_saisie():
 
     with get_db_connection() as conn:
         _ensure_table_detection_pdf_association(conn)
+        _ensure_table_poids_magasins_gardee(conn)
         conn.commit()
         poids_magasins = {
             r["code_vif"]: r["poids_kg"]
             for r in conn.execute(
-                "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
+                "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ? AND nom_association = ?",
+                (annee, nom_association),
             ).fetchall()
         }
         poids_produits = {
@@ -13026,14 +13162,15 @@ def gardee_saisie_enregistrer_champ():
 
     maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
+        _ensure_table_poids_magasins_gardee(conn)
         if type_champ == "magasin":
             code_vif = _vif_fmt(code)
             conn.execute("""
-                INSERT INTO collecte_poids_magasins_gardee (annee, code_vif, poids_kg, saisi_le, saisi_par)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(annee, code_vif)
+                INSERT INTO collecte_poids_magasins_gardee (annee, code_vif, nom_association, poids_kg, saisi_le, saisi_par)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(annee, code_vif, nom_association)
                 DO UPDATE SET poids_kg = excluded.poids_kg, saisi_le = excluded.saisi_le, saisi_par = excluded.saisi_par
-            """, (annee, code_vif, poids_kg, maintenant, current_user.email))
+            """, (annee, code_vif, nom_association, poids_kg, maintenant, current_user.email))
         else:
             conn.execute("""
                 INSERT INTO collecte_quantites_produits (annee, association, code_produit, poids_kg, saisi_le, saisi_par)
@@ -13496,30 +13633,32 @@ def _associations_gardee_enrichies(annee):
     return associations
 
 
-def _associations_ayant_repondu_en_ligne(annee, associations):
+def _associations_ayant_repondu_en_ligne(annee):
     """Noms des associations ayant saisi au moins un champ (poids magasin ou
     quantité produit) via le formulaire public saisie_association (lien
     envoyé par mail, sans compte) plutôt que par saisie interne — ces
     saisies sont enregistrées avec saisi_par = "association:<nom>" (cf.
     saisie_association, saisie_association_enregistrer_champ), contre
-    l'adresse email du compte connecté pour une saisie interne."""
+    l'adresse email du compte connecté pour une saisie interne. nom_association
+    identifie directement l'association sur collecte_poids_magasins_gardee
+    depuis que sa clé inclut cette colonne (cf.
+    _ensure_table_poids_magasins_gardee) — plus besoin de retrouver
+    l'association par code_vif, ce qui aurait pu attribuer à tort une saisie
+    en ligne à une association qui partage le même magasin."""
     with get_db_connection() as conn:
-        codes_vif_en_ligne = {
-            r["code_vif"] for r in conn.execute(
-                "SELECT DISTINCT code_vif FROM collecte_poids_magasins_gardee "
+        _ensure_table_poids_magasins_gardee(conn)
+        noms = {
+            r["nom_association"] for r in conn.execute(
+                "SELECT DISTINCT nom_association FROM collecte_poids_magasins_gardee "
                 "WHERE annee = ? AND saisi_par LIKE 'association:%'", (annee,)
             ).fetchall()
         }
-        noms = {
+        noms |= {
             r["association"] for r in conn.execute(
                 "SELECT DISTINCT association FROM collecte_quantites_produits "
                 "WHERE annee = ? AND saisi_par LIKE 'association:%'", (annee,)
             ).fetchall()
         }
-    for asso in associations:
-        codes_asso = {_vif_fmt(m.get("Code VIF")) for m in asso["magasins"]}
-        if codes_asso & codes_vif_en_ligne:
-            noms.add(asso["nom"])
     return noms
 
 
@@ -13545,12 +13684,12 @@ def _associations_gardee_avec_suivi(annee):
     suivi = _lire_suivi_gardee(annee)
     produits = _lire_produits_modele()
     with get_db_connection() as conn:
-        poids_magasins = {
-            r["code_vif"]: r["poids_kg"]
-            for r in conn.execute(
-                "SELECT code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
-            ).fetchall()
-        }
+        _ensure_table_poids_magasins_gardee(conn)
+        poids_magasins = {}
+        for r in conn.execute(
+            "SELECT nom_association, code_vif, poids_kg FROM collecte_poids_magasins_gardee WHERE annee = ?", (annee,)
+        ).fetchall():
+            poids_magasins.setdefault(r["nom_association"], {})[r["code_vif"]] = r["poids_kg"]
         poids_produits = {}
         for r in conn.execute(
             "SELECT association, code_produit, poids_kg FROM collecte_quantites_produits WHERE annee = ?", (annee,)
@@ -13558,7 +13697,7 @@ def _associations_gardee_avec_suivi(annee):
             poids_produits.setdefault(r["association"], {})[r["code_produit"]] = r["poids_kg"]
     statuts = _statuts_envois_mail_collecte(annee, "gardee_envoi")
     totaux_n1 = _totaux_gardee_annee_precedente(annee)
-    repondu_en_ligne = _associations_ayant_repondu_en_ligne(annee, associations)
+    repondu_en_ligne = _associations_ayant_repondu_en_ligne(annee)
     verrou = _resultat_gardee_verrouille(annee)
     for asso in associations:
         asso["suivi"] = suivi.get(asso["nom"], {
@@ -13584,9 +13723,9 @@ def _associations_gardee_avec_suivi(annee):
         # "quantités par produit" n'en est qu'une répartition détaillée,
         # pas une 2e source à additionner — demande utilisateur 2026-11-10).
         asso["poids_total"] = sum(
-            poids_magasins[_vif_fmt(m.get("Code VIF"))]
+            poids_magasins.get(asso["nom"], {})[_vif_fmt(m.get("Code VIF"))]
             for m in asso["magasins"]
-            if poids_magasins.get(_vif_fmt(m.get("Code VIF"))) is not None
+            if poids_magasins.get(asso["nom"], {}).get(_vif_fmt(m.get("Code VIF"))) is not None
         )
         asso["poids_total_n1"] = _total_gardee_annee_precedente_association(
             totaux_n1, asso["nom"], asso.get("code_vif")

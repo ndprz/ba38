@@ -1096,3 +1096,72 @@ def annuler_par_inverse(engagement_id):
 
     flash(f"✅ Engagement inverse n°{nid} créé (à encaisser puis à comptabiliser).", "success")
     return redirect(url_for("engagements.detail_engagement", engagement_id=nid))
+
+
+
+# ============================================================
+# CORRECTION DU N° D'ECRITURE EBP (erreur de saisie du comptable)
+# ============================================================
+
+@engagements_bp.route(
+    "/engagements/<int:engagement_id>/corriger_numero_ebp",
+    methods=["POST"]
+)
+@login_required
+@require_access("engagements", "ecriture")
+def corriger_numero_ebp(engagement_id):
+
+    nouveau = request.form.get("numero_ecriture_ebp", "").strip()
+    motif = request.form.get("motif", "").strip()
+    confirmer_doublon = request.form.get("confirmer_doublon") == "1"
+
+    retour = redirect(url_for("engagements.detail_engagement",
+                              engagement_id=engagement_id))
+
+    if not nouveau or not motif:
+        flash("⚠️ Le nouveau numéro et le motif sont obligatoires.", "warning")
+        return retour
+
+    with sqlite3.connect(get_db_path()) as conn:
+        conn.row_factory = sqlite3.Row
+
+        e = conn.execute("SELECT statut, numero_ecriture_ebp FROM engagements "
+                         "WHERE id = ?", (engagement_id,)).fetchone()
+        if not e:
+            abort(404)
+        if e["statut"] not in ("comptabilise", "termine"):
+            flash("⚠️ Seul un engagement comptabilisé ou terminé peut être corrigé ici.",
+                  "warning")
+            return retour
+
+        ancien = (e["numero_ecriture_ebp"] or "").strip()
+        if nouveau == ancien:
+            flash("ℹ️ Le numéro saisi est identique à l'actuel : rien à corriger.", "info")
+            return retour
+
+        doublons = conn.execute(
+            "SELECT id FROM engagements WHERE numero_ecriture_ebp = ? AND id != ?",
+            (nouveau, engagement_id)).fetchall()
+        if doublons:
+            numeros = ", ".join(f"#{d['id']}" for d in doublons)
+            flash(f"⚠️ Le numéro d'écriture EBP « {nouveau} » est déjà utilisé par "
+                  f"l'engagement {numeros}. Un numéro peut couvrir plusieurs "
+                  f"engagements : si c'est voulu, resaisissez-le avec la case "
+                  f"de confirmation.", "warning")
+            if not confirmer_doublon:
+                return retour
+
+        conn.execute("UPDATE engagements SET numero_ecriture_ebp = ? WHERE id = ?",
+                     (nouveau, engagement_id))
+        conn.execute("""INSERT INTO engagements_workflow
+            (engagement_id, action, ancien_statut, nouveau_statut,
+             commentaire, user_id, user_email) VALUES (?,?,?,?,?,?,?)""",
+            (engagement_id, "correction_numero_ebp", e["statut"], e["statut"],
+             f"N° d'écriture EBP corrigé : {ancien} → {nouveau} — motif : {motif}",
+             current_user.id, current_user.email))
+        conn.commit()
+        write_log(f"[ENGAGEMENTS] Engagement #{engagement_id} : n° EBP "
+                  f"corrigé {ancien} -> {nouveau}")
+
+    flash(f"✅ N° d'écriture EBP corrigé : {ancien} → {nouveau}.", "success")
+    return retour

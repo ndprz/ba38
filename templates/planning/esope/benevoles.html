@@ -19,7 +19,7 @@
 {% set actif = 'benevoles' %}{% include "planning/esope/_nav.html" %}
 
 <div class="d-flex flex-wrap gap-3 align-items-center mb-2">
-  <input type="search" id="filtre" class="form-control" style="max-width:280px" placeholder="🔍 Rechercher un nom…" oninput="filtrer()">
+  <input type="search" id="filtre" autofocus class="form-control" style="max-width:280px" placeholder="🔍 Rechercher un nom…" oninput="filtrer()">
   <span class="small text-muted">{{ benevoles|length }} bénévoles dont le champ « esope » vaut oui dans leur fiche.
     {% if peut_ecrire %}Chaque case est enregistrée dès qu'on la coche.{% endif %}
     Pour ajouter un bénévole à l'ESOPE : fiche bénévole, champ « esope » = oui.</span>
@@ -42,7 +42,7 @@
   <tbody>
   {% for b in benevoles %}
     <tr data-nom="{{ b.libelle|lower }}">
-      <td class="nom"><a href="{{ url_for('benevoles.update_benevole', benevole_id=b.id) }}" title="{{ b.telephone_portable or '' }} {{ b.email or '' }}">{{ b.libelle }}</a></td>
+      <td class="nom"><a href="{{ url_for('benevoles.update_benevole', benevole_id=b.id) }}" title="{{ b.telephone_portable or '' }} {{ b.email or '' }}">{{ b.libelle }}</a> <a href="{{ url_for('esope.benevole_planning', benevole_id=b.id) }}" title="Ses créneaux du mois et son historique" class="text-decoration-none">📅</a></td>
       {% for f in fonctions %}
         <td><input type="checkbox" class="form-check-input" {{ 'checked' if f.id in b.fonctions }} {{ 'disabled' if not peut_ecrire }}
                    onchange="maj(this, {benevole_id: {{ b.id }}, champ: 'fonction', fonction_id: {{ f.id }}, valeur: this.checked})"></td>
@@ -82,9 +82,11 @@ async function maj(el, donnees) {
     alert("❌ Non enregistré : " + e.message);
   }
 }
+const norm = t => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const trouve = (nom, q) => norm(q).split(/\s+/).filter(Boolean).every(m => norm(nom).includes(m));
 function filtrer() {
-  const q = document.getElementById("filtre").value.trim().toLowerCase();
-  document.querySelectorAll("tbody tr[data-nom]").forEach(tr => { tr.style.display = !q || tr.dataset.nom.includes(q) ? "" : "none"; });
+  const q = document.getElementById("filtre").value;
+  document.querySelectorAll("tbody tr[data-nom]").forEach(tr => { tr.style.display = trouve(tr.dataset.nom, q) ? "" : "none"; });
 }
 </script>
 {% endblock %}

@@ -213,22 +213,22 @@
     placeholder: 'Aucune ligne',
     // largeurs de colonnes ajustables à la souris et mémorisées (par navigateur), d'une date / page à l'autre
     persistence: {columns: ['width']},
-    persistenceID: 'ba38_planning_menus_largeurs',
+    persistenceID: 'ba38_planning_menus_largeurs_v2',
     columnDefaults: {tooltip: true, vertAlign: 'middle'},
     columns: [
-      ext({title: 'Code VIF', field: 'code_vif', width: 115, sorter: triTexte, formatter: vide}),
-      ext({title: 'Association', field: 'nom', width: 260, sorter: triTexte, formatter: function (c) { return '<strong>' + esc(c.getValue()) + '</strong>'; }}),
-      ext({title: 'Menu', field: 'menu', width: 130, sorter: triTexte,
+      ext({title: 'Code VIF', field: 'code_vif', width: 95, sorter: triTexte, formatter: vide}),
+      ext({title: 'Association', field: 'nom', width: 240, sorter: triTexte, formatter: function (c) { return '<strong>' + esc(c.getValue()) + '</strong>'; }}),
+      ext({title: 'Menu', field: 'menu', width: 110, sorter: triTexte,
         formatter: function (c) { var d = c.getData(); return d.menu ? '<span class="badge-menu ' + (d.type_menu === 'frais' ? 'badge-frais' : 'badge-sec') + '">' + esc(d.menu) + '</span>' : '—'; }}),
-      {title: 'Type', field: 'type_menu', width: 70, formatter: function (c) { var v = c.getValue(); return v === 'sec' ? 'Sec' : (v === 'frais' ? 'Frais' : '—'); },
+      {title: 'Type', field: 'type_menu', width: 62, formatter: function (c) { var v = c.getValue(); return v === 'sec' ? 'Sec' : (v === 'frais' ? 'Frais' : '—'); },
         headerFilter: 'list', headerFilterParams: {values: {'': 'Tous', sec: 'Sec', frais: 'Frais'}}, headerFilterFunc: function (h, v) { return !h || h === v; }},
-      ext({title: 'Jours', field: 'jours', width: 160, formatter: vide}),
-      {title: 'Heure', field: 'heure', width: 80, formatter: vide},
-      {title: 'Empl.', field: 'emplacement', width: 100, formatter: vide},
-      {title: 'Fréquence', field: 'frequence', width: 140, formatter: vide},
-      {title: 'Bénéf.', field: 'nbre_beneficiaires', width: 75, hozAlign: 'right', formatter: vide},
-      {title: 'Besoins particuliers', field: 'besoins_particuliers', width: 450, formatter: vide},
-      {title: 'Planning', field: 'planification', width: 90, hozAlign: 'center', headerSort: false, tooltip: false,
+      ext({title: 'Jours', field: 'jours', width: 110, formatter: vide}),
+      {title: 'Heure', field: 'heure', width: 62, formatter: vide},
+      {title: 'Empl.', field: 'emplacement', width: 62, formatter: vide},
+      {title: 'Fréquence', field: 'frequence', width: 125, formatter: vide},
+      {title: 'Bénéf.', field: 'nbre_beneficiaires', width: 58, hozAlign: 'right', formatter: vide},
+      {title: 'Besoins particuliers', field: 'besoins_particuliers', width: 260, formatter: vide},
+      {title: 'Planning', field: 'planification', width: 80, hozAlign: 'center', headerSort: false, tooltip: false,
         headerTooltip: "Cliquer sur une case pour exclure / remettre l'association au planning",
         formatter: function (c) {
           var d = c.getData();
@@ -248,11 +248,11 @@
             });
           });
         }},
-      {title: 'Fiche', width: 90, hozAlign: 'center', headerSort: false, tooltip: false,
+      {title: 'Fiche', width: 70, hozAlign: 'center', headerSort: false, tooltip: false,
         headerTooltip: "Fiche logistique partenaire (PDF) de l'association",
         formatter: function () { return '<button class="btn btn-outline-primary btn-sm py-0">📄 Fiche</button>'; },
         cellClick: function (e, c) { ouvrirFiche(c.getData()); }},
-      {title: 'Exceptions', width: 120, hozAlign: 'center', headerSort: false, tooltip: false,
+      {title: 'Exceptions', width: 100, hozAlign: 'center', headerSort: false, tooltip: false,
         headerTooltip: "Articles du menu exclus ou ajoutés pour cette association",
         formatter: function (c) {
           var d = c.getData();

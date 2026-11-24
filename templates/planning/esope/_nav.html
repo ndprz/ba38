@@ -1,5 +1,11 @@
 {# Barre de boutons commune au module Planning ESOPE. Variable : actif #}
 {% from "macros/buttons.html" import action_button, action_buttons %}
+{# Le CSS du site (Bootstrap 4) ne connaît pas gap-* ni ms-auto, utilisés dans les barres d'outils ESOPE #}
+<style>
+  .gap-1 { gap: .4rem; }
+  .gap-2 { gap: .75rem; }
+  .ms-auto { margin-left: auto !important; }
+</style>
 {% call action_buttons() %}
     {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAideEsope')).show()", color="outline-info") }}
     {% if actif != 'semaine' %}{{ action_button("📅 Planning", href=url_for('esope.semaine'), color="outline-primary") }}{% endif %}
