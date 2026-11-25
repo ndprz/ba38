@@ -45,9 +45,33 @@
 
     <div class="d-flex flex-wrap gap-2 mb-3">
         {{ action_button("📥 Export CSV VIF (poids par magasin)", href=url_for('collecte.exporter_poids_magasins_gardee', annee=annee), color="outline-secondary") }}
-        {{ action_button("📄 Générer BL VIF", href=url_for('collecte.quantites_produits_bl_vif', annee=annee), color="outline-secondary") }}
         {{ action_button("📋 Transferts à saisir dans VIF", href=url_for('collecte.quantites_produits_transferts', annee=annee), color="outline-secondary") }}
+        {{ action_button("📄 Générer BL VIF", href=url_for('collecte.quantites_produits_bl_vif', annee=annee), color="outline-secondary") }}
     </div>
+
+    {% set libelles_etapes = {
+        "poids_exporte": "poids par magasin",
+        "transferts_exportes": "transferts VIF",
+        "bl_genere": "BL VIF",
+    } %}
+    {% for etape, noms_attente in en_attente_vif.items() %}
+    {% if noms_attente %}
+    <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2 mb-2">
+        <div>
+            ⏳ CSV « {{ libelles_etapes[etape] }} » généré pour {{ noms_attente|length }} association(s)
+            ({{ noms_attente|join(', ') }}) — <strong>pas encore confirmé importé dans VIF</strong>,
+            l'étape suivante reste bloquée pour elles tant que ce n'est pas confirmé.
+        </div>
+        <form method="post" action="{{ url_for('collecte.confirmer_vif_gardee', annee=annee, etape=etape) }}" class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-success"
+                    onclick="return confirm('Confirmez-vous que ce CSV a bien été importé dans VIF et que tout est OK ?');">
+                ✅ Confirmer l'import VIF OK
+            </button>
+        </form>
+    </div>
+    {% endif %}
+    {% endfor %}
 
     <div class="alert alert-info small">
         <strong>Ordre à suivre :</strong>
@@ -58,6 +82,10 @@
                 associations qui n'ont pas répondu ou pas envoyé leur résultat.</li>
             <li>Saisir (✏️, colonne de droite du tableau 4️⃣) et suivre l'avancement association
                 par association.</li>
+            <li>Générer le CSV VIF (poids par magasin), l'importer dans VIF, puis cliquer
+                « ✅ Confirmer l'import VIF OK » ci-dessus avant de passer aux transferts — même
+                principe entre transferts et BL : chaque étape reste bloquée tant que la
+                précédente n'est pas confirmée réellement importée dans VIF.</li>
         </ol>
     </div>
 
@@ -293,9 +321,9 @@
                     <th>Poids total (kg)</th>
                     <th title="Repère : total {{ annee_precedente }} (fichier associationgardantproduits{{ annee_precedente }}.xlsx)">Poids {{ annee_precedente }} (kg)</th>
                     <th>Répondu</th><th>Résultat envoyé</th><th>Saisie en ligne</th>
-                    <th title="Cochée automatiquement par l'export CSV VIF (poids par magasin)">Poids exporté</th>
-                    <th title="Cochée automatiquement par l'export CSV TRANCOG (transferts)">Transferts exportés</th>
-                    <th title="Cochée automatiquement par la génération du BL VIF">BL généré</th>
+                    <th title="Cochée après confirmation de l'import VIF du CSV poids par magasin">Poids exporté</th>
+                    <th title="Cochée après confirmation de l'import VIF du CSV transferts (TRANCOG)">Transferts exportés</th>
+                    <th title="Cochée après confirmation de l'import VIF du BL">BL généré</th>
                     <th>Statut Mailjet</th><th></th>
                 </tr>
             </thead>
@@ -379,11 +407,13 @@
             Les cases « Répondu » et « Résultat envoyé » sont à cocher manuellement après vérification
             (mail reçu, fichier reçu, saisie en ligne consultée, ou VIF/BL faits) — la colonne
             « Saisie en ligne » n'est qu'un indice automatique, elle ne coche jamais rien toute seule.
-            Les 3 cases « Poids exporté », « Transferts exportés » et « BL généré » se cochent automatiquement,
-            indépendamment les unes des autres, dès que l'export correspondant est généré pour cette
-            association — ce qui permet de relancer chaque export séparément, en plusieurs fois, au fil
-            des associations qui répondent, sans jamais redoubler le même tonnage dans VIF. Décochables à
-            la main en cas d'erreur ou pour forcer un nouvel export.
+            Les 3 cases « Poids exporté », « Transferts exportés » et « BL généré » se cochent quand vous
+            cliquez « ✅ Confirmer l'import VIF OK » (bannière ci-dessus) après avoir réellement importé le
+            CSV correspondant dans VIF — pas automatiquement à la simple génération du CSV, pour ne jamais
+            débloquer l'étape suivante sur un fichier généré mais pas (encore) importé. Chaque étape reste
+            relançable séparément, en plusieurs fois, au fil des associations qui répondent, sans jamais
+            redoubler le même tonnage dans VIF. Modifiables à la main ci-dessous en cas d'erreur ou pour
+            forcer un nouvel export.
         </p>
         </div>
         </div>

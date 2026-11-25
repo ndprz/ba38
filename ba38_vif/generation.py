@@ -234,7 +234,13 @@ def generer_bl_collecte_gardee(conn, lignes, date_bl):
     """BL VIF de la collecte gardée (format manuel 17 colonnes, comme
     generer_bl_ramasses) : `lignes` = dicts {code_vif, article, total_kg,
     gratuit, prix_kg}, déjà validés par l'appelant ; `date_bl` = datetime.
-    Lot « COG<article> » (vide si l'article est « non loti »)."""
+    Lot « COLGA<article> » (vide si l'article est « non loti ») --- même
+    lot que celui posé à l'entrée par le transfert TRANCOG
+    (_ligne_trancog_vif dans ba38_collecte/routes.py), pour que le BL
+    VIF consomme bien le même lot que celui créé par ce transfert
+    (demande utilisateur 2026-11-24 ; auparavant « COG<article> », un
+    préfixe différent qui ne correspondait à aucun lot réellement en
+    stock côté VIF)."""
     d = date_bl.strftime("%d/%m/%y")
     ref = f"Collecte gardee {date_bl.strftime('%Y-%m')}"
     out = []
@@ -242,7 +248,7 @@ def generer_bl_collecte_gardee(conn, lignes, date_bl):
         article = (r["article"] or "").strip()
         row = conn.execute("SELECT libelle FROM articles WHERE article = ?", (article,)).fetchone()
         libelle = (row["libelle"] or "").lower() if row else ""
-        lot = "" if "non loti" in libelle else f"COG{article}"
+        lot = "" if "non loti" in libelle else f"COLGA{article}"
         gratuit = bool(r["gratuit"])
         out.append(";".join([
             "01", "38", "01", "38", "NORM", r["code_vif"], ref, ref, d, d,

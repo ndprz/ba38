@@ -1783,7 +1783,12 @@ def edition_tableau_associations():
             if row["type_champ"] == "number"
         ]
 
-        selected_columns = request.values.getlist("columns")
+        # Colonnes virtuelles (calculées, absentes de la table associations)
+        COLONNES_VIRTUELLES = {"date_fin_habilitation_annexe"}
+        selected_columns = [
+            c for c in request.values.getlist("columns")
+            if c.lower() not in COLONNES_VIRTUELLES
+        ]
 
         filtered_ids_raw = request.values.get(
             "filtered_ids",

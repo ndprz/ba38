@@ -80,6 +80,7 @@
         {% if initialisee %}
         <button type="button" id="btn-enregistrer-tout" class="btn btn-primary btn-sm">💾 Enregistrer</button>
         {% endif %}
+        {{ action_button("🧪 Essai vision fiche camion", href=url_for('collecte.essai_vision_fiche_camion', annee=annee), color="outline-secondary") }}
     {% endcall %}
 
     {% if initialisee %}

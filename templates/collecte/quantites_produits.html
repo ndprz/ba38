@@ -60,8 +60,8 @@
 
     {% call action_buttons() %}
         {{ bouton_retour(url_for('collecte.collecte_main', annee=annee)) }}
-        {{ action_button("📄 Générer BL VIF", href=url_for('collecte.quantites_produits_bl_vif', annee=annee), color="outline-primary") }}
         {{ action_button("📋 Transferts à saisir dans VIF", href=url_for('collecte.quantites_produits_transferts', annee=annee), color="outline-primary") }}
+        {{ action_button("📄 Générer BL VIF", href=url_for('collecte.quantites_produits_bl_vif', annee=annee), color="outline-primary") }}
         {{ bouton_ouvrir_confirmation_renforcee("modalRazQuantites", "🗑️ Repartir à zéro") }}
     {% endcall %}
 

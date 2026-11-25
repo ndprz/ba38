@@ -13,14 +13,17 @@
     {% call action_buttons() %}
         {{ bouton_retour(url_for('collecte.collecte_main', annee=annee)) }}
         {{ action_button("📥 Export CSV VIF (poids par magasin)", href=url_for('collecte.exporter_poids_magasins_gardee', annee=annee), color="outline-secondary") }}
-        {{ action_button("📄 Générer BL VIF", href=url_for('collecte.quantites_produits_bl_vif', annee=annee), color="outline-secondary") }}
         {{ action_button("📋 Transferts à saisir dans VIF", href=url_for('collecte.quantites_produits_transferts', annee=annee), color="outline-secondary") }}
+        {{ action_button("📄 Générer BL VIF", href=url_for('collecte.quantites_produits_bl_vif', annee=annee), color="outline-secondary") }}
     {% endcall %}
 
     <p class="text-muted">
         Choisissez l'association pour laquelle saisir le poids par magasin et les quantités par
         produit (une seule page pour les deux) — même tableau que « Envoi aux associations gardant »,
         pour contrôler l'avancement d'un coup d'œil sans quitter la saisie.
+        Une fois un CSV importé dans VIF, confirmez-le depuis
+        <a href="{{ url_for('collecte.gardee_envoi', annee=annee) }}">Envoi associations gardant</a> avant
+        de passer à l'étape suivante.
     </p>
 
     {% if verrou_gardee %}

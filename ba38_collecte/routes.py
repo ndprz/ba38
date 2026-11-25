@@ -7907,6 +7907,437 @@ def _date_fr_courte(iso):
         return None
 
 
+def _dossier_fiches_camion_test(annee):
+    return os.path.join(_dossier_annee(annee), "fiches_camion_test_vision")
+
+
+def _ensure_table_cagettes_test_vision(conn):
+    """Essai (demande utilisateur 2026-11-20) : saisie automatique du nombre
+    de cagettes ramenées par détection vision Claude sur la fiche camion
+    scannée, au lieu de la saisie manuelle actuelle — table purement
+    ADDITIVE et séparée de la vraie collecte_cagettes (même clé
+    (année, code_vif, demi_journee)), aucune écriture jamais dans la vraie
+    table : objectif de pouvoir comparer réel vs détecté avant de décider
+    si ça remplace un jour la saisie manuelle (cf.
+    _detecter_fiche_camion_background, essai_vision_fiche_camion)."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_cagettes_test_vision (
+            annee INTEGER NOT NULL,
+            code_vif TEXT NOT NULL,
+            demi_journee TEXT NOT NULL,
+            nb_cagettes INTEGER,
+            vehicule TEXT,
+            quai TEXT,
+            detecte_le TEXT,
+            detecte_par TEXT,
+            fiche_nom TEXT,
+            PRIMARY KEY (annee, code_vif, demi_journee)
+        )
+    """)
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_cagettes_test_vision)").fetchall()}
+    if "detection_id" not in colonnes:
+        conn.execute("ALTER TABLE collecte_cagettes_test_vision ADD COLUMN detection_id INTEGER")
+    if "page_num" not in colonnes:
+        conn.execute("ALTER TABLE collecte_cagettes_test_vision ADD COLUMN page_num INTEGER")
+
+
+def _ensure_table_detection_fiche_camion(conn):
+    """Détections automatiques (upload d'une fiche camion scannée, remplie
+    à la main) du nombre de cagettes ramenées par magasin/tournée — cf.
+    _ensure_table_cagettes_test_vision (table résultat, jamais la vraie
+    collecte_cagettes)."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_detection_fiche_camion (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            annee INTEGER NOT NULL,
+            statut TEXT NOT NULL DEFAULT 'en_cours',
+            resultat_detecte TEXT,
+            erreur TEXT,
+            lance_le TEXT,
+            lance_par TEXT,
+            pdf_nom TEXT,
+            pages_traitees INTEGER DEFAULT 0,
+            pages_total INTEGER
+        )
+    """)
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collecte_detection_fiche_camion)").fetchall()}
+    if "pages_traitees" not in colonnes:
+        conn.execute("ALTER TABLE collecte_detection_fiche_camion ADD COLUMN pages_traitees INTEGER DEFAULT 0")
+    if "pages_total" not in colonnes:
+        conn.execute("ALTER TABLE collecte_detection_fiche_camion ADD COLUMN pages_total INTEGER")
+
+
+def _prompt_detection_fiche_camion():
+    demi_journees_connues = "\n".join(f"- {dj}" for dj in moteur.DEMI_JOURNEES)
+    return (
+        "Cette page PDF est UNE PAGE d'une « fiche camion » de collecte alimentaire, générée par "
+        "informatique puis remplie à la main par le chauffeur après sa tournée, avant d'être "
+        "scannée (plusieurs fiches, une par véhicule, peuvent être scannées ensemble en un seul "
+        "PDF multi-pages, mais cette page ne porte que sur UN SEUL véhicule). En haut de page : une "
+        "année, une demi-journée (ex. « Vendredi Matin »), un véhicule (code entre parenthèses ou "
+        "en gras, ex. « V001 »), un quai, et une case « Enregistré VIF ».\n\n"
+        "Le corps de la fiche contient un bloc par magasin visité : nom du magasin, adresse, "
+        "horaires, et un CODE VIF imprimé (ex. 02380004) — ce code imprimé est fiable, utilise-le "
+        "pour identifier le magasin, jamais le nom seul. Pour chaque magasin, 4 colonnes "
+        "« Tournée 1 » à « Tournée 4 » (le même camion peut repasser plusieurs fois au même "
+        "magasin dans la demi-journée) : chacune a une ligne « prendre N » imprimée (nombre de "
+        "caisses vides prévues, à IGNORER) puis une ligne « cagettes ramenées » où le chauffeur "
+        "écrit à la main le nombre de cagettes rapportées après cette tournée. Une colonne séparée "
+        "« Collecté dimanche » peut aussi porter un nombre manuscrit pour ce même magasin (tournée "
+        "du dimanche, reportée sur cette même fiche).\n\n"
+        "Pour chaque case « cagettes ramenées » (ou « Collecté dimanche ») : lis UNIQUEMENT un "
+        "nombre entier s'il y en a un clairement écrit (0 compris — un 0 écrit est une vraie "
+        "valeur, pas une case vide). Si la case est vide, ou si ce qui y est écrit n'est "
+        "manifestement pas un nombre (un mot, un paraphe, une remarque manuscrite), ne mets RIEN "
+        "pour cette tournée (null) plutôt que de deviner — une tournée visiblement non réalisée "
+        "(case « prendre » elle-même vide/non imprimée) n'a de toute façon aucune valeur à lire. "
+        "N'additionne rien toi-même, rends une valeur par tournée séparément.\n\n"
+        "Si cette page n'est PAS une fiche camion (page de garde, page blanche, autre document), "
+        "réponds avec un objet magasins vide et une demi_journee/vehicule vides.\n\n"
+        "La demi-journée en haut de page doit être rendue EXACTEMENT comme l'une de ces valeurs "
+        f"(recopie-la à l'identique, jamais une autre orthographe) :\n{demi_journees_connues}\n\n"
+        "Réponds UNIQUEMENT avec un objet JSON de cette forme exacte, sans aucun texte autour "
+        "(exemple avec 2 magasins) :\n"
+        '{"demi_journee": "Vendredi Matin", "vehicule": "V001", "quai": "P6", '
+        '"magasins": {"02380004": {"tournees": [16, null, null, null], "dimanche": null}, '
+        '"02380273": {"tournees": [0, null, null, null], "dimanche": null}}}'
+    )
+
+
+def _detecter_fiche_camion_une_page(pdf_bytes_page, codes_connus):
+    """Un seul appel API Claude (vision/document) sur UNE page de fiche
+    camion — cf. _detecter_fiche_camion_background pour le découpage
+    page par page d'un scan multi-pages (un scan complet de demi-journée
+    peut porter une vingtaine de véhicules, bien au-delà du budget de
+    réflexion du modèle si on lui envoie tout en un seul appel, cf.
+    incident 2026-11-24 « max_tokens », déjà rencontré sur la fiche
+    association). Lève une exception si l'appel échoue ; retourne
+    toujours un dict (vide si la page n'est pas une fiche camion)."""
+    import base64, json as _json
+    api_key = os.getenv("CLAUDE_API_KEY")
+    if not api_key:
+        raise RuntimeError("CLAUDE_API_KEY absente du .env")
+
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model="claude-sonnet-5",
+        max_tokens=8000,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "document", "source": {
+                    "type": "base64", "media_type": "application/pdf",
+                    "data": base64.b64encode(pdf_bytes_page).decode("ascii"),
+                }},
+                {"type": "text", "text": _prompt_detection_fiche_camion()},
+            ],
+        }],
+    )
+    texte = "".join(bloc.text for bloc in response.content if bloc.type == "text").strip()
+    if not texte:
+        raise RuntimeError(
+            f"Réponse vide du modèle (stop_reason={response.stop_reason!r}) — "
+            "page probablement trop complexe pour le budget de réflexion."
+        )
+    if texte.startswith("```"):
+        texte = texte.strip("`")
+        if texte.lower().startswith("json"):
+            texte = texte[4:]
+    data = _json.loads(texte)
+
+    def _entier_ou_rien(v):
+        try:
+            return int(round(float(v)))
+        except (TypeError, ValueError):
+            return None
+
+    demi_journee = str(data.get("demi_journee") or "").strip()
+    vehicule = str(data.get("vehicule") or "").strip()
+    quai = str(data.get("quai") or "").strip()
+    magasins = {}
+    for code_vif, valeurs in (data.get("magasins") or {}).items():
+        code_vif = str(code_vif).strip()
+        if code_vif not in codes_connus:
+            continue
+        tournees = [_entier_ou_rien(v) for v in (valeurs.get("tournees") or [])]
+        tournees_valides = [v for v in tournees if v is not None]
+        dimanche = _entier_ou_rien(valeurs.get("dimanche"))
+        magasins[code_vif] = {
+            "tournees": tournees,
+            "total_tournees": sum(tournees_valides) if tournees_valides else None,
+            "dimanche": dimanche,
+        }
+    return {"demi_journee": demi_journee, "vehicule": vehicule, "quai": quai, "magasins": magasins}
+
+
+def _detecter_fiche_camion_background(app, detection_id, annee, pdf_bytes, codes_connus):
+    """Découpe le PDF page par page (pypdf) et envoie CHAQUE page séparément
+    à l'API Claude (cf. _detecter_fiche_camion_une_page) — un scan complet
+    de demi-journée contient une page par véhicule (observé : jusqu'à
+    29 pages), largement au-delà de ce qu'un seul appel peut lire sans
+    épuiser son budget de réflexion (cf. _detecter_pdf_association_background,
+    même symptôme stop_reason='max_tokens'). La progression
+    (pages_traitees/pages_total) est mise à jour après chaque page pour que
+    l'écran puisse l'afficher. Une page en échec n'interrompt pas les
+    suivantes : son erreur est juste rapportée en avertissement à la fin.
+    Résultats cumulés (sommés si un même (code_vif, demi_journee) revient
+    sur plusieurs pages — plusieurs véhicules ayant visité le même magasin
+    la même demi-journée) puis écrits directement dans la table d'essai
+    collecte_cagettes_test_vision (jamais la vraie collecte_cagettes) : pas
+    d'étape de validation manuelle supplémentaire, cette table étant déjà,
+    par construction, un essai de comparaison sans aucun risque sur la
+    saisie réelle."""
+    import json as _json
+    from pypdf import PdfReader, PdfWriter
+    import io as _io
+
+    with app.app_context():
+        pages_en_erreur = []
+        try:
+            reader = PdfReader(_io.BytesIO(pdf_bytes))
+            nb_pages = len(reader.pages)
+            with get_db_connection() as conn:
+                conn.execute(
+                    "UPDATE collecte_detection_fiche_camion SET pages_total = ? WHERE id = ?",
+                    (nb_pages, detection_id)
+                )
+                conn.commit()
+
+            # (code_vif, demi_journee) -> accumulateur
+            accumulateur = {}
+            vehicules_par_cle = {}
+            pages_par_cle = {}
+
+            for i in range(nb_pages):
+                try:
+                    writer = PdfWriter()
+                    writer.add_page(reader.pages[i])
+                    tampon = _io.BytesIO()
+                    writer.write(tampon)
+                    resultat_page = _detecter_fiche_camion_une_page(tampon.getvalue(), codes_connus)
+                except Exception as e:
+                    pages_en_erreur.append(f"page {i + 1} : {e}")
+                    resultat_page = None
+
+                if resultat_page:
+                    demi_journee = resultat_page["demi_journee"]
+                    vehicule = resultat_page["vehicule"]
+                    quai = resultat_page["quai"]
+                    if demi_journee and demi_journee not in moteur.DEMI_JOURNEES:
+                        pages_en_erreur.append(f"page {i + 1} : demi-journée non reconnue {demi_journee!r}")
+                    else:
+                        for code_vif, valeurs in resultat_page["magasins"].items():
+                            if valeurs["total_tournees"] is not None and demi_journee:
+                                cle = (code_vif, demi_journee)
+                                accumulateur[cle] = (accumulateur.get(cle) or 0) + valeurs["total_tournees"]
+                                vehicules_par_cle[cle] = vehicule
+                                pages_par_cle[cle] = i + 1
+                            if valeurs["dimanche"] is not None and "Dimanche Matin" in moteur.DEMI_JOURNEES:
+                                cle = (code_vif, "Dimanche Matin")
+                                accumulateur[cle] = (accumulateur.get(cle) or 0) + valeurs["dimanche"]
+                                vehicules_par_cle[cle] = vehicule
+                                pages_par_cle[cle] = i + 1
+
+                with get_db_connection() as conn:
+                    conn.execute(
+                        "UPDATE collecte_detection_fiche_camion SET pages_traitees = ? WHERE id = ?",
+                        (i + 1, detection_id)
+                    )
+                    conn.commit()
+
+            maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with get_db_connection() as conn:
+                _ensure_table_cagettes_test_vision(conn)
+                for (code_vif, demi_journee), total in accumulateur.items():
+                    conn.execute("""
+                        INSERT INTO collecte_cagettes_test_vision
+                            (annee, code_vif, demi_journee, nb_cagettes, vehicule, quai, detecte_le, detecte_par, fiche_nom, detection_id, page_num)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(annee, code_vif, demi_journee) DO UPDATE SET
+                            nb_cagettes = excluded.nb_cagettes, vehicule = excluded.vehicule,
+                            quai = excluded.quai, detecte_le = excluded.detecte_le,
+                            detecte_par = excluded.detecte_par, fiche_nom = excluded.fiche_nom,
+                            detection_id = excluded.detection_id, page_num = excluded.page_num
+                    """, (annee, code_vif, demi_journee, total, vehicules_par_cle.get((code_vif, demi_journee)),
+                          None, maintenant, "detection_vision", f"detection_{detection_id}.pdf",
+                          detection_id, pages_par_cle.get((code_vif, demi_journee))))
+                conn.execute(
+                    "UPDATE collecte_detection_fiche_camion SET statut = 'termine', resultat_detecte = ?, erreur = ? WHERE id = ?",
+                    (
+                        _json.dumps({f"{c}|{dj}": t for (c, dj), t in accumulateur.items()}, ensure_ascii=False),
+                        ("; ".join(pages_en_erreur) if pages_en_erreur else None),
+                        detection_id,
+                    )
+                )
+                conn.commit()
+            write_log(
+                f"🤖 Collecte {annee} : détection fiche camion #{detection_id} terminée "
+                f"({nb_pages} page(s), {len(accumulateur)} ligne(s) magasin/demi-journée"
+                + (f", {len(pages_en_erreur)} page(s) en erreur" if pages_en_erreur else "") + ")"
+            )
+
+        except Exception as e:
+            write_log(f"❌ Collecte {annee} : erreur détection fiche camion #{detection_id} — {e}")
+            with get_db_connection() as conn:
+                conn.execute(
+                    "UPDATE collecte_detection_fiche_camion SET statut = 'erreur', erreur = ? WHERE id = ?",
+                    (str(e), detection_id)
+                )
+                conn.commit()
+
+
+@collecte_bp.route("/collecte/<int:annee>/essai-vision-camion", methods=["GET"])
+@login_required
+@require_access("collecte", "lecture")
+def essai_vision_fiche_camion(annee):
+    """Page d'essai (demande utilisateur 2026-11-20) : upload d'une fiche
+    camion scannée, détection vision Claude du nombre de cagettes ramenées,
+    et tableau de comparaison réel (collecte_cagettes) vs détecté
+    (collecte_cagettes_test_vision) magasin par magasin, pour décider si ça
+    remplace un jour la saisie manuelle. Aucune écriture dans la vraie
+    collecte_cagettes."""
+    with get_db_connection() as conn:
+        _ensure_table_cagettes_test_vision(conn)
+        _ensure_table_detection_fiche_camion(conn)
+        reels = {
+            (r["code_vif"], r["demi_journee"]): r["nb_cagettes"]
+            for r in conn.execute(
+                "SELECT code_vif, demi_journee, nb_cagettes FROM collecte_cagettes WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
+        detectes = {
+            (r["code_vif"], r["demi_journee"]): dict(r)
+            for r in conn.execute(
+                "SELECT * FROM collecte_cagettes_test_vision WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
+        noms_magasins = {
+            r["code_vif"]: r["nom_magasin"] for r in conn.execute(
+                "SELECT DISTINCT code_vif, nom_magasin FROM collecte_cagettes_magasins WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
+        detections = [dict(r) for r in conn.execute(
+            "SELECT * FROM collecte_detection_fiche_camion WHERE annee = ? ORDER BY id DESC LIMIT 10", (annee,)
+        ).fetchall()]
+
+    cles = sorted(set(reels) | set(detectes), key=lambda c: (noms_magasins.get(c[0], c[0]), c[1]))
+    comparaison = []
+    for code_vif, demi_journee in cles:
+        reel = reels.get((code_vif, demi_journee))
+        detecte = detectes.get((code_vif, demi_journee))
+        nb_detecte = detecte["nb_cagettes"] if detecte else None
+        comparaison.append({
+            "code_vif": code_vif,
+            "nom": noms_magasins.get(code_vif, code_vif),
+            "demi_journee": demi_journee,
+            "reel": reel,
+            "detecte": nb_detecte,
+            "ecart": (nb_detecte - reel) if (reel is not None and nb_detecte is not None) else None,
+            "vehicule": detecte["vehicule"] if detecte else None,
+            "detection_id": detecte["detection_id"] if detecte else None,
+            "page_num": detecte["page_num"] if detecte else None,
+        })
+
+    # Mêmes filtres demi-journée/camion que la saisie manuelle (cagettes()),
+    # pour retrouver facilement la ligne d'un magasin précis dans une liste
+    # potentiellement longue (demande utilisateur 2026-11-24).
+    try:
+        magasins_par_camion = _charger_magasins_par_camion(annee)
+    except Exception as erreur:
+        write_log(f"⚠️ Collecte {annee} : filtre camion essai vision camion indisponible ({erreur})")
+        magasins_par_camion = {}
+
+    return render_template(
+        "collecte/essai_vision_fiche_camion.html",
+        annee=annee,
+        comparaison=comparaison,
+        detections=detections,
+        demi_journees=moteur.DEMI_JOURNEES,
+        magasins_par_camion=magasins_par_camion,
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/essai-vision-camion/detecter", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def essai_vision_fiche_camion_detecter(annee):
+    """Upload de la fiche camion scannée (PDF), lance la détection en
+    arrière-plan — cf. _detecter_fiche_camion_background."""
+    fichier = request.files.get("pdf")
+    if not fichier or not fichier.filename:
+        flash("⛔ Aucun fichier fourni", "warning")
+        return redirect(url_for("collecte.essai_vision_fiche_camion", annee=annee))
+    if (fichier.mimetype or "") != "application/pdf":
+        flash("⛔ Format non supporté (PDF attendu)", "warning")
+        return redirect(url_for("collecte.essai_vision_fiche_camion", annee=annee))
+
+    pdf_bytes = fichier.read()
+    if len(pdf_bytes) > 10 * 1024 * 1024:
+        flash("⛔ Fichier trop volumineux (10 Mo max)", "warning")
+        return redirect(url_for("collecte.essai_vision_fiche_camion", annee=annee))
+
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        _ensure_table_detection_fiche_camion(conn)
+        cur = conn.execute("""
+            INSERT INTO collecte_detection_fiche_camion (annee, statut, lance_le, lance_par, pdf_nom)
+            VALUES (?, 'en_cours', ?, ?, ?)
+        """, (annee, maintenant, current_user.email, fichier.filename))
+        detection_id = cur.lastrowid
+        conn.commit()
+
+    dossier = _dossier_fiches_camion_test(annee)
+    os.makedirs(dossier, exist_ok=True)
+    with open(os.path.join(dossier, f"detection_{detection_id}.pdf"), "wb") as f:
+        f.write(pdf_bytes)
+
+    with get_db_connection() as conn:
+        codes_connus = {
+            r["code_vif"] for r in conn.execute(
+                "SELECT DISTINCT code_vif FROM collecte_cagettes_magasins WHERE annee = ?", (annee,)
+            ).fetchall()
+        }
+
+    app_reel = current_app._get_current_object()
+    lancer_tache_fond(
+        target=_detecter_fiche_camion_background,
+        args=(app_reel, detection_id, annee, pdf_bytes, codes_connus),
+        nom="Collecte : detection fiche camion (essai vision)",
+        utilisateur=current_user.email,
+    )
+    write_log(f"🤖 Collecte {annee} : détection fiche camion #{detection_id} lancée par {current_user.email}")
+    flash("🤖 Analyse de la fiche lancée (compter 15 à 30 secondes) — rechargez la page pour voir le résultat", "info")
+    return redirect(url_for("collecte.essai_vision_fiche_camion", annee=annee))
+
+
+@collecte_bp.route("/collecte/<int:annee>/essai-vision-camion/feuille/<int:detection_id>/<int:page_num>")
+@login_required
+@require_access("collecte", "lecture")
+def essai_vision_fiche_camion_feuille(annee, detection_id, page_num):
+    """Ressert UNE SEULE page (celle du véhicule/demi-journée concerné) du
+    PDF uploadé lors de la détection #detection_id, pour comparer
+    visuellement avec le détecté en cas d'écart (demande utilisateur
+    2026-11-24). Le PDF complet reste sur disque sous
+    detection_{detection_id}.pdf (cf. essai_vision_fiche_camion_detecter)."""
+    from pypdf import PdfReader, PdfWriter
+
+    chemin = os.path.join(_dossier_fiches_camion_test(annee), f"detection_{detection_id}.pdf")
+    if not os.path.isfile(chemin):
+        abort(404)
+    reader = PdfReader(chemin)
+    if not (1 <= page_num <= len(reader.pages)):
+        abort(404)
+    writer = PdfWriter()
+    writer.add_page(reader.pages[page_num - 1])
+    tampon = io.BytesIO()
+    writer.write(tampon)
+    tampon.seek(0)
+    return send_file(
+        tampon, mimetype="application/pdf", as_attachment=False,
+        download_name=f"fiche_camion_{annee}_p{page_num}.pdf",
+    )
+
+
 @collecte_bp.route("/collecte/<int:annee>/cagettes_production")
 @login_required
 @require_access("collecte", "lecture")
@@ -9002,6 +9433,77 @@ def _marquer_suivi_gardee(annee, nom_association, champ, valeur, utilisateur):
             DO UPDATE SET {champ} = excluded.{champ}, {champ}_le = excluded.{champ}_le, {champ}_par = excluded.{champ}_par
         """, (annee, nom_association, 1 if valeur else 0, maintenant, utilisateur if valeur else None))
         conn.commit()
+
+
+ETAPES_VIF_GARDEE = ("poids_exporte", "transferts_exportes", "bl_genere")
+
+
+def _ensure_table_gardee_vif_a_confirmer(conn):
+    """CSV générés pour VIF (poids par magasin / transferts TRANCOG / BL)
+    mais pas encore confirmés comme réellement importés dans VIF — avant
+    ce correctif, la case de suivi (poids_exporte / transferts_exportes /
+    bl_genere) se cochait automatiquement dès le CSV généré, ce qui a
+    permis à un BL de se générer pour des associations dont le CSV de
+    réception/transfert avait en réalité été généré en test puis jamais
+    importé dans VIF (incident réel 2026-11-24, stocks VIF négatifs).
+    Désormais le CSV passe par cette file d'attente ; la case ne se coche
+    (et l'étape suivante ne se débloque) qu'après confirmation explicite
+    (cf. confirmer_vif_gardee)."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_gardee_vif_a_confirmer (
+            annee INTEGER NOT NULL,
+            etape TEXT NOT NULL,
+            nom_association TEXT NOT NULL,
+            genere_le TEXT,
+            genere_par TEXT,
+            PRIMARY KEY (annee, etape, nom_association)
+        )
+    """)
+
+
+def _mettre_en_attente_confirmation_vif(annee, etape, nom_association, utilisateur):
+    with get_db_connection() as conn:
+        _ensure_table_gardee_vif_a_confirmer(conn)
+        conn.execute("""
+            INSERT INTO collecte_gardee_vif_a_confirmer (annee, etape, nom_association, genere_le, genere_par)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(annee, etape, nom_association)
+            DO UPDATE SET genere_le = excluded.genere_le, genere_par = excluded.genere_par
+        """, (annee, etape, nom_association, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), utilisateur))
+        conn.commit()
+
+
+def _noms_associations_gardee_en_attente_confirmation(annee, etape):
+    """Noms déjà inclus dans un CSV généré pour CETTE étape mais pas
+    encore confirmés importés dans VIF — à exclure d'une régénération du
+    même CSV (sinon la même association se retrouverait dans 2 CSV
+    distincts en attente), mais SANS jamais compter comme condition
+    d'éligibilité de l'étape suivante (cf. _noms_associations_gardee_avec_champ,
+    qui reste basée uniquement sur la case confirmée)."""
+    with get_db_connection() as conn:
+        _ensure_table_gardee_vif_a_confirmer(conn)
+        return {r["nom_association"] for r in conn.execute(
+            "SELECT nom_association FROM collecte_gardee_vif_a_confirmer WHERE annee = ? AND etape = ?",
+            (annee, etape),
+        ).fetchall()}
+
+
+def _confirmer_vif_gardee(annee, etape, utilisateur):
+    """Confirme l'import VIF réel des associations en attente pour CETTE
+    étape : coche la case de suivi correspondante (ce qui débloque l'étape
+    suivante) et vide la file d'attente. Retourne la liste des noms
+    confirmés."""
+    noms = sorted(_noms_associations_gardee_en_attente_confirmation(annee, etape))
+    for nom in noms:
+        _marquer_suivi_gardee(annee, nom, etape, True, utilisateur)
+    with get_db_connection() as conn:
+        _ensure_table_gardee_vif_a_confirmer(conn)
+        conn.execute(
+            "DELETE FROM collecte_gardee_vif_a_confirmer WHERE annee = ? AND etape = ?",
+            (annee, etape),
+        )
+        conn.commit()
+    return noms
 
 
 def _notifier_saisie_association(annee, nom_association):
@@ -10488,16 +10990,18 @@ def gardee_telecharger_zip():
 
 def _paires_magasin_association_a_exclure_export_poids(annee):
     """Paires (code_vif, nom_association) à exclure de l'export poids par
-    magasin : association déjà cochée « Poids exporté » (coché
-    automatiquement par cet export lui-même après génération, cf.
-    exporter_poids_magasins_gardee) — permet de relancer cet export
-    plusieurs fois sans redoubler les mêmes paires, au fil des associations
-    qui répondent. Exclusion par PAIRE (magasin, association), pas par
-    magasin seul : un magasin collecté par plusieurs associations (ex.
-    stockage partagé) donne lieu à une réception VIF par association, et
-    l'export de l'une ne doit jamais exclure celui de l'autre (demande
-    utilisateur 2026-11-23, suite au cas réel Intermarché La Mure, partagé
-    Beurrepinard / Coll Entraide du Trièves)."""
+    magasin : association déjà cochée « Poids exporté » (confirmée importée
+    dans VIF, cf. confirmer_vif_gardee) OU déjà dans un CSV généré pour
+    cette étape en attente de cette confirmation (cf.
+    _noms_associations_gardee_en_attente_confirmation) — permet de
+    relancer cet export plusieurs fois sans redoubler les mêmes paires, au
+    fil des associations qui répondent, et sans jamais regénérer un CSV
+    déjà en attente d'import VIF. Exclusion par PAIRE (magasin,
+    association), pas par magasin seul : un magasin collecté par plusieurs
+    associations (ex. stockage partagé) donne lieu à une réception VIF par
+    association, et l'export de l'une ne doit jamais exclure celui de
+    l'autre (demande utilisateur 2026-11-23, suite au cas réel Intermarché
+    La Mure, partagé Beurrepinard / Coll Entraide du Trièves)."""
     df_mag = _lire_magasins_gardes(annee)
     df_groupes = _lire_groupes(annee)
     if df_mag.empty:
@@ -10505,7 +11009,10 @@ def _paires_magasin_association_a_exclure_export_poids(annee):
     if "Code VIF" in df_mag.columns:
         df_mag["Code VIF"] = df_mag["Code VIF"].map(_vif_fmt)
     associations, _ = _construire_associations(df_mag, df_groupes)
-    noms_exclus = _noms_associations_gardee_avec_champ(annee, "poids_exporte")
+    noms_exclus = (
+        _noms_associations_gardee_avec_champ(annee, "poids_exporte")
+        | _noms_associations_gardee_en_attente_confirmation(annee, "poids_exporte")
+    )
     return {
         (_vif_fmt(m.get("Code VIF")), asso["nom"])
         for asso in associations
@@ -10629,11 +11136,11 @@ def exporter_poids_magasins_gardee(annee):
         ])
 
     for nom in noms_inclus:
-        _marquer_suivi_gardee(annee, nom, "poids_exporte", True, current_user.email)
+        _mettre_en_attente_confirmation_vif(annee, "poids_exporte", nom, current_user.email)
 
     write_log(
         f"📤 Export CSV poids magasins gardée {annee} ({len(lignes)} réception(s), "
-        f"{len(noms_inclus)} association(s) marquée(s) « Poids exporté », "
+        f"{len(noms_inclus)} association(s) en attente de confirmation d'import VIF, "
         f"{len(paires_deja_exportees)} paire(s) magasin/association déjà exclue(s), "
         f"{len(magasins_en_attente)} en attente de saisie) par {current_user.email}"
     )
@@ -10744,9 +11251,17 @@ def _lignes_transferts_vif(annee):
     poids par magasin a déjà été fait pour elle (demande utilisateur
     2026-11-23) — pour ne porter que sur les associations qui ont vraiment
     fini de répondre, et pouvoir relancer cet export plusieurs fois sans
-    redoubler un transfert déjà fait. Partagé par l'affichage écran et
+    redoubler un transfert déjà fait. « Poids exporté » et « Transferts
+    exportés » s'entendent ici au sens confirmé import VIF (cf.
+    confirmer_vif_gardee) — une association dont le CSV transferts est
+    généré mais pas encore confirmé reste exclue d'une régénération (cf.
+    _noms_associations_gardee_en_attente_confirmation) sans pour autant
+    compter comme éligible pour le BL. Partagé par l'affichage écran et
     l'export CSV TRANCOG."""
-    noms_traites = _noms_associations_gardee_avec_champ(annee, "transferts_exportes")
+    noms_traites = (
+        _noms_associations_gardee_avec_champ(annee, "transferts_exportes")
+        | _noms_associations_gardee_en_attente_confirmation(annee, "transferts_exportes")
+    )
     noms_completes = _noms_associations_completes(annee)
     noms_poids_exporte = _noms_associations_gardee_avec_champ(annee, "poids_exporte")
     noms_eligibles = noms_completes & noms_poids_exporte
@@ -10783,7 +11298,7 @@ def quantites_produits_transferts(annee):
     )
 
 
-def _ligne_trancog_vif(article, quantite_kg, date_mvt, article_sortie, nature_mouvement="TRANCOG"):
+def _ligne_trancog_vif(article, quantite_kg, date_mvt, article_sortie, nature_mouvement="TRANCOG", libelle=""):
     """Une ligne (48 colonnes, `;` séparateur) du format TRANCOG/TRANSCOL
     VIF (transfert manuel), reproduisant exactement ce que donnerait le
     modèle /srv/ba38/uploads/matrice TRANCOG(1).xlsx rempli à la main
@@ -10796,14 +11311,21 @@ def _ligne_trancog_vif(article, quantite_kg, date_mvt, article_sortie, nature_mo
     demande utilisateur 2026-11-18). Dépôt entrée = 03 (demande
     utilisateur 2026-11-17, pas la valeur 02 du modèle --- déjà la
     valeur affichée sur ces pages avant ce changement) ; émplacement
-    entrée = B011 et lot entrée vide, comme le modèle réel (également
-    demande utilisateur 2026-11-17)."""
+    entrée = B011 (demande utilisateur 2026-11-17). Lot entrée vide pour
+    TRANSCOL (collecte directe, comme le modèle réel) ; pour TRANCOG
+    (collecte gardée), lot entrée = « COLGA » + code produit, ex.
+    COLGA0110041, vide si article « non loti » (demande utilisateur
+    2026-11-24) --- même lot que celui posé par generer_bl_collecte_gardee
+    (ba38_vif.generation), pour que le BL VIF consomme le même lot que
+    celui créé par ce transfert."""
     qte = str(int(round(quantite_kg)))
+    non_loti = "non loti" in (libelle or "").lower()
+    lot_entree = f"COLGA{article}" if nature_mouvement == "TRANCOG" and not non_loti else ""
     champs = [
         "01", "38", "1OD", "0", "0", nature_mouvement,
         date_mvt.strftime("%d/%m/%Y"), "120000", "transfert collecte", "",
         "AUC", "", "",
-        article, "", "03", "B011", qte, "Kg",
+        article, lot_entree, "03", "B011", qte, "Kg",
     ] + [""] * 4 + [
         article_sortie, "", CAGETTES_EXPORT_DEPOT, "", qte, "Kg",
     ] + [""] * 19
@@ -10819,10 +11341,12 @@ def quantites_produits_transferts_export_trancog(annee):
     puis réenregistré en CSV en retirant les 3 premières lignes, mais
     généré directement depuis les quantités saisies, pour les seules
     associations à la saisie complète (mêmes magasins ET produits que le
-    BL VIF). Associations ayant contribué à cet export marquées
-    « Transferts exportés » automatiquement juste après, pour ne pas les
-    réinclure si l'export est relancé plus tard pour les associations qui
-    répondent en retard (demande utilisateur 2026-11-23)."""
+    BL VIF). Associations ayant contribué à cet export mises en attente
+    de confirmation d'import VIF (cf. confirmer_vif_gardee) — la case
+    « Transferts exportés » ne se coche qu'une fois cette confirmation
+    faite, pour ne jamais débloquer le BL sur un CSV généré mais jamais
+    réellement importé dans VIF (incident réel 2026-11-24, stocks VIF
+    négatifs après un essai non importé)."""
     lignes = _lignes_transferts_vif(annee)
     if not lignes:
         flash(f"⛔ Aucune quantité à transférer pour {annee}.", "warning")
@@ -10830,11 +11354,14 @@ def quantites_produits_transferts_export_trancog(annee):
 
     date_mvt = _date_vif_lundi_jeudi()
     contenu = "\r\n".join(
-        _ligne_trancog_vif(l["article"], l["total_kg"], date_mvt, CAGETTES_EXPORT_ARTICLE_GARDEE)
+        _ligne_trancog_vif(l["article"], l["total_kg"], date_mvt, CAGETTES_EXPORT_ARTICLE_GARDEE, libelle=l.get("libelle"))
         for l in lignes
     ) + "\r\n"
 
-    noms_exclus = _noms_associations_gardee_avec_champ(annee, "transferts_exportes")
+    noms_exclus = (
+        _noms_associations_gardee_avec_champ(annee, "transferts_exportes")
+        | _noms_associations_gardee_en_attente_confirmation(annee, "transferts_exportes")
+    )
     noms_completes = _noms_associations_completes(annee)
     noms_poids_exporte = _noms_associations_gardee_avec_champ(annee, "poids_exporte")
     with get_db_connection() as conn:
@@ -10848,11 +11375,11 @@ def quantites_produits_transferts_export_trancog(annee):
             and r["association"] in noms_poids_exporte
         }
     for nom in noms_inclus:
-        _marquer_suivi_gardee(annee, nom, "transferts_exportes", True, current_user.email)
+        _mettre_en_attente_confirmation_vif(annee, "transferts_exportes", nom, current_user.email)
 
     write_log(
         f"📤 Export CSV TRANCOG VIF {annee} ({len(lignes)} article(s), "
-        f"{len(noms_inclus)} association(s) marquée(s) « Transferts exportés ») par {current_user.email}"
+        f"{len(noms_inclus)} association(s) en attente de confirmation d'import VIF) par {current_user.email}"
     )
     return Response(
         contenu.encode("utf-8-sig"),
@@ -10870,24 +11397,32 @@ def quantites_produits_bl_vif(annee):
     partenaires (ba38_vif.generation). Colonne Gratuit d'après le statut
     de l'association (Associations gardant) ; si non gratuit, prix = mercuriale.
     Associations déjà cochées « BL généré » exclues (déjà dans un
-    précédent BL) ; celles incluses dans CE BL sont
-    cochées « BL généré » automatiquement une fois le BL généré, pour ne
-    pas les réinclure si le BL est relancé plus tard pour les associations
-    qui répondent en retard (demande utilisateur 2026-11-16). Également
-    exclues : les associations dont la saisie n'est pas complète (pas le
-    badge vert « X/X complet », cf. _noms_associations_completes) — jamais
-    de BL sur une saisie partielle (demande utilisateur 2026-11-17) — ET
-    les associations pas encore cochées « Transferts exportés » : les 3 CSV
-    (poids par magasin / transferts / BL) doivent être générés dans cet
-    ordre, le BL ne se génère pour une association que si son transfert
-    VIF a déjà été fait (demande utilisateur 2026-11-23)."""
+    précédent BL) ; celles incluses dans CE BL mises en attente de
+    confirmation d'import VIF (cf. confirmer_vif_gardee) — la case
+    « BL généré » ne se coche qu'une fois cette confirmation faite, pour
+    ne pas les réinclure si le BL est relancé plus tard pour les
+    associations qui répondent en retard (demande utilisateur 2026-11-16).
+    Également exclues : les associations dont la saisie n'est pas complète
+    (pas le badge vert « X/X complet », cf. _noms_associations_completes)
+    — jamais de BL sur une saisie partielle (demande utilisateur
+    2026-11-17) — ET les associations pas encore cochées « Transferts
+    exportés » (au sens confirmé import VIF) : les 3 CSV (poids par
+    magasin / transferts / BL) doivent être générés et CONFIRMÉS importés
+    dans VIF dans cet ordre, le BL ne se génère pour une association que
+    si son transfert VIF a déjà été réellement confirmé importé (demande
+    utilisateur 2026-11-23, renforcée le 2026-11-24 après un BL généré
+    pour des associations dont le transfert n'avait en réalité jamais été
+    importé dans VIF, causant des stocks négatifs)."""
     df_mag = _lire_magasins_gardes(annee)
     df_groupes = _lire_groupes(annee)
     if df_mag.empty:
         flash(f"⛔ Liste des magasins gardés {annee} indisponible", "danger")
         return redirect(url_for("collecte.quantites_produits", annee=annee))
     associations, _ = _construire_associations(df_mag, df_groupes)
-    noms_traites_avant = _noms_associations_gardee_avec_champ(annee, "bl_genere")
+    noms_traites_avant = (
+        _noms_associations_gardee_avec_champ(annee, "bl_genere")
+        | _noms_associations_gardee_en_attente_confirmation(annee, "bl_genere")
+    )
     noms_completes = _noms_associations_completes(annee)
     noms_transferts_exportes = _noms_associations_gardee_avec_champ(annee, "transferts_exportes")
     noms_eligibles = noms_completes & noms_transferts_exportes
@@ -10949,12 +11484,12 @@ def quantites_produits_bl_vif(annee):
         contenu = generer_bl_collecte_gardee(conn, lignes, date_bl)
 
     for nom in noms_inclus:
-        _marquer_suivi_gardee(annee, nom, "bl_genere", True, current_user.email)
+        _mettre_en_attente_confirmation_vif(annee, "bl_genere", nom, current_user.email)
 
     write_log(
         f"📤 BL VIF collecte gardée {annee} ({len(lignes)} ligne(s), {len(noms_inclus)} association(s) "
-        f"cochée(s) « BL généré », {len(noms_pas_encore_eligibles)} association(s) incomplète(s) ou "
-        f"pas encore exportée(s) (transferts) exclue(s)) par {current_user.email}"
+        f"en attente de confirmation d'import VIF, {len(noms_pas_encore_eligibles)} association(s) incomplète(s) "
+        f"ou pas encore exportée(s) (transferts) exclue(s)) par {current_user.email}"
     )
     return Response(
         contenu, mimetype="text/csv",
@@ -13809,6 +14344,10 @@ def gardee_envoi():
     total_magasins = sum(len(a["magasins"]) for a in associations)
     total_poids = sum(a["poids_total"] for a in associations)
     total_poids_n1 = sum(a["poids_total_n1"] for a in associations if a["poids_total_n1"] is not None)
+    en_attente_vif = {
+        etape: sorted(_noms_associations_gardee_en_attente_confirmation(annee, etape))
+        for etape in ETAPES_VIF_GARDEE
+    }
 
     return render_template(
         "collecte/gardee_envoi.html",
@@ -13823,6 +14362,7 @@ def gardee_envoi():
         fichier_nom=os.path.basename(chemin),
         texte_mail=_lire_texte_mail_gardee(),
         url_drive_modele_association=_lire_url_drive_modele_association(),
+        en_attente_vif=en_attente_vif,
         feature="gardee_envoi",
     )
 
@@ -13835,14 +14375,16 @@ def gardee_marquer_suivi():
     association. « repondu » et « resultat_envoye » : vérification faite
     par l'équipe hors application (mail reçu, fichier reçu, saisie en
     ligne consultée), jamais automatique. « poids_exporte »,
-    « transferts_exportes », « bl_genere » : cochées automatiquement par
-    leur export VIF respectif (cf. exporter_poids_magasins_gardee,
-    quantites_produits_transferts_export_trancog, quantites_produits_bl_vif)
-    — décochables ici à la main seulement pour corriger une erreur ou
-    forcer un nouvel export (demande utilisateur 2026-11-23). « traite »
-    retiré du tableau et de cette liste le 2026-11-23 (redondant avec les
-    3 cases dédiées, devenu source de confusion — colonne conservée en
-    base mais plus modifiable depuis l'écran)."""
+    « transferts_exportes », « bl_genere » : depuis le 2026-11-24, se
+    cochent normalement via le bouton « Confirmer l'import VIF » de
+    chaque étape (cf. confirmer_vif_gardee), pas automatiquement à la
+    génération du CSV (ancien comportement à l'origine d'un BL généré
+    pour des associations jamais réellement importées dans VIF, stocks
+    négatifs) — modifiables ici à la main seulement pour corriger une
+    erreur ou forcer un nouvel export. « traite » retiré du tableau et de
+    cette liste le 2026-11-23 (redondant avec les 3 cases dédiées, devenu
+    source de confusion — colonne conservée en base mais plus modifiable
+    depuis l'écran)."""
     payload = request.get_json(silent=True) or {}
     annee = payload.get("annee")
     nom_association = payload.get("association", "")
@@ -13856,6 +14398,36 @@ def gardee_marquer_suivi():
         return jsonify({"success": False, "erreur": "Paramètres invalides"}), 400
     _marquer_suivi_gardee(annee, nom_association, champ, valeur, current_user.email)
     return jsonify({"success": True})
+
+
+@collecte_bp.route("/collecte/<int:annee>/gardee/confirmer-vif/<etape>", methods=["POST"])
+@login_required
+@require_access("collecte", "ecriture")
+def confirmer_vif_gardee(annee, etape):
+    """Confirme que le CSV généré pour UNE étape (poids_exporte /
+    transferts_exportes / bl_genere) a bien été importé dans VIF et que
+    tout est OK — coche la case de suivi pour chaque association en
+    attente de cette confirmation (ce qui débloque l'étape suivante) et
+    vide la file d'attente (cf. _confirmer_vif_gardee,
+    _mettre_en_attente_confirmation_vif). Tant que cette confirmation
+    n'est pas faite, l'association reste bloquée à cette étape : évite
+    qu'un CSV généré « pour test » ou jamais réellement importé dans VIF
+    ne débloque l'étape suivante (incident réel 2026-11-24, BL généré
+    pour 5 associations dont le transfert n'avait en fait jamais été
+    importé, causant des stocks VIF négatifs)."""
+    if etape not in ETAPES_VIF_GARDEE:
+        flash("❌ Étape invalide", "danger")
+        return redirect(url_for("collecte.gardee_envoi", annee=annee))
+    noms = _confirmer_vif_gardee(annee, etape, current_user.email)
+    if noms:
+        flash(f"✅ Import VIF confirmé pour {len(noms)} association(s) : {', '.join(noms)}", "success")
+        write_log(
+            f"✅ Confirmation import VIF ({etape}) {annee} : {len(noms)} association(s) "
+            f"({', '.join(noms)}) par {current_user.email}"
+        )
+    else:
+        flash("⚠️ Aucune association en attente de confirmation pour cette étape.", "warning")
+    return redirect(request.referrer or url_for("collecte.gardee_envoi", annee=annee))
 
 
 @collecte_bp.route("/collecte/gardee/envoi/relancer", methods=["POST"])

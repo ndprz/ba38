@@ -24,6 +24,9 @@
         À saisir <strong>avant</strong> le BL VIF. Le bouton « 📤 Export CSV TRANCOG » génère directement
         le fichier prêt à importer (même format que le modèle <code>matrice TRANCOG(1).xlsx</code> rempli
         à la main, converti en CSV en retirant ses 3 premières lignes) --- plus besoin de le remplir soi-même.
+        Une fois le fichier réellement importé dans VIF, retournez sur la page
+        <a href="{{ url_for('collecte.gardee_envoi', annee=annee) }}">Envoi associations gardant</a> pour
+        cliquer « ✅ Confirmer l'import VIF OK » — le BL reste bloqué tant que ce n'est pas confirmé.
     </p>
 
     {% if not lignes %}

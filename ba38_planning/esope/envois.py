@@ -153,6 +153,9 @@ def envoi_toggle_mode():
         flash(f"🧪 Mode TEST : {L.MAX_ENVOIS_TEST} mails au plus, envoyés à {adresse_test_utilisateur()}.", "warning")
     else:
         flash("🚀 Mode RÉEL : les mails partiront aux bénévoles.", "danger")
+    retour = request.form.get("retour") or ""
+    if retour.startswith("/planning/esope"):
+        return redirect(retour)
     return redirect(url_for("esope.envoi", mois=request.form.get("mois")))
 
 

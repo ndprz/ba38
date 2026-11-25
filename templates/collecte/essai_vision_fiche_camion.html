@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% from "macros/buttons.html" import action_button, action_buttons, bouton_retour %}
+
+{% block title %}Essai vision fiche camion {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 1100px;">
+    <h2>🧪 Essai — saisie automatique des cagettes (vision IA sur fiche camion)</h2>
+    <p class="text-muted small">
+        Essai sans risque : une fiche camion scannée (PDF) est analysée par l'IA pour lire le nombre de
+        cagettes ramenées par magasin, tournée par tournée — le résultat est écrit UNIQUEMENT dans une table
+        d'essai séparée, jamais dans la vraie saisie des cagettes. Ce tableau compare le réel (saisi à la
+        main) et le détecté, magasin par magasin, pour juger de la fiabilité avant d'envisager un remplacement
+        de la saisie manuelle.
+    </p>
+
+    {% call action_buttons() %}
+        {{ bouton_retour(url_for('collecte.cagettes', annee=annee)) }}
+    {% endcall %}
+
+    <form method="post" action="{{ url_for('collecte.essai_vision_fiche_camion_detecter', annee=annee) }}"
+          enctype="multipart/form-data" class="border rounded p-3 mb-4 d-flex align-items-center gap-2 flex-wrap">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label for="pdf" class="form-label mb-0"><strong>Fiche camion scannée (PDF)</strong></label>
+        <input type="file" name="pdf" id="pdf" accept="application/pdf" class="form-control" style="max-width: 320px;" required>
+        <button type="submit" class="btn btn-primary">🤖 Analyser</button>
+    </form>
+
+    {% set une_en_cours = detections|selectattr('statut', 'equalto', 'en_cours')|list %}
+    {% if detections %}
+    <div class="mb-4">
+        <h6>Dernières analyses</h6>
+        {% if une_en_cours %}
+        <div class="alert alert-info py-2 small mb-2" id="alerte-en-cours">
+            ⏳ Analyse en cours — cette page se recharge automatiquement toutes les 4 secondes tant qu'une
+            analyse n'est pas terminée. La fiche est traitée page par page (une page = un véhicule) ; la
+            colonne « Progression » avance au fur et à mesure. Durée observée : environ 15 secondes par
+            page/véhicule (un scan complet de 29 véhicules a pris 7,5 minutes) — comptez quelques minutes
+            pour un scan complet d'une demi-journée.
+        </div>
+        {% endif %}
+        <table class="table table-sm">
+            <thead><tr><th>Fichier</th><th>Statut</th><th>Progression</th><th>Lancée le</th><th>Par</th><th>Avertissements / erreur</th></tr></thead>
+            <tbody>
+                {% for d in detections %}
+                <tr>
+                    <td>{{ d.pdf_nom }}</td>
+                    <td>
+                        {% if d.statut == 'termine' %}<span class="badge bg-success">terminée</span>
+                        {% elif d.statut == 'erreur' %}<span class="badge bg-danger">erreur</span>
+                        {% else %}<span class="badge bg-secondary">en cours</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if d.pages_total %}
+                        page {{ d.pages_traitees or 0 }} / {{ d.pages_total }}
+                        {% elif d.statut == 'en_cours' %}lecture du PDF…{% else %}—{% endif %}
+                    </td>
+                    <td>{{ d.lance_le }}</td>
+                    <td>{{ d.lance_par }}</td>
+                    <td class="text-danger small">{{ d.erreur or '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    {% if une_en_cours %}
+    <script>
+    setTimeout(function () { window.location.reload(); }, 4000);
+    </script>
+    {% endif %}
+
+    <h6>Comparaison réel vs détecté</h6>
+    {% if not comparaison %}
+    <div class="alert alert-secondary">Aucune donnée pour l'instant (ni saisie réelle, ni détection).</div>
+    {% else %}
+    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+        <input type="text" id="filtre-recherche" class="form-control form-control-sm" style="max-width:320px;"
+               placeholder="🔎 Rechercher (magasin…)">
+        {% if magasins_par_camion %}
+        <label for="filtre-demi-journee" class="visually-hidden">Demi-journée</label>
+        <select id="filtre-demi-journee" class="form-select form-select-sm" style="max-width:190px;">
+            <option value="">🚚 Toutes les demi-journées</option>
+            {% for dj in demi_journees if dj in magasins_par_camion %}
+            <option value="{{ dj }}">{{ dj.replace("Apres Midi", "Après-midi") }}</option>
+            {% endfor %}
+        </select>
+        <label for="filtre-camion" class="visually-hidden">Camion</label>
+        <select id="filtre-camion" class="form-select form-select-sm" style="max-width:220px;" disabled>
+            <option value="">Tous les camions</option>
+        </select>
+        {% endif %}
+    </div>
+    <table class="table table-sm table-striped align-middle" id="table-comparaison">
+        <thead>
+            <tr>
+                <th>Magasin</th><th>Code VIF</th><th>Demi-journée</th>
+                <th class="text-end">Réel</th><th class="text-end">Détecté</th><th class="text-end">Écart</th>
+                <th>Véhicule détecté</th><th>Feuille</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in comparaison %}
+            <tr data-demi-journee="{{ c.demi_journee }}" data-code-vif="{{ c.code_vif }}"
+                class="{% if c.ecart and c.ecart != 0 %}table-warning{% elif c.detecte is not none and c.reel is not none %}table-success{% endif %}">
+                <td>{{ c.nom }}</td>
+                <td>{{ c.code_vif }}</td>
+                <td>{{ c.demi_journee }}</td>
+                <td class="text-end">{{ c.reel if c.reel is not none else '—' }}</td>
+                <td class="text-end">{{ c.detecte if c.detecte is not none else '—' }}</td>
+                <td class="text-end">
+                    {% if c.ecart is not none %}
+                        {% if c.ecart == 0 %}<span class="text-success">0</span>
+                        {% else %}<span class="text-danger fw-bold">{{ '%+d'|format(c.ecart) }}</span>{% endif %}
+                    {% else %}—{% endif %}
+                </td>
+                <td>{{ c.vehicule or '' }}</td>
+                <td>
+                    {% if c.ecart and c.ecart != 0 and c.detection_id and c.page_num %}
+                    <a href="{{ url_for('collecte.essai_vision_fiche_camion_feuille', annee=annee, detection_id=c.detection_id, page_num=c.page_num) }}"
+                       target="_blank" class="btn btn-sm btn-outline-primary">📄 Voir la feuille</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <script>
+    (function () {
+        const magasinsParCamion = {{ magasins_par_camion|tojson }};
+        const filtreInput = document.getElementById("filtre-recherche");
+        const selectDemiJournee = document.getElementById("filtre-demi-journee");
+        const selectCamion = document.getElementById("filtre-camion");
+        const lignes = Array.from(document.querySelectorAll("#table-comparaison tbody tr"));
+        let codesVifCamionActif = null;
+
+        function normalizeSearch(text) {
+            return String(text ?? "")
+                .normalize("NFD").replace(/[̀-ͯ]/g, "")
+                .toLowerCase();
+        }
+
+        function appliquerFiltres() {
+            const search = normalizeSearch(filtreInput.value);
+            const dj = selectDemiJournee ? selectDemiJournee.value : "";
+            lignes.forEach(function (ligne) {
+                let visible = true;
+                if (search) {
+                    const texte = normalizeSearch(ligne.textContent);
+                    if (!texte.includes(search)) visible = false;
+                }
+                if (dj && ligne.dataset.demiJournee !== dj) visible = false;
+                if (codesVifCamionActif && !codesVifCamionActif.has(ligne.dataset.codeVif)) visible = false;
+                ligne.classList.toggle("d-none", !visible);
+            });
+        }
+
+        filtreInput.addEventListener("input", appliquerFiltres);
+
+        if (selectDemiJournee && selectCamion) {
+            selectDemiJournee.addEventListener("change", function () {
+                const dj = this.value;
+                selectCamion.innerHTML = '<option value="">Tous les camions</option>';
+                const camions = dj ? (magasinsParCamion[dj] || []) : [];
+                camions.forEach(function (c) {
+                    const option = document.createElement("option");
+                    option.value = c.camion;
+                    option.textContent = c.camion + (c.nom_camion ? " — " + c.nom_camion : "");
+                    option.dataset.codesVif = JSON.stringify(c.codes_vif);
+                    selectCamion.appendChild(option);
+                });
+                selectCamion.disabled = !dj;
+                codesVifCamionActif = null;
+                appliquerFiltres();
+            });
+
+            selectCamion.addEventListener("change", function () {
+                const option = this.options[this.selectedIndex];
+                codesVifCamionActif = (this.value && option.dataset.codesVif) ? new Set(JSON.parse(option.dataset.codesVif)) : null;
+                appliquerFiltres();
+            });
+        }
+    })();
+    </script>
+    {% endif %}
+</div>
+{% endblock %}

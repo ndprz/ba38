@@ -198,7 +198,8 @@
     <input type="hidden" name="retour" value="{{ request.full_path }}">
     <div class="modal-header"><h5 class="modal-title" id="aff_titre"></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
     <div class="modal-body">
-      <div class="small text-muted mb-2"><span id="aff_contact"></span> <a id="aff_fiche" href="#" class="ms-2" style="display:none">📋 Tous ses créneaux du mois et son historique</a></div>
+      <div class="small text-muted mb-2"><span id="aff_contact"></span></div>
+      <a id="aff_fiche" href="#" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm mb-3" style="display:none">📋 Ouvrir sa fiche : créneaux du mois et historique</a>
       <div class="alert alert-warning py-1 px-2 small" id="aff_reponse" style="display:none"></div>
       <label class="form-label">Statut</label>
       <select name="statut" id="aff_statut" class="form-select">
@@ -348,7 +349,7 @@ function ouvrirAffectation(id) {
   document.getElementById("aff_titre").textContent = a.libelle + " · " + titreCreneau(CRENEAUX[a.creneau_id]);
   document.getElementById("aff_contact").textContent = [a.tel, a.email].filter(Boolean).join(" · ");
   const lf = document.getElementById("aff_fiche");
-  lf.style.display = a.benevole_id > 0 ? "" : "none";
+  lf.style.display = a.benevole_id > 0 ? "inline-block" : "none";
   lf.href = URL_FICHE.replace("999999999", a.benevole_id) + "?mois=" + CRENEAUX[a.creneau_id].date.slice(0, 7);
   const rep = document.getElementById("aff_reponse");
   if (a.reponse_le) {
