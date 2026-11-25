@@ -715,6 +715,10 @@ Détail engagement #{{ engagement.id }}
 
                             👥 Remboursement autre bénévole
 
+                        {% elif engagement.type_engagement == "fournisseur" and engagement.beneficiaire_association_id %}
+
+                            🤝 Remboursement à une association
+
                         {% elif engagement.type_engagement == "fournisseur" %}
 
                             🏢 Paiement fournisseur

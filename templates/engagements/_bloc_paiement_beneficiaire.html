@@ -256,6 +256,34 @@
 
         </div>
 
+        <!-- ============================================= -->
+        <!-- ASSOCIATION (remboursement carburant, etc.) -->
+        <!-- ============================================= -->
+
+        <div class="form-check mb-1">
+
+            <input class="form-check-input"
+                   type="radio"
+                   name="type_engagement"
+                   id="type_association"
+                   value="association"
+
+                   {% if valeurs.get(
+                        'type_engagement'
+                   ) == 'association' %}
+                   checked
+                   {% endif %}>
+
+            <label class="form-check-label"
+                   for="type_association">
+
+                🤝 Remboursement à une association
+                (ex. carburant)
+
+            </label>
+
+        </div>
+
     </div>
 
 </div>
@@ -330,7 +358,7 @@
         <div class="row g-2 mb-2">
         <div class="col-md-6">
 
-            <label class="form-label">
+            <label class="form-label" id="label_nom_beneficiaire">
 
                 Nom fournisseur
 
@@ -352,6 +380,14 @@
                 </button>
 
             </div>
+
+            <input type="hidden"
+                   name="beneficiaire_association_id"
+                   id="beneficiaire_association_id_input"
+                   value="{{ valeurs.get(
+                        'beneficiaire_association_id',
+                        ''
+                   ) }}">
 
             <input type="hidden"
                    name="fournisseur_id"
@@ -992,8 +1028,12 @@ function updateTypeEngagement() {
     document.getElementById(
         "bloc-fournisseur"
     ).style.display = (
-        type === "fournisseur"
+        type === "fournisseur" || type === "association"
     ) ? "block" : "none";
+
+    if (typeof basculerModeBeneficiaire === "function") {
+        basculerModeBeneficiaire(type);
+    }
 }
 
 // =====================================================
@@ -1210,6 +1250,93 @@ fournisseursConnus.forEach(f => {
     fournisseursParId[f.id] = f;
 });
 
+// Remboursement à une association : même select, alimenté par la
+// liste des associations (le bénéficiaire n'est pas un fournisseur).
+const associationsConnues = {{ associations_remboursement() | tojson }};
+const associationsParId = {};
+associationsConnues.forEach(a => { associationsParId[a.id] = a; });
+
+let modeAssociation = (
+    document.querySelector('input[name="type_engagement"]:checked')
+        ?.value === "association"
+);
+let selectBeneficiairePret = false;
+
+function remplirSelectBeneficiaire(conserverSelection) {
+
+    const $select = window.jQuery("#fournisseur_select");
+    if (!$select.length) return;
+
+    const idFrs = document.getElementById("fournisseur_id_input").value;
+    const idAsso = document.getElementById("beneficiaire_association_id_input").value;
+    const nomActuel = document.getElementById("fournisseur_nom_input").value;
+    const idActuel = modeAssociation ? idAsso : idFrs;
+
+    $select.empty();
+    $select.append(new Option("", "", false, false));
+
+    const liste = modeAssociation ? associationsConnues : fournisseursConnus;
+
+    liste.forEach(f => {
+        const sel = conserverSelection && String(f.id) === idActuel;
+        $select.append(new Option(f.nom, f.id, sel, sel));
+    });
+
+    // Cas d'un fournisseur créé via la modale lors d'un
+    // re-affichage du formulaire après une erreur de validation
+    if (conserverSelection && !modeAssociation && nomActuel && !idFrs) {
+        $select.append(new Option(nomActuel, nomActuel, true, true));
+    }
+
+    if (!conserverSelection) {
+        $select.val(null);
+    }
+
+    $select.trigger("change.select2");
+
+    const lib = document.getElementById("label_nom_beneficiaire");
+    if (lib) lib.innerText = modeAssociation ? "Association" : "Nom fournisseur";
+
+    const btnNouveau = document.getElementById("btn_nouveau_fournisseur");
+    if (btnNouveau) btnNouveau.style.display = modeAssociation ? "none" : "";
+
+    const caseSansCoord = document.getElementById("fournisseur_sans_coordonnees_input");
+    if (caseSansCoord) {
+        caseSansCoord.closest(".form-check").style.display =
+            modeAssociation ? "none" : "";
+        if (modeAssociation) caseSansCoord.checked = false;
+    }
+
+    const recurrent = document.getElementById("engagement_recurrent_input");
+    if (recurrent) {
+        recurrent.closest(".form-check").style.display =
+            modeAssociation ? "none" : "";
+        if (modeAssociation) recurrent.checked = false;
+    }
+}
+
+function basculerModeBeneficiaire(type) {
+
+    const nouveau = (type === "association");
+
+    if (nouveau === modeAssociation || !selectBeneficiairePret) return;
+
+    modeAssociation = nouveau;
+
+    // Changement de mode : on repart d'un bénéficiaire vide
+    ["fournisseur_id_input", "beneficiaire_association_id_input",
+     "fournisseur_nom_input", "fournisseur_telephone_input",
+     "fournisseur_email_input", "fournisseur_iban_input",
+     "fournisseur_adresse"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+    });
+
+    remplirSelectBeneficiaire(false);
+
+    if (typeof updateDevis === "function") updateDevis();
+}
+
 function initFournisseurSelect() {
 
     if (
@@ -1224,50 +1351,41 @@ function initFournisseurSelect() {
 
     if (!$select.length) return;
 
-    const idActuel =
-        document.getElementById("fournisseur_id_input").value;
-
-    const nomActuel =
-        document.getElementById("fournisseur_nom_input").value;
-
-    $select.empty();
-
-    fournisseursConnus.forEach(f => {
-
-        const opt = new Option(
-            f.nom,
-            f.id,
-            String(f.id) === idActuel,
-            String(f.id) === idActuel
-        );
-
-        $select.append(opt);
-
-    });
-
-    // Cas d'un fournisseur créé via la modale lors d'un
-    // re-affichage du formulaire après une erreur de validation
-    if (nomActuel && !idActuel) {
-
-        const opt = new Option(nomActuel, nomActuel, true, true);
-        $select.append(opt);
-
-    }
-
     $select.select2({
-        placeholder: "Choisir un fournisseur",
+        placeholder: "Choisir...",
         allowClear: true,
         width: "100%",
         language: {
             noResults: function () {
-                return "Aucun fournisseur trouvé.";
+                return "Aucun résultat.";
             }
         }
     });
 
+    selectBeneficiairePret = true;
+    remplirSelectBeneficiaire(true);
+
     $select.on("select2:select", function (e) {
 
         const data = e.params.data;
+
+        if (modeAssociation) {
+
+            const asso = associationsParId[data.id];
+
+            document.getElementById("beneficiaire_association_id_input").value = data.id;
+            document.getElementById("fournisseur_id_input").value = "";
+            document.getElementById("fournisseur_nom_input").value = data.text;
+
+            if (asso) {
+                document.getElementById("fournisseur_adresse").value = asso.adresse || "";
+                document.getElementById("fournisseur_telephone_input").value = asso.tel || "";
+                document.getElementById("fournisseur_email_input").value = asso.mail || "";
+            }
+
+            if (typeof updateDevis === "function") updateDevis();
+            return;
+        }
 
         const info = fournisseursParId[data.id];
 
@@ -1294,6 +1412,7 @@ function initFournisseurSelect() {
 
     $select.on("select2:clear", function () {
         document.getElementById("fournisseur_id_input").value = "";
+        document.getElementById("beneficiaire_association_id_input").value = "";
         document.getElementById("fournisseur_nom_input").value = "";
 
         if (typeof updateDevis === "function") updateDevis();

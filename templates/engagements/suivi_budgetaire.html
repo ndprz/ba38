@@ -32,55 +32,47 @@
         🔍 Période
     </div>
     <div class="card-body">
+        <div class="barre-periode">
+
         <form method="POST"
               action="{{ url_for('engagements.suivi_budgetaire') }}"
-              id="form-suivi-budgetaire">
+              id="form-suivi-budgetaire"
+              class="barre-periode-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-            <div class="d-flex flex-wrap align-items-end gap-4">
+            <label class="barre-periode-choix" for="mode_annee">
+                <input class="form-check-input"
+                       type="radio"
+                       name="mode"
+                       id="mode_annee"
+                       value="annee"
+                       {% if mode == 'annee' %}checked{% endif %}>
+                📅 Année calendaire
+            </label>
 
-                <div class="form-check">
-                    <input class="form-check-input"
-                           type="radio"
-                           name="mode"
-                           id="mode_annee"
-                           value="annee"
-                           {% if mode == 'annee' %}checked{% endif %}>
-                    <label class="form-check-label" for="mode_annee">
-                        📅 Année calendaire
-                    </label>
-                </div>
+            <label class="fw-semibold mb-0" for="annee">Année</label>
+            <input type="number"
+                   name="annee"
+                   id="annee"
+                   class="form-control form-control-sm"
+                   style="width:100px;"
+                   value="{{ annee }}">
 
-                <div class="d-flex flex-column" style="min-width: 120px;">
-                    <label class="form-label fw-semibold" for="annee">
-                        Année
-                    </label>
-                    <input type="number"
-                           name="annee"
-                           id="annee"
-                           class="form-control form-control-sm"
-                           value="{{ annee }}">
-                </div>
+            <label class="barre-periode-choix" for="mode_duree">
+                <input class="form-check-input"
+                       type="radio"
+                       name="mode"
+                       id="mode_duree"
+                       value="duree"
+                       {% if mode == 'duree' %}checked{% endif %}>
+                📆 Durée totale du budget/subvention
+            </label>
 
-                <div class="form-check">
-                    <input class="form-check-input"
-                           type="radio"
-                           name="mode"
-                           id="mode_duree"
-                           value="duree"
-                           {% if mode == 'duree' %}checked{% endif %}>
-                    <label class="form-check-label" for="mode_duree">
-                        📆 Durée totale du budget/subvention
-                    </label>
-                </div>
-
-                {{ action_button("🔍 Afficher", type="submit", color="primary") }}
-
-            </div>
+            {{ action_button("🔍 Afficher", type="submit", color="primary") }}
 
         </form>
 
-        <div class="d-flex gap-2 mt-3">
+        <div class="barre-periode-exports">
 
             <form method="POST"
                   action="{{ url_for('engagements.suivi_budgetaire_excel') }}">
@@ -104,8 +96,19 @@
 
         </div>
 
+        </div>
     </div>
 </div>
+
+<style>
+.barre-periode { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem 2rem; }
+.barre-periode-form { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.5rem; margin: 0; }
+.barre-periode-choix { display: inline-flex; align-items: center; gap: .45rem; margin: 0; cursor: pointer; white-space: nowrap; }
+.barre-periode-choix .form-check-input { margin: 0; float: none; }
+.barre-periode-exports { display: flex; align-items: center; gap: .6rem; margin-left: auto; }
+.barre-periode-exports form { margin: 0; }
+.barre-periode .btn { white-space: nowrap; }
+</style>
 
 {# ============================================================ #}
 {# BLOCS PAR SUBVENTION / BUDGET                                #}

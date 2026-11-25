@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}Calendrier des visites{% endblock %}
+{% block extra_css %}
+<style>
+.cal{table-layout:fixed;width:100%;border-collapse:collapse}
+.cal th{background:#f1f3f5;text-align:center;padding:.3rem;font-size:.85rem}
+.cal td{border:1px solid #dee2e6;vertical-align:top;height:110px;padding:2px;font-size:.78rem}
+.cal td.hors{background:#f8f9fa;color:#adb5bd}
+.cal td.today{box-shadow:inset 0 0 0 2px #0d6efd}
+.cal .num{font-weight:600;font-size:.8rem}
+.cal .add{float:right;border:0;background:none;color:#0d6efd;font-size:.9rem;line-height:1;padding:0 2px}
+.vis{display:block;width:100%;text-align:left;border:0;border-left:4px solid var(--c);background:#fff;
+     border-radius:3px;margin:1px 0;padding:1px 3px;font-size:.74rem;line-height:1.2;box-shadow:0 0 0 1px #e9ecef}
+.vis.realisee{opacity:.65}.vis.annulee{text-decoration:line-through;opacity:.5}
+.vis.ro{cursor:default}
+.gap-2{gap:.5rem}.navbtns{display:flex;gap:.5rem}
+.aide h6{margin-top:1rem;font-weight:700}.aide li{margin-bottom:.25rem}
+.legende span{display:inline-block;margin-right:.8rem;font-size:.82rem}
+.legende i{display:inline-block;width:.8rem;height:.8rem;border-radius:2px;margin-right:.25rem;vertical-align:-1px}
+@media(max-width:768px){.cal td{height:70px}.vis .nom{display:none}}
+</style>
+{% endblock %}
+{% block content %}
+<div class="container-fluid mt-3">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <h2 class="mb-1">📅 Calendrier des visites aux associations</h2>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-outline-info btn-sm" onclick="new bootstrap.Modal(document.getElementById('modalAideCalendrier')).show()">❓ Aide</button>
+      <a class="btn btn-outline-secondary btn-sm" target="_blank"
+         href="{{ url_for('calendrier_visites.pdf', annee=annee, mois=mois, vue=vue, car=car_filtre) }}">📄 Export PDF</a>
+      {% if peut_saisir %}<button class="btn btn-success btn-sm" onclick="ouvrirVisite()">➕ Ajouter une visite</button>{% endif %}
+    </div>
+  </div>
+  <p class="text-muted small mb-2">Calendrier prévisionnel des visites des CAR.
+    {% if droits.admin or droits.pole %}Vous pouvez modifier toutes les visites.
+    {% elif droits.car %}Vous pouvez modifier les visites de vos associations.
+    {% elif droits.ecriture %}Vous pouvez saisir vos propres visites, chez n'importe quelle association.
+    {% else %}Consultation seule.{% endif %}</p>
+
+  <form method="get" class="row g-2 align-items-end mb-3">
+    <input type="hidden" name="vue" value="{{ vue }}">
+    <div class="col-auto"><label class="small d-block">Année</label>
+      <input type="number" name="annee" value="{{ annee }}" class="form-control form-control-sm" style="width:90px" onchange="this.form.submit()"></div>
+    {% if vue == 'mois' %}
+    <div class="col-auto"><label class="small d-block">Mois</label>
+      <select name="mois" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for m in range(1,13) %}<option value="{{ m }}" {{ 'selected' if m==mois }}>{{ MOIS[m]|capitalize }}</option>{% endfor %}
+      </select></div>
+    {% endif %}
+    <div class="col-auto"><label class="small d-block">CAR</label>
+      <select name="car" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="">Tous</option>
+        {% for c in cars %}<option value="{{ c }}" {{ 'selected' if c==car_filtre }}>{{ c }}</option>{% endfor %}
+      </select></div>
+    <div class="col-auto navbtns">
+      <a class="btn btn-sm {{ 'btn-primary' if vue=='mois' else 'btn-outline-primary' }}" href="{{ url_for('calendrier_visites.calendrier', annee=annee, mois=mois, vue='mois', car=car_filtre) }}">Mois</a>
+      <a class="btn btn-sm {{ 'btn-primary' if vue=='annee' else 'btn-outline-primary' }}" href="{{ url_for('calendrier_visites.calendrier', annee=annee, mois=mois, vue='annee', car=car_filtre) }}">Année (liste)</a>
+    </div>
+    {% if vue == 'mois' %}
+    <div class="col-auto navbtns">
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('calendrier_visites.calendrier', annee=prec[0], mois=prec[1], vue='mois', car=car_filtre) }}">◀</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('calendrier_visites.calendrier', vue='mois', car=car_filtre) }}">Aujourd'hui</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('calendrier_visites.calendrier', annee=suiv[0], mois=suiv[1], vue='mois', car=car_filtre) }}">▶</a>
+    </div>
+    {% endif %}
+  </form>
+
+  <div class="legende mb-2">
+    {% for n, c in couleurs.items() %}<span><i style="background:{{ c }}"></i>{{ n }}</span>{% endfor %}
+  </div>
+
+  {% if vue == 'mois' %}
+  <h4 class="mb-2">{{ MOIS[mois]|capitalize }} {{ annee }}</h4>
+  <div class="table-responsive">
+  <table class="cal">
+    <thead><tr>{% for j in JOURS %}<th>{{ j }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for sem in semaines %}<tr>
+      {% for jour in sem %}
+      <td class="{{ 'hors' if not jour.dans_mois }} {{ 'today' if jour.iso==aujourdhui }}">
+        <span class="num">{{ jour.date.day }}</span>
+        {% if peut_saisir and jour.dans_mois %}<button class="add" title="Ajouter une visite ce jour" onclick="ouvrirVisite(null,'{{ jour.iso }}')">＋</button>{% endif %}
+        {% for v in jour.visites %}
+          <button type="button" class="vis {{ v.statut }} {{ '' if v.modifiable else 'ro' }}" style="--c:{{ v.couleur }}"
+            title="{{ v.nom_association }} — {{ v.visiteurs_txt }}{% if v.commentaire %} — {{ v.commentaire }}{% endif %}"
+            onclick='ouvrirVisite({{ v|tojson }})'>
+            {% if v.heure_debut %}<b>{{ v.heure_debut }}</b> {% endif %}<span class="nom">{{ v.nom_association }}</span>
+            <br><span class="text-muted">{{ v.visiteurs_txt }}</span>
+          </button>
+        {% endfor %}
+      </td>
+      {% endfor %}
+    </tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <h4 class="mb-2">Année {{ annee }}</h4>
+  {% endif %}
+
+  {% if vue == 'annee' or visites %}
+  <h5 class="mt-4">Liste {{ 'des visites ' ~ MOIS[mois] ~ ' ' ~ annee if vue=='mois' else 'de l\'année' }} ({{ visites|length }})</h5>
+  <div class="table-responsive">
+  <table class="table table-sm table-striped align-middle">
+    <thead><tr><th>Date</th><th>Heure</th><th>Association</th><th>Commune</th><th>Visiteur</th><th>Statut</th><th>Dernière fiche de visite</th><th>Commentaire</th><th></th></tr></thead>
+    <tbody>
+    {% for v in visites %}
+      <tr>
+        <td>{{ date_fr(v.date_visite) }}</td>
+        <td>{{ v.heure_debut or '' }}{% if v.heure_fin %}–{{ v.heure_fin }}{% endif %}</td>
+        <td><b>{{ v.nom_association }}</b></td><td>{{ v.commune }}</td>
+        <td><i class="d-inline-block rounded" style="width:.7rem;height:.7rem;background:{{ v.couleur }}"></i> {{ v.visiteurs_txt }}</td>
+        <td>{{ statuts[v.statut] }}</td>
+        <td>{{ date_fr(v.derniere_fiche) if v.derniere_fiche else '—' }}</td>
+        <td class="small">{{ v.commentaire }}</td>
+        <td>{% if v.modifiable %}<button class="btn btn-outline-primary btn-sm py-0" onclick='ouvrirVisite({{ v|tojson }})'>✏️</button>{% endif %}</td>
+      </tr>
+    {% else %}<tr><td colspan="9" class="text-muted">Aucune visite prévue sur cette période.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</div>
+
+<div class="modal fade" id="modalAideCalendrier" tabindex="-1">
+  <div class="modal-dialog modal-lg"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">📄 Aide – Calendrier des visites</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body aide" style="max-height:70vh;overflow:auto;font-size:.9rem;line-height:1.4">
+      <p>Ce calendrier présente les <b>visites prévues par les CAR</b> aux associations. Tout le monde peut le consulter et l'exporter en PDF.</p>
+      <h6>Consulter</h6>
+      <ul>
+        <li><b>Mois</b> : grille du mois (flèches ◀ ▶ pour naviguer, « Aujourd'hui » pour revenir). <b>Année (liste)</b> : toutes les visites de l'année en tableau.</li>
+        <li>Le filtre <b>CAR</b> n'affiche que les visites de ce CAR ou de ses associations. Chaque CAR a sa couleur (voir la légende).</li>
+        <li>La colonne « Dernière fiche de visite » rappelle la date de la dernière fiche enregistrée pour l'association.</li>
+        <li>Une visite <i>réalisée</i> est atténuée, une visite <i>annulée</i> est barrée.</li>
+      </ul>
+      <h6>Exporter en PDF</h6>
+      <p>Le bouton <b>📄 Export PDF</b> reprend exactement ce qui est affiché : le mois ou l'année, et le filtre CAR en cours (grille + liste pour un mois, liste pour une année).</p>
+      <h6>Qui peut modifier ?</h6>
+      <ul>
+        <li><b>Un CAR</b> : les visites de <b>ses</b> associations.</li>
+        <li><b>Le responsable du pôle Partenariat (et ses suppléants) et les administrateurs</b> : toutes les visites, pour tous les CAR.</li>
+        <li><b>Les autres utilisateurs</b> disposant du droit « écriture » : ils ajoutent des visites <b>à leur nom</b>, chez n'importe quelle association, et ne modifient que les leurs.</li>
+        <li>Sans droit de saisie, le calendrier est en lecture seule : cliquer sur une visite affiche son détail.</li>
+      </ul>
+      <h6>Ajouter, modifier, supprimer</h6>
+      <ul>
+        <li><b>➕ Ajouter une visite</b> (en haut), ou le <b>＋</b> dans la case d'un jour (la date est alors pré-remplie).</li>
+        <li>Renseignez l'association, la date, les heures (facultatives), le visiteur, le statut et un commentaire. Les <b>intervenants</b> (un ou plusieurs, bouton <b>➕ Ajouter un intervenant</b>) se choisissent dans des listes (pas de saisie libre) : <b>Moi-même</b>, ou un <b>bénévole</b> existant dans la base ; le responsable de pôle et les administrateurs peuvent aussi choisir un <b>CAR</b> (proposé par défaut : le CAR de l'association).</li>
+        <li>Pour modifier ou supprimer, <b>cliquez sur la visite</b> (dans la grille ou ✏️ dans la liste). Pensez à passer le statut à <i>Réalisée</i> après la visite, ou <i>Annulée</i> si elle n'a pas lieu.</li>
+        <li>Une même visite (association, date, heure, mêmes intervenants) ne peut pas être saisie deux fois.</li>
+      </ul>
+    </div>
+    <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button></div>
+  </div></div>
+</div>
+
+<div class="modal fade" id="modalVisite" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <form method="POST" action="{{ url_for('calendrier_visites.enregistrer') }}" id="formVisite">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="visite_id" id="v_id">
+    <input type="hidden" name="retour" value="{{ request.full_path.rstrip('?') }}">
+    <div class="modal-header"><h5 class="modal-title" id="v_titre">Visite</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <fieldset id="v_champs">
+      <div class="mb-2"><label class="small">Association *</label>
+        <select name="association_id" id="v_asso" class="form-select" required>
+          <option value="">— choisir —</option>
+          {% for a in assos_saisie %}<option value="{{ a.id }}" data-car="{{ a.car }}">{{ a.nom_association }}{% if a.commune %} ({{ a.commune }}){% endif %}</option>{% endfor %}
+        </select></div>
+      <div class="row g-2">
+        <div class="col-6"><label class="small">Date *</label><input type="text" name="date_visite" id="v_date" class="form-control date-fr" placeholder="jj/mm ou jjmmaaaa" autocomplete="off" inputmode="numeric" required></div>
+        <div class="col-3"><label class="small">De</label><input type="time" name="heure_debut" id="v_hd" class="form-control"></div>
+        <div class="col-3"><label class="small">À</label><input type="time" name="heure_fin" id="v_hf" class="form-control"></div>
+      </div>
+      <div class="row g-2 mt-1">
+        <div class="col-12"><label class="small">Intervenant(s) *</label>
+          <div id="v_liste"></div>
+          <button type="button" class="btn btn-outline-primary btn-sm mt-1" onclick="ajouterIntervenant()">➕ Ajouter un intervenant</button>
+          <template id="tpl_vis">
+            <div class="d-flex gap-2 mb-1 vrow">
+              <select name="visiteur_choix" class="form-select form-select-sm" required>
+                <option value="moi">Moi-même ({{ droits.username }})</option>
+                {% if peut_choisir_car %}<optgroup label="CAR">
+                  {% for c in cars %}<option value="car:{{ c }}">{{ c }}</option>{% endfor %}</optgroup>{% endif %}
+                <optgroup label="Bénévoles">
+                  {% for b in benevoles %}<option value="bene:{{ b.id }}">{{ b.nom }}</option>{% endfor %}</optgroup>
+              </select>
+              <button type="button" class="btn btn-outline-danger btn-sm" title="Retirer" onclick="retirerIntervenant(this)">✕</button>
+            </div>
+          </template></div>
+      </div>
+      <div class="row g-2 mt-1">
+        <div class="col-5"><label class="small">Statut</label>
+          <select name="statut" id="v_statut" class="form-select">{% for k, l in statuts.items() %}<option value="{{ k }}">{{ l }}</option>{% endfor %}</select></div>
+      </div>
+      <div class="mt-2"><label class="small">Commentaire</label><textarea name="commentaire" id="v_com" rows="2" class="form-control"></textarea></div>
+      </fieldset>
+      <div class="text-muted small mt-2" id="v_ro" style="display:none">Lecture seule : cette visite n'est pas modifiable par votre compte.</div>
+    </div>
+    <div class="modal-footer justify-content-between">
+      <button type="submit" class="btn btn-outline-danger btn-sm" id="v_suppr" style="display:none"
+        formaction="" onclick="return confirm('Supprimer cette visite ?')">🗑️ Supprimer</button>
+      <div><button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fermer</button>
+      <button type="submit" class="btn btn-success btn-sm" id="v_ok">Enregistrer</button></div>
+    </div>
+  </form>
+</div></div></div>
+
+<script>
+// Anti double envoi : les boutons sont désactivés dès le premier envoi
+document.getElementById('formVisite').addEventListener('submit', function (e) {
+  if (this.dataset.envoye) { e.preventDefault(); return; }
+  this.dataset.envoye = '1';
+  const b = e.submitter;
+  setTimeout(() => this.querySelectorAll('button[type=submit]').forEach(x => x.disabled = true), 0);
+});
+const URL_SUPPR = "{{ url_for('calendrier_visites.supprimer', visite_id=0) }}";
+document.getElementById('v_asso').addEventListener('change', function () {
+  const vs = document.querySelector('#v_liste .vrow select');
+  if (!vs || document.getElementById('v_id').value) return;
+  const car = this.selectedOptions[0] ? this.selectedOptions[0].dataset.car : '';
+  if (car && vs.querySelector('option[value="car:' + car + '"]')) vs.value = 'car:' + car;
+});
+function ajouterIntervenant() {
+  const lignes = document.querySelectorAll('#v_liste .vrow');
+  if (lignes.length >= 8) { alert('8 intervenants au maximum.'); return null; }
+  const ligne = document.getElementById('tpl_vis').content.firstElementChild.cloneNode(true);
+  document.getElementById('v_liste').appendChild(ligne);
+  return ligne;
+}
+function retirerIntervenant(btn) {
+  if (document.querySelectorAll('#v_liste .vrow').length > 1) btn.closest('.vrow').remove();
+}
+function ouvrirVisite(v, jour) {
+  const $ = id => document.getElementById(id);
+  const ro = v && !v.modifiable;
+  $('v_titre').textContent = v ? (ro ? 'Visite' : 'Modifier la visite') : 'Nouvelle visite';
+  $('v_id').value = v ? v.id : '';
+  const iso = v ? v.date_visite : (jour || '');
+  $('v_date').value = iso ? iso.split('-').reverse().join('/') : '';
+  $('v_date').classList.remove('is-valid', 'is-invalid');
+  $('v_hd').value = v ? (v.heure_debut || '') : '';
+  $('v_hf').value = v ? (v.heure_fin || '') : '';
+  $('v_statut').value = v ? v.statut : 'prevue';
+  $('v_com').value = v ? (v.commentaire || '') : '';
+  // intervenants : une ligne par personne, listes fermées (moi-même / CAR / bénévole existant)
+  $('v_liste').innerHTML = '';
+  if (v) {
+    const moi = {{ droits.username|tojson }};
+    (v.intervenants || []).forEach((i, n) => {
+      const ligne = ajouterIntervenant();
+      const sel = ligne.querySelector('select');
+      let choix = null;
+      if (i.type === 'benevole' && i.benevole_id) choix = 'bene:' + i.benevole_id;
+      else if (i.type === 'car') choix = 'car:' + i.nom;
+      else if (i.type === 'user' && i.nom === moi) choix = 'moi';
+      if (!choix || !Array.from(sel.options).some(o => o.value === choix)) {
+        const o = new Option(i.nom + ' (conserver)', 'garde:' + n); sel.add(o, 1); choix = 'garde:' + n;
+      }
+      sel.value = choix;
+    });
+  } else { ajouterIntervenant(); }
+  // association : si elle n'est pas dans la liste (hors périmètre du CAR), on l'ajoute en lecture
+  const sel = $('v_asso');
+  sel.value = v ? v.association_id : '';
+  if (v && sel.value != v.association_id) {
+    const o = new Option(v.nom_association, v.association_id); sel.add(o); sel.value = v.association_id;
+  }
+  $('v_champs').disabled = !!ro;
+  $('v_ok').style.display = ro ? 'none' : '';
+  $('v_ro').style.display = ro ? '' : 'none';
+  const s = $('v_suppr');
+  s.style.display = (v && !ro) ? '' : 'none';
+  s.setAttribute('formaction', v ? URL_SUPPR.replace('/0/', '/' + v.id + '/') : '');
+  new bootstrap.Modal($('modalVisite')).show();
+}
+</script>
+{% endblock %}

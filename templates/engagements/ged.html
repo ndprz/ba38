@@ -87,15 +87,22 @@
          id="collapseFiltresGed">
     <div class="card-body py-2">
 
+<style>
+.ged-filtres-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .75rem 1.25rem; margin-bottom: 1rem; }
+.ged-filtres-grid .ged-champ { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+.ged-filtres-grid .ged-large { grid-column: span 2; }
+.ged-filtres-grid .form-label { margin: 0; white-space: nowrap; }
+.ged-filtres-grid .form-control, .ged-filtres-grid .form-select { width: 100%; }
+</style>
         <form method="POST"
               action="{{ url_for('engagements.engagements_ged') }}"
               id="form-ged">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-            <div class="d-flex flex-wrap gap-3 mb-3">
+            <div class="ged-filtres-grid">
 
                 {# Période #}
-                <div style="min-width:150px;">
+                <div class="ged-champ">
                     <label class="form-label fw-semibold small">📅 Date début</label>
                     <input type="date"
                            name="date_debut"
@@ -103,7 +110,7 @@
                            value="{{ filters.date_debut }}">
                 </div>
 
-                <div style="min-width:150px;">
+                <div class="ged-champ">
                     <label class="form-label fw-semibold small">📅 Date fin</label>
                     <input type="date"
                            name="date_fin"
@@ -112,7 +119,7 @@
                 </div>
 
                 {# Pôle #}
-                <div style="min-width:160px;">
+                <div class="ged-champ">
                     <label class="form-label fw-semibold small">🏢 Pôle</label>
                     <select name="pole_id" class="form-select form-select-sm">
                         <option value="">Tous les pôles</option>
@@ -126,7 +133,7 @@
                 </div>
 
                 {# Rubrique #}
-                <div style="min-width:160px;">
+                <div class="ged-champ">
                     <label class="form-label fw-semibold small">🏷️ Rubrique</label>
                     <select name="rubrique" class="form-select form-select-sm">
                         <option value="">Toutes rubriques</option>
@@ -140,7 +147,7 @@
                 </div>
 
                 {# Financement #}
-                <div style="min-width:200px;">
+                <div class="ged-champ ged-large">
                     <label class="form-label fw-semibold small">💰 Financement</label>
                     <select name="subvention_id" class="form-select form-select-sm">
                         <option value="">Tous</option>
@@ -158,7 +165,7 @@
                 </div>
 
                 {# Statut #}
-                <div style="min-width:150px;">
+                <div class="ged-champ">
                     <label class="form-label fw-semibold small">⚙️ Statut</label>
                     <select name="statut" class="form-select form-select-sm">
                         <option value="">Tous statuts</option>
@@ -172,7 +179,7 @@
                 </div>
 
                 {# N° EBP #}
-                <div style="min-width:170px;">
+                <div class="ged-champ">
                     <label class="form-label fw-semibold small">🔢 N° EBP</label>
                     <select name="avec_ebp" class="form-select form-select-sm">
                         <option value="">Tous</option>
@@ -188,7 +195,7 @@
                 </div>
 
                 {# Recherche par n° EBP #}
-                <div style="min-width:170px;">
+                <div class="ged-champ">
                     <label class="form-label fw-semibold small">🔍 Rechercher n° EBP</label>
                     <input type="text"
                            name="numero_ebp"
@@ -198,7 +205,7 @@
                 </div>
 
                 {# Recherche par destinataire du paiement #}
-                <div style="min-width:200px;">
+                <div class="ged-champ">
                     <label class="form-label fw-semibold small">🔍 Destinataire du paiement</label>
                     <input type="text"
                            name="destinataire"
@@ -208,7 +215,7 @@
                 </div>
 
                 {# Complétude #}
-                <div style="min-width:170px;">
+                <div class="ged-champ">
                     <label class="form-label fw-semibold small">📋 Complétude</label>
                     <select name="completude" class="form-select form-select-sm">
                         <option value="">Toutes</option>
@@ -236,7 +243,7 @@
                 </div>
 
                 {# Archivés #}
-                <div style="min-width:170px;">
+                <div class="ged-champ">
                     <label class="form-label fw-semibold small">🗑 Archivés</label>
                     <select name="archive" class="form-select form-select-sm">
                         <option value=""

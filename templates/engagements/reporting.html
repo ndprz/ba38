@@ -70,16 +70,24 @@
     <div class="card-header bg-dark text-white fw-bold">
         🔍 Filtres
     </div>
-    <div class="card-body">
+    <div class="card-body py-2">
+<style>
+.rep-filtres-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .5rem 1.25rem; margin-bottom: 0; align-items: end; }
+.rep-filtres-grid .rep-actions { grid-column: -3 / -1; display: flex; gap: .5rem; justify-content: flex-end; align-items: flex-end; white-space: nowrap; }
+.rep-filtres-grid .rep-champ { display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
+.rep-filtres-grid .rep-large { grid-column: span 2; }
+.rep-filtres-grid .form-label { margin: 0; white-space: nowrap; font-size: .85rem; }
+.rep-filtres-grid .form-control, .rep-filtres-grid .form-select { width: 100%; }
+</style>
         <form method="POST"
               action="{{ url_for('engagements.engagements_reporting') }}"
               id="form-reporting">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-            <div class="d-flex flex-wrap gap-3 mb-3">
+            <div class="rep-filtres-grid">
 
                 {# Période #}
-                <div class="d-flex flex-column" style="min-width: 150px;">
+                <div class="rep-champ">
                     <label class="form-label fw-semibold">
                         📅 Date début
                     </label>
@@ -89,7 +97,7 @@
                            value="{{ filters.date_debut }}">
                 </div>
 
-                <div class="d-flex flex-column" style="min-width: 150px;">
+                <div class="rep-champ">
                     <label class="form-label fw-semibold">
                         📅 Date fin
                     </label>
@@ -101,7 +109,7 @@
 
                 {# Demandeur (admin uniquement) #}
                 {% if voir_tout %}
-                <div class="d-flex flex-column" style="min-width: 160px;">
+                <div class="rep-champ">
                     <label class="form-label fw-semibold">
                         👤 Demandeur
                     </label>
@@ -114,7 +122,7 @@
                 {% endif %}
 
                 {# Fournisseur #}
-                <div class="d-flex flex-column" style="min-width: 160px;">
+                <div class="rep-champ">
                     <label class="form-label fw-semibold">
                         🏭 Fournisseur
                     </label>
@@ -126,7 +134,7 @@
                 </div>
 
                 {# Numéro écriture EBP #}
-                <div class="d-flex flex-column" style="min-width: 160px;">
+                <div class="rep-champ">
                     <label class="form-label fw-semibold">
                         🧾 N° écriture EBP
                     </label>
@@ -138,7 +146,7 @@
                 </div>
 
                 {# Pôle #}
-                <div class="d-flex flex-column" style="min-width: 160px;">
+                <div class="rep-champ">
                     <label class="form-label fw-semibold">
                         🏢 Pôle
                     </label>
@@ -157,7 +165,7 @@
                 </div>
 
                 {# Rubrique #}
-                <div class="d-flex flex-column" style="min-width: 160px;">
+                <div class="rep-champ">
                     <label class="form-label fw-semibold">
                         🏷️ Rubrique
                     </label>
@@ -176,7 +184,7 @@
                 </div>
 
                 {# Subvention / budget #}
-                <div class="d-flex flex-column" style="min-width: 200px;">
+                <div class="rep-champ rep-large">
                     <label class="form-label fw-semibold">
                         💰 Financement
                     </label>
@@ -201,7 +209,7 @@
                 </div>
 
                 {# Statut #}
-                <div class="d-flex flex-column" style="min-width: 140px;">
+                <div class="rep-champ">
                     <label class="form-label fw-semibold">
                         ⚙️ Statut
                     </label>
@@ -220,7 +228,7 @@
                 </div>
 
                 {# Archivés #}
-                <div class="d-flex flex-column" style="min-width: 170px;">
+                <div class="rep-champ">
                     <label class="form-label fw-semibold">
                         🗑 Archivés
                     </label>
@@ -240,12 +248,13 @@
                     </select>
                 </div>
 
-            </div>{# /flex filtres #}
+                {# Boutons : dans la grille, sur la dernière ligne, à droite #}
+                <div class="rep-actions">
+                    {{ action_button("🔍 Rechercher", type="submit", color="primary") }}
+                    {{ action_button("✖ Réinitialiser", href=url_for('engagements.engagements_reporting'), color="outline-secondary") }}
+                </div>
 
-            {% call action_buttons() %}
-                {{ action_button("🔍 Rechercher", type="submit", color="primary") }}
-                {{ action_button("✖ Réinitialiser", href=url_for('engagements.engagements_reporting'), color="outline-secondary") }}
-            {% endcall %}
+            </div>{# /flex filtres #}
 
         </form>
     </div>

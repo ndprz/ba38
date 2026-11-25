@@ -8004,7 +8004,24 @@ def _prompt_detection_fiche_camion():
     )
 
 
-def _detecter_fiche_camion_une_page(pdf_bytes_page, codes_connus):
+def _ensure_table_cache_page_fiche_camion(conn):
+    """Cache par page (demande utilisateur 2026-11-25) : évite de rappeler
+    l'API Claude pour une page déjà analysée avec succès, si la MÊME page
+    (octets identiques) est soumise à nouveau — cas typique d'un nouvel
+    upload qui reprend après une page en erreur, ou d'un re-test. Clé =
+    sha256 des octets de la page PDF extraite (indépendant de
+    codes_connus : le filtrage par magasins connus reste appliqué après
+    lecture du cache, cf. _detecter_fiche_camion_une_page)."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collecte_detection_fiche_camion_cache_page (
+            page_hash TEXT PRIMARY KEY,
+            resultat_json TEXT NOT NULL,
+            mis_en_cache_le TEXT
+        )
+    """)
+
+
+def _detecter_fiche_camion_une_page_brute(pdf_bytes_page):
     """Un seul appel API Claude (vision/document) sur UNE page de fiche
     camion — cf. _detecter_fiche_camion_background pour le découpage
     page par page d'un scan multi-pages (un scan complet de demi-journée
@@ -8012,7 +8029,8 @@ def _detecter_fiche_camion_une_page(pdf_bytes_page, codes_connus):
     réflexion du modèle si on lui envoie tout en un seul appel, cf.
     incident 2026-11-24 « max_tokens », déjà rencontré sur la fiche
     association). Lève une exception si l'appel échoue ; retourne
-    toujours un dict (vide si la page n'est pas une fiche camion)."""
+    toujours un dict (vide si la page n'est pas une fiche camion), SANS
+    filtrage par magasins connus (cf. _detecter_fiche_camion_une_page)."""
     import base64, json as _json
     api_key = os.getenv("CLAUDE_API_KEY")
     if not api_key:
@@ -8057,8 +8075,6 @@ def _detecter_fiche_camion_une_page(pdf_bytes_page, codes_connus):
     magasins = {}
     for code_vif, valeurs in (data.get("magasins") or {}).items():
         code_vif = str(code_vif).strip()
-        if code_vif not in codes_connus:
-            continue
         tournees = [_entier_ou_rien(v) for v in (valeurs.get("tournees") or [])]
         tournees_valides = [v for v in tournees if v is not None]
         dimanche = _entier_ou_rien(valeurs.get("dimanche"))
@@ -8068,6 +8084,45 @@ def _detecter_fiche_camion_une_page(pdf_bytes_page, codes_connus):
             "dimanche": dimanche,
         }
     return {"demi_journee": demi_journee, "vehicule": vehicule, "quai": quai, "magasins": magasins}
+
+
+def _detecter_fiche_camion_une_page(pdf_bytes_page, codes_connus):
+    """Comme _detecter_fiche_camion_une_page_brute, mais en passant par le
+    cache par page (évite l'appel API si cette page exacte a déjà été
+    analysée avec succès) puis en filtrant le résultat aux seuls magasins
+    de codes_connus (fait ici et non dans le cache, pour rester valable
+    même si codes_connus change entre deux analyses)."""
+    import hashlib, json as _json
+
+    page_hash = hashlib.sha256(pdf_bytes_page).hexdigest()
+    with get_db_connection() as conn:
+        _ensure_table_cache_page_fiche_camion(conn)
+        ligne = conn.execute(
+            "SELECT resultat_json FROM collecte_detection_fiche_camion_cache_page WHERE page_hash = ?",
+            (page_hash,)
+        ).fetchone()
+
+    if ligne:
+        data = _json.loads(ligne["resultat_json"])
+    else:
+        data = _detecter_fiche_camion_une_page_brute(pdf_bytes_page)
+        with get_db_connection() as conn:
+            _ensure_table_cache_page_fiche_camion(conn)
+            conn.execute("""
+                INSERT INTO collecte_detection_fiche_camion_cache_page (page_hash, resultat_json, mis_en_cache_le)
+                VALUES (?, ?, ?)
+                ON CONFLICT(page_hash) DO NOTHING
+            """, (page_hash, _json.dumps(data, ensure_ascii=False), datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            conn.commit()
+
+    magasins = {
+        code_vif: valeurs for code_vif, valeurs in data["magasins"].items()
+        if code_vif in codes_connus
+    }
+    return {
+        "demi_journee": data["demi_journee"], "vehicule": data["vehicule"],
+        "quai": data["quai"], "magasins": magasins, "depuis_cache": bool(ligne),
+    }
 
 
 def _detecter_fiche_camion_background(app, detection_id, annee, pdf_bytes, codes_connus):
@@ -8107,6 +8162,7 @@ def _detecter_fiche_camion_background(app, detection_id, annee, pdf_bytes, codes
             accumulateur = {}
             vehicules_par_cle = {}
             pages_par_cle = {}
+            pages_depuis_cache = 0
 
             for i in range(nb_pages):
                 try:
@@ -8115,6 +8171,8 @@ def _detecter_fiche_camion_background(app, detection_id, annee, pdf_bytes, codes
                     tampon = _io.BytesIO()
                     writer.write(tampon)
                     resultat_page = _detecter_fiche_camion_une_page(tampon.getvalue(), codes_connus)
+                    if resultat_page.get("depuis_cache"):
+                        pages_depuis_cache += 1
                 except Exception as e:
                     pages_en_erreur.append(f"page {i + 1} : {e}")
                     resultat_page = None
@@ -8173,6 +8231,7 @@ def _detecter_fiche_camion_background(app, detection_id, annee, pdf_bytes, codes
             write_log(
                 f"🤖 Collecte {annee} : détection fiche camion #{detection_id} terminée "
                 f"({nb_pages} page(s), {len(accumulateur)} ligne(s) magasin/demi-journée"
+                + (f", {pages_depuis_cache} page(s) réutilisée(s) du cache" if pages_depuis_cache else "")
                 + (f", {len(pages_en_erreur)} page(s) en erreur" if pages_en_erreur else "") + ")"
             )
 

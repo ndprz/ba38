@@ -45,6 +45,38 @@ def _injecter_motifs_derogation_devis():
 
 
 @engagements_bp.context_processor
+def _injecter_associations_remboursement():
+    """Liste des associations pour le choix « Remboursement à une
+    association » (carburant, etc.). Chargée à la demande par le template."""
+
+    def _charger():
+        with sqlite3.connect(get_db_path()) as c:
+            c.row_factory = sqlite3.Row
+            rows = c.execute("""
+                SELECT id, nom_association AS nom,
+                       adresse_association_1, adresse_association_2,
+                       CP, COMMUNE, courriel_association, tel_association
+                FROM associations
+                WHERE nom_association IS NOT NULL AND nom_association != ''
+                ORDER BY nom_association COLLATE NOCASE
+            """).fetchall()
+        out = []
+        for r in rows:
+            adr = "\n".join(x for x in (
+                r["adresse_association_1"], r["adresse_association_2"],
+                " ".join(y for y in (r["CP"], r["COMMUNE"]) if y)
+            ) if x)
+            mail = (r["courriel_association"] or "").replace(";", ",").split(",")[0].strip()
+            out.append({
+                "id": r["id"], "nom": r["nom"], "adresse": adr,
+                "tel": r["tel_association"] or "", "mail": mail,
+            })
+        return out
+
+    return {"associations_remboursement": _charger}
+
+
+@engagements_bp.context_processor
 def _injecter_tarif_km():
     from ba38_engagements.tarif_km import charger_tarif_km
     return {"tarif_km_engagements": charger_tarif_km()}
@@ -510,6 +542,29 @@ def nouvelle_depense():
                 "type_engagement"
             )
 
+            # Remboursement à une association : même circuit que le
+            # paiement fournisseur (devis, GED, listes...), le
+            # bénéficiaire est une association au lieu d'un fournisseur.
+            beneficiaire_association_id = None
+            if type_engagement == "association":
+                type_engagement = "fournisseur"
+                beneficiaire_association_id = (
+                    request.form.get("beneficiaire_association_id") or None
+                )
+                if not beneficiaire_association_id:
+                    flash(
+                        "⚠️ Merci de sélectionner l'association bénéficiaire.",
+                        "warning"
+                    )
+                    return render_template(
+                        "engagements/nouvelle_depense.html",
+                        poles=poles,
+                        paliers=paliers,
+                        benevoles=benevoles,
+                        subventions=subventions,
+                        fournisseurs=fournisseurs
+                    )
+
             sous_type_depense = request.form.get(
                 "sous_type_depense",
                 "achat"
@@ -570,6 +625,9 @@ def nouvelle_depense():
             fournisseur_id = request.form.get(
                 "fournisseur_id"
             ) or None
+
+            if beneficiaire_association_id:
+                fournisseur_id = None
 
             fournisseur_nom = request.form.get(
                 "fournisseur_nom"
@@ -1588,7 +1646,8 @@ BA38
                     fournisseur_iban,
 
                     sous_type_depense,
-                    zone_deplacement
+                    zone_deplacement,
+                    beneficiaire_association_id
 
                 )
                 VALUES (
@@ -1602,7 +1661,7 @@ BA38
 
                     ?, ?, ?, ?, ?, ?,
 
-                    ?, ?
+                    ?, ?, ?
 
                 )
             """, (
@@ -1654,7 +1713,8 @@ BA38
                 fournisseur_iban,
 
                 sous_type_depense,
-                zone_deplacement
+                zone_deplacement,
+                beneficiaire_association_id
 
             ))
 
@@ -1859,6 +1919,7 @@ def detail_engagement(engagement_id):
                 d.devis_derogation_precision,
 
                 d.type_engagement,
+                d.beneficiaire_association_id,
                 d.sous_type_depense,
                 d.zone_deplacement,
 
@@ -2122,6 +2183,7 @@ def modifier_depense_page(engagement_id):
                 d.beneficiaire_benevole_id,
 
                 d.fournisseur_id,
+                d.beneficiaire_association_id,
                 d.fournisseur_nom,
                 d.fournisseur_adresse,
                 d.fournisseur_telephone,
@@ -2183,7 +2245,14 @@ def modifier_depense_page(engagement_id):
         valeurs = {
 
             "sous_type_depense": engagement["sous_type_depense"] or "achat",
-            "type_engagement": engagement["type_engagement"] or "benevole_self",
+            "type_engagement": (
+                "association"
+                if engagement["beneficiaire_association_id"]
+                else (engagement["type_engagement"] or "benevole_self")
+            ),
+            "beneficiaire_association_id": _str_or_vide(
+                engagement["beneficiaire_association_id"]
+            ),
 
             "beneficiaire_benevole_id": _str_or_vide(
                 engagement["beneficiaire_benevole_id"]
@@ -2379,6 +2448,23 @@ def modifier_engagement_configuration(engagement_id):
             "type_engagement", ""
         ).strip()
 
+        # Remboursement à une association (circuit fournisseur)
+        beneficiaire_association_id = None
+        if type_engagement == "association":
+            type_engagement = "fournisseur"
+            beneficiaire_association_id = (
+                request.form.get("beneficiaire_association_id") or None
+            )
+            if not beneficiaire_association_id:
+                flash(
+                    "⚠️ Merci de sélectionner l'association bénéficiaire.",
+                    "warning"
+                )
+                return redirect(url_for(
+                    "engagements.modifier_depense_page",
+                    engagement_id=engagement_id
+                ))
+
         beneficiaire_benevole_id = request.form.get(
             "beneficiaire_benevole_id"
         ) or None
@@ -2545,7 +2631,9 @@ def modifier_engagement_configuration(engagement_id):
         )
 
         if type_engagement == "fournisseur":
-            fournisseur_id_final = fournisseur_id
+            fournisseur_id_final = (
+                None if beneficiaire_association_id else fournisseur_id
+            )
             fournisseur_nom_final = fournisseur_nom
             fournisseur_adresse_final = fournisseur_adresse
             fournisseur_telephone_final = fournisseur_telephone
@@ -2605,6 +2693,7 @@ def modifier_engagement_configuration(engagement_id):
                 fournisseur_telephone = ?,
                 fournisseur_email = ?,
                 fournisseur_iban = ?,
+                beneficiaire_association_id = ?,
 
                 date_frais = ?,
                 kms = ?,
@@ -2634,6 +2723,8 @@ def modifier_engagement_configuration(engagement_id):
             fournisseur_telephone_final,
             fournisseur_email_final,
             fournisseur_iban_final,
+            beneficiaire_association_id
+            if type_engagement == "fournisseur" else None,
 
             date_frais_final,
             kms_final,

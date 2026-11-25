@@ -18,9 +18,9 @@
 
 {% from "macros/buttons.html" import action_button, action_buttons %}
 
-<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+<div class="d-flex flex-wrap flex-xl-nowrap justify-content-between align-items-start gap-3 mb-3">
 
-<div class="engagements-legende">
+<div class="engagements-legende flex-grow-1" style="min-width:0;">
 
     <div class="d-flex flex-wrap align-items-center" style="font-size:.9rem; gap:.6rem .75rem;" id="filtres-statut">
         <span class="fw-bold me-1">Filtrer :</span>
@@ -118,7 +118,7 @@
 
 </div>
 
-<div>
+<div id="barre-actions-eng" class="flex-shrink-0">
     {% set buttons = [] %}
 
     {% set _ = buttons.append({
@@ -612,6 +612,9 @@ document.addEventListener("DOMContentLoaded", function () {
 #table-engagements th.text-end, #table-engagements td.text-end { text-align: right !important; font-variant-numeric: tabular-nums; }
 #table-engagements tr.ligne-a-traiter td { font-weight: 600; background-color: #fff3cd !important; }
 #table-engagements tr.ligne-a-traiter td:first-child { box-shadow: inset 4px 0 0 #fd7e14; }
+#barre-actions-eng > .d-flex { margin-bottom: 0 !important; }
+#barre-actions-eng > .d-flex > div { gap: .4rem !important; }
+#barre-actions-eng .btn { padding: .2rem .55rem; font-size: .82rem; white-space: nowrap; }
 .chip-filtre { margin: 0 .15rem; border: 1px solid #adb5bd; background: #fff; border-radius: 999px; padding: .15rem .7rem; font-size: .8rem; cursor: pointer; }
 .chip-filtre:hover { background: #e9ecef; }
 .chip-filtre.actif { background: #343a40; color: #fff; border-color: #343a40; }

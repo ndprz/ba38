@@ -90,6 +90,7 @@ from ba38_cerfa import cerfa_bp
 from ba38_intervenants import intervenants_bp
 from ba38_emailing import emailing_bp
 from ba38_billets import billets_bp
+from ba38_calendrier_visites import calendrier_visites_bp
 from ba38_partenaires import fiches_visite_bp
 from ba38_partenaires import annexe1bis_bp, webhook_yousign
 from ba38_utilitaires import signature_bp
@@ -457,6 +458,7 @@ app.register_blueprint(cerfa_bp)
 app.register_blueprint(intervenants_bp)
 app.register_blueprint(emailing_bp)
 app.register_blueprint(billets_bp)
+app.register_blueprint(calendrier_visites_bp)
 app.register_blueprint(fiches_visite_bp)
 app.register_blueprint(annexe1bis_bp)
 app.register_blueprint(signature_bp)

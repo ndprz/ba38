@@ -79,7 +79,13 @@ def _build_query(filters, voir_tout):
 
     # Les modèles d'abonnement ne sont que des gabarits de génération
     # (jamais payés) : seules leurs occurrences mensuelles comptent.
-    where = ["1=1", "COALESCE(e.est_modele_abonnement, 0) = 0"]
+    # Les engagements refusés n'engagent aucune dépense : exclus des
+    # totaux et de l'affichage (comme dans le suivi budgétaire).
+    where = [
+        "1=1",
+        "COALESCE(e.est_modele_abonnement, 0) = 0",
+        "e.statut != 'refuse'",
+    ]
     params = []
 
     if filters.get("archive") == "actifs":
@@ -438,7 +444,7 @@ def engagements_reporting():
         agregats=agregats,
         financement_selectionne=financement_selectionne,
         has_search=has_search,
-        statuts=STATUTS_LABELS,
+        statuts={k: v for k, v in STATUTS_LABELS.items() if k != "refuse"},
         voir_tout=voir_tout,
     )
 
