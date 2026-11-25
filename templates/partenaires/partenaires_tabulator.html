@@ -494,6 +494,12 @@ fieldset legend{
     ) }}
 
     {{ action_button(
+        "📅 Calendrier des visites",
+        href=url_for('calendrier_visites.calendrier'),
+        color="primary"
+    ) }}
+
+    {{ action_button(
         "📣 Emailing associations",
         href=url_for('emailing.liste'),
         color="primary"

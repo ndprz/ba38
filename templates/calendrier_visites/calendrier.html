@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros/buttons.html" import action_button, action_buttons, bouton_retour %}
 {% block title %}Calendrier des visites{% endblock %}
 {% block extra_css %}
 <style>
@@ -15,6 +16,7 @@
 .vis.ro{cursor:default}
 .gap-2{gap:.5rem}.navbtns{display:flex;gap:.5rem}
 .aide h6{margin-top:1rem;font-weight:700}.aide li{margin-bottom:.25rem}
+.nomfiltre{color:inherit;text-decoration:none;border-bottom:1px dotted #6c757d}.nomfiltre:hover{color:#0d6efd;border-bottom-color:#0d6efd}.nomfiltre.actif{font-weight:700;color:#0d6efd}
 .legende span{display:inline-block;margin-right:.8rem;font-size:.82rem}
 .legende i{display:inline-block;width:.8rem;height:.8rem;border-radius:2px;margin-right:.25rem;vertical-align:-1px}
 @media(max-width:768px){.cal td{height:70px}.vis .nom{display:none}}
@@ -22,23 +24,32 @@
 {% endblock %}
 {% block content %}
 <div class="container-fluid mt-3">
-  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <h2 class="mb-1">📅 Calendrier des visites aux associations</h2>
-    <div class="d-flex gap-2">
-      <button type="button" class="btn btn-outline-info btn-sm" onclick="new bootstrap.Modal(document.getElementById('modalAideCalendrier')).show()">❓ Aide</button>
-      <a class="btn btn-outline-secondary btn-sm" target="_blank"
-         href="{{ url_for('calendrier_visites.pdf', annee=annee, mois=mois, vue=vue, car=car_filtre) }}">📄 Export PDF</a>
-      {% if peut_saisir %}<button class="btn btn-success btn-sm" onclick="ouvrirVisite()">➕ Ajouter une visite</button>{% endif %}
-    </div>
-  </div>
+  <h2 class="mb-1">📅 Calendrier des visites aux associations</h2>
+  {% call action_buttons() %}
+    {{ action_button("❓ Aide", onclick="new bootstrap.Modal(document.getElementById('modalAideCalendrier')).show()", color="outline-info") }}
+    {{ action_button("📄 Export PDF", href=url_for('calendrier_visites.pdf', annee=annee, mois=mois, vue=vue, car=car_filtre, asso=asso_filtre), color="outline-secondary") }}
+    {% if peut_saisir %}{{ action_button("➕ Ajouter une visite", onclick="ouvrirVisite()", color="success") }}{% endif %}
+    {{ bouton_retour(url_for('partenaires.update_partner', partner_id=asso_filtre) if asso_filtre else url_for('partenaires.partenaires_tabulator')) }}
+  {% endcall %}
   <p class="text-muted small mb-2">Calendrier prévisionnel des visites des CAR.
     {% if droits.admin or droits.pole %}Vous pouvez modifier toutes les visites.
     {% elif droits.car %}Vous pouvez modifier les visites de vos associations.
     {% elif droits.ecriture %}Vous pouvez saisir vos propres visites, chez n'importe quelle association.
     {% else %}Consultation seule.{% endif %}</p>
 
+  {% if asso_filtre %}
+  <div class="alert alert-info py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span>🏢 Visites de l'association : <b>{{ asso_nom or ('n° ' ~ asso_filtre) }}</b></span>
+    <span class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('partenaires.update_partner', partner_id=asso_filtre) }}">↩ Fiche de l'association</a>
+      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('calendrier_visites.calendrier', annee=annee, mois=mois, vue='mois') }}">📅 Toutes les associations</a>
+    </span>
+  </div>
+  {% endif %}
+
   <form method="get" class="row g-2 align-items-end mb-3">
     <input type="hidden" name="vue" value="{{ vue }}">
+    {% if asso_filtre %}<input type="hidden" name="asso" value="{{ asso_filtre }}">{% endif %}
     <div class="col-auto"><label class="small d-block">Année</label>
       <input type="number" name="annee" value="{{ annee }}" class="form-control form-control-sm" style="width:90px" onchange="this.form.submit()"></div>
     {% if vue == 'mois' %}
@@ -47,26 +58,28 @@
         {% for m in range(1,13) %}<option value="{{ m }}" {{ 'selected' if m==mois }}>{{ MOIS[m]|capitalize }}</option>{% endfor %}
       </select></div>
     {% endif %}
-    <div class="col-auto"><label class="small d-block">CAR</label>
+    <div class="col-auto"><label class="small d-block">CAR / intervenant</label>
       <select name="car" class="form-select form-select-sm" onchange="this.form.submit()">
         <option value="">Tous</option>
         {% for c in cars %}<option value="{{ c }}" {{ 'selected' if c==car_filtre }}>{{ c }}</option>{% endfor %}
+        {% if car_filtre and car_filtre not in cars %}<option value="{{ car_filtre }}" selected>{{ car_filtre }}</option>{% endif %}
       </select></div>
+    {% if car_filtre %}<div class="col-auto"><a class="btn btn-sm btn-outline-danger" href="{{ url_for('calendrier_visites.calendrier', annee=annee, mois=mois, vue=vue, asso=asso_filtre) }}">✕ Retirer le filtre « {{ car_filtre }} »</a></div>{% endif %}
     <div class="col-auto navbtns">
-      <a class="btn btn-sm {{ 'btn-primary' if vue=='mois' else 'btn-outline-primary' }}" href="{{ url_for('calendrier_visites.calendrier', annee=annee, mois=mois, vue='mois', car=car_filtre) }}">Mois</a>
-      <a class="btn btn-sm {{ 'btn-primary' if vue=='annee' else 'btn-outline-primary' }}" href="{{ url_for('calendrier_visites.calendrier', annee=annee, mois=mois, vue='annee', car=car_filtre) }}">Année (liste)</a>
+      <a class="btn btn-sm {{ 'btn-primary' if vue=='mois' else 'btn-outline-primary' }}" href="{{ url_for('calendrier_visites.calendrier', annee=annee, mois=mois, vue='mois', car=car_filtre, asso=asso_filtre) }}">Mois</a>
+      <a class="btn btn-sm {{ 'btn-primary' if vue=='annee' else 'btn-outline-primary' }}" href="{{ url_for('calendrier_visites.calendrier', annee=annee, mois=mois, vue='annee', car=car_filtre, asso=asso_filtre) }}">Année (liste)</a>
     </div>
     {% if vue == 'mois' %}
     <div class="col-auto navbtns">
-      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('calendrier_visites.calendrier', annee=prec[0], mois=prec[1], vue='mois', car=car_filtre) }}">◀</a>
-      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('calendrier_visites.calendrier', vue='mois', car=car_filtre) }}">Aujourd'hui</a>
-      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('calendrier_visites.calendrier', annee=suiv[0], mois=suiv[1], vue='mois', car=car_filtre) }}">▶</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('calendrier_visites.calendrier', annee=prec[0], mois=prec[1], vue='mois', car=car_filtre, asso=asso_filtre) }}">◀</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('calendrier_visites.calendrier', vue='mois', car=car_filtre, asso=asso_filtre) }}">Aujourd'hui</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('calendrier_visites.calendrier', annee=suiv[0], mois=suiv[1], vue='mois', car=car_filtre, asso=asso_filtre) }}">▶</a>
     </div>
     {% endif %}
   </form>
 
   <div class="legende mb-2">
-    {% for n, c in couleurs.items() %}<span><i style="background:{{ c }}"></i>{{ n }}</span>{% endfor %}
+    {% for n, c in couleurs.items() %}<span><i style="background:{{ c }}"></i><a href="{{ url_for('calendrier_visites.calendrier', annee=annee, mois=mois, vue=vue, car=n, asso=asso_filtre) }}" class="nomfiltre {{ 'actif' if n == car_filtre }}" title="Filtrer sur {{ n }}">{{ n }}</a></span>{% endfor %}
   </div>
 
   {% if vue == 'mois' %}
@@ -108,7 +121,7 @@
         <td>{{ date_fr(v.date_visite) }}</td>
         <td>{{ v.heure_debut or '' }}{% if v.heure_fin %}–{{ v.heure_fin }}{% endif %}</td>
         <td><b>{{ v.nom_association }}</b></td><td>{{ v.commune }}</td>
-        <td><i class="d-inline-block rounded" style="width:.7rem;height:.7rem;background:{{ v.couleur }}"></i> {{ v.visiteurs_txt }}</td>
+        <td><i class="d-inline-block rounded" style="width:.7rem;height:.7rem;background:{{ v.couleur }}"></i> {% for i in v.intervenants %}<a href="{{ url_for('calendrier_visites.calendrier', annee=annee, mois=mois, vue=vue, car=i.nom, asso=asso_filtre) }}" class="nomfiltre {{ 'actif' if i.nom == car_filtre }}" title="Filtrer sur {{ i.nom }}">{{ i.nom }}</a>{{ ', ' if not loop.last }}{% endfor %}</td>
         <td>{{ statuts[v.statut] }}</td>
         <td>{{ date_fr(v.derniere_fiche) if v.derniere_fiche else '—' }}</td>
         <td class="small">{{ v.commentaire }}</td>
@@ -232,6 +245,7 @@ function ajouterIntervenant() {
 function retirerIntervenant(btn) {
   if (document.querySelectorAll('#v_liste .vrow').length > 1) btn.closest('.vrow').remove();
 }
+const ASSO_FILTRE = {{ (asso_filtre or 'null')|tojson }};
 function ouvrirVisite(v, jour) {
   const $ = id => document.getElementById(id);
   const ro = v && !v.modifiable;
@@ -263,7 +277,7 @@ function ouvrirVisite(v, jour) {
   } else { ajouterIntervenant(); }
   // association : si elle n'est pas dans la liste (hors périmètre du CAR), on l'ajoute en lecture
   const sel = $('v_asso');
-  sel.value = v ? v.association_id : '';
+  sel.value = v ? v.association_id : (ASSO_FILTRE || '');
   if (v && sel.value != v.association_id) {
     const o = new Option(v.nom_association, v.association_id); sel.add(o); sel.value = v.association_id;
   }

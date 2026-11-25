@@ -15,6 +15,11 @@
         📄 Fiches de visite
         </a>
 
+        <a href="{{ url_for('calendrier_visites.calendrier', asso=partner_id) }}"
+        class="btn btn-outline-primary">
+        📅 Calendrier
+        </a>
+
         <a href="{{ url_for('annexe1bis.liste', partner_id=partner_id) }}"
         class="btn btn-outline-primary">
         📋 Annexe 1 bis

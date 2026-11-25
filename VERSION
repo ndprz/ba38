@@ -1,3 +1,3 @@
-VERSION=1.7.384
-MESSAGE=Calendrier previsionnel des visites aux associations par les CAR (consultation/PDF pour tous, saisie selon droits)
-DATE=2026-11-25 11:16
+VERSION=1.7.385
+MESSAGE=Calendrier des visites : boutons depuis associations et fiche, filtre par association/intervenant cliquable, legende complete, Retour a droite
+DATE=2026-11-25 11:25

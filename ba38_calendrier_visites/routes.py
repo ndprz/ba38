@@ -144,7 +144,7 @@ def _associations(conn):
         "ORDER BY nom_association COLLATE NOCASE").fetchall()
 
 
-def _visites(conn, debut, fin, car_filtre=""):
+def _visites(conn, debut, fin, car_filtre="", asso_id=None):
     sql = """SELECT v.*, a.nom_association, COALESCE(a.COMMUNE,'') AS commune,
                     COALESCE(a.CAR,'') AS car_actuel
              FROM visites_prevues v JOIN associations a ON a.Id = v.association_id
@@ -154,8 +154,18 @@ def _visites(conn, debut, fin, car_filtre=""):
         sql += (" AND (LOWER(v.visiteur)=LOWER(?) OR LOWER(COALESCE(a.CAR,''))=LOWER(?) OR EXISTS ("
                 "SELECT 1 FROM visites_prevues_visiteurs x WHERE x.visite_id=v.id AND LOWER(x.nom)=LOWER(?)))")
         args += [car_filtre, car_filtre, car_filtre]
+    if asso_id:
+        sql += " AND v.association_id=?"
+        args.append(asso_id)
     sql += " ORDER BY v.date_visite, COALESCE(v.heure_debut,''), a.nom_association"
     return conn.execute(sql, args).fetchall()
+
+
+def _nom_association(conn, asso_id):
+    if not asso_id:
+        return ""
+    r = conn.execute("SELECT nom_association FROM associations WHERE Id=?", (asso_id,)).fetchone()
+    return r[0] if r else ""
 
 
 def _periode():
@@ -166,23 +176,23 @@ def _periode():
     mois = request.args.get("mois", type=int) or today.month
     if not 1 <= mois <= 12:
         mois = today.month
-    vue = request.args.get("vue", "mois")
+    asso = request.args.get("asso", type=int)
+    # fiche d'une association : l'année entière est plus parlante qu'un mois
+    vue = request.args.get("vue", "annee" if asso else "mois")
     if vue not in ("mois", "annee"):
         vue = "mois"
-    return annee, mois, vue, (request.args.get("car") or "").strip()
+    return annee, mois, vue, (request.args.get("car") or "").strip(), asso
 
 
-def _construire(conn, annee, mois, vue, car_filtre):
+def _construire(conn, annee, mois, vue, car_filtre, asso_id=None):
     d = _contexte_droits(conn)
     if vue == "annee":
         debut, fin = f"{annee}-01-01", f"{annee}-12-31"
     else:
         dernier = calendar.monthrange(annee, mois)[1]
         debut, fin = f"{annee}-{mois:02d}-01", f"{annee}-{mois:02d}-{dernier:02d}"
-    visites = [dict(v) for v in _visites(conn, debut, fin, car_filtre)]
+    visites = [dict(v) for v in _visites(conn, debut, fin, car_filtre, asso_id)]
     cars = _cars(conn)
-    noms = sorted(set(cars) | {v["visiteur"] for v in visites if v["visiteur"]})
-    couleurs = {n: PALETTE[i % len(PALETTE)] for i, n in enumerate(noms)}
     derniere = {r[0]: r[1] for r in conn.execute(
         "SELECT partenaire_id, MAX(date_visite) FROM fiches_visite GROUP BY partenaire_id")}
     interv = {}
@@ -193,8 +203,15 @@ def _construire(conn, annee, mois, vue, car_filtre):
                                                       "benevole_id": v.get("visiteur_benevole_id")}]
         v["visiteurs_txt"] = ", ".join(i["nom"] for i in v["intervenants"])
         v["modifiable"] = bool(_peut_modifier(d, v))
-        v["couleur"] = couleurs.get(v["visiteur"], "#6c757d")
         v["derniere_fiche"] = derniere.get(v["association_id"])
+    # une couleur stable par personne (CAR + tous les intervenants), légende = personnes présentes sur la période
+    presents = {i["nom"] for v in visites for i in v["intervenants"]}
+    if car_filtre:
+        presents.add(car_filtre)
+    palette = {n: PALETTE[i % len(PALETTE)] for i, n in enumerate(sorted(set(cars) | presents))}
+    for v in visites:
+        v["couleur"] = palette.get(v["visiteur"], "#6c757d")
+    couleurs = {n: palette[n] for n in sorted(presents)}
     return d, visites, cars, couleurs
 
 
@@ -225,17 +242,18 @@ def date_fr(iso):
 @bp.route("/")
 @login_required
 def calendrier():
-    annee, mois, vue, car_filtre = _periode()
+    annee, mois, vue, car_filtre, asso_filtre = _periode()
     with _connect() as conn:
-        d, visites, cars, couleurs = _construire(conn, annee, mois, vue, car_filtre)
+        d, visites, cars, couleurs = _construire(conn, annee, mois, vue, car_filtre, asso_filtre)
         assos = [dict(a) for a in _associations(conn)]
+        asso_nom = _nom_association(conn, asso_filtre)
         benevoles = _benevoles(conn) if (_gestionnaire_total(d) or d["car"] or d["ecriture"]) else []
     peut_saisir = bool(_gestionnaire_total(d) or d["car"] or d["ecriture"])
     if d["car"] and not _gestionnaire_total(d):
         assos = [a for a in assos if _meme(a["car"], d["username"])]
     return render_template(
         "calendrier_visites/calendrier.html",
-        annee=annee, mois=mois, vue=vue, car_filtre=car_filtre, MOIS=MOIS, JOURS=JOURS,
+        annee=annee, mois=mois, vue=vue, car_filtre=car_filtre, asso_filtre=asso_filtre, asso_nom=asso_nom, MOIS=MOIS, JOURS=JOURS,
         semaines=_semaines(annee, mois, visites) if vue == "mois" else None,
         visites=visites, cars=cars, couleurs=couleurs, statuts=STATUTS,
         assos_saisie=assos, peut_saisir=peut_saisir, droits=d,
@@ -386,11 +404,14 @@ def supprimer(visite_id):
 @bp.route("/pdf")
 @login_required
 def pdf():
-    annee, mois, vue, car_filtre = _periode()
+    annee, mois, vue, car_filtre, asso_filtre = _periode()
     with _connect() as conn:
-        d, visites, cars, couleurs = _construire(conn, annee, mois, vue, car_filtre)
+        d, visites, cars, couleurs = _construire(conn, annee, mois, vue, car_filtre, asso_filtre)
+        asso_nom = _nom_association(conn, asso_filtre)
     titre = (f"Visites prévisionnelles aux associations — {MOIS[mois]} {annee}" if vue == "mois"
              else f"Visites prévisionnelles aux associations — année {annee}")
+    if asso_nom:
+        titre += f" — {asso_nom}"
     html = render_template(
         "calendrier_visites/pdf.html", titre=titre, vue=vue, car_filtre=car_filtre, JOURS=JOURS,
         semaines=_semaines(annee, mois, visites) if vue == "mois" else None,
@@ -400,5 +421,5 @@ def pdf():
     HTML(string=html, base_url=request.url_root).write_pdf(
         out, stylesheets=[CSS(string="@page { size: A4 landscape; margin: 1cm; }")])
     out.seek(0)
-    nom = f"calendrier_visites_{annee}" + (f"_{mois:02d}" if vue == "mois" else "") + ".pdf"
+    nom = f"calendrier_visites_{'asso' + str(asso_filtre) + '_' if asso_filtre else ''}{annee}" + (f"_{mois:02d}" if vue == "mois" else "") + ".pdf"
     return send_file(out, mimetype="application/pdf", as_attachment=False, download_name=nom)
