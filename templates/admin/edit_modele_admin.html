@@ -113,7 +113,13 @@ function initQuill() {
         }
     });
 
-    quill.root.innerHTML = corpsTextarea.value;
+    // dangerouslyPasteHTML (pas innerHTML = ...) : fait passer le contenu
+    // initial par le parseur HTML de Quill pour garder son modèle Delta
+    // interne synchronisé avec le DOM — une assignation directe de
+    // innerHTML désynchronise ce modèle et corrompt le contenu au
+    // prochain enregistrement (incident constaté 2026-11-26 sur un autre
+    // éditeur Quill du même type, cf. collecte/gardee_envoi.html).
+    quill.clipboard.dangerouslyPasteHTML(corpsTextarea.value);
 
     // Quill encode nativement toute image collée/déposée en base64. On la
     // laisse faire (pas d'interception du "paste" — Quill a déjà son propre

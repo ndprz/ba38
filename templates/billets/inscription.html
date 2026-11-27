@@ -16,7 +16,9 @@
     <p class="mb-0"><b>Inscription jusqu'au :</b> {{ limite_fr(c.date_limite) }}</p>
   </div></div>
 
-  {% if not peut_inscrire %}
+  {% if annulee %}
+    <div class="alert alert-danger"><b>🚫 Ce spectacle est annulé.</b> Les places offertes sont sans objet. Nous vous tiendrons informé(e) si une autre occasion se présente.</div>
+  {% elif not peut_inscrire %}
     <div class="alert alert-info">Cette page n'est pas destinée à l'inscription.</div>
   {% elif premier %}
     {% if p.etat == 'inscrit' and p.resultat == 'gagnant' %}

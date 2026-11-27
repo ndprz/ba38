@@ -294,6 +294,8 @@ def gestion_utilisateurs():
                 role,
                 actif,
                 force_2fa,
+                totp_enabled,
+                code_2fa_actif,
                 test_only,
                 derniere_connexion,
                 etranger_autorise_jusqu,
@@ -359,6 +361,17 @@ def gestion_utilisateurs():
             email = normalize_email(u["email"])
             u["verrou_secondes"] = secondes_verrouillage(email)
             u["nb_telephones"] = nb_telephones.get(u["id"], 0)
+
+            # État réel de la 2FA : la case ne montre que celle IMPOSÉE par l'admin
+            # (force_2fa), pas celle que l'utilisateur a activée lui-même.
+            etat_2fa = []
+            if u["totp_enabled"]:
+                etat_2fa.append("📲 Application")
+            if u["code_2fa_actif"]:
+                etat_2fa.append("📱 Code par SMS" if u["nb_telephones"] else "✉️ Code par email")
+            elif u["force_2fa"] and not u["totp_enabled"]:
+                etat_2fa.append("📱 Code par SMS" if u["nb_telephones"] else "✉️ Code par email")
+            u["etat_2fa"] = etat_2fa
 
             # ADMIN GLOBAL → résumé figé
             if u["role"] == "admin":
@@ -879,9 +892,16 @@ def reset_2fa_user(user_id):
         cur.execute("""
             UPDATE users
             SET totp_enabled = 0,
-                totp_secret = NULL
+                totp_secret = NULL,
+                code_2fa_actif = 0
             WHERE id = ?
         """, (user_id,))
+        # Numéros que l'utilisateur a enregistrés lui-même en activant sa 2FA :
+        # il refera son choix. Ceux ajoutés par un admin restent.
+        cur.execute(
+            "DELETE FROM users_telephones WHERE user_id = ? AND cree_par = ?",
+            (user_id, "activation par l'utilisateur"),
+        )
 
         conn.commit()
 

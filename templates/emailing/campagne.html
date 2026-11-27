@@ -478,9 +478,13 @@ const quill = new Quill("#corps_quill_container", {
   ] }
 });
 const textarea = document.getElementById("corps_textarea");
+// dangerouslyPasteHTML (pas innerHTML = ...) : garde le modèle Delta de
+// Quill synchronisé avec le DOM — une assignation directe désynchronise
+// ce modèle et corrompt le contenu au prochain enregistrement (incident
+// constaté 2026-11-26, cf. collecte/gardee_envoi.html).
 function chargerCorps(texte, isHtml) {
-  if (isHtml) quill.root.innerHTML = texte || "";
-  else quill.root.innerHTML = (texte || "").split("\n").map(l => "<p>" + (l.replace(/&/g,"&amp;").replace(/</g,"&lt;") || "<br>") + "</p>").join("");
+  if (isHtml) quill.clipboard.dangerouslyPasteHTML(texte || "");
+  else quill.clipboard.dangerouslyPasteHTML((texte || "").split("\n").map(l => "<p>" + (l.replace(/&/g,"&amp;").replace(/</g,"&lt;") || "<br>") + "</p>").join(""));
 }
 chargerCorps(textarea.value, {{ 1 if c.is_html else 0 }});
 

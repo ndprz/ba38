@@ -25,12 +25,15 @@ def inscription(token):
             abort(404)
         c = conn.execute("SELECT * FROM billets_campagnes WHERE id = ?", (p["campagne_id"],)).fetchone()
         premier = mails.est_premier(c)
-        clos = c["statut"] == "tiree" or mails.limite_depassee(c)
+        annulee = c["statut"] == "annulee"
+        clos = c["statut"] in ("tiree", "annulee") or mails.limite_depassee(c)
         peut_inscrire = premier or p["categorie"] == "benevole"
         gain = mails.gains_recents(conn, c["id"]).get(p["benevole_id"]) if peut_inscrire else None
         mail_a_envoyer = None
         promus = []
-        if request.method == "POST" and peut_inscrire:
+        if request.method == "POST" and peut_inscrire and annulee:
+            message = ("danger", "Le spectacle est annulé : plus aucune action n'est possible.")
+        elif request.method == "POST" and peut_inscrire:
             action = request.form.get("action")
             if clos and not (premier and action == "desister"):
                 message = ("danger", "Les inscriptions sont closes.")
@@ -76,5 +79,5 @@ def inscription(token):
         if mail_a_envoyer or promus:
             upload_database()
     return render_template("billets/inscription.html", c=c, p=p, clos=clos, gain=gain, message=message,
-                           premier=premier, rang=rang, peut_inscrire=peut_inscrire,
+                           premier=premier, annulee=annulee, rang=rang, peut_inscrire=peut_inscrire,
                            date_fr=mails.date_fr, limite_fr=mails.limite_fr)

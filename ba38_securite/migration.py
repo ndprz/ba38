@@ -22,6 +22,8 @@ COLONNES_USERS = {
     "exempt_inactivite": "INTEGER DEFAULT 0",
     "etranger_autorise_jusqu": "TEXT",
     "jeton_session": "TEXT",
+    # 2FA par code (SMS ou email) activée par l'utilisateur lui-même
+    "code_2fa_actif": "INTEGER DEFAULT 0",
 }
 
 

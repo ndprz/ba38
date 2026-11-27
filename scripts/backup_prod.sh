@@ -54,7 +54,11 @@ echo "📦 Archive : $ARCHIVE"
 # 📦 Création archive PROPRE (structure OK)
 # ============================================================================
 
+# uploads/ (~540 Mo) est exclu : deploy_to_prod.sh n'y touche jamais (rsync
+# --exclude "uploads/"), et l'archiver faisait dépasser 30 s au déploiement
+# lancé depuis la page admin_scripts (timeout gunicorn) — constaté 2026-11-26.
 tar -czf "$ARCHIVE" \
+  --exclude="./uploads" \
   --exclude="venv" \
   --exclude="__pycache__" \
   --exclude="logs/*.log" \

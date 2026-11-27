@@ -7981,10 +7981,20 @@ def _prompt_detection_fiche_camion():
         "pour identifier le magasin, jamais le nom seul. Pour chaque magasin, 4 colonnes "
         "« Tournée 1 » à « Tournée 4 » (le même camion peut repasser plusieurs fois au même "
         "magasin dans la demi-journée) : chacune a une ligne « prendre N » imprimée (nombre de "
-        "caisses vides prévues, à IGNORER) puis une ligne « cagettes ramenées » où le chauffeur "
-        "écrit à la main le nombre de cagettes rapportées après cette tournée. Une colonne séparée "
-        "« Collecté dimanche » peut aussi porter un nombre manuscrit pour ce même magasin (tournée "
-        "du dimanche, reportée sur cette même fiche).\n\n"
+        "caisses vides prévues, à IGNORER COMPLÈTEMENT) puis une ligne « cagettes ramenées » où le "
+        "chauffeur écrit à la main le nombre de cagettes rapportées après cette tournée. Une "
+        "colonne séparée « Collecté dimanche » peut aussi porter un nombre manuscrit pour ce même "
+        "magasin (tournée du dimanche, reportée sur cette même fiche).\n\n"
+        "RÈGLE ABSOLUE sur la ligne « prendre » : ne lis JAMAIS un chiffre qui s'y trouve comme "
+        "s'il s'agissait du nombre de cagettes ramenées, quelle que soit sa forme — même s'il est "
+        "manuscrit, même s'il remplace (en le rayant) le nombre imprimé d'origine, même s'il "
+        "ressemble à un 0 ou tout autre chiffre qui te semblerait pertinent. Un chauffeur corrige "
+        "parfois le nombre de caisses vides prévues directement sur cette ligne (ex. un « 0 » "
+        "manuscrit qui raye un « 22 » imprimé, pour dire qu'il n'a finalement pas pris de caisses "
+        "vides pour cette tournée) : ce chiffre ne concerne QUE les caisses vides à prendre, jamais "
+        "les cagettes ramenées — la seule valeur à rendre pour chaque tournée est celle écrite sur "
+        "la ligne « cagettes ramenées » elle-même (ou dans l'espace juste en dessous si elle sert "
+        "de correction, cf. plus bas), jamais celle de la ligne « prendre » au-dessus.\n\n"
         "Pour chaque case « cagettes ramenées » (ou « Collecté dimanche ») : lis UNIQUEMENT un "
         "nombre entier s'il y en a un clairement écrit (0 compris — un 0 écrit est une vraie "
         "valeur, pas une case vide). Si la case est vide, ou si ce qui y est écrit n'est "
@@ -7992,6 +8002,17 @@ def _prompt_detection_fiche_camion():
         "pour cette tournée (null) plutôt que de deviner — une tournée visiblement non réalisée "
         "(case « prendre » elle-même vide/non imprimée) n'a de toute façon aucune valeur à lire. "
         "N'additionne rien toi-même, rends une valeur par tournée séparément.\n\n"
+        "ATTENTION aux corrections manuscrites, TRÈS fréquentes sur ces fiches : il arrive qu'un "
+        "chauffeur se trompe en écrivant sur la ligne imprimée « cagettes ramenées », rature ou "
+        "griffonne illisiblement par-dessus son premier chiffre, PUIS réécrive le bon nombre en "
+        "GROS, plus bas, dans l'espace blanc encore libre sous cette ligne (cet espace existe "
+        "justement pour ça). Quand tu vois à la fois (a) un gribouillis raturé/illisible sur la "
+        "ligne « cagettes ramenées » elle-même et (b) un chiffre plus grand et plus net écrit "
+        "juste en dessous dans l'espace blanc, c'est TOUJOURS ce second chiffre, le plus grand, le "
+        "plus bas et le plus net, qui est la valeur corrigée à retenir — ignore complètement le "
+        "gribouillis raturé du dessus, ne tente même pas de le déchiffrer. Un simple trait "
+        "horizontal après ou autour de ce chiffre du dessous (soulignement, fin de geste du "
+        "stylo) n'en fait PAS une rature : ne le compte pas comme barré pour autant.\n\n"
         "Si cette page n'est PAS une fiche camion (page de garde, page blanche, autre document), "
         "réponds avec un objet magasins vide et une demi_journee/vehicule vides.\n\n"
         "La demi-journée en haut de page doit être rendue EXACTEMENT comme l'une de ces valeurs "
@@ -8091,10 +8112,14 @@ def _detecter_fiche_camion_une_page(pdf_bytes_page, codes_connus):
     cache par page (évite l'appel API si cette page exacte a déjà été
     analysée avec succès) puis en filtrant le résultat aux seuls magasins
     de codes_connus (fait ici et non dans le cache, pour rester valable
-    même si codes_connus change entre deux analyses)."""
+    même si codes_connus change entre deux analyses). La clé de cache
+    inclut le texte du prompt : toute modification du prompt (consigne
+    affinée suite à une erreur constatée) invalide donc automatiquement
+    les anciennes pages en cache, sans purge manuelle à prévoir."""
     import hashlib, json as _json
 
-    page_hash = hashlib.sha256(pdf_bytes_page).hexdigest()
+    cle_brute = _prompt_detection_fiche_camion().encode("utf-8") + b"|" + pdf_bytes_page
+    page_hash = hashlib.sha256(cle_brute).hexdigest()
     with get_db_connection() as conn:
         _ensure_table_cache_page_fiche_camion(conn)
         ligne = conn.execute(
@@ -11203,6 +11228,15 @@ def exporter_poids_magasins_gardee(annee):
         f"{len(paires_deja_exportees)} paire(s) magasin/association déjà exclue(s), "
         f"{len(magasins_en_attente)} en attente de saisie) par {current_user.email}"
     )
+    # Ce téléchargement ne recharge pas la page : le message n'apparaîtra
+    # qu'au prochain chargement (ex. retour sur Suivi envoi), mais c'est la
+    # seule confirmation visible qu'on puisse donner ici (demande
+    # utilisateur 2026-11-26 : aucun retour visible après génération).
+    flash(
+        f"📤 Export poids par magasin généré : {len(noms_inclus)} association(s) en attente de "
+        "confirmation d'import VIF (bouton « Confirmer l'import VIF OK » sur cette page).",
+        "info",
+    )
 
     return Response(
         tampon.getvalue().encode("utf-8-sig"),
@@ -11211,20 +11245,21 @@ def exporter_poids_magasins_gardee(annee):
     )
 
 
-@collecte_bp.route("/collecte/<int:annee>/quantites-produits")
-@login_required
-@require_access("collecte", "lecture")
-def quantites_produits(annee):
+def _donnees_quantites_produits(annee):
+    """Données de la page Quantités par produit, factorisées pour être
+    partagées entre l'affichage (quantites_produits) et l'export Excel
+    serveur (quantites_produits_export_excel) — ce dernier a besoin des
+    mêmes lignes avec les mêmes totaux, générés côté Python plutôt que
+    dans le JS de la page (openpyxl, contrairement à SheetJS en version
+    gratuite, sait figer des volets dans le fichier généré)."""
     produits = _lire_produits_modele()
     if not produits:
-        flash("⛔ Liste des produits indisponible — modèle association introuvable", "danger")
-        return redirect(url_for("collecte.collecte_main", annee=annee))
+        return None
 
     df_mag = _lire_magasins_gardes(annee)
     df_groupes = _lire_groupes(annee)
     if df_mag.empty:
-        flash(f"⛔ Liste des magasins gardés {annee} indisponible — importez d'abord le fichier magasins", "danger")
-        return redirect(url_for("collecte.collecte_main", annee=annee))
+        return None
     associations, _ = _construire_associations(df_mag, df_groupes)
     noms_associations = sorted({a["nom"] for a in associations}, key=str.lower)
     index_code_vif = _table_code_vif_associations()
@@ -11264,26 +11299,129 @@ def quantites_produits(annee):
 
     lignes = []
     for produit in produits:
+        poids_kg = prix_mercuriale.get(produit["code"])
         ligne = {
             "code_produit": produit["code"],
             "libelle": produit["libelle"],
-            "prix_kg": prix_mercuriale.get(produit["code"]),
+            "prix_kg": poids_kg,
         }
+        total_poids = 0.0
         for nom in noms_associations:
-            ligne[nom] = saisies.get((nom, produit["code"]))
+            v = saisies.get((nom, produit["code"]))
+            ligne[nom] = v
+            total_poids += v or 0
+        ligne["total_poids"] = total_poids
+        ligne["valeur"] = (total_poids * poids_kg) if poids_kg is not None else None
         lignes.append(ligne)
+
+    return {
+        "lignes": lignes,
+        "noms_associations": noms_associations,
+        "code_vif_associations": code_vif_associations,
+        "totaux_associations_n1": totaux_associations_n1,
+        "prix_mercuriale": prix_mercuriale,
+        "total_transfere": total_transfere,
+        "total_stock_gardee": total_stock_gardee,
+    }
+
+
+@collecte_bp.route("/collecte/<int:annee>/quantites-produits")
+@login_required
+@require_access("collecte", "lecture")
+def quantites_produits(annee):
+    donnees = _donnees_quantites_produits(annee)
+    if donnees is None:
+        if not _lire_produits_modele():
+            flash("⛔ Liste des produits indisponible — modèle association introuvable", "danger")
+        else:
+            flash(f"⛔ Liste des magasins gardés {annee} indisponible — importez d'abord le fichier magasins", "danger")
+        return redirect(url_for("collecte.collecte_main", annee=annee))
 
     return render_template(
         "collecte/quantites_produits.html",
         annee=annee,
-        lignes=lignes,
-        associations=noms_associations,
-        code_vif_associations=code_vif_associations,
-        totaux_associations_n1=totaux_associations_n1,
+        lignes=donnees["lignes"],
+        associations=donnees["noms_associations"],
+        code_vif_associations=donnees["code_vif_associations"],
+        totaux_associations_n1=donnees["totaux_associations_n1"],
         annee_precedente=annee - 1,
-        mercuriale_importee=bool(prix_mercuriale),
-        total_transfere=total_transfere,
-        total_stock_gardee=total_stock_gardee,
+        mercuriale_importee=bool(donnees["prix_mercuriale"]),
+        total_transfere=donnees["total_transfere"],
+        total_stock_gardee=donnees["total_stock_gardee"],
+    )
+
+
+@collecte_bp.route("/collecte/<int:annee>/quantites-produits/export-excel")
+@login_required
+@require_access("collecte", "lecture")
+def quantites_produits_export_excel(annee):
+    """Export Excel de la page Quantités par produit — généré côté serveur
+    (openpyxl) plutôt que dans le navigateur (SheetJS gratuit ne sait pas
+    écrire de volets figés) : ligne « Total » et ligne « Total
+    {annee-1} » conservées dans le fichier (contrairement à l'affichage
+    où elles sont des repères visuels), première ligne (en-têtes) figée."""
+    donnees = _donnees_quantites_produits(annee)
+    if donnees is None:
+        flash("⛔ Export impossible — données indisponibles", "danger")
+        return redirect(url_for("collecte.quantites_produits", annee=annee))
+
+    lignes = donnees["lignes"]
+    noms_associations = donnees["noms_associations"]
+    code_vif_associations = donnees["code_vif_associations"]
+    totaux_associations_n1 = donnees["totaux_associations_n1"]
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"Quantités {annee}"[:31]
+
+    entetes_associations = [
+        nom + (f" ({code_vif_associations[nom]})" if code_vif_associations.get(nom) else "")
+        for nom in noms_associations
+    ]
+    ws.append(["Code", "Produit"] + entetes_associations + ["Total poids (kg)", "Valeur (€)"])
+
+    gras = Font(bold=True)
+    fond_gris = PatternFill("solid", fgColor="F1F3F5")
+
+    ligne_total = ["", "Total"]
+    for nom in noms_associations:
+        ligne_total.append(round(sum((l.get(nom) or 0) for l in lignes), 2))
+    ligne_total.append(round(sum((l.get("total_poids") or 0) for l in lignes), 2))
+    ligne_total.append(round(sum((l.get("valeur") or 0) for l in lignes), 2))
+    ws.append(ligne_total)
+    for cell in ws[ws.max_row]:
+        cell.font = gras
+
+    ligne_n1 = ["", f"Total {annee - 1}"]
+    for nom in noms_associations:
+        ligne_n1.append(round(totaux_associations_n1.get(nom) or 0))
+    ligne_n1.append(round(sum((totaux_associations_n1.get(nom) or 0) for nom in noms_associations), 2))
+    ligne_n1.append(None)
+    ws.append(ligne_n1)
+    for cell in ws[ws.max_row]:
+        cell.font = gras
+        cell.fill = fond_gris
+
+    for ligne in lignes:
+        row = [ligne["code_produit"], ligne["libelle"]]
+        for nom in noms_associations:
+            row.append(ligne.get(nom))
+        row.append(round(ligne["total_poids"], 2))
+        row.append(round(ligne["valeur"], 2) if ligne["valeur"] is not None else None)
+        ws.append(row)
+
+    ws.freeze_panes = "A2"
+
+    tampon = io.BytesIO()
+    wb.save(tampon)
+    tampon.seek(0)
+    nom_fichier = f"quantites_produits_{annee}_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+    return send_file(
+        tampon, as_attachment=True, download_name=nom_fichier,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 
@@ -11440,6 +11578,11 @@ def quantites_produits_transferts_export_trancog(annee):
         f"📤 Export CSV TRANCOG VIF {annee} ({len(lignes)} article(s), "
         f"{len(noms_inclus)} association(s) en attente de confirmation d'import VIF) par {current_user.email}"
     )
+    flash(
+        f"📤 Export transferts VIF généré : {len(noms_inclus)} association(s) en attente de "
+        "confirmation d'import VIF (bouton « Confirmer l'import VIF OK » sur la page Suivi envoi).",
+        "info",
+    )
     return Response(
         contenu.encode("utf-8-sig"),
         mimetype="text/csv",
@@ -11549,6 +11692,11 @@ def quantites_produits_bl_vif(annee):
         f"📤 BL VIF collecte gardée {annee} ({len(lignes)} ligne(s), {len(noms_inclus)} association(s) "
         f"en attente de confirmation d'import VIF, {len(noms_pas_encore_eligibles)} association(s) incomplète(s) "
         f"ou pas encore exportée(s) (transferts) exclue(s)) par {current_user.email}"
+    )
+    flash(
+        f"📤 BL VIF généré : {len(noms_inclus)} association(s) en attente de confirmation d'import VIF "
+        "(bouton « Confirmer l'import VIF OK » sur la page Suivi envoi).",
+        "info",
     )
     return Response(
         contenu, mimetype="text/csv",

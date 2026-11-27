@@ -26,7 +26,7 @@ def normalize_phone_fr(raw):
     return None
 
 
-def envoyer_sms_reel(numero, texte, gsmsmsid=None):
+def envoyer_sms_reel(numero, texte, gsmsmsid=None, pushtype=None):
     """
     Envoie réellement un SMS via l'API SmsFactor.
     gsmsmsid : identifiant de tracking (on y met l'id de la ligne sms_envois)
@@ -38,6 +38,10 @@ def envoyer_sms_reel(numero, texte, gsmsmsid=None):
     token = os.environ["SMSFACTOR_API_TOKEN"]
 
     params = {"text": texte, "to": numero}
+    if pushtype:
+        # "alert" = message transactionnel (code de connexion) : pas de plage
+        # horaire 8h-20h ni de mention STOP, contrairement à "marketing"
+        params["pushtype"] = pushtype
     if gsmsmsid is not None:
         params["gsmsmsid"] = str(gsmsmsid)
 

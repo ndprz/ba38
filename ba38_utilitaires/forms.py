@@ -20,7 +20,7 @@ def _email_ou_identifiant_tablette(form, field):
 class LoginForm(FlaskForm):
     email = StringField("Email (ou identifiant tablette)", validators=[DataRequired(), _email_ou_identifiant_tablette])
     password = PasswordField("Mot de passe", validators=[DataRequired()])
-    activer_2fa = BooleanField("Activer la double authentification (2FA) sur mon compte")
+    activer_2fa = BooleanField("Activer la double authentification (première fois seulement)")
     submit = SubmitField("Se connecter")
 
 # 📌 Formulaire d'inscription

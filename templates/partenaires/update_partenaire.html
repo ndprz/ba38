@@ -31,8 +31,9 @@
     <input type="hidden" name="form_hash" id="form_hash" value="{{ form_hash }}">
 
     {% if nom_association %}
-    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
-      <div style="font-size: 1.4em; font-weight: bold; color: #333;">
+    {# titre sur sa propre ligne, boutons dessous : l'affichage ne dépend plus du nombre de boutons (Précédent / Suivant) #}
+    <div class="mb-3">
+      <div class="mb-2" style="font-size: 1.4em; font-weight: bold; color: #333;">
         🏷️ {{ nom_association }}
         {% if not can_edit_any_field %}
         <span class="badge bg-secondary ms-2">

@@ -6,20 +6,29 @@ import secrets
 from datetime import datetime, timedelta
 
 import jwt
-from flask import current_app, flash, redirect, render_template, request, url_for
+from flask import current_app, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import generate_password_hash
 
 from ba38_securite import securite_bp
 from ba38_securite.core import (
+    CONFIANCE_JOURS,
     CONTACT_SECURITE,
     _envoyer_en_arriere_plan,
     _envoyer_sms,
+    compte_a_2fa,
     effacer_echecs,
+    enregistrer_echec,
+    envoyer_code,
     maintenant,
+    masquer_email,
     masquer_numero,
+    message_verrouillage,
+    notifier_verrouillage,
+    secondes_verrouillage,
     telephones_du_compte,
+    verifier_code,
 )
 from ba38_utilitaires.core import (
     get_real_db_connection,
@@ -267,3 +276,140 @@ Origine  : {nom_pays(pays_ip(ip))} (adresse {ip})
         return render_template("securite/support.html", envoye=True, contact=CONTACT_SECURITE, champs={})
 
     return render_template("securite/support.html", envoye=False, contact=CONTACT_SECURITE, champs=champs)
+
+
+# --------------------------------------------------------------------------
+# 🔐 Activation de la 2FA par l'utilisateur lui-même (depuis l'écran de
+# connexion : case "Activer la double authentification").
+# Il choisit : application d'authentification, SMS ou email.
+# Réservé aux comptes SANS second facteur (voir compte_a_2fa) : le numéro n'est
+# enregistré qu'après saisie du code reçu dessus, donc un numéro faux ou mal
+# tapé ne peut pas verrouiller le compte.
+# --------------------------------------------------------------------------
+CREE_PAR_ACTIVATION = "activation par l'utilisateur"
+
+
+def _compte_en_activation():
+    """Compte dont le mot de passe vient d'être validé et qui peut activer sa
+    2FA, ou None (un message est déjà prêt si le compte est verrouillé)."""
+    user_id = session.get("pre_2fa_user")
+    if not user_id:
+        return None
+    conn = get_real_db_connection()
+    user = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    conn.close()
+    if not user or str(user["actif"]).strip().lower() not in ("1", "oui", "true") or compte_a_2fa(user):
+        session.pop("pre_2fa_user", None)
+        return None
+    reste = secondes_verrouillage(user["email"].strip().lower())
+    if reste:
+        for cle in ("pre_2fa_user", "code_2fa", "activation_2fa"):
+            session.pop(cle, None)
+        flash(message_verrouillage(reste), "danger")
+        return None
+    return user
+
+
+@securite_bp.route("/activer-2fa", methods=["GET", "POST"])
+def activer_2fa():
+    """Choix du second facteur : application, SMS ou email."""
+    user = _compte_en_activation()
+    if not user:
+        return redirect(url_for("login"))
+
+    if request.method == "POST" and request.form.get("choix") == "email":
+        ok, erreur = envoyer_code(user, None)
+        if not ok:
+            flash(erreur, "danger")
+            return redirect(url_for("securite.activer_2fa"))
+        session["activation_2fa"] = {"mode": "email"}
+        return redirect(url_for("securite.activer_2fa_code"))
+
+    session.pop("activation_2fa", None)
+    session.pop("code_2fa", None)
+    return render_template(
+        "securite/activer_2fa.html", etape="choix", email_masque=masquer_email(user["email"]),
+    )
+
+
+@securite_bp.route("/activer-2fa/sms", methods=["GET", "POST"])
+def activer_2fa_sms():
+    """Saisie du numéro de portable (le code est envoyé dessus avant tout enregistrement)."""
+    from ba38_sms.smsfactor_client import normalize_phone_fr
+
+    user = _compte_en_activation()
+    if not user:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        numero = normalize_phone_fr(request.form.get("numero"))
+        if not numero or not numero.startswith(("336", "337")):
+            flash("Numéro de portable français attendu (06… ou 07…).", "warning")
+            return redirect(url_for("securite.activer_2fa_sms"))
+        ok, erreur = envoyer_code(user, {"id": None, "numero": numero, "libelle": "Mon portable"})
+        if not ok:
+            flash(erreur, "danger")
+            return redirect(url_for("securite.activer_2fa_sms"))
+        session["activation_2fa"] = {"mode": "sms", "numero": numero}
+        return redirect(url_for("securite.activer_2fa_code"))
+
+    return render_template("securite/activer_2fa.html", etape="sms")
+
+
+@securite_bp.route("/activer-2fa/code", methods=["GET", "POST"])
+def activer_2fa_code():
+    """Saisie du code reçu : la 2FA est activée (et le numéro enregistré) seulement s'il est juste."""
+    user = _compte_en_activation()
+    activation = session.get("activation_2fa")
+    code_en_cours = session.get("code_2fa")
+    if not user:
+        return redirect(url_for("login"))
+    if not activation or not code_en_cours or code_en_cours.get("user_id") != user["id"]:
+        return redirect(url_for("securite.activer_2fa"))
+
+    ip = get_real_ip()
+    login_cle = user["email"].strip().lower()
+
+    if request.method == "POST":
+        ok, via = verifier_code(user, request.form.get("code"))
+        if ok:
+            conn = get_real_db_connection()
+            try:
+                if activation["mode"] == "sms":
+                    conn.execute(
+                        "INSERT OR IGNORE INTO users_telephones "
+                        "(user_id, libelle, numero, cree_le, cree_par, verifie_le, utilise_le) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (user["id"], "Mon portable", activation["numero"], maintenant(),
+                         CREE_PAR_ACTIVATION, maintenant(), maintenant()),
+                    )
+                conn.execute("UPDATE users SET code_2fa_actif=1 WHERE id=?", (user["id"],))
+                conn.commit()
+            finally:
+                conn.close()
+            session.pop("activation_2fa", None)
+            effacer_echecs(login_cle)
+            write_log(f"🔐 2FA activée par l'utilisateur {user['email']} | {via}")
+            flash("✅ Double authentification activée : un code vous sera demandé "
+                  "à la connexion sur un nouvel appareil.", "success")
+            from ba38 import ouvrir_session  # import tardif : ba38.py importe ce module
+            ouvrir_session(user, ip, request.headers.get("User-Agent", ""), via=via,
+                           confiance_jours=CONFIANCE_JOURS if request.form.get("confiance") else 0)
+            return redirect(url_for("index"))
+
+        enregistrer_echec(ip, login_cle)
+        write_log(f"❌ ACTIVATION 2FA code KO {user['email']} | IP={ip}")
+        reste = secondes_verrouillage(login_cle)
+        if reste:
+            notifier_verrouillage(login_cle, ip)
+            for cle in ("pre_2fa_user", "code_2fa", "activation_2fa"):
+                session.pop(cle, None)
+            flash(message_verrouillage(reste), "danger")
+            return redirect(url_for("login"))
+        flash("❌ Code incorrect ou expiré. Vérifiez le dernier code reçu.", "danger")
+        return redirect(url_for("securite.activer_2fa_code"))
+
+    return render_template(
+        "securite/activer_2fa.html", etape="code", code_en_cours=code_en_cours,
+        confiance_jours=CONFIANCE_JOURS,
+    )

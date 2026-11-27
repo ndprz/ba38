@@ -34,9 +34,10 @@
             {{ form.activer_2fa(class="form-check-input") }}
             {{ form.activer_2fa.label(class="form-check-label") }}
             <div class="form-text">
-                À cocher pour activer la double authentification sur votre compte
-                (à faire une seule fois — un QR code à scanner avec une application
-                d'authentification vous sera proposé après connexion).
+                À cocher <strong>uniquement la première fois</strong> : après votre mot de passe,
+                vous choisirez de recevoir le code par SMS, par email, ou avec une application
+                d'authentification. Si elle est déjà activée sur votre compte, laissez décoché :
+                le code vous sera demandé automatiquement.
                 <a href="#" data-bs-toggle="modal" data-bs-target="#modalAide2FA">Comment faire ?</a>
             </div>
         </div>

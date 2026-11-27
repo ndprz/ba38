@@ -38,7 +38,7 @@ from ba38_utilitaires.core import date_fr
 from ba38_securite.core import (
     secondes_verrouillage, message_verrouillage, notifier_verrouillage, enregistrer_echec, effacer_echecs,
     pays_refuse, message_pays_refuse, notifier_pays_refuse_mot_de_passe_correct, apres_connexion_reussie,
-    appareil_de_confiance, telephones_du_compte, CONFIANCE_JOURS, envoyer_code, verifier_code, masquer_numero, masquer_email,
+    appareil_de_confiance, telephones_du_compte, compte_a_2fa, CONFIANCE_JOURS, envoyer_code, verifier_code, masquer_numero, masquer_email,
 )
 from ba38_utilitaires.organisation import get_organisation
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, g, current_app, send_from_directory, abort, make_response
@@ -1323,7 +1323,8 @@ def login():
             # par l'utilisateur (totp_enabled, quel que soit force_2fa), ou activé
             # volontairement via la case à cocher de l'écran de connexion.
             # Sauf sur un appareil de confiance (code déjà saisi < CONFIANCE_JOURS jours).
-            besoin_2fa = user["force_2fa"] == 1 or user["totp_enabled"] or form.activer_2fa.data
+            besoin_2fa = (user["force_2fa"] == 1 or user["totp_enabled"] or user["code_2fa_actif"]
+                          or form.activer_2fa.data)
             if besoin_2fa and not (appareil_de_confiance(user) and not form.activer_2fa.data):
 
                 session["pre_2fa_user"] = user["id"]
@@ -1333,9 +1334,11 @@ def login():
                 if user["totp_enabled"]:
                     return redirect(url_for("login_2fa"))
 
-                # Activation volontaire de l'application (case à cocher)
-                if form.activer_2fa.data:
-                    return redirect(url_for("setup_2fa"))
+                # Activation volontaire (case à cocher) : l'utilisateur choisit
+                # application, SMS ou email. Réservé aux comptes sans 2FA ;
+                # sinon la case est ignorée et la connexion suit son cours.
+                if form.activer_2fa.data and not compte_a_2fa(user):
+                    return redirect(url_for("securite.activer_2fa"))
 
                 # 2FA imposée sans application → code par SMS ou email
                 return redirect(url_for("login_code"))
@@ -2074,7 +2077,9 @@ def setup_2fa():
         (user_id,)
     ).fetchone()
 
-    if not user or user["role"] != "admin":
+    # Application d'authentification : admins (comme avant) et comptes qui
+    # activent eux-mêmes leur 2FA (choix proposé par /securite/activer-2fa)
+    if not user or (user["role"] != "admin" and compte_a_2fa(user)):
         conn.close()
         return redirect(url_for("login"))
 

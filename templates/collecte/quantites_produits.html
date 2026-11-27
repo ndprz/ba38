@@ -60,6 +60,7 @@
 
     {% call action_buttons() %}
         {{ bouton_retour(url_for('collecte.collecte_main', annee=annee)) }}
+        {{ action_button("📥 Export Excel", href=url_for('collecte.quantites_produits_export_excel', annee=annee), color="outline-success") }}
         {{ action_button("📋 Transferts à saisir dans VIF", href=url_for('collecte.quantites_produits_transferts', annee=annee), color="outline-primary") }}
         {{ action_button("📄 Générer BL VIF", href=url_for('collecte.quantites_produits_bl_vif', annee=annee), color="outline-primary") }}
         {{ bouton_ouvrir_confirmation_renforcee("modalRazQuantites", "🗑️ Repartir à zéro") }}
@@ -166,6 +167,7 @@ const colonnesAssociations = associations.map(function (nom) {
     const titreBase = nom + (codeVif ? " (" + codeVif + ")" : "");
     return {
         title: titreBase,
+        titleDownload: titreBase,
         titleFormatter: function () {
             let html = titreBase;
             if (totalN1 !== undefined && totalN1 !== null) {
@@ -180,8 +182,8 @@ const colonnesAssociations = associations.map(function (nom) {
         headerWordWrap: true,
         editor: "number",
         editorParams: { min: 0, step: 0.01 },
-        topCalc: "sum",
-        topCalcParams: { precision: 2 },
+        editable: function (cell) { return !cell.getRow().getData().__total_n1__; },
+        topCalc: sommeExclutTotalN1(nom),
         formatter: function (cell) {
             const v = cell.getValue();
             return (v === null || v === undefined) ? "" : Math.round(v * 100) / 100;
@@ -189,6 +191,22 @@ const colonnesAssociations = associations.map(function (nom) {
         cellEdited: sauvegarderCellule,
     };
 });
+
+// Les totaux en haut de colonne (ligne « Total ») doivent ignorer la ligne
+// « Total {anneePrecedente} » ajoutée sous eux (demande utilisateur
+// 2026-11-26) : sinon le total de l'année N-1 s'additionnerait à tort au
+// total de l'année en cours.
+function sommeExclutTotalN1(champ) {
+    return function (values, data) {
+        let total = 0;
+        data.forEach(function (row) {
+            if (row.__total_n1__) return;
+            const v = parseFloat(row[champ]);
+            if (!isNaN(v)) total += v;
+        });
+        return Math.round(total * 100) / 100;
+    };
+}
 
 function poidsTotalLigne(data) {
     let total = 0;
@@ -204,16 +222,30 @@ function calculerTotauxLigne(data) {
 }
 lignes.forEach(function (l) { Object.assign(l, calculerTotauxLigne(l)); });
 
+// Ligne « Total {anneePrecedente} », juste sous la ligne « Total » (calcul
+// haut de colonne) — reprend les totaux par association déjà connus pour
+// l'année précédente (totauxAssociationsN1), affichés dans l'en-tête des
+// colonnes jusqu'ici, pour une comparaison directe ligne à ligne.
+const ligneTotalN1 = { code_produit: "", libelle: "Total " + anneePrecedente, prix_kg: null, __total_n1__: true };
+associations.forEach(function (nom) {
+    const v = totauxAssociationsN1[nom];
+    ligneTotalN1[nom] = (v === undefined || v === null) ? 0 : Math.round(v);
+});
+Object.assign(ligneTotalN1, calculerTotauxLigne(ligneTotalN1));
+lignes.unshift(ligneTotalN1);
+
 const colonnesValorisation = [
     { title: "Total poids (kg)", field: "total_poids", width: 130, hozAlign: "right",
       formatter: function (cell) { return Math.round((cell.getValue() || 0) * 100) / 100; },
-      topCalc: "sum", topCalcFormatter: function (cell) { return "<strong>" + Math.round((cell.getValue() || 0) * 100) / 100 + "</strong>"; } },
+      topCalc: sommeExclutTotalN1("total_poids"),
+      topCalcFormatter: function (cell) { return "<strong>" + Math.round((cell.getValue() || 0) * 100) / 100 + "</strong>"; } },
     { title: "Valeur (€)", field: "valeur", width: 130, hozAlign: "right",
       formatter: function (cell) {
           const v = cell.getValue();
           return v == null ? "—" : v.toFixed(2);
       },
-      topCalc: "sum", topCalcFormatter: function (cell) { return "<strong>" + (cell.getValue() || 0).toFixed(2) + "</strong>"; } },
+      topCalc: sommeExclutTotalN1("valeur"),
+      topCalcFormatter: function (cell) { return "<strong>" + (cell.getValue() || 0).toFixed(2) + "</strong>"; } },
 ];
 
 const table = new Tabulator("#tabulator-table", {
@@ -221,6 +253,12 @@ const table = new Tabulator("#tabulator-table", {
     layout: "fitColumns",
     height: "calc(100vh - 280px)",
     placeholder: "Aucun produit",
+    rowFormatter: function (row) {
+        if (row.getData().__total_n1__) {
+            row.getElement().style.fontWeight = "bold";
+            row.getElement().style.backgroundColor = "#f1f3f5";
+        }
+    },
     columns: [
         { title: "Code", field: "code_produit", width: 90, headerFilter: "input", frozen: true },
         { title: "Produit", field: "libelle", widthGrow: 2, minWidth: 260, headerFilter: "input", frozen: true,
@@ -241,6 +279,11 @@ function syncTopScrollWidth() {
 }
 
 table.on("tableBuilt", function () {
+    // Fige la ligne « Total {anneePrecedente} » en haut du tableau (reste
+    // visible pendant le défilement, ne bouge pas si on trie une colonne).
+    const ligneN1 = table.getRows().find(function (r) { return r.getData().__total_n1__; });
+    if (ligneN1) ligneN1.freeze();
+
     syncTopScrollWidth();
     holder = document.querySelector("#tabulator-table .tabulator-tableholder");
     holder.addEventListener("scroll", function () {

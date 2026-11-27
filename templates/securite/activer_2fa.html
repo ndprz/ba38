@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Activer la double authentification{% endblock %}
+
+{% block content %}
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 70vh;">
+  <div class="card shadow p-4" style="max-width: 480px; width: 100%;">
+
+    {% if etape == "choix" %}
+      <h3 class="text-center mb-2">🔐 Double authentification</h3>
+      <p class="text-center text-muted mb-4">
+        À chaque connexion sur un nouvel appareil, un code vous sera demandé en plus du mot de passe.<br>
+        <strong>Comment voulez-vous recevoir ce code ?</strong>
+      </p>
+
+      <form method="POST" class="js-envoi-unique">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="d-grid gap-2">
+          <a href="{{ url_for('setup_2fa') }}" class="btn btn-outline-primary btn-lg choix-code">
+            <span>📲 <strong>Application d'authentification</strong></span>
+            <span class="small text-muted">Google Authenticator, Microsoft Authenticator…</span>
+          </a>
+          <a href="{{ url_for('securite.activer_2fa_sms') }}" class="btn btn-outline-primary btn-lg choix-code">
+            <span>📱 <strong>Par SMS</strong></span>
+            <span class="small text-muted">sur votre portable</span>
+          </a>
+          <button type="submit" name="choix" value="email" class="btn btn-outline-primary btn-lg choix-code">
+            <span>✉️ <strong>Par email</strong></span>
+            <span class="small text-muted text-nowrap">{{ email_masque }}</span>
+          </button>
+        </div>
+      </form>
+
+    {% elif etape == "sms" %}
+      <h3 class="text-center mb-2">📱 Code par SMS</h3>
+      <p class="text-center text-muted mb-4">
+        Indiquez votre numéro de portable. Nous vous envoyons un code pour vérifier qu'il est bien le vôtre :
+        le numéro n'est enregistré qu'une fois ce code saisi.
+      </p>
+
+      <form method="POST" autocomplete="off" class="js-envoi-unique">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="mb-3">
+          <label for="numero" class="form-label">Numéro de portable</label>
+          <input type="tel" name="numero" id="numero" class="form-control form-control-lg text-center"
+                 placeholder="06 12 34 56 78" inputmode="tel" autocomplete="tel" required autofocus>
+        </div>
+        <div class="d-grid">
+          <button type="submit" class="btn btn-primary btn-lg">📨 Recevoir le code</button>
+        </div>
+      </form>
+
+      <div class="text-center mt-3">
+        <a href="{{ url_for('securite.activer_2fa') }}" class="small">← Choisir un autre moyen</a>
+      </div>
+
+    {% else %}
+      <h3 class="text-center mb-2">🔐 Entrez le code reçu</h3>
+      <p class="text-center text-muted mb-4">
+        Code envoyé {% if code_en_cours.via == "email" %}par email à{% else %}par SMS au{% endif %}
+        <strong class="text-nowrap">{{ code_en_cours.destination }}</strong>.<br>
+        Il est valable 10 minutes.
+      </p>
+
+      <form method="POST" autocomplete="off" class="js-envoi-unique">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="mb-3">
+          <input type="text" name="code" id="code" class="form-control text-center"
+                 placeholder="123456" maxlength="7" inputmode="numeric"
+                 autocomplete="one-time-code" required autofocus
+                 style="font-size: 1.8rem; letter-spacing: 0.4rem;">
+        </div>
+
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" name="confiance" value="1" id="confiance" checked>
+          <label class="form-check-label" for="confiance">
+            Ne plus me demander de code sur cet appareil pendant {{ confiance_jours }} jours
+          </label>
+        </div>
+
+        <div class="d-grid">
+          <button type="submit" class="btn btn-primary btn-lg w-100">✅ Activer la double authentification</button>
+        </div>
+      </form>
+
+      <div class="text-center mt-3 small">
+        Pas reçu ? Attendez une minute, puis
+        <a href="{{ url_for('securite.activer_2fa') }}">recommencez ou choisissez un autre moyen</a>.
+      </div>
+    {% endif %}
+
+    <div class="text-center mt-4">
+      <a href="{{ url_for('login') }}" class="text-secondary small">← Retour à la connexion</a>
+    </div>
+  </div>
+</div>
+
+<style>
+  .choix-code {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0 .75rem;
+    text-align: left;
+    white-space: normal;
+  }
+</style>
+<script>
+  // Évite le double envoi (deux SMS / deux emails) si on clique deux fois
+  document.querySelectorAll("form.js-envoi-unique").forEach(function (f) {
+    f.addEventListener("submit", function (e) {
+      if (f.dataset.envoye) { e.preventDefault(); return; }
+      f.dataset.envoye = "1";
+      setTimeout(function () {
+        f.querySelectorAll("button[type=submit]").forEach(function (b) { b.disabled = true; });
+      }, 0);
+    });
+  });
+</script>
+{% endblock %}

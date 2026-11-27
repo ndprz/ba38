@@ -201,15 +201,20 @@ def partenaires_tabulator():
         # Date de fin d'habilitation = celle de la dernière annexe 1 bis
         fin_hab = {}
         for r in cursor.execute("""
-            SELECT a.partenaire_id, a.date_FIN_habilitation
+            SELECT a.partenaire_id, a.date_FIN_habilitation, s.nom_association
             FROM annexe1bis a
+            JOIN associations s ON s.Id = a.partenaire_id
             WHERE a.id = (
                 SELECT b.id FROM annexe1bis b
                 WHERE b.partenaire_id = a.partenaire_id
                 ORDER BY b.date_creation DESC, b.id DESC LIMIT 1
             )
         """).fetchall():
-            fin_hab[r[0]] = _format_date_fr(r[1])
+            fin_hab[r[0]] = habilitation_speciale(r[2]) or _format_date_fr(r[1])
+        # Partenaires à habilitation spéciale sans aucune annexe 1 bis
+        for r in cursor.execute("SELECT Id, nom_association FROM associations").fetchall():
+            if r[0] not in fin_hab:
+                fin_hab[r[0]] = habilitation_speciale(r[1]) or ""
 
     # ============================================================
     # NORMALISATION
@@ -1689,6 +1694,21 @@ def update_partner(partner_id):
     )
 
 
+def habilitation_speciale(nom):
+    """Cas particuliers où la fin d'habilitation n'est pas une date.
+
+    Croix-Rouge, Restos du Cœur, Secours Populaire -> « Habilitation nationale » ;
+    CCAS -> « Habilitation automatique ». None pour les autres partenaires."""
+    n = unicodedata.normalize("NFKD", (nom or "").lower())
+    n = "".join(c for c in n if not unicodedata.combining(c)).replace("œ", "oe")
+    if "croix rouge" in n or "croix-rouge" in n or "secours populaire" in n \
+            or ("resto" in n and "coeur" in n):
+        return "Habilitation nationale"
+    if re.search(r"\bccas\b", n):
+        return "Habilitation automatique"
+    return None
+
+
 def _format_date_fr(val):
     """Date texte (AAAA-MM-JJ ou JJ/MM/AAAA) -> JJ/MM/AAAA ; chaîne vide si absente."""
     val = (val or "").strip()
@@ -1709,6 +1729,12 @@ def _date_fin_habilitation_derniere_annexe(cursor, partner_id):
         "ORDER BY date_creation DESC, id DESC LIMIT 1",
         (partner_id,),
     ).fetchone()
+    nom = cursor.execute(
+        "SELECT nom_association FROM associations WHERE Id = ?", (partner_id,)
+    ).fetchone()
+    special = habilitation_speciale(nom[0] if nom else "")
+    if special:
+        return (bool(row), special)
     if not row:
         return (False, None)
     val = (row[0] or "").strip()

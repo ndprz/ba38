@@ -53,13 +53,20 @@ def ensure_schema(conn):
     """Colonnes ajoutées après la 1re version du module (auto-réparation, tables hors synchro DEV→PROD)."""
     cols = {r[1] for r in conn.execute("PRAGMA table_info(billets_campagnes)")}
     for col, ddl in (("textes_mails", "TEXT"), ("mode", "TEXT DEFAULT 'tirage'"),
-                     ("regle_12_mois", "INTEGER DEFAULT 1")):
+                     ("regle_12_mois", "INTEGER DEFAULT 1"), ("annulee_le", "TEXT"), ("annulee_par", "TEXT")):
         if col not in cols:
             try:
                 conn.execute(f"ALTER TABLE billets_campagnes ADD COLUMN {col} {ddl}")
                 conn.commit()
             except Exception:
                 pass
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(billets_participants)")}
+    if "annulation_envoyee_le" not in cols:
+        try:
+            conn.execute("ALTER TABLE billets_participants ADD COLUMN annulation_envoyee_le TEXT")
+            conn.commit()
+        except Exception:
+            pass
 
 
 def est_premier(c):
@@ -92,7 +99,7 @@ def gains_recents(conn, campagne_id):
                       MAX(CASE WHEN c.mode = 'premier' THEN p.inscrit_le ELSE c.tirage_le END) AS le
                FROM billets_participants p JOIN billets_campagnes c ON c.id = p.campagne_id
                WHERE p.resultat = 'gagnant' AND c.id != ? AND p.benevole_id IS NOT NULL
-                 AND COALESCE(c.regle_12_mois, 1) = 1
+                 AND COALESCE(c.regle_12_mois, 1) = 1 AND c.statut != 'annulee'
                  AND ((c.mode = 'premier' AND p.inscrit_le >= ?) OR (c.statut = 'tiree' AND c.tirage_le >= ?))
                GROUP BY p.benevole_id""", (campagne_id, limite, limite)):
         res[r["benevole_id"]] = (r["le"] or "")[:10]
@@ -216,6 +223,16 @@ TEXTES_MAILS = {
             "une personne ne peut gagner qu'une place par période de 12 mois : vous en avez déjà bénéficié "
             "récemment, vous n'avez donc pas participé au tirage au sort cette fois-ci.</p>"
             "<p>Merci de votre compréhension, et à une prochaine occasion !</p>" + _SIGN)},
+    "annulation": {
+        "libelle": "Spectacle annulé (envoyé aux inscrits, et aux invités si demandé)",
+        "sujet": "Spectacle annulé : <<spectacle>>",
+        "corps": (
+            "<p>Bonjour &lt;&lt;prenom&gt;&gt;,</p>"
+            "<p>Nous avons le regret de vous informer que le spectacle « &lt;&lt;spectacle&gt;&gt; » "
+            "(&lt;&lt;date_spectacle&gt;&gt;) <b>est annulé</b>. Les places offertes par &lt;&lt;donateur&gt;&gt; "
+            "sont de ce fait sans objet.</p>"
+            "<p>Si vous aviez déjà récupéré vos billets, merci de nous le signaler. "
+            "Nous vous tiendrons informé(e) si une autre occasion se présente.</p>" + _SIGN)},
     "place_confirmee": {
         "libelle": "Premier inscrit — place réservée (envoyé à l'inscription)",
         "sujet": "Votre place est réservée : <<spectacle>>",
@@ -255,8 +272,8 @@ TEXTES_MAILS = {
 }
 
 
-CLES_PREMIER = ("place_confirmee", "liste_attente", "place_liberee", "desistement")
-CLES_TIRAGE = ("confirmation", "desistement", "gagnant", "gagnant_salarie", "non_eligible", "non_retenu")
+CLES_PREMIER = ("place_confirmee", "liste_attente", "place_liberee", "desistement", "annulation")
+CLES_TIRAGE = ("confirmation", "desistement", "gagnant", "gagnant_salarie", "non_eligible", "non_retenu", "annulation")
 
 
 def cles_textes(c):
@@ -295,6 +312,10 @@ def mail_confirmation_inscription(c, p):
     if est_premier(c):
         return rendre_texte(c, p, "place_confirmee" if p["resultat"] == "gagnant" else "liste_attente")
     return rendre_texte(c, p, "confirmation")
+
+
+def mail_annulation(c, p):
+    return rendre_texte(c, p, "annulation")
 
 
 def mail_place_liberee(c, p):

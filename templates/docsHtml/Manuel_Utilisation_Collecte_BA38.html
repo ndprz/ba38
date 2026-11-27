@@ -932,24 +932,25 @@ visible ici et sur « Préparer l’envoi » (§4.3), ainsi que le total de
 l’année précédente affiché sous le nom de chaque association dans «
 Quantités par produit » (§5.6). Un nouveau dépôt remplace le précédent.
 Détail du rapprochement (Code VIF puis nom) en §10.4.</p>
-<p>Une case « Traitée » par association indique que le VIF a été fait
-pour elle (export CSV du poids par magasin, transfert de produits et bon
-de livraison). Comme « Répondu » et « Résultat envoyé », elle se coche
-normalement à la main, mais se coche en plus
-<strong>automatiquement</strong> pour chaque association incluse dans un
-« 📄 Générer BL VIF » (§5.6) — objectif : pouvoir relancer plus tard le
-même export pour les associations qui répondent en retard, sans
-réinclure (et donc sans compter deux fois) celles déjà traitées. Tant
-que « Traitée » n’est pas cochée, l’association reste incluse dans les 3
-exports VIF suivants ; dès qu’elle est cochée, elle en est exclue :</p>
+<p>Depuis le 2026-11-24, « Traitée » est remplacée par trois cases
+indépendantes, dans un ordre strict : « Poids exporté », « Transferts
+exportés », « BL généré ». Chacune ne se coche qu’après confirmation
+explicite, jamais automatiquement à la seule génération du CSV —
+garde-fou ajouté après qu’un BL généré, mais jamais réellement importé
+dans VIF, a provoqué un incident de stocks négatifs (détail complet en
+§10.4) :</p>
 <ul>
-<li><p>« 📥 Export CSV VIF (poids par magasin) » (même export qu’en
-§5.5) ;</p></li>
-<li><p>« 📄 Générer BL VIF » (§5.6) — qui applique en plus sa propre
-règle, indépendante de « Traitée » : seules les associations dont la
-saisie est complète (badge vert « X/X complet ») y sont incluses, jamais
-une saisie partielle ;</p></li>
-<li><p>« 📋 Transferts à saisir dans VIF » (§5.6).</p></li>
+<li><p>générer l’un des 3 CSV (« 📥 Export CSV VIF (poids par magasin) »
+en §5.5, « 📋 Transferts à saisir dans VIF » ou « 📄 Générer BL VIF » en
+§5.6) met les associations concernées « en attente de confirmation
+d’import VIF », sans cocher leur case — un bandeau le signale avec un
+bouton « ✅ Confirmer l’import VIF OK » ;</p></li>
+<li><p>ce bouton n’est à cliquer qu’une fois le fichier réellement
+importé dans VIF et vérifié ;</p></li>
+<li><p>une association reste bloquée à une étape tant que la précédente
+n’est pas confirmée : l’export « Transferts » ne porte que sur les
+associations dont le « Poids exporté » est confirmé, et « Générer BL VIF
+» que sur celles dont les « Transferts exportés » le sont.</p></li>
 </ul>
 <p>Détail complet des règles d’exclusion en §10.4.</p>
 <h1 id="résultat-collecte">5. Résultat collecte</h1>
@@ -1105,9 +1106,10 @@ secours.</p>
 un fichier au format d’import VIF, sur le même principe que l’export des
 cagettes (§5.4) — bloqué tant qu’un magasin n’a pas de poids saisi, sauf
 option de forçage réservée à l’environnement de test. Depuis le
-2026-11-16, les magasins des associations déjà cochées « Traitée »
-(§4.4) sont exclus de cet export, pour ne pas renvoyer dans VIF un
-tonnage déjà transmis lors d’un précédent export.</p>
+2026-11-24, les magasins des associations déjà cochées « Poids exporté »
+(import VIF confirmé), ou déjà en attente de cette confirmation (§4.4),
+sont exclus de cet export, pour ne pas renvoyer dans VIF un tonnage déjà
+transmis lors d’un précédent export.</p>
 <p>Un bouton « 🗑️ Repartir à zéro » permet d'effacer en un clic toutes
 les saisies de poids de l'année (utilisable aussi bien en test qu'en
 production), pour repartir d'une page vierge après des essais. Depuis le
@@ -1138,28 +1140,29 @@ l’association s’affiche en petit, sous le nom de chaque colonne
 association — même repère que la colonne « Poids {année précédente} (kg)
 » des §4.3/§4.4, affiché ici au niveau de la colonne plutôt que de la
 ligne.</p>
-<p>Deux boutons permettent de produire les mouvements VIF correspondants
-à partir de ces quantités, tous deux excluant les associations déjà
-cochées « Traitée » (§4.4) :</p>
-<p>« 📄 Générer BL VIF » — génère le bon de livraison au format VIF des
-quantités saisies (une ligne par association et par produit, avec la
-colonne Gratuit déterminée par le statut de l’association et, si
-non-gratuit, le prix repris de la mercuriale). Depuis le 2026-11-17, ce
-BL ne porte que sur les associations dont la saisie est complète (badge
-vert « X/X complet », §4.4) — jamais sur une saisie partielle, pour
-éviter un BL à corriger ensuite. Depuis le 2026-11-16, chaque
-association effectivement incluse dans le BL généré est cochée « Traitée
-» automatiquement, afin qu’un nouveau « Générer BL VIF » lancé plus tard
-(pour les associations qui répondent en retard) ne la réintègre pas une
-deuxième fois.</p>
+<p>Depuis le 2026-11-24, les boutons apparaissent dans l’ordre
+d’exécution réel — Transferts avant BL — et mettent les associations
+incluses « en attente de confirmation d’import VIF » plutôt que de
+cocher directement une case « Traitée » (détail en §10.4 et §10.5) :</p>
 <p>« 📋 Transferts à saisir dans VIF » — liste, pour chaque produit
 ayant une quantité saisie supérieure à zéro, le mouvement de sortie
 (article « collecte gardée » 5010010) et d’entrée correspondant
-(emplacement B011, sans lot), avec le total en kg. Depuis le 2026-11-17,
-le bouton « 📤 Export CSV TRANCOG (prêt pour VIF) » génère directement
-le fichier CSV prêt à importer dans VIF pour ces mouvements, au format
-TRANCOG (détail en §10.5) — plus besoin de les ressaisir à la main dans
-le modèle Excel partagé.</p>
+(emplacement B011), avec le total en kg. Le bouton « 📤 Export CSV
+TRANCOG (prêt pour VIF) » génère directement le fichier CSV prêt à
+importer dans VIF pour ces mouvements (détail en §10.5) ; ne porte que
+sur les associations dont le « Poids exporté » est confirmé (§4.4).</p>
+<p>« 📄 Générer BL VIF » — génère le bon de livraison au format VIF des
+quantités saisies (une ligne par association et par produit, avec la
+colonne Gratuit déterminée par le statut de l’association et, si
+non-gratuit, le prix repris de la mercuriale). Ne porte que sur les
+associations dont la saisie est complète (badge vert « X/X complet »,
+§4.4) ET dont les « Transferts exportés » sont confirmés — jamais de BL
+sur une saisie partielle, ni sur un transfert pas encore réellement
+importé dans VIF. Depuis le 2026-11-24, le lot indiqué sur chaque ligne
+est identique à celui du transfert correspondant (préfixe COLGA + code
+produit), pour que VIF rapproche correctement l’entrée et la sortie de
+stock (ce lot était auparavant préfixé COG, non reconnu par VIF comme le
+même lot que le transfert).</p>
 <p>Un bouton « 🗑️ Repartir à zéro » permet, de la même façon, d'effacer
 en un clic toutes les saisies de quantités de l'année, sous le même
 contrôle renforcé (case « je confirme » + année retapée, cf. §5.5)
@@ -2314,6 +2317,35 @@ l'indice d'avancement de la saisie atteint 100 % (badge vert « X/X
 complet ») y sont incluses — jamais de BL sur une saisie partielle, pour
 éviter d'avoir à le corriger après coup si l'association termine sa
 saisie plus tard.</p>
+<h3
+id="remplacement-par-3-cases-confirmation-dimport-vif-2026-11-24">Remplacement
+par 3 cases + confirmation d’import VIF (2026-11-24)</h3>
+<p>Incident réel du 2026-11-24 : un « 📄 Générer BL VIF » a coché «
+Traitée » automatiquement pour des associations dont le transfert
+n’avait en réalité jamais été importé dans VIF (simple essai de
+l’utilisateur), provoquant des stocks VIF négatifs une fois le BL
+effectivement intégré. « Traitée » est remplacée par trois colonnes
+indépendantes dans <code>collecte_gardee_suivi</code> — poids_exporte,
+transferts_exportes, bl_genere — plus une table séparée
+<code>collecte_gardee_vif_a_confirmer</code> (annee, etape,
+nom_association, genere_le, genere_par), qui ne contient jamais
+d’association déjà confirmée.</p>
+<p>Générer un des 3 CSV n’écrit donc plus directement dans les 3
+colonnes ci-dessus — il insère (ou met à jour) une ligne par association
+concernée dans <code>collecte_gardee_vif_a_confirmer</code> (fonction
+<code>_mettre_en_attente_confirmation_vif</code>). Le bouton « ✅
+Confirmer l’import VIF OK » d’une étape (route
+<code>confirmer_vif_gardee</code>) coche alors la colonne correspondante
+pour chaque association en attente de cette étape (via
+<code>_marquer_suivi_gardee</code>) et supprime leur ligne de la table
+d’attente — jamais l’inverse.</p>
+<p>L’ordre strict entre étapes vient de l’union des deux sources à
+exclure : pour être éligible aux « Transferts », une association ne doit
+être ni dans la colonne transferts_exportes, ni dans la table d’attente
+pour cette étape — et doit en plus figurer dans la colonne poids_exporte
+confirmée (fonctions <code>_lignes_transferts_vif</code> et
+<code>quantites_produits_bl_vif</code> pour le BL, même principe avec
+transferts_exportes confirmée comme condition d’entrée).</p>
 <h3 id="repère-de-lannée-précédente-import-direct">Repère de l’année
 précédente (import direct)</h3>
 <p>Le bloc « 📁 Repère {année précédente} », sur la page « Saisie
@@ -2441,19 +2473,24 @@ colonne Gratuit est déterminée par le statut de l'association dans
 Associations gardant ; si l'association n'est pas gratuite, le prix
 vient de la mercuriale importée (absence de prix = ligne en erreur,
 export refusé avec le détail des associations/articles concernés).
-Depuis le 2026-11-16, les associations déjà cochées « Traitée » sont
-exclues avant construction ; depuis le 2026-11-17, seules celles dont
-l'indice d'avancement atteint 100 % y sont incluses (détail en §10.4).
-Les associations effectivement incluses dans le BL généré sont cochées «
-Traitée » juste après la génération, une par une.</p>
+Depuis le 2026-11-24, les associations déjà cochées « BL généré », ou
+déjà en attente de cette confirmation, sont exclues avant construction ;
+seules celles dont l'indice d'avancement atteint 100 % ET dont «
+Transferts exportés » est confirmé y sont incluses (détail en §10.4).
+Les associations effectivement incluses dans le BL généré sont mises en
+attente de confirmation d'import VIF (table
+collecte_gardee_vif_a_confirmer) juste après la génération, et non plus
+cochées directement.</p>
 <p>« 📋 Transferts à saisir dans VIF »
 (<code>quantites_produits_transferts</code>) additionne, par code
 produit, le poids total saisi (toutes associations non exclues
 confondues) — uniquement les produits dont la somme est strictement
-positive. Même exclusion « Traitée » que le BL VIF ci-dessus, mais sans
-la condition supplémentaire sur l'avancement (cette liste peut donc
-inclure une association à la saisie encore partielle, contrairement au
-BL VIF).</p>
+positive. Même principe d'exclusion que le BL VIF ci-dessus (déjà cochée
+« Transferts exportés », ou déjà en attente de cette confirmation), mais
+condition d'entrée sur « Poids exporté » confirmé plutôt que sur «
+Transferts exportés », et sans la condition supplémentaire sur
+l'avancement (cette liste peut donc inclure une association à la saisie
+encore partielle, contrairement au BL VIF).</p>
 <h3 id="export-csv-trancog-transcol-transferts-vif">Export CSV TRANCOG /
 TRANSCOL (transferts VIF)</h3>
 <p>Depuis le 2026-11-17, un bouton « 📤 Export CSV TRANCOG/TRANSCOL »
@@ -2506,6 +2543,16 @@ effacé, non numérique → refusé).</p>
 euros, selon le même référentiel de prix mercuriale que la pesée palox
 (correspondance par Code VIF) — disponibles uniquement si la mercuriale
 de l'année a été importée.</p>
+<p>Depuis le 2026-11-26, un bouton « 📥 Export Excel » génère le
+classeur côté serveur (openpyxl, et non plus dans le navigateur —
+SheetJS en version gratuite ne sait pas écrire de volet figé) : la ligne
+« Total » (haut de colonne) et une ligne « Total {année précédente} » y
+sont conservées en gras, et sa première ligne (en-têtes) est figée
+(ws.freeze_panes = "A2"). À l'écran, cette même ligne « Total {année
+précédente} » reste figée juste sous la ligne « Total » pendant le
+défilement (Tabulator row.freeze()), non éditable, et affiche 0 plutôt
+que vide pour une association sans historique l'année précédente — elle
+est exclue du calcul du total de l'année en cours et de l'export.</p>
 <h3
 id="arrondi-des-saisies-poids-par-magasin-gardé-et-quantités-par-produit">Arrondi
 des saisies (poids par magasin gardé et quantités par produit)</h3>

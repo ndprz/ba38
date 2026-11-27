@@ -445,7 +445,14 @@ const quillTexteMail = new Quill(document.getElementById("texte_mail_quill"), {
         ],
     },
 });
-quillTexteMail.root.innerHTML = texteMailTextarea.value;
+// dangerouslyPasteHTML (et non innerHTML = ...) : fait passer le contenu
+// initial par le parseur HTML propre de Quill, pour que son modèle Delta
+// interne reste synchronisé avec le DOM affiché — une assignation directe
+// de innerHTML désynchronise ce modèle et corrompt le contenu à
+// l'enregistrement suivant (balises <br> perdues, voire tout le texte
+// réencodé en HTML-échappé — incident constaté 2026-11-26 sur le mail
+// associations gardant).
+quillTexteMail.clipboard.dangerouslyPasteHTML(texteMailTextarea.value);
 document.getElementById('form-texte-mail').addEventListener("submit", function () {
     texteMailTextarea.value = quillTexteMail.root.innerHTML;
 });

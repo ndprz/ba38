@@ -119,7 +119,11 @@ function initQuill() {
   });
   const brut = corpsTextarea.value;
   // modèle texte brut converti en paragraphes ; HTML Quill rechargé tel quel
-  quill.root.innerHTML = (modeleEstHtml || /<p[ >]/.test(brut)) ? brut.replace(/&lt;&lt;(\w+)&gt;&gt;/g, "<<$1>>").replace(/<<(\w+)>>/g, "&lt;&lt;$1&gt;&gt;") : texteVersHtml(brut);
+  // dangerouslyPasteHTML (pas innerHTML = ...) : garde le modèle Delta de
+  // Quill synchronisé avec le DOM — une assignation directe désynchronise
+  // ce modèle et corrompt le contenu au prochain enregistrement (incident
+  // constaté 2026-11-26, cf. collecte/gardee_envoi.html).
+  quill.clipboard.dangerouslyPasteHTML((modeleEstHtml || /<p[ >]/.test(brut)) ? brut.replace(/&lt;&lt;(\w+)&gt;&gt;/g, "<<$1>>").replace(/<<(\w+)>>/g, "&lt;&lt;$1&gt;&gt;") : texteVersHtml(brut));
   // images collées (base64) -> image hébergée
   quill.on("text-change", () => {
     quill.root.querySelectorAll('img[src^="data:"]:not([data-uploading])').forEach(img => {

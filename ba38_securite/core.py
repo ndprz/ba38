@@ -425,6 +425,18 @@ def telephones_du_compte(user_id):
     return rows
 
 
+def compte_a_2fa(user):
+    """True si le compte a déjà un second facteur (imposé par l'admin,
+    application, code activé par l'utilisateur ou numéro de téléphone).
+    Seul un compte SANS second facteur peut l'activer lui-même : sinon
+    quelqu'un qui connaît le mot de passe pourrait y enregistrer son
+    propre téléphone et prendre la main sur la 2FA."""
+    return bool(
+        user["force_2fa"] == 1 or user["totp_enabled"] or user["code_2fa_actif"]
+        or telephones_du_compte(user["id"])
+    )
+
+
 def envoyer_code(user, telephone=None):
     """Génère un code à 6 chiffres, le mémorise (haché) dans la session
     serveur et l'envoie par SMS (telephone = ligne users_telephones) ou,
@@ -519,8 +531,8 @@ def _envoyer_sms(numero, texte):
         test = get_dev_test_number()
         if not test:
             raise RuntimeError("SMS_DEV_TEST_NUMBER absent : envoi SMS impossible en DEV")
-        return envoyer_sms_reel(test, f"[TEST {masquer_numero(numero)}] {texte}")
-    return envoyer_sms_reel(numero, texte)
+        return envoyer_sms_reel(test, f"[TEST {masquer_numero(numero)}] {texte}", pushtype="alert")
+    return envoyer_sms_reel(numero, texte, pushtype="alert")
 
 
 # --------------------------------------------------------------------------

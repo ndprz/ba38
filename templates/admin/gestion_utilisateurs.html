@@ -160,8 +160,21 @@
                 type="checkbox"
                 name="users[{{ loop.index0 }}][force_2fa]"
                 value="1"
+                title="Imposer la 2FA à ce compte. Un utilisateur peut aussi l'activer lui-même : l'état réel est indiqué ci-dessous."
                 {% if user.force_2fa %}checked{% endif %}
               />
+              <div class="small mt-1">
+                {% for e in user.etat_2fa %}
+                <span class="badge text-bg-success d-block mb-1">{{ e }}</span>
+                {% else %}
+                <span class="text-muted">aucune</span>
+                {% endfor %}
+                {% if user.code_2fa_actif and not user.force_2fa %}
+                <span class="text-muted">activée par l'utilisateur</span>
+                {% elif user.force_2fa %}
+                <span class="text-muted">imposée</span>
+                {% endif %}
+              </div>
 
               <button
                 type="button"

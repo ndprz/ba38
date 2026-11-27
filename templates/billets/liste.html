@@ -20,10 +20,11 @@
       <div class="col-md-4"><label class="small">Nom du donateur *</label><input name="donateur" class="form-control" placeholder="ALPEXPO Grenoble" required></div>
       <div class="col-md-4"><label class="small">Lieu</label><input name="lieu" class="form-control" placeholder="Alpexpo, Grenoble"></div>
       <div class="col-md-4"><label class="small">Désignation du spectacle *</label><input name="spectacle" class="form-control" required></div>
-      <div class="col-md-2"><label class="small">Date du spectacle *</label><input type="date" name="date_spectacle" class="form-control" required></div>
+      <div class="col-md-2"><label class="small">Date du spectacle *</label><input type="text" name="date_spectacle" class="form-control date-fr" placeholder="jj/mm ou jjmmaaaa" autocomplete="off" inputmode="numeric" required></div>
       <div class="col-md-2"><label class="small">Heure</label><input type="time" name="heure_spectacle" class="form-control"></div>
       <div class="col-md-2"><label class="small">Nombre de billets *</label><input type="number" min="1" name="nb_billets" class="form-control" value="2" required></div>
-      <div class="col-md-3"><label class="small">Date limite d'inscription *</label><input type="datetime-local" name="date_limite" class="form-control" required></div>
+      <div class="col-md-2"><label class="small">Date limite d'inscription *</label><input type="text" name="date_limite" class="form-control date-fr" placeholder="jj/mm ou jjmmaaaa" autocomplete="off" inputmode="numeric" required></div>
+      <div class="col-md-1"><label class="small">Heure</label><input type="time" name="heure_limite" class="form-control" value="23:59"></div>
       <div class="col-md-12"><label class="mb-2"><input type="checkbox" name="regle_12_mois" value="1" class="form-check-input" style="position:static" checked>
         Appliquer la règle « un seul gain par personne sur 12 mois » <span class="text-muted small">(à décocher pour une campagne qui y échappe)</span></label></div>
       <div class="col-md-12"><label class="small">Mode d'attribution</label>
@@ -51,7 +52,8 @@
         <td class="text-end">{{ c.nb_invites }}</td>
         <td class="text-end">{{ c.nb_inscrits }}</td>
         <td>
-          {% if c.mode == 'premier' %}<span class="badge bg-info">Premier inscrit</span> <span class="badge bg-{{ 'success' if c.nb_gagnants >= c.nb_billets else 'primary' }}">{{ c.nb_gagnants }}/{{ c.nb_billets }} places</span>
+          {% if c.statut == 'annulee' %}<span class="badge bg-danger">🚫 Annulé</span>
+          {% elif c.mode == 'premier' %}<span class="badge bg-info">Premier inscrit</span> <span class="badge bg-{{ 'success' if c.nb_gagnants >= c.nb_billets else 'primary' }}">{{ c.nb_gagnants }}/{{ c.nb_billets }} places</span>
             {% if limite_depassee(c) %}<span class="badge bg-secondary">Inscriptions closes</span>{% endif %}
           {% elif c.statut == 'tiree' %}<span class="badge bg-success">Tirage fait</span>{% if c.resultats_envoyes_le %} <span class="badge bg-secondary">résultats envoyés</span>{% endif %}
           {% elif limite_depassee(c) %}<span class="badge bg-warning text-dark">Tirage à faire</span>

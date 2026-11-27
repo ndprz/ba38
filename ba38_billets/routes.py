@@ -121,12 +121,34 @@ def liste():
                            limite_fr=mails.limite_fr, date_fr=mails.date_fr, limite_depassee=mails.limite_depassee)
 
 
+def _date_iso(texte):
+    """Accepte jj/mm/aaaa (champ .date-fr) ou aaaa-mm-jj ; renvoie aaaa-mm-jj, ou None."""
+    texte = (texte or "").strip()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(texte, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+    return None
+
+
+def _limite(f):
+    """Date limite : date jj/mm/aaaa (champ .date-fr) + heure (défaut 23:59) → « aaaa-mm-jjTHH:MM », ou None."""
+    d = _date_iso(f.get("date_limite"))
+    if not d:
+        return None
+    h = (f.get("heure_limite") or "").strip()
+    if not re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", h):
+        h = "23:59"
+    return f"{d}T{h.zfill(5)}"
+
+
 def _champs_fiche(f):
     return (
         (f.get("donateur") or "").strip(), (f.get("lieu") or "").strip(), (f.get("spectacle") or "").strip(),
-        (f.get("date_spectacle") or "").strip() or None, (f.get("heure_spectacle") or "").strip() or None,
+        _date_iso(f.get("date_spectacle")), (f.get("heure_spectacle") or "").strip() or None,
         (f.get("mode_retrait") or "").strip(), max(1, f.get("nb_billets", type=int) or 1),
-        _dt(f.get("date_limite")))
+        _limite(f))
 
 
 @billets_bp.route("/nouvelle", methods=["POST"])
@@ -135,7 +157,7 @@ def _champs_fiche(f):
 def nouvelle():
     donateur, lieu, spectacle, d, h, retrait, nb, limite = _champs_fiche(request.form)
     if not (donateur and spectacle and d and limite):
-        flash("❌ Donateur, spectacle, date du spectacle et date limite d'inscription sont obligatoires.", "danger")
+        flash("❌ Donateur, spectacle, date du spectacle (jj/mm/aaaa) et date limite d'inscription sont obligatoires.", "danger")
         return redirect(url_for("billets.liste"))
     mode = "premier" if request.form.get("mode") == "premier" else "tirage"
     regle = 1 if request.form.get("regle_12_mois") == "1" else 0
@@ -169,6 +191,7 @@ def campagne(campagne_id):
             "ORDER BY nom COLLATE NOCASE, prenom COLLATE NOCASE", (campagne_id,)).fetchall()
         gains = mails.gains_recents(conn, campagne_id)
     premier = mails.est_premier(c)
+    annulee = c["statut"] == "annulee"
     if premier:  # bénévoles ET salariés sont invités et s'inscrivent
         benevoles, salaries = list(parts), []
     else:
@@ -186,6 +209,10 @@ def campagne(campagne_id):
         "gagnants_salaries": sum(1 for p in parts if p["resultat"] == "gagnant" and p["origine_place"] == "salarie"),
         "salaries_coches": sum(1 for p in salaries if p["selected"]),
         "resultats_envoyes": sum(1 for p in parts if p["resultat_envoye_le"]),
+        "annul_prevenus": sum(1 for p in parts if p["annulation_envoyee_le"]),
+        "annul_inscrits": sum(1 for p in parts if p["etat"] == "inscrit" and not p["annulation_envoyee_le"]),
+        "annul_invites": sum(1 for p in parts if p["etat"] == "invite" and p["selected"] and p["invite_le"]
+                             and not p["invite_mode_test"] and not p["invite_erreur"] and not p["annulation_envoyee_le"]),
         "resultats_a_envoyer": sum(1 for p in parts if p["resultat"] and p["resultat"] != "desiste"
                                   and not p["resultat_envoye_le"]),
     }
@@ -199,7 +226,9 @@ def campagne(campagne_id):
         attente=sorted([p for p in parts if p["resultat"] == "attente"], key=lambda p: (p["ordre_tirage"] or 0, p["id"])),
         cles_textes=mails.cles_textes(c),
         gains=gains,
-        depassee=mails.limite_depassee(c), tiree=(c["statut"] == "tiree"),
+        depassee=mails.limite_depassee(c), annulee=annulee,
+        tiree=(c["statut"] == "tiree" or (annulee and bool(c["tirage_le"]))),
+        fige=(c["statut"] in ("tiree", "annulee")),
         peut_ecrire=has_access("billets", "ecriture"), utilisateurs=utilisateurs_basilic(),
         variables=mails.VARIABLES_AIDE, limite_fr=mails.limite_fr, date_fr=mails.date_fr,
         modele_defaut=TEXTE_PAR_DEFAUT, textes_mails=mails.textes_campagne(c),
@@ -212,7 +241,7 @@ def campagne(campagne_id):
 def enregistrer_fiche(campagne_id):
     donateur, lieu, spectacle, d, h, retrait, nb, limite = _champs_fiche(request.form)
     if not (donateur and spectacle and d and limite):
-        flash("❌ Donateur, spectacle, date du spectacle et date limite sont obligatoires.", "danger")
+        flash("❌ Donateur, spectacle, date du spectacle (jj/mm/aaaa) et date limite sont obligatoires.", "danger")
         return _retour(campagne_id)
     with _connect() as conn:
         c = _campagne(conn, campagne_id)
@@ -402,8 +431,8 @@ def inscription_manuelle(campagne_id):
     action = request.form.get("action")
     with _connect() as conn:
         c = _campagne(conn, campagne_id)
-        if not c or c["statut"] == "tiree":
-            flash("❌ Le tirage est fait : les inscriptions sont closes.", "danger")
+        if not c or c["statut"] in ("tiree", "annulee"):
+            flash("❌ Les inscriptions sont closes (tirage fait ou spectacle annulé).", "danger")
             return _retour(campagne_id, "#inscriptions")
         premier = mails.est_premier(c)
         if action == "desinscrire" and premier:
@@ -489,6 +518,9 @@ def envoyer(campagne_id):
         if not c["date_spectacle"] or not c["date_limite"]:
             flash("❌ Renseignez d'abord la date du spectacle et la date limite (bloc Fiche).", "danger")
             return _retour(campagne_id)
+        if c["statut"] == "annulee":
+            flash("❌ Le spectacle est annulé : plus d'invitation possible.", "danger")
+            return _retour(campagne_id, "#destinataires")
         if c["statut"] == "tiree" or mails.limite_depassee(c):
             flash("❌ La date limite est dépassée : plus d'invitation possible.", "danger")
             return _retour(campagne_id, "#destinataires")
@@ -629,7 +661,9 @@ def tirage(campagne_id):
         c = _campagne(conn, campagne_id)
         if not c:
             return redirect(url_for("billets.liste"))
-        if mails.est_premier(c):
+        if c["statut"] == "annulee":
+            flash("❌ Le spectacle est annulé : pas de tirage.", "danger")
+        elif mails.est_premier(c):
             flash("❌ Cette campagne est en « premier inscrit, premier servi » : il n'y a pas de tirage.", "danger")
         elif c["statut"] == "tiree":
             flash("❌ Le tirage a déjà été effectué (il ne peut pas être refait).", "danger")
@@ -714,6 +748,110 @@ def remplacer(campagne_id):
               f"({'salarié' if origine == 'salarie' else 'inscrit non retenu'}). "
               "Cliquez sur « Envoyer les résultats » pour le prévenir.", "success")
     return _retour(campagne_id, "#tirage")
+
+
+def envoyer_annulation_bg(app, db_path, campagne_id, ids, mode_test, user_email):
+    with app.app_context():
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        c = conn.execute("SELECT * FROM billets_campagnes WHERE id = ?", (campagne_id,)).fetchone()
+        ok = erreurs = nb_test = 0
+        for pid in ids:
+            p = conn.execute("SELECT * FROM billets_participants WHERE id = ?", (pid,)).fetchone()
+            if not p or not p["email"]:
+                continue
+            if mode_test:
+                if nb_test >= 2:
+                    break
+                nb_test += 1
+            sujet, corps = mails.mail_annulation(c, p)
+            try:
+                mails.envoyer(c, p["email"], sujet, corps, mode_test=mode_test, user_email=user_email)
+                if not mode_test:
+                    conn.execute("UPDATE billets_participants SET annulation_envoyee_le=?, resultat_erreur=NULL WHERE id=?",
+                                 (mails.maintenant(), pid))
+                ok += 1
+            except Exception as e:
+                write_log(f"❌ Billets annulation campagne {campagne_id} → {p['email']} : {e}")
+                conn.execute("UPDATE billets_participants SET resultat_erreur=? WHERE id=?", (str(e)[:400], pid))
+                erreurs += 1
+            conn.commit()
+        conn.close()
+        upload_database()
+        write_log(f"📤 Billets annulation campagne {campagne_id} : {ok} mail(s), {erreurs} erreur(s)")
+
+
+@billets_bp.route("/<int:campagne_id>/annuler_spectacle", methods=["POST"])
+@login_required
+@acces("ecriture")
+def annuler_spectacle(campagne_id):
+    """Le spectacle est annulé : la campagne est close (plus d'invitation, d'inscription ni de tirage) et
+    ses places ne comptent plus pour la règle des 12 mois. L'avis aux personnes se fait ensuite."""
+    with _connect() as conn:
+        c = _campagne(conn, campagne_id)
+        if not c or c["statut"] == "annulee":
+            flash("❌ Campagne introuvable ou déjà annulée.", "danger")
+        elif request.form.get("confirmer") != "1":
+            flash("❌ Cochez la case de confirmation.", "danger")
+        else:
+            conn.execute("UPDATE billets_campagnes SET statut='annulee', annulee_le=?, annulee_par=? WHERE id=?",
+                         (mails.maintenant(), current_user.email, campagne_id))
+            conn.commit()
+            write_log(f"🚫 Billets campagne {campagne_id} : spectacle annulé par {current_user.email}")
+            flash("🚫 Spectacle marqué comme annulé : plus d'invitation, d'inscription ni de tirage. "
+                  "Envoyez maintenant l'avis d'annulation aux personnes concernées (chapitre « Spectacle annulé »).",
+                  "warning")
+    return _retour(campagne_id)
+
+
+@billets_bp.route("/<int:campagne_id>/envoyer_annulation", methods=["POST"])
+@login_required
+@acces("ecriture")
+def envoyer_annulation(campagne_id):
+    """Avis d'annulation aux inscrits (et, si coché, aux invités n'ayant pas répondu) pas encore prévenus."""
+    mode_test = request.form.get("mode_test") == "1"
+    tous = request.form.get("tous") == "1"
+    with _connect() as conn:
+        c = _campagne(conn, campagne_id)
+        if not c or c["statut"] != "annulee":
+            flash("❌ Le spectacle n'est pas marqué comme annulé.", "danger")
+            return _retour(campagne_id)
+        sql = ("SELECT id FROM billets_participants WHERE campagne_id=? AND annulation_envoyee_le IS NULL AND "
+               "(etat='inscrit'" + (" OR (etat='invite' AND selected=1 AND invite_le IS NOT NULL "
+                                    "AND invite_mode_test=0 AND invite_erreur IS NULL)" if tous else "") + ") "
+               "ORDER BY nom COLLATE NOCASE")
+        ids = [r["id"] for r in conn.execute(sql, (campagne_id,))]
+    if not ids:
+        flash("ℹ️ Personne à prévenir.", "warning")
+        return _retour(campagne_id)
+    lancer_tache_fond(
+        target=envoyer_annulation_bg,
+        args=(current_app._get_current_object(), get_db_path(), campagne_id, ids, mode_test, current_user.email),
+        nom="Billets spectacle — annulation", utilisateur=current_user.email)
+    flash("🧪 Envoi TEST lancé (2 mails maximum, vers votre adresse)." if mode_test else
+          f"🚀 Avis d'annulation en cours d'envoi à {len(ids)} personne(s).", "warning" if mode_test else "info")
+    return _retour(campagne_id)
+
+
+@billets_bp.route("/<int:campagne_id>/retablir", methods=["POST"])
+@login_required
+@acces("ecriture")
+def retablir(campagne_id):
+    """Annule l'annulation (erreur de manipulation) tant qu'aucun avis n'est réellement parti."""
+    with _connect() as conn:
+        c = _campagne(conn, campagne_id)
+        if not c or c["statut"] != "annulee":
+            flash("❌ Le spectacle n'est pas marqué comme annulé.", "danger")
+        elif conn.execute("SELECT 1 FROM billets_participants WHERE campagne_id=? AND annulation_envoyee_le IS NOT NULL",
+                          (campagne_id,)).fetchone():
+            flash("❌ Des avis d'annulation ont déjà été envoyés : la campagne ne peut plus être rétablie.", "danger")
+        else:
+            conn.execute("UPDATE billets_campagnes SET statut=?, annulee_le=NULL, annulee_par=NULL WHERE id=?",
+                         ("tiree" if c["tirage_le"] else "ouverte", campagne_id))
+            conn.commit()
+            write_log(f"↩️ Billets campagne {campagne_id} : annulation du spectacle retirée par {current_user.email}")
+            flash("↩️ Campagne rétablie.", "success")
+    return _retour(campagne_id)
 
 
 @billets_bp.route("/<int:campagne_id>/annuler_tirage", methods=["POST"])

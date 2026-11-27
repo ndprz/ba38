@@ -583,15 +583,15 @@ fieldset legend{
 
     {% endif %}
 
-    {{ action_button(
-        "↩ Retour",
-        href=url_for('index'),
-        color="outline-secondary"
-    ) }}
-
-
-
     {% endif %}
+
+    {# Retour : toujours le dernier bouton, pour tous les rôles. Destination fixe
+       car la page a sa propre navigation (non valides / toutes les associations). #}
+    {{ action_button(
+        "↩️ Retour",
+        href=url_for('index'),
+        color="outline-dark"
+    ) }}
 
     {% endcall %}
 

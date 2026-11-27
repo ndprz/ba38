@@ -671,24 +671,35 @@ nouveau dépôt remplace le précédent) : il alimente la colonne « Poids
 (§4.3), ainsi que le total N-1 affiché sous le nom de chaque association
 dans « Quantités par produit » (§5.6) — à titre de repère uniquement,
 jamais recalculé automatiquement.</p>
-<p>Une case « Traitée » par association indique que le VIF a été fait
-pour elle : export CSV du poids par magasin, transfert de produits et
-bon de livraison (BL). Elle se coche normalement à la main, mais se
-coche aussi <strong>automatiquement</strong> pour chaque association
-incluse dans un « 📄 Générer BL VIF » (voir §5.6) — pour pouvoir
-relancer plus tard le même export sans réinclure les associations déjà
-traitées. Tant qu’elle n’est pas cochée, l’association reste incluse
-dans les 3 exports VIF suivants ; une fois cochée, elle en est exclue
-(pour éviter tout double comptage du tonnage si un export est relancé
-après coup pour les associations qui répondent en retard) :</p>
+<p>Trois cases de suivi par association accompagnent l’import VIF, dans
+un ordre strict : « Poids exporté », « Transferts exportés », « BL
+généré ». Chacune ne se coche qu’après confirmation explicite, jamais
+automatiquement à la seule génération du CSV — un CSV généré mais jamais
+réellement importé dans VIF a provoqué un incident de stocks négatifs le
+24/11/2026, d’où ce garde-fou :</p>
 <ul>
-<li><p>« 📥 Export CSV VIF (poids par magasin) » (même bouton qu’en
-§5.5) ;</p></li>
-<li><p>« 📄 Générer BL VIF » (§5.6) — qui, lui, n’inclut de toute façon
-que les associations dont la saisie est complète (badge vert « X/X
-complet ») : jamais de BL sur une saisie partielle ;</p></li>
-<li><p>« 📋 Transferts à saisir dans VIF » (§5.6).</p></li>
+<li><p>générer l’un des 3 CSV (« 📥 Export CSV VIF (poids par magasin) »
+en §5.5, « 📋 Transferts à saisir dans VIF » ou « 📄 Générer BL VIF » en
+§5.6) met les associations concernées « en attente de confirmation
+d’import VIF », sans cocher leur case — un bandeau apparaît alors sur
+cette page listant ces associations, avec un bouton « ✅ Confirmer
+l’import VIF OK » ;</p></li>
+<li><p>ce bouton n’est à cliquer qu’une fois le fichier réellement
+importé dans VIF et vérifié — il coche alors la case pour toutes les
+associations en attente de cette étape, et vide le bandeau ;</p></li>
+<li><p>une association reste bloquée à une étape tant que la précédente
+n’est pas confirmée : l’export « Transferts » ne porte que sur les
+associations dont le « Poids exporté » est confirmé, et « Générer BL VIF
+» que sur celles dont les « Transferts exportés » le sont — impossible
+de générer un BL sur un transfert jamais réellement importé.</p></li>
 </ul>
+<p>Tant qu’une case n’est pas cochée, l’association reste incluse dans
+l’export correspondant si on le relance ; une fois cochée, elle en est
+exclue (pour éviter tout double comptage du tonnage si un export est
+relancé après coup pour les associations qui répondent en retard).
+Chaque case reste aussi modifiable à la main (cocher/décocher), pour
+corriger une erreur ou forcer un nouvel export en dehors du circuit
+normal.</p>
 <h1 id="résultat-collecte">5. Résultat collecte</h1>
 <p>Cette section regroupe deux circuits indépendants, chacun avec son
 propre verrouillage : « Résultat collecte BAI » (cagettes + pesée palox)
@@ -825,7 +836,8 @@ bouton « 💾 Enregistrer » en secours en haut de page.</p>
 <p>Le bouton « 📤 Exporter CSV (saisie des poids par magasin) » génère
 un fichier au format d’import VIF, bloqué tant qu’un magasin n’a pas de
 poids saisi (sauf option de forçage, réservée à l’environnement de test)
-— les magasins des associations déjà cochées « Traitée » (§4.4) en sont
+— les magasins des associations déjà cochées « Poids exporté » (import
+VIF confirmé), ou déjà en attente de cette confirmation (§4.4), en sont
 exclus, pour ne pas renvoyer dans VIF un tonnage déjà transmis.</p>
 <p>Un bouton « 🗑️ Repartir à zéro » permet d’effacer en un clic toutes
 les saisies de poids de l’année (utilisable aussi bien en test qu’en
@@ -848,24 +860,40 @@ importée. Le total de l’année précédente (si le fichier repère a été
 déposé, §4.4) s’affiche en petit, sous le nom de chaque colonne
 association.</p>
 <p>Deux boutons permettent de produire les mouvements VIF
-correspondants, en excluant les associations déjà cochées « Traitée »
-(§4.4) :</p>
+correspondants, dans l’ordre dans lequel ils apparaissent à l’écran,
+chacun excluant les associations déjà cochées (ou en attente de
+confirmation) pour l’étape correspondante (§4.4) :</p>
 <ul>
+<li><p>« 📋 Transferts à saisir dans VIF » — liste, par produit, les
+mouvements de sortie/entrée de stock (sortie de l’article « collecte
+gardée » 5010010, entrée sur l’article, emplacement B011). Le bouton «
+📤 Export CSV TRANCOG (prêt pour VIF) » génère directement le fichier
+prêt à importer, au même format que le modèle Excel matrice
+TRANCOG(1).xlsx rempli à la main puis réenregistré en CSV en retirant
+ses 3 premières lignes — plus besoin de le remplir soi-même ; ne porte
+que sur les associations dont le « Poids exporté » est confirmé (§4.4)
+;</p></li>
 <li><p>« 📄 Générer BL VIF » — génère le bon de livraison (format VIF)
 des quantités saisies, une ligne par association et par produit. Ne
 porte que sur les associations dont la saisie est complète (badge vert «
-X/X complet », §4.4) ; coche automatiquement « Traitée » pour chaque
-association incluse dans ce BL, afin qu’un nouveau « Générer BL VIF »
-lancé plus tard ne les réinclue pas ;</p></li>
-<li><p>« 📋 Transferts à saisir dans VIF » — liste, par produit, les
-mouvements de sortie/entrée de stock (sortie de l’article « collecte
-gardée » 5010010, entrée sur l’article, emplacement B011, sans lot). Le
-bouton « 📤 Export CSV TRANCOG (prêt pour VIF) » génère directement le
-fichier prêt à importer, au même format que le modèle Excel
-<code>matrice TRANCOG(1).xlsx</code> rempli à la main puis réenregistré
-en CSV en retirant ses 3 premières lignes — plus besoin de le remplir
-soi-même.</p></li>
+X/X complet », §4.4) ET dont les « Transferts exportés » sont confirmés
+— jamais de BL sur une saisie partielle, ni sur un transfert pas encore
+réellement importé dans VIF. Le lot indiqué sur chaque ligne est
+désormais identique à celui du transfert correspondant (préfixe COLGA +
+code produit), pour que VIF rapproche correctement l’entrée et la sortie
+de stock.</p></li>
 </ul>
+<p>Les deux boutons mettent les associations incluses « en attente de
+confirmation d’import VIF » plutôt que de cocher directement leur case —
+voir §4.4 pour le bouton « ✅ Confirmer l’import VIF OK ».</p>
+<p>Un bouton « 📥 Export Excel » télécharge ce tableau tel qu’affiché
+(poids total et valeur inclus), avec la ligne « Total » et la ligne «
+Total {année précédente} » conservées en gras dans le fichier, et sa
+première ligne (en-têtes de colonnes) figée pour rester visible en
+faisant défiler les lignes. À l’écran, cette même ligne « Total {année
+précédente} » reste figée juste sous la ligne « Total » pendant le
+défilement, et affiche 0 (plutôt que vide) pour une association sans
+historique l’année précédente.</p>
 <p>Un bouton « 🗑️ Repartir à zéro » permet, de la même façon, d’effacer
 en un clic toutes les saisies de quantités de l’année, sous le même
 contrôle renforcé (case de confirmation + année retapée) que pour les
